@@ -306,8 +306,18 @@
 
             // If a tool was executed, show the result
             if (data.toolExecuted) {
-              addToolExecutionToChat(data.toolName, data.toolResult);
-              addToolToExecutedList(data.toolName);
+              // Check if we have multiple tools
+              if (data.allTools && data.allTools.length > 0) {
+                // Add all tool results to chat
+                data.allTools.forEach(tool => {
+                  addToolExecutionToChat(tool.name, tool.result);
+                  addToolToExecutedList(tool.name);
+                });
+              } else {
+                // Backward compatibility with single tool
+                addToolExecutionToChat(data.toolName, data.toolResult);
+                addToolToExecutedList(data.toolName);
+              }
             }
           } catch (error) {
             addMessageToChat(
