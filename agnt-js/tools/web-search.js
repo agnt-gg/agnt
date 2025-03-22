@@ -127,36 +127,102 @@ function validateAndFormatUrl(url) {
  */
 async function performWebSearch(query, count = 5) {
   try {
-    // Use DuckDuckGo for searching since it doesn't block simple bots
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    // Try multiple search engines/approaches
+    try {
+      // First attempt with DuckDuckGo HTML
+      const results = await searchWithDuckDuckGo(query, count);
+      if (results.length > 0) {
+        return results;
+      }
+      console.log('DuckDuckGo returned no results, trying alternative method...');
+    } catch (duckError) {
+      console.error('DuckDuckGo search failed:', duckError);
+    }
     
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    // Fallback to Bing
+    return await searchWithBing(query, count);
+  } catch (error) {
+    console.error('All search methods failed:', error);
+    throw new Error(`Failed to perform web search: ${error.message}`);
+  }
+}
+
+/**
+ * Search using DuckDuckGo
+ */
+async function searchWithDuckDuckGo(query, count = 5) {
+  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  
+  const response = await axios.get(searchUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml',
+      'Accept-Language': 'en-US,en;q=0.9'
+    },
+    timeout: 10000
+  });
+  
+  const $ = cheerio.load(response.data);
+  const results = [];
+  
+  // Try multiple CSS selectors to adapt to potential changes in DuckDuckGo's HTML
+  const selectors = [
+    '.result', // Original selector
+    '.web-result', // Alternative selector
+    '.nrn-react-div' // Another possible selector
+  ];
+  
+  for (const selector of selectors) {
+    $(selector).slice(0, count).each((i, element) => {
+      // Try various ways to extract data
+      const title = $(element).find('.result__title, .title, h2, a').first().text().trim();
+      const url = $(element).find('.result__url, .url, a').attr('href') || '';
+      const snippet = $(element).find('.result__snippet, .snippet, .description, p').first().text().trim();
+      
+      if (title && (url || snippet)) {
+        results.push({ title, url, snippet });
       }
     });
     
-    const $ = cheerio.load(response.data);
-    const results = [];
-    
-    // Extract search results
-    $('.result').slice(0, count).each((i, element) => {
-      const title = $(element).find('.result__title').text().trim();
-      const url = $(element).find('.result__url').text().trim();
-      const snippet = $(element).find('.result__snippet').text().trim();
-      
-      results.push({
-        title,
-        url,
-        snippet
-      });
-    });
-    
-    return results;
-  } catch (error) {
-    console.error('Search error:', error);
-    throw new Error(`Failed to perform web search: ${error.message}`);
+    if (results.length > 0) {
+      break; // Found results with this selector, no need to try others
+    }
   }
+  
+  return results;
+}
+
+/**
+ * Search using Bing as a fallback
+ */
+async function searchWithBing(query, count = 5) {
+  const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
+  
+  const response = await axios.get(searchUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml',
+      'Accept-Language': 'en-US,en;q=0.9'
+    },
+    timeout: 10000
+  });
+  
+  const $ = cheerio.load(response.data);
+  const results = [];
+  
+  // Bing search results
+  $('.b_algo').slice(0, count).each((i, element) => {
+    const titleElement = $(element).find('h2 a');
+    const title = titleElement.text().trim();
+    const url = titleElement.attr('href') || '';
+    const snippet = $(element).find('.b_caption p').text().trim();
+    
+    if (title && url) {
+      results.push({ title, url, snippet });
+    }
+  });
+  
+  return results;
 }
 
 /**
