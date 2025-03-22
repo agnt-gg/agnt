@@ -1,0 +1,691 @@
+{
+  "workflowId": "auto-insurance-claim-workflow",
+  "workflowName": "Autonomous Freezer Insurance Claim",
+  "executionPath": [
+    {
+      "nodeId": "start-node",
+      "type": "manual-trigger",
+      "text": "Freezer Temperature Alert Triggered",
+      "timestamp": 1742613690357
+    },
+    {
+      "nodeId": "initialize-incident",
+      "type": "execute-javascript",
+      "text": "Initialize Incident Data",
+      "timestamp": 1742613690374
+    },
+    {
+      "nodeId": "verify-policy",
+      "type": "execute-javascript",
+      "text": "Verify Policy Coverage",
+      "timestamp": 1742613690379
+    },
+    {
+      "nodeId": "assess-damage",
+      "type": "execute-javascript",
+      "text": "Assess Potential Damage",
+      "timestamp": 1742613690383
+    },
+    {
+      "nodeId": "generate-claim-report",
+      "type": "openai-llm",
+      "text": "Generate Claim Report",
+      "timestamp": 1742613692885
+    },
+    {
+      "nodeId": "process-claim-decision",
+      "type": "execute-javascript",
+      "text": "Process Claim Decision",
+      "timestamp": 1742613692889
+    },
+    {
+      "nodeId": "generate-notification",
+      "type": "openai-llm",
+      "text": "Generate Notification",
+      "timestamp": 1742613695036
+    },
+    {
+      "nodeId": "finalize-claim",
+      "type": "execute-javascript",
+      "text": "Finalize Claim",
+      "timestamp": 1742613695041
+    }
+  ],
+  "edgesTaken": [
+    {
+      "edgeId": "edge-1",
+      "from": "start-node",
+      "to": "initialize-incident",
+      "condition": "none",
+      "iteration": 1,
+      "timestamp": 1742613690360
+    },
+    {
+      "edgeId": "edge-2",
+      "from": "initialize-incident",
+      "to": "verify-policy",
+      "condition": "none",
+      "iteration": 1,
+      "timestamp": 1742613690377
+    },
+    {
+      "edgeId": "edge-3",
+      "from": "verify-policy",
+      "to": "assess-damage",
+      "condition": "none",
+      "iteration": 1,
+      "timestamp": 1742613690382
+    },
+    {
+      "edgeId": "edge-4",
+      "from": "assess-damage",
+      "to": "generate-claim-report",
+      "condition": "{{assess-damage.claimStatus}} not_equals Rejected",
+      "iteration": 1,
+      "timestamp": 1742613690386
+    },
+    {
+      "edgeId": "edge-7",
+      "from": "generate-claim-report",
+      "to": "process-claim-decision",
+      "condition": "none",
+      "iteration": 1,
+      "timestamp": 1742613692887
+    },
+    {
+      "edgeId": "edge-8",
+      "from": "process-claim-decision",
+      "to": "generate-notification",
+      "condition": "none",
+      "iteration": 1,
+      "timestamp": 1742613692891
+    },
+    {
+      "edgeId": "edge-9",
+      "from": "generate-notification",
+      "to": "finalize-claim",
+      "condition": "none",
+      "iteration": 1,
+      "timestamp": 1742613695038
+    }
+  ],
+  "outputs": {
+    "start-node": {
+      "triggered": true,
+      "timestamp": 1742613690357
+    },
+    "initialize-incident": {
+      "device": {
+        "id": "FRZ-1092384",
+        "type": "Smart Freezer",
+        "model": "CoolMax 5000",
+        "manufacturer": "FrostTech",
+        "purchaseDate": "2023-01-15",
+        "warrantyExpiration": "2026-01-15",
+        "location": "Kitchen",
+        "owner": "John Smith"
+      },
+      "incident": {
+        "timestamp": "3/21/2025, 11:21:30 PM",
+        "normalTemperature": -18,
+        "detectedTemperature": -2,
+        "duration": 30,
+        "threshold": -15,
+        "sensorReadings": [
+          {
+            "time": "-30 min",
+            "temp": -18
+          },
+          {
+            "time": "-25 min",
+            "temp": -15
+          },
+          {
+            "time": "-20 min",
+            "temp": -10
+          },
+          {
+            "time": "-15 min",
+            "temp": -5
+          },
+          {
+            "time": "-10 min",
+            "temp": -2
+          },
+          {
+            "time": "-5 min",
+            "temp": -2
+          },
+          {
+            "time": "now",
+            "temp": -16
+          }
+        ]
+      },
+      "policy": {
+        "id": "POL-78923",
+        "provider": "SafeGuard Insurance",
+        "type": "Smart Home Protection",
+        "coverage": "Appliance Malfunction",
+        "deductible": 100,
+        "maxCoverage": 2000,
+        "status": "Active",
+        "startDate": "2023-01-20",
+        "endDate": "2026-01-20"
+      },
+      "claimStatus": "Initiated"
+    },
+    "verify-policy": {
+      "device": {
+        "id": "FRZ-1092384",
+        "type": "Smart Freezer",
+        "model": "CoolMax 5000",
+        "manufacturer": "FrostTech",
+        "purchaseDate": "2023-01-15",
+        "warrantyExpiration": "2026-01-15",
+        "location": "Kitchen",
+        "owner": "John Smith"
+      },
+      "incident": {
+        "timestamp": "3/21/2025, 11:21:30 PM",
+        "normalTemperature": -18,
+        "detectedTemperature": -2,
+        "duration": 30,
+        "threshold": -15,
+        "sensorReadings": [
+          {
+            "time": "-30 min",
+            "temp": -18
+          },
+          {
+            "time": "-25 min",
+            "temp": -15
+          },
+          {
+            "time": "-20 min",
+            "temp": -10
+          },
+          {
+            "time": "-15 min",
+            "temp": -5
+          },
+          {
+            "time": "-10 min",
+            "temp": -2
+          },
+          {
+            "time": "-5 min",
+            "temp": -2
+          },
+          {
+            "time": "now",
+            "temp": -16
+          }
+        ]
+      },
+      "policy": {
+        "id": "POL-78923",
+        "provider": "SafeGuard Insurance",
+        "type": "Smart Home Protection",
+        "coverage": "Appliance Malfunction",
+        "deductible": 100,
+        "maxCoverage": 2000,
+        "status": "Active",
+        "startDate": "2023-01-20",
+        "endDate": "2026-01-20"
+      },
+      "claimStatus": "Verified",
+      "context": {
+        "start-node": {
+          "triggered": true,
+          "timestamp": 1742613690357
+        },
+        "initialize-incident": {
+          "device": {
+            "id": "FRZ-1092384",
+            "type": "Smart Freezer",
+            "model": "CoolMax 5000",
+            "manufacturer": "FrostTech",
+            "purchaseDate": "2023-01-15",
+            "warrantyExpiration": "2026-01-15",
+            "location": "Kitchen",
+            "owner": "John Smith"
+          },
+          "incident": {
+            "timestamp": "3/21/2025, 11:21:30 PM",
+            "normalTemperature": -18,
+            "detectedTemperature": -2,
+            "duration": 30,
+            "threshold": -15,
+            "sensorReadings": [
+              {
+                "time": "-30 min",
+                "temp": -18
+              },
+              {
+                "time": "-25 min",
+                "temp": -15
+              },
+              {
+                "time": "-20 min",
+                "temp": -10
+              },
+              {
+                "time": "-15 min",
+                "temp": -5
+              },
+              {
+                "time": "-10 min",
+                "temp": -2
+              },
+              {
+                "time": "-5 min",
+                "temp": -2
+              },
+              {
+                "time": "now",
+                "temp": -16
+              }
+            ]
+          },
+          "policy": {
+            "id": "POL-78923",
+            "provider": "SafeGuard Insurance",
+            "type": "Smart Home Protection",
+            "coverage": "Appliance Malfunction",
+            "deductible": 100,
+            "maxCoverage": 2000,
+            "status": "Active",
+            "startDate": "2023-01-20",
+            "endDate": "2026-01-20"
+          },
+          "claimStatus": "Initiated"
+        }
+      },
+      "verification": {
+        "isPolicyActive": true,
+        "tempThresholdExceeded": true,
+        "durationThresholdExceeded": true,
+        "isClaimValid": true,
+        "verifiedAt": "3/21/2025, 11:21:30 PM"
+      }
+    },
+    "assess-damage": {
+      "device": {
+        "id": "FRZ-1092384",
+        "type": "Smart Freezer",
+        "model": "CoolMax 5000",
+        "manufacturer": "FrostTech",
+        "purchaseDate": "2023-01-15",
+        "warrantyExpiration": "2026-01-15",
+        "location": "Kitchen",
+        "owner": "John Smith"
+      },
+      "incident": {
+        "timestamp": "3/21/2025, 11:21:30 PM",
+        "normalTemperature": -18,
+        "detectedTemperature": -2,
+        "duration": 30,
+        "threshold": -15,
+        "sensorReadings": [
+          {
+            "time": "-30 min",
+            "temp": -18
+          },
+          {
+            "time": "-25 min",
+            "temp": -15
+          },
+          {
+            "time": "-20 min",
+            "temp": -10
+          },
+          {
+            "time": "-15 min",
+            "temp": -5
+          },
+          {
+            "time": "-10 min",
+            "temp": -2
+          },
+          {
+            "time": "-5 min",
+            "temp": -2
+          },
+          {
+            "time": "now",
+            "temp": -16
+          }
+        ]
+      },
+      "policy": {
+        "id": "POL-78923",
+        "provider": "SafeGuard Insurance",
+        "type": "Smart Home Protection",
+        "coverage": "Appliance Malfunction",
+        "deductible": 100,
+        "maxCoverage": 2000,
+        "status": "Active",
+        "startDate": "2023-01-20",
+        "endDate": "2026-01-20"
+      },
+      "claimStatus": "Assessed",
+      "context": {
+        "start-node": {
+          "triggered": true,
+          "timestamp": 1742613690357
+        },
+        "initialize-incident": {
+          "device": {
+            "id": "FRZ-1092384",
+            "type": "Smart Freezer",
+            "model": "CoolMax 5000",
+            "manufacturer": "FrostTech",
+            "purchaseDate": "2023-01-15",
+            "warrantyExpiration": "2026-01-15",
+            "location": "Kitchen",
+            "owner": "John Smith"
+          },
+          "incident": {
+            "timestamp": "3/21/2025, 11:21:30 PM",
+            "normalTemperature": -18,
+            "detectedTemperature": -2,
+            "duration": 30,
+            "threshold": -15,
+            "sensorReadings": [
+              {
+                "time": "-30 min",
+                "temp": -18
+              },
+              {
+                "time": "-25 min",
+                "temp": -15
+              },
+              {
+                "time": "-20 min",
+                "temp": -10
+              },
+              {
+                "time": "-15 min",
+                "temp": -5
+              },
+              {
+                "time": "-10 min",
+                "temp": -2
+              },
+              {
+                "time": "-5 min",
+                "temp": -2
+              },
+              {
+                "time": "now",
+                "temp": -16
+              }
+            ]
+          },
+          "policy": {
+            "id": "POL-78923",
+            "provider": "SafeGuard Insurance",
+            "type": "Smart Home Protection",
+            "coverage": "Appliance Malfunction",
+            "deductible": 100,
+            "maxCoverage": 2000,
+            "status": "Active",
+            "startDate": "2023-01-20",
+            "endDate": "2026-01-20"
+          },
+          "claimStatus": "Initiated"
+        },
+        "verify-policy": {
+          "device": {
+            "id": "FRZ-1092384",
+            "type": "Smart Freezer",
+            "model": "CoolMax 5000",
+            "manufacturer": "FrostTech",
+            "purchaseDate": "2023-01-15",
+            "warrantyExpiration": "2026-01-15",
+            "location": "Kitchen",
+            "owner": "John Smith"
+          },
+          "incident": {
+            "timestamp": "3/21/2025, 11:21:30 PM",
+            "normalTemperature": -18,
+            "detectedTemperature": -2,
+            "duration": 30,
+            "threshold": -15,
+            "sensorReadings": [
+              {
+                "time": "-30 min",
+                "temp": -18
+              },
+              {
+                "time": "-25 min",
+                "temp": -15
+              },
+              {
+                "time": "-20 min",
+                "temp": -10
+              },
+              {
+                "time": "-15 min",
+                "temp": -5
+              },
+              {
+                "time": "-10 min",
+                "temp": -2
+              },
+              {
+                "time": "-5 min",
+                "temp": -2
+              },
+              {
+                "time": "now",
+                "temp": -16
+              }
+            ]
+          },
+          "policy": {
+            "id": "POL-78923",
+            "provider": "SafeGuard Insurance",
+            "type": "Smart Home Protection",
+            "coverage": "Appliance Malfunction",
+            "deductible": 100,
+            "maxCoverage": 2000,
+            "status": "Active",
+            "startDate": "2023-01-20",
+            "endDate": "2026-01-20"
+          },
+          "claimStatus": "Verified",
+          "verification": {
+            "isPolicyActive": true,
+            "tempThresholdExceeded": true,
+            "durationThresholdExceeded": true,
+            "isClaimValid": true,
+            "verifiedAt": "3/21/2025, 11:21:30 PM"
+          }
+        }
+      },
+      "verification": {
+        "isPolicyActive": true,
+        "tempThresholdExceeded": true,
+        "durationThresholdExceeded": true,
+        "isClaimValid": true,
+        "verifiedAt": "3/21/2025, 11:21:30 PM"
+      },
+      "assessment": {
+        "performed": true,
+        "spoilageRisk": 40,
+        "estimatedLoss": 414,
+        "exceedsDeductible": true,
+        "claimAmount": 314,
+        "assessedAt": "3/21/2025, 11:21:30 PM"
+      }
+    },
+    "generate-claim-report": {
+      "success": true,
+      "generatedText": "{\n  \"reportTitle\": \"Smart Freezer Temperature Incident Claim Report\",\n  \"summary\": \"The smart freezer with ID FRZ-1092384 experienced a temperature incident on 3/21/2025 at 11:21:30 PM, where the detected temperature rose to -2°C for 30 minutes, exceeding the threshold of -15°C. The estimated loss due to spoilage risk is $414, with a claim amount of $314.\",\n  \"recommendation\": \"We recommend submitting the claim to SafeGuard Insurance for coverage under the Smart Home Protection policy for Appliance Malfunction.\",\n  \"nextSteps\": \"Please proceed with filing the claim by providing all necessary documentation and details to SafeGuard Insurance. The claim amount of $314 exceeds the deductible of $100, ensuring coverage for the incident.\"\n}",
+      "model": "gpt-3.5-turbo-0125",
+      "usage": {
+        "prompt_tokens": 350,
+        "completion_tokens": 168,
+        "total_tokens": 518,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      }
+    },
+    "process-claim-decision": {
+      "device": {
+        "id": "FRZ-1092384",
+        "type": "Smart Freezer",
+        "model": "CoolMax 5000",
+        "manufacturer": "FrostTech",
+        "purchaseDate": "2023-01-15",
+        "warrantyExpiration": "2026-01-15",
+        "location": "Kitchen",
+        "owner": "John Smith"
+      },
+      "incident": {
+        "timestamp": "3/21/2025, 11:21:30 PM",
+        "normalTemperature": -18,
+        "detectedTemperature": -2,
+        "duration": 30,
+        "threshold": -15,
+        "sensorReadings": [
+          {
+            "time": "-30 min",
+            "temp": -18
+          },
+          {
+            "time": "-25 min",
+            "temp": -15
+          },
+          {
+            "time": "-20 min",
+            "temp": -10
+          },
+          {
+            "time": "-15 min",
+            "temp": -5
+          },
+          {
+            "time": "-10 min",
+            "temp": -2
+          },
+          {
+            "time": "-5 min",
+            "temp": -2
+          },
+          {
+            "time": "now",
+            "temp": -16
+          }
+        ]
+      },
+      "policy": {
+        "id": "POL-78923",
+        "provider": "SafeGuard Insurance",
+        "type": "Smart Home Protection",
+        "coverage": "Appliance Malfunction",
+        "deductible": 100,
+        "maxCoverage": 2000,
+        "status": "Active",
+        "startDate": "2023-01-20",
+        "endDate": "2026-01-20"
+      },
+      "claimStatus": "Approved",
+      "verification": {
+        "isPolicyActive": true,
+        "tempThresholdExceeded": true,
+        "durationThresholdExceeded": true,
+        "isClaimValid": true,
+        "verifiedAt": "3/21/2025, 11:21:30 PM"
+      },
+      "assessment": {
+        "performed": true,
+        "spoilageRisk": 40,
+        "estimatedLoss": 414,
+        "exceedsDeductible": true,
+        "claimAmount": 314,
+        "assessedAt": "3/21/2025, 11:21:30 PM"
+      },
+      "report": {
+        "reportTitle": "Smart Freezer Temperature Incident Claim Report",
+        "summary": "The smart freezer with ID FRZ-1092384 experienced a temperature incident on 3/21/2025 at 11:21:30 PM, where the detected temperature rose to -2°C for 30 minutes, exceeding the threshold of -15°C. The estimated loss due to spoilage risk is $414, with a claim amount of $314.",
+        "recommendation": "We recommend submitting the claim to SafeGuard Insurance for coverage under the Smart Home Protection policy for Appliance Malfunction.",
+        "nextSteps": "Please proceed with filing the claim by providing all necessary documentation and details to SafeGuard Insurance. The claim amount of $314 exceeds the deductible of $100, ensuring coverage for the incident."
+      },
+      "decision": {
+        "approved": true,
+        "claimId": "CLM-533469",
+        "approvedAmount": 314,
+        "reason": "Claim approved based on policy coverage and assessment",
+        "processedAt": "3/21/2025, 11:21:32 PM"
+      }
+    },
+    "generate-notification": {
+      "success": true,
+      "generatedText": "{\n  \"subject\": \"Smart Freezer Insurance Claim Approved - Claim ID: FRZ-1092384\",\n  \"greeting\": \"Dear Policyholder,\",\n  \"mainContent\": \"We are pleased to inform you that your smart freezer insurance claim for the incident involving the CoolMax 5000 model has been approved. The approved amount is $314. The report summary indicates that the temperature rose to -2°C for 30 minutes on 3/21/2025 at 11:21:30 PM, resulting in an estimated loss of $414.\",\n  \"closingStatement\": \"Please proceed with filing the claim by providing all necessary documentation and details to SafeGuard Insurance. The claim amount of $314 exceeds the deductible of $100, ensuring coverage for the incident.\",\n  \"smsVersion\": \"Your Smart Freezer claim for CoolMax 5000 has been approved. Claim ID: FRZ-1092384. Approved amount: $314. Please provide documentation to SafeGuard Ins.\"\n}",
+      "model": "gpt-3.5-turbo-0125",
+      "usage": {
+        "prompt_tokens": 316,
+        "completion_tokens": 206,
+        "total_tokens": 522,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      }
+    },
+    "finalize-claim": {
+      "claimId": "CLM-533469",
+      "policyId": "POL-78923",
+      "deviceId": "FRZ-1092384",
+      "incidentDate": "3/21/2025, 11:21:30 PM",
+      "verificationDate": "3/21/2025, 11:21:30 PM",
+      "assessmentDate": "3/21/2025, 11:21:30 PM",
+      "decisionDate": "3/21/2025, 11:21:32 PM",
+      "status": "Approved",
+      "approvedAmount": 314,
+      "notification": {
+        "subject": "Smart Freezer Insurance Claim Approved - Claim ID: FRZ-1092384",
+        "greeting": "Dear Policyholder,",
+        "mainContent": "We are pleased to inform you that your smart freezer insurance claim for the incident involving the CoolMax 5000 model has been approved. The approved amount is $314. The report summary indicates that the temperature rose to -2°C for 30 minutes on 3/21/2025 at 11:21:30 PM, resulting in an estimated loss of $414.",
+        "closingStatement": "Please proceed with filing the claim by providing all necessary documentation and details to SafeGuard Insurance. The claim amount of $314 exceeds the deductible of $100, ensuring coverage for the incident.",
+        "smsVersion": "Your Smart Freezer claim for CoolMax 5000 has been approved. Claim ID: FRZ-1092384. Approved amount: $314. Please provide documentation to SafeGuard Ins."
+      },
+      "report": {
+        "reportTitle": "Smart Freezer Temperature Incident Claim Report",
+        "summary": "The smart freezer with ID FRZ-1092384 experienced a temperature incident on 3/21/2025 at 11:21:30 PM, where the detected temperature rose to -2°C for 30 minutes, exceeding the threshold of -15°C. The estimated loss due to spoilage risk is $414, with a claim amount of $314.",
+        "recommendation": "We recommend submitting the claim to SafeGuard Insurance for coverage under the Smart Home Protection policy for Appliance Malfunction.",
+        "nextSteps": "Please proceed with filing the claim by providing all necessary documentation and details to SafeGuard Insurance. The claim amount of $314 exceeds the deductible of $100, ensuring coverage for the incident."
+      },
+      "finalizedAt": "3/21/2025, 11:21:35 PM"
+    }
+  },
+  "edgeIterations": {
+    "edge-1": 1,
+    "edge-2": 1,
+    "edge-3": 1,
+    "edge-4": 1,
+    "edge-7": 1,
+    "edge-8": 1,
+    "edge-9": 1
+  },
+  "startTime": 1742613690352,
+  "endTime": 1742613695046,
+  "duration": 4694
+}
