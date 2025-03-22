@@ -119,10 +119,47 @@
               toolElement.className = 'list-group-item list-group-item-action';
               toolElement.textContent = tool.name;
               toolElement.dataset.toolId = tool.id;
+              
+              // Add sample parameters based on tool type
+              let sampleParams = '';
+              switch (tool.id) {
+                case 'calculator':
+                  sampleParams = ' expression=2+2*3';
+                  break;
+                case 'random-number':
+                  sampleParams = ' min=1 max=100';
+                  break;
+                case 'log-message':
+                  sampleParams = ' message="Hello World"';
+                  break;
+                case 'execute-javascript':
+                  sampleParams = ' code="Math.PI"';
+                  break;
+                case 'openai-llm':
+                  sampleParams = ' prompt="Tell me a joke" model="gpt-3.5-turbo"';
+                  break;
+                case 'silly-name-generator':
+                  sampleParams = ' numNames=3';
+                  break;
+                case 'timer-trigger':
+                  sampleParams = ' triggerType=delay delaySeconds=5';
+                  break;
+                default:
+                  // No sample parameters for other tools
+                  break;
+              }
+              
               toolElement.addEventListener('click', () => {
-                chatInput.value = `/run ${tool.name}`;
+                chatInput.value = `/run ${tool.name}${sampleParams}`;
                 chatInput.focus();
+                
+                // Position cursor for easy editing
+                if (sampleParams) {
+                  const cursorPosition = chatInput.value.indexOf('=') + 1;
+                  chatInput.setSelectionRange(cursorPosition, cursorPosition);
+                }
               });
+              
               toolsList.appendChild(toolElement);
             });
           } catch (error) {
