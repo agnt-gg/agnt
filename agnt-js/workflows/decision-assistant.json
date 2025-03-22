@@ -1,0 +1,159 @@
+{
+  "id": "decision-assistant-workflow",
+  "name": "Decision Making Assistant",
+  "nodes": [
+    {
+      "id": "start-node",
+      "type": "manual-trigger",
+      "category": "trigger",
+      "parameters": {},
+      "text": "Start Decision Assistant"
+    },
+    {
+      "id": "random-factor",
+      "type": "random-number",
+      "category": "utility",
+      "parameters": {
+        "min": "1",
+        "max": "100"
+      },
+      "text": "Generate Uncertainty Factor"
+    },
+    {
+      "id": "ai-positive",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "I'm trying to make an important decision. The uncertainty factor is {{random-factor.randomNumber}}% (higher means more uncertainty). Please provide an optimistic analysis of how to approach this decision, focusing on potential benefits and opportunities.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a helpful decision-making assistant with an optimistic outlook. You help people make decisions by focusing on the positive aspects and opportunities.",
+        "temperature": "0.7",
+        "maxTokens": "300"
+      },
+      "text": "Generate Optimistic Analysis"
+    },
+    {
+      "id": "ai-balanced",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "I'm trying to make an important decision. The uncertainty factor is {{random-factor.randomNumber}}% (higher means more uncertainty). Please provide a balanced analysis of how to approach this decision, weighing both risks and benefits equally.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a helpful decision-making assistant with a balanced outlook. You help people make decisions by carefully weighing pros and cons.",
+        "temperature": "0.5",
+        "maxTokens": "300"
+      },
+      "text": "Generate Balanced Analysis"
+    },
+    {
+      "id": "ai-cautious",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "I'm trying to make an important decision. The uncertainty factor is {{random-factor.randomNumber}}% (higher means more uncertainty). Please provide a cautious analysis of how to approach this decision, focusing on potential risks and mitigation strategies.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a helpful decision-making assistant with a cautious outlook. You help people make decisions by identifying potential risks and suggesting mitigation strategies.",
+        "temperature": "0.4",
+        "maxTokens": "300"
+      },
+      "text": "Generate Cautious Analysis"
+    },
+    {
+      "id": "process-positive",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst randomNumber = inputData.context['random-factor'].randomNumber;\nconst confidenceScore = 100 - randomNumber;\n\nreturn {\n  analysis: text,\n  approach: 'optimistic',\n  confidenceScore: confidenceScore,\n  summary: `Optimistic approach with ${confidenceScore}% confidence score`\n};"
+      },
+      "text": "Process Optimistic Analysis"
+    },
+    {
+      "id": "process-balanced",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst randomNumber = inputData.context['random-factor'].randomNumber;\nconst confidenceScore = 75 - (Math.abs(randomNumber - 50) / 2);\n\nreturn {\n  analysis: text,\n  approach: 'balanced',\n  confidenceScore: confidenceScore,\n  summary: `Balanced approach with ${confidenceScore.toFixed(1)}% confidence score`\n};"
+      },
+      "text": "Process Balanced Analysis"
+    },
+    {
+      "id": "process-cautious",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst randomNumber = inputData.context['random-factor'].randomNumber;\nconst confidenceScore = 50 - (randomNumber / 4);\n\nreturn {\n  analysis: text,\n  approach: 'cautious',\n  confidenceScore: confidenceScore,\n  summary: `Cautious approach with ${confidenceScore.toFixed(1)}% confidence score`\n};"
+      },
+      "text": "Process Cautious Analysis"
+    },
+    {
+      "id": "final-recommendation",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "console.log('\\n===== DECISION ASSISTANT =====');\nconsole.log(`Uncertainty Factor: ${inputData.context['random-factor'].randomNumber}%`);\nconsole.log(`Recommended Approach: ${inputData.approach}`);\nconsole.log(`Confidence Score: ${inputData.confidenceScore}%`);\nconsole.log('\\n===== ANALYSIS =====');\nconsole.log(inputData.analysis);\n\nreturn {\n  completed: true,\n  uncertaintyFactor: inputData.context['random-factor'].randomNumber,\n  recommendedApproach: inputData.approach,\n  confidenceScore: inputData.confidenceScore,\n  analysis: inputData.analysis\n};"
+      },
+      "text": "Generate Final Recommendation"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "startNodeId": "start-node",
+      "endNodeId": "random-factor"
+    },
+    {
+      "id": "edge-2",
+      "startNodeId": "random-factor",
+      "endNodeId": "ai-positive",
+      "condition": "less_than_or_equal",
+      "if": "{{random-factor.randomNumber}}",
+      "value": "33"
+    },
+    {
+      "id": "edge-3",
+      "startNodeId": "random-factor",
+      "endNodeId": "ai-balanced",
+      "condition": "between",
+      "if": "{{random-factor.randomNumber}}",
+      "value": "34,66"
+    },
+    {
+      "id": "edge-5",
+      "startNodeId": "random-factor",
+      "endNodeId": "ai-cautious",
+      "condition": "greater_than",
+      "if": "{{random-factor.randomNumber}}",
+      "value": "66"
+    },
+    {
+      "id": "edge-6",
+      "startNodeId": "ai-positive",
+      "endNodeId": "process-positive"
+    },
+    {
+      "id": "edge-7",
+      "startNodeId": "ai-balanced",
+      "endNodeId": "process-balanced"
+    },
+    {
+      "id": "edge-8",
+      "startNodeId": "ai-cautious",
+      "endNodeId": "process-cautious"
+    },
+    {
+      "id": "edge-9",
+      "startNodeId": "process-positive",
+      "endNodeId": "final-recommendation"
+    },
+    {
+      "id": "edge-10",
+      "startNodeId": "process-balanced",
+      "endNodeId": "final-recommendation"
+    },
+    {
+      "id": "edge-11",
+      "startNodeId": "process-cautious",
+      "endNodeId": "final-recommendation"
+    }
+  ]
+}

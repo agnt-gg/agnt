@@ -1,0 +1,31 @@
+{
+  "id": "simple_workflow",
+  "name": "Simple Workflow Example",
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "basic_tool",
+      "category": "trigger",
+      "parameters": {
+        "param1": "Hello",
+        "param2": "World"
+      }
+    },
+    {
+      "id": "node_2",
+      "type": "basic_tool",
+      "category": "action",
+      "parameters": {
+        "param1": "{{node_1.data.params.param1}}",
+        "param2": "AGNT"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "startNodeId": "node_1",
+      "endNodeId": "node_2"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "title": "Silly Name Generator",
+  "category": "utility",
+  "type": "silly-name-generator",
+  "icon": "funny_hat",
+  "description": "Generates whimsical and amusing names for use in games, stories, or online profiles.",
+  "parameters": {
+    "style": {
+      "type": "string",
+      "inputType": "select",
+      "inputSize": "half",
+      "options": [
+        "fantasy",
+        "sci-fi",
+        "nonsense",
+        "cute"
+      ],
+      "description": "Choose the style of the silly name to generate.",
+      "default": "fantasy"
+    },
+    "includeNumber": {
+      "type": "boolean",
+      "inputType": "checkbox",
+      "inputSize": "half",
+      "description": "Include a random number at the end of the name.",
+      "default": false
+    }
+  },
+  "outputs": {
+    "sillyName": {
+      "type": "string",
+      "description": "The generated silly name."
+    }
+  }
+}

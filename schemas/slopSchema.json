@@ -1,0 +1,241 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SLOP Protocol Schema",
+  "description": "JSON Schema for the Simple Language Open Protocol (SLOP)",
+  "type": "object",
+  "properties": {
+    "chat": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "messages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": ["user", "assistant", "system"]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": ["role", "content"]
+              }
+            },
+            "model": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            }
+          },
+          "required": ["messages"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object"
+        },
+        "post": {
+          "type": "object",
+          "properties": {
+            "tool_id": {
+              "type": "string"
+            },
+            "parameters": {
+              "type": "object"
+            }
+          },
+          "required": ["tool_id", "parameters"]
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": ["key", "value"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"]
+        },
+        "put": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": ["key", "value"]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"]
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "filter": {
+              "type": "object"
+            }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "post": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": ["id", "title"]
+        },
+        "put": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": ["id"]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": ["id"]
+        },
+        "search": {
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string"
+            }
+          },
+          "required": ["q"]
+        }
+      }
+    },
+    "pay": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "payment_method": {
+              "type": "string"
+            }
+          },
+          "required": ["amount", "currency", "description", "payment_method"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "transaction_id": {
+              "type": "string"
+            }
+          },
+          "required": ["transaction_id"]
+        }
+      }
+    },
+    "info": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "id": "silly-name-generation-workflow",
+  "name": "Silly Name Generation Workflow",
+  "nodes": [
+    {
+      "id": "silly-name-gen-01",
+      "type": "silly-name-generator",
+      "category": "utility",
+      "text": "Generate a silly name",
+      "parameters": {
+        "style": "whimsical",
+        "includeNumber": true
+      }
+    }
+  ],
+  "edges": []
+}
