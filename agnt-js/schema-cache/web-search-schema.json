@@ -1,17 +1,17 @@
 {
-  "description": "Web Search Tool that performs web searches and returns results without opening a browser. It can also open URLs in the Brave browser or fetch and summarize web content.",
+  "description": "Web Search Tool that performs web searches and returns results without opening a browser. It can also open URLs in the Brave browser or fetch content from a web page.",
   "properties": {
     "action": {
       "type": "string",
-      "description": "The action to perform, either 'search' or 'open'. Defaults to 'search'."
+      "description": "The action to perform: 'search', 'open', or 'fetch'. Defaults to 'search'."
     },
     "url": {
       "type": "string",
-      "description": "The URL to open or fetch content from. Required for the 'open' action."
+      "description": "The URL to open or fetch content from. Required for 'open' and 'fetch' actions."
     },
     "searchQuery": {
       "type": "string",
-      "description": "The search query string to use for web searches. Required for the 'search' action."
+      "description": "The search query to use for the 'search' action. Required for 'search' action."
     },
     "resultsCount": {
       "type": "integer",
