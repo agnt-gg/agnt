@@ -1,5 +1,5 @@
 {
-  "description": "Web Search Tool that performs web searches and returns results without opening a browser. It can also open URLs in the Brave browser or fetch content from a web page.",
+  "description": "Web Search Tool that performs web searches and retrieves web content without opening a browser.",
   "properties": {
     "action": {
       "type": "string",
