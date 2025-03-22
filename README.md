@@ -196,8 +196,8 @@ async def execute(params, input_data):
 
 For detailed documentation on each implementation:
 
-- [JavaScript Documentation](./AGNT-JS/README.md)
-- [Python Documentation](./AGNT-py/README.md)
+- [JavaScript Documentation](./agnt-js/README.md)
+- [Python Documentation](./agnt-py/README.md)
 
 ## 9. CONTRIBUTING
 
