@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import AGNT from './orchestrator/AGNT.js';
 import SPRK from './orchestrator/SPRK.js';
+import apiRouter from './api.js';
 
 // Load environment variables
 dotenv.config();
@@ -270,6 +271,9 @@ app.get('/tools/:filename', (req, res) => {
     res.status(500).send(`Error reading tool file: ${error.message}`);
   }
 });
+
+// Use API routes
+app.use('/api', apiRouter);
 
 // Start server
 app.listen(PORT, () => {

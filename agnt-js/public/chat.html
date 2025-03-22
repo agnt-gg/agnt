@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workflow Engine - Chat Interface</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .chat-container {
+        height: 400px;
+        overflow-y: auto;
+        border: 1px solid #e9ecef;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+
+      .user-message,
+      .system-message,
+      .tool-message {
+        padding: 10px 15px;
+        border-radius: 15px;
+        margin-bottom: 10px;
+        max-width: 80%;
+        word-wrap: break-word;
+      }
+
+      .user-message {
+        background-color: #007bff;
+        color: white;
+        margin-left: auto;
+        border-bottom-right-radius: 5px;
+      }
+
+      .system-message {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        margin-right: auto;
+        border-bottom-left-radius: 5px;
+      }
+
+      .tool-message {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        margin-right: auto;
+        border-bottom-left-radius: 5px;
+      }
+
+      .tool-execution {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        border-left: 3px solid #28a745;
+      }
+
+      .chat-input-container {
+        position: relative;
+      }
+    </style>
+    <script defer>
+      document.addEventListener("DOMContentLoaded", function () {
+        // DOM elements
+        const chatForm = document.getElementById("chat-form");
+        const chatInput = document.getElementById("chat-input");
+        const chatHistory = document.getElementById("chat-history");
+        const toolsList = document.getElementById("tools-list");
+        const executedTools = document.getElementById("executed-tools");
+        
+        // Store conversation history for OpenAI
+        let conversationHistory = [];
+
+        // Load available tools
+        loadTools();
+
+        // Handle chat form submission
+        chatForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          const message = chatInput.value.trim();
+          if (message.length === 0) return;
+
+          // Add user message to chat
+          addMessageToChat("user", message);
+          
+          // Add to conversation history
+          conversationHistory.push({
+            role: "user",
+            content: message
+          });
+          
+          chatInput.value = "";
+
+          // Process the message
+          processUserMessage(message);
+        });
+
+        // Load available workflow tools
+        async function loadTools() {
+          try {
+            const response = await fetch('/api/tools');
+            const data = await response.json();
+            
+            // Ensure we have an array of tools
+            const tools = Array.isArray(data) ? data : (data.tools || []);
+            
+            toolsList.innerHTML = '';
+            if (tools.length === 0) {
+              toolsList.innerHTML = '<div class="text-muted">No tools available</div>';
+              return;
+            }
+            
+            tools.forEach(tool => {
+              const toolElement = document.createElement('a');
+              toolElement.href = '#';
+              toolElement.className = 'list-group-item list-group-item-action';
+              toolElement.textContent = tool.name;
+              toolElement.dataset.toolId = tool.id;
+              toolElement.addEventListener('click', () => {
+                chatInput.value = `/run ${tool.name}`;
+                chatInput.focus();
+              });
+              toolsList.appendChild(toolElement);
+            });
+          } catch (error) {
+            toolsList.innerHTML = '<div class="alert alert-danger">Failed to load tools</div>';
+            console.error('Error loading tools:', error);
+          }
+        }
+
+        // Process user message
+        async function processUserMessage(message) {
+          try {
+            // Check if the message is a command to run a tool
+            if (message.startsWith("/run ")) {
+              const commandText = message.substring(5).trim();
+              
+              // Find all tool names in the tools list
+              const toolElements = toolsList.querySelectorAll('a');
+              const toolNames = Array.from(toolElements).map(el => el.textContent);
+              
+              // Find the longest matching tool name at the start of the command
+              let foundToolName = null;
+              for (const name of toolNames) {
+                if (commandText.startsWith(name) && (!foundToolName || name.length > foundToolName.length)) {
+                  foundToolName = name;
+                }
+              }
+              
+              if (!foundToolName) {
+                addMessageToChat("system", "Unknown tool. Please select a tool from the list.");
+                return;
+              }
+              
+              // Extract parameters (everything after the tool name)
+              const paramsText = commandText.substring(foundToolName.length).trim();
+              let params = {};
+              
+              if (paramsText) {
+                try {
+                  // Try to parse as JSON if it starts with { and ends with }
+                  if (paramsText.startsWith('{') && paramsText.endsWith('}')) {
+                    params = JSON.parse(paramsText);
+                  } else {
+                    // Parse key=value pairs with better handling for expressions
+                    const paramPairs = paramsText.match(/(\w+)=(?:"([^"]*)"|([\w.+\-*\/\(\)]+))/g) || [];
+                    
+                    for (const pair of paramPairs) {
+                      const [key, rawValue] = pair.split('=');
+                      
+                      // Handle quoted values by removing quotes
+                      let value;
+                      if (rawValue.startsWith('"') && rawValue.endsWith('"')) {
+                        value = rawValue.slice(1, -1);
+                      } else {
+                        value = rawValue;
+                      }
+                      
+                      params[key] = value;
+                    }
+                  }
+                } catch (e) {
+                  addMessageToChat("system", `Error parsing parameters: ${e.message}`);
+                  return;
+                }
+              }
+              
+              await runTool(foundToolName, params);
+              return;
+            }
+
+            // Otherwise, analyze the message with OpenAI
+            const response = await fetch("/api/chat", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ 
+                message,
+                conversationHistory
+              }),
+            });
+
+            const data = await response.json();
+
+            // Add AI response to chat
+            addMessageToChat("system", data.response);
+            
+            // Add to conversation history
+            conversationHistory.push({
+              role: "assistant",
+              content: data.response
+            });
+
+            // If a tool was executed, show the result
+            if (data.toolExecuted) {
+              addToolExecutionToChat(data.toolName, data.toolResult);
+              addToolToExecutedList(data.toolName);
+            }
+          } catch (error) {
+            addMessageToChat(
+              "system",
+              "Sorry, an error occurred while processing your message."
+            );
+            console.error("Error processing message:", error);
+          }
+        }
+
+        // Run a specific tool
+        async function runTool(toolName, params = {}) {
+          try {
+            addMessageToChat("system", `Running tool: ${toolName}...`);
+
+            const response = await fetch("/api/run-tool", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ toolName, params }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+              addToolExecutionToChat(toolName, data.result);
+              addToolToExecutedList(toolName);
+            } else {
+              addMessageToChat("system", `Failed to run tool: ${data.error}`);
+            }
+          } catch (error) {
+            addMessageToChat("system", `Error running tool: ${toolName}`);
+            console.error("Error running tool:", error);
+          }
+        }
+
+        // Add a message to the chat history
+        function addMessageToChat(type, content) {
+          const messageDiv = document.createElement("div");
+          messageDiv.className =
+            type === "user" ? "user-message" : "system-message";
+          messageDiv.textContent = content;
+
+          chatHistory.appendChild(messageDiv);
+          chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        // Add tool execution results to chat
+        function addToolExecutionToChat(toolName, result) {
+          const toolDiv = document.createElement("div");
+          toolDiv.className = "tool-message";
+          
+          // Format the result nicely
+          let resultDisplay;
+          
+          if (result === null || result === undefined) {
+            resultDisplay = "<em>No result returned</em>";
+          } else if (result.error) {
+            resultDisplay = `<div class="text-danger"><strong>Error:</strong> ${result.error}</div>`;
+          } else if (result.result !== undefined) {
+            const value = result.result;
+            if (value === null) {
+              resultDisplay = "<em>null</em>";
+            } else if (typeof value === 'object') {
+              resultDisplay = `<pre>${JSON.stringify(value, null, 2)}</pre>`;
+            } else {
+              resultDisplay = `<strong>${value}</strong>`;
+            }
+          } else {
+            resultDisplay = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+          }
+          
+          toolDiv.innerHTML = `<div class="tool-header">${toolName}</div><div class="tool-result">${resultDisplay}</div>`;
+          
+          chatHistory.appendChild(toolDiv);
+          chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        // Add tool to the executed tools list
+        function addToolToExecutedList(toolName) {
+          // Check if the list has the placeholder message
+          if (executedTools.querySelector(".text-muted")) {
+            executedTools.innerHTML = "";
+          }
+
+          const now = new Date();
+          const timestamp = now.toLocaleTimeString();
+
+          const toolElement = document.createElement("div");
+          toolElement.className = "list-group-item";
+          toolElement.innerHTML = `
+      <div>${toolName}</div>
+      <small class="text-muted">${timestamp}</small>
+    `;
+
+          executedTools.prepend(toolElement);
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div class="container">
+      <header class="pb-3 mb-4 border-bottom">
+        <h1 class="display-5 fw-bold">Workflow Engine</h1>
+        <p class="lead">Chat with your workflows</p>
+        <nav class="nav">
+          <a class="nav-link" href="index.html">Workflows</a>
+          <a class="nav-link active" href="chat.html">Chat Interface</a>
+        </nav>
+      </header>
+
+      <div class="row">
+        <div class="col-md-8">
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5>Chat</h5>
+            </div>
+            <div class="card-body">
+              <div id="chat-history" class="chat-container mb-3">
+                <!-- Chat messages will appear here -->
+                <div class="system-message">
+                  Welcome to the Workflow Engine Chat. How can I help you today?
+                </div>
+              </div>
+              <div class="chat-input-container">
+                <form id="chat-form">
+                  <div class="input-group">
+                    <input
+                      type="text"
+                      id="chat-input"
+                      class="form-control"
+                      placeholder="Type your message here..."
+                    />
+                    <button type="submit" class="btn btn-primary">Send</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5>Available Tools</h5>
+            </div>
+            <div class="card-body">
+              <div id="tools-list" class="list-group">
+                <!-- Tools will be loaded here -->
+                <div class="text-center">
+                  <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h5>Executed Tools</h5>
+            </div>
+            <div class="card-body">
+              <div id="executed-tools" class="list-group">
+                <!-- Executed tools will appear here -->
+                <div class="text-muted">No tools executed yet</div>
+              </div>
+            </div>
+          </div>
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5>Tool Usage Guide</h5>
+            </div>
+            <div class="card-body">
+              <p>Run tools using:</p>
+              <pre>/run Tool Name param1=value1 param2=value2</pre>
+              <p>Or with quoted parameters:</p>
+              <pre>/run Tool Name param1="value with spaces" param2=42</pre>
+              <p>Examples:</p>
+              <ul>
+                <li><code>/run Calculator expression=2+2*3</code></li>
+                <li><code>/run Random Number min=1 max=100</code></li>
+                <li><code>/run Log Message message="Hello World"</code></li>
+              </ul>
+              <p class="text-muted small">Use exact tool names as shown in the tools list.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

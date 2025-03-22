@@ -3,14 +3,9 @@
  * Generates a random number within a specified range (min to max, inclusive)
  */
 export async function execute(params, inputData) {
-  // Validate parameters
-  if (!params.min || !params.max) {
-    return { error: "Both min and max parameters are required" };
-  }
-  
-  // Parse parameters to numbers
-  const min = parseInt(params.min, 10);
-  const max = parseInt(params.max, 10);
+  // Set default values if parameters are not provided
+  const min = parseInt(params.min || 1, 10);
+  const max = parseInt(params.max || 100, 10);
   
   // Validate parameter values
   if (isNaN(min) || isNaN(max)) {
@@ -27,6 +22,10 @@ export async function execute(params, inputData) {
   // Return result
   return {
     success: true,
-    randomNumber: randomNumber
+    randomNumber: randomNumber,
+    range: {
+      min: min,
+      max: max
+    }
   };
 }
