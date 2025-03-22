@@ -144,6 +144,9 @@
                 case 'timer-trigger':
                   sampleParams = ' triggerType=delay delaySeconds=5';
                   break;
+                case 'web-search':
+                  sampleParams = ' action=search searchQuery="JavaScript tutorials" resultsCount=3';
+                  break;
                 default:
                   // No sample parameters for other tools
                   break;
@@ -438,6 +441,8 @@
                 <li><code>/run Calculator expression=2+2*3</code></li>
                 <li><code>/run Random Number min=1 max=100</code></li>
                 <li><code>/run Log Message message="Hello World"</code></li>
+                <li><code>/run Web Search searchQuery="JavaScript tutorials" resultsCount=3</code></li>
+                <li><code>/run Web Search action=open url="developer.mozilla.org"</code></li>
               </ul>
               <p class="text-muted small">Use exact tool names as shown in the tools list.</p>
             </div>
