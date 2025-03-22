@@ -56,8 +56,8 @@ Both implementations share the same core concepts, workflow structure, and orche
 
 ```bash
 # Clone the repository
-git clone [repository-url]
-cd AGNT-JS
+git clone https://github.com/agnt-gg/agnt
+cd agnt-js
 
 # Install dependencies
 npm install
@@ -85,7 +85,7 @@ node server.js
 ```bash
 # Clone the repository
 git clone [repository-url]
-cd AGNT-py
+cd agnt-py
 
 # Install dependencies
 pip install -r requirements.txt

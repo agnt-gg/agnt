@@ -114,7 +114,7 @@ Edges define connections between nodes.
 
 ```bash
 git clone https://github.com/agnt-gg/agnt
-cd AGNT-JS
+cd agnt-js
 npm install
 ```
 

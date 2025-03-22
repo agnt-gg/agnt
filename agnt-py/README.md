@@ -48,8 +48,8 @@
 
 ```bash
 # Clone the repository
-git clone [repository-url]
-cd AGNT-py
+git clone https://github.com/agnt-gg/agnt
+cd agnt-py
 
 # Install dependencies
 pip install -r requirements.txt
