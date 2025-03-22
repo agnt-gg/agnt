@@ -16,7 +16,6 @@ const IGNORED_ITEMS = [
   'summaries',
   '.pyc',
   '__pycache__',
-  'public',
   'lib',
   'img',
   'css',

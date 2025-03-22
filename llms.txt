@@ -12,6 +12,9 @@ Directory Structure:
     - SPRK.js
     - VIBE.js
   - package.json
+  + public
+    - index.html
+    - styles.css
   - README.md
   - server.js
   + tools
@@ -61,6 +64,7 @@ Directory Structure:
   - slopSchema.json
   - toolSchema.json
   - workflowSchema.json
++ utils
 
 File Contents:
 ----------------------
@@ -980,6 +984,575 @@ AGNT-JS\PACKAGE.JSON
 }
 
 ----------------------
+AGNT-JS\PUBLIC\INDEX.HTML
+----------------------
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Engine</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <!-- Updated Mermaid script -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      try {
+        window.mermaid = window.mermaid || {};
+        mermaid.initialize({ 
+          startOnLoad: false, 
+          theme: 'default',
+          securityLevel: 'loose'
+        });
+        console.log('Mermaid initialized successfully');
+      } catch (e) {
+        console.error('Failed to initialize Mermaid:', e);
+      }
+    });
+  </script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="pb-3 mb-4 border-bottom">
+      <h1 class="display-5 fw-bold">Workflow Engine</h1>
+      <p class="lead">Run and visualize workflows</p>
+    </header>
+
+    <div class="row mb-4">
+      <div class="col-md-4">
+        <div class="card">
+          <div class="card-header">
+            <h5>Available Workflows</h5>
+          </div>
+          <div class="card-body">
+            <div id="workflow-list" class="list-group">
+              <!-- Workflows will be loaded here -->
+              <div class="text-center">
+                <div class="spinner-border" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-8">
+        <div id="workflow-details" class="card d-none">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 id="workflow-name">Workflow Details</h5>
+            <button id="run-workflow" class="btn btn-primary">Run Workflow</button>
+          </div>
+          <div class="card-body">
+            <ul class="nav nav-tabs" id="workflowTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="chart-tab" data-bs-toggle="tab" data-bs-target="#chart" type="button" role="tab">Flowchart</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="json-tab" data-bs-toggle="tab" data-bs-target="#json" type="button" role="tab">JSON</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="output-tab" data-bs-toggle="tab" data-bs-target="#output" type="button" role="tab">Output</button>
+              </li>
+            </ul>
+            <div class="tab-content" id="workflowTabsContent">
+              <div class="tab-pane fade show active" id="chart" role="tabpanel">
+                <div id="chart-container">
+                  <div class="chart-loading">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading chart...</span>
+                    </div>
+                  </div>
+                  <div id="workflow-chart" class="mermaid">
+                    <!-- Mermaid chart will be rendered here -->
+                  </div>
+                </div>
+              </div>
+              <div class="tab-pane fade" id="json" role="tabpanel">
+                <pre id="workflow-json"><!-- JSON will be displayed here --></pre>
+              </div>
+              <div class="tab-pane fade" id="output" role="tabpanel">
+                <div id="execution-status" class="alert alert-info d-none">
+                  Workflow has not been executed yet.
+                </div>
+                <div id="execution-result" class="output-container d-none">
+                  <h6>Execution Path:</h6>
+                  <ul id="execution-path" class="list-group mb-3">
+                    <!-- Execution path will be displayed here -->
+                  </ul>
+                  
+                  <h6>Node Outputs:</h6>
+                  <div id="node-outputs" class="accordion">
+                    <!-- Node outputs will be displayed here -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Generate New Tool or Workflow</h5>
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label for="generation-type" class="form-label">Type</label>
+              <select id="generation-type" class="form-select">
+                <option value="tool">Tool</option>
+                <option value="workflow">Workflow</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="generation-description" class="form-label">Description</label>
+              <textarea id="generation-description" class="form-control" rows="3" 
+                placeholder="Describe what you want to generate..."></textarea>
+            </div>
+            <div class="mb-3">
+              <label for="generation-options" class="form-label">Options (JSON, optional)</label>
+              <textarea id="generation-options" class="form-control" rows="2" 
+                placeholder='{"category": "utility", "constraints": "..."}'></textarea>
+            </div>
+            <button id="generate-button" class="btn btn-primary">Generate</button>
+          </div>
+          <div id="generation-result" class="card-footer d-none">
+            <h6>Generation Result:</h6>
+            <pre id="generation-output"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mb-4">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Available Tools</h5>
+          </div>
+          <div class="card-body">
+            <div id="tools-list" class="row">
+              <!-- Tools will be loaded here -->
+              <div class="text-center">
+                <div class="spinner-border" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Global variables
+    let selectedWorkflow = null;
+    let workflowData = null;
+    
+    // Load workflows when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      loadWorkflows();
+      loadTools();
+      
+      // Add event listener for run button
+      document.getElementById('run-workflow').addEventListener('click', runWorkflow);
+      
+      // Add event listeners for tab changes
+      document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', event => {
+          // If switching to chart tab, render the chart
+          if (event.target.id === 'chart-tab' && window.currentChartData) {
+            // Reset the chart container before rendering
+            const chartContainer = document.getElementById('workflow-chart');
+            chartContainer.classList.remove('rendered');
+            chartContainer.innerHTML = '';
+            
+            // Show loading indicator
+            document.querySelector('.chart-loading').style.display = 'flex';
+            
+            // Render after a short delay to ensure the loading indicator is visible
+            setTimeout(() => {
+              renderChart(window.currentChartData);
+            }, 50);
+          }
+        });
+      });
+    });
+    
+    // Load available workflows
+    async function loadWorkflows() {
+      try {
+        const response = await fetch('/api/workflows');
+        const workflows = await response.json();
+        
+        const workflowList = document.getElementById('workflow-list');
+        workflowList.innerHTML = '';
+        
+        workflows.forEach(workflow => {
+          const item = document.createElement('a');
+          item.className = 'list-group-item list-group-item-action workflow-card';
+          item.innerHTML = `
+            <div class="d-flex w-100 justify-content-between">
+              <h5 class="mb-1">${workflow.name}</h5>
+            </div>
+            <small class="text-muted">${workflow.filename}</small>
+          `;
+          item.addEventListener('click', () => loadWorkflowDetails(workflow.filename));
+          workflowList.appendChild(item);
+        });
+      } catch (error) {
+        console.error('Error loading workflows:', error);
+        document.getElementById('workflow-list').innerHTML = `
+          <div class="alert alert-danger">
+            Error loading workflows: ${error.message}
+          </div>
+        `;
+      }
+    }
+    
+    // Load workflow details
+    async function loadWorkflowDetails(filename) {
+      try {
+        selectedWorkflow = filename;
+        
+        // Show workflow details card
+        document.getElementById('workflow-details').classList.remove('d-none');
+        
+        // Load workflow data
+        const response = await fetch(`/api/workflows/${filename}`);
+        workflowData = await response.json();
+        
+        // Update workflow name
+        document.getElementById('workflow-name').textContent = workflowData.name;
+        
+        // Display JSON
+        document.getElementById('workflow-json').textContent = JSON.stringify(workflowData, null, 2);
+        
+        // Generate and display chart
+        const chartResponse = await fetch(`/api/chart/${filename}`);
+        const chartData = await chartResponse.json();
+        
+        // Store chart data for later use
+        window.currentChartData = chartData.chart;
+        
+        // Only render the chart if the chart tab is active
+        const chartTab = document.getElementById('chart');
+        if (chartTab.classList.contains('active') || chartTab.classList.contains('show')) {
+          // Reset the chart container before rendering
+          const chartContainer = document.getElementById('workflow-chart');
+          chartContainer.classList.remove('rendered');
+          chartContainer.innerHTML = '';
+          
+          // Show loading indicator
+          document.querySelector('.chart-loading').style.display = 'flex';
+          
+          renderChart(chartData.chart);
+        }
+        
+        // Reset execution output
+        document.getElementById('execution-status').classList.remove('d-none');
+        document.getElementById('execution-result').classList.add('d-none');
+        
+      } catch (error) {
+        console.error('Error loading workflow details:', error);
+        alert(`Error loading workflow details: ${error.message}`);
+      }
+    }
+    
+    // Function to render the chart
+    function renderChart(chartData) {
+      try {
+        const chartContainer = document.getElementById('workflow-chart');
+        const loadingElement = document.querySelector('.chart-loading');
+        
+        // Set the chart data but keep it hidden
+        chartContainer.innerHTML = chartData;
+        chartContainer.removeAttribute('data-processed');
+        
+        // Show loading indicator
+        loadingElement.style.display = 'flex';
+        
+        // Use a timeout to ensure DOM is ready
+        setTimeout(() => {
+          try {
+            mermaid.initialize({ 
+              startOnLoad: false, 
+              theme: 'default',
+              securityLevel: 'loose'
+            });
+            
+            // Render the chart
+            mermaid.init(undefined, '.mermaid').then(() => {
+              // Hide loading indicator and show the rendered chart
+              loadingElement.style.display = 'none';
+              chartContainer.classList.add('rendered');
+            });
+          } catch (err) {
+            console.error('Error initializing mermaid:', err);
+            loadingElement.style.display = 'none';
+            chartContainer.innerHTML = 
+              `<div class="alert alert-danger">Error rendering chart: ${err.message}</div>`;
+          }
+        }, 100);
+      } catch (e) {
+        console.error('Error rendering chart:', e);
+        document.getElementById('workflow-chart').innerHTML = 
+          `<div class="alert alert-danger">Error rendering chart: ${e.message}</div>`;
+      }
+    }
+    
+    // Run the selected workflow - simplified without animation
+    async function runWorkflow() {
+      if (!selectedWorkflow) return;
+      
+      try {
+        // Show loading state
+        const runButton = document.getElementById('run-workflow');
+        runButton.disabled = true;
+        runButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...';
+        
+        // Run the workflow
+        const workflowName = selectedWorkflow.endsWith('.json') 
+          ? selectedWorkflow 
+          : selectedWorkflow + '.json';
+        
+        const response = await fetch(`/api/run/${workflowName}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ inputData: {} })
+        });
+        
+        const result = await response.json();
+        
+        // Switch to output tab
+        document.getElementById('output-tab').click();
+        
+        // Hide status message and show results
+        document.getElementById('execution-status').classList.add('d-none');
+        document.getElementById('execution-result').classList.remove('d-none');
+        
+        // Display execution path
+        const executionPath = document.getElementById('execution-path');
+        executionPath.innerHTML = '';
+        
+        // Make sure result.executionPath exists and is an array
+        if (Array.isArray(result.executionPath)) {
+          result.executionPath.forEach((step, index) => {
+            const item = document.createElement('li');
+            item.className = 'list-group-item';
+            item.innerHTML = `${index + 1}. ${step.text} (${step.nodeId})`;
+            executionPath.appendChild(item);
+          });
+        } else {
+          executionPath.innerHTML = '<li class="list-group-item">No execution path available</li>';
+        }
+        
+        // Display node outputs
+        const nodeOutputs = document.getElementById('node-outputs');
+        nodeOutputs.innerHTML = '';
+        
+        // Make sure result.outputs exists
+        const outputs = result.outputs || {};
+        Object.entries(outputs).forEach(([nodeId, output], index) => {
+          const node = workflowData.nodes.find(n => n.id === nodeId);
+          if (!node) return;
+          
+          const item = document.createElement('div');
+          item.className = 'accordion-item';
+          item.innerHTML = `
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#output-${index}" aria-expanded="false">
+                ${node.text} (${nodeId})
+              </button>
+            </h2>
+            <div id="output-${index}" class="accordion-collapse collapse">
+              <div class="accordion-body">
+                <pre>${JSON.stringify(output, null, 2)}</pre>
+              </div>
+            </div>
+          `;
+          nodeOutputs.appendChild(item);
+        });
+        
+      } catch (error) {
+        console.error('Error running workflow:', error);
+        alert(`Error running workflow: ${error.message}`);
+      } finally {
+        // Reset button state
+        const runButton = document.getElementById('run-workflow');
+        runButton.disabled = false;
+        runButton.textContent = 'Run Workflow';
+      }
+    }
+    
+    document.getElementById('generate-button').addEventListener('click', async () => {
+      const type = document.getElementById('generation-type').value;
+      const description = document.getElementById('generation-description').value;
+      let options = {};
+      
+      try {
+        const optionsText = document.getElementById('generation-options').value;
+        if (optionsText.trim()) {
+          options = JSON.parse(optionsText);
+        }
+      } catch (e) {
+        alert('Error parsing options JSON: ' + e.message);
+        return;
+      }
+      
+      if (!description) {
+        alert('Please enter a description');
+        return;
+      }
+      
+      // Show loading state
+      const button = document.getElementById('generate-button');
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+      
+      try {
+        const response = await fetch(`/api/generate/${type}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ description, options })
+        });
+        
+        const result = await response.json();
+        
+        // Show result
+        document.getElementById('generation-result').classList.remove('d-none');
+        document.getElementById('generation-output').textContent = JSON.stringify(result, null, 2);
+        
+        if (result.success) {
+          alert(`${type.charAt(0).toUpperCase() + type.slice(1)} generated successfully!`);
+        } else {
+          alert(`Error: ${result.error}`);
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        // Reset button
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    });
+
+    // Add this new function to load tools
+    async function loadTools() {
+      try {
+        const response = await fetch('/api/tools');
+        const data = await response.json();
+        
+        const toolsList = document.getElementById('tools-list');
+        toolsList.innerHTML = '';
+        
+        if (data.error) {
+          toolsList.innerHTML = `<div class="col-12"><div class="alert alert-info">${data.error}</div></div>`;
+          return;
+        }
+        
+        if (!data.tools || data.tools.length === 0) {
+          toolsList.innerHTML = '<div class="col-12"><div class="alert alert-info">No tools available</div></div>';
+          return;
+        }
+        
+        data.tools.forEach(tool => {
+          const card = document.createElement('div');
+          card.className = 'col-md-3 mb-3';
+          card.innerHTML = `
+            <div class="card h-100">
+              <div class="card-body">
+                <h5 class="card-title">${tool.name}</h5>
+                <p class="card-text text-muted small">${tool.filename}</p>
+              </div>
+              <div class="card-footer">
+                <button class="btn btn-sm btn-outline-primary view-tool-btn" data-tool="${tool.filename}">View Code</button>
+              </div>
+            </div>
+          `;
+          toolsList.appendChild(card);
+        });
+        
+        // Add event listeners to view tool buttons
+        document.querySelectorAll('.view-tool-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const toolFile = btn.dataset.tool;
+            try {
+              // Create a temporary link to download the tool file
+              const response = await fetch(`/tools/${toolFile}`);
+              if (!response.ok) {
+                throw new Error('Failed to fetch tool file');
+              }
+              const text = await response.text();
+              
+              // Show code in a simple modal
+              const modal = document.createElement('div');
+              modal.className = 'modal fade';
+              modal.id = 'toolCodeModal';
+              modal.innerHTML = `
+                <div class="modal-dialog modal-lg">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h5 class="modal-title">${toolFile}</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                      <pre class="bg-light p-3"><code>${text}</code></pre>
+                    </div>
+                  </div>
+                </div>
+              `;
+              document.body.appendChild(modal);
+              
+              // Show the modal
+              const modalInstance = new bootstrap.Modal(modal);
+              modalInstance.show();
+              
+              // Remove modal from DOM when hidden
+              modal.addEventListener('hidden.bs.modal', () => {
+                document.body.removeChild(modal);
+              });
+            } catch (error) {
+              alert(`Error fetching tool code: ${error.message}`);
+            }
+          });
+        });
+        
+      } catch (error) {
+        console.error('Error loading tools:', error);
+        document.getElementById('tools-list').innerHTML = `
+          <div class="col-12">
+            <div class="alert alert-danger">
+              Error loading tools: ${error.message}
+            </div>
+          </div>
+        `;
+      }
+    }
+  </script>
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+----------------------
+AGNT-JS\PUBLIC\STYLES.CSS
+----------------------
+/* CSS content simplified */
+
+----------------------
 AGNT-JS\README.MD
 ----------------------
 # AGNT - Agentic Graph Network Technology
@@ -1098,7 +1671,7 @@ Edges define connections between nodes.
 
 ```bash
 git clone https://github.com/agnt-gg/agnt
-cd AGNT-JS
+cd agnt-js
 npm install
 ```
 
@@ -3059,8 +3632,8 @@ AGNT-PY\README.MD
 
 ```bash
 # Clone the repository
-git clone [repository-url]
-cd AGNT-py
+git clone https://github.com/agnt-gg/agnt
+cd agnt-py
 
 # Install dependencies
 pip install -r requirements.txt
@@ -3611,7 +4184,7 @@ Both implementations share the same core concepts, workflow structure, and orche
 ## 3. CORE COMPONENTS
 
 - **AGNT (Agentic Graph Network Technology):** Manages workflow execution
-- **FIRE (Functional Instruction Runtime Engine):** Executes individual nodes
+- **FIRE (Fluid Instructional Runtime Engine):** Executes individual nodes
 - **PLUG (Parameter Lookup Utility Gateway):** Resolves parameters
 - **VIBE (Visual Inference Behavior Evaluator):** Evaluates conditions
 - **SPRK (Spontaneous Process & Route Kinetics):** Generates tools and workflows.
@@ -3622,8 +4195,8 @@ Both implementations share the same core concepts, workflow structure, and orche
 
 ```bash
 # Clone the repository
-git clone [repository-url]
-cd AGNT-JS
+git clone https://github.com/agnt-gg/agnt
+cd agnt-js
 
 # Install dependencies
 npm install
@@ -3650,8 +4223,8 @@ node server.js
 
 ```bash
 # Clone the repository
-git clone [repository-url]
-cd AGNT-py
+git clone https://github.com/agnt-gg/agnt
+cd agnt-py
 
 # Install dependencies
 pip install -r requirements.txt
@@ -3762,8 +4335,8 @@ async def execute(params, input_data):
 
 For detailed documentation on each implementation:
 
-- [JavaScript Documentation](./AGNT-JS/README.md)
-- [Python Documentation](./AGNT-py/README.md)
+- [JavaScript Documentation](./agnt-js/README.md)
+- [Python Documentation](./agnt-py/README.md)
 
 ## 9. CONTRIBUTING
 
