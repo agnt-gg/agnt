@@ -1,24 +1,40 @@
 {
-  "description": "Web Search Tool that performs web searches and retrieves web content without opening a browser.",
+  "description": "Web Search Tool that performs web searches and returns results without opening a browser. It can also open URLs in the Brave browser or fetch and summarize web content.",
   "properties": {
     "action": {
       "type": "string",
-      "description": "The action to perform: 'search', 'open', or 'fetch'. Defaults to 'search'."
+      "description": "The action to perform: 'search' (find information on a topic), 'open' (launch URL in browser), or 'fetch' (extract content from URL). Use 'search' when needing general information, 'fetch' when you have a specific URL and need its content, or 'open' when the user needs to interact with a website directly. Defaults to 'search'."
     },
     "url": {
       "type": "string",
-      "description": "The URL to open or fetch content from. Required for 'open' and 'fetch' actions."
+      "description": "The URL to open or fetch content from. Required for 'open' and 'fetch' actions. For 'fetch', the tool will extract text content and summarize it. For 'open', it will attempt to launch a browser with this URL."
     },
     "searchQuery": {
       "type": "string",
-      "description": "The search query to use for the 'search' action. Required for 'search' action."
+      "description": "The search query to use when performing a web search. Required for 'search' action. Be specific and concise for better results. The tool will return titles, URLs, and snippets from search results."
     },
     "resultsCount": {
       "type": "integer",
-      "description": "The number of search results to return. Defaults to 5."
+      "description": "The number of search results to return (1-10). Defaults to 5. Use higher values for broad topics to get more diverse information, and lower values for specific questions."
     }
   },
   "required": [
     "action"
-  ]
+  ],
+  "examples": [
+    {
+      "action": "search",
+      "searchQuery": "latest JavaScript frameworks 2023",
+      "resultsCount": 3
+    },
+    {
+      "action": "fetch",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript"
+    },
+    {
+      "action": "open",
+      "url": "https://github.com"
+    }
+  ],
+  "strategy": "IMPORTANT DECISION-MAKING GUIDANCE:\n1. If the user mentions a specific URL or website, use 'fetch' action to get its content directly\n2. If the user asks about details or information contained on a specific webpage, use 'fetch' with the URL\n3. Only use 'search' when you need to discover information and don't have a specific URL\n4. The 'fetch' action is much more effective than 'search' when you know the exact URL\n5. If the user seems frustrated with 'search' results, try switching to 'fetch' with a relevant URL instead"
 }
