@@ -84,7 +84,7 @@ node server.js
 
 ```bash
 # Clone the repository
-git clone [repository-url]
+git clone https://github.com/agnt-gg/agnt
 cd agnt-py
 
 # Install dependencies
