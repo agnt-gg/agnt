@@ -1,0 +1,4217 @@
+Directory Structure:
++ agnt-js
+  - .env-example
+  + config
+    + tools
+      - silly-name-generator.json
+  + examples
+  + orchestrator
+    - AGNT.js
+    - FIRE.js
+    - PLUG.js
+    - SPRK.js
+    - VIBE.js
+  - package.json
+  - README.md
+  - server.js
+  + tools
+    - calculator.js
+    - execute-javascript.js
+    - log-message.js
+    - manual-trigger.js
+    - openai-llm.js
+    - random-number.js
+    - silly-name-generator.js
+    - timer-trigger.js
+    - url-shortener.js
+  + utils
+    - ascii-art.js
+  + workflows
+    - auto-insurance-claim-workflow.json
+    - content-marketing-workflow.json
+    - creative-story-generator.json
+    - decision-assistant.json
+    - dnd-game-workflow.json
+    - multi-stage-reminder-workflow.json
+    - silly-name-generation-workflow.json
++ agnt-py
+  + examples
+    - run_simple_workflow.py
+  - main.py
+  + orchestrator
+    - AGNT.py
+    - FIRE.py
+    - PLUG.py
+    - SPRK.py
+    - VIBE.py
+    - __init__.py
+  - README.md
+  - requirements.txt
+  - setup.py
+  + tools
+    - basic_tool.py
+    - __init__.py
+  + utils
+    - ascii_art.py
+    - __init__.py
+  + workflows
+    - simple_workflow.json
+- README.md
++ schemas
+  - slopSchema.json
+  - toolSchema.json
+  - workflowSchema.json
+
+File Contents:
+----------------------
+AGNT-JS\.ENV-EXAMPLE
+----------------------
+OPENAI_API_KEY=sk-0000000000000000000000000000000000000000000000000000000
+----------------------
+AGNT-JS\CONFIG\TOOLS\SILLY-NAME-GENERATOR.JSON
+----------------------
+{
+  "title": "Silly Name Generator",
+  "category": "utility",
+  "type": "silly-name-generator",
+  "icon": "funny_hat",
+  "description": "Generates whimsical and amusing names for use in games, stories, or online profiles.",
+  "parameters": {
+    "style": {
+      "type": "string",
+      "inputType": "select",
+      "inputSize": "half",
+      "options": [
+        "fantasy",
+        "sci-fi",
+        "nonsense",
+        "cute"
+      ],
+      "description": "Choose the style of the silly name to generate.",
+      "default": "fantasy"
+    },
+    "includeNumber": {
+      "type": "boolean",
+      "inputType": "checkbox",
+      "inputSize": "half",
+      "description": "Include a random number at the end of the name.",
+      "default": false
+    }
+  },
+  "outputs": {
+    "sillyName": {
+      "type": "string",
+      "description": "The generated silly name."
+    }
+  }
+}
+----------------------
+AGNT-JS\ORCHESTRATOR\AGNT.JS
+----------------------
+//                                  __     
+//                                 /  |    
+//   ______    ______   _______   _$$ |_   
+//  /      \  /      \ /       \ / $$   |  
+//  $$$$$$  |/$$$$$$  |$$$$$$$  |$$$$$$/   
+//  /    $$ |$$ |  $$ |$$ |  $$ |  $$ | __ 
+// /$$$$$$$ |$$ \__$$ |$$ |  $$ |  $$ |/  |
+// $$    $$ |$$    $$ |$$ |  $$ |  $$  $$/ 
+//  $$$$$$$/  $$$$$$$ |$$/   $$/    $$$$/  
+//           /  \__$$ |                    
+//           $$    $$/                     
+//            $$$$$$/   
+// 
+//
+// AGENTIC GRAPH NETWORK TECHNOLOGY
+// THE PRIMARY SYSTEM ORCHESTRATOR LAYER, MANAGES THE WORKFLOW EXECUTION
+
+import { z } from 'zod';
+import FIRE from './FIRE.js';
+import VIBE from './VIBE.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { AGNT_ACTIVATION, AGNT_COMPLETION, displayColoredArt, COLORS } from '../utils/ascii-art.js';
+
+// Get the directory name properly in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Define workflow schema using Zod
+const workflowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  nodes: z.array(
+    z.object({
+      id: z.string(),
+      type: z.string(),
+      category: z.string(),
+      parameters: z.record(z.any())
+    })
+  ),
+  edges: z.array(
+    z.object({
+      id: z.string(),
+      startNodeId: z.string(),
+      endNodeId: z.string(),
+      condition: z.string().optional(),
+      if: z.string().optional(),
+      value: z.string().optional(),
+      maxIterations: z.string().optional()
+    })
+  )
+});
+
+export default class AGNT {
+  constructor(workflow) {
+    this.workflow = workflow;
+    this.fire = new FIRE(this);
+    this.vibe = new VIBE(this);
+    this.outputs = {};
+    this.executionPath = [];
+    this.edgesTaken = [];
+    this.edgeIterations = new Map(); // Track iterations for each edge
+    this.startTime = Date.now();
+  }
+
+  validateWorkflow() {
+    try {
+      workflowSchema.parse(this.workflow);
+    } catch (error) {
+      throw new Error(`Workflow validation failed: ${error.message}`);
+    }
+  }
+
+  async execute(triggerData) {
+    displayColoredArt(AGNT_ACTIVATION, COLORS.FG_GREEN);
+
+    this.validateWorkflow();
+    const triggerNodes = this.workflow.nodes.filter(n => n.category === 'trigger');
+    
+    if (triggerNodes.length === 0) {
+      // If no trigger nodes, start from the first node
+      const firstNode = this.workflow.nodes[0];
+      if (firstNode) {
+        const output = await this.fire.executeNode(firstNode, triggerData);
+        this.outputs[firstNode.id] = output;
+        this.executionPath.push({
+          nodeId: firstNode.id,
+          type: firstNode.type,
+          text: firstNode.text || firstNode.type,
+          timestamp: Date.now()
+        });
+        await this.executeNextNodes(firstNode.id, output);
+      }
+    } else {
+      for (const node of triggerNodes) {
+        const output = await this.fire.executeNode(node, triggerData);
+        this.outputs[node.id] = output;
+        this.executionPath.push({
+          nodeId: node.id,
+          type: node.type,
+          text: node.text || node.type,
+          timestamp: Date.now()
+        });
+        await this.executeNextNodes(node.id, output);
+      }
+    }
+    
+    // Save the execution summary after the workflow completes
+    this.saveExecutionSummary();
+
+    displayColoredArt(AGNT_COMPLETION, COLORS.FG_GREEN);
+    
+    return {
+      outputs: this.outputs,
+      executionPath: this.executionPath,
+      edgesTaken: this.edgesTaken
+    };
+  }
+
+  async executeNextNodes(nodeId, nodeOutput) {
+    const edges = this.workflow.edges.filter(e => e.startNodeId === nodeId);
+    for (const edge of edges) {
+      // Check if edge has reached its max iterations
+      const currentIterations = this.edgeIterations.get(edge.id) || 0;
+      let maxIterations = Infinity;
+      
+      if (edge.maxIterations) {
+        // Resolve the maxIterations template if it exists
+        const resolvedMaxIterations = this.fire.parameterResolver.resolveTemplate(edge.maxIterations);
+        maxIterations = parseInt(resolvedMaxIterations) || Infinity;
+      }
+      
+      // Log edge evaluation
+      if (edge.condition) {
+        console.log(`-- Condition: ${edge.if} ${edge.condition} ${edge.value}\n`);
+      }
+      if (maxIterations !== Infinity) {
+        console.log(`-- Iterations: ${currentIterations}/${maxIterations}\n`);
+      }
+      
+      // Check if max iterations reached
+      if (currentIterations >= maxIterations) {
+        console.log(`-- Result: FALSE - Max iterations (${maxIterations}) reached\n`);
+        continue;
+      }
+      
+      // Evaluate the edge condition
+      const conditionMet = this.vibe.evaluate(edge, nodeOutput);
+      console.log(`-- Result: ${conditionMet ? 'TRUE - Taking this path' : 'FALSE - Skipping'}\n`);
+      
+      if (conditionMet) {
+        // Increment the iteration count for this edge
+        this.edgeIterations.set(edge.id, currentIterations + 1);
+        
+        // Track which edge was taken
+        this.edgesTaken.push({
+          edgeId: edge.id,
+          from: edge.startNodeId,
+          to: edge.endNodeId,
+          condition: edge.condition ? `${edge.if} ${edge.condition} ${edge.value}` : 'none',
+          iteration: currentIterations + 1,
+          timestamp: Date.now()
+        });
+        
+        const nextNode = this.workflow.nodes.find(n => n.id === edge.endNodeId);
+        console.log(`Next node decision: ${nextNode.id} (${nextNode.text || nextNode.type})`);
+        
+        const output = await this.fire.executeNode(nextNode, nodeOutput);
+        this.outputs[nextNode.id] = output;
+        
+        // Track execution path
+        this.executionPath.push({
+          nodeId: nextNode.id,
+          type: nextNode.type,
+          text: nextNode.text || nextNode.type,
+          timestamp: Date.now()
+        });
+        
+        await this.executeNextNodes(nextNode.id, output);
+      }
+    }
+  }
+  
+  getExecutionSummary() {
+    // Make sure executionPath is always an array
+    const executionPath = this.executionPath || [];
+    
+    // Create a map to track unique node executions (prevent duplicates)
+    const uniqueNodes = new Map();
+    const uniqueExecutionPath = [];
+    
+    // Filter out duplicate node executions
+    executionPath.forEach(node => {
+      const key = `${node.nodeId}-${node.timestamp}`;
+      if (!uniqueNodes.has(key)) {
+        uniqueNodes.set(key, true);
+        uniqueExecutionPath.push(node);
+      }
+    });
+    
+    return {
+      workflowId: this.workflow.id,
+      workflowName: this.workflow.name,
+      executionPath: uniqueExecutionPath,
+      edgesTaken: this.edgesTaken || [],
+      outputs: this.outputs || {},
+      edgeIterations: Object.fromEntries(this.edgeIterations || new Map()),
+      startTime: this.startTime,
+      endTime: Date.now(),
+      duration: Date.now() - this.startTime
+    };
+  }
+  
+  saveExecutionSummary() {
+    try {
+      // Get the execution summary
+      const summary = this.getExecutionSummary();
+      
+      // Create summaries directory if it doesn't exist
+      const summariesDir = path.resolve(__dirname, '../summaries');
+      if (!fs.existsSync(summariesDir)) {
+        fs.mkdirSync(summariesDir, { recursive: true });
+      }
+      
+      // Create a unique filename with timestamp and workflow ID
+      const timestamp = new Date().toISOString().replace(/:/g, '-');
+      const filename = `${this.workflow.id}_${timestamp}.json`;
+      const filePath = path.join(summariesDir, filename);
+      
+      // Write the summary to file
+      fs.writeFileSync(filePath, JSON.stringify(summary, null, 2), 'utf8');
+      
+      console.log(`Execution summary saved to: ${filePath}\n`);
+      return filePath;
+    } catch (error) {
+      console.error('Error saving execution summary:', error);
+    }
+  }
+}
+----------------------
+AGNT-JS\ORCHESTRATOR\FIRE.JS
+----------------------
+//   ______   __                     
+//  /      \ /  |                    
+// /$$$$$$  |$$/   ______    ______  
+// $$ |_ $$/ /  | /      \  /      \ 
+// $$   |    $$ |/$$$$$$  |/$$$$$$  |
+// $$$$/     $$ |$$ |  $$/ $$    $$ |
+// $$ |      $$ |$$ |      $$$$$$$$/ 
+// $$ |      $$ |$$ |      $$       |
+// $$/       $$/ $$/        $$$$$$$/ 
+// 
+//
+// FLUID INSTRUCTIONAL RUNTIME ENGINE
+// THE PRIMARY SYSTEM ENGINE LAYER, MANAGES THE NODE EXECUTION
+
+import PLUG from './PLUG.js';
+import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { FIRE_EXECUTION, displayColoredArt, COLORS } from '../utils/ascii-art.js';
+
+// Get the directory name properly in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default class NodeExecutor {
+  constructor(orchestrator) {
+    this.orchestrator = orchestrator;
+    this.plug = new PLUG(orchestrator);
+  }
+
+  async executeNode(node, inputData) {
+    try {
+      displayColoredArt(FIRE_EXECUTION, COLORS.FG_RED);
+
+      console.log(`Executing node: ${node.id} (${node.text || node.type})`);
+
+      // Use proper path resolution to find the tools
+      const toolPath = path.resolve(__dirname, '../tools', `${node.type}.js`);
+      
+      // Convert the path to a file:// URL for ESM imports
+      const toolUrl = pathToFileURL(toolPath).href;
+      
+      const tool = await import(toolUrl);
+      
+      const resolvedParams = this.plug.resolve(node.parameters);
+      
+      // Create a clean copy of the context without circular references
+      const cleanContext = {};
+      Object.keys(this.orchestrator.outputs).forEach(nodeId => {
+        // Deep clone each node output to break circular references
+        cleanContext[nodeId] = JSON.parse(JSON.stringify(
+          this.orchestrator.outputs[nodeId], 
+          (key, value) => key === 'context' ? undefined : value
+        ));
+      });
+      
+      // Merge inputData with clean context
+      const enhancedInputData = {
+        ...inputData,
+        context: cleanContext
+      };
+      
+      const result = await tool.execute(resolvedParams, enhancedInputData);
+
+      return result;
+    } catch (error) {
+      console.error(`Error executing node ${node.id}:`, error);
+      return { error: error.message };
+    }
+  }
+}
+----------------------
+AGNT-JS\ORCHESTRATOR\PLUG.JS
+----------------------
+//            __                     
+//           /  |                    
+//   ______  $$ | __    __   ______  
+//  /      \ $$ |/  |  /  | /      \ 
+// /$$$$$$  |$$ |$$ |  $$ |/$$$$$$  |
+// $$ |  $$ |$$ |$$ |  $$ |$$ |  $$ |
+// $$ |__$$ |$$ |$$ \__$$ |$$ \__$$ |
+// $$    $$/ $$ |$$    $$/ $$    $$ |
+// $$$$$$$/  $$/  $$$$$$/   $$$$$$$ |
+// $$ |                    /  \__$$ |
+// $$ |                    $$    $$/ 
+// $$/                      $$$$$$/          
+// 
+//
+// PARAMETER LOOKUP UTILITY GATEWAY
+// THE PRIMARY SYSTEM INTERPOLATION LAYER, MANAGES THE NODE PARAMETER RESOLUTION FOR NODES AND EDGES
+
+import { PLUG_EXECUTION, displayColoredArt, COLORS } from '../utils/ascii-art.js';
+
+export default class PLUG {
+  constructor(orchestrator) {
+    this.orchestrator = orchestrator;
+  }
+
+  resolve(params) {
+    displayColoredArt(PLUG_EXECUTION, COLORS.FG_YELLOW);
+
+    const resolved = {};
+    for (const [key, value] of Object.entries(params)) {
+      resolved[key] = this.resolveTemplate(value);
+    }
+    return resolved;
+  }
+
+  resolveTemplate(template) {
+    if (typeof template !== "string") return template;
+    return template.replace(/{{(.*?)}}/g, (_, path) => {
+      const parts = path.trim().split('.');
+      const nodeId = parts.shift();
+      let value = this.orchestrator.outputs[nodeId];
+      
+      // Navigate through nested properties
+      for (const part of parts) {
+        if (value && typeof value === 'object') {
+          value = value[part];
+        } else {
+          return '';
+        }
+      }
+      
+      return value !== undefined ? value : '';
+    });
+  }
+}
+
+----------------------
+AGNT-JS\ORCHESTRATOR\SPRK.JS
+----------------------
+//                                __       
+//                               /  |      
+//   _______   ______    ______  $$ |   __ 
+//  /       | /      \  /      \ $$ |  /  |
+// /$$$$$$$/ /$$$$$$  |/$$$$$$  |$$ |_/$$/ 
+// $$      \ $$ |  $$ |$$ |  $$/ $$   $$<  
+//  $$$$$$  |$$ |__$$ |$$ |      $$$$$$  \ 
+// /     $$/ $$    $$/ $$ |      $$ | $$  |
+// $$$$$$$/  $$$$$$$/  $$/       $$/   $$/ 
+//           $$ |                          
+//           $$ |                          
+//           $$/                                
+// 
+//
+// SPONTANEOUS PROCESS & ROUTE KINETICS
+// THE PRIMARY TOOL & WORKFLOW GENERATOR SYSTEM
+
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { SPRK_EXECUTION, displayColoredArt, COLORS } from '../utils/ascii-art.js';
+import { OpenAI } from 'openai';
+
+// Get the directory name properly in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default class SPRK {
+  constructor() {
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+    
+    // Load schemas
+    this.schemas = this.loadSchemas();
+  }
+  
+  // Load all relevant schemas
+  loadSchemas() {
+    try {
+      const schemaDir = path.resolve(__dirname, '../schema-patterns');
+      const schemas = {};
+      
+      // Load tool schema
+      const toolSchemaPath = path.join(schemaDir, 'toolSchema.json');
+      if (fs.existsSync(toolSchemaPath)) {
+        schemas.tool = JSON.parse(fs.readFileSync(toolSchemaPath, 'utf8'));
+      }
+      
+      // Load workflow schema
+      const workflowSchemaPath = path.join(schemaDir, 'workflowSchema.json');
+      if (fs.existsSync(workflowSchemaPath)) {
+        schemas.workflow = JSON.parse(fs.readFileSync(workflowSchemaPath, 'utf8'));
+      }
+      
+      return schemas;
+    } catch (error) {
+      console.error('Error loading schemas:', error);
+      return {};
+    }
+  }
+
+  // Generate a new tool based on description
+  async generateTool(description, options = {}) {
+    displayColoredArt(SPRK_EXECUTION, COLORS.FG_CYAN);
+    console.log(`Generating tool from description: "${description}"`);
+    
+    try {
+      const prompt = this.createToolGenerationPrompt(description, options);
+      const response = await this.callLLM(prompt);
+      
+      if (!response) {
+        throw new Error('Failed to generate tool');
+      }
+      
+      // Parse and validate the generated tool
+      const tool = this.parseToolResponse(response);
+      
+      // Save the tool
+      const saved = this.saveTool(tool);
+      
+      return {
+        success: true,
+        tool,
+        files: saved
+      };
+    } catch (error) {
+      console.error('Error generating tool:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+  
+  // Generate a new workflow based on description
+  async generateWorkflow(description, options = {}) {
+    displayColoredArt(SPRK_EXECUTION, COLORS.FG_CYAN);
+    console.log(`Generating workflow from description: "${description}"`);
+    
+    try {
+      const prompt = this.createWorkflowGenerationPrompt(description, options);
+      const response = await this.callLLM(prompt);
+      
+      if (!response) {
+        throw new Error('Failed to generate workflow');
+      }
+      
+      // Parse and validate the generated workflow
+      const workflow = this.parseWorkflowResponse(response);
+      
+      // Save the workflow
+      const saved = this.saveWorkflow(workflow);
+      
+      return {
+        success: true,
+        workflow,
+        files: saved
+      };
+    } catch (error) {
+      console.error('Error generating workflow:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+  
+  // Create prompt for tool generation
+  createToolGenerationPrompt(description, options) {
+    return `You are a code generator specialized in creating tools for the AGNT system.
+I need you to create a new tool based on this description: "${description}"
+
+This tool should follow our toolSchema.json structure:
+${JSON.stringify(this.schemas.tool, null, 2)}
+
+IMPORTANT:
+- This is an ES Module environment, not CommonJS
+- Use ES Module syntax (export default or named exports)
+- DO NOT use module.exports or require()
+- Use "import" instead of "require"
+- Use "export" instead of "module.exports"
+- Always export an "execute" function
+
+Please generate:
+1. A tool configuration JSON object that matches our schema
+2. A JavaScript implementation file that exports an execute() function using ES Module syntax
+
+Example of correct export syntax:
+\`\`\`javascript
+export async function execute(params, context) {
+  // Function implementation
+  return result;
+}
+\`\`\`
+
+DO NOT use this incorrect syntax:
+\`\`\`javascript
+// WRONG - DO NOT USE THIS:
+module.exports = {
+  execute: async function(params, context) {
+    // Function implementation
+  }
+};
+\`\`\`
+
+The tool should be named appropriately based on its function.
+${options.category ? `The tool should be in the "${options.category}" category.` : ''}
+${options.constraints ? `Additional constraints: ${options.constraints}` : ''}
+
+Format your response as:
+\`\`\`json:toolConfig
+{TOOL CONFIG JSON HERE}
+\`\`\`
+
+\`\`\`javascript:implementation
+// ES Module implementation
+export async function execute(params, context) {
+  // Your implementation here
+  return result;
+}
+\`\`\`
+
+Be thorough and practical in your implementation.`;
+  }
+  
+  // Create prompt for workflow generation
+  createWorkflowGenerationPrompt(description, options) {
+    // Gather available tools to inform the workflow creation
+    const availableTools = this.getAvailableTools();
+    
+    return `You are a workflow generator specialized in creating workflows for the AGNT system.
+I need you to create a new workflow based on this description: "${description}"
+
+This workflow should follow our workflowSchema.json structure:
+${JSON.stringify(this.schemas.workflow, null, 2)}
+
+Here are the available tools you can use in this workflow:
+${JSON.stringify(availableTools, null, 2)}
+
+Please generate a complete workflow JSON that:
+1. Has a unique ID and descriptive name
+2. Uses the appropriate tools from the available list
+3. Contains logical edges between nodes with proper conditions
+${options.constraints ? `Additional constraints: ${options.constraints}` : ''}
+
+Format your response as:
+\`\`\`json:workflow
+{WORKFLOW JSON HERE}
+\`\`\`
+
+Make sure connections between nodes are logical and the workflow accomplishes the described task.`;
+  }
+  
+  // Get available tools for workflow generation
+  getAvailableTools() {
+    try {
+      const toolsDir = path.resolve(__dirname, '../tools');
+      const toolConfigs = [];
+      
+      // Read all JSON files in the tools config directory
+      const configDir = path.resolve(__dirname, '../config/tools');
+      if (fs.existsSync(configDir)) {
+        const files = fs.readdirSync(configDir);
+        
+        for (const file of files) {
+          if (file.endsWith('.json')) {
+            const configPath = path.join(configDir, file);
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            toolConfigs.push({
+              type: config.type,
+              title: config.title,
+              category: config.category,
+              description: config.description,
+              parameters: Object.keys(config.parameters || {})
+            });
+          }
+        }
+      }
+      
+      return toolConfigs;
+    } catch (error) {
+      console.error('Error getting available tools:', error);
+      return [];
+    }
+  }
+  
+  // Call the LLM (OpenAI GPT)
+  async callLLM(prompt) {
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4-turbo",
+        messages: [
+          { role: "system", content: "You are a code generator for the AGNT workflow system." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000
+      });
+      
+      return completion.choices[0].message.content;
+    } catch (error) {
+      console.error('Error calling OpenAI:', error);
+      throw new Error(`OpenAI API error: ${error.message}`);
+    }
+  }
+  
+  // Parse tool response from LLM
+  parseToolResponse(response) {
+    try {
+      // Extract the JSON config
+      const configMatch = response.match(/```json:toolConfig\n([\s\S]*?)\n```/);
+      if (!configMatch) throw new Error('Tool config not found in response');
+      
+      const config = JSON.parse(configMatch[1]);
+      
+      // Extract the implementation code
+      const codeMatch = response.match(/```javascript:implementation\n([\s\S]*?)\n```/);
+      if (!codeMatch) throw new Error('Tool implementation not found in response');
+      
+      const code = codeMatch[1];
+      
+      return {
+        config,
+        code
+      };
+    } catch (error) {
+      throw new Error(`Error parsing tool response: ${error.message}`);
+    }
+  }
+  
+  // Parse workflow response from LLM
+  parseWorkflowResponse(response) {
+    try {
+      // Extract the JSON workflow
+      const match = response.match(/```json:workflow\n([\s\S]*?)\n```/);
+      if (!match) throw new Error('Workflow JSON not found in response');
+      
+      return JSON.parse(match[1]);
+    } catch (error) {
+      throw new Error(`Error parsing workflow response: ${error.message}`);
+    }
+  }
+  
+  // Save generated tool
+  saveTool(tool) {
+    try {
+      // Ensure directories exist
+      const toolsDir = path.resolve(__dirname, '../tools');
+      const configDir = path.resolve(__dirname, '../config/tools');
+      
+      if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+      }
+      
+      // Generate filenames based on tool type
+      const toolType = tool.config.type;
+      const jsFilename = path.join(toolsDir, `${toolType}.js`);
+      const configFilename = path.join(configDir, `${toolType}.json`);
+      
+      // Save the tool implementation
+      fs.writeFileSync(jsFilename, tool.code, 'utf8');
+      
+      // Save the tool config
+      fs.writeFileSync(configFilename, JSON.stringify(tool.config, null, 2), 'utf8');
+      
+      return {
+        implementation: jsFilename,
+        config: configFilename
+      };
+    } catch (error) {
+      throw new Error(`Error saving tool: ${error.message}`);
+    }
+  }
+  
+  // Save generated workflow
+  saveWorkflow(workflow) {
+    try {
+      // Ensure directory exists
+      const workflowsDir = path.resolve(__dirname, '../workflows');
+      
+      if (!fs.existsSync(workflowsDir)) {
+        fs.mkdirSync(workflowsDir, { recursive: true });
+      }
+      
+      // Generate filename
+      const filename = path.join(workflowsDir, `${workflow.id}.json`);
+      
+      // Save the workflow
+      fs.writeFileSync(filename, JSON.stringify(workflow, null, 2), 'utf8');
+      
+      return { workflow: filename };
+    } catch (error) {
+      throw new Error(`Error saving workflow: ${error.message}`);
+    }
+  }
+}
+
+// EXAMPLE USAGE:
+
+// import SPRK from './orchestrator/SPRK.js';
+
+// // Create an instance
+// const sprk = new SPRK();
+
+// // Generate a new tool **********************************************
+// // Basic tool generation
+// const toolResult = await sprk.generateTool("A tool that fetches the current weather for a given location");
+
+// // Tool generation with options
+// const advancedToolResult = await sprk.generateTool(
+//   "A tool that summarizes long text using NLP techniques", 
+//   {
+//     category: "utility", // Specify the category (trigger, action, utility, control)
+//     constraints: "Make sure it handles at least 3 different languages and has a max character limit option"
+//   }
+// );
+
+// // Check the result
+// if (toolResult.success) {
+//   console.log("Tool generated successfully!");
+//   console.log("Tool config:", toolResult.tool.config);
+//   console.log("Files created:", toolResult.files);
+// } else {
+//   console.error("Failed to generate tool:", toolResult.error);
+// }
+
+// // Generate a new workflow **********************************************
+
+// // Basic workflow generation
+// const workflowResult = await sprk.generateWorkflow(
+//     "Create a workflow that fetches weather data and sends an email alert if it's going to rain"
+//   );
+  
+//   // Workflow with options
+//   const advancedWorkflowResult = await sprk.generateWorkflow(
+//     "Create a workflow that monitors a website for changes and sends notifications", 
+//     {
+//       constraints: "Use existing HTTP request and notification tools, check every 6 hours"
+//     }
+//   );
+  
+//   // Check the result
+//   if (workflowResult.success) {
+//     console.log("Workflow generated successfully!");
+//     console.log("Workflow ID:", workflowResult.workflow.id);
+//     console.log("File created:", workflowResult.files.workflow);
+//   } else {
+//     console.error("Failed to generate workflow:", workflowResult.error);
+//   }
+
+----------------------
+AGNT-JS\ORCHESTRATOR\VIBE.JS
+----------------------
+//             __  __                 
+//            /  |/  |                
+//  __     __ $$/ $$ |____    ______  
+// /  \   /  |/  |$$      \  /      \ 
+// $$  \ /$$/ $$ |$$$$$$$  |/$$$$$$  |
+//  $$  /$$/  $$ |$$ |  $$ |$$    $$ |
+//   $$ $$/   $$ |$$ |__$$ |$$$$$$$$/ 
+//    $$$/    $$ |$$    $$/ $$       |
+//     $/     $$/ $$$$$$$/   $$$$$$$/                   
+// 
+//
+// VISUAL INFERENCE BEHAVIOR EVALUATOR
+// THE PRIMARY SYSTEM OBSERVER LAYER, MANAGES THE EDGE AND NODE OUTPUT EVALUATION AND CONDITION CHECKING
+
+import PLUG from './PLUG.js';
+import { VIBE_ACTIVATION, displayColoredArt, COLORS } from '../utils/ascii-art.js';
+
+export default class VIBE {
+  constructor(orchestrator) {
+    this.plug = new PLUG(orchestrator);
+  }
+
+  evaluate(edge, nodeOutput) {
+    // Display the ASCII art with color when evaluating an edge
+    displayColoredArt(VIBE_ACTIVATION, COLORS.FG_MAGENTA);
+
+    console.log('Node output:', nodeOutput, '\n');
+    console.log('Evaluating edge:', edge, '\n');
+    
+    // CAN DO SECURITY HERE WITH **NOPE** OR CHECK IF THE NODE OUTPUT IS VALID
+
+    // IF VALID, RETURN TRUE
+
+    // IF NOT VALID, RETURN FALSE
+
+    if (!edge.condition) return true;
+    const actualValue = this.plug.resolveTemplate(edge.if);
+    const expectedValue = edge.value;
+
+    // Convert to numbers for numeric comparisons
+    const numActual = Number(actualValue);
+    const numExpected = Number(expectedValue);
+
+    switch (edge.condition) {
+      case 'equals': return actualValue == expectedValue;
+      case 'not_equals': return actualValue != expectedValue;
+      case 'contains': return String(actualValue).includes(expectedValue);
+      case 'not_contains': return !String(actualValue).includes(expectedValue);
+      case 'greater_than': return numActual > numExpected;
+      case 'less_than': return numActual < numExpected;
+      case 'greater_than_or_equal': return numActual >= numExpected;
+      case 'less_than_or_equal': return numActual <= numExpected;
+      case 'between': 
+        const [min, max] = expectedValue.split(',').map(Number);
+        return numActual >= min && numActual <= max;
+      default: 
+        console.warn(`Unknown condition: ${edge.condition}`);
+        return false;
+    }
+  }
+}
+----------------------
+AGNT-JS\PACKAGE.JSON
+----------------------
+{
+    "name": "agnt-2",
+    "version": "1.0.0",
+    "description": "A second generation agent framework",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "type": "module",
+    "dependencies": {
+        "body-parser": "^1.20.3",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "mathjs": "^14.3.1",
+        "openai": "^4.87.3",
+        "zod": "^3.24.2"
+    }
+}
+
+----------------------
+AGNT-JS\README.MD
+----------------------
+# AGNT - Agentic Graph Network Technology
+
+> **Orchestrating Autonomous Workflows**
+
+### 🎯 WHAT AGNT IS:
+
+-   A system orchestrator for managing complex workflows.
+-   A graph-based network of nodes and edges.
+-   A platform for defining and executing autonomous agent tasks.
+-   A modular and extensible architecture.
+
+### 🚫 WHAT AGNT IS NOT:
+
+-   A specific tool or function.
+-   A monolithic application.
+-   A closed or proprietary system.
+
+> 💡 **AGNT enables developers to create intelligent systems by orchestrating a network of tools and agents.**
+
+---
+
+## 1. CORE BELIEFS
+
+-   Everything is a Workflow
+-   Every Tool is a Node
+-   Every Execution is Tracked
+-   Every Developer is Empowered
+
+## 2. CORE COMPONENTS
+
+-   **AGNT (Agentic Graph Network Technology):** Manages workflow execution
+    -   File: `orchestrator/AGNT.js`
+-   **FIRE (Fluid Instructional Runtime Engine):** Executes individual nodes.
+    -   File: `orchestrator/FIRE.js`
+-   **PLUG (Parameter Lookup Utility Gateway):** Resolves parameters.
+    -   File: `orchestrator/PLUG.js`
+-   **VIBE (Visual Inference Behavior Evaluator):** Evaluates conditions.
+    -   File: `orchestrator/VIBE.js`
+-   **SPRK (Spontaneous Process & Route Kinetics):** Generates tools and workflows.
+    -   File: `orchestrator/SPRK.js`
+
+## 3. EXECUTION FLOW
+
+1.  Define workflow in JSON.
+2.  AGNT validates the workflow.
+3.  FIRE executes trigger nodes.
+4.  PLUG resolves parameters.
+5.  VIBE evaluates conditions.
+6.  AGNT tracks execution and saves summary.
+
+## 4. WORKFLOW DEFINITION
+
+Workflows are defined using a JSON format.
+
+### Example Workflow
+
+```json
+{
+  "id": "example-workflow",
+  "name": "Example Workflow",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "StartNode",
+      "category": "trigger",
+      "parameters": {}
+    },
+    {
+      "id": "task1",
+      "type": "TaskNode",
+      "category": "task",
+      "parameters": {
+        "input": "{{start.output}}"
+      }
+    },
+    {
+      "id": "end",
+      "type": "EndNode",
+      "category": "utility",
+      "parameters": {
+        "result": "{{task1.result}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "startNodeId": "start",
+      "endNodeId": "task1"
+    },
+    {
+      "id": "edge2",
+      "startNodeId": "task1",
+      "endNodeId": "end",
+      "condition": "equals",
+      "if": "{{task1.status}}",
+      "value": "success"
+    }
+  ]
+}
+```
+
+### Node Types
+
+Nodes represent tasks in the workflow.
+
+### Edges
+
+Edges define connections between nodes.
+
+## 5. GETTING STARTED
+
+### Installation
+
+```bash
+git clone https://github.com/agnt-gg/agnt
+cd AGNT-JS
+npm install
+```
+
+### Starting the Server
+
+Make sure you have your environment variables set up in a `.env` file (including your OpenAI API key for SPRK if you plan to use it).
+
+```bash
+# Start the server
+node server.js
+
+# Output should show:
+# Server running on http://localhost:3000
+```
+
+#### Using the Web Interface
+
+1. After starting the server, open your browser to `http://localhost:3000`
+2. The interface allows you to:
+   - Generate new tools and workflows
+   - Browse available workflows
+   - View workflow details and flowcharts
+   - Run workflows and see execution results
+   - Watch animated workflow execution
+
+![Web Interface](your-screenshot-url-here)
+
+### Running Workflows
+
+1. Select a workflow from the list on the left
+2. The workflow details will appear on the right
+3. Click "Run Workflow" to execute it
+4. View the execution results in the "Output" tab
+5. Watch the execution animation in the "Flowchart" tab
+
+### Generating Tools & Workflows with SPRK
+
+You can use the SPRK system to generate new tools and workflows:
+
+#### Via API:
+
+```javascript
+// Generate a new tool
+fetch('/api/generate/tool', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    description: "A tool that fetches current weather data for a location",
+    options: {
+      category: "utility"
+    }
+  })
+})
+.then(response => response.json())
+.then(data => console.log(data));
+
+// Generate a new workflow
+fetch('/api/generate/workflow', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    description: "A workflow that checks weather and sends an alert if it's raining"
+  })
+})
+.then(response => response.json())
+.then(data => console.log(data));
+```
+
+## 6. TOOLS
+
+Tools are JavaScript modules executed by FIRE.
+
+### Example Tool
+
+```javascript
+// tools/ExampleTool.js
+export async function execute(params, inputData) {
+  console.log('Executing ExampleTool with params:', params);
+  console.log('Input data:', inputData);
+  const result = `Processed input: ${inputData.input} with param: ${params.param1}`;
+  return { result };
+}
+```
+
+## 7. CONTRIBUTING
+
+Contributions are welcome!
+
+1.  Fork the repository.
+2.  Create a new branch.
+3.  Implement changes.
+4.  Write tests.
+5.  Submit a pull request.
+
+## 8. LICENSE
+
+MIT
+
+
+----------------------
+AGNT-JS\SERVER.JS
+----------------------
+import express from 'express';
+import bodyParser from 'body-parser';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+import AGNT from './orchestrator/AGNT.js';
+import SPRK from './orchestrator/SPRK.js';
+
+// Load environment variables
+dotenv.config();
+
+// Get the directory name properly in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(bodyParser.json());
+app.use(express.static('public'));
+
+const sprk = new SPRK();
+
+// Routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Get list of available workflows
+app.get('/api/workflows', (req, res) => {
+  const workflowsDir = path.resolve(__dirname, 'workflows');
+  try {
+    const files = fs.readdirSync(workflowsDir)
+      .filter(file => file.endsWith('.json'));
+    
+    const workflows = files.map(file => {
+      const filePath = path.join(workflowsDir, file);
+      const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      return {
+        id: content.id,
+        name: content.name,
+        filename: file
+      };
+    });
+    
+    res.json(workflows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get workflow details
+app.get('/api/workflows/:filename', (req, res) => {
+  const workflowPath = path.resolve(__dirname, 'workflows', req.params.filename);
+  try {
+    if (!fs.existsSync(workflowPath)) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+    
+    const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
+    res.json(workflow);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Run workflow
+app.post('/api/run/:filename', async (req, res) => {
+  // Fix: Handle filename with or without .json extension
+  let filename = req.params.filename;
+  if (!filename.endsWith('.json')) {
+    filename += '.json';
+  }
+  
+  const workflowPath = path.resolve(__dirname, 'workflows', filename);
+  try {
+    if (!fs.existsSync(workflowPath)) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+
+    
+    console.log(`Loading workflow from: ${workflowPath}`);
+    
+    const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
+    const agnt = new AGNT(workflow);
+    await agnt.execute(req.body.inputData || {});
+    
+    // Gather the execution summary for the client
+    const summary = agnt.getExecutionSummary();
+    
+    // Clean the summary to remove circular references
+    const cleanSummary = {
+      ...summary,
+      outputs: {}
+    };
+    
+    // Clean each node output
+    Object.keys(summary.outputs).forEach(nodeId => {
+      cleanSummary.outputs[nodeId] = JSON.parse(JSON.stringify(
+        summary.outputs[nodeId],
+        (key, value) => {
+          // Skip context property to avoid circular references
+          if (key === 'context') return undefined;
+          return value;
+        }
+      ));
+    });
+    
+    console.log('Sending response to client...');
+
+    res.json(cleanSummary);
+  } catch (error) {
+    console.error('Error in /api/run endpoint:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// Generate Mermaid chart for workflow
+app.get('/api/chart/:filename', (req, res) => {
+  const workflowPath = path.resolve(__dirname, 'workflows', req.params.filename);
+  try {
+    if (!fs.existsSync(workflowPath)) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+    
+    const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
+    const mermaidChart = generateMermaidChart(workflow);
+    
+    res.json({ chart: mermaidChart });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Function to generate Mermaid chart from workflow
+function generateMermaidChart(workflow) {
+  let chart = 'flowchart TD\n';
+  
+  // Add nodes
+  workflow.nodes.forEach(node => {
+    chart += `    ${node.id}["${node.text}"]\n`;
+  });
+  
+  // Add edges
+  workflow.edges.forEach(edge => {
+    const startNode = edge.startNodeId;
+    const endNode = edge.endNodeId;
+    
+    if (edge.condition) {
+      chart += `    ${startNode} -->|${edge.condition} ${edge.value}| ${endNode}\n`;
+    } else {
+      chart += `    ${startNode} --> ${endNode}\n`;
+    }
+  });
+  
+  // Add styling
+  chart += '\n    %% Node styling\n';
+  chart += '    classDef trigger fill:#e6f7ff,stroke:#1890ff,stroke-width:2px\n';
+  chart += '    classDef utility fill:#f6ffed,stroke:#52c41a,stroke-width:2px\n';
+  chart += '    classDef ai fill:#fff2e8,stroke:#fa8c16,stroke-width:2px\n';
+  chart += '    classDef action fill:#f9f0ff,stroke:#722ed1,stroke-width:2px\n\n';
+  
+  // Apply styles
+  workflow.nodes.forEach(node => {
+    chart += `    class ${node.id} ${node.category}\n`;
+  });
+  
+  return chart;
+}
+
+// Generate a simple favicon
+app.get('/favicon.ico', (req, res) => {
+  const faviconPath = path.join(__dirname, 'public', 'favicon.ico');
+  
+  // If favicon exists, serve it
+  if (fs.existsSync(faviconPath)) {
+    return res.sendFile(faviconPath);
+  }
+  
+  // Otherwise, send a simple 16x16 transparent icon
+  const favicon = Buffer.from('AAABAAEAEBAQAAEABAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAA////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'base64');
+  
+  res.writeHead(200, {
+    'Content-Type': 'image/x-icon',
+    'Content-Length': favicon.length
+  });
+  res.end(favicon);
+});
+
+// Get list of available tools
+app.get('/api/tools', (req, res) => {
+  const toolsDir = path.resolve(__dirname, 'tools');
+  try {
+    if (!fs.existsSync(toolsDir)) {
+      return res.json({ error: 'No tools directory found', tools: [] });
+    }
+    
+    // Read all JS files from the tools directory (excluding the library file)
+    const files = fs.readdirSync(toolsDir)
+      .filter(file => file.endsWith('.js') && !file.startsWith('!'));
+    
+    const tools = files.map(file => {
+      const name = file.replace('.js', '');
+      // Convert kebab-case to readable name
+      const readableName = name
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      
+      return {
+        id: name,
+        name: readableName,
+        filename: file
+      };
+    });
+    
+    res.json({ tools });
+  } catch (error) {
+    res.status(500).json({ error: error.message, tools: [] });
+  }
+});
+
+// Generate a tool endpoint
+app.post('/api/generate/tool', async (req, res) => {
+  try {
+    const { description, options = {} } = req.body;
+    
+    if (!description) {
+      return res.status(400).json({ error: 'Tool description is required' });
+    }
+    
+    const result = await sprk.generateTool(description, options);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Generate a workflow endpoint
+app.post('/api/generate/workflow', async (req, res) => {
+  try {
+    const { description, options = {} } = req.body;
+    
+    if (!description) {
+      return res.status(400).json({ error: 'Workflow description is required' });
+    }
+    
+    const result = await sprk.generateWorkflow(description, options);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Serve tool files for viewing
+app.get('/tools/:filename', (req, res) => {
+  const toolPath = path.resolve(__dirname, 'tools', req.params.filename);
+  
+  try {
+    if (!fs.existsSync(toolPath)) {
+      return res.status(404).send('Tool not found');
+    }
+    
+    const content = fs.readFileSync(toolPath, 'utf8');
+    res.set('Content-Type', 'text/plain');
+    res.send(content);
+  } catch (error) {
+    res.status(500).send(`Error reading tool file: ${error.message}`);
+  }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}\n`);
+});
+----------------------
+AGNT-JS\TOOLS\CALCULATOR.JS
+----------------------
+import { evaluate } from 'mathjs';
+
+export async function execute(params) {
+  const { expression } = params;
+  try {
+    const result = evaluate(expression);
+    return { result: result };
+  } catch (error) {
+    console.error("Error evaluating expression:", error);
+    return { result: null, error: error.message };
+  }
+}
+----------------------
+AGNT-JS\TOOLS\EXECUTE-JAVASCRIPT.JS
+----------------------
+
+export async function execute(params, inputData) {
+  try {
+    // Create a function that has access to inputData
+    const func = new Function('inputData', params.code);
+    const result = func(inputData);
+    return result || { result: null };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+----------------------
+AGNT-JS\TOOLS\LOG-MESSAGE.JS
+----------------------
+export async function execute(params) {
+  const { message } = params;
+  console.log(message);
+  return { logged: true, message: message };
+}
+
+----------------------
+AGNT-JS\TOOLS\MANUAL-TRIGGER.JS
+----------------------
+export async function execute(params, inputData) {
+  return { triggered: true, timestamp: Date.now() };
+}
+
+----------------------
+AGNT-JS\TOOLS\OPENAI-LLM.JS
+----------------------
+import OpenAI from 'openai';
+
+/**
+ * OpenAI Text Generator Tool
+ * Generates text using OpenAI's API based on a provided prompt
+ */
+export async function execute(params, inputData) {
+  try {
+    // Validate parameters
+    if (!params.prompt) {
+      return { error: "Prompt is required" };
+    }
+
+    // Get API key from environment variable or params
+    const apiKey = process.env.OPENAI_API_KEY || params.apiKey;
+    if (!apiKey) {
+      return { error: "OpenAI API key is required. Set OPENAI_API_KEY environment variable or provide it as a parameter." };
+    }
+
+    // Initialize OpenAI client
+    const openai = new OpenAI({ apiKey });
+
+    // Set up request parameters
+    const requestParams = {
+      model: params.model || 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: params.systemPrompt || 'You are a helpful assistant.' },
+        { role: 'user', content: params.prompt }
+      ],
+      temperature: parseFloat(params.temperature) || 0.7,
+      max_tokens: parseInt(params.maxTokens) || 500
+    };
+
+    // Make API request
+    const response = await openai.chat.completions.create(requestParams);
+
+    // Extract and return the generated text
+    return {
+      success: true,
+      generatedText: response.choices[0].message.content,
+      model: response.model,
+      usage: response.usage
+    };
+  } catch (error) {
+    console.error('Error generating text with OpenAI:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error occurred'
+    };
+  }
+}
+----------------------
+AGNT-JS\TOOLS\RANDOM-NUMBER.JS
+----------------------
+/**
+ * Random Number Generator Tool
+ * Generates a random number within a specified range (min to max, inclusive)
+ */
+export async function execute(params, inputData) {
+  // Validate parameters
+  if (!params.min || !params.max) {
+    return { error: "Both min and max parameters are required" };
+  }
+  
+  // Parse parameters to numbers
+  const min = parseInt(params.min, 10);
+  const max = parseInt(params.max, 10);
+  
+  // Validate parameter values
+  if (isNaN(min) || isNaN(max)) {
+    return { error: "Min and max must be valid numbers" };
+  }
+  
+  if (min >= max) {
+    return { error: "Min must be less than max" };
+  }
+  
+  // Generate random number
+  const randomNumber = Math.floor(Math.random() * (max - min + 1)) + min;
+  
+  // Return result
+  return {
+    success: true,
+    randomNumber: randomNumber
+  };
+}
+----------------------
+AGNT-JS\TOOLS\SILLY-NAME-GENERATOR.JS
+----------------------
+export async function execute(params, context) {
+  const { numNames = 1 } = params;
+  
+  const adjectives = ['Silly', 'Fuzzy', 'Bouncy', 'Giggly', 'Wobbly', 'Sparkly', 'Twinkly', 'Bubbly', 'Wiggly', 'Fluffy'];
+  const nouns = ['Penguin', 'Unicorn', 'Potato', 'Banana', 'Flamingo', 'Noodle', 'Pickle', 'Muffin', 'Pancake', 'Cupcake'];
+  
+  const generateName = () => {
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    return `${adjective} ${noun}`;
+  };
+  
+  if (numNames === 1) {
+    return { name: generateName() };
+  } else {
+    const names = [];
+    for (let i = 0; i < numNames; i++) {
+      names.push(generateName());
+    }
+    return { names };
+  }
+}
+----------------------
+AGNT-JS\TOOLS\TIMER-TRIGGER.JS
+----------------------
+/**
+ * Timer Trigger Tool
+ * Triggers a workflow after a specified delay or at a specific time
+ */
+export async function execute(params, inputData) {
+  try {
+    // Validate parameters
+    if (!params.triggerType) {
+      return { error: "triggerType parameter is required (delay or scheduled)" };
+    }
+
+    const triggerType = params.triggerType.toLowerCase();
+    const now = new Date();
+    let triggerTime;
+    let delayMs;
+
+    // Handle delay-based trigger
+    if (triggerType === 'delay') {
+      if (!params.delaySeconds && !params.delayMinutes && !params.delayHours) {
+        return { error: "For delay trigger, at least one of delaySeconds, delayMinutes, or delayHours is required" };
+      }
+
+      // Calculate total delay in milliseconds
+      delayMs = 0;
+      if (params.delaySeconds) delayMs += parseInt(params.delaySeconds, 10) * 1000;
+      if (params.delayMinutes) delayMs += parseInt(params.delayMinutes, 10) * 60 * 1000;
+      if (params.delayHours) delayMs += parseInt(params.delayHours, 10) * 60 * 60 * 1000;
+
+      triggerTime = new Date(now.getTime() + delayMs);
+    } 
+    // Handle scheduled time-based trigger
+    else if (triggerType === 'scheduled') {
+      if (!params.scheduledTime) {
+        return { error: "For scheduled trigger, scheduledTime parameter is required (ISO string or timestamp)" };
+      }
+
+      // Parse the scheduled time
+      try {
+        triggerTime = new Date(params.scheduledTime);
+        if (isNaN(triggerTime.getTime())) {
+          return { error: "Invalid scheduledTime format. Use ISO string (YYYY-MM-DDTHH:MM:SS) or timestamp" };
+        }
+      } catch (error) {
+        return { error: `Failed to parse scheduledTime: ${error.message}` };
+      }
+
+      // Calculate delay in milliseconds
+      delayMs = triggerTime.getTime() - now.getTime();
+      
+      // Check if the scheduled time is in the past
+      if (delayMs < 0) {
+        if (params.allowPastTriggers === 'true') {
+          // If past triggers are allowed, trigger immediately
+          delayMs = 0;
+          triggerTime = new Date();
+        } else {
+          return { error: "Scheduled time is in the past" };
+        }
+      }
+    } else {
+      return { error: "Invalid triggerType. Use 'delay' or 'scheduled'" };
+    }
+
+    // Check if we should simulate the delay (for testing purposes)
+    const simulateOnly = params.simulateOnly === 'true';
+    
+    if (simulateOnly) {
+      // For simulation, return immediately
+      return {
+        triggered: true,
+        triggerType: triggerType,
+        scheduledTime: triggerTime.toISOString(),
+        delayMs: delayMs,
+        timestamp: now.toISOString(),
+        simulated: true,
+        message: `Timer trigger SIMULATED to fire ${triggerType === 'delay' ? 'after ' + formatDelay(delayMs) : 'at ' + triggerTime.toLocaleString()}`
+      };
+    }
+    
+    // For actual delay, use a Promise with setTimeout
+    console.log(`Timer trigger waiting ${formatDelay(delayMs)}...`);
+    
+    // Use a shorter delay for demonstration purposes if requested
+    if (params.accelerateTime === 'true') {
+      // Accelerate time by using 1 second to represent 1 minute
+      delayMs = Math.min(10000, Math.ceil(delayMs / 60));
+      console.log(`Time acceleration enabled. Using ${delayMs}ms instead of actual delay.`);
+    }
+    
+    // Cap the maximum delay to 30 seconds for practical purposes
+    const actualDelayMs = Math.min(30000, delayMs);
+    if (actualDelayMs < delayMs) {
+      console.log(`Delay capped at 30 seconds for practical purposes (original: ${formatDelay(delayMs)})`);
+    }
+    
+    // Wait for the specified time
+    await new Promise(resolve => setTimeout(resolve, actualDelayMs));
+    
+    // After waiting, return the result
+    const completedTime = new Date();
+    return {
+      triggered: true,
+      triggerType: triggerType,
+      scheduledTime: triggerTime.toISOString(),
+      delayMs: delayMs,
+      actualDelayMs: actualDelayMs,
+      startTimestamp: now.toISOString(),
+      completedTimestamp: completedTime.toISOString(),
+      message: `Timer trigger fired ${triggerType === 'delay' ? 'after waiting ' + formatDelay(actualDelayMs) : 'at ' + completedTime.toLocaleString()}`
+    };
+  } catch (error) {
+    return { 
+      error: error.message || 'Unknown error occurred',
+      triggered: false
+    };
+  }
+}
+
+/**
+ * Format delay in milliseconds to a human-readable string
+ */
+function formatDelay(ms) {
+  const seconds = Math.floor(ms / 1000) % 60;
+  const minutes = Math.floor(ms / (1000 * 60)) % 60;
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  
+  const parts = [];
+  if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);
+  if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? 's' : ''}`);
+  if (seconds > 0) parts.push(`${seconds} second${seconds !== 1 ? 's' : ''}`);
+  
+  return parts.join(', ');
+}
+
+----------------------
+AGNT-JS\TOOLS\URL-SHORTENER.JS
+----------------------
+import crypto from 'crypto';
+
+// In-memory storage for shortened URLs (in a real-world scenario, use a database)
+const urlDatabase = new Map();
+
+/**
+ * URL Shortener Tool
+ * Shortens long URLs and retrieves information about shortened URLs
+ */
+export async function execute(params, inputData) {
+  try {
+    if (!params.action || !params.url) {
+      return { error: "Both action and url parameters are required" };
+    }
+
+    const action = params.action.toLowerCase();
+    const url = params.url.trim();
+
+    if (action === 'shorten') {
+      return shortenUrl(url);
+    } else if (action === 'info') {
+      return getUrlInfo(url);
+    } else {
+      return { error: "Invalid action. Use 'shorten' or 'info'" };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Unknown error occurred'
+    };
+  }
+}
+
+function shortenUrl(longUrl) {
+  // Generate a short code
+  const shortCode = generateShortCode();
+  const shortUrl = `https://short.url/${shortCode}`;
+
+  // Store the URL information
+  urlDatabase.set(shortCode, {
+    originalUrl: longUrl,
+    createdAt: new Date().toISOString(),
+    clicks: 0
+  });
+
+  return {
+    success: true,
+    shortUrl: shortUrl
+  };
+}
+
+function getUrlInfo(shortUrl) {
+  const shortCode = shortUrl.split('/').pop();
+  const urlInfo = urlDatabase.get(shortCode);
+
+  if (!urlInfo) {
+    return {
+      success: false,
+      error: "Shortened URL not found"
+    };
+  }
+
+  return {
+    success: true,
+    originalUrl: urlInfo.originalUrl,
+    createdAt: urlInfo.createdAt,
+    clicks: urlInfo.clicks
+  };
+}
+
+function generateShortCode() {
+  return crypto.randomBytes(4).toString('hex');
+}
+----------------------
+AGNT-JS\UTILS\ASCII-ART.JS
+----------------------
+/**
+ * Collection of ASCII art for TaskTitan application
+ */
+
+export const AGNT_ACTIVATION = `
+***************************************
+************INITIALIZING...************
+***************************************
+                                 __     
+                                /  |    
+  ______    ______   _______   _$$ |_   
+ /      \  /      \ /       \ / $$   |  
+ $$$$$$  |/$$$$$$  |$$$$$$$  |$$$$$$/   
+ /    $$ |$$ |  $$ |$$ |  $$ |  $$ | __ 
+/$$$$$$$ |$$ \__$$ |$$ |  $$ |  $$ |/  |
+$$    $$ |$$    $$ |$$ |  $$ |  $$  $$/ 
+ $$$$$$$/  $$$$$$$ |$$/   $$/    $$$$/  
+          /  \__$$ |                    
+          $$    $$/                     
+           $$$$$$/   
+`;
+
+export const AGNT_COMPLETION = `
+***************************************
+************WORK COMPLETED************
+***************************************
+                                 __     
+                                /  |    
+  ______    ______   _______   _$$ |_   
+ /      \  /      \ /       \ / $$   |  
+ $$$$$$  |/$$$$$$  |$$$$$$$  |$$$$$$/   
+ /    $$ |$$ |  $$ |$$ |  $$ |  $$ | __ 
+/$$$$$$$ |$$ \__$$ |$$ |  $$ |  $$ |/  |
+$$    $$ |$$    $$ |$$ |  $$ |  $$  $$/ 
+ $$$$$$$/  $$$$$$$ |$$/   $$/    $$$$/  
+          /  \__$$ |                    
+          $$    $$/                     
+           $$$$$$/   
+
+        
+***************************************
+************WORK COMPLETED************
+***************************************
+`;
+
+export const SPRK_EXECUTION = `
+***************************************
+************EXECUTING SPRK...**********
+      ^   ^
+✩‧₊ ( ˶ˆᗜˆ˵ ) ₊‧✩
+***************************************
+
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⡴⠂
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣾⡿⠋⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣶⣿⣿⠟⠋⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣾⣿⣿⣿⡟⠁⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠋⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⡿⠋⠁⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⣿⠟⠉⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⣿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢀⣠⣶⣿⣿⣿⣿⣿⣿⡿⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣧⣤⣤⣤⣤⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣿⣿⣿⣿⣿⣿⠿⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⣠⣴⣿⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⣠⣾⡿⠟⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠠⠞⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+`;
+
+export const FIRE_EXECUTION = `
+***************************************
+************EXECUTING FIRE...**********
+        ^  ^
+─=≡Σ((( つ＞＜)つ
+***************************************
+
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣆⢳⡀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣿⣾⣷⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠠⣄⠀⢠⣿⣿⣿⣿⡎⢻⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢸⣧⢸⣿⣿⣿⣿⡇⠀⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣾⣿⣿⣿⣿⠃⠀⢸⣿⣿⣿⣿⣿⣿⠀⣄⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⠏⠀⠀⣸⣿⣿⣿⣿⣿⡿⢀⣿⡆⠀
+⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⣿⣿⣿⣿⣿⣿⠇⣼⣿⣿
+⠀⢰⠀⠀⣴⣿⣿⣿⣿⣿⣿⡿⠁⠀⠀⠀⢠⣿⣿⣿⣿⣿⡟⣼⣿⣿⣿
+⠀⣿⡀⢸⣿⣿⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⣸⡿⢻⣿⣿⣿⣿⣿⣿⣿⣿
+⠀⣿⣷⣼⣿⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⠀⢹⠃⢸⣿⣿⣿⣿⣿⣿⣿
+⠀⢿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣿⣿⣿⠋⣠⠀
+⠀⠈⢻⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣵⣿⠃⠀
+⠀⠀⠀⠙⢿⣿⣿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⣿⡿⠃⠀⠀
+⠀⠀⠀⠀⠀⠙⢿⣿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⡿⠋⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠈⠛⠿⣿⣦⣀⠀⠀⠀⠀⢀⣴⠿⠛⠁⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠓⠂⠀⠈⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+`;
+
+export const PLUG_EXECUTION = `
+***************************************
+***********CONTACTING PLUG...**********
+   ^   ^
+(づ ° ᗜ °)づ ♡
+***************************************
+
+⠀⠀⠀⢸⣦⡀⠀⠀⠀⠀⢀⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⢸⣏⠻⣶⣤⡶⢾⡿⠁⠀⢠⣄⡀⢀⣴⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⣀⣼⠷⠀⠀⠁⢀⣿⠃⠀⠀⢀⣿⣿⣿⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠴⣾⣯⣅⣀⠀⠀⠀⠈⢻⣦⡀⠒⠻⠿⣿⡿⠿⠓⠂⠀⠀⢀⡇⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠉⢻⡇⣤⣾⣿⣷⣿⣿⣤⠀⠀⣿⠁⠀⠀⠀⢀⣴⣿⣿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠸⣿⡿⠏⠀⢀⠀⠀⠿⣶⣤⣤⣤⣄⣀⣴⣿⡿⢻⣿⡆⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠟⠁⠀⢀⣼⠀⠀⠀⠹⣿⣟⠿⠿⠿⡿⠋⠀⠘⣿⣇⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢳⣶⣶⣿⣿⣇⣀⠀⠀⠙⣿⣆⠀⠀⠀⠀⠀⠀⠛⠿⣿⣦⣤⣀⠀⠀
+⠀⠀⠀⠀⠀⠀⣹⣿⣿⣿⣿⠿⠋⠁⠀⣹⣿⠳⠀⠀⠀⠀⠀⠀⢀⣠⣽⣿⡿⠟⠃
+⠀⠀⠀⠀⠀⢰⠿⠛⠻⢿⡇⠀⠀⠀⣰⣿⠏⠀⠀⢀⠀⠀⠀⣾⣿⠟⠋⠁⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠋⠀⠀⣰⣿⣿⣾⣿⠿⢿⣷⣀⢀⣿⡇⠁⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠋⠉⠁⠀⠀⠀⠀⠙⢿⣿⣿⠇⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀
+`;
+
+export const VIBE_ACTIVATION = `
+***************************************
+***********ACTIVATING VIBE...**********
+    ^   ^
+♡ (˶ᵔ ᵕ ᵔ˶) ♡
+***************************************
+
+⠀⣤⡀⠀⠀⠠⣤⠀⠀⠀⠀⣤⠀⠀⢠⡄⠀⠀⣤⠀⠀⠀⠀⣤⠄⠀⠀⢀⣤⠀
+⠀⠘⢷⣄⠀⠀⠹⣧⡀⠀⠀⢸⡆⠀⢸⡇⠀⢰⡇⠀⠀⢀⣼⠏⠀⠀⣠⡾⠃⠀
+⠀⠀⠀⠙⢷⣄⠀⠘⢷⡄⠀⠘⣷⠀⠘⠃⠀⣼⠇⠀⢠⡾⠃⠀⣠⡾⠋⠀⠀⠀
+⠀⠻⣦⣀⠀⠻⣧⡀⠈⢿⡄⠀⢿⠄⢀⡀⠠⡿⠀⢠⡿⠁⢀⣼⠟⠀⣀⣴⠟⠀
+⠀⠀⠈⠙⢶⣄⠈⠻⣦⡈⢿⡄⠈⢠⣿⣿⡄⠁⢠⡿⢁⣴⠟⠁⣠⡶⠋⠁⠀⠀
+⠀⣀⣀⠀⠀⠈⠛⢦⣈⣿⣄⠃⣠⣿⣿⣿⣿⣄⠘⣠⣿⣁⡴⠛⠁⠀⠀⣀⣀⠀
+⠀⠈⠙⠛⠷⢦⣤⣀⡉⠻⠋⣰⣿⡿⠿⠿⢿⣿⣆⠙⠟⢉⣀⣤⡴⠾⠛⠋⠁⠀
+⠀⢶⣦⣤⣤⣤⣈⣉⣛⠃⢀⣡⡄⢀⡤⠤⠀⢠⣌⡀⠘⣛⣉⣁⣤⣤⣤⣴⡶⠀
+⠀⠀⠀⠀⠀⣉⣉⡉⠁⢰⣿⣿⣇⠸⠀⠀⠀⣸⣿⣿⡆⠈⢉⣉⣉⠀⠀⠀⠀⠀
+⠀⠛⠛⠉⠉⢉⠉⢁⣤⣈⠛⠻⠿⠷⣤⣤⠾⠿⠟⠛⣁⣤⡈⠉⡉⠉⠉⠛⠛⠀
+⠀⣠⣤⡶⠞⠋⢠⣾⣿⣿⣿⣶⣶⣤⣤⣤⣤⣶⣶⣿⣿⣿⣷⡄⠙⠳⢶⣤⣄⠀
+⠀⠉⠀⣠⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⣄⠀⠉⠀
+⠀⣴⠞⠃⣀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⣀⠘⠳⣦⠀
+⠀⢀⣠⡾⠋⣠⠞⠁⣰⡟⠁⢸⡏⠀⢸⡇⠀⢹⡇⠈⢻⣆⠈⠳⣄⠙⢷⣄⡀⠀
+⠀⠛⠋⠀⠚⠋⠀⠐⠛⠀⠀⠚⠀⠀⠘⠃⠀⠀⠓⠀⠀⠛⠂⠀⠙⠓⠀⠙⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+`;
+
+export const SUCCESS_ART = `
+ _____ _   _ _____  _____  _____ _____ _____ 
+/  ___| | | /  __ \/  __ \|  ___/  ___/  ___|
+\ \--.| | | | /  \/| /  \/| |__ \ \--.\ \--. 
+ \--. \ | | | |    | |    |  __| \--. \\--. \
+/\__/ / |_| | \__/\| \__/\| |___/\__/ /\__/ /
+\____/ \___/ \____/ \____/\____/\____/\____/ 
+`;
+
+export const ERROR_ART = `
+ _________________ ___________ 
+|  ___| ___ \ ___ \  _  | ___ \
+| |__ | |_/ / |_/ / | | | |_/ /
+|  __||    /|    /| | | |    / 
+| |___| |\ \| |\ \\ \_/ / |\ \ 
+\____/\_| \_\_| \_|\___/\_| \_|
+                                                                                                  
+`;
+
+/**
+ * Display ASCII art with optional message
+ * @param {string} art - The ASCII art to display
+ * @param {string} message - Optional message to display with the art
+ */
+export function displayArt(art, message = "") {
+  console.log(art);
+  if (message) {
+    console.log(message);
+  }
+}
+
+/**
+ * Colors for console output
+ */
+export const COLORS = {
+  RESET: "\x1b[0m",
+  BRIGHT: "\x1b[1m",
+  DIM: "\x1b[2m",
+  UNDERSCORE: "\x1b[4m",
+  BLINK: "\x1b[5m",
+  REVERSE: "\x1b[7m",
+  HIDDEN: "\x1b[8m",
+  
+  FG_BLACK: "\x1b[30m",
+  FG_RED: "\x1b[31m",
+  FG_GREEN: "\x1b[32m",
+  FG_YELLOW: "\x1b[33m",
+  FG_BLUE: "\x1b[34m",
+  FG_MAGENTA: "\x1b[35m",
+  FG_CYAN: "\x1b[36m",
+  FG_WHITE: "\x1b[37m",
+  
+  BG_BLACK: "\x1b[40m",
+  BG_RED: "\x1b[41m",
+  BG_GREEN: "\x1b[42m",
+  BG_YELLOW: "\x1b[43m",
+  BG_BLUE: "\x1b[44m",
+  BG_MAGENTA: "\x1b[45m",
+  BG_CYAN: "\x1b[46m",
+  BG_WHITE: "\x1b[47m"
+};
+
+/**
+ * Display colored ASCII art
+ * @param {string} art - The ASCII art to display
+ * @param {string} color - The color to use (from COLORS)
+ */
+export function displayColoredArt(art, color = COLORS.FG_CYAN) {
+  console.log(`${color}${art}${COLORS.RESET}`);
+}
+
+/**
+ * Create a framed version of text/ASCII art
+ * @param {string} content - The content to frame
+ * @param {string} frameChar - Character to use for the frame
+ * @returns {string} - Framed content
+ */
+export function frameArt(content, frameChar = '*') {
+  const lines = content.split('\n');
+  const maxLength = Math.max(...lines.map(line => line.length));
+  
+  const topBottom = frameChar.repeat(maxLength + 4);
+  const framedLines = lines.map(line => `${frameChar} ${line.padEnd(maxLength)} ${frameChar}`);
+  
+  return [topBottom, ...framedLines, topBottom].join('\n');
+}
+
+// USAGE:
+
+// // In any file where you need ASCII art
+// import { displayArt, VIBE_ACTIVATION, SUCCESS_ART, COLORS, displayColoredArt } from '../utils/ascii-art.js';
+
+// // Simple display
+// displayArt(VIBE_ACTIVATION);
+
+// // With a message
+// displayArt(SUCCESS_ART, "Workflow completed successfully!");
+
+// // Colored display
+// displayColoredArt(ERROR_ART, COLORS.FG_RED);
+----------------------
+AGNT-JS\WORKFLOWS\AUTO-INSURANCE-CLAIM-WORKFLOW.JSON
+----------------------
+/* Large JSON file, keys: id, name, nodes, edges */
+
+----------------------
+AGNT-JS\WORKFLOWS\CONTENT-MARKETING-WORKFLOW.JSON
+----------------------
+/* Large JSON file, keys: id, name, nodes, edges */
+
+----------------------
+AGNT-JS\WORKFLOWS\CREATIVE-STORY-GENERATOR.JSON
+----------------------
+{
+  "id": "multi-tool-demo-workflow",
+  "name": "Multi-Tool Demo Workflow",
+  "nodes": [
+    {
+      "id": "start-node",
+      "type": "manual-trigger",
+      "category": "trigger",
+      "parameters": {},
+      "text": "Start Workflow"
+    },
+    {
+      "id": "random-generator",
+      "type": "random-number",
+      "category": "utility",
+      "parameters": {
+        "min": "1",
+        "max": "100"
+      },
+      "text": "Generate Random Number"
+    },
+    {
+      "id": "ai-story",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "Write a very short story about a character who rolled a {{random-generator.randomNumber}} on a 100-sided die.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a creative storyteller who specializes in very short, engaging stories.",
+        "temperature": "0.8",
+        "maxTokens": "300"
+      },
+      "text": "Generate Story"
+    },
+    {
+      "id": "ai-poem",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "Write a short poem about the number {{random-generator.randomNumber}} and its significance.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a poet who can find meaning and beauty in numbers.",
+        "temperature": "0.7",
+        "maxTokens": "200"
+      },
+      "text": "Generate Poem"
+    },
+    {
+      "id": "ai-fact",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "Share an interesting mathematical or scientific fact about the number {{random-generator.randomNumber}}.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a knowledgeable expert who shares fascinating facts about numbers.",
+        "temperature": "0.5",
+        "maxTokens": "150"
+      },
+      "text": "Generate Fact"
+    },
+    {
+      "id": "process-story",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst wordCount = text.split(/\\s+/).length;\nconst randomNumber = inputData.context['random-generator'].randomNumber;\nreturn {\n  processedText: text,\n  wordCount: wordCount,\n  contentType: 'story',\n  summary: `A ${wordCount}-word story about rolling ${randomNumber}`\n};"
+      },
+      "text": "Process Story"
+    },
+    {
+      "id": "process-poem",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst lineCount = text.split('\\n').filter(line => line.trim()).length;\nconst randomNumber = inputData.context['random-generator'].randomNumber;\nreturn {\n  processedText: text,\n  lineCount: lineCount,\n  contentType: 'poem',\n  summary: `A ${lineCount}-line poem about the number ${randomNumber}`\n};"
+      },
+      "text": "Process Poem"
+    },
+    {
+      "id": "process-fact",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst randomNumber = inputData.context['random-generator'].randomNumber;\nreturn {\n  processedText: text,\n  contentType: 'fact',\n  summary: `A fascinating fact about the number ${randomNumber}`\n};"
+      },
+      "text": "Process Fact"
+    },
+    {
+      "id": "final-output",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "console.log('\\n===== GENERATED CONTENT =====');\nconsole.log(`Content Type: ${inputData.contentType}`);\nconsole.log(`Summary: ${inputData.summary}`);\nconsole.log('\\n' + inputData.processedText);\n\nreturn {\n  completed: true,\n  finalSummary: inputData.summary,\n  contentType: inputData.contentType\n};"
+      },
+      "text": "Display Final Output"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "startNodeId": "start-node",
+      "endNodeId": "random-generator"
+    },
+    {
+      "id": "edge-2",
+      "startNodeId": "random-generator",
+      "endNodeId": "ai-story",
+      "condition": "less_than_or_equal",
+      "if": "{{random-generator.randomNumber}}",
+      "value": "33"
+    },
+    {
+      "id": "edge-3",
+      "startNodeId": "random-generator",
+      "endNodeId": "ai-poem",
+      "condition": "greater_than",
+      "if": "{{random-generator.randomNumber}}",
+      "value": "33"
+    },
+    {
+      "id": "edge-4",
+      "startNodeId": "random-generator",
+      "endNodeId": "ai-poem",
+      "condition": "less_than_or_equal",
+      "if": "{{random-generator.randomNumber}}",
+      "value": "66"
+    },
+    {
+      "id": "edge-5",
+      "startNodeId": "random-generator",
+      "endNodeId": "ai-fact",
+      "condition": "greater_than",
+      "if": "{{random-generator.randomNumber}}",
+      "value": "66"
+    },
+    {
+      "id": "edge-6",
+      "startNodeId": "ai-story",
+      "endNodeId": "process-story"
+    },
+    {
+      "id": "edge-7",
+      "startNodeId": "ai-poem",
+      "endNodeId": "process-poem"
+    },
+    {
+      "id": "edge-8",
+      "startNodeId": "ai-fact",
+      "endNodeId": "process-fact"
+    },
+    {
+      "id": "edge-9",
+      "startNodeId": "process-story",
+      "endNodeId": "final-output"
+    },
+    {
+      "id": "edge-10",
+      "startNodeId": "process-poem",
+      "endNodeId": "final-output"
+    },
+    {
+      "id": "edge-11",
+      "startNodeId": "process-fact",
+      "endNodeId": "final-output"
+    }
+  ]
+}
+
+----------------------
+AGNT-JS\WORKFLOWS\DECISION-ASSISTANT.JSON
+----------------------
+{
+  "id": "decision-assistant-workflow",
+  "name": "Decision Making Assistant",
+  "nodes": [
+    {
+      "id": "start-node",
+      "type": "manual-trigger",
+      "category": "trigger",
+      "parameters": {},
+      "text": "Start Decision Assistant"
+    },
+    {
+      "id": "random-factor",
+      "type": "random-number",
+      "category": "utility",
+      "parameters": {
+        "min": "1",
+        "max": "100"
+      },
+      "text": "Generate Uncertainty Factor"
+    },
+    {
+      "id": "ai-positive",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "I'm trying to make an important decision. The uncertainty factor is {{random-factor.randomNumber}}% (higher means more uncertainty). Please provide an optimistic analysis of how to approach this decision, focusing on potential benefits and opportunities.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a helpful decision-making assistant with an optimistic outlook. You help people make decisions by focusing on the positive aspects and opportunities.",
+        "temperature": "0.7",
+        "maxTokens": "300"
+      },
+      "text": "Generate Optimistic Analysis"
+    },
+    {
+      "id": "ai-balanced",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "I'm trying to make an important decision. The uncertainty factor is {{random-factor.randomNumber}}% (higher means more uncertainty). Please provide a balanced analysis of how to approach this decision, weighing both risks and benefits equally.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a helpful decision-making assistant with a balanced outlook. You help people make decisions by carefully weighing pros and cons.",
+        "temperature": "0.5",
+        "maxTokens": "300"
+      },
+      "text": "Generate Balanced Analysis"
+    },
+    {
+      "id": "ai-cautious",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "I'm trying to make an important decision. The uncertainty factor is {{random-factor.randomNumber}}% (higher means more uncertainty). Please provide a cautious analysis of how to approach this decision, focusing on potential risks and mitigation strategies.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a helpful decision-making assistant with a cautious outlook. You help people make decisions by identifying potential risks and suggesting mitigation strategies.",
+        "temperature": "0.4",
+        "maxTokens": "300"
+      },
+      "text": "Generate Cautious Analysis"
+    },
+    {
+      "id": "process-positive",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst randomNumber = inputData.context['random-factor'].randomNumber;\nconst confidenceScore = 100 - randomNumber;\n\nreturn {\n  analysis: text,\n  approach: 'optimistic',\n  confidenceScore: confidenceScore,\n  summary: `Optimistic approach with ${confidenceScore}% confidence score`\n};"
+      },
+      "text": "Process Optimistic Analysis"
+    },
+    {
+      "id": "process-balanced",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst randomNumber = inputData.context['random-factor'].randomNumber;\nconst confidenceScore = 75 - (Math.abs(randomNumber - 50) / 2);\n\nreturn {\n  analysis: text,\n  approach: 'balanced',\n  confidenceScore: confidenceScore,\n  summary: `Balanced approach with ${confidenceScore.toFixed(1)}% confidence score`\n};"
+      },
+      "text": "Process Balanced Analysis"
+    },
+    {
+      "id": "process-cautious",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst randomNumber = inputData.context['random-factor'].randomNumber;\nconst confidenceScore = 50 - (randomNumber / 4);\n\nreturn {\n  analysis: text,\n  approach: 'cautious',\n  confidenceScore: confidenceScore,\n  summary: `Cautious approach with ${confidenceScore.toFixed(1)}% confidence score`\n};"
+      },
+      "text": "Process Cautious Analysis"
+    },
+    {
+      "id": "final-recommendation",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "console.log('\\n===== DECISION ASSISTANT =====');\nconsole.log(`Uncertainty Factor: ${inputData.context['random-factor'].randomNumber}%`);\nconsole.log(`Recommended Approach: ${inputData.approach}`);\nconsole.log(`Confidence Score: ${inputData.confidenceScore}%`);\nconsole.log('\\n===== ANALYSIS =====');\nconsole.log(inputData.analysis);\n\nreturn {\n  completed: true,\n  uncertaintyFactor: inputData.context['random-factor'].randomNumber,\n  recommendedApproach: inputData.approach,\n  confidenceScore: inputData.confidenceScore,\n  analysis: inputData.analysis\n};"
+      },
+      "text": "Generate Final Recommendation"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "startNodeId": "start-node",
+      "endNodeId": "random-factor"
+    },
+    {
+      "id": "edge-2",
+      "startNodeId": "random-factor",
+      "endNodeId": "ai-positive",
+      "condition": "less_than_or_equal",
+      "if": "{{random-factor.randomNumber}}",
+      "value": "33"
+    },
+    {
+      "id": "edge-3",
+      "startNodeId": "random-factor",
+      "endNodeId": "ai-balanced",
+      "condition": "between",
+      "if": "{{random-factor.randomNumber}}",
+      "value": "34,66"
+    },
+    {
+      "id": "edge-5",
+      "startNodeId": "random-factor",
+      "endNodeId": "ai-cautious",
+      "condition": "greater_than",
+      "if": "{{random-factor.randomNumber}}",
+      "value": "66"
+    },
+    {
+      "id": "edge-6",
+      "startNodeId": "ai-positive",
+      "endNodeId": "process-positive"
+    },
+    {
+      "id": "edge-7",
+      "startNodeId": "ai-balanced",
+      "endNodeId": "process-balanced"
+    },
+    {
+      "id": "edge-8",
+      "startNodeId": "ai-cautious",
+      "endNodeId": "process-cautious"
+    },
+    {
+      "id": "edge-9",
+      "startNodeId": "process-positive",
+      "endNodeId": "final-recommendation"
+    },
+    {
+      "id": "edge-10",
+      "startNodeId": "process-balanced",
+      "endNodeId": "final-recommendation"
+    },
+    {
+      "id": "edge-11",
+      "startNodeId": "process-cautious",
+      "endNodeId": "final-recommendation"
+    }
+  ]
+}
+
+----------------------
+AGNT-JS\WORKFLOWS\DND-GAME-WORKFLOW.JSON
+----------------------
+/* Large JSON file, keys: id, name, nodes, edges */
+
+----------------------
+AGNT-JS\WORKFLOWS\MULTI-STAGE-REMINDER-WORKFLOW.JSON
+----------------------
+/* Large JSON file, keys: id, name, description, nodes, edges */
+
+----------------------
+AGNT-JS\WORKFLOWS\SILLY-NAME-GENERATION-WORKFLOW.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "id": "silly-name-generation-workflow",
+  "name": "Silly Name Generation Workflow",
+  "nodes": [
+    {
+      "id": "silly-name-gen-01",
+      "type": "silly-name-generator",
+      "category": "utility",
+      "text": "Generate a silly name",
+      "parameters": {
+        "style": "whimsical",
+        "includeNumber": true
+      }
+    }
+  ],
+  "edges": []
+}
+----------------------
+AGNT-PY\EXAMPLES\RUN_SIMPLE_WORKFLOW.PY
+----------------------
+import sys
+from pathlib import Path
+
+# Add the parent directory to sys.path to ensure Python can find your packages
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+import asyncio
+import json
+from orchestrator import AGNT  # Now this import will work correctly
+
+async def main():
+    # Load a workflow definition
+    workflow_path = Path(__file__).parent.parent / "workflows" / "simple_workflow.json"
+    with open(workflow_path, "r") as f:
+        workflow = json.load(f)
+    
+    # Create orchestrator and execute workflow
+    orchestrator = AGNT(workflow)
+    result = await orchestrator.execute({"trigger_data": "Example input"})
+    
+    print("\nWorkflow Execution Results:")
+    print(json.dumps(result, indent=2))
+
+if __name__ == "__main__":
+    asyncio.run(main())
+----------------------
+AGNT-PY\MAIN.PY
+----------------------
+import asyncio
+import json
+from pathlib import Path
+import sys
+
+# Make sure Python can find your modules
+sys.path.append(str(Path(__file__).resolve().parent))
+
+# Now import from your modules
+from orchestrator import AGNT
+
+async def main():
+    # Load a workflow definition
+    workflow_path = Path(__file__).parent / "workflows" / "simple_workflow.json"
+    with open(workflow_path, "r") as f:
+        workflow = json.load(f)
+    
+    # Create orchestrator and execute workflow
+    orchestrator = AGNT(workflow)
+    result = await orchestrator.execute({"trigger_data": "Example input"})
+    
+    print("\nWorkflow Execution Results:")
+    print(json.dumps(result, indent=2))
+
+if __name__ == "__main__":
+    asyncio.run(main()) 
+----------------------
+AGNT-PY\ORCHESTRATOR\AGNT.PY
+----------------------
+#                                  __     
+#                                 /  |    
+#   ______    ______   _______   _$$ |_   
+#  /      \  /      \ /       \ / $$   |  
+#  $$$$$$  |/$$$$$$  |$$$$$$$  |$$$$$$/   
+#  /    $$ |$$ |  $$ |$$ |  $$ |  $$ | __ 
+# /$$$$$$$ |$$ \__$$ |$$ |  $$ |  $$ |/  |
+# $$    $$ |$$    $$ |$$ |  $$ |  $$  $$/ 
+#  $$$$$$$/  $$$$$$$ |$$/   $$/    $$$$/  
+#           /  \__$$ |                    
+#           $$    $$/                     
+#            $$$$$$/   
+# 
+#
+# AGENTIC GRAPH NETWORK TECHNOLOGY
+# THE PRIMARY SYSTEM ORCHESTRATOR LAYER, MANAGES THE WORKFLOW EXECUTION
+
+import os
+import json
+import time
+from datetime import datetime
+from typing import Dict, List, Any, Optional
+import pydantic 
+from pathlib import Path
+import sys
+
+# Fix the imports to use absolute paths
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from orchestrator.FIRE import FIRE 
+from orchestrator.VIBE import VIBE
+from utils.ascii_art import display_colored_art, AGNT_ACTIVATION, AGNT_COMPLETION, COLORS
+
+# Define workflow schema using Pydantic instead of Zod
+class Node(pydantic.BaseModel):
+    id: str
+    type: str
+    category: str
+    parameters: Dict[str, Any]
+    text: Optional[str] = None
+
+class Edge(pydantic.BaseModel):
+    id: str
+    startNodeId: str
+    endNodeId: str
+    condition: Optional[str] = None
+    if_: Optional[str] = pydantic.Field(None, alias="if")
+    value: Optional[str] = None
+    maxIterations: Optional[str] = None
+
+class Workflow(pydantic.BaseModel):
+    id: str
+    name: str
+    nodes: List[Node]
+    edges: List[Edge]
+
+class AGNT:
+    def __init__(self, workflow):
+        self.workflow = workflow
+        self.fire = FIRE(self)
+        self.vibe = VIBE(self)
+        self.outputs = {}
+        self.execution_path = []
+        self.edges_taken = []
+        self.edge_iterations = {}  # Track iterations for each edge
+        self.start_time = time.time()
+
+    def validate_workflow(self):
+        try:
+            Workflow.model_validate(self.workflow)
+        except Exception as error:
+            raise ValueError(f"Workflow validation failed: {str(error)}")
+
+    async def execute(self, trigger_data):
+        display_colored_art(AGNT_ACTIVATION, COLORS["FG_GREEN"])
+
+        self.validate_workflow()
+        trigger_nodes = [n for n in self.workflow["nodes"] if n["category"] == "trigger"]
+        
+        if not trigger_nodes:
+            # If no trigger nodes, start from the first node
+            first_node = self.workflow["nodes"][0]
+            if first_node:
+                output = await self.fire.execute_node(first_node, trigger_data)
+                self.outputs[first_node["id"]] = output
+                self.execution_path.append({
+                    "nodeId": first_node["id"],
+                    "type": first_node["type"],
+                    "text": first_node.get("text", first_node["type"]),
+                    "timestamp": time.time() * 1000
+                })
+                await self.execute_next_nodes(first_node["id"], output)
+        else:
+            for node in trigger_nodes:
+                output = await self.fire.execute_node(node, trigger_data)
+                self.outputs[node["id"]] = output
+                self.execution_path.append({
+                    "nodeId": node["id"],
+                    "type": node["type"],
+                    "text": node.get("text", node["type"]),
+                    "timestamp": time.time() * 1000
+                })
+                await self.execute_next_nodes(node["id"], output)
+        
+        # Save the execution summary after the workflow completes
+        self.save_execution_summary()
+
+        display_colored_art(AGNT_COMPLETION, COLORS["FG_GREEN"])
+        
+        return {
+            "outputs": self.outputs,
+            "executionPath": self.execution_path,
+            "edgesTaken": self.edges_taken
+        }
+
+    async def execute_next_nodes(self, node_id, node_output):
+        edges = [e for e in self.workflow["edges"] if e["startNodeId"] == node_id]
+        for edge in edges:
+            # Check if edge has reached its max iterations
+            current_iterations = self.edge_iterations.get(edge["id"], 0)
+            max_iterations = float("inf")
+            
+            if edge.get("maxIterations"):
+                # Resolve the maxIterations template if it exists
+                resolved_max_iterations = self.fire.plug.resolve_template(edge["maxIterations"])
+                max_iterations = int(resolved_max_iterations) if resolved_max_iterations.isdigit() else float("inf")
+            
+            # Log edge evaluation
+            if edge.get("condition"):
+                print(f"-- Condition: {edge.get('if')} {edge.get('condition')} {edge.get('value')}\n")
+            if max_iterations != float("inf"):
+                print(f"-- Iterations: {current_iterations}/{max_iterations}\n")
+            
+            # Check if max iterations reached
+            if current_iterations >= max_iterations:
+                print(f"-- Result: FALSE - Max iterations ({max_iterations}) reached\n")
+                continue
+            
+            # Evaluate the edge condition
+            condition_met = self.vibe.evaluate(edge, node_output)
+            print(f"-- Result: {'TRUE - Taking this path' if condition_met else 'FALSE - Skipping'}\n")
+            
+            if condition_met:
+                # Increment the iteration count for this edge
+                self.edge_iterations[edge["id"]] = current_iterations + 1
+                
+                # Track which edge was taken
+                self.edges_taken.append({
+                    "edgeId": edge["id"],
+                    "from": edge["startNodeId"],
+                    "to": edge["endNodeId"],
+                    "condition": f"{edge.get('if')} {edge.get('condition')} {edge.get('value')}" if edge.get("condition") else "none",
+                    "iteration": current_iterations + 1,
+                    "timestamp": time.time() * 1000
+                })
+                
+                next_node = next((n for n in self.workflow["nodes"] if n["id"] == edge["endNodeId"]), None)
+                print(f"Next node decision: {next_node['id']} ({next_node.get('text', next_node['type'])})")
+                
+                output = await self.fire.execute_node(next_node, node_output)
+                self.outputs[next_node["id"]] = output
+                
+                # Track execution path
+                self.execution_path.append({
+                    "nodeId": next_node["id"],
+                    "type": next_node["type"],
+                    "text": next_node.get("text", next_node["type"]),
+                    "timestamp": time.time() * 1000
+                })
+                
+                await self.execute_next_nodes(next_node["id"], output)
+
+    def get_execution_summary(self):
+        # Make sure execution_path is always a list
+        execution_path = self.execution_path or []
+        
+        # Create a dict to track unique node executions (prevent duplicates)
+        unique_nodes = {}
+        unique_execution_path = []
+        
+        # Filter out duplicate node executions
+        for node in execution_path:
+            key = f"{node['nodeId']}-{node['timestamp']}"
+            if key not in unique_nodes:
+                unique_nodes[key] = True
+                unique_execution_path.append(node)
+        
+        return {
+            "workflowId": self.workflow["id"],
+            "workflowName": self.workflow["name"],
+            "executionPath": unique_execution_path,
+            "edgesTaken": self.edges_taken or [],
+            "outputs": self.outputs or {},
+            "edgeIterations": self.edge_iterations or {},
+            "startTime": self.start_time * 1000,  # Convert to milliseconds for consistency
+            "endTime": time.time() * 1000,
+            "duration": (time.time() - self.start_time) * 1000
+        }
+    
+    def save_execution_summary(self):
+        try:
+            # Get the execution summary
+            summary = self.get_execution_summary()
+            
+            # Create summaries directory if it doesn't exist
+            summaries_dir = Path(__file__).parent.parent / "summaries"
+            summaries_dir.mkdir(exist_ok=True, parents=True)
+            
+            # Create a unique filename with timestamp and workflow ID
+            timestamp = datetime.now().isoformat().replace(":", "-")
+            filename = f"{self.workflow['id']}_{timestamp}.json"
+            file_path = summaries_dir / filename
+            
+            # Write the summary to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(summary, f, indent=2)
+            
+            print(f"Execution summary saved to: {file_path}\n")
+            return str(file_path)
+        except Exception as error:
+            print(f"Error saving execution summary: {error}")
+            return None
+----------------------
+AGNT-PY\ORCHESTRATOR\FIRE.PY
+----------------------
+#   ______   __                     
+#  /      \ /  |                    
+# /$$$$$$  |$$/   ______    ______  
+# $$ |_ $$/ /  | /      \  /      \ 
+# $$   |    $$ |/$$$$$$  |/$$$$$$  |
+# $$$$/     $$ |$$ |  $$/ $$    $$ |
+# $$ |      $$ |$$ |      $$$$$$$$/ 
+# $$ |      $$ |$$ |      $$       |
+# $$/       $$/ $$/        $$$$$$$/ 
+# 
+#
+# FLUID INSTRUCTIONAL RUNTIME ENGINE
+# THE PRIMARY SYSTEM ENGINE LAYER, MANAGES THE NODE EXECUTION
+
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+# Fix imports to use absolute paths
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from orchestrator.PLUG import PLUG
+from utils.ascii_art import FIRE_EXECUTION, display_colored_art, COLORS
+
+class FIRE:
+    def __init__(self, orchestrator):
+        self.orchestrator = orchestrator
+        self.plug = PLUG(orchestrator)
+
+    async def execute_node(self, node, input_data):
+        try:
+            display_colored_art(FIRE_EXECUTION, COLORS["FG_RED"])
+
+            print(f"Executing node: {node['id']} ({node.get('text', node['type'])})")
+
+            # Use proper path resolution to find the tools
+            tool_path = Path(__file__).parent.parent / "tools" / f"{node['type']}.py"
+            
+            # Import the tool module dynamically
+            spec = importlib.util.spec_from_file_location(
+                f"tools.{node['type']}", 
+                tool_path
+            )
+            tool = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = tool
+            spec.loader.exec_module(tool)
+            
+            resolved_params = self.plug.resolve(node["parameters"])
+            
+            # Create a clean copy of the context without circular references
+            clean_context = {}
+            for node_id, output in self.orchestrator.outputs.items():
+                # Deep clone each node output to break circular references
+                clean_context[node_id] = json.loads(json.dumps(output))
+            
+            # Merge input_data with clean context
+            enhanced_input_data = {
+                **(input_data or {}),
+                "context": clean_context
+            }
+            
+            result = await tool.execute(resolved_params, enhanced_input_data)
+
+            return result
+        except Exception as error:
+            print(f"Error executing node {node['id']}:", error)
+            return {"error": str(error)}
+----------------------
+AGNT-PY\ORCHESTRATOR\PLUG.PY
+----------------------
+#            __                     
+#           /  |                    
+#   ______  $$ | __    __   ______  
+#  /      \ $$ |/  |  /  | /      \ 
+# /$$$$$$  |$$ |$$ |  $$ |/$$$$$$  |
+# $$ |  $$ |$$ |$$ |  $$ |$$ |  $$ |
+# $$ |__$$ |$$ |$$ \__$$ |$$ \__$$ |
+# $$    $$/ $$ |$$    $$/ $$    $$/ 
+# $$$$$$$/  $$/  $$$$$$/   $$$$$$$ |
+# $$ |                    /  \__$$ |
+# $$ |                    $$    $$/ 
+# $$/                      $$$$$$/          
+# 
+#
+# PARAMETER LOOKUP UTILITY GATEWAY
+# THE PRIMARY SYSTEM INTERPOLATION LAYER, MANAGES THE NODE PARAMETER RESOLUTION FOR NODES AND EDGES
+
+import re
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from utils.ascii_art import PLUG_EXECUTION, display_colored_art, COLORS
+
+class PLUG:
+    def __init__(self, orchestrator):
+        self.orchestrator = orchestrator
+
+    def resolve(self, params):
+        display_colored_art(PLUG_EXECUTION, COLORS["FG_YELLOW"])
+
+        resolved = {}
+        for key, value in params.items():
+            resolved[key] = self.resolve_template(value)
+        return resolved
+
+    def resolve_template(self, template):
+        if not isinstance(template, str):
+            return template
+            
+        def replace_match(match):
+            path = match.group(1).strip()
+            parts = path.split('.')
+            node_id = parts[0]
+            value = self.orchestrator.outputs.get(node_id)
+            
+            # Navigate through nested properties
+            for part in parts[1:]:
+                if value and isinstance(value, dict):
+                    value = value.get(part)
+                else:
+                    return ''
+            
+            return str(value) if value is not None else ''
+        
+        return re.sub(r'{{(.*?)}}', replace_match, template)
+----------------------
+AGNT-PY\ORCHESTRATOR\SPRK.PY
+----------------------
+#                                __       
+#                               /  |      
+#   _______   ______    ______  $$ |   __ 
+#  /       | /      \  /      \ $$ |  /  |
+# /$$$$$$$/ /$$$$$$  |/$$$$$$  |$$ |_/$$/ 
+# $$      \ $$ |  $$ |$$ |  $$/ $$   $$<  
+#  $$$$$$  |$$ |__$$ |$$ |      $$$$$$  \ 
+# /     $$/ $$    $$/ $$ |      $$ | $$  |
+# $$$$$$$/  $$$$$$$/  $$/       $$/   $$/ 
+#           $$ |                          
+#           $$ |                          
+#           $$/                                
+
+
+# SPONTANEOUS PROCESS & ROUTE KINETICS
+# THE PRIMARY TOOL & WORKFLOW GENERATOR SYSTEM
+
+# COMING SOON
+----------------------
+AGNT-PY\ORCHESTRATOR\VIBE.PY
+----------------------
+#             __  __                 
+#            /  |/  |                
+#  __     __ $$/ $$ |____    ______  
+# /  \   /  |/  |$$      \  /      \ 
+# $$  \ /$$/ $$ |$$$$$$$  |/$$$$$$  |
+#  $$  /$$/  $$ |$$ |  $$ |$$    $$ |
+#   $$ $$/   $$ |$$ |__$$ |$$$$$$$$/ 
+#    $$$/    $$ |$$    $$/ $$       |
+#     $/     $$/ $$$$$$$/   $$$$$$$/                   
+# 
+#
+# VISUAL INFERENCE BEHAVIOR EVALUATOR
+# THE PRIMARY SYSTEM OBSERVER LAYER, MANAGES THE EDGE AND NODE OUTPUT EVALUATION AND CONDITION CHECKING
+
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from orchestrator.PLUG import PLUG
+from utils.ascii_art import VIBE_ACTIVATION, display_colored_art, COLORS
+
+class VIBE:
+    def __init__(self, orchestrator):
+        self.plug = PLUG(orchestrator)
+
+    def evaluate(self, edge, node_output):
+        # Display the ASCII art with color when evaluating an edge
+        display_colored_art(VIBE_ACTIVATION, COLORS["FG_MAGENTA"])
+
+        print('Node output:', node_output, '\n')
+        print('Evaluating edge:', edge, '\n')
+        
+        # CAN DO SECURITY HERE WITH **NOPE** OR CHECK IF THE NODE OUTPUT IS VALID
+
+        # IF VALID, RETURN TRUE
+
+        # IF NOT VALID, RETURN FALSE
+
+        if not edge.get('condition'):
+            return True
+            
+        actual_value = self.plug.resolve_template(edge.get('if', ''))
+        expected_value = edge.get('value', '')
+
+        # Convert to numbers for numeric comparisons
+        try:
+            num_actual = float(actual_value)
+            num_expected = float(expected_value)
+            numeric_comparison = True
+        except (ValueError, TypeError):
+            numeric_comparison = False
+
+        condition = edge.get('condition', '')
+        
+        if condition == 'equals':
+            return actual_value == expected_value
+        elif condition == 'not_equals':
+            return actual_value != expected_value
+        elif condition == 'contains':
+            return str(actual_value).find(expected_value) >= 0
+        elif condition == 'not_contains':
+            return str(actual_value).find(expected_value) < 0
+        elif condition == 'greater_than' and numeric_comparison:
+            return num_actual > num_expected
+        elif condition == 'less_than' and numeric_comparison:
+            return num_actual < num_expected
+        elif condition == 'greater_than_or_equal' and numeric_comparison:
+            return num_actual >= num_expected
+        elif condition == 'less_than_or_equal' and numeric_comparison:
+            return num_actual <= num_expected
+        elif condition == 'between' and numeric_comparison:
+            try:
+                min_val, max_val = map(float, expected_value.split(','))
+                return min_val <= num_actual <= max_val
+            except (ValueError, AttributeError):
+                print(f"Invalid 'between' range: {expected_value}")
+                return False
+        else:
+            print(f"Unknown condition: {condition}")
+            return False
+----------------------
+AGNT-PY\ORCHESTRATOR\__INIT__.PY
+----------------------
+# Use absolute imports instead of relative ones
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from orchestrator.AGNT import AGNT
+from orchestrator.FIRE import FIRE
+from orchestrator.PLUG import PLUG
+from orchestrator.VIBE import VIBE
+
+__all__ = ["AGNT", "FIRE", "PLUG", "VIBE"]
+----------------------
+AGNT-PY\README.MD
+----------------------
+# AGNT-py - Agentic Graph Network Technology (Python)
+
+> **Orchestrating Autonomous Workflows with Python**
+
+### 🎯 WHAT AGNT-PY IS:
+
+- A Python system orchestrator for managing complex workflows
+- A graph-based network of nodes and edges
+- A platform for defining and executing autonomous agent tasks
+- A modular and extensible architecture
+
+### 🚫 WHAT AGNT-PY IS NOT:
+
+- A specific tool or function
+- A monolithic application
+- A closed or proprietary system
+
+> 💡 **AGNT-py enables developers to create intelligent systems by orchestrating a network of Python tools and agents.**
+
+---
+
+## 1. CORE BELIEFS
+
+- Everything is a Workflow
+- Every Tool is a Node
+- Every Execution is Tracked
+- Every Developer is Empowered
+
+## 2. CORE COMPONENTS
+
+- **AGNT (Agentic Graph Network Technology):** Manages workflow execution
+  - File: `orchestrator/AGNT.py`
+- **FIRE (Fluid Instructional Runtime Engine):** Executes individual nodes
+  - File: `orchestrator/FIRE.py`
+- **PLUG (Parameter Lookup Utility Gateway):** Resolves parameters
+  - File: `orchestrator/PLUG.py`
+- **VIBE (Visual Inference Behavior Evaluator):** Evaluates conditions
+  - File: `orchestrator/VIBE.py`
+
+## 3. GETTING STARTED
+
+### Prerequisites
+
+- Python 3.8 or higher
+- Pip (Python package manager)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone [repository-url]
+cd AGNT-py
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Quick Start
+
+1. Run the example workflow:
+
+```bash
+python main.py
+```
+
+This will execute a simple workflow defined in `workflows/simple_workflow.json` using the basic tool.
+
+## 4. WORKFLOW DEFINITION
+
+Workflows are defined using a JSON format.
+
+### Example Workflow
+
+```json
+{
+  "id": "simple_workflow",
+  "name": "Simple Workflow Example",
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "basic_tool",
+      "category": "trigger",
+      "parameters": {
+        "param1": "Hello",
+        "param2": "World"
+      }
+    },
+    {
+      "id": "node_2",
+      "type": "basic_tool",
+      "category": "action",
+      "parameters": {
+        "param1": "{{node_1.data.params.param1}}",
+        "param2": "AGNT"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "startNodeId": "node_1",
+      "endNodeId": "node_2"
+    }
+  ]
+}
+```
+
+### Node Structure
+
+Each node in a workflow requires:
+
+- `id`: Unique identifier for the node
+- `type`: The type of tool to execute (must match a Python file in the `tools` directory)
+- `category`: The node category (trigger, action, condition, etc.)
+- `parameters`: Key-value pairs passed to the tool
+
+### Edge Structure
+
+Edges define the flow between nodes:
+
+- `id`: Unique identifier for the edge
+- `startNodeId`: The source node ID
+- `endNodeId`: The target node ID
+- `condition` (optional): Condition type for conditional edges (equals, not_equals, etc.)
+- `if` (optional): The value to check
+- `value` (optional): The value to compare against
+- `maxIterations` (optional): Maximum number of times this edge can be traversed
+
+## 5. EXECUTION FLOW
+
+1. AGNT validates the workflow
+2. FIRE executes trigger nodes
+3. PLUG resolves parameters using template syntax `{{node_id.property.nested_property}}`
+4. VIBE evaluates conditions for edges
+5. AGNT tracks execution and saves summary to the `summaries` directory
+
+## 6. CREATING CUSTOM TOOLS
+
+Tools are Python modules executed by FIRE. Create a new file in the `tools` directory:
+
+```python
+# tools/my_custom_tool.py
+async def execute(params, input_data):
+    """
+    Execute the tool functionality
+    
+    Parameters:
+    - params: Dict with resolved parameters for this tool
+    - input_data: Dict with input data and context from previous nodes
+    
+    Returns:
+    - Dict containing the tool's output
+    """
+    try:
+        # Your custom logic here
+        result = f"Processed input using {params['param1']}"
+        
+        return {
+            "status": "success",
+            "message": "Tool executed successfully",
+            "data": {
+                "result": result,
+                "params": params
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+```
+
+Then reference this tool in your workflow:
+
+```json
+{
+  "id": "custom_node",
+  "type": "my_custom_tool",
+  "category": "action",
+  "parameters": {
+    "param1": "Custom value"
+  }
+}
+```
+
+## 7. FOLDER STRUCTURE
+AGNT-py/
+├── orchestrator/ # Core orchestration components
+│ ├── init.py
+│ ├── AGNT.py # Main orchestrator
+│ ├── FIRE.py # Node execution engine
+│ ├── PLUG.py # Parameter resolution
+│ └── VIBE.py # Condition evaluation
+├── tools/ # Tool implementations
+│ ├── init.py
+│ └── basic_tool.py # Example tool
+├── utils/ # Utility functions
+│ ├── init.py
+│ └── ascii_art.py # ASCII art for console output
+├── workflows/ # Workflow definitions
+│ └── simple_workflow.json # Example workflow
+├── summaries/ # Execution summaries (auto-generated)
+├── examples/ # Example scripts
+│ └── run_simple_workflow.py
+├── main.py # Main entry point
+├── requirements.txt # Dependencies
+└── setup.py # Package setup
+
+
+## 8. ADVANCED USAGE
+
+### Custom Conditions
+
+VIBE supports various conditions for edge evaluation:
+
+- `equals`, `not_equals`: String equality
+- `contains`, `not_contains`: Substring checking
+- `greater_than`, `less_than`: Numeric comparison
+- `greater_than_or_equal`, `less_than_or_equal`: Numeric comparison
+- `between`: Range checking (format: "min,max")
+
+### Error Handling
+
+Tools should return an object with at least:
+
+```python
+{
+    "status": "success" | "error",
+    "message": "Description of the result"
+}
+```
+
+### Parameter Resolution
+
+PLUG resolves parameters using template syntax:
+{{node_id.property.nested_property}}
+
+
+For example, `{{node_1.data.result}}` accesses the `result` property in the `data` object of the output from node `node_1`.
+
+## 9. TROUBLESHOOTING
+
+### Common Issues
+
+1. **Import Errors**: If you encounter import errors, ensure your tool modules follow the proper structure and are properly placed in the `tools` directory.
+
+2. **Parameter Resolution**: If parameters aren't resolving correctly, check your template syntax and ensure the referenced node IDs and properties exist.
+
+3. **Tool Execution**: If a tool fails to execute, check the error message in the workflow results.
+
+### Debug Mode
+
+To view detailed debug information, modify the `main.py` to print more details:
+
+```python
+import json
+result = await orchestrator.execute({"trigger_data": "Example input"})
+print("\nDetailed Execution Results:")
+print(json.dumps(result, indent=2))
+```
+
+## 10. CONTRIBUTING
+
+Contributions are welcome!
+
+1. Fork the repository
+2. Create a new branch
+3. Implement changes
+4. Write tests
+5. Submit a pull request
+
+## 11. LICENSE
+
+MIT License
+----------------------
+AGNT-PY\REQUIREMENTS.TXT
+----------------------
+pydantic>=2.0.0
+aiohttp>=3.8.0
+importlib-metadata>=4.0.0
+colorama>=0.4.4
+python-dotenv>=1.0.0
+----------------------
+AGNT-PY\SETUP.PY
+----------------------
+from setuptools import setup, find_packages
+
+setup(
+    name="agnt-orchestrator",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=[
+        "pydantic>=2.0.0",
+        "aiohttp>=3.8.0",
+        "importlib-metadata>=4.0.0",
+        "colorama>=0.4.4",
+        "python-dotenv>=1.0.0",
+    ],
+    python_requires=">=3.8",
+    author="AGNT Team",
+    author_email="team@agnt.com",
+    description="Agentic Graph Network Technology Orchestrator",
+    keywords="orchestrator, workflow, agent",
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+    ],
+)
+----------------------
+AGNT-PY\TOOLS\BASIC_TOOL.PY
+----------------------
+# Basic Tool Template
+# This provides a template for creating new tools
+
+async def execute(params, input_data):
+    """
+    Execute the tool functionality
+    
+    Parameters:
+    - params: Dict with resolved parameters for this tool
+    - input_data: Dict with input data and context from previous nodes
+    
+    Returns:
+    - Dict containing the tool's output
+    """
+    try:
+        # Replace with actual tool implementation
+        return {
+            "status": "success",
+            "message": "Tool executed successfully",
+            "data": {
+                "params": params,
+                "received_input": input_data.get("data", {})
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+----------------------
+AGNT-PY\TOOLS\__INIT__.PY
+----------------------
+from pathlib import Path
+
+tools_dir = Path(__file__).parent
+available_tools = [
+    f.stem for f in tools_dir.glob("*.py") 
+    if f.name != "__init__.py" and not f.name.startswith("_")
+]
+
+__all__ = ["available_tools"]
+
+----------------------
+AGNT-PY\UTILS\ASCII_ART.PY
+----------------------
+# ASCII Art Utility for AGNT
+import colorama
+from colorama import Fore, Style
+
+# Initialize colorama
+colorama.init()
+
+# Color constants
+COLORS = {
+    "FG_RED": Fore.RED,
+    "FG_GREEN": Fore.GREEN,
+    "FG_YELLOW": Fore.YELLOW,
+    "FG_BLUE": Fore.BLUE,
+    "FG_MAGENTA": Fore.MAGENTA,
+    "FG_CYAN": Fore.CYAN,
+    "FG_WHITE": Fore.WHITE,
+    "RESET": Style.RESET_ALL
+}
+
+# ASCII Art definitions
+AGNT_ACTIVATION = """
+***************************************
+************INITIALIZING...************
+***************************************
+                                 __     
+                                /  |    
+  ______    ______   _______   _$$ |_   
+ /      \  /      \ /       \ / $$   |  
+ $$$$$$  |/$$$$$$  |$$$$$$$  |$$$$$$/   
+ /    $$ |$$ |  $$ |$$ |  $$ |  $$ | __ 
+/$$$$$$$ |$$ \__$$ |$$ |  $$ |  $$ |/  |
+$$    $$ |$$    $$ |$$ |  $$ |  $$  $$/ 
+ $$$$$$$/  $$$$$$$ |$$/   $$/    $$$$/  
+          /  \__$$ |                    
+          $$    $$/                     
+           $$$$$$/    
+"""
+
+AGNT_COMPLETION = """
+***************************************
+************WORK COMPLETED************
+***************************************
+                                 __     
+                                /  |    
+  ______    ______   _______   _$$ |_   
+ /      \  /      \ /       \ / $$   |  
+ $$$$$$  |/$$$$$$  |$$$$$$$  |$$$$$$/   
+ /    $$ |$$ |  $$ |$$ |  $$ |  $$ | __ 
+/$$$$$$$ |$$ \__$$ |$$ |  $$ |  $$ |/  |
+$$    $$ |$$    $$ |$$ |  $$ |  $$  $$/ 
+ $$$$$$$/  $$$$$$$ |$$/   $$/    $$$$/  
+          /  \__$$ |                    
+          $$    $$/                     
+           $$$$$$/   
+
+        
+***************************************
+************WORK COMPLETED************
+***************************************
+"""
+
+FIRE_EXECUTION = """
+***************************************
+************EXECUTING FIRE...**********
+        ^  ^
+─=≡Σ((( つ＞＜)つ
+***************************************
+
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣆⢳⡀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣿⣾⣷⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠠⣄⠀⢠⣿⣿⣿⣿⡎⢻⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢸⣧⢸⣿⣿⣿⣿⡇⠀⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣾⣿⣿⣿⣿⠃⠀⢸⣿⣿⣿⣿⣿⣿⠀⣄⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⠏⠀⠀⣸⣿⣿⣿⣿⣿⡿⢀⣿⡆⠀
+⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⣿⣿⣿⣿⣿⣿⠇⣼⣿⣿
+⠀⢰⠀⠀⣴⣿⣿⣿⣿⣿⣿⡿⠁⠀⠀⠀⢠⣿⣿⣿⣿⣿⡟⣼⣿⣿⣿
+⠀⣿⡀⢸⣿⣿⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⣸⡿⢻⣿⣿⣿⣿⣿⣿⣿⣿
+⠀⣿⣷⣼⣿⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⠀⢹⠃⢸⣿⣿⣿⣿⣿⣿⣿
+⠀⢿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣿⣿⣿⠋⣠⠀
+⠀⠈⢻⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣵⣿⠃⠀
+⠀⠀⠀⠙⢿⣿⣿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⣿⡿⠃⠀⠀
+⠀⠀⠀⠀⠀⠙⢿⣿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⡿⠋⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠈⠛⠿⣿⣦⣀⠀⠀⠀⠀⢀⣴⠿⠛⠁⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠓⠂⠀⠈⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+"""
+
+PLUG_EXECUTION = """
+***************************************
+***********CONTACTING PLUG...**********
+   ^   ^
+(づ ° ᗜ °)づ ♡
+***************************************
+
+⠀⠀⠀⢸⣦⡀⠀⠀⠀⠀⢀⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⢸⣏⠻⣶⣤⡶⢾⡿⠁⠀⢠⣄⡀⢀⣴⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⣀⣼⠷⠀⠀⠁⢀⣿⠃⠀⠀⢀⣿⣿⣿⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠴⣾⣯⣅⣀⠀⠀⠀⠈⢻⣦⡀⠒⠻⠿⣿⡿⠿⠓⠂⠀⠀⢀⡇⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠉⢻⡇⣤⣾⣿⣷⣿⣿⣤⠀⠀⣿⠁⠀⠀⠀⢀⣴⣿⣿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠸⣿⡿⠏⠀⢀⠀⠀⠿⣶⣤⣤⣤⣄⣀⣴⣿⡿⢻⣿⡆⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠟⠁⠀⢀⣼⠀⠀⠀⠹⣿⣟⠿⠿⠿⡿⠋⠀⠘⣿⣇⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢳⣶⣶⣿⣿⣇⣀⠀⠀⠙⣿⣆⠀⠀⠀⠀⠀⠀⠛⠿⣿⣦⣤⣀⠀⠀
+⠀⠀⠀⠀⠀⠀⣹⣿⣿⣿⣿⠿⠋⠁⠀⣹⣿⠳⠀⠀⠀⠀⠀⠀⢀⣠⣽⣿⡿⠟⠃
+⠀⠀⠀⠀⠀⢰⠿⠛⠻⢿⡇⠀⠀⠀⣰⣿⠏⠀⠀⢀⠀⠀⠀⣾⣿⠟⠋⠁⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠋⠀⠀⣰⣿⣿⣾⣿⠿⢿⣷⣀⢀⣿⡇⠁⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠋⠉⠁⠀⠀⠀⠀⠙⢿⣿⣿⠇⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀
+"""
+
+VIBE_ACTIVATION = """
+***************************************
+***********ACTIVATING VIBE...**********
+    ^   ^
+♡ (˶ᵔ ᵕ ᵔ˶) ♡
+***************************************
+
+⠀⣤⡀⠀⠀⠠⣤⠀⠀⠀⠀⣤⠀⠀⢠⡄⠀⠀⣤⠀⠀⠀⠀⣤⠄⠀⠀⢀⣤⠀
+⠀⠘⢷⣄⠀⠀⠹⣧⡀⠀⠀⢸⡆⠀⢸⡇⠀⢰⡇⠀⠀⢀⣼⠏⠀⠀⣠⡾⠃⠀
+⠀⠀⠀⠙⢷⣄⠀⠘⢷⡄⠀⠘⣷⠀⠘⠃⠀⣼⠇⠀⢠⡾⠃⠀⣠⡾⠋⠀⠀⠀
+⠀⠻⣦⣀⠀⠻⣧⡀⠈⢿⡄⠀⢿⠄⢀⡀⠠⡿⠀⢠⡿⠁⢀⣼⠟⠀⣀⣴⠟⠀
+⠀⠀⠈⠙⢶⣄⠈⠻⣦⡈⢿⡄⠈⢠⣿⣿⡄⠁⢠⡿⢁⣴⠟⠁⣠⡶⠋⠁⠀⠀
+⠀⣀⣀⠀⠀⠈⠛⢦⣈⣿⣄⠃⣠⣿⣿⣿⣿⣄⠘⣠⣿⣁⡴⠛⠁⠀⠀⣀⣀⠀
+⠀⠈⠙⠛⠷⢦⣤⣀⡉⠻⠋⣰⣿⡿⠿⠿⢿⣿⣆⠙⠟⢉⣀⣤⡴⠾⠛⠋⠁⠀
+⠀⢶⣦⣤⣤⣤⣈⣉⣛⠃⢀⣡⡄⢀⡤⠤⠀⢠⣌⡀⠘⣛⣉⣁⣤⣤⣤⣴⡶⠀
+⠀⠀⠀⠀⠀⣉⣉⡉⠁⢰⣿⣿⣇⠸⠀⠀⠀⣸⣿⣿⡆⠈⢉⣉⣉⠀⠀⠀⠀⠀
+⠀⠛⠛⠉⠉⢉⠉⢁⣤⣈⠛⠻⠿⠷⣤⣤⠾⠿⠟⠛⣁⣤⡈⠉⡉⠉⠉⠛⠛⠀
+⠀⣠⣤⡶⠞⠋⢠⣾⣿⣿⣿⣶⣶⣤⣤⣤⣤⣶⣶⣿⣿⣿⣷⡄⠙⠳⢶⣤⣄⠀
+⠀⠉⠀⣠⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⣄⠀⠉⠀
+⠀⣴⠞⠃⣀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⣀⠘⠳⣦⠀
+⠀⢀⣠⡾⠋⣠⠞⠁⣰⡟⠁⢸⡏⠀⢸⡇⠀⢹⡇⠈⢻⣆⠈⠳⣄⠙⢷⣄⡀⠀
+⠀⠛⠋⠀⠚⠋⠀⠐⠛⠀⠀⠚⠀⠀⠘⠃⠀⠀⠓⠀⠀⠛⠂⠀⠙⠓⠀⠙⠛⠀⠀⠀⠀⠀
+"""
+
+def display_colored_art(art, color):
+    """Display ASCII art with specified color"""
+    print(f"\n{color}{art}{COLORS['RESET']}\n")
+----------------------
+AGNT-PY\UTILS\__INIT__.PY
+----------------------
+from .ascii_art import display_colored_art, COLORS
+from .ascii_art import AGNT_ACTIVATION, AGNT_COMPLETION, FIRE_EXECUTION, PLUG_EXECUTION, VIBE_ACTIVATION
+
+__all__ = [
+    "display_colored_art", 
+    "COLORS",
+    "AGNT_ACTIVATION", 
+    "AGNT_COMPLETION", 
+    "FIRE_EXECUTION", 
+    "PLUG_EXECUTION", 
+    "VIBE_ACTIVATION"
+]
+
+----------------------
+AGNT-PY\WORKFLOWS\SIMPLE_WORKFLOW.JSON
+----------------------
+{
+  "id": "simple_workflow",
+  "name": "Simple Workflow Example",
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "basic_tool",
+      "category": "trigger",
+      "parameters": {
+        "param1": "Hello",
+        "param2": "World"
+      }
+    },
+    {
+      "id": "node_2",
+      "type": "basic_tool",
+      "category": "action",
+      "parameters": {
+        "param1": "{{node_1.data.params.param1}}",
+        "param2": "AGNT"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "startNodeId": "node_1",
+      "endNodeId": "node_2"
+    }
+  ]
+}
+
+----------------------
+README.MD
+----------------------
+# AGNT - Agentic Graph Network Technology
+
+> **Orchestrating Autonomous Workflows**
+
+### 🎯 WHAT AGNT IS:
+
+- A system orchestrator for managing complex workflows
+- A graph-based network of nodes and edges
+- A platform for defining and executing autonomous agent tasks
+- A modular and extensible architecture
+
+### 🚫 WHAT AGNT IS NOT:
+
+- A specific tool or function
+- A monolithic application
+- A closed or proprietary system
+
+> 💡 **AGNT enables developers to create intelligent systems by orchestrating a network of tools and agents.**
+
+---
+
+## 1. CORE BELIEFS
+
+- Everything is a Workflow
+- Every Tool is a Node
+- Every Execution is Tracked
+- Every Developer is Empowered
+
+## 2. IMPLEMENTATIONS
+
+AGNT is available in two language implementations:
+
+### JavaScript (AGNT-JS)
+- Modern ES modules architecture
+- Runs in Node.js environments
+- Perfect for web and serverless applications
+
+### Python (AGNT-PY)
+- Fully async architecture
+- Compatible with Python 3.8+
+- Ideal for data science and ML workflows
+
+Both implementations share the same core concepts, workflow structure, and orchestration principles.
+
+## 3. CORE COMPONENTS
+
+- **AGNT (Agentic Graph Network Technology):** Manages workflow execution
+- **FIRE (Functional Instruction Runtime Engine):** Executes individual nodes
+- **PLUG (Parameter Lookup Utility Gateway):** Resolves parameters
+- **VIBE (Visual Inference Behavior Evaluator):** Evaluates conditions
+- **SPRK (Spontaneous Process & Route Kinetics):** Generates tools and workflows.
+
+## 4. GETTING STARTED
+
+### JavaScript Implementation
+
+```bash
+# Clone the repository
+git clone [repository-url]
+cd AGNT-JS
+
+# Install dependencies
+npm install
+
+# Run example
+node examples/simple-workflow.js
+
+# Start the server
+node server.js
+# Server will be available at http://localhost:3000
+```
+
+#### Using the Web Interface
+
+1. After starting the server, open your browser to `http://localhost:3000`
+2. The interface allows you to:
+   - Generate new tools and workflows
+   - Browse available workflows
+   - View workflow details and flowcharts
+   - Run workflows and see execution results
+   - Watch animated workflow execution
+
+### Python Implementation
+
+```bash
+# Clone the repository
+git clone [repository-url]
+cd AGNT-py
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run example
+python main.py
+```
+
+## 5. WORKFLOW DEFINITION
+
+Workflows are defined using a JSON format.
+
+### Example Workflow
+
+```json
+{
+  "id": "example-workflow",
+  "name": "Example Workflow",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "StartNode",
+      "category": "trigger",
+      "parameters": {}
+    },
+    {
+      "id": "task1",
+      "type": "TaskNode",
+      "category": "task",
+      "parameters": {
+        "input": "{{start.output}}"
+      }
+    },
+    {
+      "id": "end",
+      "type": "EndNode",
+      "category": "utility",
+      "parameters": {
+        "result": "{{task1.result}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "startNodeId": "start",
+      "endNodeId": "task1"
+    },
+    {
+      "id": "edge2",
+      "startNodeId": "task1",
+      "endNodeId": "end",
+      "condition": "equals",
+      "if": "{{task1.status}}",
+      "value": "success"
+    }
+  ]
+}
+```
+
+## 6. EXECUTION FLOW
+
+1. Define workflow in JSON
+2. AGNT validates the workflow
+3. FIRE executes trigger nodes
+4. PLUG resolves parameters
+5. VIBE evaluates conditions
+6. AGNT tracks execution and saves summary
+
+## 7. CREATING CUSTOM TOOLS
+
+### JavaScript Tools
+```javascript
+// tools/ExampleTool.js
+export async function execute(params, inputData) {
+  console.log('Executing ExampleTool with params:', params);
+  console.log('Input data:', inputData);
+  const result = `Processed input: ${inputData.input} with param: ${params.param1}`;
+  return { result };
+}
+```
+
+### Python Tools
+```python
+# tools/example_tool.py
+async def execute(params, input_data):
+    """Execute the tool functionality"""
+    try:
+        # Your custom logic here
+        result = f"Processed input using {params['param1']}"
+        
+        return {
+            "status": "success",
+            "message": "Tool executed successfully",
+            "data": {
+                "result": result,
+                "params": params
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+```
+
+## 8. DOCUMENTATION
+
+For detailed documentation on each implementation:
+
+- [JavaScript Documentation](./AGNT-JS/README.md)
+- [Python Documentation](./AGNT-py/README.md)
+
+## 9. CONTRIBUTING
+
+Contributions are welcome!
+
+1. Fork the repository
+2. Create a new branch
+3. Implement changes
+4. Write tests
+5. Submit a pull request
+
+## 10. LICENSE
+
+MIT
+----------------------
+SCHEMAS\SLOPSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SLOP Protocol Schema",
+  "description": "JSON Schema for the Simple Language Open Protocol (SLOP)",
+  "type": "object",
+  "properties": {
+    "chat": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "messages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": ["user", "assistant", "system"]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": ["role", "content"]
+              }
+            },
+            "model": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            }
+          },
+          "required": ["messages"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object"
+        },
+        "post": {
+          "type": "object",
+          "properties": {
+            "tool_id": {
+              "type": "string"
+            },
+            "parameters": {
+              "type": "object"
+            }
+          },
+          "required": ["tool_id", "parameters"]
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": ["key", "value"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"]
+        },
+        "put": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": ["key", "value"]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"]
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "filter": {
+              "type": "object"
+            }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "post": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": ["id", "title"]
+        },
+        "put": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": ["id"]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": ["id"]
+        },
+        "search": {
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string"
+            }
+          },
+          "required": ["q"]
+        }
+      }
+    },
+    "pay": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "payment_method": {
+              "type": "string"
+            }
+          },
+          "required": ["amount", "currency", "description", "payment_method"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "transaction_id": {
+              "type": "string"
+            }
+          },
+          "required": ["transaction_id"]
+        }
+      }
+    },
+    "info": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
+
+----------------------
+SCHEMAS\TOOLSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AGNT Tool Definition Schema",
+  "description": "JSON Schema for defining tools in the AGNT ecosystem",
+  "type": "object",
+  "required": ["title", "category", "type", "icon", "description"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The display name of the tool"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["trigger", "action", "utility", "control"],
+      "description": "The category the tool belongs to"
+    },
+    "type": {
+      "type": "string",
+      "description": "The unique identifier for the tool type. Format lowercase kebob case: 'tool-type-name'"
+    },
+    "icon": {
+      "type": "string",
+      "description": "The icon identifier for the tool"
+    },
+    "description": {
+      "type": "string",
+      "description": "A description of what the tool does"
+    },
+    "authRequired": {
+      "type": "string",
+      "enum": ["apiKey", "oauth"],
+      "description": "The type of authentication required, if any"
+    },
+    "authProvider": {
+      "type": "string",
+      "description": "The authentication provider name"
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["string", "number", "boolean", "array", "object"],
+            "description": "The data type of the parameter"
+          },
+          "inputType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "select",
+              "checkbox",
+              "password",
+              "datetime",
+              "codearea",
+              "readonly",
+              "time"
+            ],
+            "description": "The UI input type for the parameter"
+          },
+          "inputSize": {
+            "type": "string",
+            "enum": ["half", "third", "full"],
+            "description": "The size of the input field in the UI"
+          },
+          "options": {
+            "type": ["array", "string"],
+            "items": {
+              "type": "string"
+            },
+            "description": "Available options for select or checkbox inputs"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the parameter"
+          },
+          "default": {
+            "type": ["string", "number", "boolean", "array", "object"],
+            "description": "Default value for the parameter"
+          },
+          "value": {
+            "type": "string",
+            "description": "Fixed value for readonly parameters"
+          },
+          "conditional": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "The field name this parameter depends on"
+              },
+              "value": {
+                "type": ["string", "array"],
+                "description": "The value(s) of the field that make this parameter visible"
+              }
+            },
+            "required": ["field", "value"],
+            "description": "Conditional display logic for the parameter"
+          }
+        },
+        "required": ["description"]
+      },
+      "description": "The input parameters for the tool"
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "array",
+              "object",
+              "any",
+              "null",
+              "integer"
+            ],
+            "description": "The data type of the output"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the output"
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/output"
+            },
+            "description": "Properties of an object output type"
+          }
+        },
+        "required": ["description"]
+      },
+      "description": "The outputs produced by the tool"
+    }
+  }
+}
+
+----------------------
+SCHEMAS\WORKFLOWSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AGNT Workflow Definition Schema",
+  "description": "JSON Schema for defining workflows in the AGNT ecosystem",
+  "type": "object",
+  "required": ["id", "name", "nodes", "edges"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "category", "parameters", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "type": { "type": "string", "description": "Format lowercase kebob case: 'tool-type-name'" },
+          "category": { "type": "string" },
+          "parameters": { "type": "object" }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startNodeId", "endNodeId"],
+        "properties": {
+          "id": { "type": "string" },
+          "startNodeId": { "type": "string" },
+          "endNodeId": { "type": "string" },
+          "condition": { "type": "string" },
+          "if": { "type": "string" },
+          "value": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+

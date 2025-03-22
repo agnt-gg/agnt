@@ -1,0 +1,228 @@
+{
+  "id": "dnd-game-workflow",
+  "name": "Simple D&D Game",
+  "nodes": [
+    {
+      "id": "start-node",
+      "type": "manual-trigger",
+      "category": "trigger",
+      "parameters": {},
+      "text": "Start D&D Game"
+    },
+    {
+      "id": "initialize-game",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "return {\n  player: {\n    name: 'Adventurer',\n    health: 20,\n    attack: 5,\n    defense: 3\n  },\n  enemy: {\n    name: 'Goblin',\n    health: 15,\n    attack: 4,\n    defense: 2\n  },\n  round: 0,\n  maxRounds: 5,\n  message: 'You encounter a Goblin! Prepare for battle!'\n};"
+      },
+      "text": "Initialize Game State"
+    },
+    {
+      "id": "ai-game-intro",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "The player is about to battle a Goblin in a D&D-style game. The player has 20 health, 5 attack, and 3 defense. The Goblin has 15 health, 4 attack, and 2 defense. Provide a brief, exciting introduction to this battle.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a Dungeon Master for a D&D game. Provide exciting, vivid narration for the game. Your responses should be brief (2-3 sentences) and dramatic. You MUST return your response in the following JSON format: {\"narration\": \"Your narration text here\", \"tip\": \"A short gameplay tip here\"}. Do not include any other text or explanation outside of this JSON structure.",
+        "temperature": "0.7",
+        "maxTokens": "150"
+      },
+      "text": "Generate Game Introduction"
+    },
+    {
+      "id": "process-intro",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "try {\n  // Parse the AI response as JSON\n  const aiResponse = JSON.parse(inputData.generatedText);\n  \n  // Validate that it has the expected structure\n  if (!aiResponse.narration || !aiResponse.tip) {\n    throw new Error('AI response missing required fields');\n  }\n  \n  // Add the AI narration to the game state\n  const gameState = inputData.context['initialize-game'];\n  gameState.aiNarration = aiResponse.narration;\n  gameState.aiTip = aiResponse.tip;\n  \n  console.log('\\n===== DUNGEON MASTER =====');\n  console.log(aiResponse.narration);\n  console.log('\\nTip: ' + aiResponse.tip);\n  \n  return gameState;\n} catch (error) {\n  console.error('Error processing AI response:', error);\n  // Return a fallback if AI response parsing fails\n  const gameState = inputData.context['initialize-game'];\n  gameState.aiNarration = 'The battle begins! Prepare yourself!';\n  gameState.aiTip = 'Remember to use your strongest attacks first.';\n  return gameState;\n}"
+      },
+      "text": "Process AI Introduction"
+    },
+    {
+      "id": "player-turn",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const gameState = { ...inputData };\ndelete gameState.context; // Remove context to avoid circular references\ngameState.round += 1;\n\n// Roll dice for player attack\nconst playerRoll = Math.floor(Math.random() * 20) + 1;\nconst playerDamage = Math.max(0, gameState.player.attack + playerRoll - gameState.enemy.defense);\n\n// Apply damage to enemy\ngameState.enemy.health = Math.max(0, gameState.enemy.health - playerDamage);\n\ngameState.message = `Round ${gameState.round}: You rolled ${playerRoll} and dealt ${playerDamage} damage to the ${gameState.enemy.name}!`;\n\nreturn gameState;"
+      },
+      "text": "Player Turn"
+    },
+    {
+      "id": "check-enemy-defeated",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const gameState = inputData;\n\nif (gameState.enemy.health <= 0) {\n  gameState.message += `\\nYou defeated the ${gameState.enemy.name}!`;\n  gameState.enemyDefeated = true;\n} else {\n  gameState.enemyDefeated = false;\n}\n\nreturn gameState;"
+      },
+      "text": "Check if Enemy Defeated"
+    },
+    {
+      "id": "ai-combat-commentary",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "In a D&D battle, the player just rolled {{player-turn.playerRoll}} and dealt {{player-turn.playerDamage}} damage to a {{check-enemy-defeated.enemy.name}}. The enemy now has {{check-enemy-defeated.enemy.health}} health remaining. The player has {{check-enemy-defeated.player.health}} health. It's round {{check-enemy-defeated.round}} of the battle. {{#if check-enemy-defeated.enemyDefeated}}The enemy has been defeated!{{else}}The enemy is still fighting.{{/if}} Provide a brief, exciting commentary on this turn of combat.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a Dungeon Master for a D&D game. Provide exciting, vivid narration for combat. Your responses should be brief (2-3 sentences) and dramatic. You MUST return your response in the following JSON format: {\"narration\": \"Your narration text here\", \"advice\": \"A short tactical suggestion here\"}. Do not include any other text or explanation outside of this JSON structure.",
+        "temperature": "0.7",
+        "maxTokens": "150"
+      },
+      "text": "Generate Combat Commentary"
+    },
+    {
+      "id": "process-commentary",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "try {\n  // Parse the AI response as JSON\n  const aiResponse = JSON.parse(inputData.generatedText);\n  \n  // Validate that it has the expected structure\n  if (!aiResponse.narration || !aiResponse.advice) {\n    throw new Error('AI response missing required fields');\n  }\n  \n  // Add the AI narration to the game state\n  const gameState = inputData.context['check-enemy-defeated'];\n  gameState.aiNarration = aiResponse.narration;\n  gameState.aiAdvice = aiResponse.advice;\n  \n  console.log('\\n===== DUNGEON MASTER =====');\n  console.log(aiResponse.narration);\n  console.log('\\nAdvice: ' + aiResponse.advice);\n  \n  return gameState;\n} catch (error) {\n  console.error('Error processing AI response:', error);\n  // Return the original game state if AI response parsing fails\n  return inputData.context['check-enemy-defeated'];\n}"
+      },
+      "text": "Process Combat Commentary"
+    },
+    {
+      "id": "enemy-turn",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const gameState = inputData;\n\n// Roll dice for enemy attack\nconst enemyRoll = Math.floor(Math.random() * 20) + 1;\nconst enemyDamage = Math.max(0, gameState.enemy.attack + enemyRoll - gameState.player.defense);\n\n// Apply damage to player\ngameState.player.health = Math.max(0, gameState.player.health - enemyDamage);\n\ngameState.message += `\\nThe ${gameState.enemy.name} rolled ${enemyRoll} and dealt ${enemyDamage} damage to you!`;\n\nreturn gameState;"
+      },
+      "text": "Enemy Turn"
+    },
+    {
+      "id": "check-player-defeated",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const gameState = inputData;\n\nif (gameState.player.health <= 0) {\n  gameState.message += `\\nYou were defeated by the ${gameState.enemy.name}!`;\n  gameState.playerDefeated = true;\n} else {\n  gameState.playerDefeated = false;\n}\n\nreturn gameState;"
+      },
+      "text": "Check if Player Defeated"
+    },
+    {
+      "id": "display-round-results",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const gameState = inputData;\n\nconsole.log('\\n===== D&D GAME =====');\nconsole.log(`Round: ${gameState.round}/${gameState.maxRounds}`);\nconsole.log('\\n' + gameState.message);\nconsole.log('\\nPlayer Status:');\nconsole.log(`Health: ${gameState.player.health}`);\nconsole.log('\\nEnemy Status:');\nconsole.log(`Health: ${gameState.enemy.health}`);\n\nreturn gameState;"
+      },
+      "text": "Display Round Results"
+    },
+    {
+      "id": "ai-game-conclusion",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "A D&D battle has just ended. {{#if check-player-defeated.playerDefeated}}The player was defeated by a Goblin.{{else if check-enemy-defeated.enemyDefeated}}The player defeated a Goblin.{{else}}The battle ended after 5 rounds with the player having {{check-player-defeated.player.health}} health and the Goblin having {{check-enemy-defeated.enemy.health}} health.{{/if}} Provide a dramatic conclusion to this battle.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a Dungeon Master for a D&D game. Provide an exciting, dramatic conclusion to a battle. Your response should be brief (3-4 sentences) and vivid. You MUST return your response in the following JSON format: {\"conclusion\": \"Your conclusion text here\", \"nextAdventure\": \"A brief teaser about what might come next\"}. Do not include any other text or explanation outside of this JSON structure.",
+        "temperature": "0.7",
+        "maxTokens": "200"
+      },
+      "text": "Generate Game Conclusion"
+    },
+    {
+      "id": "game-over",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Get the latest game state from the appropriate previous node\nlet gameState;\nif (inputData.context['check-player-defeated']) {\n  gameState = inputData.context['check-player-defeated'];\n} else if (inputData.context['check-enemy-defeated']) {\n  gameState = inputData.context['check-enemy-defeated'];\n} else if (inputData.context['display-round-results']) {\n  gameState = inputData.context['display-round-results'];\n} else {\n  // Fallback if no game state is available\n  gameState = {\n    player: { health: 0 },\n    enemy: { health: 0 },\n    round: 0,\n    maxRounds: 5,\n    playerDefeated: false,\n    enemyDefeated: false\n  };\n}\n\nconsole.log('\\n===== GAME OVER =====');\n\nif (gameState.playerDefeated) {\n  console.log('You were defeated! Better luck next time!');\n} else if (gameState.enemyDefeated) {\n  console.log('Victory! You defeated the enemy!');\n} else {\n  console.log(`The battle ended after ${gameState.maxRounds} rounds.`);\n  if (gameState.player.health > gameState.enemy.health) {\n    console.log('You won by having more health remaining!');\n  } else if (gameState.enemy.health > gameState.player.health) {\n    console.log('The enemy won by having more health remaining!');\n  } else {\n    console.log('The battle ended in a draw!');\n  }\n}\n\n// Try to parse and display AI conclusion if available\ntry {\n  if (inputData.generatedText) {\n    const aiConclusion = JSON.parse(inputData.generatedText);\n    console.log('\\n===== DUNGEON MASTER EPILOGUE =====');\n    console.log(aiConclusion.conclusion);\n    console.log('\\nNext Adventure: ' + aiConclusion.nextAdventure);\n  }\n} catch (error) {\n  console.error('Error displaying AI conclusion:', error);\n}\n\nreturn {\n  completed: true,\n  rounds: gameState.round,\n  playerHealth: gameState.player.health,\n  enemyHealth: gameState.enemy.health,\n  result: gameState.playerDefeated ? 'defeat' : (gameState.enemyDefeated ? 'victory' : 'time-up')\n};"
+      },
+      "text": "Game Over"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "startNodeId": "start-node",
+      "endNodeId": "initialize-game"
+    },
+    {
+      "id": "edge-2",
+      "startNodeId": "initialize-game",
+      "endNodeId": "ai-game-intro"
+    },
+    {
+      "id": "edge-3",
+      "startNodeId": "ai-game-intro",
+      "endNodeId": "process-intro"
+    },
+    {
+      "id": "edge-4",
+      "startNodeId": "process-intro",
+      "endNodeId": "player-turn"
+    },
+    {
+      "id": "edge-5",
+      "startNodeId": "player-turn",
+      "endNodeId": "check-enemy-defeated"
+    },
+    {
+      "id": "edge-6",
+      "startNodeId": "check-enemy-defeated",
+      "endNodeId": "ai-combat-commentary"
+    },
+    {
+      "id": "edge-7",
+      "startNodeId": "ai-combat-commentary",
+      "endNodeId": "process-commentary"
+    },
+    {
+      "id": "edge-8",
+      "startNodeId": "process-commentary",
+      "endNodeId": "enemy-turn",
+      "condition": "equals",
+      "if": "{{check-enemy-defeated.enemyDefeated}}",
+      "value": "false"
+    },
+    {
+      "id": "edge-9",
+      "startNodeId": "process-commentary",
+      "endNodeId": "ai-game-conclusion",
+      "condition": "equals",
+      "if": "{{check-enemy-defeated.enemyDefeated}}",
+      "value": "true"
+    },
+    {
+      "id": "edge-10",
+      "startNodeId": "enemy-turn",
+      "endNodeId": "check-player-defeated"
+    },
+    {
+      "id": "edge-11",
+      "startNodeId": "check-player-defeated",
+      "endNodeId": "display-round-results",
+      "condition": "equals",
+      "if": "{{check-player-defeated.playerDefeated}}",
+      "value": "false"
+    },
+    {
+      "id": "edge-12",
+      "startNodeId": "check-player-defeated",
+      "endNodeId": "ai-game-conclusion",
+      "condition": "equals",
+      "if": "{{check-player-defeated.playerDefeated}}",
+      "value": "true"
+    },
+    {
+      "id": "edge-13",
+      "startNodeId": "display-round-results",
+      "endNodeId": "player-turn",
+      "condition": "less_than",
+      "if": "{{display-round-results.round}}",
+      "value": "5"
+    },
+    {
+      "id": "edge-14",
+      "startNodeId": "display-round-results",
+      "endNodeId": "ai-game-conclusion",
+      "condition": "greater_than_or_equal",
+      "if": "{{display-round-results.round}}",
+      "value": "5"
+    },
+    {
+      "id": "edge-15",
+      "startNodeId": "ai-game-conclusion",
+      "endNodeId": "game-over"
+    }
+  ]
+}

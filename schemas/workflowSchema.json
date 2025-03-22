@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AGNT Workflow Definition Schema",
+  "description": "JSON Schema for defining workflows in the AGNT ecosystem",
+  "type": "object",
+  "required": ["id", "name", "nodes", "edges"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "category", "parameters", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "type": { "type": "string", "description": "Format lowercase kebob case: 'tool-type-name'" },
+          "category": { "type": "string" },
+          "parameters": { "type": "object" }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startNodeId", "endNodeId"],
+        "properties": {
+          "id": { "type": "string" },
+          "startNodeId": { "type": "string" },
+          "endNodeId": { "type": "string" },
+          "condition": { "type": "string" },
+          "if": { "type": "string" },
+          "value": { "type": "string" }
+        }
+      }
+    }
+  }
+}

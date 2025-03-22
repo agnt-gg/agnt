@@ -1,0 +1,167 @@
+{
+  "id": "multi-tool-demo-workflow",
+  "name": "Multi-Tool Demo Workflow",
+  "nodes": [
+    {
+      "id": "start-node",
+      "type": "manual-trigger",
+      "category": "trigger",
+      "parameters": {},
+      "text": "Start Workflow"
+    },
+    {
+      "id": "random-generator",
+      "type": "random-number",
+      "category": "utility",
+      "parameters": {
+        "min": "1",
+        "max": "100"
+      },
+      "text": "Generate Random Number"
+    },
+    {
+      "id": "ai-story",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "Write a very short story about a character who rolled a {{random-generator.randomNumber}} on a 100-sided die.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a creative storyteller who specializes in very short, engaging stories.",
+        "temperature": "0.8",
+        "maxTokens": "300"
+      },
+      "text": "Generate Story"
+    },
+    {
+      "id": "ai-poem",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "Write a short poem about the number {{random-generator.randomNumber}} and its significance.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a poet who can find meaning and beauty in numbers.",
+        "temperature": "0.7",
+        "maxTokens": "200"
+      },
+      "text": "Generate Poem"
+    },
+    {
+      "id": "ai-fact",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "Share an interesting mathematical or scientific fact about the number {{random-generator.randomNumber}}.",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a knowledgeable expert who shares fascinating facts about numbers.",
+        "temperature": "0.5",
+        "maxTokens": "150"
+      },
+      "text": "Generate Fact"
+    },
+    {
+      "id": "process-story",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst wordCount = text.split(/\\s+/).length;\nconst randomNumber = inputData.context['random-generator'].randomNumber;\nreturn {\n  processedText: text,\n  wordCount: wordCount,\n  contentType: 'story',\n  summary: `A ${wordCount}-word story about rolling ${randomNumber}`\n};"
+      },
+      "text": "Process Story"
+    },
+    {
+      "id": "process-poem",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst lineCount = text.split('\\n').filter(line => line.trim()).length;\nconst randomNumber = inputData.context['random-generator'].randomNumber;\nreturn {\n  processedText: text,\n  lineCount: lineCount,\n  contentType: 'poem',\n  summary: `A ${lineCount}-line poem about the number ${randomNumber}`\n};"
+      },
+      "text": "Process Poem"
+    },
+    {
+      "id": "process-fact",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const text = inputData.generatedText;\nconst randomNumber = inputData.context['random-generator'].randomNumber;\nreturn {\n  processedText: text,\n  contentType: 'fact',\n  summary: `A fascinating fact about the number ${randomNumber}`\n};"
+      },
+      "text": "Process Fact"
+    },
+    {
+      "id": "final-output",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "console.log('\\n===== GENERATED CONTENT =====');\nconsole.log(`Content Type: ${inputData.contentType}`);\nconsole.log(`Summary: ${inputData.summary}`);\nconsole.log('\\n' + inputData.processedText);\n\nreturn {\n  completed: true,\n  finalSummary: inputData.summary,\n  contentType: inputData.contentType\n};"
+      },
+      "text": "Display Final Output"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "startNodeId": "start-node",
+      "endNodeId": "random-generator"
+    },
+    {
+      "id": "edge-2",
+      "startNodeId": "random-generator",
+      "endNodeId": "ai-story",
+      "condition": "less_than_or_equal",
+      "if": "{{random-generator.randomNumber}}",
+      "value": "33"
+    },
+    {
+      "id": "edge-3",
+      "startNodeId": "random-generator",
+      "endNodeId": "ai-poem",
+      "condition": "greater_than",
+      "if": "{{random-generator.randomNumber}}",
+      "value": "33"
+    },
+    {
+      "id": "edge-4",
+      "startNodeId": "random-generator",
+      "endNodeId": "ai-poem",
+      "condition": "less_than_or_equal",
+      "if": "{{random-generator.randomNumber}}",
+      "value": "66"
+    },
+    {
+      "id": "edge-5",
+      "startNodeId": "random-generator",
+      "endNodeId": "ai-fact",
+      "condition": "greater_than",
+      "if": "{{random-generator.randomNumber}}",
+      "value": "66"
+    },
+    {
+      "id": "edge-6",
+      "startNodeId": "ai-story",
+      "endNodeId": "process-story"
+    },
+    {
+      "id": "edge-7",
+      "startNodeId": "ai-poem",
+      "endNodeId": "process-poem"
+    },
+    {
+      "id": "edge-8",
+      "startNodeId": "ai-fact",
+      "endNodeId": "process-fact"
+    },
+    {
+      "id": "edge-9",
+      "startNodeId": "process-story",
+      "endNodeId": "final-output"
+    },
+    {
+      "id": "edge-10",
+      "startNodeId": "process-poem",
+      "endNodeId": "final-output"
+    },
+    {
+      "id": "edge-11",
+      "startNodeId": "process-fact",
+      "endNodeId": "final-output"
+    }
+  ]
+}

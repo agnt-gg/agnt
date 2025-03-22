@@ -1,0 +1,153 @@
+{
+  "id": "multi-stage-reminder-workflow",
+  "name": "Multi-Stage Reminder Workflow",
+  "description": "A workflow that demonstrates both delay and scheduled timer triggers with actual waiting functionality",
+  "nodes": [
+    {
+      "id": "start-node",
+      "type": "manual-trigger",
+      "category": "trigger",
+      "parameters": {},
+      "text": "Start Workflow"
+    },
+    {
+      "id": "setup-task",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Set up task details for the reminder system\nconst now = new Date();\n\nreturn {\n  task: {\n    id: 'task-' + Math.floor(Math.random() * 10000),\n    title: 'Complete Project Documentation',\n    description: 'Finish writing the documentation for the new feature',\n    priority: 'high',\n    dueDate: '2023-12-31T12:00:00Z',\n    assignee: 'user@example.com'\n  },\n  reminderStages: [\n    {\n      stage: 1,\n      delaySeconds: 5,\n      message: 'First gentle reminder'\n    },\n    {\n      stage: 2,\n      delaySeconds: 10,\n      message: 'Second reminder - getting important!'\n    },\n    {\n      stage: 3,\n      scheduledTime: '2023-12-31T12:00:00Z',\n      message: 'Final reminder - deadline approaching!'\n    }\n  ],\n  currentStage: 1\n};"
+      },
+      "text": "Setup Task and Reminder Stages"
+    },
+    {
+      "id": "first-reminder-delay",
+      "type": "timer-trigger",
+      "category": "trigger",
+      "parameters": {
+        "triggerType": "delay",
+        "delaySeconds": "5",
+        "accelerateTime": "true"
+      },
+      "text": "Wait for first reminder (5 seconds)"
+    },
+    {
+      "id": "send-first-reminder",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Get task details\nconst taskDetails = inputData.context['setup-task'].task;\nconst reminderStage = inputData.context['setup-task'].reminderStages[0];\nconst timerInfo = inputData.context['first-reminder-delay'];\n\n// In a real implementation, this would send an actual notification\nconsole.log('\\n===== SENDING FIRST REMINDER =====');\nconsole.log(`Stage: ${reminderStage.stage} - ${reminderStage.message}`);\nconsole.log(`Task: ${taskDetails.title}`);\nconsole.log(`Priority: ${taskDetails.priority}`);\nconsole.log(`Assignee: ${taskDetails.assignee}`);\nconsole.log(`Due Date: ${new Date(taskDetails.dueDate).toLocaleString()}`);\nconsole.log('\\nTimer Information:');\nconsole.log(`Scheduled Time: ${new Date(timerInfo.scheduledTime).toLocaleString()}`);\nconsole.log(`Completed Time: ${new Date(timerInfo.completedTimestamp).toLocaleString()}`);\nconsole.log(`Wait Duration: ${timerInfo.message}`);\n\nreturn {\n  reminderSent: true,\n  stage: reminderStage.stage,\n  message: reminderStage.message,\n  sentAt: new Date().toISOString(),\n  nextStage: reminderStage.stage + 1\n};"
+      },
+      "text": "Send First Reminder"
+    },
+    {
+      "id": "second-reminder-delay",
+      "type": "timer-trigger",
+      "category": "trigger",
+      "parameters": {
+        "triggerType": "delay",
+        "delaySeconds": "10",
+        "accelerateTime": "true"
+      },
+      "text": "Wait for second reminder (10 seconds)"
+    },
+    {
+      "id": "send-second-reminder",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Get task details\nconst taskDetails = inputData.context['setup-task'].task;\nconst reminderStage = inputData.context['setup-task'].reminderStages[1];\nconst timerInfo = inputData.context['second-reminder-delay'];\n\n// In a real implementation, this would send an actual notification\nconsole.log('\\n===== SENDING SECOND REMINDER =====');\nconsole.log(`Stage: ${reminderStage.stage} - ${reminderStage.message}`);\nconsole.log(`Task: ${taskDetails.title}`);\nconsole.log(`Priority: ${taskDetails.priority}`);\nconsole.log(`Assignee: ${taskDetails.assignee}`);\nconsole.log(`Due Date: ${new Date(taskDetails.dueDate).toLocaleString()}`);\nconsole.log('\\nTimer Information:');\nconsole.log(`Scheduled Time: ${new Date(timerInfo.scheduledTime).toLocaleString()}`);\nconsole.log(`Completed Time: ${new Date(timerInfo.completedTimestamp).toLocaleString()}`);\nconsole.log(`Wait Duration: ${timerInfo.message}`);\n\nreturn {\n  reminderSent: true,\n  stage: reminderStage.stage,\n  message: reminderStage.message,\n  sentAt: new Date().toISOString(),\n  nextStage: reminderStage.stage + 1\n};"
+      },
+      "text": "Send Second Reminder"
+    },
+    {
+      "id": "final-reminder-scheduled",
+      "type": "timer-trigger",
+      "category": "trigger",
+      "parameters": {
+        "triggerType": "scheduled",
+        "scheduledTime": "2023-12-31T12:00:00Z",
+        "accelerateTime": "true",
+        "allowPastTriggers": "true"
+      },
+      "text": "Wait until scheduled time for final reminder"
+    },
+    {
+      "id": "generate-final-reminder",
+      "type": "openai-llm",
+      "category": "ai",
+      "parameters": {
+        "prompt": "Create an urgent final reminder message for the following task:\n\nTask Title: {{setup-task.task.title}}\nDescription: {{setup-task.task.description}}\nPriority: {{setup-task.task.priority}}\nDue Date: {{setup-task.task.dueDate}}\nAssignee: {{setup-task.task.assignee}}\n\nThis is the final reminder (Stage {{setup-task.reminderStages[2].stage}}) with message: {{setup-task.reminderStages[2].message}}\n\nScheduled Time: {{final-reminder-scheduled.scheduledTime}}\nActual Completion Time: {{final-reminder-scheduled.completedTimestamp}}\nWait Duration: {{final-reminder-scheduled.message}}\n\nPlease create an urgent but professional reminder that emphasizes the approaching deadline. The tone should be firm but not rude.\n\nFormat your response as a JSON object with the following structure:\n{\n  \"subject\": \"Email subject line\",\n  \"greeting\": \"Email greeting\",\n  \"urgencyIndicator\": \"A short phrase indicating urgency\",\n  \"body\": \"Main reminder content\",\n  \"consequences\": \"Brief mention of what happens if deadline is missed\",\n  \"assistance\": \"Offer of help if needed\",\n  \"signoff\": \"Email sign-off\"\n}",
+        "model": "gpt-3.5-turbo",
+        "systemPrompt": "You are a task management assistant that creates urgent but professional reminders. Your responses should be concise, clear, and motivating without being rude or threatening.",
+        "temperature": "0.7",
+        "maxTokens": "350"
+      },
+      "text": "Generate Final Reminder Content"
+    },
+    {
+      "id": "send-final-reminder",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Get task details\nconst taskDetails = inputData.context['setup-task'].task;\nconst reminderStage = inputData.context['setup-task'].reminderStages[2];\nconst timerInfo = inputData.context['final-reminder-scheduled'];\n\n// Parse AI-generated content\nlet content = { \n  subject: 'URGENT: Task Deadline Approaching', \n  body: 'Your task deadline is approaching very soon.'\n};\ntry {\n  if (inputData.generatedText) {\n    content = JSON.parse(inputData.generatedText);\n  }\n} catch (error) {\n  console.error('Error parsing reminder content:', error);\n}\n\n// In a real implementation, this would send an actual notification\nconsole.log('\\n===== SENDING FINAL REMINDER =====');\nconsole.log(`Subject: ${content.subject}`);\nconsole.log(`Greeting: ${content.greeting}`);\nconsole.log(`Urgency: ${content.urgencyIndicator}`);\nconsole.log('\\n' + content.body);\nconsole.log('\\nConsequences: ' + content.consequences);\nconsole.log('Assistance: ' + content.assistance);\nconsole.log('\\n' + content.signoff);\nconsole.log('\\nTask Details:');\nconsole.log(`Task: ${taskDetails.title}`);\nconsole.log(`Priority: ${taskDetails.priority}`);\nconsole.log(`Due Date: ${new Date(taskDetails.dueDate).toLocaleString()}`);\nconsole.log('\\nTimer Information:');\nconsole.log(`Scheduled Time: ${new Date(timerInfo.scheduledTime).toLocaleString()}`);\nconsole.log(`Completed Time: ${new Date(timerInfo.completedTimestamp).toLocaleString()}`);\nconsole.log(`Wait Duration: ${timerInfo.message}`);\n\nreturn {\n  reminderSent: true,\n  stage: reminderStage.stage,\n  message: reminderStage.message,\n  sentAt: new Date().toISOString(),\n  isComplete: true,\n  allStagesCompleted: true\n};"
+      },
+      "text": "Send Final Reminder"
+    },
+    {
+      "id": "workflow-summary",
+      "type": "execute-javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Get all reminder information\nconst taskDetails = inputData.context['setup-task'].task;\nconst firstReminder = inputData.context['send-first-reminder'];\nconst secondReminder = inputData.context['send-second-reminder'];\nconst finalReminder = inputData.context['send-final-reminder'];\n\n// Calculate total workflow duration\nconst startTime = new Date(firstReminder.sentAt);\nstartTime.setSeconds(startTime.getSeconds() - 5); // Approximate start time by subtracting first delay\nconst endTime = new Date(finalReminder.sentAt);\nconst totalDurationMs = endTime.getTime() - startTime.getTime();\nconst totalDurationSec = Math.round(totalDurationMs / 1000);\n\n// In a real implementation, this might log to a database or analytics system\nconsole.log('\\n===== WORKFLOW SUMMARY =====');\nconsole.log(`Task: ${taskDetails.title}`);\nconsole.log(`Total Reminders Sent: 3`);\nconsole.log(`First Reminder Sent: ${new Date(firstReminder.sentAt).toLocaleString()}`);\nconsole.log(`Second Reminder Sent: ${new Date(secondReminder.sentAt).toLocaleString()}`);\nconsole.log(`Final Reminder Sent: ${new Date(finalReminder.sentAt).toLocaleString()}`);\nconsole.log(`Total Workflow Duration: ${totalDurationSec} seconds`);\nconsole.log('\\nWorkflow completed successfully!');\n\nreturn {\n  workflowCompleted: true,\n  taskId: taskDetails.id,\n  remindersSent: 3,\n  startTime: startTime.toISOString(),\n  endTime: endTime.toISOString(),\n  totalDurationMs: totalDurationMs,\n  totalDurationSec: totalDurationSec\n};"
+      },
+      "text": "Generate Workflow Summary"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "startNodeId": "start-node",
+      "endNodeId": "setup-task"
+    },
+    {
+      "id": "edge-2",
+      "startNodeId": "setup-task",
+      "endNodeId": "first-reminder-delay"
+    },
+    {
+      "id": "edge-3",
+      "startNodeId": "first-reminder-delay",
+      "endNodeId": "send-first-reminder"
+    },
+    {
+      "id": "edge-4",
+      "startNodeId": "send-first-reminder",
+      "endNodeId": "second-reminder-delay"
+    },
+    {
+      "id": "edge-5",
+      "startNodeId": "second-reminder-delay",
+      "endNodeId": "send-second-reminder"
+    },
+    {
+      "id": "edge-6",
+      "startNodeId": "send-second-reminder",
+      "endNodeId": "final-reminder-scheduled"
+    },
+    {
+      "id": "edge-7",
+      "startNodeId": "final-reminder-scheduled",
+      "endNodeId": "generate-final-reminder"
+    },
+    {
+      "id": "edge-8",
+      "startNodeId": "generate-final-reminder",
+      "endNodeId": "send-final-reminder"
+    },
+    {
+      "id": "edge-9",
+      "startNodeId": "send-final-reminder",
+      "endNodeId": "workflow-summary"
+    }
+  ]
+} 
