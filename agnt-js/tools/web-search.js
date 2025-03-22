@@ -60,11 +60,31 @@ export async function execute(params) {
           results: searchResults,
           message: `Found ${searchResults.length} results for "${searchQuery}"`
         };
+      
+      case 'fetch':
+        if (!url) {
+          return { success: false, error: "URL is required for 'fetch' action" };
+        }
+        
+        // Validate URL format
+        const validatedFetchUrl = validateAndFormatUrl(url);
+        
+        // Fetch the content
+        const pageContent = await fetchWebContent(validatedFetchUrl);
+        
+        return {
+          success: true,
+          action: 'fetch',
+          url: validatedFetchUrl,
+          title: pageContent.title,
+          content: pageContent.summary,
+          message: `Retrieved content from ${validatedFetchUrl}`
+        };
         
       default:
         return { 
           success: false, 
-          error: `Unknown action: ${action}. Supported actions are: open, search` 
+          error: `Unknown action: ${action}. Supported actions are: open, search, fetch` 
         };
     }
   } catch (error) {
@@ -165,7 +185,7 @@ async function fetchWebContent(url) {
     });
     
     // Truncate content to a reasonable size
-    const summary = content.substring(0, 1000) + (content.length > 1000 ? '...' : '');
+    const summary = content.substring(0, 10000) + (content.length > 10000 ? '...' : '');
     
     return {
       title,

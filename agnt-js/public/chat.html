@@ -9,6 +9,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
     <style>
       .chat-container {
         height: 400px;
@@ -70,6 +71,16 @@
         const chatHistory = document.getElementById("chat-history");
         const toolsList = document.getElementById("tools-list");
         const executedTools = document.getElementById("executed-tools");
+        
+        // Initialize Showdown markdown converter
+        const markdownConverter = new showdown.Converter({
+          tables: true,
+          tasklists: true,
+          strikethrough: true,
+          emoji: true,
+          simpleLineBreaks: true,
+          openLinksInNewWindow: true
+        });
         
         // Store conversation history for OpenAI
         let conversationHistory = [];
@@ -301,7 +312,13 @@
           const messageDiv = document.createElement("div");
           messageDiv.className =
             type === "user" ? "user-message" : "system-message";
-          messageDiv.textContent = content;
+          
+          // Convert markdown to HTML for system messages
+          if (type === "system") {
+            messageDiv.innerHTML = markdownConverter.makeHtml(content);
+          } else {
+            messageDiv.textContent = content;
+          }
 
           chatHistory.appendChild(messageDiv);
           chatHistory.scrollTop = chatHistory.scrollHeight;
@@ -326,10 +343,20 @@
             } else if (typeof value === 'object') {
               resultDisplay = `<pre>${JSON.stringify(value, null, 2)}</pre>`;
             } else {
-              resultDisplay = `<strong>${value}</strong>`;
+              // Apply markdown conversion if it's a string
+              if (typeof value === 'string') {
+                resultDisplay = `<div>${markdownConverter.makeHtml(value)}</div>`;
+              } else {
+                resultDisplay = `<strong>${value}</strong>`;
+              }
             }
           } else {
-            resultDisplay = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+            // Apply markdown conversion if it's a string
+            if (typeof result === 'string') {
+              resultDisplay = markdownConverter.makeHtml(result);
+            } else {
+              resultDisplay = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+            }
           }
           
           toolDiv.innerHTML = `<div class="tool-header">${toolName}</div><div class="tool-result">${resultDisplay}</div>`;
@@ -445,6 +472,16 @@
                 <li><code>/run Web Search action=open url="developer.mozilla.org"</code></li>
               </ul>
               <p class="text-muted small">Use exact tool names as shown in the tools list.</p>
+              <hr>
+              <h6>Markdown Support</h6>
+              <p class="text-muted small">System messages support Markdown formatting including:</p>
+              <ul class="text-muted small">
+                <li>**Bold** and *italic* text</li>
+                <li>- Bullet lists and 1. Numbered lists</li>
+                <li>[Links](https://example.com)</li>
+                <li>Code blocks with ```language``` syntax</li>
+                <li>And more Markdown features</li>
+              </ul>
             </div>
           </div>
         </div>
