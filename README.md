@@ -45,7 +45,7 @@ Both implementations share the same core concepts, workflow structure, and orche
 ## 3. CORE COMPONENTS
 
 - **AGNT (Agentic Graph Network Technology):** Manages workflow execution
-- **FIRE (Functional Instruction Runtime Engine):** Executes individual nodes
+- **FIRE (Fluid Instruction Runtime Engine):** Executes individual nodes
 - **PLUG (Parameter Lookup Utility Gateway):** Resolves parameters
 - **VIBE (Visual Inference Behavior Evaluator):** Evaluates conditions
 - **SPRK (Spontaneous Process & Route Kinetics):** Generates tools and workflows.
