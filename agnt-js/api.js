@@ -478,9 +478,12 @@ router.post('/chat', async (req, res) => {
     
     // Get available tools for OpenAI
     const availableTools = await getAvailableTools();
+    console.log(`[DEBUG] Got ${availableTools.length} available tools for function calling`);
     
-    // Dynamically generate tool documentation by reading and analyzing all tool files
-    const toolDocumentation = await generateToolDocumentation();
+    // Generate tool documentation from the same schema used for function calling
+    const toolDocumentation = generateToolDocumentationFromSchema(availableTools);
+    console.log(`[DEBUG] Generated tool documentation (${toolDocumentation.length} characters):`);
+    console.log(toolDocumentation);
     
     // Format conversation history for OpenAI
     const formattedHistory = conversationHistory.map(msg => ({
@@ -495,12 +498,16 @@ router.post('/chat', async (req, res) => {
     });
     
     // Call OpenAI API with tools and dynamic system message
+    const systemMessage = `You are a helpful assistant that can use tools to answer user questions. ${toolDocumentation}`;
+    console.log(`[DEBUG] System message length: ${systemMessage.length} characters`);
+    console.log(`[DEBUG] System message first 200 chars: ${systemMessage.substring(0, 200)}...`);
+    
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: `You are a helpful assistant that can use tools to answer user questions. ${toolDocumentation}`
+          content: systemMessage
         },
         ...formattedHistory
       ],
@@ -512,6 +519,8 @@ router.post('/chat', async (req, res) => {
     
     // Check if the model wants to use a tool
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+      console.log(`[DEBUG] Model decided to use tool: ${responseMessage.tool_calls[0].function.name}`);
+      
       const toolCall = responseMessage.tool_calls[0];
       const toolName = toolCall.function.name;
       let toolParams = {};
@@ -533,13 +542,14 @@ router.post('/chat', async (req, res) => {
       // Execute the tool with the parsed parameters
       const toolResult = await executeToolByName(toolName, toolParams);
       
-      // Get a response that includes the tool result
+      // Get a response that includes the tool result - USE THE SAME SYSTEM MESSAGE WITH DOCUMENTATION
+      console.log(`[DEBUG] Making final API call with tool results for ${toolName}`);
       const finalResponse = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that can use tools to answer user questions. When reporting results, always explicitly mention the specific values returned by the tool."
+            content: systemMessage // Use the same system message with full documentation
           },
           ...formattedHistory,
           responseMessage,
@@ -581,181 +591,53 @@ router.post('/chat', async (req, res) => {
 });
 
 /**
- * Dynamically generates comprehensive documentation for all available tools
+ * Generates tool documentation from the same schema used for function calling
+ * This ensures consistency between the schema and documentation
  */
-async function generateToolDocumentation() {
+function generateToolDocumentationFromSchema(availableTools) {
   try {
-    const toolsDir = path.join(__dirname, 'tools');
-    const files = await fs.readdir(toolsDir);
+    console.log(`[DEBUG] Starting to generate documentation from ${availableTools.length} tools`);
     
-    // Only process JS files
-    const toolFiles = files.filter(file => file.endsWith('.js'));
-    
-    // Process each tool file
-    const toolsInfo = await Promise.all(toolFiles.map(async (file) => {
-      const toolName = file.replace('.js', '');
-      const toolPath = path.join(toolsDir, file);
-      
-      try {
-        // Read and analyze the source code
-        const sourceCode = await fs.readFile(toolPath, 'utf-8');
-        
-        // Extract parameter information by analyzing the code
-        return analyzeToolSource(sourceCode, toolName);
-      } catch (err) {
-        console.warn(`Could not analyze tool ${toolName}:`, err);
-        return {
-          name: toolName,
-          description: `Error analyzing ${toolName}`,
-          parameters: []
-        };
-      }
-    }));
-    
-    // Convert tool info into a concise documentation string
     let documentation = "When using tools, please pay attention to each tool's required parameters:\n\n";
     
     // Add documentation for each tool
-    toolsInfo.forEach(tool => {
-      const formattedName = tool.name.split('-').map(word => 
+    availableTools.forEach((tool, index) => {
+      console.log(`[DEBUG] Processing tool #${index}: ${tool.function.name}`);
+      
+      const formattedName = tool.function.name.split('-').map(word => 
         word.charAt(0).toUpperCase() + word.slice(1)
       ).join(' ');
       
-      documentation += `- ${formattedName}: ${tool.description}\n`;
+      documentation += `- ${formattedName}: ${tool.function.description}\n`;
       
-      if (tool.parameters.length > 0) {
-        documentation += `  Required parameters: ${tool.parameters.join(', ')}\n`;
+      // List required parameters
+      if (tool.function.parameters?.required?.length > 0) {
+        console.log(`[DEBUG] Tool has ${tool.function.parameters.required.length} required parameters`);
+        documentation += `  Required parameters: ${tool.function.parameters.required.join(', ')}\n`;
+      } else {
+        console.log(`[DEBUG] Tool has no required parameters`);
       }
       
-      if (tool.conditionalParams.length > 0) {
-        documentation += `  Conditional parameters: ${tool.conditionalParams.join(', ')}\n`;
+      // Add parameter descriptions
+      const properties = tool.function.parameters?.properties || {};
+      if (Object.keys(properties).length > 0) {
+        console.log(`[DEBUG] Tool has ${Object.keys(properties).length} parameter properties`);
+        documentation += `  Parameters:\n`;
+        for (const [paramName, paramInfo] of Object.entries(properties)) {
+          documentation += `    - ${paramName}: ${paramInfo.description || 'No description'} (${paramInfo.type})\n`;
+        }
+      } else {
+        console.log(`[DEBUG] Tool has no parameter properties`);
       }
     });
     
+    console.log(`[DEBUG] Final documentation length: ${documentation.length} characters`);
     return documentation;
   } catch (error) {
-    console.error('Error generating tool documentation:', error);
-    return "";
+    console.error('Error generating tool documentation from schema:', error);
+    console.error(error.stack); // Log the full stack trace
+    return "Error generating tool documentation. Please check the logs.";
   }
-}
-
-/**
- * Analyzes tool source code to extract information without any hardcoding
- */
-function analyzeToolSource(sourceCode, toolName) {
-  // Extract the description from JSDoc comments
-  const docCommentMatch = sourceCode.match(/\/\*\*([\s\S]*?)\*\//);
-  let description = `${toolName} tool`;
-  if (docCommentMatch) {
-    description = docCommentMatch[1]
-      .replace(/\n\s*\*/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-  
-  // Find parameter usage patterns
-  const requiredParams = [];
-  const conditionalParams = [];
-  const paramMap = {};
-  
-  // Extract parameter destructuring
-  const destructuringMatch = sourceCode.match(/const\s+{([^}]+)}\s*=\s*params/);
-  if (destructuringMatch) {
-    destructuringMatch[1].split(',').forEach(p => {
-      // Clean up parameter definition
-      const paramParts = p.trim().split('=');
-      const paramName = paramParts[0].trim();
-      const hasDefault = paramParts.length > 1;
-      
-      paramMap[paramName] = { hasDefault };
-      
-      // Parameters without defaults are potentially required
-      if (!hasDefault) {
-        requiredParams.push(paramName);
-      }
-    });
-  }
-  
-  // Find explicit parameter checks
-  const requiredChecks = sourceCode.match(/if\s*\(\s*!\s*params\.([a-zA-Z0-9_]+)\s*\)/g);
-  if (requiredChecks) {
-    requiredChecks.forEach(match => {
-      const param = match.match(/params\.([a-zA-Z0-9_]+)/)[1];
-      if (!requiredParams.includes(param)) {
-        requiredParams.push(param);
-      }
-    });
-  }
-  
-  // Find error messages mentioning required parameters
-  const errorMatches = sourceCode.match(/error:\s*["']([^"']*(?:required|missing)[^"']*)["']/gi);
-  if (errorMatches) {
-    errorMatches.forEach(match => {
-      // Extract parameter names from error messages
-      const paramMatch = match.match(/["']([^"']*(?:required|missing)[^"']*)["']/i);
-      if (paramMatch) {
-        const errorMsg = paramMatch[1].toLowerCase();
-        
-        // Try to extract parameter names from the error message
-        const paramNameMatch = errorMsg.match(/(\w+)(?:\s+is|\s+parameter is|\s+are)\s+required/i);
-        if (paramNameMatch && !requiredParams.includes(paramNameMatch[1])) {
-          requiredParams.push(paramNameMatch[1]);
-        }
-      }
-    });
-  }
-  
-  // Find switch statements for conditional parameters
-  const switchMatches = sourceCode.match(/switch\s*\(\s*([^)]+)\s*\)[^{]*{([^]*?)}/g);
-  if (switchMatches) {
-    switchMatches.forEach(switchBlock => {
-      const switchVarMatch = switchBlock.match(/switch\s*\(\s*([^)]+)\s*\)/);
-      if (switchVarMatch) {
-        const switchVar = switchVarMatch[1].trim();
-        
-        // If switching on a parameter
-        if (switchVar === 'action' || switchVar.includes('params.')) {
-          const paramName = switchVar.includes('params.') ? 
-                            switchVar.replace('params.', '') : switchVar;
-          
-          // Find all case statements
-          const caseMatches = switchBlock.match(/case\s+['"]([^'"]+)['"]/g);
-          if (caseMatches && caseMatches.length > 0) {
-            const caseValues = caseMatches.map(c => 
-              c.match(/case\s+['"]([^'"]+)['"]/)[1]);
-            
-            conditionalParams.push(`${paramName} (values: ${caseValues.join(', ')})`);
-            
-            // Analyze each case block for conditional parameter requirements
-            caseValues.forEach(caseValue => {
-              const caseMatch = switchBlock.match(
-                new RegExp(`case\\s+['"]${caseValue}['"]:[^]*?(?=case\\s+['"]|$)`, 's')
-              );
-              
-              if (caseMatch) {
-                const caseBlock = caseMatch[0];
-                const caseRequiredChecks = caseBlock.match(/if\s*\(\s*!\s*params\.([a-zA-Z0-9_]+)\s*\)/g);
-                
-                if (caseRequiredChecks) {
-                  caseRequiredChecks.forEach(check => {
-                    const param = check.match(/params\.([a-zA-Z0-9_]+)/)[1];
-                    conditionalParams.push(`${param} (when ${paramName}=${caseValue})`);
-                  });
-                }
-              }
-            });
-          }
-        }
-      }
-    });
-  }
-  
-  return {
-    name: toolName,
-    description,
-    parameters: requiredParams,
-    conditionalParams
-  };
 }
 
 // Run a specific tool (from manual /run command)

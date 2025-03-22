@@ -1,5 +1,5 @@
 {
-  "description": "Web Search Tool that performs web searches and returns results and opens a browser. It can also open URLs in the Brave browser or fetch and summarize web content.",
+  "description": "Web Search Tool that performs web searches and returns results and opens a browser. It can also open URLs in the Brave browser or fetch and summarize web content. If the user asks for a specific URL, use the 'fetch' action. If the user asks for information about a specific webpage, use the 'fetch' action. If the user asks for general information, use the 'search' action. If the user asks to open a URL or link, use the 'open' action.",
   "properties": {
     "action": {
       "type": "string",
