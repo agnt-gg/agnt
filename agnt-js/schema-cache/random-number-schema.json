@@ -3,11 +3,11 @@
   "properties": {
     "min": {
       "type": "integer",
-      "description": "The minimum value of the range (inclusive). Defaults to 1 if not provided."
+      "description": "The minimum value of the range. Defaults to 1 if not provided."
     },
     "max": {
       "type": "integer",
-      "description": "The maximum value of the range (inclusive). Defaults to 100 if not provided."
+      "description": "The maximum value of the range. Defaults to 100 if not provided."
     }
   },
   "required": []

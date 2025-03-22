@@ -1,5 +1,5 @@
 {
-  "description": "A tool that generates silly names by combining random adjectives and nouns.",
+  "description": "A tool that generates silly names by combining random adjectives and nouns. It can generate a single name or multiple names based on the input parameter.",
   "properties": {
     "numNames": {
       "type": "integer",

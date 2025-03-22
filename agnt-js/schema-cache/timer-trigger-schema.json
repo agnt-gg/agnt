@@ -3,35 +3,35 @@
   "properties": {
     "triggerType": {
       "type": "string",
-      "description": "Type of trigger, either 'delay' or 'scheduled'. This parameter is required."
+      "description": "Specifies the type of trigger: 'delay' or 'scheduled'."
     },
     "delaySeconds": {
       "type": "integer",
-      "description": "Delay in seconds for the delay trigger. Optional, but at least one delay parameter is required if triggerType is 'delay'."
+      "description": "Number of seconds to delay the trigger (only for 'delay' triggerType)."
     },
     "delayMinutes": {
       "type": "integer",
-      "description": "Delay in minutes for the delay trigger. Optional, but at least one delay parameter is required if triggerType is 'delay'."
+      "description": "Number of minutes to delay the trigger (only for 'delay' triggerType)."
     },
     "delayHours": {
       "type": "integer",
-      "description": "Delay in hours for the delay trigger. Optional, but at least one delay parameter is required if triggerType is 'delay'."
+      "description": "Number of hours to delay the trigger (only for 'delay' triggerType)."
     },
     "scheduledTime": {
       "type": "string",
-      "description": "Scheduled time for the scheduled trigger, must be in ISO string format or timestamp. Required if triggerType is 'scheduled'."
+      "description": "The scheduled time to trigger the workflow, in ISO string or timestamp format (only for 'scheduled' triggerType)."
     },
     "allowPastTriggers": {
       "type": "string",
-      "description": "Indicates if past triggers are allowed. Optional, defaults to 'false'."
+      "description": "If 'true', allows the trigger to fire immediately if the scheduled time is in the past."
     },
     "simulateOnly": {
       "type": "string",
-      "description": "If set to 'true', simulates the trigger without waiting. Optional, defaults to 'false'."
+      "description": "If 'true', simulates the trigger without actual delay."
     },
     "accelerateTime": {
       "type": "string",
-      "description": "If set to 'true', accelerates the time for testing purposes. Optional, defaults to 'false'."
+      "description": "If 'true', accelerates time by using 1 second to represent 1 minute for demonstration purposes."
     }
   },
   "required": [
