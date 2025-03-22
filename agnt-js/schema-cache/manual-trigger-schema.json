@@ -1,0 +1,17 @@
+{
+  "description": "This tool triggers an action and returns a timestamp indicating when the action was triggered.",
+  "properties": {
+    "params": {
+      "type": "object",
+      "description": "An object containing parameters for the execution."
+    },
+    "inputData": {
+      "type": "object",
+      "description": "An object containing input data for the execution."
+    }
+  },
+  "required": [
+    "params",
+    "inputData"
+  ]
+}

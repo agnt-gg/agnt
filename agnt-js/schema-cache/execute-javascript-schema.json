@@ -1,0 +1,21 @@
+{
+  "description": "This tool executes JavaScript code in a secure virtual machine environment, allowing for both synchronous and asynchronous code execution with access to specified input data and web APIs.",
+  "properties": {
+    "params": {
+      "type": "object",
+      "description": "An object containing parameters for execution, including the JavaScript code to run."
+    },
+    "params.code": {
+      "type": "string",
+      "description": "The JavaScript code to be executed."
+    },
+    "inputData": {
+      "type": "object",
+      "description": "An object containing input data that can be used within the executed JavaScript code."
+    }
+  },
+  "required": [
+    "params",
+    "inputData"
+  ]
+}

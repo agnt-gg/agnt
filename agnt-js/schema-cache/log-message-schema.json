@@ -1,0 +1,12 @@
+{
+  "description": "This tool logs a message to the console and returns an object indicating the logging status.",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "The message to be logged to the console."
+    }
+  },
+  "required": [
+    "message"
+  ]
+}

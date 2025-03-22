@@ -1,0 +1,24 @@
+{
+  "description": "Web Search Tool that performs web searches and returns results without opening a browser.",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "The action to perform. Supported actions are 'open' and 'search'. Defaults to 'search'."
+    },
+    "url": {
+      "type": "string",
+      "description": "The URL to open or fetch content from. Required for 'open' action."
+    },
+    "searchQuery": {
+      "type": "string",
+      "description": "The query string to search for. Required for 'search' action."
+    },
+    "resultsCount": {
+      "type": "integer",
+      "description": "The number of search results to return. Defaults to 5."
+    }
+  },
+  "required": [
+    "action"
+  ]
+}

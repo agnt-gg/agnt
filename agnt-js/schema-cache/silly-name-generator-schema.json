@@ -1,0 +1,10 @@
+{
+  "description": "A tool that generates silly names by combining random adjectives and nouns.",
+  "properties": {
+    "numNames": {
+      "type": "integer",
+      "description": "The number of silly names to generate. Defaults to 1 if not provided."
+    }
+  },
+  "required": []
+}
