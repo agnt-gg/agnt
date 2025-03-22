@@ -1,21 +1,14 @@
 {
-  "description": "This tool executes JavaScript code in a secure virtual machine environment, allowing for both synchronous and asynchronous code execution with access to specified input data and web APIs.",
+  "description": "A tool to execute JavaScript code within a secure virtual machine environment, with support for asynchronous operations and web API calls.",
   "properties": {
-    "params": {
-      "type": "object",
-      "description": "An object containing parameters for execution, including the JavaScript code to run."
-    },
-    "params.code": {
+    "code": {
       "type": "string",
-      "description": "The JavaScript code to be executed."
+      "description": "The JavaScript code to execute. It can include synchronous or asynchronous operations."
     },
     "inputData": {
       "type": "object",
-      "description": "An object containing input data that can be used within the executed JavaScript code."
+      "description": "An object containing data that will be available within the sandboxed environment during code execution."
     }
   },
-  "required": [
-    "params",
-    "inputData"
-  ]
+  "required": ["params", "inputData"]
 }

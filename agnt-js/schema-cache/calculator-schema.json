@@ -1,5 +1,5 @@
 {
-  "description": "A calculator tool that evaluates mathematical expressions provided as parameters.",
+  "description": "A calculator tool that evaluates mathematical expressions provided as strings.",
   "properties": {
     "expression": {
       "type": "string",

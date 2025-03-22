@@ -21,9 +21,6 @@ const openai = new OpenAI({
 // Define a directory for saving tool schemas
 const SCHEMA_CACHE_DIR = path.join(__dirname, 'schema-cache');
 
-// Define a directory for saving parameter corrections
-const PARAM_FIXES_CACHE_DIR = path.join(__dirname, 'param-fixes-cache');
-
 // Ensure the schema cache directory exists
 async function ensureSchemaCacheDir() {
   try {
@@ -33,20 +30,8 @@ async function ensureSchemaCacheDir() {
   }
 }
 
-// Ensure the parameter fixes cache directory exists
-async function ensureParamFixesCacheDir() {
-  try {
-    await fs.mkdir(PARAM_FIXES_CACHE_DIR, { recursive: true });
-  } catch (error) {
-    console.error('Error creating parameter fixes cache directory:', error);
-  }
-}
-
 // Initialize the schema directory on startup
 ensureSchemaCacheDir();
-
-// Initialize the parameter fixes directory on startup
-ensureParamFixesCacheDir();
 
 // Get all available tools
 router.get('/tools', async (req, res) => {
@@ -382,7 +367,7 @@ Return ONLY a JSON object with this structure:
 
     // Call OpenAI API to analyze the code
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         { role: "system", content: "You create precise JSON schemas following OpenAI Function Calling API requirements." },
         { role: "user", content: prompt }
@@ -463,161 +448,19 @@ async function executeToolByName(toolName, params) {
     // Check if tool exists
     await fs.access(toolPath);
     
-    // Read the source code
-    const sourceCode = await fs.readFile(toolPath, 'utf-8');
-    
-    // Use cached parameter fixes where possible
-    const fixedParams = await fixParametersWithCache(sourceCode, toolName, params);
-    
     // Log parameters before execution
-    console.log(`Executing tool ${toolName} with params:`, fixedParams);
+    console.log(`Executing tool ${toolName} with params:`, params);
     
     // Import and execute the tool
     const toolModule = await import(`file://${toolPath}`);
     
     // In case params is undefined, use an empty object
-    const safeParams = fixedParams || {};
+    const safeParams = params || {};
     
     return await toolModule.execute(safeParams);
   } catch (error) {
     console.error(`Error executing tool ${toolName}:`, error);
     return { error: error.message };
-  }
-}
-
-/**
- * Fix parameters using cached fixes where possible
- */
-async function fixParametersWithCache(sourceCode, toolName, params) {
-  // For performance reasons, only do this if we have parameters that might need fixing
-  if (!params || Object.keys(params).length === 0) {
-    return params;
-  }
-  
-  // Generate a hash of the parameters to use as a cache key
-  const paramsHash = generateParamsHash(params);
-  const cacheFilePath = path.join(PARAM_FIXES_CACHE_DIR, `${toolName}-${paramsHash}.json`);
-  
-  // Try to load from cache first
-  try {
-    if (existsSync(cacheFilePath)) {
-      const cachedFixes = JSON.parse(await fs.readFile(cacheFilePath, 'utf-8'));
-      console.log(`Using cached parameter fixes for ${toolName}`);
-      return cachedFixes;
-    }
-  } catch (cacheError) {
-    console.warn(`Error loading cached parameter fixes:`, cacheError);
-  }
-  
-  // If not in cache, use AI to fix parameters
-  const fixedParams = await fixParametersWithAI(sourceCode, toolName, params);
-  
-  // If the parameters were changed, save to cache
-  if (JSON.stringify(params) !== JSON.stringify(fixedParams)) {
-    try {
-      await fs.writeFile(cacheFilePath, JSON.stringify(fixedParams, null, 2));
-      console.log(`Saved parameter fixes for ${toolName} to cache`);
-    } catch (saveError) {
-      console.warn(`Error saving parameter fixes:`, saveError);
-    }
-  }
-  
-  return fixedParams;
-}
-
-/**
- * Generate a simple hash of parameters object to use as a cache key
- */
-function generateParamsHash(params) {
-  const paramsStr = JSON.stringify(params);
-  let hash = 0;
-  for (let i = 0; i < paramsStr.length; i++) {
-    const char = paramsStr.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(16);
-}
-
-/**
- * Use OpenAI to fix parameter mapping issues
- */
-async function fixParametersWithAI(sourceCode, toolName, params) {
-  // For performance reasons, only do this if we have parameters that might need fixing
-  if (!params || Object.keys(params).length === 0) {
-    return params;
-  }
-  
-  try {
-    // Create a prompt for OpenAI to analyze the parameters
-    const prompt = `
-You are an expert JavaScript developer. I'm trying to execute this tool but the parameters might be incorrect.
-
-Tool name: ${toolName}
-
-Source code:
-\`\`\`javascript
-${sourceCode}
-\`\`\`
-
-Provided parameters:
-\`\`\`json
-${JSON.stringify(params, null, 2)}
-\`\`\`
-
-Your task is to:
-1. Analyze the tool's execute function to identify what parameters it expects
-2. Compare with the provided parameters and fix any mapping issues
-3. Return the corrected parameters
-
-For example, if the tool expects 'searchQuery' but received 'query', map query's value to searchQuery.
-Similarly, if 'prompt' is expected but 'key' was provided with text, the value should be mapped to prompt.
-
-Return ONLY a JSON object with the corrected parameters. Do not include any explanation.
-`;
-
-    // Call OpenAI API to fix parameters
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: "You are a parameter correction assistant that returns only valid JSON." },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.2 // Low temperature for more deterministic results
-    });
-
-    // Extract the corrected parameters from the response
-    const correctedParamsText = completion.choices[0].message.content.trim();
-    
-    try {
-      // Extract just the JSON part (in case there's surrounding text)
-      const jsonMatch = correctedParamsText.match(/({[\s\S]*})/);
-      const jsonText = jsonMatch ? jsonMatch[1] : correctedParamsText;
-      
-      // Parse the JSON
-      const correctedParams = JSON.parse(jsonText);
-      
-      // Log if we made any changes
-      const changedParams = [];
-      for (const [key, value] of Object.entries(correctedParams)) {
-        if (params[key] !== value) {
-          changedParams.push(`${key}: ${params[key]} → ${value}`);
-        }
-      }
-      
-      if (changedParams.length > 0) {
-        console.log(`AI fixed parameters for ${toolName}:`, changedParams);
-      }
-      
-      return correctedParams;
-    } catch (parseError) {
-      console.error(`Error parsing corrected parameters for ${toolName}:`, parseError);
-      console.log("Raw corrected parameters:", correctedParamsText);
-      return params; // Return original params if parsing fails
-    }
-  } catch (error) {
-    console.error(`Error fixing parameters with AI for ${toolName}:`, error);
-    return params; // Return original params in case of API errors
   }
 }
 
@@ -653,7 +496,7 @@ router.post('/chat', async (req, res) => {
     
     // Call OpenAI API with tools and dynamic system message
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -692,7 +535,7 @@ router.post('/chat', async (req, res) => {
       
       // Get a response that includes the tool result
       const finalResponse = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: [
           {
             role: "system",

@@ -1,5 +1,5 @@
 {
-  "description": "This tool logs a message to the console and returns an object indicating the logging status.",
+  "description": "A tool that logs a message to the console and returns a confirmation object.",
   "properties": {
     "message": {
       "type": "string",
