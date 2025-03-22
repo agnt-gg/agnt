@@ -1,0 +1,40 @@
+{
+  "description": "Timer Trigger Tool that triggers a workflow after a specified delay or at a specific time.",
+  "properties": {
+    "triggerType": {
+      "type": "string",
+      "description": "Type of trigger, either 'delay' or 'scheduled'. This parameter is required."
+    },
+    "delaySeconds": {
+      "type": "integer",
+      "description": "Delay in seconds for the delay trigger. Optional, but at least one delay parameter is required if triggerType is 'delay'."
+    },
+    "delayMinutes": {
+      "type": "integer",
+      "description": "Delay in minutes for the delay trigger. Optional, but at least one delay parameter is required if triggerType is 'delay'."
+    },
+    "delayHours": {
+      "type": "integer",
+      "description": "Delay in hours for the delay trigger. Optional, but at least one delay parameter is required if triggerType is 'delay'."
+    },
+    "scheduledTime": {
+      "type": "string",
+      "description": "Scheduled time for the scheduled trigger, must be in ISO string format or timestamp. Required if triggerType is 'scheduled'."
+    },
+    "allowPastTriggers": {
+      "type": "string",
+      "description": "Indicates if past triggers are allowed. Optional, defaults to 'false'."
+    },
+    "simulateOnly": {
+      "type": "string",
+      "description": "If set to 'true', simulates the trigger without waiting. Optional, defaults to 'false'."
+    },
+    "accelerateTime": {
+      "type": "string",
+      "description": "If set to 'true', accelerates the time for testing purposes. Optional, defaults to 'false'."
+    }
+  },
+  "required": [
+    "triggerType"
+  ]
+}

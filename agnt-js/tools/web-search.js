@@ -1,11 +1,11 @@
 /**
  * Web Search Tool
- * Performs web searches and returns results or opens URLs in the default browser
+ * Performs web searches and returns results without opening a browser
  */
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import axios from 'axios';
-import open from 'open';  // Add this to package.json if not already installed
+import * as cheerio from 'cheerio';
 
 const execPromise = promisify(exec);
 
@@ -22,44 +22,27 @@ export async function execute(params) {
         
         // Validate URL format
         const validatedUrl = validateAndFormatUrl(url);
+        const braveCommand = getBraveCommand();
         
-        try {
-          // Open URL in default browser using 'open' package
-          await open(validatedUrl);
+        if (braveCommand) {
+          await execPromise(`${braveCommand} ${validatedUrl}`);
           return {
             success: true,
             action: 'open',
             url: validatedUrl,
-            message: `Opened ${validatedUrl} in default browser`
+            message: `Opened ${validatedUrl} in Brave browser`
           };
-        } catch (browserError) {
-          console.error('Error opening browser:', browserError);
-          
-          // Fallback to fetch content if browser opening fails
-          try {
-            const response = await axios.get(validatedUrl, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-              }
-            });
-            
-            return {
-              success: true,
-              action: 'fetch',
-              url: validatedUrl,
-              contentType: response.headers['content-type'],
-              statusCode: response.status,
-              message: `Retrieved URL ${validatedUrl} (Status: ${response.status})`
-            };
-          } catch (fetchError) {
-            return {
-              success: false,
-              action: 'fetch',
-              url: validatedUrl,
-              error: fetchError.message,
-              message: `Failed to fetch URL: ${fetchError.message}`
-            };
-          }
+        } else {
+          // If we can't open the browser, fetch the content instead
+          const pageContent = await fetchWebContent(validatedUrl);
+          return {
+            success: true,
+            action: 'fetch',
+            url: validatedUrl,
+            title: pageContent.title,
+            content: pageContent.summary,
+            message: `Retrieved content from ${validatedUrl}`
+          };
         }
         
       case 'search':
@@ -67,83 +50,16 @@ export async function execute(params) {
           return { success: false, error: "Search query is required for 'search' action" };
         }
         
-        // Option 1: Open search in default browser
-        if (params.openResults === 'true') {
-          const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
-          try {
-            await open(searchUrl);
-            return {
-              success: true,
-              action: 'search',
-              query: searchQuery,
-              url: searchUrl,
-              message: `Opened search for "${searchQuery}" in default browser`
-            };
-          } catch (err) {
-            console.error('Error opening browser for search:', err);
-            // Continue with mock results if browser fails
-          }
-        }
+        // Perform search and get results
+        const searchResults = await performWebSearch(searchQuery, resultsCount);
         
-        // Option 2: Return mock search results
-        try {
-          // Mock search results for demonstration
-          const mockResults = [
-            {
-              title: "JavaScript Tutorial - W3Schools",
-              url: "https://www.w3schools.com/js/",
-              snippet: "JavaScript is the world's most popular programming language. JavaScript is the programming language of the Web. JavaScript is easy to learn."
-            },
-            {
-              title: "JavaScript - MDN Web Docs",
-              url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript",
-              snippet: "JavaScript (JS) is a lightweight, interpreted, or just-in-time compiled programming language with first-class functions."
-            },
-            {
-              title: "Learn JavaScript - Codecademy",
-              url: "https://www.codecademy.com/learn/introduction-to-javascript",
-              snippet: "Learn the JavaScript fundamentals you'll need for front-end or back-end development."
-            },
-            {
-              title: "JavaScript.info – The Modern JavaScript Tutorial",
-              url: "https://javascript.info/",
-              snippet: "Modern JavaScript Tutorial: simple, but detailed explanations with examples and tasks, including closures, document and events, object-oriented programming."
-            },
-            {
-              title: "JavaScript - YouTube",
-              url: "https://www.youtube.com/playlist?list=PLW3GfRiBCHOiEkjvQj0uaUB1Q-RckYnj9",
-              snippet: "Learn JavaScript programming with this comprehensive free tutorial series. Perfect for beginners and intermediate developers."
-            }
-          ];
-          
-          // Customize results based on the search query
-          const customizedResults = mockResults.map(result => {
-            return {
-              ...result,
-              title: result.title.replace("JavaScript", searchQuery.includes("JavaScript") ? "JavaScript" : searchQuery),
-              snippet: result.snippet.replace(/JavaScript/g, searchQuery.includes("JavaScript") ? "JavaScript" : searchQuery)
-            };
-          });
-          
-          // Filter results to match requested count
-          const count = parseInt(resultsCount) || 5;
-          const results = customizedResults.slice(0, count);
-          
-          return {
-            success: true,
-            action: 'search',
-            query: searchQuery,
-            results: results,
-            message: `Found ${results.length} results for "${searchQuery}"`,
-            note: "These are example results. For production use, you'll need to integrate with a real search API."
-          };
-        } catch (searchError) {
-          return {
-            success: false,
-            error: `Search error: ${searchError.message}`,
-            message: `Failed to search: ${searchError.message}`
-          };
-        }
+        return {
+          success: true,
+          action: 'search',
+          query: searchQuery,
+          results: searchResults,
+          message: `Found ${searchResults.length} results for "${searchQuery}"`
+        };
         
       default:
         return { 
@@ -161,6 +77,22 @@ export async function execute(params) {
 }
 
 /**
+ * Get the appropriate Brave browser command based on the operating system
+ */
+function getBraveCommand() {
+  switch(process.platform) {
+    case 'win32':
+      return '"C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"';
+    case 'darwin': // macOS
+      return 'open -a "Brave Browser"';
+    case 'linux':
+      return 'brave-browser';
+    default:
+      return null;
+  }
+}
+
+/**
  * Validate and format URL to ensure it's properly formatted
  */
 function validateAndFormatUrl(url) {
@@ -168,4 +100,80 @@ function validateAndFormatUrl(url) {
     return `https://${url}`;
   }
   return url;
+}
+
+/**
+ * Perform a web search and return results
+ */
+async function performWebSearch(query, count = 5) {
+  try {
+    // Use DuckDuckGo for searching since it doesn't block simple bots
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    
+    const response = await axios.get(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    const $ = cheerio.load(response.data);
+    const results = [];
+    
+    // Extract search results
+    $('.result').slice(0, count).each((i, element) => {
+      const title = $(element).find('.result__title').text().trim();
+      const url = $(element).find('.result__url').text().trim();
+      const snippet = $(element).find('.result__snippet').text().trim();
+      
+      results.push({
+        title,
+        url,
+        snippet
+      });
+    });
+    
+    return results;
+  } catch (error) {
+    console.error('Search error:', error);
+    throw new Error(`Failed to perform web search: ${error.message}`);
+  }
+}
+
+/**
+ * Fetch and summarize content from a web page
+ */
+async function fetchWebContent(url) {
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    const $ = cheerio.load(response.data);
+    
+    // Get page title
+    const title = $('title').text().trim();
+    
+    // Get page content (simplified)
+    let content = '';
+    $('p').each((i, el) => {
+      const text = $(el).text().trim();
+      if (text.length > 50) { // Only include substantial paragraphs
+        content += text + '\n\n';
+      }
+    });
+    
+    // Truncate content to a reasonable size
+    const summary = content.substring(0, 1000) + (content.length > 1000 ? '...' : '');
+    
+    return {
+      title,
+      summary,
+      url
+    };
+  } catch (error) {
+    console.error('Web fetch error:', error);
+    throw new Error(`Failed to fetch web content: ${error.message}`);
+  }
 }
