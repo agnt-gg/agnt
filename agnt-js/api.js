@@ -47,8 +47,21 @@ async function extractToolParameters(filePath) {
   try {
     const fileContent = await fs.readFile(filePath, 'utf-8');
     
-    // Extract JSDoc comments
+    // Extract JSDoc comments for parameter descriptions
     const docCommentMatch = fileContent.match(/\/\*\*([\s\S]*?)\*\//);
+    let docComment = '';
+    if (docCommentMatch) {
+      docComment = docCommentMatch[1].trim();
+    }
+    
+    // Extract @param JSDoc tags for better parameter documentation
+    const paramDocs = {};
+    const paramTagRegex = /@param\s+{([^}]+)}\s+([^\s]+)\s+(.*)/g;
+    let paramMatch;
+    while ((paramMatch = paramTagRegex.exec(docComment)) !== null) {
+      const [_, type, name, description] = paramMatch;
+      paramDocs[name] = { type, description };
+    }
     
     // Default properties for all tools
     const properties = {};
@@ -61,12 +74,17 @@ async function extractToolParameters(filePath) {
     const uniqueParams = [...new Set(paramChecks.map(p => p.replace('params.', '')))];
     
     // Check which parameters are accessed with || for default values (optional)
-    const optionalParams = [];
     uniqueParams.forEach(param => {
       if (fileContent.includes(`params.${param} ||`) || 
           fileContent.includes(`params.${param} ??`) ||
-          fileContent.includes(`params.${param} === undefined`)) {
-        optionalParams.push(param);
+          fileContent.includes(`params.${param} === undefined`) ||
+          fileContent.includes(`params.${param} || `) ||
+          fileContent.includes(`params.${param} ?? `) ||
+          fileContent.includes(`|| params.${param}`) ||
+          fileContent.includes(`?? params.${param}`)) {
+        // This is an optional parameter
+      } else if (fileContent.includes(`if (!params.${param})`)) {
+        required.push(param);
       } else {
         required.push(param);
       }
@@ -75,30 +93,41 @@ async function extractToolParameters(filePath) {
     // Build parameter definitions
     uniqueParams.forEach(param => {
       let paramType = 'string';
+      let description = `${param} parameter for this tool`;
       
-      // Try to infer parameter types from context
-      if (fileContent.includes(`parseInt(params.${param}`)) {
-        paramType = 'number';
-      } else if (fileContent.includes(`parseFloat(params.${param}`)) {
-        paramType = 'number';
-      } else if (fileContent.includes(`params.${param} === true`) || 
-                fileContent.includes(`params.${param} === false`)) {
-        paramType = 'boolean';
+      // Use JSDoc info if available
+      if (paramDocs[param]) {
+        paramType = paramDocs[param].type.toLowerCase();
+        description = paramDocs[param].description;
+      } else {
+        // Try to infer parameter types from context
+        if (fileContent.includes(`parseInt(params.${param}`)) {
+          paramType = 'number';
+        } else if (fileContent.includes(`parseFloat(params.${param}`)) {
+          paramType = 'number';
+        } else if (fileContent.includes(`params.${param} === true`) || 
+                  fileContent.includes(`params.${param} === false`)) {
+          paramType = 'boolean';
+        }
       }
       
       // Create property definition
       properties[param] = {
         type: paramType,
-        description: `${param} parameter for this tool`
+        description: description
       };
       
-      // Add extra description for special cases
-      if (param === 'expression') {
+      // Add extra description for special cases if not already provided
+      if (param === 'expression' && !paramDocs[param]) {
         properties[param].description = 'Mathematical expression to evaluate';
-      } else if (param === 'min' || param === 'max') {
+      } else if ((param === 'min' || param === 'max') && !paramDocs[param]) {
         properties[param].description = `${param === 'min' ? 'Minimum' : 'Maximum'} value for random number generation`;
-      } else if (param === 'message') {
+      } else if (param === 'message' && !paramDocs[param]) {
         properties[param].description = 'Message content';
+      } else if (param === 'code' && !paramDocs[param]) {
+        properties[param].description = 'JavaScript code to execute';
+      } else if (param === 'prompt' && !paramDocs[param]) {
+        properties[param].description = 'Text prompt for the AI model';
       }
     });
     
@@ -137,13 +166,13 @@ async function getAvailableTools() {
             type: 'function',
             function: {
               name: toolName,
-              description: 'Executes JavaScript code and returns the result. The code MUST return a value explicitly.',
+              description: 'Executes JavaScript code and returns the result.',
               parameters: {
                 type: 'object',
                 properties: {
                   code: {
                     type: 'string',
-                    description: 'Valid JavaScript code to execute. ALWAYS include an explicit return statement or expression that returns a value. For example: "return Math.PI" or simply "Math.PI".'
+                    description: 'Valid JavaScript code to execute. Can be a simple expression like "Math.PI" or a more complex block of code.'
                   }
                 },
                 required: ['code']
@@ -227,7 +256,7 @@ router.post('/chat', async (req, res) => {
       messages: [
         {
           role: "system",
-          content: "You are a helpful assistant that can use tools to answer user questions. If the user's request can be helped by using a tool, use the appropriate tool. For 'execute-javascript', ALWAYS provide code that returns a value explicitly, like 'return Math.PI' or 'Math.random()'."
+          content: "You are a helpful assistant that can use tools to answer user questions. If the user's request can be helped by using a tool, use the appropriate tool with appropriate parameters. Always pass all required parameters to tools."
         },
         ...formattedHistory
       ],
@@ -244,22 +273,20 @@ router.post('/chat', async (req, res) => {
       let toolParams = {};
       
       try {
+        // Parse the tool parameters from the OpenAI response
         toolParams = JSON.parse(toolCall.function.arguments);
         console.log(`Tool params for ${toolName}:`, toolParams);
         
         // Special handling for execute-javascript
         if (toolName === 'execute-javascript' && toolParams.code) {
-          // Ensure code has a return statement if it doesn't already
-          if (!toolParams.code.includes('return ') && !toolParams.code.startsWith('return ')) {
-            toolParams.code = `return ${toolParams.code}`;
-            console.log(`Modified code to include return: ${toolParams.code}`);
-          }
+          // Let the tool handle the code formatting now
+          console.log(`JavaScript code to execute: ${toolParams.code}`);
         }
       } catch (e) {
         console.error('Error parsing tool arguments:', e);
       }
       
-      // Execute the tool
+      // Execute the tool with the parsed parameters
       const toolResult = await executeToolByName(toolName, toolParams);
       
       // Get a response that includes the tool result
@@ -268,7 +295,7 @@ router.post('/chat', async (req, res) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that can use tools to answer user questions. When reporting a JavaScript execution result, always explicitly state the value that was returned."
+            content: "You are a helpful assistant that can use tools to answer user questions. When reporting results, always explicitly mention the specific values returned by the tool."
           },
           ...formattedHistory,
           responseMessage,
@@ -312,6 +339,9 @@ router.post('/chat', async (req, res) => {
 // Helper function to execute a tool by name
 async function executeToolByName(toolName, params) {
   try {
+    // Log parameters before execution
+    console.log(`Executing tool ${toolName} with params:`, params);
+    
     // Convert the tool name to file path
     const toolPath = path.join(__dirname, 'tools', `${toolName}.js`);
     
@@ -320,7 +350,11 @@ async function executeToolByName(toolName, params) {
     
     // Import and execute the tool
     const toolModule = await import(`file://${toolPath}`);
-    return await toolModule.execute(params);
+    
+    // In case params is undefined, use an empty object
+    const safeParams = params || {};
+    
+    return await toolModule.execute(safeParams);
   } catch (error) {
     console.error(`Error executing tool ${toolName}:`, error);
     return { error: error.message };
@@ -345,6 +379,17 @@ router.post('/run-tool', async (req, res) => {
       return res.status(404).json({ 
         success: false, 
         error: `Tool "${toolName}" not found (looked for ${toolFileName}.js)` 
+      });
+    }
+    
+    // Special handling for execute-javascript without code
+    if (toolFileName === 'execute-javascript' && !params.code) {
+      return res.json({
+        success: false,
+        result: { 
+          error: "No JavaScript code provided. Please provide code to execute.",
+          executed: false 
+        }
       });
     }
     
