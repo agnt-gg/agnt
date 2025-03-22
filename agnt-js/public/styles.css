@@ -88,3 +88,58 @@ pre {
 .animation-speed {
   width: 150px;
 }
+
+/* Additional chat styling */
+.chat-container code {
+  color: #d63384;
+}
+
+.chat-container blockquote {
+  border-left: 3px solid #ced4da;
+  padding-left: 15px;
+  margin-left: 10px;
+  color: #6c757d;
+}
+
+.chat-container img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 5px;
+}
+
+.chat-container table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+}
+
+.chat-container th, .chat-container td {
+  border: 1px solid #dee2e6;
+  padding: 8px;
+}
+
+.chat-container th {
+  background-color: #f8f9fa;
+}
+
+.chat-container a {
+  color: #0d6efd;
+  text-decoration: none;
+}
+
+.chat-container a:hover {
+  text-decoration: underline;
+}
+
+/* Improve mobile experience in chat */
+@media (max-width: 768px) {
+  .chat-container {
+    height: 500px;
+  }
+  
+  .user-message,
+  .system-message,
+  .tool-message {
+    max-width: 95%;
+  }
+}

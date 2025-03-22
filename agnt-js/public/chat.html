@@ -12,40 +12,43 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
     <style>
       .chat-container {
-        height: 400px;
+        height: 600px;
         overflow-y: auto;
         border: 1px solid #e9ecef;
-        border-radius: 5px;
-        padding: 15px;
-        margin-bottom: 15px;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        background-color: #f9f9fc;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
       }
 
       .user-message,
       .system-message,
       .tool-message {
-        padding: 10px 15px;
-        border-radius: 15px;
-        margin-bottom: 10px;
-        max-width: 80%;
+        padding: 12px 18px;
+        border-radius: 18px;
+        margin-bottom: 15px;
+        max-width: 85%;
         word-wrap: break-word;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       }
 
       .user-message {
-        background-color: #007bff;
+        background-color: #0d6efd;
         color: white;
         margin-left: auto;
         border-bottom-right-radius: 5px;
       }
 
       .system-message {
-        background-color: #f8f9fa;
+        background-color: white;
         border: 1px solid #e9ecef;
         margin-right: auto;
         border-bottom-left-radius: 5px;
       }
 
       .tool-message {
-        background-color: #d4edda;
+        background-color: #e7f4eb;
         border: 1px solid #c3e6cb;
         margin-right: auto;
         border-bottom-left-radius: 5px;
@@ -61,6 +64,41 @@
 
       .chat-input-container {
         position: relative;
+        margin-top: 15px;
+      }
+      
+      .tool-header {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: #28a745;
+      }
+      
+      .system-message pre, 
+      .tool-message pre {
+        background-color: #f3f4f5;
+        border-radius: 5px;
+        padding: 12px;
+        margin: 8px 0;
+        overflow-x: auto;
+      }
+      
+      .system-message code,
+      .tool-message code {
+        background-color: #f3f4f5;
+        padding: 2px 4px;
+        border-radius: 3px;
+      }
+      
+      #chat-input {
+        padding: 12px;
+        border-radius: 20px;
+        border: 1px solid #ced4da;
+      }
+      
+      #chat-form button {
+        border-radius: 20px;
+        padding-left: 20px;
+        padding-right: 20px;
       }
     </style>
     <script defer>
@@ -399,10 +437,10 @@
       </header>
 
       <div class="row">
-        <div class="col-md-8">
-          <div class="card mb-4">
-            <div class="card-header">
-              <h5>Chat</h5>
+        <div class="col-lg-8">
+          <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white">
+              <h5 class="mb-0">Chat</h5>
             </div>
             <div class="card-body">
               <div id="chat-history" class="chat-container mb-3">

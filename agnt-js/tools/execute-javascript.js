@@ -44,8 +44,15 @@ export async function execute(params, inputData) {
         }
       })()`;
     } else {
-      // If it doesn't have a return statement, use a simpler approach
-      wrappedCode = `(${code})`;
+      // If it doesn't have a return statement, use a function to evaluate the expression
+      // This fixes the issue with expressions ending with semicolons
+      wrappedCode = `(function() { 
+        try {
+          return ${code.replace(/;$/, '')};
+        } catch (e) {
+          return { error: e.message };
+        }
+      })()`;
     }
     
     console.log("Modified JS code:", wrappedCode);
