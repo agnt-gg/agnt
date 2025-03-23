@@ -1,6 +1,7 @@
 Directory Structure:
 + agnt-js
   - .env-example
+  - api.js
   + config
     + tools
       - silly-name-generator.json
@@ -13,9 +14,24 @@ Directory Structure:
     - VIBE.js
   - package.json
   + public
+    - chat.html
     - index.html
     - styles.css
   - README.md
+  + schema-cache
+    - calculator-schema.json
+    - execute-javascript-schema.json
+    - log-message-schema.json
+    - manual-trigger-schema.json
+    - openai-llm-schema.json
+    - random-number-schema.json
+    - silly-name-generator-schema.json
+    - timer-trigger-schema.json
+    - web-search-schema.json
+  + schema-patterns
+    - slopSchema.json
+    - toolSchema.json
+    - workflowSchema.json
   - server.js
   + tools
     - calculator.js
@@ -26,9 +42,8 @@ Directory Structure:
     - random-number.js
     - silly-name-generator.js
     - timer-trigger.js
-    - url-shortener.js
+    - web-search.js
   + utils
-    - ascii-art.js
   + workflows
     - auto-insurance-claim-workflow.json
     - content-marketing-workflow.json
@@ -50,6 +65,10 @@ Directory Structure:
     - __init__.py
   - README.md
   - requirements.txt
+  + schema-patterns
+    - slopSchema.json
+    - toolSchema.json
+    - workflowSchema.json
   - setup.py
   + tools
     - basic_tool.py
@@ -71,6 +90,305 @@ File Contents:
 AGNT-JS\.ENV-EXAMPLE
 ----------------------
 OPENAI_API_KEY=sk-0000000000000000000000000000000000000000000000000000000
+----------------------
+AGNT-JS\API.JS
+----------------------
+import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import OpenAI from 'openai';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const router = express.Router();
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// Get all available tools
+router.get('/tools', async (req, res) => {
+  try {
+    const toolsDir = path.join(__dirname, 'tools');
+    const files = await fs.readdir(toolsDir);
+    
+    const tools = files
+      .filter(file => file.endsWith('.js'))
+      .map(file => {
+        const toolName = file.replace('.js', '');
+        return {
+          id: toolName,
+          name: toolName.split('-').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ')
+        };
+      });
+    
+    res.json({ tools });
+  } catch (error) {
+    console.error('Error fetching tools:', error);
+    res.status(500).json({ error: 'Failed to load tools' });
+  }
+});
+
+// Simple function to get available tools with schemas from cache
+async function getAvailableTools() {
+  try {
+    const toolsDir = path.join(__dirname, 'tools');
+    const schemaDir = path.join(__dirname, 'schema-cache');
+    const files = await fs.readdir(toolsDir);
+    
+    // Process each tool file
+    const toolPromises = files
+      .filter(file => file.endsWith('.js'))
+      .map(async (file) => {
+        const toolName = file.replace('.js', '');
+        const schemaPath = path.join(schemaDir, `${toolName}-schema.json`);
+        
+        // Default minimal tool definition
+        let toolDef = {
+          type: 'function',
+          function: {
+            name: toolName,
+            description: `${toolName.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')} tool`,
+            parameters: {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        };
+        
+        // Try to load schema if it exists
+        try {
+          const schemaContent = await fs.readFile(schemaPath, 'utf-8');
+          const schema = JSON.parse(schemaContent);
+          
+          // Update tool definition with schema data
+          toolDef.function.description = schema.description || toolDef.function.description;
+          toolDef.function.parameters.properties = schema.properties || {};
+          toolDef.function.parameters.required = schema.required || [];
+        } catch (err) {
+          console.log(`Using default definition for ${toolName}, no schema found: ${err.message}`);
+        }
+        
+        return toolDef;
+      });
+    
+    return await Promise.all(toolPromises);
+  } catch (error) {
+    console.error('Error loading available tools:', error);
+    return [];
+  }
+}
+
+// Helper function to execute a tool by name
+async function executeToolByName(toolName, params) {
+  try {
+    const toolPath = path.join(__dirname, 'tools', `${toolName}.js`);
+    
+    // Check if tool exists
+    await fs.access(toolPath);
+    
+    // Log parameters before execution
+    console.log(`Executing tool ${toolName} with params:`, params);
+    
+    // Import and execute the tool
+    const toolModule = await import(`file://${toolPath}`);
+    
+    // In case params is undefined, use an empty object
+    const safeParams = params || {};
+    
+    return await toolModule.execute(safeParams);
+  } catch (error) {
+    console.error(`Error executing tool ${toolName}:`, error);
+    return { error: error.message };
+  }
+}
+
+// Handle chat messages
+router.post('/chat', async (req, res) => {
+  try {
+    const { message, conversationHistory = [] } = req.body;
+    
+    // If it's a direct tool execution command, don't process with AI
+    if (message.startsWith('/run ')) {
+      return res.json({ 
+        response: "I'll execute that tool for you."
+      });
+    }
+    
+    // Get available tools for OpenAI (now with schemas included)
+    const availableTools = await getAvailableTools();
+    console.log(`[DEBUG] Got ${availableTools.length} available tools for function calling`);
+    
+    // Format conversation history for OpenAI
+    const formattedHistory = conversationHistory.map(msg => ({
+      role: msg.role || (msg.isUser ? 'user' : 'assistant'),
+      content: msg.content
+    }));
+    
+    // Add current message
+    formattedHistory.push({
+      role: 'user',
+      content: message
+    });
+    
+    // Stronger system message that explicitly encourages using multiple tools in sequence
+    const systemMessage = `You are a helpful assistant that can use tools to answer user questions. IMPORTANT: When a user request can be solved with multiple tools, you should use them in sequence. For example, if asked to "generate a random number and log it", you should use the random-number tool FOLLOWED BY the log-message tool. Chain tools together to complete multi-step tasks.`;
+    
+    // Add tool_choice parameter to encourage multiple tool selection
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: systemMessage
+        },
+        ...formattedHistory
+      ],
+      tools: availableTools,
+      tool_choice: "auto"
+    });
+    
+    const responseMessage = completion.choices[0].message;
+    
+    // Check if the model wants to use tools
+    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+      console.log(`[DEBUG] Model decided to use ${responseMessage.tool_calls.length} tools`);
+      
+      // Process all tool calls
+      const toolCallPromises = responseMessage.tool_calls.map(async (toolCall) => {
+        const toolName = toolCall.function.name;
+        let toolParams = {};
+        
+        try {
+          // Parse the tool parameters
+          toolParams = JSON.parse(toolCall.function.arguments);
+          console.log(`Tool params for ${toolName}:`, toolParams);
+        } catch (e) {
+          console.error('Error parsing tool arguments:', e);
+        }
+        
+        // Execute the tool
+        const toolResult = await executeToolByName(toolName, toolParams);
+        
+        // Return tool call and result
+        return {
+          tool_call_id: toolCall.id,
+          name: toolName,
+          result: toolResult,
+          displayName: toolName.split('-').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ')
+        };
+      });
+      
+      // Wait for all tool executions to complete
+      const toolResults = await Promise.all(toolCallPromises);
+      
+      // Prepare messages for final completion
+      const toolMessages = toolResults.map(result => ({
+        role: "tool",
+        tool_call_id: result.tool_call_id,
+        name: result.name,
+        content: JSON.stringify(result.result)
+      }));
+      
+      // Get final response with all tool results
+      const finalResponse = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: systemMessage
+          },
+          ...formattedHistory,
+          responseMessage,
+          ...toolMessages
+        ]
+      });
+      
+      // Modified response format that the frontend can handle
+      // This format adds a property to display all tool results
+      // while maintaining backward compatibility
+      return res.json({
+        response: finalResponse.choices[0].message.content,
+        toolExecuted: true,
+        toolName: toolResults[0].displayName,
+        toolResult: toolResults[0].result,
+        // New property for multiple tools with more detail
+        allTools: toolResults.map(tool => ({
+          name: tool.displayName,
+          result: tool.result
+        }))
+      });
+    }
+    
+    // If no tool was called, just return the response
+    return res.json({
+      response: responseMessage.content
+    });
+    
+  } catch (error) {
+    console.error('Error processing chat message:', error);
+    res.status(500).json({ 
+      error: 'Failed to process message',
+      details: error.message
+    });
+  }
+});
+
+// Run a specific tool (from manual /run command)
+router.post('/run-tool', async (req, res) => {
+  try {
+    const { toolName, params = {} } = req.body;
+    
+    console.log(`Running tool ${toolName} with params:`, params);
+    
+    // Convert the display name to the file name
+    const toolFileName = toolName.toLowerCase().replace(/\s+/g, '-');
+    const toolPath = path.join(__dirname, 'tools', `${toolFileName}.js`);
+    
+    // Check if tool exists
+    try {
+      await fs.access(toolPath);
+    } catch (error) {
+      return res.status(404).json({ 
+        success: false, 
+        error: `Tool "${toolName}" not found (looked for ${toolFileName}.js)` 
+      });
+    }
+    
+    // Import the tool dynamically
+    const toolUrl = `file://${toolPath}`;
+    const toolModule = await import(toolUrl);
+    
+    // Execute the tool with the provided parameters
+    const result = await toolModule.execute(params);
+    
+    console.log(`Tool ${toolName} returned:`, result);
+    
+    res.json({
+      success: true,
+      result: result
+    });
+  } catch (error) {
+    console.error('Error running tool:', error);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to run tool: ${error.message}` 
+    });
+  }
+});
+
+export default router;
 ----------------------
 AGNT-JS\CONFIG\TOOLS\SILLY-NAME-GENERATOR.JSON
 ----------------------
@@ -974,14 +1292,472 @@ AGNT-JS\PACKAGE.JSON
     },
     "type": "module",
     "dependencies": {
+        "axios": "^1.8.4",
         "body-parser": "^1.20.3",
+        "cheerio": "^1.0.0",
         "dotenv": "^16.4.7",
         "express": "^4.21.2",
         "mathjs": "^14.3.1",
+        "node-fetch": "^3.3.2",
+        "open": "^10.1.0",
         "openai": "^4.87.3",
+        "vm2": "^3.9.19",
         "zod": "^3.24.2"
     }
 }
+
+----------------------
+AGNT-JS\PUBLIC\CHAT.HTML
+----------------------
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workflow Engine - Chat Interface</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
+    <style>...</style>
+    <script defer>
+      document.addEventListener("DOMContentLoaded", function () {
+        // DOM elements
+        const chatForm = document.getElementById("chat-form");
+        const chatInput = document.getElementById("chat-input");
+        const chatHistory = document.getElementById("chat-history");
+        const toolsList = document.getElementById("tools-list");
+        const executedTools = document.getElementById("executed-tools");
+        
+        // Initialize Showdown markdown converter
+        const markdownConverter = new showdown.Converter({
+          tables: true,
+          tasklists: true,
+          strikethrough: true,
+          emoji: true,
+          simpleLineBreaks: true,
+          openLinksInNewWindow: true
+        });
+        
+        // Store conversation history for OpenAI
+        let conversationHistory = [];
+
+        // Load available tools
+        loadTools();
+
+        // Handle chat form submission
+        chatForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          const message = chatInput.value.trim();
+          if (message.length === 0) return;
+
+          // Add user message to chat
+          addMessageToChat("user", message);
+          
+          // Add to conversation history
+          conversationHistory.push({
+            role: "user",
+            content: message
+          });
+          
+          chatInput.value = "";
+
+          // Process the message
+          processUserMessage(message);
+        });
+
+        // Load available workflow tools
+        async function loadTools() {
+          try {
+            const response = await fetch('/api/tools');
+            const data = await response.json();
+            
+            // Ensure we have an array of tools
+            const tools = Array.isArray(data) ? data : (data.tools || []);
+            
+            toolsList.innerHTML = '';
+            if (tools.length === 0) {
+              toolsList.innerHTML = '<div class="text-muted">No tools available</div>';
+              return;
+            }
+            
+            tools.forEach(tool => {
+              const toolElement = document.createElement('a');
+              toolElement.href = '#';
+              toolElement.className = 'list-group-item list-group-item-action';
+              toolElement.textContent = tool.name;
+              toolElement.dataset.toolId = tool.id;
+              
+              // Add sample parameters based on tool type
+              let sampleParams = '';
+              switch (tool.id) {
+                case 'calculator':
+                  sampleParams = ' expression=2+2*3';
+                  break;
+                case 'random-number':
+                  sampleParams = ' min=1 max=100';
+                  break;
+                case 'log-message':
+                  sampleParams = ' message="Hello World"';
+                  break;
+                case 'execute-javascript':
+                  sampleParams = ' code="Math.PI"';
+                  break;
+                case 'openai-llm':
+                  sampleParams = ' prompt="Tell me a joke" model="gpt-3.5-turbo"';
+                  break;
+                case 'silly-name-generator':
+                  sampleParams = ' numNames=3';
+                  break;
+                case 'timer-trigger':
+                  sampleParams = ' triggerType=delay delaySeconds=5';
+                  break;
+                case 'web-search':
+                  sampleParams = ' action=search searchQuery="JavaScript tutorials" resultsCount=3';
+                  break;
+                default:
+                  // No sample parameters for other tools
+                  break;
+              }
+              
+              toolElement.addEventListener('click', () => {
+                chatInput.value = `/run ${tool.name}${sampleParams}`;
+                chatInput.focus();
+                
+                // Position cursor for easy editing
+                if (sampleParams) {
+                  const cursorPosition = chatInput.value.indexOf('=') + 1;
+                  chatInput.setSelectionRange(cursorPosition, cursorPosition);
+                }
+              });
+              
+              toolsList.appendChild(toolElement);
+            });
+          } catch (error) {
+            toolsList.innerHTML = '<div class="alert alert-danger">Failed to load tools</div>';
+            console.error('Error loading tools:', error);
+          }
+        }
+
+        // Process user message
+        async function processUserMessage(message) {
+          try {
+            // Check if the message is a command to run a tool
+            if (message.startsWith("/run ")) {
+              const commandText = message.substring(5).trim();
+              
+              // Find all tool names in the tools list
+              const toolElements = toolsList.querySelectorAll('a');
+              const toolNames = Array.from(toolElements).map(el => el.textContent);
+              
+              // Find the longest matching tool name at the start of the command
+              let foundToolName = null;
+              for (const name of toolNames) {
+                if (commandText.startsWith(name) && (!foundToolName || name.length > foundToolName.length)) {
+                  foundToolName = name;
+                }
+              }
+              
+              if (!foundToolName) {
+                addMessageToChat("system", "Unknown tool. Please select a tool from the list.");
+                return;
+              }
+              
+              // Extract parameters (everything after the tool name)
+              const paramsText = commandText.substring(foundToolName.length).trim();
+              let params = {};
+              
+              if (paramsText) {
+                try {
+                  // Try to parse as JSON if it starts with { and ends with }
+                  if (paramsText.startsWith('{') && paramsText.endsWith('}')) {
+                    params = JSON.parse(paramsText);
+                  } else {
+                    // Parse key=value pairs with better handling for expressions
+                    const paramPairs = paramsText.match(/(\w+)=(?:"([^"]*)"|([\w.+\-*\/\(\)]+))/g) || [];
+                    
+                    for (const pair of paramPairs) {
+                      const [key, rawValue] = pair.split('=');
+                      
+                      // Handle quoted values by removing quotes
+                      let value;
+                      if (rawValue.startsWith('"') && rawValue.endsWith('"')) {
+                        value = rawValue.slice(1, -1);
+                      } else {
+                        value = rawValue;
+                      }
+                      
+                      params[key] = value;
+                    }
+                  }
+                } catch (e) {
+                  addMessageToChat("system", `Error parsing parameters: ${e.message}`);
+                  return;
+                }
+              }
+              
+              await runTool(foundToolName, params);
+              return;
+            }
+
+            // Otherwise, analyze the message with OpenAI
+            const response = await fetch("/api/chat", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ 
+                message,
+                conversationHistory
+              }),
+            });
+
+            const data = await response.json();
+
+            // Add AI response to chat
+            addMessageToChat("system", data.response);
+            
+            // Add to conversation history
+            conversationHistory.push({
+              role: "assistant",
+              content: data.response
+            });
+
+            // If a tool was executed, show the result
+            if (data.toolExecuted) {
+              // Check if we have multiple tools
+              if (data.allTools && data.allTools.length > 0) {
+                // Add all tool results to chat
+                data.allTools.forEach(tool => {
+                  addToolExecutionToChat(tool.name, tool.result);
+                  addToolToExecutedList(tool.name);
+                });
+              } else {
+                // Backward compatibility with single tool
+                addToolExecutionToChat(data.toolName, data.toolResult);
+                addToolToExecutedList(data.toolName);
+              }
+            }
+          } catch (error) {
+            addMessageToChat(
+              "system",
+              "Sorry, an error occurred while processing your message."
+            );
+            console.error("Error processing message:", error);
+          }
+        }
+
+        // Run a specific tool
+        async function runTool(toolName, params = {}) {
+          try {
+            addMessageToChat("system", `Running tool: ${toolName}...`);
+
+            const response = await fetch("/api/run-tool", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ toolName, params }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+              addToolExecutionToChat(toolName, data.result);
+              addToolToExecutedList(toolName);
+            } else {
+              addMessageToChat("system", `Failed to run tool: ${data.error}`);
+            }
+          } catch (error) {
+            addMessageToChat("system", `Error running tool: ${toolName}`);
+            console.error("Error running tool:", error);
+          }
+        }
+
+        // Add a message to the chat history
+        function addMessageToChat(type, content) {
+          const messageDiv = document.createElement("div");
+          messageDiv.className =
+            type === "user" ? "user-message" : "system-message";
+          
+          // Convert markdown to HTML for system messages
+          if (type === "system") {
+            messageDiv.innerHTML = markdownConverter.makeHtml(content);
+          } else {
+            messageDiv.textContent = content;
+          }
+
+          chatHistory.appendChild(messageDiv);
+          chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        // Add tool execution results to chat
+        function addToolExecutionToChat(toolName, result) {
+          const toolDiv = document.createElement("div");
+          toolDiv.className = "tool-message";
+          
+          // Format the result nicely
+          let resultDisplay;
+          
+          if (result === null || result === undefined) {
+            resultDisplay = "<em>No result returned</em>";
+          } else if (result.error) {
+            resultDisplay = `<div class="text-danger"><strong>Error:</strong> ${result.error}</div>`;
+          } else if (result.result !== undefined) {
+            const value = result.result;
+            if (value === null) {
+              resultDisplay = "<em>null</em>";
+            } else if (typeof value === 'object') {
+              resultDisplay = `<pre>${JSON.stringify(value, null, 2)}</pre>`;
+            } else {
+              // Apply markdown conversion if it's a string
+              if (typeof value === 'string') {
+                resultDisplay = `<div>${markdownConverter.makeHtml(value)}</div>`;
+              } else {
+                resultDisplay = `<strong>${value}</strong>`;
+              }
+            }
+          } else {
+            // Apply markdown conversion if it's a string
+            if (typeof result === 'string') {
+              resultDisplay = markdownConverter.makeHtml(result);
+            } else {
+              resultDisplay = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+            }
+          }
+          
+          toolDiv.innerHTML = `<div class="tool-header">${toolName}</div><div class="tool-result">${resultDisplay}</div>`;
+          
+          chatHistory.appendChild(toolDiv);
+          chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        // Add tool to the executed tools list
+        function addToolToExecutedList(toolName) {
+          // Check if the list has the placeholder message
+          if (executedTools.querySelector(".text-muted")) {
+            executedTools.innerHTML = "";
+          }
+
+          const now = new Date();
+          const timestamp = now.toLocaleTimeString();
+
+          const toolElement = document.createElement("div");
+          toolElement.className = "list-group-item";
+          toolElement.innerHTML = `
+      <div>${toolName}</div>
+      <small class="text-muted">${timestamp}</small>
+    `;
+
+          executedTools.prepend(toolElement);
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div class="container">
+      <header class="pb-3 mb-4 border-bottom">
+        <h1 class="display-5 fw-bold">AGNT Inspector</h1>
+        <p class="lead">Chat with your tools</p>
+        <nav class="nav">
+          <a class="nav-link" href="index.html">Workflows</a>
+          <a class="nav-link active" href="chat.html">Chat Interface</a>
+        </nav>
+      </header>
+
+      <div class="row">
+        <div class="col-lg-8">
+          <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white">
+              <h5 class="mb-0">Chat</h5>
+            </div>
+            <div class="card-body">
+              <div id="chat-history" class="chat-container mb-3">
+                <!-- Chat messages will appear here -->
+                <div class="system-message">
+                  Welcome to the Workflow Engine Chat. How can I help you today?
+                </div>
+              </div>
+              <div class="chat-input-container">
+                <form id="chat-form">
+                  <div class="input-group">
+                    <input
+                      type="text"
+                      id="chat-input"
+                      class="form-control"
+                      placeholder="Type your message here..."
+                    />
+                    <button type="submit" class="btn btn-primary">Send</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5>Available Tools</h5>
+            </div>
+            <div class="card-body">
+              <div id="tools-list" class="list-group">
+                <!-- Tools will be loaded here -->
+                <div class="text-center">
+                  <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h5>Executed Tools</h5>
+            </div>
+            <div class="card-body">
+              <div id="executed-tools" class="list-group">
+                <!-- Executed tools will appear here -->
+                <div class="text-muted">No tools executed yet</div>
+              </div>
+            </div>
+          </div>
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5>Tool Usage Guide</h5>
+            </div>
+            <div class="card-body">
+              <p>Run tools using:</p>
+              <pre>/run Tool Name param1=value1 param2=value2</pre>
+              <p>Or with quoted parameters:</p>
+              <pre>/run Tool Name param1="value with spaces" param2=42</pre>
+              <p>Examples:</p>
+              <ul>
+                <li><code>/run Calculator expression=2+2*3</code></li>
+                <li><code>/run Random Number min=1 max=100</code></li>
+                <li><code>/run Log Message message="Hello World"</code></li>
+                <li><code>/run Web Search searchQuery="JavaScript tutorials" resultsCount=3</code></li>
+                <li><code>/run Web Search action=open url="developer.mozilla.org"</code></li>
+              </ul>
+              <p class="text-muted small">Use exact tool names as shown in the tools list.</p>
+              <hr>
+              <h6>Markdown Support</h6>
+              <p class="text-muted small">System messages support Markdown formatting including:</p>
+              <ul class="text-muted small">
+                <li>**Bold** and *italic* text</li>
+                <li>- Bullet lists and 1. Numbered lists</li>
+                <li>[Links](https://example.com)</li>
+                <li>Code blocks with ```language``` syntax</li>
+                <li>And more Markdown features</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
 
 ----------------------
 AGNT-JS\PUBLIC\INDEX.HTML
@@ -1018,8 +1794,12 @@ AGNT-JS\PUBLIC\INDEX.HTML
 <body>
   <div class="container">
     <header class="pb-3 mb-4 border-bottom">
-      <h1 class="display-5 fw-bold">Workflow Engine</h1>
+      <h1 class="display-5 fw-bold">AGNT Inspector</h1>
       <p class="lead">Run and visualize workflows</p>
+      <nav class="nav">
+        <a class="nav-link active" href="index.html">Workflows</a>
+        <a class="nav-link" href="chat.html">Chat Interface</a>
+      </nav>
     </header>
 
     <div class="row mb-4">
@@ -1776,6 +2556,664 @@ MIT
 
 
 ----------------------
+AGNT-JS\SCHEMA-CACHE\CALCULATOR-SCHEMA.JSON
+----------------------
+{
+  "description": "A calculator tool that evaluates mathematical expressions provided as strings.",
+  "properties": {
+    "expression": {
+      "type": "string",
+      "description": "A mathematical expression to be evaluated."
+    }
+  },
+  "required": [
+    "expression"
+  ]
+}
+----------------------
+AGNT-JS\SCHEMA-CACHE\EXECUTE-JAVASCRIPT-SCHEMA.JSON
+----------------------
+{
+  "description": "A tool to execute JavaScript code within a secure virtual machine environment, allowing for asynchronous and synchronous code execution with access to certain web APIs.",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "The JavaScript code to be executed. If not provided or empty, an error will be returned."
+    },
+    "inputData": {
+      "type": "object",
+      "description": "An object containing data that can be accessed within the JavaScript code execution environment."
+    }
+  },
+  "required": [
+    "params",
+    "inputData"
+  ]
+}
+----------------------
+AGNT-JS\SCHEMA-CACHE\LOG-MESSAGE-SCHEMA.JSON
+----------------------
+{
+  "description": "A tool that logs a message to the console and returns a confirmation object.",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "The message to be logged to the console."
+    }
+  },
+  "required": [
+    "message"
+  ]
+}
+----------------------
+AGNT-JS\SCHEMA-CACHE\MANUAL-TRIGGER-SCHEMA.JSON
+----------------------
+{
+  "description": "This tool is designed to manually trigger an action, returning a confirmation and a timestamp.",
+  "properties": {
+    "params": {
+      "type": "object",
+      "description": "An object containing parameters for execution, though its specific structure is not defined in the code."
+    },
+    "inputData": {
+      "type": "object",
+      "description": "An object representing additional input data required for execution, though its specific structure is not defined in the code."
+    }
+  },
+  "required": [
+    "params",
+    "inputData"
+  ]
+}
+----------------------
+AGNT-JS\SCHEMA-CACHE\OPENAI-LLM-SCHEMA.JSON
+----------------------
+{
+  "description": "OpenAI Text Generator Tool that generates text using OpenAI's API based on a provided prompt.",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "The main prompt to generate text from. This is required."
+    },
+    "apiKey": {
+      "type": "string",
+      "description": "The OpenAI API key used for authentication. If not provided, it should be set in the environment variable OPENAI_API_KEY."
+    },
+    "model": {
+      "type": "string",
+      "description": "The model to use for text generation. Defaults to 'gpt-3.5-turbo' if not specified."
+    },
+    "systemPrompt": {
+      "type": "string",
+      "description": "The system prompt that sets the assistant's behavior. Defaults to 'You are a helpful assistant.' if not specified."
+    },
+    "temperature": {
+      "type": "number",
+      "description": "The sampling temperature to use, which controls the randomness of the output. Defaults to 0.7 if not specified."
+    },
+    "maxTokens": {
+      "type": "integer",
+      "description": "The maximum number of tokens to generate in the response. Defaults to 500 if not specified."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
+----------------------
+AGNT-JS\SCHEMA-CACHE\RANDOM-NUMBER-SCHEMA.JSON
+----------------------
+{
+  "description": "Random Number Generator Tool that generates a random number within a specified range (min to max, inclusive).",
+  "properties": {
+    "min": {
+      "type": "integer",
+      "description": "The minimum value of the range. Defaults to 1 if not provided."
+    },
+    "max": {
+      "type": "integer",
+      "description": "The maximum value of the range. Defaults to 100 if not provided."
+    }
+  },
+  "required": []
+}
+----------------------
+AGNT-JS\SCHEMA-CACHE\SILLY-NAME-GENERATOR-SCHEMA.JSON
+----------------------
+{
+  "description": "A tool that generates silly names by combining random adjectives and nouns. It can generate a single name or multiple names based on the input parameter.",
+  "properties": {
+    "numNames": {
+      "type": "integer",
+      "description": "The number of silly names to generate. Defaults to 1 if not provided."
+    }
+  },
+  "required": []
+}
+----------------------
+AGNT-JS\SCHEMA-CACHE\TIMER-TRIGGER-SCHEMA.JSON
+----------------------
+{
+  "description": "Timer Trigger Tool that triggers a workflow after a specified delay or at a specific time.",
+  "properties": {
+    "triggerType": {
+      "type": "string",
+      "description": "Specifies the type of trigger: 'delay' or 'scheduled'."
+    },
+    "delaySeconds": {
+      "type": "integer",
+      "description": "Number of seconds to delay the trigger (only for 'delay' triggerType)."
+    },
+    "delayMinutes": {
+      "type": "integer",
+      "description": "Number of minutes to delay the trigger (only for 'delay' triggerType)."
+    },
+    "delayHours": {
+      "type": "integer",
+      "description": "Number of hours to delay the trigger (only for 'delay' triggerType)."
+    },
+    "scheduledTime": {
+      "type": "string",
+      "description": "The scheduled time to trigger the workflow, in ISO string or timestamp format (only for 'scheduled' triggerType)."
+    },
+    "allowPastTriggers": {
+      "type": "string",
+      "description": "If 'true', allows the trigger to fire immediately if the scheduled time is in the past."
+    },
+    "simulateOnly": {
+      "type": "string",
+      "description": "If 'true', simulates the trigger without actual delay."
+    },
+    "accelerateTime": {
+      "type": "string",
+      "description": "If 'true', accelerates time by using 1 second to represent 1 minute for demonstration purposes."
+    }
+  },
+  "required": [
+    "triggerType"
+  ]
+}
+----------------------
+AGNT-JS\SCHEMA-CACHE\WEB-SEARCH-SCHEMA.JSON
+----------------------
+{
+  "description": "Web Search Tool that performs web searches and returns results and opens a browser. It can also open URLs in the Brave browser or fetch and summarize web content. If the user asks for a specific URL, use the 'fetch' action. If the user asks for information about a specific webpage, use the 'fetch' action. If the user asks for general information, use the 'search' action. If the user asks to open a URL or link, use the 'open' action.",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "The action to perform based on the user's request: 'search' (find information on a topic), 'open' (launch URL in browser), or 'fetch' (extract content from URL). Use 'search' when needing general information, 'fetch' when you have a specific URL and need its content, or 'open' when the user needs to interact with a website directly. Defaults to 'search'."
+    },
+    "url": {
+      "type": "string",
+      "description": "The URL to open or fetch content from. Required for 'open' and 'fetch' actions. For 'fetch', the tool will extract text content and summarize it. For 'open', it will attempt to launch a browser with this URL."
+    },
+    "searchQuery": {
+      "type": "string",
+      "description": "The search query to use when performing a web search. Required for 'search' action. Be specific and concise for better results. The tool will return titles, URLs, and snippets from search results."
+    },
+    "resultsCount": {
+      "type": "integer",
+      "description": "The number of search results to return (1-10). Defaults to 5. Use higher values for broad topics to get more diverse information, and lower values for specific questions."
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "examples": [
+    {
+      "action": "search",
+      "searchQuery": "latest JavaScript frameworks 2023",
+      "resultsCount": 3
+    },
+    {
+      "action": "fetch",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript"
+    },
+    {
+      "action": "open",
+      "url": "https://github.com"
+    }
+  ],
+  "strategy": "IMPORTANT DECISION-MAKING GUIDANCE:\n1. If the user mentions a specific URL or website, use 'fetch' action to get its content directly\n2. If the user asks about details or information contained on a specific webpage, use 'fetch' with the URL\n3. Only use 'search' when you need to discover information and don't have a specific URL\n4. The 'fetch' action is much more effective than 'search' when you know the exact URL\n5. If the user seems frustrated with 'search' results, try switching to 'fetch' with a relevant URL instead"
+}
+----------------------
+AGNT-JS\SCHEMA-PATTERNS\SLOPSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SLOP Protocol Schema",
+  "description": "JSON Schema for the Simple Language Open Protocol (SLOP)",
+  "type": "object",
+  "properties": {
+    "chat": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "messages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": ["user", "assistant", "system"]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": ["role", "content"]
+              }
+            },
+            "model": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            }
+          },
+          "required": ["messages"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object"
+        },
+        "post": {
+          "type": "object",
+          "properties": {
+            "tool_id": {
+              "type": "string"
+            },
+            "parameters": {
+              "type": "object"
+            }
+          },
+          "required": ["tool_id", "parameters"]
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": ["key", "value"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"]
+        },
+        "put": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": ["key", "value"]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"]
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "filter": {
+              "type": "object"
+            }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "post": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": ["id", "title"]
+        },
+        "put": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": ["id"]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": ["id"]
+        },
+        "search": {
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string"
+            }
+          },
+          "required": ["q"]
+        }
+      }
+    },
+    "pay": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "payment_method": {
+              "type": "string"
+            }
+          },
+          "required": ["amount", "currency", "description", "payment_method"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "transaction_id": {
+              "type": "string"
+            }
+          },
+          "required": ["transaction_id"]
+        }
+      }
+    },
+    "info": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
+
+----------------------
+AGNT-JS\SCHEMA-PATTERNS\TOOLSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AGNT Tool Definition Schema",
+  "description": "JSON Schema for defining tools in the AGNT ecosystem",
+  "type": "object",
+  "required": ["title", "category", "type", "icon", "description"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The display name of the tool"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["trigger", "action", "utility", "control"],
+      "description": "The category the tool belongs to"
+    },
+    "type": {
+      "type": "string",
+      "description": "The unique identifier for the tool type. Format lowercase kebob case: 'tool-type-name'"
+    },
+    "icon": {
+      "type": "string",
+      "description": "The icon identifier for the tool"
+    },
+    "description": {
+      "type": "string",
+      "description": "A description of what the tool does"
+    },
+    "authRequired": {
+      "type": "string",
+      "enum": ["apiKey", "oauth"],
+      "description": "The type of authentication required, if any"
+    },
+    "authProvider": {
+      "type": "string",
+      "description": "The authentication provider name"
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["string", "number", "boolean", "array", "object"],
+            "description": "The data type of the parameter"
+          },
+          "inputType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "select",
+              "checkbox",
+              "password",
+              "datetime",
+              "codearea",
+              "readonly",
+              "time"
+            ],
+            "description": "The UI input type for the parameter"
+          },
+          "inputSize": {
+            "type": "string",
+            "enum": ["half", "third", "full"],
+            "description": "The size of the input field in the UI"
+          },
+          "options": {
+            "type": ["array", "string"],
+            "items": {
+              "type": "string"
+            },
+            "description": "Available options for select or checkbox inputs"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the parameter"
+          },
+          "default": {
+            "type": ["string", "number", "boolean", "array", "object"],
+            "description": "Default value for the parameter"
+          },
+          "value": {
+            "type": "string",
+            "description": "Fixed value for readonly parameters"
+          },
+          "conditional": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "The field name this parameter depends on"
+              },
+              "value": {
+                "type": ["string", "array"],
+                "description": "The value(s) of the field that make this parameter visible"
+              }
+            },
+            "required": ["field", "value"],
+            "description": "Conditional display logic for the parameter"
+          }
+        },
+        "required": ["description"]
+      },
+      "description": "The input parameters for the tool"
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "array",
+              "object",
+              "any",
+              "null",
+              "integer"
+            ],
+            "description": "The data type of the output"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the output"
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/output"
+            },
+            "description": "Properties of an object output type"
+          }
+        },
+        "required": ["description"]
+      },
+      "description": "The outputs produced by the tool"
+    }
+  }
+}
+
+----------------------
+AGNT-JS\SCHEMA-PATTERNS\WORKFLOWSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AGNT Workflow Definition Schema",
+  "description": "JSON Schema for defining workflows in the AGNT ecosystem",
+  "type": "object",
+  "required": ["id", "name", "nodes", "edges"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "category", "parameters", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "type": { "type": "string", "description": "Format lowercase kebob case: 'tool-type-name'" },
+          "category": { "type": "string" },
+          "parameters": { "type": "object" }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startNodeId", "endNodeId"],
+        "properties": {
+          "id": { "type": "string" },
+          "startNodeId": { "type": "string" },
+          "endNodeId": { "type": "string" },
+          "condition": { "type": "string" },
+          "if": { "type": "string" },
+          "value": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+
+----------------------
 AGNT-JS\SERVER.JS
 ----------------------
 import express from 'express';
@@ -1786,6 +3224,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import AGNT from './orchestrator/AGNT.js';
 import SPRK from './orchestrator/SPRK.js';
+import apiRouter from './api.js';
 
 // Load environment variables
 dotenv.config();
@@ -2051,6 +3490,9 @@ app.get('/tools/:filename', (req, res) => {
   }
 });
 
+// Use API routes
+app.use('/api', apiRouter);
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}\n`);
@@ -2061,9 +3503,22 @@ AGNT-JS\TOOLS\CALCULATOR.JS
 import { evaluate } from 'mathjs';
 
 export async function execute(params) {
-  const { expression } = params;
   try {
-    const result = evaluate(expression);
+    // If the expression is provided directly, use it
+    let expression = params.expression;
+    
+    // Log the incoming parameters for debugging
+    console.log("Calculator received params:", params);
+    
+    if (!expression) {
+      return { 
+        result: null, 
+        error: "Missing expression parameter"
+      };
+    }
+    
+    // Ensure the expression is treated as a string
+    const result = evaluate(String(expression));
     return { result: result };
   } catch (error) {
     console.error("Error evaluating expression:", error);
@@ -2073,18 +3528,144 @@ export async function execute(params) {
 ----------------------
 AGNT-JS\TOOLS\EXECUTE-JAVASCRIPT.JS
 ----------------------
-
 export async function execute(params, inputData) {
   try {
     // Create a function that has access to inputData
-    const func = new Function('inputData', params.code);
-    const result = func(inputData);
-    return result || { result: null };
+    const code = params.code || '';
+    console.log("Executing JS code:", code);
+    
+    // Make sure we return the result by adding 'return' if it's not already there
+    // This is needed because Function constructor body needs explicit returns
+    let modifiedCode = code.trim();
+    if (!modifiedCode.includes('return ') && !modifiedCode.startsWith('return ')) {
+      modifiedCode = `return ${modifiedCode}`;
+    }
+    
+    // Create and execute the function
+    const func = new Function('inputData', modifiedCode);
+    const rawResult = func(inputData);
+    
+    console.log("JavaScript execution result:", rawResult);
+    
+    // Ensure we always return a proper object with a result property
+    if (rawResult === null || rawResult === undefined) {
+      return { result: null, executed: true };
+    } else if (typeof rawResult === 'object') {
+      // If already an object, ensure it has a result property
+      return { ...rawResult, executed: true };
+    } else {
+      // Otherwise wrap the primitive value as a result
+      return { result: rawResult, executed: true };
+    }
   } catch (error) {
-    return { error: error.message };
+    console.error("JavaScript execution error:", error);
+    return { error: error.message, executed: false };
   }
 }
 
+// import { VM } from 'vm2';
+// import fetch from 'node-fetch';
+// import axios from 'axios';
+
+// export async function execute(params, inputData) {
+//   try {
+//     // Get code from parameters
+//     const code = params.code || '';
+//     console.log("Executing JS code:", code);
+    
+//     // Don't add return statement, instead wrap the code in a function
+//     let wrappedCode;
+    
+//     // Check if the code contains async/await
+//     const isAsync = code.includes('async') || code.includes('await');
+    
+//     // If code has async/await, we need special handling
+//     if (isAsync) {
+//       wrappedCode = `(async function() { 
+//         try {
+//           ${code.includes('return ') ? code : `return ${code}`}
+//         } catch (e) {
+//           return { error: e.message };
+//         }
+//       })()`;
+//     } 
+//     // Check if the code already contains a return statement
+//     else if (code.includes('return ') || code.trim().startsWith('return ')) {
+//       // If it has a return statement, wrap it in a function
+//       wrappedCode = `(function() { 
+//         try {
+//           ${code}
+//         } catch (e) {
+//           return { error: e.message };
+//         }
+//       })()`;
+//     } else {
+//       // If it doesn't have a return statement, use a simpler approach
+//       wrappedCode = `(${code})`;
+//     }
+    
+//     console.log("Modified JS code:", wrappedCode);
+    
+//     // Create a sandbox with inputData and web APIs available
+//     const sandbox = { 
+//       inputData,
+//       // Basic JavaScript objects
+//       Math,
+//       Date,
+//       JSON,
+//       Array,
+//       Object,
+//       String,
+//       Number,
+//       Boolean,
+//       RegExp,
+//       Error,
+      
+//       // Web APIs
+//       fetch: fetch,
+//       axios: axios,
+//       setTimeout: setTimeout,
+//       clearTimeout: clearTimeout,
+//       setInterval: setInterval,
+//       clearInterval: clearInterval,
+      
+//       // Console with logging
+//       console: { 
+//         log: (...args) => console.log('VM log:', ...args),
+//         error: (...args) => console.error('VM error:', ...args),
+//         warn: (...args) => console.warn('VM warn:', ...args),
+//         info: (...args) => console.info('VM info:', ...args)
+//       }
+//     };
+    
+//     // Create VM with a longer timeout for API calls
+//     const vm = new VM({
+//       timeout: 5000, // 5 seconds to allow for API calls
+//       sandbox,
+//       eval: false,
+//       wasm: false
+//     });
+    
+//     // Execute the code in the VM
+//     const rawResultPromise = vm.run(wrappedCode);
+    
+//     // Handle both async and sync results
+//     let rawResult;
+//     if (rawResultPromise instanceof Promise) {
+//       rawResult = await rawResultPromise;
+//     } else {
+//       rawResult = rawResultPromise;
+//     }
+    
+//     console.log("JavaScript execution result:", rawResult);
+    
+//     // Return the result
+//     return { result: rawResult, executed: true };
+//   } catch (error) {
+//     console.error("JavaScript execution error:", error);
+//     return { error: error.message, executed: false };
+//   }
+// }
 ----------------------
 AGNT-JS\TOOLS\LOG-MESSAGE.JS
 ----------------------
@@ -2163,14 +3744,9 @@ AGNT-JS\TOOLS\RANDOM-NUMBER.JS
  * Generates a random number within a specified range (min to max, inclusive)
  */
 export async function execute(params, inputData) {
-  // Validate parameters
-  if (!params.min || !params.max) {
-    return { error: "Both min and max parameters are required" };
-  }
-  
-  // Parse parameters to numbers
-  const min = parseInt(params.min, 10);
-  const max = parseInt(params.max, 10);
+  // Set default values if parameters are not provided
+  const min = parseInt(params.min || 1, 10);
+  const max = parseInt(params.max || 100, 10);
   
   // Validate parameter values
   if (isNaN(min) || isNaN(max)) {
@@ -2187,7 +3763,11 @@ export async function execute(params, inputData) {
   // Return result
   return {
     success: true,
-    randomNumber: randomNumber
+    randomNumber: randomNumber,
+    range: {
+      min: min,
+      max: max
+    }
   };
 }
 ----------------------
@@ -2353,34 +3933,99 @@ function formatDelay(ms) {
 }
 
 ----------------------
-AGNT-JS\TOOLS\URL-SHORTENER.JS
+AGNT-JS\TOOLS\WEB-SEARCH.JS
 ----------------------
-import crypto from 'crypto';
-
-// In-memory storage for shortened URLs (in a real-world scenario, use a database)
-const urlDatabase = new Map();
-
 /**
- * URL Shortener Tool
- * Shortens long URLs and retrieves information about shortened URLs
+ * Web Search Tool
+ * Performs web searches and returns results without opening a browser
  */
-export async function execute(params, inputData) {
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
+
+const execPromise = promisify(exec);
+
+export async function execute(params) {
   try {
-    if (!params.action || !params.url) {
-      return { error: "Both action and url parameters are required" };
-    }
-
-    const action = params.action.toLowerCase();
-    const url = params.url.trim();
-
-    if (action === 'shorten') {
-      return shortenUrl(url);
-    } else if (action === 'info') {
-      return getUrlInfo(url);
-    } else {
-      return { error: "Invalid action. Use 'shorten' or 'info'" };
+    const { action = 'search', url, searchQuery, resultsCount = 5 } = params;
+    
+    // Handle different actions
+    switch(action) {
+      case 'open':
+        if (!url) {
+          return { success: false, error: "URL is required for 'open' action" };
+        }
+        
+        // Validate URL format
+        const validatedUrl = validateAndFormatUrl(url);
+        const braveCommand = getBraveCommand();
+        
+        if (braveCommand) {
+          await execPromise(`${braveCommand} ${validatedUrl}`);
+          return {
+            success: true,
+            action: 'open',
+            url: validatedUrl,
+            message: `Opened ${validatedUrl} in Brave browser`
+          };
+        } else {
+          // If we can't open the browser, fetch the content instead
+          const pageContent = await fetchWebContent(validatedUrl);
+          return {
+            success: true,
+            action: 'fetch',
+            url: validatedUrl,
+            title: pageContent.title,
+            content: pageContent.summary,
+            message: `Retrieved content from ${validatedUrl}`
+          };
+        }
+        
+      case 'search':
+        if (!searchQuery) {
+          return { success: false, error: "Search query is required for 'search' action" };
+        }
+        
+        // Perform search and get results
+        const searchResults = await performWebSearch(searchQuery, resultsCount);
+        
+        return {
+          success: true,
+          action: 'search',
+          query: searchQuery,
+          results: searchResults,
+          message: `Found ${searchResults.length} results for "${searchQuery}"`
+        };
+      
+      case 'fetch':
+        if (!url) {
+          return { success: false, error: "URL is required for 'fetch' action" };
+        }
+        
+        // Validate URL format
+        const validatedFetchUrl = validateAndFormatUrl(url);
+        
+        // Fetch the content
+        const pageContent = await fetchWebContent(validatedFetchUrl);
+        
+        return {
+          success: true,
+          action: 'fetch',
+          url: validatedFetchUrl,
+          title: pageContent.title,
+          content: pageContent.summary,
+          message: `Retrieved content from ${validatedFetchUrl}`
+        };
+        
+      default:
+        return { 
+          success: false, 
+          error: `Unknown action: ${action}. Supported actions are: open, search, fetch` 
+        };
     }
   } catch (error) {
+    console.error('Error executing web search tool:', error);
     return {
       success: false,
       error: error.message || 'Unknown error occurred'
@@ -2388,296 +4033,173 @@ export async function execute(params, inputData) {
   }
 }
 
-function shortenUrl(longUrl) {
-  // Generate a short code
-  const shortCode = generateShortCode();
-  const shortUrl = `https://short.url/${shortCode}`;
+/**
+ * Get the appropriate Brave browser command based on the operating system
+ */
+function getBraveCommand() {
+  switch(process.platform) {
+    case 'win32':
+      return '"C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"';
+    case 'darwin': // macOS
+      return 'open -a "Brave Browser"';
+    case 'linux':
+      return 'brave-browser';
+    default:
+      return null;
+  }
+}
 
-  // Store the URL information
-  urlDatabase.set(shortCode, {
-    originalUrl: longUrl,
-    createdAt: new Date().toISOString(),
-    clicks: 0
+/**
+ * Validate and format URL to ensure it's properly formatted
+ */
+function validateAndFormatUrl(url) {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `https://${url}`;
+  }
+  return url;
+}
+
+/**
+ * Perform a web search and return results
+ */
+async function performWebSearch(query, count = 5) {
+  try {
+    // Try multiple search engines/approaches
+    try {
+      // First attempt with DuckDuckGo HTML
+      const results = await searchWithDuckDuckGo(query, count);
+      if (results.length > 0) {
+        return results;
+      }
+      console.log('DuckDuckGo returned no results, trying alternative method...');
+    } catch (duckError) {
+      console.error('DuckDuckGo search failed:', duckError);
+    }
+    
+    // Fallback to Bing
+    return await searchWithBing(query, count);
+  } catch (error) {
+    console.error('All search methods failed:', error);
+    throw new Error(`Failed to perform web search: ${error.message}`);
+  }
+}
+
+/**
+ * Search using DuckDuckGo
+ */
+async function searchWithDuckDuckGo(query, count = 5) {
+  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  
+  const response = await axios.get(searchUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml',
+      'Accept-Language': 'en-US,en;q=0.9'
+    },
+    timeout: 10000
   });
-
-  return {
-    success: true,
-    shortUrl: shortUrl
-  };
+  
+  const $ = cheerio.load(response.data);
+  const results = [];
+  
+  // Try multiple CSS selectors to adapt to potential changes in DuckDuckGo's HTML
+  const selectors = [
+    '.result', // Original selector
+    '.web-result', // Alternative selector
+    '.nrn-react-div' // Another possible selector
+  ];
+  
+  for (const selector of selectors) {
+    $(selector).slice(0, count).each((i, element) => {
+      // Try various ways to extract data
+      const title = $(element).find('.result__title, .title, h2, a').first().text().trim();
+      const url = $(element).find('.result__url, .url, a').attr('href') || '';
+      const snippet = $(element).find('.result__snippet, .snippet, .description, p').first().text().trim();
+      
+      if (title && (url || snippet)) {
+        results.push({ title, url, snippet });
+      }
+    });
+    
+    if (results.length > 0) {
+      break; // Found results with this selector, no need to try others
+    }
+  }
+  
+  return results;
 }
 
-function getUrlInfo(shortUrl) {
-  const shortCode = shortUrl.split('/').pop();
-  const urlInfo = urlDatabase.get(shortCode);
+/**
+ * Search using Bing as a fallback
+ */
+async function searchWithBing(query, count = 5) {
+  const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
+  
+  const response = await axios.get(searchUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml',
+      'Accept-Language': 'en-US,en;q=0.9'
+    },
+    timeout: 10000
+  });
+  
+  const $ = cheerio.load(response.data);
+  const results = [];
+  
+  // Bing search results
+  $('.b_algo').slice(0, count).each((i, element) => {
+    const titleElement = $(element).find('h2 a');
+    const title = titleElement.text().trim();
+    const url = titleElement.attr('href') || '';
+    const snippet = $(element).find('.b_caption p').text().trim();
+    
+    if (title && url) {
+      results.push({ title, url, snippet });
+    }
+  });
+  
+  return results;
+}
 
-  if (!urlInfo) {
+/**
+ * Fetch and summarize content from a web page
+ */
+async function fetchWebContent(url) {
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    const $ = cheerio.load(response.data);
+    
+    // Get page title
+    const title = $('title').text().trim();
+    
+    // Get page content (simplified)
+    let content = '';
+    $('p').each((i, el) => {
+      const text = $(el).text().trim();
+      if (text.length > 50) { // Only include substantial paragraphs
+        content += text + '\n\n';
+      }
+    });
+    
+    // Truncate content to a reasonable size
+    const summary = content.substring(0, 10000) + (content.length > 10000 ? '...' : '');
+    
     return {
-      success: false,
-      error: "Shortened URL not found"
+      title,
+      summary,
+      url
     };
-  }
-
-  return {
-    success: true,
-    originalUrl: urlInfo.originalUrl,
-    createdAt: urlInfo.createdAt,
-    clicks: urlInfo.clicks
-  };
-}
-
-function generateShortCode() {
-  return crypto.randomBytes(4).toString('hex');
-}
-----------------------
-AGNT-JS\UTILS\ASCII-ART.JS
-----------------------
-/**
- * Collection of ASCII art for TaskTitan application
- */
-
-export const AGNT_ACTIVATION = `
-***************************************
-************INITIALIZING...************
-***************************************
-                                 __     
-                                /  |    
-  ______    ______   _______   _$$ |_   
- /      \  /      \ /       \ / $$   |  
- $$$$$$  |/$$$$$$  |$$$$$$$  |$$$$$$/   
- /    $$ |$$ |  $$ |$$ |  $$ |  $$ | __ 
-/$$$$$$$ |$$ \__$$ |$$ |  $$ |  $$ |/  |
-$$    $$ |$$    $$ |$$ |  $$ |  $$  $$/ 
- $$$$$$$/  $$$$$$$ |$$/   $$/    $$$$/  
-          /  \__$$ |                    
-          $$    $$/                     
-           $$$$$$/   
-`;
-
-export const AGNT_COMPLETION = `
-***************************************
-************WORK COMPLETED************
-***************************************
-                                 __     
-                                /  |    
-  ______    ______   _______   _$$ |_   
- /      \  /      \ /       \ / $$   |  
- $$$$$$  |/$$$$$$  |$$$$$$$  |$$$$$$/   
- /    $$ |$$ |  $$ |$$ |  $$ |  $$ | __ 
-/$$$$$$$ |$$ \__$$ |$$ |  $$ |  $$ |/  |
-$$    $$ |$$    $$ |$$ |  $$ |  $$  $$/ 
- $$$$$$$/  $$$$$$$ |$$/   $$/    $$$$/  
-          /  \__$$ |                    
-          $$    $$/                     
-           $$$$$$/   
-
-        
-***************************************
-************WORK COMPLETED************
-***************************************
-`;
-
-export const SPRK_EXECUTION = `
-***************************************
-************EXECUTING SPRK...**********
-      ^   ^
-✩‧₊ ( ˶ˆᗜˆ˵ ) ₊‧✩
-***************************************
-
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⡴⠂
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣾⡿⠋⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣶⣿⣿⠟⠋⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣾⣿⣿⣿⡟⠁⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠋⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⡿⠋⠁⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⣿⠟⠉⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⣿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⢀⣠⣶⣿⣿⣿⣿⣿⣿⡿⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣧⣤⣤⣤⣤⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣿⣿⣿⣿⣿⣿⠿⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⣠⣴⣿⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⣠⣾⡿⠟⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠠⠞⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-`;
-
-export const FIRE_EXECUTION = `
-***************************************
-************EXECUTING FIRE...**********
-        ^  ^
-─=≡Σ((( つ＞＜)つ
-***************************************
-
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣆⢳⡀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣿⣾⣷⡀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠠⣄⠀⢠⣿⣿⣿⣿⡎⢻⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⢸⣧⢸⣿⣿⣿⣿⡇⠀⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣾⣿⣿⣿⣿⠃⠀⢸⣿⣿⣿⣿⣿⣿⠀⣄⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⠏⠀⠀⣸⣿⣿⣿⣿⣿⡿⢀⣿⡆⠀
-⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⣿⣿⣿⣿⣿⣿⠇⣼⣿⣿
-⠀⢰⠀⠀⣴⣿⣿⣿⣿⣿⣿⡿⠁⠀⠀⠀⢠⣿⣿⣿⣿⣿⡟⣼⣿⣿⣿
-⠀⣿⡀⢸⣿⣿⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⣸⡿⢻⣿⣿⣿⣿⣿⣿⣿⣿
-⠀⣿⣷⣼⣿⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⠀⢹⠃⢸⣿⣿⣿⣿⣿⣿⣿
-⠀⢿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣿⣿⣿⠋⣠⠀
-⠀⠈⢻⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣵⣿⠃⠀
-⠀⠀⠀⠙⢿⣿⣿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⣿⡿⠃⠀⠀
-⠀⠀⠀⠀⠀⠙⢿⣿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⡿⠋⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠈⠛⠿⣿⣦⣀⠀⠀⠀⠀⢀⣴⠿⠛⠁⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠓⠂⠀⠈⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-`;
-
-export const PLUG_EXECUTION = `
-***************************************
-***********CONTACTING PLUG...**********
-   ^   ^
-(づ ° ᗜ °)づ ♡
-***************************************
-
-⠀⠀⠀⢸⣦⡀⠀⠀⠀⠀⢀⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⢸⣏⠻⣶⣤⡶⢾⡿⠁⠀⢠⣄⡀⢀⣴⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⣀⣼⠷⠀⠀⠁⢀⣿⠃⠀⠀⢀⣿⣿⣿⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠴⣾⣯⣅⣀⠀⠀⠀⠈⢻⣦⡀⠒⠻⠿⣿⡿⠿⠓⠂⠀⠀⢀⡇⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠉⢻⡇⣤⣾⣿⣷⣿⣿⣤⠀⠀⣿⠁⠀⠀⠀⢀⣴⣿⣿⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠸⣿⡿⠏⠀⢀⠀⠀⠿⣶⣤⣤⣤⣄⣀⣴⣿⡿⢻⣿⡆⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠟⠁⠀⢀⣼⠀⠀⠀⠹⣿⣟⠿⠿⠿⡿⠋⠀⠘⣿⣇⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⢳⣶⣶⣿⣿⣇⣀⠀⠀⠙⣿⣆⠀⠀⠀⠀⠀⠀⠛⠿⣿⣦⣤⣀⠀⠀
-⠀⠀⠀⠀⠀⠀⣹⣿⣿⣿⣿⠿⠋⠁⠀⣹⣿⠳⠀⠀⠀⠀⠀⠀⢀⣠⣽⣿⡿⠟⠃
-⠀⠀⠀⠀⠀⢰⠿⠛⠻⢿⡇⠀⠀⠀⣰⣿⠏⠀⠀⢀⠀⠀⠀⣾⣿⠟⠋⠁⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠋⠀⠀⣰⣿⣿⣾⣿⠿⢿⣷⣀⢀⣿⡇⠁⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠋⠉⠁⠀⠀⠀⠀⠙⢿⣿⣿⠇⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀
-`;
-
-export const VIBE_ACTIVATION = `
-***************************************
-***********ACTIVATING VIBE...**********
-    ^   ^
-♡ (˶ᵔ ᵕ ᵔ˶) ♡
-***************************************
-
-⠀⣤⡀⠀⠀⠠⣤⠀⠀⠀⠀⣤⠀⠀⢠⡄⠀⠀⣤⠀⠀⠀⠀⣤⠄⠀⠀⢀⣤⠀
-⠀⠘⢷⣄⠀⠀⠹⣧⡀⠀⠀⢸⡆⠀⢸⡇⠀⢰⡇⠀⠀⢀⣼⠏⠀⠀⣠⡾⠃⠀
-⠀⠀⠀⠙⢷⣄⠀⠘⢷⡄⠀⠘⣷⠀⠘⠃⠀⣼⠇⠀⢠⡾⠃⠀⣠⡾⠋⠀⠀⠀
-⠀⠻⣦⣀⠀⠻⣧⡀⠈⢿⡄⠀⢿⠄⢀⡀⠠⡿⠀⢠⡿⠁⢀⣼⠟⠀⣀⣴⠟⠀
-⠀⠀⠈⠙⢶⣄⠈⠻⣦⡈⢿⡄⠈⢠⣿⣿⡄⠁⢠⡿⢁⣴⠟⠁⣠⡶⠋⠁⠀⠀
-⠀⣀⣀⠀⠀⠈⠛⢦⣈⣿⣄⠃⣠⣿⣿⣿⣿⣄⠘⣠⣿⣁⡴⠛⠁⠀⠀⣀⣀⠀
-⠀⠈⠙⠛⠷⢦⣤⣀⡉⠻⠋⣰⣿⡿⠿⠿⢿⣿⣆⠙⠟⢉⣀⣤⡴⠾⠛⠋⠁⠀
-⠀⢶⣦⣤⣤⣤⣈⣉⣛⠃⢀⣡⡄⢀⡤⠤⠀⢠⣌⡀⠘⣛⣉⣁⣤⣤⣤⣴⡶⠀
-⠀⠀⠀⠀⠀⣉⣉⡉⠁⢰⣿⣿⣇⠸⠀⠀⠀⣸⣿⣿⡆⠈⢉⣉⣉⠀⠀⠀⠀⠀
-⠀⠛⠛⠉⠉⢉⠉⢁⣤⣈⠛⠻⠿⠷⣤⣤⠾⠿⠟⠛⣁⣤⡈⠉⡉⠉⠉⠛⠛⠀
-⠀⣠⣤⡶⠞⠋⢠⣾⣿⣿⣿⣶⣶⣤⣤⣤⣤⣶⣶⣿⣿⣿⣷⡄⠙⠳⢶⣤⣄⠀
-⠀⠉⠀⣠⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⣄⠀⠉⠀
-⠀⣴⠞⠃⣀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⡀⠀⣀⠀⢀⣀⠘⠳⣦⠀
-⠀⢀⣠⡾⠋⣠⠞⠁⣰⡟⠁⢸⡏⠀⢸⡇⠀⢹⡇⠈⢻⣆⠈⠳⣄⠙⢷⣄⡀⠀
-⠀⠛⠋⠀⠚⠋⠀⠐⠛⠀⠀⠚⠀⠀⠘⠃⠀⠀⠓⠀⠀⠛⠂⠀⠙⠓⠀⠙⠛⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-`;
-
-export const SUCCESS_ART = `
- _____ _   _ _____  _____  _____ _____ _____ 
-/  ___| | | /  __ \/  __ \|  ___/  ___/  ___|
-\ \--.| | | | /  \/| /  \/| |__ \ \--.\ \--. 
- \--. \ | | | |    | |    |  __| \--. \\--. \
-/\__/ / |_| | \__/\| \__/\| |___/\__/ /\__/ /
-\____/ \___/ \____/ \____/\____/\____/\____/ 
-`;
-
-export const ERROR_ART = `
- _________________ ___________ 
-|  ___| ___ \ ___ \  _  | ___ \
-| |__ | |_/ / |_/ / | | | |_/ /
-|  __||    /|    /| | | |    / 
-| |___| |\ \| |\ \\ \_/ / |\ \ 
-\____/\_| \_\_| \_|\___/\_| \_|
-                                                                                                  
-`;
-
-/**
- * Display ASCII art with optional message
- * @param {string} art - The ASCII art to display
- * @param {string} message - Optional message to display with the art
- */
-export function displayArt(art, message = "") {
-  console.log(art);
-  if (message) {
-    console.log(message);
+  } catch (error) {
+    console.error('Web fetch error:', error);
+    throw new Error(`Failed to fetch web content: ${error.message}`);
   }
 }
-
-/**
- * Colors for console output
- */
-export const COLORS = {
-  RESET: "\x1b[0m",
-  BRIGHT: "\x1b[1m",
-  DIM: "\x1b[2m",
-  UNDERSCORE: "\x1b[4m",
-  BLINK: "\x1b[5m",
-  REVERSE: "\x1b[7m",
-  HIDDEN: "\x1b[8m",
-  
-  FG_BLACK: "\x1b[30m",
-  FG_RED: "\x1b[31m",
-  FG_GREEN: "\x1b[32m",
-  FG_YELLOW: "\x1b[33m",
-  FG_BLUE: "\x1b[34m",
-  FG_MAGENTA: "\x1b[35m",
-  FG_CYAN: "\x1b[36m",
-  FG_WHITE: "\x1b[37m",
-  
-  BG_BLACK: "\x1b[40m",
-  BG_RED: "\x1b[41m",
-  BG_GREEN: "\x1b[42m",
-  BG_YELLOW: "\x1b[43m",
-  BG_BLUE: "\x1b[44m",
-  BG_MAGENTA: "\x1b[45m",
-  BG_CYAN: "\x1b[46m",
-  BG_WHITE: "\x1b[47m"
-};
-
-/**
- * Display colored ASCII art
- * @param {string} art - The ASCII art to display
- * @param {string} color - The color to use (from COLORS)
- */
-export function displayColoredArt(art, color = COLORS.FG_CYAN) {
-  console.log(`${color}${art}${COLORS.RESET}`);
-}
-
-/**
- * Create a framed version of text/ASCII art
- * @param {string} content - The content to frame
- * @param {string} frameChar - Character to use for the frame
- * @returns {string} - Framed content
- */
-export function frameArt(content, frameChar = '*') {
-  const lines = content.split('\n');
-  const maxLength = Math.max(...lines.map(line => line.length));
-  
-  const topBottom = frameChar.repeat(maxLength + 4);
-  const framedLines = lines.map(line => `${frameChar} ${line.padEnd(maxLength)} ${frameChar}`);
-  
-  return [topBottom, ...framedLines, topBottom].join('\n');
-}
-
-// USAGE:
-
-// // In any file where you need ASCII art
-// import { displayArt, VIBE_ACTIVATION, SUCCESS_ART, COLORS, displayColoredArt } from '../utils/ascii-art.js';
-
-// // Simple display
-// displayArt(VIBE_ACTIVATION);
-
-// // With a message
-// displayArt(SUCCESS_ART, "Workflow completed successfully!");
-
-// // Colored display
-// displayColoredArt(ERROR_ART, COLORS.FG_RED);
 ----------------------
 AGNT-JS\WORKFLOWS\AUTO-INSURANCE-CLAIM-WORKFLOW.JSON
 ----------------------
@@ -3864,6 +5386,443 @@ aiohttp>=3.8.0
 importlib-metadata>=4.0.0
 colorama>=0.4.4
 python-dotenv>=1.0.0
+----------------------
+AGNT-PY\SCHEMA-PATTERNS\SLOPSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SLOP Protocol Schema",
+  "description": "JSON Schema for the Simple Language Open Protocol (SLOP)",
+  "type": "object",
+  "properties": {
+    "chat": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "messages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": ["user", "assistant", "system"]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": ["role", "content"]
+              }
+            },
+            "model": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            }
+          },
+          "required": ["messages"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object"
+        },
+        "post": {
+          "type": "object",
+          "properties": {
+            "tool_id": {
+              "type": "string"
+            },
+            "parameters": {
+              "type": "object"
+            }
+          },
+          "required": ["tool_id", "parameters"]
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": ["key", "value"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"]
+        },
+        "put": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": ["key", "value"]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"]
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "filter": {
+              "type": "object"
+            }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "post": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": ["id", "title"]
+        },
+        "put": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            }
+          },
+          "required": ["id"]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": ["id"]
+        },
+        "search": {
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string"
+            }
+          },
+          "required": ["q"]
+        }
+      }
+    },
+    "pay": {
+      "type": "object",
+      "properties": {
+        "post": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "payment_method": {
+              "type": "string"
+            }
+          },
+          "required": ["amount", "currency", "description", "payment_method"]
+        },
+        "get": {
+          "type": "object",
+          "properties": {
+            "transaction_id": {
+              "type": "string"
+            }
+          },
+          "required": ["transaction_id"]
+        }
+      }
+    },
+    "info": {
+      "type": "object",
+      "properties": {
+        "get": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
+
+----------------------
+AGNT-PY\SCHEMA-PATTERNS\TOOLSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AGNT Tool Definition Schema",
+  "description": "JSON Schema for defining tools in the AGNT ecosystem",
+  "type": "object",
+  "required": ["title", "category", "type", "icon", "description"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The display name of the tool"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["trigger", "action", "utility", "control"],
+      "description": "The category the tool belongs to"
+    },
+    "type": {
+      "type": "string",
+      "description": "The unique identifier for the tool type. Format lowercase kebob case: 'tool-type-name'"
+    },
+    "icon": {
+      "type": "string",
+      "description": "The icon identifier for the tool"
+    },
+    "description": {
+      "type": "string",
+      "description": "A description of what the tool does"
+    },
+    "authRequired": {
+      "type": "string",
+      "enum": ["apiKey", "oauth"],
+      "description": "The type of authentication required, if any"
+    },
+    "authProvider": {
+      "type": "string",
+      "description": "The authentication provider name"
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["string", "number", "boolean", "array", "object"],
+            "description": "The data type of the parameter"
+          },
+          "inputType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "select",
+              "checkbox",
+              "password",
+              "datetime",
+              "codearea",
+              "readonly",
+              "time"
+            ],
+            "description": "The UI input type for the parameter"
+          },
+          "inputSize": {
+            "type": "string",
+            "enum": ["half", "third", "full"],
+            "description": "The size of the input field in the UI"
+          },
+          "options": {
+            "type": ["array", "string"],
+            "items": {
+              "type": "string"
+            },
+            "description": "Available options for select or checkbox inputs"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the parameter"
+          },
+          "default": {
+            "type": ["string", "number", "boolean", "array", "object"],
+            "description": "Default value for the parameter"
+          },
+          "value": {
+            "type": "string",
+            "description": "Fixed value for readonly parameters"
+          },
+          "conditional": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "The field name this parameter depends on"
+              },
+              "value": {
+                "type": ["string", "array"],
+                "description": "The value(s) of the field that make this parameter visible"
+              }
+            },
+            "required": ["field", "value"],
+            "description": "Conditional display logic for the parameter"
+          }
+        },
+        "required": ["description"]
+      },
+      "description": "The input parameters for the tool"
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "array",
+              "object",
+              "any",
+              "null",
+              "integer"
+            ],
+            "description": "The data type of the output"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the output"
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/output"
+            },
+            "description": "Properties of an object output type"
+          }
+        },
+        "required": ["description"]
+      },
+      "description": "The outputs produced by the tool"
+    }
+  }
+}
+
+----------------------
+AGNT-PY\SCHEMA-PATTERNS\WORKFLOWSCHEMA.JSON
+----------------------
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AGNT Workflow Definition Schema",
+  "description": "JSON Schema for defining workflows in the AGNT ecosystem",
+  "type": "object",
+  "required": ["id", "name", "nodes", "edges"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "category", "parameters", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "type": { "type": "string", "description": "Format lowercase kebob case: 'tool-type-name'" },
+          "category": { "type": "string" },
+          "parameters": { "type": "object" }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "startNodeId", "endNodeId"],
+        "properties": {
+          "id": { "type": "string" },
+          "startNodeId": { "type": "string" },
+          "endNodeId": { "type": "string" },
+          "condition": { "type": "string" },
+          "if": { "type": "string" },
+          "value": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+
 ----------------------
 AGNT-PY\SETUP.PY
 ----------------------
