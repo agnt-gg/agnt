@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { useElectron } from './useElectron';
 
 // Singleton state - shared across all components
 const appVersion = ref('');
@@ -13,6 +14,8 @@ let fetchPromise = null;
  * @returns {Object} - { appVersion: Ref<string>, fetchVersion: Function }
  */
 export function useAppVersion() {
+  const { electron } = useElectron();
+
   const fetchVersion = async () => {
     // Return cached version if already fetched
     if (initialized && appVersion.value) {
@@ -26,9 +29,9 @@ export function useAppVersion() {
 
     fetchPromise = (async () => {
       // Try Electron API first
-      if (window.electron?.getAppVersion) {
+      if (electron?.getAppVersion) {
         try {
-          appVersion.value = await window.electron.getAppVersion();
+          appVersion.value = await electron.getAppVersion();
           initialized = true;
           return appVersion.value;
         } catch (e) {

@@ -2,6 +2,24 @@
 
 This guide will help you self-host AGNT using Docker for a production-ready deployment.
 
+## Who Is This For?
+
+**AGNT is local-first and designed for:**
+
+- ✅ **Single users** - Personal deployment on your server
+- ✅ **Families** - Share across household devices
+- ✅ **Small teams** - 2-10 people in your organization
+
+**NOT designed for:**
+
+- ❌ Multi-tenant SaaS (hundreds of separate organizations)
+- ❌ Public hosting for unrelated users
+- ❌ Large enterprises (50+ concurrent users)
+
+**Why?** AGNT uses SQLite (local database) and broadcasts real-time updates to all connected clients. This architecture is perfect for trusted groups sharing a workspace, but not for isolating thousands of separate users or organizations.
+
+**Each organization should self-host their own AGNT instance.**
+
 ## What You Get
 
 Docker containerization provides:

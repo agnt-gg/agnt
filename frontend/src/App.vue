@@ -5,16 +5,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
 import LeftSidebar from '@/views/_components/layout/LeftSidebar.vue';
 import { RouterView } from 'vue-router';
 import WindowControls from '@/views/_components/layout/WindowControls.vue';
+import { useElectron } from '@/composables/useElectron';
+import { useRealtimeSync } from '@/composables/useRealtimeSync';
 
-const isElectron = ref(false);
+const { isElectron } = useElectron();
 
-onMounted(() => {
-  isElectron.value = window.electron !== undefined;
-});
+// Initialize real-time sync (connects on mount, disconnects on unmount)
+const { isConnected } = useRealtimeSync();
 </script>
 
 <style scoped></style>

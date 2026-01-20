@@ -19,6 +19,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { useElectron } from '@/composables/useElectron';
+
+const { electron } = useElectron();
 
 const showBanner = ref(false);
 const updateInfo = ref(null);
@@ -29,9 +32,9 @@ const dismissed = ref(false);
 onMounted(async () => {
   try {
     // Get current version - try Electron first, then fallback to API
-    if (window.electron?.getAppVersion) {
+    if (electron?.getAppVersion) {
       try {
-        currentVersion.value = await window.electron.getAppVersion();
+        currentVersion.value = await electron.getAppVersion();
       } catch (e) {
         console.log('[Update] Electron getAppVersion failed, trying API');
       }
@@ -51,9 +54,9 @@ onMounted(async () => {
     console.log(`[Update] Current version: ${currentVersion.value}`);
 
     // Check for updates via Electron if available
-    if (window.electron?.checkForUpdates) {
+    if (electron?.checkForUpdates) {
       try {
-        const result = await window.electron.checkForUpdates();
+        const result = await electron.checkForUpdates();
 
         if (!result.error && result.updateAvailable) {
           updateInfo.value = result;
@@ -95,8 +98,8 @@ onMounted(async () => {
   }
 
   // Listen for update notifications from main process
-  if (window.electron?.onUpdateAvailable) {
-    window.electron.onUpdateAvailable((info) => {
+  if (electron?.onUpdateAvailable) {
+    electron.onUpdateAvailable((info) => {
       updateInfo.value = info;
       if (!dismissed.value) {
         showBanner.value = true;
@@ -106,8 +109,8 @@ onMounted(async () => {
 });
 
 function openDownloads() {
-  if (window.electron?.openDownloadPage) {
-    window.electron.openDownloadPage();
+  if (electron?.openDownloadPage) {
+    electron.openDownloadPage();
   } else {
     // Fallback for browser
     window.open('https://agnt.gg/downloads', '_blank');
@@ -128,9 +131,9 @@ function dismiss() {
 // Expose method to manually trigger update check
 defineExpose({
   async checkNow() {
-    if (!window.electron?.checkForUpdates) return null;
+    if (!electron?.checkForUpdates) return null;
 
-    const result = await window.electron.checkForUpdates();
+    const result = await electron.checkForUpdates();
     if (result.updateAvailable) {
       updateInfo.value = result;
       showBanner.value = true;

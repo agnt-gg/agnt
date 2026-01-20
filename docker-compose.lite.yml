@@ -41,9 +41,13 @@ services:
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
 
+      # SQLite WAL mode (multi-client support, disabled by default)
+      # Enable if running multiple Electron/browser clients simultaneously
+      # - SQLITE_WAL_MODE=true
+
     volumes:
-      # Persistent data storage
-      - agnt-data:/app/data
+      # SQLite database (persistent across restarts)
+      - agnt-db:/app/data
 
       # Plugin storage
       - agnt-plugins:/app/backend/plugins/installed
@@ -80,7 +84,7 @@ services:
 
 volumes:
   # Persistent volumes for data storage
-  agnt-data:
+  agnt-db:
     driver: local
   agnt-plugins:
     driver: local

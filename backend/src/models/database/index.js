@@ -5,22 +5,35 @@ import WebhookModel from '../WebhookModel.js';
 
 // Get user data path - prioritize USER_DATA_PATH env var (set by Electron)
 const getUserDataPath = () => {
-  // Use USER_DATA_PATH from Electron if available (ASAR-compatible)
+  // 1. Docker: Use /app/data if it exists (mounted volume)
+  if (process.env.NODE_ENV === 'production' && fs.existsSync('/app/data')) {
+    console.log('Using Docker volume for database: /app/data');
+    return '/app/data';
+  }
+
+  // 2. Electron: Use USER_DATA_PATH env var (ASAR-compatible)
   if (process.env.USER_DATA_PATH) {
     const userPath = path.join(process.env.USER_DATA_PATH, 'Data');
     console.log('Using USER_DATA_PATH for database:', userPath);
     return userPath;
   }
 
-  // Fallback for development or when not running in Electron
+  // 3. Development: Use ./data in project root
+  const devPath = path.resolve(process.cwd(), 'data');
+  if (process.env.NODE_ENV !== 'production' || process.cwd().includes('backend')) {
+    console.log('Using development data directory:', devPath);
+    return devPath;
+  }
+
+  // 4. User home fallback (self-hosted, non-Docker)
   const userPath =
     process.platform === 'darwin'
-      ? path.join(process.env.HOME, 'Library', 'Application Support', 'AGNT', 'Data') // Mac: User's Library
+      ? path.join(process.env.HOME, '.agnt', 'data') // Mac: ~/.agnt/data
       : process.platform === 'win32'
-      ? path.join(process.env.APPDATA || process.env.USERPROFILE, 'AGNT', 'Data') // Windows: AppData
-      : path.join(process.env.HOME || '/tmp', '.config', 'AGNT', 'Data'); // Linux: .config
+      ? path.join(process.env.APPDATA || process.env.USERPROFILE, 'agnt', 'data') // Windows: %APPDATA%/agnt/data
+      : path.join(process.env.HOME || '/tmp', '.agnt', 'data'); // Linux: ~/.agnt/data
 
-  console.log('Attempting to use directory:', userPath);
+  console.log('Using user home directory for database:', userPath);
   return userPath;
 };
 
@@ -60,14 +73,23 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('Database initialization error:', err);
   } else {
     console.log('Database successfully initialized at:', dbPath);
-    // Enable WAL mode for better concurrency
-    db.run('PRAGMA journal_mode = WAL', (err) => {
-      if (err) {
-        console.error('Failed to enable WAL mode:', err);
-      } else {
-        console.log('WAL mode enabled');
-      }
-    });
+
+    // WAL mode for better concurrency (optional, disabled by default)
+    // Enable with SQLITE_WAL_MODE=true environment variable
+    // WARNING: WAL mode may cause issues with single-user scenarios or networked filesystems
+    const enableWAL = process.env.SQLITE_WAL_MODE === 'true';
+    if (enableWAL) {
+      db.run('PRAGMA journal_mode = WAL', (err) => {
+        if (err) {
+          console.error('Failed to enable WAL mode:', err);
+        } else {
+          console.log('✓ WAL mode enabled (multi-client concurrency support)');
+        }
+      });
+    } else {
+      console.log('WAL mode disabled (default). Set SQLITE_WAL_MODE=true to enable multi-client support.');
+    }
+
     // Set busy timeout to 5 seconds to handle concurrent access
     db.run('PRAGMA busy_timeout = 5000', (err) => {
       if (err) {

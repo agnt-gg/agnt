@@ -46,6 +46,24 @@
 
 ---
 
+## 👥 Who Is This For?
+
+**AGNT is local-first and designed for:**
+
+- ✅ **Single users** - Run on your personal computer
+- ✅ **Families** - Share across household devices
+- ✅ **Small teams** - 2-10 people in your organization
+
+**NOT designed for:**
+
+- ❌ Multi-tenant SaaS (isolating hundreds of unrelated users)
+- ❌ Public hosting (each org should self-host their own instance)
+- ❌ Large enterprises (50+ concurrent users)
+
+AGNT uses SQLite and real-time sync that broadcasts to all connected clients. Perfect for trusted groups sharing a workspace, not for isolating thousands of separate organizations.
+
+---
+
 ## 🎯 Why AGNT?
 
 <table>
@@ -207,18 +225,27 @@ Use Docker for an isolated, production-ready deployment:
 git clone https://github.com/agnt-gg/agnt.git
 cd agnt
 
-# Option 1: Full version with browser automation (1.3GB)
+# Option 1: Full version with browser automation (1.3GB) - Port 33333
 docker-compose up -d
+# Access at http://localhost:33333
 
-# Option 2: Lite version without browser automation (620MB)
+# Option 2: Lite version without browser automation (620MB) - Port 3333
 docker-compose -f docker-compose.lite.yml up -d
-
 # Access at http://localhost:3333
+
+# Option 3: Run both versions simultaneously
+docker-compose -f docker-compose.both.yml up -d
+# Full: http://localhost:33333
+# Lite: http://localhost:3333
+
+# Or use the Makefile
+make run-both
 ```
 
 **Two variants available:**
-- 🔋 **Full** (~1.3GB): Includes Chromium for web scraping & browser automation
-- 🪶 **Lite** (~620MB): Smaller image without browser features
+- 🔋 **Full** (~1.3GB): Includes Chromium for web scraping & browser automation (Port **33333**)
+- 🪶 **Lite** (~620MB): Smaller image without browser features (Port **3333**)
+- 🚀 **Both**: Run full and lite versions side-by-side for testing
 
 📖 See the [Self-Hosting Guide](docs/SELF_HOSTING.md) for complete Docker setup, networking, and configuration.
 
