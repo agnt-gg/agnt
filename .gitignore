@@ -97,4 +97,7 @@ package-lock.json
 
 test-results/
 
+# MCP config (contains sensitive data)
+*mcp.json
+
 dup.js
