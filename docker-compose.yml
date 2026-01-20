@@ -2,32 +2,37 @@ version: '3.8'
 
 # AGNT Full Version - Complete image with Chromium (~1.3GB)
 # ✅ Includes Puppeteer/Playwright browser automation support
+# Runs on port 33333
+#
 # Use this for:
 # - Full-featured deployments
 # - When you need web scraping/browser automation
 # - Local/self-hosted environments with sufficient resources
 #
-# For lighter version without Chromium (~600MB), use:
+# For lighter version without Chromium (~600MB) on port 3333, use:
 # docker-compose -f docker-compose.lite.yml up -d
+#
+# To run both simultaneously:
+# make run-both
 
 services:
   agnt:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agnt:latest
+    image: agnt/agnt:latest
     container_name: agnt
     ports:
-      - "3333:3333"
+      - "33333:3333"
     environment:
       # Application Environment
       - NODE_ENV=production
 
       # URLs Configuration
-      - BASE_URL=http://localhost:3333
+      - BASE_URL=http://localhost:33333
       - REMOTE_URL=https://api.agnt.gg
       - WEBHOOK_URL=http://localhost:3001
-      - FRONTEND_URL=http://localhost:3333
+      - FRONTEND_URL=http://localhost:33333
 
       # Security Secrets (CHANGE THESE IN PRODUCTION!)
       # Generate secure secrets with: openssl rand -base64 32
@@ -62,10 +67,10 @@ services:
     # Health check to ensure service is running
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
-      interval: 30s
-      timeout: 10s
+      interval: 33s
+      timeout: 9s
       retries: 3
-      start_period: 40s
+      start_period: 33s
 
     # Resource limits (adjust based on your needs)
     deploy:

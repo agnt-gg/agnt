@@ -30,11 +30,32 @@ export async function createLlmClient(provider, userId) {
   // Check if this is a custom provider by querying the database
   const isCustom = await CustomOpenAIProviderService.isCustomProvider(provider);
   if (isCustom) {
+    console.log(`[LlmService] Looking up custom provider: ${provider} for user: ${userId}`);
+
+    if (!userId) {
+      throw new Error(`Custom provider "${provider}" requires authentication. userId is missing.`);
+    }
+
     const customProvider = await CustomOpenAIProviderService.getProviderCredentials(provider, userId);
 
     if (!customProvider) {
-      throw new Error(`Custom provider not found: ${provider}`);
+      // Get more details about why it failed
+      const providerExists = await CustomOpenAIProviderService.isCustomProvider(provider);
+      console.error(`[LlmService] Custom provider lookup failed:`, {
+        providerId: provider,
+        userId: userId,
+        providerExists: providerExists,
+      });
+
+      throw new Error(
+        `Custom provider not found or not accessible. ` +
+        `This could mean: (1) The provider belongs to a different user, ` +
+        `(2) The provider was deleted, or (3) You're not authenticated. ` +
+        `Provider ID: ${provider}`
+      );
     }
+
+    console.log(`[LlmService] Custom provider found: ${customProvider.provider_name} -> ${customProvider.base_url}`);
 
     // Use the base_url as-is (it's already normalized when saved)
     return new OpenAI({

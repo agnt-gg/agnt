@@ -2,17 +2,22 @@ version: '3.8'
 
 # AGNT Lite Version - Smaller image without Chromium (~600MB)
 # ⚠️ No Puppeteer/Playwright browser automation support
+# Runs on port 3333
+#
 # Use this for:
 # - Cloud deployments where you want smaller images
 # - When you don't need web scraping/browser automation
 # - Faster pulls and deployments
+#
+# To run both full and lite simultaneously:
+# make run-both
 
 services:
   agnt:
     build:
       context: .
       dockerfile: Dockerfile.lite
-    image: agnt:lite
+    image: agnt/agnt:lite
     container_name: agnt-lite
     ports:
       - "3333:3333"
@@ -60,10 +65,10 @@ services:
     # Health check to ensure service is running
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
-      interval: 30s
-      timeout: 10s
+      interval: 33s
+      timeout: 9s
       retries: 3
-      start_period: 40s
+      start_period: 33s
 
     # Resource limits (adjust based on your needs)
     deploy:

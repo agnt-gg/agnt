@@ -48,6 +48,21 @@ ENV npm_config_optional=false
 # Install dependencies and ignore postinstall scripts (electron-builder not needed in Docker)
 RUN npm install --production --ignore-scripts
 
+# Rebuild native bindings for the Docker environment
+RUN npm rebuild sqlite3 sharp
+
+# Manually install onnxruntime packages (needed by @xenova/transformers)
+# Use npm install without --no-save to ensure they're properly added to node_modules
+RUN npm install onnxruntime-node onnxruntime-web
+
+# Patch transformers.js to use dynamic imports (fixes ESM resolution in Docker)
+COPY scripts/patch-transformers-onnx.js ./scripts/
+RUN node scripts/patch-transformers-onnx.js || echo "Transformers patch failed, continuing anyway"
+
+# Run onnxruntime patch script (for web backend compatibility)
+COPY scripts/patch-onnxruntime.js ./scripts/
+RUN node scripts/patch-onnxruntime.js || echo "ONNX patch failed, continuing anyway"
+
 # Stage 3: Final runtime image (LITE - No Chromium)
 FROM node:20-alpine
 
@@ -96,7 +111,7 @@ COPY --chown=node:node assets/ /app/assets/
 EXPOSE 3333
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=33s --timeout=9s --start-period=33s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
 
 # Start the backend server

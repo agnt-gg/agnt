@@ -141,10 +141,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3333/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
-      interval: 30s
-      timeout: 10s
+      interval: 33s
+      timeout: 9s
       retries: 3
-      start_period: 40s
+      start_period: 33s
 
 volumes:
   agnt-data:
