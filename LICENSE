@@ -1,0 +1,98 @@
+# AGNT Community Core License (AGNT Open License)
+
+**Version:** 1.0  
+**Effective Date:** January 1, 2026
+**License Type:** Source-Available, Fair-Use Internal-Commercial License
+
+---
+
+## Grant of License
+
+AGNT Labs ("Licensor") grants you a **free, non-exclusive, non-transferable license** to use the AGNT Framework ("Software") under the following terms:
+
+### ✅ Permitted Uses
+
+You **MAY**:
+
+1. **Download, view, and modify** AGNT source code for personal or internal business automation
+2. **Self-host AGNT internally** for your own commercial operations
+3. **Use AGNT** for educational, training, or experimental projects
+4. **Study and learn** from the codebase for educational purposes
+5. **Deploy AGNT** within your organization for internal automation and workflows
+
+### ❌ Prohibited Uses
+
+You **MAY NOT**:
+
+1. **Offer AGNT publicly** as a hosted service (SaaS, resale, or platform)
+2. **Rebrand, redistribute, or fork** AGNT under another name
+3. **Sell AGNT** or AGNT-derived systems externally
+4. **Run multiple client accounts** on a shared hosted instance (multi-tenant use is considered SaaS and requires a Business or Enterprise license)
+5. **Remove or modify** copyright notices or attribution requirements
+6. **Use AGNT trademarks** in derivative products without written consent
+
+---
+
+## Attribution Requirement
+
+**Required:** You must provide clear attribution to AGNT in any public-facing use:
+
+- Include a link to [AGNT.gg](https://agnt.gg) in documentation or user interfaces
+- Maintain all copyright notices in source code
+- Credit "Powered by AGNT" where the Software is visible to end users
+
+---
+
+## Definitions
+
+- **Internal Use:** Use within your organization for your own business operations, not for external clients or public access
+- **SaaS (Software as a Service):** Providing access to AGNT functionality to external users over a network
+- **Multi-tenant:** Hosting multiple separate client accounts or organizations on a shared AGNT instance
+
+---
+
+## Upgrade Path
+
+To use AGNT for:
+
+- **Client projects or freelance work:** Upgrade to Personal Pro License ($99)
+- **Multi-client hosting or agencies:** Upgrade to Business Pro License ($999)
+- **Enterprise deployments:** Contact us for Enterprise License (starting at $25,000/year)
+
+---
+
+## Warranty Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+---
+
+## Limitation of Liability
+
+IN NO EVENT SHALL AGNT LABS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+## Termination
+
+This license automatically terminates if you violate any of its terms. Upon termination, you must cease all use of the Software and destroy all copies.
+
+---
+
+## Governing Law
+
+This license is governed by the laws of the United States and the State of Delaware, without regard to conflict of law principles.
+
+---
+
+## Contact
+
+**AGNT Labs Legal & Licensing**  
+📧 [legal@agnt.gg](mailto:legal@agnt.gg)  
+🌐 [https://agnt.gg/license](https://agnt.gg/license)
+
+---
+
+© 2026 AGNT Labs. All rights reserved.
+
+**"AGNT"**, **"AGNT.gg"**, and related marks are trademarks of AGNT Labs.
