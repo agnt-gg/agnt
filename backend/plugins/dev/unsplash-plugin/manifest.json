@@ -1,0 +1,152 @@
+{
+  "name": "unsplash-plugin",
+  "version": "1.0.0",
+  "description": "Unsplash integration plugin for AGNT - Search and download high-quality stock photos",
+  "author": "AGNT",
+  "icon": "unsplash",
+  "tools": [
+    {
+      "type": "unsplash-api",
+      "entryPoint": "./unsplash-api.js",
+      "schema": {
+        "title": "Unsplash API",
+        "category": "action",
+        "type": "unsplash-api",
+        "icon": "unsplash",
+        "description": "Search and download high-quality stock photos from Unsplash.",
+        "authRequired": "apiKey",
+        "authProvider": "unsplash",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "SEARCH_PHOTOS",
+              "GET_RANDOM_PHOTO",
+              "GET_PHOTO",
+              "LIST_PHOTOS",
+              "GET_COLLECTIONS",
+              "GET_COLLECTION_PHOTOS",
+              "GET_USER_PROFILE",
+              "GET_USER_PHOTOS",
+              "DOWNLOAD_PHOTO"
+            ],
+            "description": "The action to perform on Unsplash"
+          },
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Search query for photos",
+            "conditional": {
+              "field": "action",
+              "value": ["SEARCH_PHOTOS", "GET_RANDOM_PHOTO"]
+            }
+          },
+          "photoId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the photo",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_PHOTO", "DOWNLOAD_PHOTO"]
+            }
+          },
+          "collectionId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the collection",
+            "conditional": {
+              "field": "action",
+              "value": "GET_COLLECTION_PHOTOS"
+            }
+          },
+          "username": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Unsplash username",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_USER_PROFILE", "GET_USER_PHOTOS", "GET_RANDOM_PHOTO"]
+            }
+          },
+          "page": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Page number (1-1000)",
+            "default": 1,
+            "inputSize": "half"
+          },
+          "perPage": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Results per page (1-30)",
+            "default": 10,
+            "inputSize": "half"
+          },
+          "orientation": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["", "landscape", "portrait", "squarish"],
+            "description": "Filter by photo orientation",
+            "inputSize": "half"
+          },
+          "color": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["", "black_and_white", "black", "white", "yellow", "orange", "red", "purple", "magenta", "green", "teal", "blue"],
+            "description": "Filter by color",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "SEARCH_PHOTOS"
+            }
+          },
+          "orderBy": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["relevant", "latest", "oldest", "popular"],
+            "description": "Sort order for results",
+            "default": "relevant",
+            "inputSize": "half"
+          },
+          "count": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Number of random photos (1-30)",
+            "default": 1,
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "GET_RANDOM_PHOTO"
+            }
+          },
+          "featured": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["", "true", "false"],
+            "description": "Limit to featured photos only",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "GET_RANDOM_PHOTO"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation was successful"
+          },
+          "result": {
+            "type": "object",
+            "description": "The result containing photo data, search results, or user profile"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the operation failed"
+          }
+        }
+      }
+    }
+  ]
+}

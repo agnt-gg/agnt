@@ -1,0 +1,442 @@
+{
+  "id": "eb61802c-373f-4a4d-9c62-1e7900f39d4b",
+  "name": "CLI Style Discord Database Bot",
+  "nodes": [
+    {
+      "id": "receiveDiscordMessage",
+      "text": "Receive Discord Message",
+      "x": 240,
+      "y": 128,
+      "type": "receive-discord-message",
+      "icon": "discord",
+      "category": "trigger",
+      "parameters": { "channelId": "1291267166116511838" },
+      "outputs": {
+        "content": "",
+        "author": "",
+        "channelId": "",
+        "guildId": "",
+        "timestamp": 0,
+        "response": {}
+      },
+      "description": "This trigger node listens for incoming Discord messages in a specified channel and triggers the workflow when a new message is received.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "parseCommand",
+      "text": "Parse Command",
+      "x": 240,
+      "y": 192,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const message = {{receiveDiscordMessage.content}}.toLowerCase().trim();\nconst [command, ...args] = message.split(' ');\n\nreturn {\n command,\n args: args\n};"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node parses the user's command from the Discord message.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "routeCommand",
+      "text": "Route Command",
+      "x": 240,
+      "y": 256,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const { command } = {{parseCommand.result}};\n\nconst routes = {\n help: 'showHelp',\n add: 'addItem',\n list: 'listItems',\n delete: 'deleteItem',\n update: 'updateItem'\n};\n\nreturn { nextNode: routes[command] || 'handleUnknownCommand' };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node routes the command to the appropriate handler based on the parsed command.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "showHelp",
+      "text": "Show Help",
+      "x": 560,
+      "y": 128,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const helpMessage = `Available commands:\n!help - Show this help message\n!add <item> - Add an item to the database\n!list - List all items in the database\n!delete <id> - Delete an item from the database\n!update <id> <new_item> - Update an item in the database`;\n\nreturn { message: helpMessage };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node generates a help message explaining available commands.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "addItem",
+      "text": "Add Item",
+      "x": 560,
+      "y": 192,
+      "type": "database-operation",
+      "icon": "database",
+      "category": "utility",
+      "parameters": {
+        "operation": "INSERT",
+        "tableName": "items",
+        "columns": "item",
+        "condition": "",
+        "values": "{{parseCommand.result.args[0]}}"
+      },
+      "outputs": {
+        "success": false,
+        "result": [],
+        "affectedRows": 0,
+        "error": ""
+      },
+      "description": "This node adds a new item to the database.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "listItems",
+      "text": "List Items",
+      "x": 560,
+      "y": 256,
+      "type": "database-operation",
+      "icon": "database",
+      "category": "utility",
+      "parameters": {
+        "operation": "SELECT",
+        "tableName": "items",
+        "columns": "*",
+        "condition": "",
+        "values": ""
+      },
+      "outputs": {
+        "success": false,
+        "result": [],
+        "affectedRows": 0,
+        "error": ""
+      },
+      "description": "This node retrieves all items from the database.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "deleteItem",
+      "text": "Delete Item",
+      "x": 560,
+      "y": 320,
+      "type": "database-operation",
+      "icon": "database",
+      "category": "utility",
+      "parameters": {
+        "operation": "DELETE",
+        "tableName": "items",
+        "columns": "",
+        "condition": "id = ?",
+        "values": "{{parseCommand.result.args[0]}}"
+      },
+      "outputs": {
+        "success": false,
+        "result": [],
+        "affectedRows": 0,
+        "error": ""
+      },
+      "description": "This node deletes an item from the database.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "updateItem",
+      "text": "Update Item",
+      "x": 560,
+      "y": 384,
+      "type": "database-operation",
+      "icon": "database",
+      "category": "utility",
+      "parameters": {
+        "operation": "UPDATE",
+        "tableName": "items",
+        "columns": "item",
+        "condition": "id = {{parseCommand.result.args[0]}}",
+        "values": "{{parseCommand.result.args[1]}}"
+      },
+      "outputs": {
+        "success": false,
+        "result": [],
+        "affectedRows": 0,
+        "error": ""
+      },
+      "description": "This node updates an item in the database.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "handleUnknownCommand",
+      "text": "Handle Unknown Command",
+      "x": 560,
+      "y": 448,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const unknownCommandMessage = 'Unknown command. Type !help for a list of available commands.';\n\nreturn { message: unknownCommandMessage };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node handles unknown or invalid commands.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "formatResponse",
+      "text": "Format Response",
+      "x": 880,
+      "y": 128,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const nextNode = {{routeCommand.result.nextNode}};\nlet response = '';\n\nconst getResponseMessage = (message) => {\n  return message || 'An unexpected error occurred.';\n};\n\n// Function to format JSON data\nconst formatJsonData = (data) => {\n  return data.map(item => `\n    ID: ${item.id}\n    User ID: ${item.user_id}\n    Table Name: ${item.table_name}\n    Item: ${item.data.item}\n    Created At: ${item.created_at}\n    Updated At: ${item.updated_at}\n  `).join('\\n');\n};\n\n// Handle responses based on nextNode\nswitch (nextNode) {\n  case 'showHelp':\n    response = getResponseMessage({{showHelp.result.message}});\n    break;\n  case 'addItem':\n    response = {{addItem.success}} ? 'Item added successfully.' : 'Failed to add item.';\n    break;\n  case 'listItems':\n    // Check if the response is a string and parse if necessary\n    const itemsResult = {{listItems.result}};\n    const itemsData = typeof itemsResult === 'string' ? JSON.parse(itemsResult) : itemsResult;\n\n    response = formatJsonData(itemsData);\n    break;\n  case 'deleteItem':\n    response = {{deleteItem.affectedRows}} > 0 \n      ? 'Item deleted successfully.' \n      : 'Failed to delete item or item not found.';\n    break;\n  case 'updateItem':\n    response = {{updateItem.affectedRows}} > 0 \n      ? 'Item updated successfully.' \n      : 'Failed to update item or item not found.';\n    break;\n  default:\n    response = getResponseMessage({{handleUnknownCommand.result.message}});\n}\n\nreturn { response };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node formats the response based on the command result.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendDiscordResponse",
+      "text": "Send Discord Response",
+      "x": 880,
+      "y": 192,
+      "type": "discord-api",
+      "icon": "discord",
+      "category": "action",
+      "parameters": {
+        "action": "SEND_MESSAGE",
+        "channelId": "{{receiveDiscordMessage.channelId}}",
+        "message": "{{formatResponse.result.response}}"
+      },
+      "outputs": {
+        "success": false,
+        "result": {},
+        "error": ""
+      },
+      "description": "This node sends the formatted response back to the Discord channel.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "cliStyleDiscordDatabaseBotLabel",
+      "text": "CLI Style Discord Database Bot",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This label node provides a title for the workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null,
+      "isEditing": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveDiscordMessage", "type": "output" },
+      "end": { "id": "parseCommand", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216,
+      "isActive": false
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "parseCommand", "type": "output" },
+      "end": { "id": "routeCommand", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280,
+      "isActive": false
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "showHelp", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 152,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "showHelp",
+      "isActive": false
+    },
+    {
+      "id": "edge4",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "addItem", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 216,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "addItem",
+      "isActive": false
+    },
+    {
+      "id": "edge5",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "listItems", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 280,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "listItems",
+      "isActive": false
+    },
+    {
+      "id": "edge6",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "deleteItem", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 344,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "deleteItem",
+      "isActive": false
+    },
+    {
+      "id": "edge7",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "updateItem", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 408,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "updateItem",
+      "isActive": false
+    },
+    {
+      "id": "edge8",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "handleUnknownCommand", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 472,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "handleUnknownCommand",
+      "isActive": false
+    },
+    {
+      "id": "edge9",
+      "start": { "id": "showHelp", "type": "output" },
+      "end": { "id": "formatResponse", "type": "input" },
+      "startX": 848,
+      "startY": 152,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge10",
+      "start": { "id": "addItem", "type": "output" },
+      "end": { "id": "formatResponse", "type": "input" },
+      "startX": 848,
+      "startY": 216,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge11",
+      "start": { "id": "listItems", "type": "output" },
+      "end": { "id": "formatResponse", "type": "input" },
+      "startX": 848,
+      "startY": 280,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge12",
+      "start": { "id": "deleteItem", "type": "output" },
+      "end": { "id": "formatResponse", "type": "input" },
+      "startX": 848,
+      "startY": 344,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge13",
+      "start": { "id": "updateItem", "type": "output" },
+      "end": { "id": "formatResponse", "type": "input" },
+      "startX": 848,
+      "startY": 408,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge14",
+      "start": { "id": "handleUnknownCommand", "type": "output" },
+      "end": { "id": "formatResponse", "type": "input" },
+      "startX": 848,
+      "startY": 472,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge15",
+      "start": { "id": "formatResponse", "type": "output" },
+      "end": { "id": "sendDiscordResponse", "type": "input" },
+      "startX": 1168,
+      "startY": 152,
+      "endX": 880,
+      "endY": 216,
+      "isActive": false
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 274,
+  "canvasOffsetY": 169,
+  "isTinyNodeMode": false
+}

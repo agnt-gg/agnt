@@ -1,0 +1,604 @@
+/* DARK THEME */
+body.dark {
+  --color-primary: var(--color-pink);
+  /* --color-background is now set dynamically by JavaScript */
+  --color-text: var(--color-dull-white);
+  --color-text-muted: var(--color-med-navy);
+  --terminal-width: 100%;
+  --terminal-height: 100%;
+  --terminal-border-radius: 0;
+  --terminal-border-color: var(--color-dull-navy);
+  --terminal-border-color-light: #26263a;
+  --terminal-screen-lines: 0.125;
+  --terminal-box-shadow: none;
+  --terminal-muted-color: var(--color-dull-navy);
+
+  /* --color-light-0: rgba(255, 255, 255, 0.1);
+  --color-light-1: rgba(255, 255, 255, 0.2);
+  --color-light-2: rgba(255, 255, 255, 0.4);
+  --color-light-3: rgba(255, 255, 255, 0.8); */
+
+  --color-dark-0: rgba(0, 0, 0, 0.1);
+  --color-dark-1: rgba(0, 0, 0, 0.2);
+  --color-dark-2: rgba(0, 0, 0, 0.4);
+  --color-dark-3: rgba(0, 0, 0, 0.8);
+
+  /* --color-darker-0: rgba(0, 0, 0, 0.1);
+  --color-darker-1: rgba(0, 0, 0, 0.2);
+  --color-darker-2: rgba(0, 0, 0, 0.4);
+  --color-darker-3: rgba(0, 0, 0, 0.8); */
+
+  --color-popup: rgba(16, 16, 31, 0.95);
+
+  font-size: var(--font-size-sm);
+  line-height: 1.25;
+}
+
+body.dark {
+  background: transparent;
+  color: var(--color-dull-white);
+}
+
+body.dark h1,
+body.dark h2,
+body.dark h3,
+body.dark h4,
+body.dark h5 {
+  color: var(--color-dull-white);
+  opacity: 0.95;
+}
+
+body.dark p,
+body.dark li,
+body.dark th,
+body.dark td {
+  color: var(--color-text);
+  opacity: 0.95;
+  /* font-weight: 300; */
+}
+
+body.dark p {
+  font-weight: 300;
+}
+
+body.dark button {
+  color: var(--color-dull-white);
+}
+
+body.dark header {
+  border-bottom: 1px solid var(--color-dull-navy);
+  background: var(--color-dark-navy);
+  color: var(--color-dull-white);
+}
+
+body.dark .separator {
+  font-weight: 400;
+  color: var(--color-med-navy);
+  opacity: 0.75;
+}
+
+body.dark #left-sidebar {
+  border-right: 1px solid var(--color-dull-navy);
+  background: var(--color-ultra-dark-navy);
+}
+
+body.dark #left-sidebar svg {
+  opacity: 0.95;
+}
+
+body.dark .left-sidebar-bottom-nav .svg-icon path {
+  fill: var(--color-med-navy);
+}
+
+body.dark a.router-link-active .svg-icon path {
+  /* fill: var(--color-pink); */
+  fill: url(#SVG-Gradient-Dark);
+}
+
+body.dark button.generate {
+  background-image: linear-gradient(45deg, #19ef83, #19efcb);
+  color: var(--color-dark-navy);
+  font-weight: 600;
+}
+
+body.dark button.generate img {
+  filter: invert(1);
+  opacity: 0.85;
+}
+
+body.dark main-area {
+  background: var(--color-black-navy);
+}
+
+body.dark div#saved-templates,
+body.dark div#saved-outputs {
+  border: 1px solid var(--color-dull-navy);
+}
+
+body.dark table {
+  font-weight: 300;
+  /* letter-spacing: 0.025em; */
+  /* background: var(--color-dark-navy); */
+  color: var(--color-text);
+}
+
+body.dark tr:last-child {
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+body.dark th {
+  color: var(--color-text);
+  background: var(--color-darker-1);
+  border-bottom: 1px solid var(--terminal-border-color);
+  border-right: 1px solid var(--terminal-border-color);
+}
+
+body.dark td {
+  background: var(--color-darker-1);
+  border-bottom: 1px solid var(--terminal-border-color);
+  border-right: 1px solid var(--terminal-border-color);
+}
+
+body.dark th:last-child,
+body.dark td:last-child {
+  border-right: none;
+}
+
+body.dark tr:last-child td {
+  border-bottom: none !important;
+}
+
+body.dark a {
+  color: var(--color-primary);
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+body.dark .card-inner {
+  border: 1px solid var(--color-dull-navy);
+  background: var(--color-ultra-dark-navy);
+}
+
+/* WORKFLOW DESIGNER */
+
+body.dark #sidebar {
+  /* background-color: var(--color-black-navy);
+  border: 1px solid var(--color-dull-navy); */
+  background: transparent;
+  border: none;
+}
+
+body.dark #sidebar p.title {
+  color: var(--color-med-navy);
+}
+
+body.dark .node {
+  color: var(--color-text);
+  background: var(--color-darker-0);
+  border: 2px solid rgba(125, 125, 175, 0.25);
+}
+
+body.dark .node.starter {
+  background-color: var(--color-darker-0);
+}
+
+body.dark #sidebar .node p {
+  color: var(--color-dull-white);
+}
+
+body.dark .node.starter {
+  background-image: url("data:image/svg+xml,%3Csvg width='240' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='238' height='46' fill='none' stroke='rgba(125,125,175,0.5)' stroke-width='1' stroke-dasharray='5,8' rx='8' ry='8'/%3E%3C/svg%3E");
+}
+
+body.dark .node.starter[data-category='trigger'] {
+  background-image: url("data:image/svg+xml,%3Csvg width='240' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='238' height='46' fill='none' stroke='rgba(125,125,175,0.5)' stroke-width='1' stroke-dasharray='5,8' rx='22' ry='22'/%3E%3C/svg%3E");
+}
+
+body.dark #sidebar.closed .node.starter[data-category='trigger'] {
+  background-image: url("data:image/svg+xml,%3Csvg width='48' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='46' height='46' fill='none' stroke='rgba(125,125,175,0.5)' stroke-width='1' stroke-dasharray='5,8' rx='22' ry='22'/%3E%3C/svg%3E");
+}
+
+body.dark #sidebar.closed .node.starter {
+  background-image: url("data:image/svg+xml,%3Csvg width='48' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='46' height='46' fill='none' stroke='rgba(125,125,175,0.5)' stroke-width='1' stroke-dasharray='5,8' rx='8' ry='8'/%3E%3C/svg%3E");
+}
+
+body.dark #canvas .node svg path[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark #canvas .node svg rect[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark #canvas .node svg path[fill] {
+  fill: var(--color-dull-white);
+}
+
+body.dark .node.starter svg path[fill] {
+  fill: var(--color-dull-white);
+}
+
+body.dark .node.starter svg path[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark .node.starter svg rect[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark .node.no-select.label-node {
+  background: transparent;
+  border: none;
+}
+
+body.dark .node.no-select.label-node.selected {
+  border: 2px solid #e53d8f;
+}
+
+body.dark .connector {
+  border: 1px solid var(--color-dull-navy);
+  background: var(--color-navy);
+  color: var(--color-dull-white);
+}
+
+body.dark .connector:hover {
+  border: 1px solid var(--color-med-navy);
+  background: var(--color-navy);
+  color: var(--color-dull-white);
+}
+
+body.dark .connector svg path[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark div.sidebar-section {
+  border-bottom: 1px solid var(--color-dull-navy);
+}
+
+/* body.dark #canvas-container {
+  background-color: var(--color-dark-1);
+} */
+
+body.dark .grid-overlay {
+  opacity: 0.125;
+  background-image: radial-gradient(circle, var(--color-lighter-2) 1px, transparent 1px);
+}
+
+body.dark .edges path {
+  stroke: var(--color-duller-navy);
+  opacity: 0.75;
+}
+
+body.dark .edges path.invisible {
+  stroke: transparent;
+}
+
+body.dark .edges path.hovered {
+  stroke: var(--color-med-navy);
+}
+
+body.dark .edges path.animated {
+  stroke: var(--color-duller-navy);
+  opacity: 0.75;
+}
+
+body.dark .edges path.selected {
+  stroke: var(--color-pink);
+  opacity: 1;
+}
+
+.edges path.active {
+  opacity: 1;
+}
+
+body.dark .panel-header .title {
+  color: var(--color-med-navy);
+}
+
+body.dark .right-tabs svg path[fill] {
+  fill: var(--color-med-navy);
+}
+
+/* body.dark .right-tabs button {
+  filter: invert(1);
+} */
+
+body.dark .panel-body {
+  /* background: #10101fd9; */
+  background: var(--color-ultra-dark-navy);
+  border: 1px solid var(--color-dull-navy);
+}
+
+body.dark #editor-panel {
+  color: var(--color-med-navy);
+  background: transparent;
+}
+
+body.dark input[type='text'],
+body.dark input[type='number'],
+body.dark input[type='email'],
+body.dark input[type='password'],
+body.dark input[type='date'],
+body.dark input[type='datetime-local'],
+body.dark input[type='month'],
+body.dark input[type='week'],
+body.dark input[type='tel'],
+body.dark input[type='url'],
+body.dark input[type='search'],
+body.dark input[type='color'],
+body.dark textarea,
+body.dark select {
+  font-weight: 300;
+  color: var(--color-dull-white);
+  background-color: var(--color-darker-0);
+  border-color: var(--color-dull-navy);
+}
+
+body.dark input[type='time'] {
+  font-weight: 300;
+  color: var(--color-dull-white);
+  background-color: var(--color-dull-navy);
+  border-color: var(--color-dull-navy);
+}
+
+/* body.dark .form-group *:focus,
+body.dark .form-group input[type="text"]:focus,
+body.dark .form-group input[type="number"]:focus {
+  outline: none;
+  border: 2px solid var(--color-pink);
+} */
+
+body.dark #workflow-engine-toggle {
+  border: 1px solid var(--color-dull-navy);
+  background: transparent;
+  color: var(--color-med-navy);
+}
+
+body.dark .canvas-state-controls button {
+  border: 1px solid var(--color-dull-navy);
+  background: transparent;
+  color: var(--color-med-navy);
+}
+
+body.dark .node-delete-button {
+  color: var(--color-med-navy);
+}
+
+/* TASK CREATE */
+
+/* body.dark editor-panel {
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+} */
+
+body.dark .template-options {
+  border-bottom: 1px solid var(--color-dull-navy);
+  background: var(--color-ultra-dark-navy);
+}
+
+/* body.dark .action-items {
+    filter: grayscale();
+} */
+
+body.dark .left-actions img,
+body.dark .right-actions img {
+  filter: invert(1);
+}
+
+body.dark label,
+body.dark .label {
+  color: var(--color-med-navy);
+}
+
+body.dark .action-items button {
+  border: 1px solid var(--terminal-border-color);
+}
+
+body.dark input[type='text'],
+body.dark input[type='number'],
+body.dark textarea {
+  color: var(--color-dull-white);
+  background-color: var(--color-darker-0);
+  border-color: var(--terminal-border-color);
+}
+
+body.dark .form-group select {
+  color: var(--color-dull-white);
+  background-color: var(--color-darker-0);
+  border-color: var(--terminal-border-color);
+}
+
+body.dark input:-webkit-autofill,
+body.dark input:-webkit-autofill:focus {
+  /* transition: background-color 0s 600000s, color 0s 600000s !important; */
+  background-color: var(--color-ultra-dark-navy);
+}
+
+body.dark input[type='text']:focus,
+body.dark input[type='number']:focus,
+body.dark textarea:focus,
+body.dark select:focus {
+  outline: none;
+  border: 1px solid var(--color-pink);
+}
+
+body.dark input::placeholder,
+body.dark textarea::placeholder {
+  color: var(--color-med-navy);
+  opacity: 0.5;
+}
+
+/* body.dark .field-group.model-selector {
+  background: var(--color-ultra-dark-navy);
+  color: var(--color-dull-white);
+} */
+
+/* body.dark .new-field-modal {
+  border: 1px dashed var(--color-dull-navy);
+} */
+
+/* body.dark button.icon {
+    filter: grayscale();
+} */
+
+body.dark button.icon img {
+  filter: invert(1);
+}
+
+body.dark button.icon svg path[fill],
+body.dark button.icon svg rect[fill] {
+  fill: var(--color-dull-white);
+  fill-opacity: 1;
+}
+
+body.dark button.icon svg path[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark button.icon svg rect[stroke] {
+  stroke: var(--color-dull-navy);
+  stroke-opacity: 1;
+}
+
+body.dark .icon-option svg path[fill],
+body.dark .icon-option svg rect[fill] {
+  fill: var(--color-dull-white);
+  fill-opacity: 1;
+}
+
+body.dark .icon-option svg path[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark .icon-option svg rect[stroke] {
+  stroke: var(--color-dull-navy);
+  stroke-opacity: 1;
+}
+
+body.dark bottom-menu {
+  /* background: var(--color-ultra-dark-navy); */
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+body.dark editor-area {
+  background: var(--color-black-navy);
+}
+
+body.dark inner-editor-area {
+  background: var(--color-ultra-dark-navy);
+  border: 1px solid var(--color-dull-navy);
+  font-weight: 400;
+}
+
+body.dark .content-actions button.icon {
+  border: 1px solid var(--color-dull-navy);
+  opacity: 0.85;
+  /* filter: none; */
+}
+
+body.dark .content-actions button.icon:hover {
+  opacity: 0.6;
+}
+
+body.dark .content-actions button.icon svg path[fill] {
+  fill: var(--color-dull-white);
+  fill-opacity: 1;
+}
+
+body.dark inner-editor-area .placeholder-text hr {
+  border-color: var(--color-dull-navy);
+  opacity: 0.25;
+}
+
+body.dark inner-editor-area .placeholder-text {
+  color: var(--color-med-navy);
+  opacity: 1;
+}
+
+body.dark inner-editor-area:focus {
+  outline: none;
+  border: 1px solid var(--color-pink);
+}
+
+body.dark input[type='file'] {
+  color: var(--color-dull-white);
+  background-color: transparent;
+}
+
+body.dark pre,
+mjx-container {
+  border: 1px solid var(--color-dull-navy);
+}
+
+body.dark pre,
+body.dark mjx-container,
+body.dark .hljs {
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--color-dull-white);
+}
+
+body.dark .cancel,
+.generate.holofx-bg.cancel {
+  background: var(--color-med-navy) !important;
+}
+
+/* CHAT */
+
+body[data-page='chat'].dark inner-editor-area {
+  background: var(--color-ultra-dark-navy);
+  border: 1px solid var(--color-dull-navy);
+}
+
+body[data-page='chat'].dark .user-message-sent {
+  /* background: var(--color-navy); */
+  border: 1px solid var(--color-dull-navy);
+}
+
+body.dark inner-editor-area#response-area p span {
+  color: var(--color-dull-white) !important;
+}
+
+/* POPUP TUTORIAL */
+
+/* body.dark .popup-tutorial {
+  background-color: var(--color-dark-navy);
+}
+
+body.dark .popup-arrow-top {
+  border-color: transparent transparent var(--color-pink) transparent;
+}
+body.dark .popup-arrow-bottom {
+  border-color: var(--color-pink) transparent transparent transparent;
+}
+body.dark .popup-arrow-left {
+  border-color: transparent var(--color-pink) transparent transparent;
+}
+body.dark .popup-arrow-right {
+  border-color: transparent transparent transparent var(--color-pink);
+} */
+
+/* MODAL POPUP */
+
+body.dark .modal-content {
+  background-color: var(--color-popup);
+  border: 1px solid var(--terminal-border-color);
+}
+
+/* ERROR MESSAGE */
+
+body.dark #canvas .node.has-error svg path[fill] {
+  fill: #fe4e4e;
+}
+body.dark #canvas .node.has-error svg path[stroke] {
+  stroke: #fe4e4e;
+}
+body.dark #canvas .node.has-error svg rect[fill] {
+  fill: #fe4e4e;
+}
+body.dark #canvas .node.has-error svg rect[stroke] {
+  stroke: #fe4e4e;
+}
+
+body.dark .error-message p {
+  border: 1px solid var(--color-dull-navy);
+}

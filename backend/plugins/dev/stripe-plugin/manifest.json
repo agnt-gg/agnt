@@ -1,0 +1,93 @@
+{
+  "name": "stripe-plugin",
+  "version": "1.0.0",
+  "description": "Stripe integration plugin for AGNT - Create and send invoices with line items",
+  "author": "AGNT",
+  "icon": "stripe",
+  "tools": [
+    {
+      "type": "stripe-invoice",
+      "entryPoint": "./stripe-invoice.js",
+      "schema": {
+        "title": "Stripe API",
+        "category": "action",
+        "type": "stripe-invoice",
+        "icon": "stripe",
+        "description": "Create and send a Stripe invoice with support for single or multiple line items",
+        "authRequired": "apiKey",
+        "authProvider": "stripe",
+        "parameters": {
+          "customerEmail": {
+            "type": "string",
+            "inputType": "text",
+            "required": true,
+            "description": "Email address of the customer to bill"
+          },
+          "dueDate": {
+            "type": "string",
+            "inputType": "text",
+            "required": true,
+            "description": "Due date for the invoice (YYYY-MM-DD)"
+          },
+          "currency": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["USD", "EUR", "GBP", "JPY"],
+            "default": "USD",
+            "required": true,
+            "description": "Currency for the invoice"
+          },
+          "amount": {
+            "type": "number",
+            "inputType": "text",
+            "description": "Amount in cents for single item (e.g., 1000 for $10.00)"
+          },
+          "description": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Description for single item invoice"
+          },
+          "lineItems": {
+            "type": "array",
+            "inputType": "textarea",
+            "description": "Array of line items for the invoice. Each item must have 'description' and 'amount' (in cents). Example: [{\"description\": \"Consulting\", \"amount\": 5000, \"quantity\": 2}]"
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the invoice was created successfully"
+          },
+          "invoiceId": {
+            "type": "string",
+            "description": "The ID of the created invoice"
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "description": "The human-readable invoice number"
+          },
+          "invoiceUrl": {
+            "type": "string",
+            "description": "URL to view the invoice"
+          },
+          "invoicePdf": {
+            "type": "string",
+            "description": "URL to download the invoice PDF"
+          },
+          "total": {
+            "type": "number",
+            "description": "Total amount in cents for the invoice"
+          },
+          "status": {
+            "type": "string",
+            "description": "Invoice status (draft, open, paid, void, uncollectible)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the invoice creation failed"
+          }
+        }
+      }
+    }
+  ]
+}

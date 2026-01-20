@@ -1,0 +1,191 @@
+{
+  "id": "e2fe443b-34eb-46e8-8026-292485c8d409",
+  "name": "Digimon Slack Game",
+  "nodes": [
+    {
+      "id": "receiveSlackMessage",
+      "text": "Receive Slack Message",
+      "x": 240,
+      "y": 128,
+      "type": "receive-slack-message",
+      "icon": "slack-receive",
+      "category": "trigger",
+      "parameters": { "channelId": "C07KKR1GW07" },
+      "outputs": { "user": "", "text": "", "timestamp": "", "response": {} },
+      "description": "This trigger node listens for incoming Slack messages to start or interact with the Digimon game.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "parseCommand",
+      "text": "Parse Command",
+      "x": 240,
+      "y": 192,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const message = {{receiveSlackMessage.text}}.toLowerCase().trim();\nconst [command, ...args] = message.split(' ');\n\nreturn {\n command,\n args: args.join(' ')\n};"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node parses the user's command from the Slack message.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "getPlayerData",
+      "text": "Get Player Data",
+      "x": 240,
+      "y": 256,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "parameters": {
+        "operation": "Read",
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "DigimonPlayers!A:Z",
+        "values": ""
+      },
+      "outputs": { "success": false, "result": [], "error": "" },
+      "description": "This action node fetches the player data from Google Sheets.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "processGameAction",
+      "text": "Process Game Action",
+      "x": 240,
+      "y": 320,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "You are the game master for a Digimon-themed text-based game on Slack. Based on the player's command and current game state, generate a response that progresses the game. Include details about the player's Digimon, its stats, and any battle outcomes if applicable.\n\nPlayer: {{receiveSlackMessage.user}}\nCommand: {{parseCommand.result.command}}\nArguments: {{parseCommand.result.args}}\n\nCurrent Player Data:\n{{getPlayerData.result}}\n\nGenerate a response that includes:\n1. The outcome of the player's action\n2. Updated player stats if applicable\n3. A brief description of the current game state\n4. Available actions for the player\n\nReturn your response as a JSON object with the following structure:\n{\n \"response\": \"The game response text\",\n \"updatedStats\": {}, // Updated player stats if any\n \"availableActions\": [] // List of available actions\n}\n\nEnsure the response is engaging, creative, and true to the Digimon theme. Do not include any explanation or additional text outside the JSON object.",
+        "maxTokens": "500",
+        "temperature": "0.7",
+        "image": ""
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This node generates the game response based on the player's action and current game state.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "updatePlayerData",
+      "text": "Update Player Data",
+      "x": 240,
+      "y": 384,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "parameters": {
+        "operation": "Append",
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "DigimonPlayers!A:Z",
+        "values": "{{processGameAction.generatedText.updatedStats}}"
+      },
+      "outputs": { "success": false, "result": [], "error": "" },
+      "description": "This action node updates the player data in Google Sheets.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendGameResponse",
+      "text": "Send Game Response",
+      "x": 240,
+      "y": 448,
+      "type": "send-slack-message",
+      "icon": "slack-send",
+      "category": "action",
+      "parameters": {
+        "channelId": "C07KKR1GW07",
+        "message": "{{processGameAction.generatedText.response}}\n\nAvailable actions: {{processGameAction.generatedText.availableActions}}"
+      },
+      "outputs": { "success": false, "timestamp": "", "error": "" },
+      "description": "This action node sends the game response back to the Slack channel.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "digimonGameLabel",
+      "text": "Digimon Slack Game",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This label node provides a title for the workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveSlackMessage", "type": "output" },
+      "end": { "id": "parseCommand", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "parseCommand", "type": "output" },
+      "end": { "id": "getPlayerData", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "getPlayerData", "type": "output" },
+      "end": { "id": "processGameAction", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 240,
+      "endY": 344
+    },
+    {
+      "id": "edge4",
+      "start": { "id": "processGameAction", "type": "output" },
+      "end": { "id": "updatePlayerData", "type": "input" },
+      "startX": 528,
+      "startY": 344,
+      "endX": 240,
+      "endY": 408
+    },
+    {
+      "id": "edge5",
+      "start": { "id": "updatePlayerData", "type": "output" },
+      "end": { "id": "sendGameResponse", "type": "input" },
+      "startX": 528,
+      "startY": 408,
+      "endX": 240,
+      "endY": 472
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 285,
+  "canvasOffsetY": 146,
+  "isTinyNodeMode": false
+}

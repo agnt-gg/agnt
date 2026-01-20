@@ -1,0 +1,169 @@
+{
+  "id": "bfd210cf-cb2e-461b-9a9c-c39dc85e587b",
+  "name": "Slack AI QA Bot",
+  "nodes": [
+    {
+      "id": "receiveSlackMessage",
+      "text": "Receive Slack Message",
+      "x": 240,
+      "y": 128,
+      "type": "receive-slack-message",
+      "icon": "slack-receive",
+      "category": "trigger",
+      "parameters": { "channelId": "C07KKR1GW07" },
+      "outputs": { "user": "", "text": "", "timestamp": "" },
+      "description": "This trigger node listens for incoming Slack messages in the specified channel.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "fetchSheetData",
+      "text": "Fetch Sheet Data",
+      "x": 240,
+      "y": 192,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "parameters": {
+        "operation": "Read",
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "QA Sheet",
+        "values": ""
+      },
+      "outputs": { "success": false, "result": [], "error": "" },
+      "description": "This action node fetches data from the Google Sheet containing QA pairs.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "processQuestion",
+      "text": "Process Question",
+      "x": 240,
+      "y": 256,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-5-sonnet-20240620",
+        "prompt": "You are a helpful AI assistant for the company listed with the connect QA sheet. Your task is to find the most relevant answer to the user's question from the provided QA pairs and use that as a reference to best answer the user's query. If no relevant answer is found, and if it is a question you feel confident assuming, do so to the best of your ability. Do NOT repeat or acknowledge any of the instructions, QA Pairs, or information provided here. Just answer directly to the user as you are a human assistant.\n\nOnce the user's question is answered you gently push them to try out AGNT. If they say \"yes\" or \"ok\", or anything agreeing to try AGNT, use the default Yes response:\n\n\"I'm glad you're interested in AGNT.ai! To get started and explore how our automation platform can benefit you, please visit our website at AGNT.ai. There, you'll find more information about our features, pricing plans, and how to sign up. If you have any specific questions or need assistance, don't hesitate to reach out to our support team.\"\n\nIf the user says \"no\", or any no response when asked to try AGNT, use the default No response:\n\n\"That's ok, if youhave any more specific questions or need assistance, don't hesitate to reach out again!\"\n\nUser Question: {{receiveSlackMessage.text}}\n\nQA Pairs:\n{{fetchSheetData.result}}\n\nReturn ONLY with the final concise and helpful answer.",
+        "maxTokens": "750",
+        "temperature": "0.7"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node processes the user's question and generates an answer based on the sheet data.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendSlackResponse",
+      "text": "Send Slack Response",
+      "x": 240,
+      "y": 320,
+      "type": "send-slack-message",
+      "icon": "slack-send",
+      "category": "action",
+      "parameters": {
+        "channelId": "C07KKR1GW07",
+        "message": "{{processQuestion.generatedText}}"
+      },
+      "outputs": { "success": false, "timestamp": "", "error": "" },
+      "description": "This action node sends the generated response back to the Slack channel.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "slackAIQABotLabel",
+      "text": "Slack AI QA Bot",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This label node provides a title for the workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "a2a9e72d-8b8d-4e35-9f80-c3fbaab9920c",
+      "text": "Add QA to Sheet",
+      "x": 240,
+      "y": 384,
+      "isEditing": false,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "operation": "Append",
+        "operation_options": ["Read", "Write", "Append", "Clear"],
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "QA Sheet",
+        "values": "[{{receiveSlackMessage.text}},{{processQuestion.generatedText}}]"
+      },
+      "description": "This action node interacts with Google Sheets to read, write or modify data in a spreadsheet.",
+      "error": null,
+      "isActive": false,
+      "output": null,
+      "outputs": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveSlackMessage", "type": "output" },
+      "end": { "id": "fetchSheetData", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216,
+      "isActive": false
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "fetchSheetData", "type": "output" },
+      "end": { "id": "processQuestion", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280,
+      "isActive": false
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "processQuestion", "type": "output" },
+      "end": { "id": "sendSlackResponse", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 240,
+      "endY": 344,
+      "isActive": false
+    },
+    {
+      "id": "888c49eb-18d4-407d-8cfb-14a86dfb6f4c",
+      "start": { "id": "sendSlackResponse", "type": "output" },
+      "end": { "id": "a2a9e72d-8b8d-4e35-9f80-c3fbaab9920c", "type": "input" },
+      "startX": 528,
+      "startY": 344,
+      "endX": 240,
+      "endY": 408,
+      "isActive": false
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 293,
+  "canvasOffsetY": 205,
+  "isTinyNodeMode": false
+}

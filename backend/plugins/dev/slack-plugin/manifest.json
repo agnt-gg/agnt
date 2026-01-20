@@ -1,0 +1,171 @@
+{
+  "name": "slack-plugin",
+  "version": "1.0.0",
+  "description": "Slack integration plugin for AGNT - Send messages, receive messages, manage channels, and interact with Slack workspaces",
+  "author": "AGNT",
+  "icon": "slack",
+  "tools": [
+    {
+      "type": "slack-api",
+      "entryPoint": "./slack-api.js",
+      "schema": {
+        "title": "Slack API",
+        "category": "action",
+        "type": "slack-api",
+        "icon": "slack-send",
+        "description": "Interact with Slack to perform various operations such as sending messages, uploading files, managing reactions, and more.",
+        "authRequired": "oauth",
+        "authProvider": "slack",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["SEND_MESSAGE", "REPLY_TO_THREAD", "GET_CHANNELS", "GET_USERS", "UPLOAD_FILE", "ADD_REACTION"],
+            "description": "The action to perform on Slack"
+          },
+          "channelId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the Slack channel",
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE", "REPLY_TO_THREAD", "UPLOAD_FILE", "ADD_REACTION"]
+            }
+          },
+          "message": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The message to send",
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE", "REPLY_TO_THREAD", "UPLOAD_FILE"]
+            }
+          },
+          "threadTs": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The timestamp of the parent message to reply to (for REPLY_TO_THREAD) or react to (for ADD_REACTION)",
+            "conditional": {
+              "field": "action",
+              "value": ["REPLY_TO_THREAD", "ADD_REACTION"]
+            }
+          },
+          "emoji": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The emoji name without colons (e.g., 'thumbsup', 'heart')",
+            "conditional": {
+              "field": "action",
+              "value": "ADD_REACTION"
+            }
+          },
+          "fileName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the file to upload",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "fileData": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The base64-encoded file data to upload",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Maximum number of results to return (for GET_CHANNELS and GET_USERS)",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_CHANNELS", "GET_USERS"]
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the Slack operation was successful"
+          },
+          "result": {
+            "type": "object",
+            "description": "The result of the Slack operation"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "The timestamp of the sent message (for message operations)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the Slack operation failed"
+          }
+        }
+      }
+    },
+    {
+      "type": "receive-slack-message",
+      "entryPoint": "./slack-receiver.js",
+      "schema": {
+        "title": "Receive Slack Message",
+        "category": "trigger",
+        "type": "receive-slack-message",
+        "icon": "slack-receive",
+        "description": "Listen for incoming Slack messages in a specified channel and trigger the workflow when a new message is received.",
+        "authRequired": "oauth",
+        "authProvider": "slack",
+        "parameters": {
+          "channelId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the Slack channel to monitor"
+          }
+        },
+        "outputs": {
+          "user": {
+            "type": "string",
+            "description": "The user ID who sent the message"
+          },
+          "text": {
+            "type": "string",
+            "description": "The content of the message"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "The timestamp of the message"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "The ID of the channel where the message was sent"
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "The thread timestamp if the message is part of a thread"
+          },
+          "image": {
+            "type": "object",
+            "description": "Image data if an image was attached to the message",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "The MIME type of the image"
+              },
+              "data": {
+                "type": "string",
+                "description": "The base64-encoded image data"
+              }
+            }
+          },
+          "response": {
+            "type": "object",
+            "description": "The complete raw API response as received from Slack"
+          }
+        }
+      }
+    }
+  ]
+}

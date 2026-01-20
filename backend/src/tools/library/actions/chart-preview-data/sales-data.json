@@ -1,0 +1,10 @@
+{
+  "labels": ["January", "February", "March", "April", "May", "June"],
+  "datasets": [
+    {
+      "label": "Monthly Sales",
+      "data": [12500, 19800, 15300, 22100, 18900, 25400],
+      "backgroundColor": ["#fe4e4e", "#12e0ff", "#ffd700", "#19ef83", "#7d3de5", "#ff9500"]
+    }
+  ]
+}

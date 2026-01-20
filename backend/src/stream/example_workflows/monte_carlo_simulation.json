@@ -1,0 +1,357 @@
+{
+  "id": "5e363735-f53c-45d9-825a-1b3417ccf938",
+  "name": "Monte Carlo Simulation",
+  "nodes": [
+    {
+      "id": "receiveSlackMessage",
+      "text": "Receive Slack Message",
+      "x": 240,
+      "y": 128,
+      "type": "receive-slack-message",
+      "icon": "slack-receive",
+      "category": "trigger",
+      "isSelected": false,
+      "parameters": { "channelId": "C07KKR1GW07" },
+      "description": "This trigger node listens for incoming Slack messages in the specified channel.",
+      "outputs": { "user": "", "text": "", "timestamp": "", "response": {} },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "parseSlackMessage",
+      "text": "Parse Slack Message",
+      "x": 240,
+      "y": 192,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "const message = {{receiveSlackMessage.text}};\nconst [problemType, problemDescription, iterations, maxCodeIterations, numWorkers] = message.split('|');\nreturn {\n  problemType: problemType.trim(),\n  problemDescription: problemDescription.trim(),\n  iterations: parseInt(iterations.trim()),\n  maxCodeIterations: parseInt(maxCodeIterations.trim()),\n  numWorkers: parseInt(numWorkers.trim())\n};"
+      },
+      "description": "This utility node parses the Slack message into structured data.",
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "loadDataStructure",
+      "text": "Load Data Structure",
+      "x": 240,
+      "y": 256,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "operation": "Read",
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "{{parseSlackMessage.result.problemType}}_structure!A:Z",
+        "values": []
+      },
+      "description": "This action node loads the data structure from Google Sheets.",
+      "outputs": { "success": false, "result": [], "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "loadData",
+      "text": "Load Data",
+      "x": 240,
+      "y": 320,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "operation": "Read",
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "{{parseSlackMessage.result.problemType}}_data!A:Z",
+        "values": []
+      },
+      "description": "This action node loads the actual data from Google Sheets.",
+      "outputs": { "success": false, "result": [], "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "generateSeed",
+      "text": "Generate Seed",
+      "x": 240,
+      "y": 384,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "function generateRandomSeed() {\n  const seedLength = 32; // Equivalent to 16 bytes in hex\n  let seed = '';\n\n  for (let i = 0; i < seedLength; i++) {\n    // Generate a random hexadecimal digit (0-15)\n    const randomHex = Math.floor(Math.random() * 16).toString(16);\n    seed += randomHex;\n  }\n\n  return seed;\n}\nconst seed = generateRandomSeed();\nreturn { seed: seed };"
+      },
+      "description": "This utility node generates a random seed for reproducibility.",
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "generateMonteCarloCode",
+      "text": "Generate Monte Carlo Code",
+      "x": 240,
+      "y": 448,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-5-sonnet-20240620",
+        "prompt": "Given the following Monte Carlo problem description, data structure, and actual data, generate a complete JavaScript ES6 class named \"State\" that implements the problem and includes a robust Monte Carlo simulation method. The class should be detailed, logically sound, balanced, and optimized for performance.\n\nRequirements:\n1. Implement a constructor that initializes all necessary parameters, including seed for reproducibility and the provided data.\n2. Implement a runSimulation method that performs the Monte Carlo simulation.\n3. Include helper methods as needed for clarity and modularity.\n4. Use appropriate data structures and algorithms for efficiency.\n5. Implement error checking and handling.\n6. Add comments explaining the logic and any non-trivial operations.\n7. Use a seeded random number generator for reproducibility.\n8. Utilize the provided data in your simulation logic.\n\nThe class should have the following structure:\n\nclass State {\n  constructor(params) {\n    // Initialize state with given parameters, including seed and data\n    this.seed = params.seed;\n    this.data = params.data; // optional data\n    this.rng = this.createRNG(this.seed);\n  }\n\n  createRNG(seed) {\n    // Implement a seeded random number generator\n  }\n\n  runSimulation(iterations) {\n    // Implement Monte Carlo simulation logic\n    // Use this.rng.random() instead of Math.random()\n    // Utilize this.data as needed\n    // Return an object with the simulation results\n  }\n\n  // Any additional helper methods as needed\n}\n\nThe runSimulation method should return an object with the following structure:\n{\n  result: {}, // Main results of the simulation\n  additionalStats: {}, // Additional statistics and insights\n  seed: string // The seed used for this simulation run\n}\n\nProblem description:\n{{parseSlackMessage.result.problemDescription}}\n\nData Structure (Optional):\n{{loadDataStructure.result}}\n\nActual Data (Optional):\n{{loadData.result}}\n\nSeed for reproducibility:\n{{generateSeed.result.seed}}\n\nPrevious code critique (If Any):\nPlease address these issues (if any) in your new implementation.\n{{critiqueMonteCarlo.generatedText}}\n\nVERY IMPORTANT: Your response must be a valid JSON object with a single key \"code\" whose value is the complete JavaScript class implementation. \nDo not include ANY text outside of this JSON object. Your entire response should be parseable as JSON.\n\nExample of correct response format:\n{\"code\": \"class State { ... }\"}",
+        "maxTokens": 4096,
+        "temperature": 0.2,
+        "image": ""
+      },
+      "description": "This action node generates the Monte Carlo simulation code using AI.",
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "critiqueMonteCarlo",
+      "text": "Critique Monte Carlo",
+      "x": 560,
+      "y": 320,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-5-sonnet-20240620",
+        "prompt": "Please critique the following Monte Carlo simulation code and its results. Evaluate it based on these criteria:\n1. Accuracy: Assess the accuracy of the simulation based on the problem description and the consistency of results across multiple runs.\n2. Correctness: Does it accurately implement the Monte Carlo method for the given problem?\n3. Efficiency: Is the code optimized for performance?\n4. Readability: Is the code well-structured and easy to understand?\n5. Error handling: Does it properly handle potential errors or edge cases?\n6. Randomness: Is the random number generation implemented correctly and seeded properly?\n7. Result structure: Does it return results in the specified format?\n8. Data Utilization: Does it properly utilize the provided data in the simulation?\n\nProblem description:\n{{parseSlackMessage.result.problemDescription}}\n\nData Structure:\n{{loadDataStructure.result}}\n\nCode to critique:\n{{generateMonteCarloCode.generatedText}}\n\nCode output:\n{{runSimulation.result}}\n\nProvide specific recommendations for improvements, focusing primarily on improving accuracy and reliability if they're not satisfactory. If the code is accurate, reliable, and satisfactory, state that no further improvements are needed.\n\nAlso, provide a numerical assessment of the overall quality of the simulation on a scale of 0 to 1, where 1 is perfect.\n\nYour response must be a valid JSON object with two keys \"critique\" and \"qualityScore\". The \"critique\" value should be your critique and recommendations as a string, and \"qualityScore\" should be a number between 0 and 1.\n\nExample of correct response JSON format:\n{\"critique\": \"Your detailed critique here...\", \"qualityScore\": \"0.85\"}\n\nIMPORTANT:\nDo not include ANY text outside of this JSON object. Your entire response should be parseable as JSON with all newlines and illegal characters escaped.",
+        "maxTokens": "4096",
+        "temperature": 0.2,
+        "image": ""
+      },
+      "description": "This action node critiques the generated Monte Carlo code using AI.",
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "countIterations",
+      "text": "Count Iterations",
+      "x": 560,
+      "y": 384,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "let count = {{countIterations.result.count}} || 0;\ncount++;\nreturn { count, maxIterations: {{parseSlackMessage.result.maxCodeIterations}} };"
+      },
+      "description": "This utility node keeps track of the number of iterations.",
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "runSimulation",
+      "text": "Run Simulation",
+      "x": 560,
+      "y": 256,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "const stateCodeJson = JSON.parse({{generateMonteCarloCode.generatedText}});\nconst stateCode = stateCodeJson.code;\n\n// Create a function that returns the State class\nconst getStateClass = new Function(`\n  ${stateCode}\n  return State;\n`);\n\n// Get the State class\nconst State = getStateClass();\n\nconst state = new State({\n  seed: {{generateSeed.result.seed}},\n  data: {{loadData.result}}\n});\n\nconst iterations = {{parseSlackMessage.result.iterations}};\nreturn state.runSimulation(iterations);"
+      },
+      "description": "This utility node runs the Monte Carlo simulation.",
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendSlackResults",
+      "text": "Send Slack Results",
+      "x": 560,
+      "y": 576,
+      "type": "send-slack-message",
+      "icon": "slack-send",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "channelId": "C07KKR1GW07",
+        "message": "Monte Carlo Simulation Results:\nProblem Type: {{parseSlackMessage.result.problemType}}\nProblem Description: {{parseSlackMessage.result.problemDescription}}\nIterations: {{parseSlackMessage.result.iterations}}\nQuality Score: {{critiqueMonteCarlo.generatedText}}\nCode Improvement Iterations: {{countIterations.result.count}}\n\nResults:\n{{runSimulation.result.result}}\n\nAdditional Stats:\n{{runSimulation.result.additionalStats}}\n\nSeed: {{runSimulation.result.seed}}"
+      },
+      "description": "This action node sends the simulation results back to Slack.",
+      "outputs": { "success": false, "timestamp": "", "error": "" },
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "monteCarloSimulationLabel",
+      "text": "Monte Carlo Simulation",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {},
+      "description": "This label node provides a title for the workflow.",
+      "outputs": {},
+      "isEditing": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "85ed0126-337b-4d16-9f05-03c829d4ac6c",
+      "text": "Get Score",
+      "x": 560,
+      "y": 512,
+      "isEditing": false,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "const json = JSON.parse({{critiqueMonteCarlo.generatedText}});\nreturn json.qualityScore;"
+      },
+      "description": "This utility node allows you to execute custom JavaScript code within the workflow, enabling advanced logic and data transformations.",
+      "error": null,
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveSlackMessage", "type": "output" },
+      "end": { "id": "parseSlackMessage", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216
+    },
+    {
+      "id": "dcdaab84-a8b2-4fd1-ab65-1675a4ad8106",
+      "start": { "id": "parseSlackMessage", "type": "output" },
+      "end": { "id": "loadDataStructure", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280
+    },
+    {
+      "id": "41779a26-5880-4f52-b18a-1bffb9ecb329",
+      "start": { "id": "loadDataStructure", "type": "output" },
+      "end": { "id": "loadData", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 240,
+      "endY": 344
+    },
+    {
+      "id": "a8896d1c-4b2b-4b23-9b9e-ab1f126ac0e7",
+      "start": { "id": "loadData", "type": "output" },
+      "end": { "id": "generateSeed", "type": "input" },
+      "startX": 528,
+      "startY": 344,
+      "endX": 240,
+      "endY": 408
+    },
+    {
+      "id": "b850e2ad-0dfd-4a84-a044-24642d7c902d",
+      "start": { "id": "generateMonteCarloCode", "type": "output" },
+      "end": { "id": "runSimulation", "type": "input" },
+      "startX": 528,
+      "startY": 472,
+      "endX": 560,
+      "endY": 280
+    },
+    {
+      "id": "c491972c-3e8b-4c12-a756-91a86eca10c7",
+      "start": { "id": "runSimulation", "type": "output" },
+      "end": { "id": "critiqueMonteCarlo", "type": "input" },
+      "startX": 848,
+      "startY": 280,
+      "endX": 560,
+      "endY": 344
+    },
+    {
+      "id": "15d302e9-7163-478d-9343-e9a10ee4155a",
+      "start": {
+        "id": "85ed0126-337b-4d16-9f05-03c829d4ac6c",
+        "type": "output"
+      },
+      "end": { "id": "sendSlackResults", "type": "input" },
+      "startX": 848,
+      "startY": 536,
+      "endX": 560,
+      "endY": 600,
+      "if": "{{getScore.result}}",
+      "condition": "greater_than_or_equal",
+      "value": 0.8
+    },
+    {
+      "id": "7d2b34f6-c727-4678-9986-79ce1d88bc15",
+      "start": { "id": "generateSeed", "type": "output" },
+      "end": { "id": "generateMonteCarloCode", "type": "input" },
+      "startX": 528,
+      "startY": 408,
+      "endX": 240,
+      "endY": 472
+    },
+    {
+      "id": "9a46a449-035d-481b-a6af-fb6612d51c90",
+      "start": {
+        "id": "85ed0126-337b-4d16-9f05-03c829d4ac6c",
+        "type": "output"
+      },
+      "end": { "id": "generateMonteCarloCode", "type": "input" },
+      "startX": 848,
+      "startY": 536,
+      "endX": 240,
+      "endY": 472,
+      "if": "{{getScore.result}}",
+      "condition": "less_than",
+      "value": 0.8
+    },
+    {
+      "id": "e3350e6b-09db-475f-9789-ddc701985809",
+      "start": { "id": "critiqueMonteCarlo", "type": "output" },
+      "end": { "id": "countIterations", "type": "input" },
+      "startX": 848,
+      "startY": 344,
+      "endX": 560,
+      "endY": 408
+    },
+    {
+      "id": "b950b5fd-c5a6-4689-8ca0-d5800f92aea4",
+      "start": { "id": "countIterations", "type": "output" },
+      "end": { "id": "85ed0126-337b-4d16-9f05-03c829d4ac6c", "type": "input" },
+      "startX": 848,
+      "startY": 408,
+      "endX": 560,
+      "endY": 536,
+      "condition": "less_than_or_equal",
+      "if": "{{countIterations.result.count}}",
+      "value": "{{countIterations.result.maxIterations}}"
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 288,
+  "canvasOffsetY": 110,
+  "isTinyNodeMode": false
+}

@@ -1,0 +1,172 @@
+{
+  "name": "youtube-plugin",
+  "version": "1.0.0",
+  "description": "YouTube integration plugin for AGNT - Manage videos, comments, playlists, and transcriptions",
+  "author": "AGNT",
+  "icon": "youtube",
+  "tools": [
+    {
+      "type": "youtube-api",
+      "entryPoint": "./youtube-api.js",
+      "schema": {
+        "title": "YouTube API",
+        "category": "action",
+        "type": "youtube-api",
+        "icon": "youtube",
+        "description": "Interact with the YouTube API to manage videos, comments, playlists, and more.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "ADD_VIDEO_TO_PLAYLIST",
+              "COMMENT_ON_VIDEO",
+              "CREATE_PLAYLIST",
+              "DISLIKE_VIDEO",
+              "GET_MY_SUBSCRIPTIONS",
+              "GET_PLAYLIST_ITEMS",
+              "GET_TRANSCRIPTION",
+              "GET_VIDEO_DETAILS",
+              "LIKE_VIDEO",
+              "LIST_CHANNEL_VIDEOS",
+              "REPLY_TO_COMMENT",
+              "SEARCH_VIDEOS",
+              "SUBSCRIBE_TO_CHANNEL",
+              "UNSUBSCRIBE_FROM_CHANNEL",
+              "UPDATE_VIDEO_METADATA",
+              "UPLOAD_VIDEO"
+            ],
+            "description": "The action to perform on YouTube"
+          },
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The search query",
+            "conditional": {
+              "field": "action",
+              "value": "SEARCH_VIDEOS"
+            }
+          },
+          "videoId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "YouTube video ID or full URL (e.g., 'dQw4w9WgXcQ' or 'https://www.youtube.com/watch?v=dQw4w9WgXcQ') - automatically converts URLs to video IDs",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_VIDEO_DETAILS", "LIKE_VIDEO", "DISLIKE_VIDEO", "COMMENT_ON_VIDEO", "UPDATE_VIDEO_METADATA", "GET_TRANSCRIPTION"]
+            }
+          },
+          "fallbackMethod": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["all", "api", "ytdlp", "whisper"],
+            "default": "all",
+            "description": "Transcription method: 'all' (try all methods), 'api' (YouTube API only), 'ytdlp' (yt-dlp only), 'whisper' (OpenAI Whisper only). IMPORTANT: Use 'all' for best results - tries YouTube API first, then yt-dlp, then Whisper as fallbacks.",
+            "conditional": {
+              "field": "action",
+              "value": "GET_TRANSCRIPTION"
+            }
+          },
+          "channelId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the YouTube channel",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_CHANNEL_VIDEOS", "SUBSCRIBE_TO_CHANNEL", "UNSUBSCRIBE_FROM_CHANNEL"]
+            }
+          },
+          "text": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The text of the comment or reply",
+            "conditional": {
+              "field": "action",
+              "value": ["COMMENT_ON_VIDEO", "REPLY_TO_COMMENT"]
+            }
+          },
+          "commentId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the comment to reply to",
+            "conditional": {
+              "field": "action",
+              "value": "REPLY_TO_COMMENT"
+            }
+          },
+          "title": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The title of the playlist or video",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_PLAYLIST", "UPDATE_VIDEO_METADATA", "UPLOAD_VIDEO"]
+            }
+          },
+          "description": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The description of the playlist or video",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_PLAYLIST", "UPDATE_VIDEO_METADATA", "UPLOAD_VIDEO"]
+            }
+          },
+          "tags": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated list of tags for the video",
+            "conditional": {
+              "field": "action",
+              "value": ["UPDATE_VIDEO_METADATA", "UPLOAD_VIDEO"]
+            }
+          },
+          "playlistId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the playlist",
+            "conditional": {
+              "field": "action",
+              "value": ["ADD_VIDEO_TO_PLAYLIST", "GET_PLAYLIST_ITEMS"]
+            }
+          },
+          "videoPath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The local path to the video file to upload",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_VIDEO"
+            }
+          },
+          "maxResults": {
+            "type": "number",
+            "inputType": "number",
+            "description": "The maximum number of results to return",
+            "default": 10,
+            "conditional": {
+              "field": "action",
+              "value": ["SEARCH_VIDEOS", "LIST_CHANNEL_VIDEOS", "GET_MY_SUBSCRIPTIONS", "GET_PLAYLIST_ITEMS"]
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the action was successful"
+          },
+          "result": {
+            "type": "object",
+            "description": "The result of the action"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the action failed"
+          }
+        }
+      }
+    }
+  ]
+}

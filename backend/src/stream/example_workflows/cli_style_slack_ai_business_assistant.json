@@ -1,0 +1,522 @@
+{
+  "id": "9cac1bf3-082a-4e30-b0bf-17dacb0cb624",
+  "name": "CLI Style Slack AI Business Assistant",
+  "nodes": [
+    {
+      "id": "receiveSlackMessage",
+      "text": "Receive Slack Message",
+      "x": 240,
+      "y": 128,
+      "type": "receive-slack-message",
+      "icon": "slack-receive",
+      "category": "trigger",
+      "parameters": { "channelId": "C07KKR1GW07" },
+      "outputs": { "user": "", "text": "", "timestamp": "", "response": {} },
+      "description": "This trigger node listens for incoming Slack messages to start the CLI-style interaction.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": {
+        "user": "U02AAUCPTSM",
+        "type": "message",
+        "ts": "1727900059.204379",
+        "client_msg_id": "c7e0ab4c-6ec8-428a-8de0-b5ed6bc57b89",
+        "text": "report sales-Q1-2023",
+        "team": "T02AAU8M6F3",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "NI0Cm",
+            "elements": [
+              {
+                "type": "rich_text_section",
+                "elements": [{ "type": "text", "text": "report sales-Q1-2023" }]
+              }
+            ]
+          }
+        ],
+        "channel": "C07KKR1GW07",
+        "event_ts": "1727900059.204379",
+        "channel_type": "group",
+        "timestamp": "1727900059.204379",
+        "response": {
+          "user": "U02AAUCPTSM",
+          "type": "message",
+          "ts": "1727900059.204379",
+          "client_msg_id": "c7e0ab4c-6ec8-428a-8de0-b5ed6bc57b89",
+          "text": "report sales-Q1-2023",
+          "team": "T02AAU8M6F3",
+          "blocks": [
+            {
+              "type": "rich_text",
+              "block_id": "NI0Cm",
+              "elements": [
+                {
+                  "type": "rich_text_section",
+                  "elements": [
+                    { "type": "text", "text": "report sales-Q1-2023" }
+                  ]
+                }
+              ]
+            }
+          ],
+          "channel": "C07KKR1GW07",
+          "event_ts": "1727900059.204379",
+          "channel_type": "group",
+          "timestamp": "1727900059.204379",
+          "response": {}
+        },
+        "error": null,
+        "outputs": {
+          "user": "U02AAUCPTSM",
+          "type": "message",
+          "ts": "1727900059.204379",
+          "client_msg_id": "c7e0ab4c-6ec8-428a-8de0-b5ed6bc57b89",
+          "text": "report sales-Q1-2023",
+          "team": "T02AAU8M6F3",
+          "blocks": [
+            {
+              "type": "rich_text",
+              "block_id": "NI0Cm",
+              "elements": [
+                {
+                  "type": "rich_text_section",
+                  "elements": [
+                    { "type": "text", "text": "report sales-Q1-2023" }
+                  ]
+                }
+              ]
+            }
+          ],
+          "channel": "C07KKR1GW07",
+          "event_ts": "1727900059.204379",
+          "channel_type": "group",
+          "timestamp": "1727900059.204379",
+          "response": {}
+        }
+      }
+    },
+    {
+      "id": "parseCommand",
+      "text": "Parse Command",
+      "x": 240,
+      "y": 192,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const message = {{receiveSlackMessage.text}}.trim();\nconst [command, ...args] = message.split(' ');\n\nreturn {\n command: command.toLowerCase(),\n args: args.join(' ')\n};"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node parses the user's command and arguments from the Slack message.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": {
+        "success": true,
+        "result": { "command": "report", "args": "sales-Q1-2023" },
+        "error": null,
+        "outputs": { "command": "report", "args": "sales-Q1-2023" }
+      }
+    },
+    {
+      "id": "routeCommand",
+      "text": "Route Command",
+      "x": 240,
+      "y": 256,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const { command } = {{parseCommand.result}};\n\nconst routes = {\n help: 'showHelp',\n task: 'handleTask',\n report: 'generateReport',\n analyze: 'analyzeData',\n schedule: 'scheduleEvent'\n};\n\nreturn { nextNode: routes[command] || 'handleUnknownCommand' };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node routes the command to the appropriate handler based on the parsed command.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": {
+        "success": true,
+        "result": { "nextNode": "generateReport" },
+        "error": null,
+        "outputs": { "nextNode": "generateReport" }
+      }
+    },
+    {
+      "id": "showHelp",
+      "text": "Show Help",
+      "x": 560,
+      "y": 128,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Generate a helpful response explaining the available commands and their usage for the CLI-Style Slack AI Business Assistant. Include examples for each command. The available commands are:\n\n- help: Show this help message\n- task: Create or manage tasks\n- report: Generate reports\n- analyze: Analyze data\n- schedule: Schedule events\n\nFormat the response in a clear, concise manner suitable for Slack.",
+        "maxTokens": 300,
+        "temperature": 0.7,
+        "image": ""
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This node generates a help message explaining available commands.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "handleTask",
+      "text": "Handle Task",
+      "x": 560,
+      "y": 192,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Based on the user's input, generate a response for handling a task-related command. The input may include creating, updating, or listing tasks. Provide a suitable response and any necessary follow-up actions.\n\nUser input: {{parseCommand.result.args}}\n\nGenerate a JSON response with the following structure:\n{\n \"response\": \"The response text to send to the user\",\n \"action\": \"create_task | update_task | list_tasks | invalid_command\",\n \"taskDetails\": {} // Include relevant task details if applicable\n}\n\nEnsure the response is helpful and actionable.",
+        "maxTokens": 500,
+        "temperature": 0.7,
+        "image": ""
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This node handles task-related commands.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "generateReport",
+      "text": "Generate Report",
+      "x": 560,
+      "y": 256,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Based on the user's input, generate a response for creating a business report. The input may specify the type of report and any relevant parameters.\n\nUser input: {{parseCommand.result.args}}\n\nGenerate a JSON response with the following structure:\n{\n \"response\": \"The response text to send to the user\",\n \"reportType\": \"sales | financial | performance | custom\",\n \"reportDetails\": {} // Include relevant report details\n}\n\nEnsure the response is professional and informative.",
+        "maxTokens": 500,
+        "temperature": 0.7,
+        "image": ""
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This node generates business reports based on user input.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": {
+        "generatedText": "{\n  \"response\": \"Thank you for your request to generate a business report. Based on the input 'sales-Q1-2023', I have prepared a sales report for the first quarter of 2023. This report will provide an overview of your company's sales performance during that period.\",\n  \"reportType\": \"sales\",\n  \"reportDetails\": {\n    \"reportPeriod\": \"Q1 2023\",\n    \"metrics\": [\n      \"Total Sales Revenue\",\n      \"Sales Volume (Units Sold)\",\n      \"Average Sales Price\",\n      \"Sales Growth Percentage\",\n      \"Top Selling Products\"\n    ],\n    \"insights\": [\n      \"Sales revenue increased by 15% compared to the same period last year, driven by strong demand for our flagship product line.\",\n      \"Unit sales grew by 12%, indicating a positive market response to our recent product launches.\",\n      \"Average sales price remained stable, suggesting no significant changes in pricing strategy or customer preferences.\",\n      \"The sales growth rate of 15% exceeded our quarterly target of 10%, demonstrating the effectiveness of our sales and marketing initiatives.\"\n    ]\n  }\n}",
+        "tokenCount": 258,
+        "error": null
+      }
+    },
+    {
+      "id": "analyzeData",
+      "text": "Analyze Data",
+      "x": 560,
+      "y": 320,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Based on the user's input, generate a response for analyzing business data. The input may specify the type of analysis and any relevant parameters.\n\nUser input: {{parseCommand.result.args}}\n\nGenerate a JSON response with the following structure:\n{\n \"response\": \"The response text to send to the user\",\n \"analysisType\": \"trend | comparison | forecast | custom\",\n \"analysisDetails\": {} // Include relevant analysis details\n}\n\nEnsure the response is insightful and data-driven.",
+        "maxTokens": 500,
+        "temperature": 0.7,
+        "image": ""
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This node analyzes business data based on user input.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "scheduleEvent",
+      "text": "Schedule Event",
+      "x": 560,
+      "y": 384,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Based on the user's input, generate a response for scheduling a business event. The input may include event details such as title, date, time, and participants.\n\nUser input: {{parseCommand.result.args}}\n\nGenerate a JSON response with the following structure:\n{\n \"response\": \"The response text to send to the user\",\n \"eventDetails\": {\n \"title\": \"\",\n \"date\": \"\",\n \"time\": \"\",\n \"participants\": []\n }\n}\n\nEnsure the response is clear and confirms the event details.",
+        "maxTokens": 500,
+        "temperature": 0.7,
+        "image": ""
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This node handles scheduling of business events.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "handleUnknownCommand",
+      "text": "Handle Unknown Command",
+      "x": 560,
+      "y": 448,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Generate a helpful response for when the user enters an unknown or invalid command. Provide guidance on available commands and how to use the CLI-Style Slack AI Business Assistant.\n\nUnknown command: {{parseCommand.result.command}}\n\nEnsure the response is friendly and informative, encouraging the user to try valid commands.",
+        "maxTokens": 200,
+        "temperature": 0.7,
+        "image": ""
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This node handles unknown or invalid commands.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "parseRoutedCommand",
+      "text": "Parse Routed Command",
+      "x": 880,
+      "y": 128,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// First, resolve the nextNode\nconst nextNode = {{routeCommand.result.nextNode}};\n\n// Then, use the resolved nextNode to get the appropriate response\nlet response = '';\n\nswitch (nextNode) {\n  case 'showHelp':\n    response = {{showHelp.generatedText}};\n    break;\n  case 'handleTask':\n    response = JSON.parse({{handleTask.generatedText}}).response;\n    break;\n  case 'generateReport':\n    response = JSON.parse({{generateReport.generatedText}}).response;\n    break;\n  case 'analyzeData':\n    response = JSON.parse({{analyzeData.generatedText}}).response;\n    break;\n  case 'scheduleEvent':\n    response = JSON.parse({{scheduleEvent.generatedText}}).response;\n    break;\n  default:\n    response = {{handleUnknownCommand.generatedText}};\n}\n\nreturn { response };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node parses the routed command response before sending it to Slack.",
+      "isSelected": false,
+      "isActive": false,
+      "error": "Cannot read properties of null (reading 'response')",
+      "output": {
+        "error": "Cannot read properties of null (reading 'response')"
+      }
+    },
+    {
+      "id": "sendSlackResponse",
+      "text": "Send Slack Response",
+      "x": 880,
+      "y": 192,
+      "type": "send-slack-message",
+      "icon": "slack-send",
+      "category": "action",
+      "parameters": {
+        "channelId": "C07KKR1GW07",
+        "message": "{{parseRoutedCommand.result.response}}"
+      },
+      "outputs": { "success": false, "timestamp": "", "error": "" },
+      "description": "This node sends the generated response back to the Slack channel.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": {
+        "success": true,
+        "timestamp": "1727900062.815289",
+        "error": null
+      }
+    },
+    {
+      "id": "e999ee06-cd98-4f49-83de-b3231c7bf0c3",
+      "text": "AI Slack Business Assistant",
+      "x": 240,
+      "y": 64,
+      "isEditing": false,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {},
+      "description": "This utility node displays a text label in the workflow, providing additional context or information.",
+      "error": null,
+      "outputs": {},
+      "isActive": false,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveSlackMessage", "type": "output" },
+      "end": { "id": "parseCommand", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216,
+      "isActive": true
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "parseCommand", "type": "output" },
+      "end": { "id": "routeCommand", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280,
+      "isActive": true
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "showHelp", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 152,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "showHelp",
+      "isActive": false
+    },
+    {
+      "id": "edge4",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "handleTask", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 216,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "handleTask",
+      "isActive": false
+    },
+    {
+      "id": "edge5",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "generateReport", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 280,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "generateReport",
+      "isActive": true
+    },
+    {
+      "id": "edge6",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "analyzeData", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 344,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "analyzeData",
+      "isActive": false
+    },
+    {
+      "id": "edge7",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "scheduleEvent", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 408,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "scheduleEvent",
+      "isActive": false
+    },
+    {
+      "id": "edge8",
+      "start": { "id": "routeCommand", "type": "output" },
+      "end": { "id": "handleUnknownCommand", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 472,
+      "condition": "equals",
+      "if": "{{routeCommand.result.nextNode}}",
+      "value": "handleUnknownCommand",
+      "isActive": false
+    },
+    {
+      "id": "edge9",
+      "start": { "id": "showHelp", "type": "output" },
+      "end": { "id": "parseRoutedCommand", "type": "input" },
+      "startX": 848,
+      "startY": 152,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge10",
+      "start": { "id": "handleTask", "type": "output" },
+      "end": { "id": "parseRoutedCommand", "type": "input" },
+      "startX": 848,
+      "startY": 216,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge11",
+      "start": { "id": "generateReport", "type": "output" },
+      "end": { "id": "parseRoutedCommand", "type": "input" },
+      "startX": 848,
+      "startY": 280,
+      "endX": 880,
+      "endY": 152,
+      "isActive": true
+    },
+    {
+      "id": "edge12",
+      "start": { "id": "analyzeData", "type": "output" },
+      "end": { "id": "parseRoutedCommand", "type": "input" },
+      "startX": 848,
+      "startY": 344,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge13",
+      "start": { "id": "scheduleEvent", "type": "output" },
+      "end": { "id": "parseRoutedCommand", "type": "input" },
+      "startX": 848,
+      "startY": 408,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge14",
+      "start": { "id": "handleUnknownCommand", "type": "output" },
+      "end": { "id": "parseRoutedCommand", "type": "input" },
+      "startX": 848,
+      "startY": 472,
+      "endX": 880,
+      "endY": 152,
+      "isActive": false
+    },
+    {
+      "id": "edge15",
+      "start": { "id": "parseRoutedCommand", "type": "output" },
+      "end": { "id": "sendSlackResponse", "type": "input" },
+      "startX": 1168,
+      "startY": 152,
+      "endX": 880,
+      "endY": 216,
+      "isActive": true
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 194,
+  "canvasOffsetY": 222,
+  "isTinyNodeMode": false
+}

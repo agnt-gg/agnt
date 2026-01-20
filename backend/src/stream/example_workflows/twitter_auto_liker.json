@@ -1,0 +1,417 @@
+{
+  "id": "61390755-7d0f-4ec4-8eb6-9f4b3a3044a6",
+  "name": "Twitter Auto-Liker",
+  "nodes": [
+    {
+      "id": "timerTrigger",
+      "text": "Timer Trigger",
+      "x": 240,
+      "y": 128,
+      "type": "trigger-timer",
+      "icon": "clock",
+      "category": "trigger",
+      "parameters": {
+        "fireOnStart": "Yes",
+        "scheduleType": "Interval",
+        "schedule": "Hourly",
+        "specificTime": "",
+        "specificDays": []
+      },
+      "outputs": {
+        "timestamp": ""
+      },
+      "description": "This trigger node fires the workflow every 30 minutes.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "resetCounter",
+      "text": "Reset Counter",
+      "x": 240,
+      "y": 192,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Reset counter for new search cycle\nreturn {\n\tcurrentIndex: 0,\n\treset: true\n};"
+      },
+      "outputs": {
+        "result": null,
+        "error": ""
+      },
+      "description": "This utility node resets the counter for each new search cycle.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "searchTwitter",
+      "text": "Search Twitter",
+      "x": 240,
+      "y": 256,
+      "type": "twitter-api",
+      "icon": "twitter",
+      "category": "action",
+      "parameters": {
+        "action": "SEARCH",
+        "text": "",
+        "tweetId": "",
+        "userId": "",
+        "targetUserId": "",
+        "userIds": [],
+        "maxResults": "20",
+        "query": "qwen3",
+        "sortOrder": "RECENCY"
+      },
+      "outputs": {
+        "success": false,
+        "tweetId": "",
+        "deletedTweetId": "",
+        "replyTweetId": "",
+        "likedTweetId": "",
+        "tweets": [],
+        "timeline": [],
+        "searchResults": [],
+        "userProfile": {},
+        "replies": [],
+        "following": [],
+        "followers": [],
+        "analysis": {},
+        "followedUserId": "",
+        "followedUsername": "",
+        "unfollowedUserId": "",
+        "unfollowedUsername": "",
+        "result": {},
+        "summary": {},
+        "error": ""
+      },
+      "description": "This action node searches Twitter for tweets containing 'claude code'.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "extractTweetIds",
+      "text": "Extract Tweet IDs",
+      "x": 240,
+      "y": 320,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const searchResults = {{searchTwitter.searchResults}};\nconst tweetIds = searchResults.map(tweet => tweet.id);\n\nreturn {\n\ttweetIds,\n\ttotalTweets: tweetIds.length\n};"
+      },
+      "outputs": {
+        "result": null,
+        "error": ""
+      },
+      "description": "This utility node extracts tweet IDs from search results.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "jsCounter",
+      "text": "JS Counter",
+      "x": 240,
+      "y": 384,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Get current index from reset counter or previous iteration\nconst resetIndex = {{resetCounter.result.currentIndex}} || 0;\nconst previousIndex = {{incrementCounter.result.currentIndex}} || resetIndex;\n\n// Use the appropriate index\nconst currentIndex = previousIndex;\n\nreturn {\n\tcurrentIndex,\n\tupdated: true\n};"
+      },
+      "outputs": {
+        "result": null,
+        "error": ""
+      },
+      "description": "This utility node manages the JavaScript-based counter.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "getCurrentTweet",
+      "text": "Get Current Tweet",
+      "x": 560,
+      "y": 256,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const tweetIds = {{extractTweetIds.result.tweetIds}};\nconst currentIndex = {{jsCounter.result.currentIndex}};\nconst currentTweetId = currentIndex < tweetIds.length ? tweetIds[currentIndex] : null;\nconst hasMore = currentIndex < tweetIds.length;\n\nreturn {\n\tcurrentTweetId,\n\thasMore,\n\tcurrentIndex,\n\ttotalTweets: tweetIds.length\n};"
+      },
+      "outputs": {
+        "result": null,
+        "error": ""
+      },
+      "description": "This utility node gets the current tweet ID based on the counter.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "delayBetweenLikes",
+      "text": "Delay Between Likes",
+      "x": 560,
+      "y": 384,
+      "type": "delay",
+      "icon": "timer",
+      "category": "control",
+      "parameters": {
+        "duration": "5",
+        "unit": "minutes"
+      },
+      "outputs": {
+        "delayedUntil": ""
+      },
+      "description": "This control node introduces a 3-minute delay between likes.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "likeTweet",
+      "text": "Like Tweet",
+      "x": 560,
+      "y": 320,
+      "type": "twitter-api",
+      "icon": "twitter",
+      "category": "action",
+      "parameters": {
+        "action": "LIKE",
+        "text": "",
+        "tweetId": "{{getCurrentTweet.result.currentTweetId}}",
+        "userId": "",
+        "targetUserId": "",
+        "userIds": [],
+        "maxResults": 10,
+        "query": "",
+        "sortOrder": "RECENCY"
+      },
+      "outputs": {
+        "success": false,
+        "tweetId": "",
+        "deletedTweetId": "",
+        "replyTweetId": "",
+        "likedTweetId": "",
+        "tweets": [],
+        "timeline": [],
+        "searchResults": [],
+        "userProfile": {},
+        "replies": [],
+        "following": [],
+        "followers": [],
+        "analysis": {},
+        "followedUserId": "",
+        "followedUsername": "",
+        "unfollowedUserId": "",
+        "unfollowedUsername": "",
+        "result": {},
+        "summary": {},
+        "error": ""
+      },
+      "description": "This action node likes the current tweet.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "incrementCounter",
+      "text": "Increment Counter",
+      "x": 560,
+      "y": 448,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "// Increment the counter for next iteration\nconst currentIndex = {{jsCounter.result.currentIndex}};\nconst nextIndex = currentIndex + 1;\n\nreturn {\n\tcurrentIndex: nextIndex,\n\tincremented: true\n};"
+      },
+      "outputs": {
+        "result": null,
+        "error": ""
+      },
+      "description": "This utility node increments the counter after each tweet is liked.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "workflowLabel",
+      "text": "Twitter Auto-Liker",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This label node provides a title for the workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null,
+      "isEditing": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": {
+        "id": "timerTrigger",
+        "type": "output"
+      },
+      "end": {
+        "id": "resetCounter",
+        "type": "input"
+      },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216
+    },
+    {
+      "id": "edge2",
+      "start": {
+        "id": "resetCounter",
+        "type": "output"
+      },
+      "end": {
+        "id": "searchTwitter",
+        "type": "input"
+      },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280
+    },
+    {
+      "id": "edge3",
+      "start": {
+        "id": "searchTwitter",
+        "type": "output"
+      },
+      "end": {
+        "id": "extractTweetIds",
+        "type": "input"
+      },
+      "startX": 528,
+      "startY": 280,
+      "endX": 240,
+      "endY": 344
+    },
+    {
+      "id": "edge4",
+      "start": {
+        "id": "extractTweetIds",
+        "type": "output"
+      },
+      "end": {
+        "id": "jsCounter",
+        "type": "input"
+      },
+      "startX": 528,
+      "startY": 344,
+      "endX": 240,
+      "endY": 408,
+      "condition": "is_not_empty",
+      "if": "{{extractTweetIds.result.tweetIds}}"
+    },
+    {
+      "id": "edge5",
+      "start": {
+        "id": "jsCounter",
+        "type": "output"
+      },
+      "end": {
+        "id": "getCurrentTweet",
+        "type": "input"
+      },
+      "startX": 528,
+      "startY": 408,
+      "endX": 560,
+      "endY": 280
+    },
+    {
+      "id": "edge9",
+      "start": {
+        "id": "incrementCounter",
+        "type": "output"
+      },
+      "end": {
+        "id": "jsCounter",
+        "type": "input"
+      },
+      "startX": 848,
+      "startY": 472,
+      "endX": 240,
+      "endY": 408,
+      "condition": "equals",
+      "if": "{{getCurrentTweet.result.hasMore}}",
+      "value": "true"
+    },
+    {
+      "id": "f704a97d-1998-4d34-ab34-dc45f91ad958",
+      "start": {
+        "id": "getCurrentTweet",
+        "type": "output"
+      },
+      "end": {
+        "id": "likeTweet",
+        "type": "input"
+      },
+      "startX": 848,
+      "startY": 280,
+      "endX": 560,
+      "endY": 344,
+      "if": "{{getCurrentTweet.result.currentTweetId}}",
+      "condition": "is_not_empty"
+    },
+    {
+      "id": "2a27ea1b-5e3c-4533-8f1e-80a99ffbe4da",
+      "start": {
+        "id": "likeTweet",
+        "type": "output"
+      },
+      "end": {
+        "id": "delayBetweenLikes",
+        "type": "input"
+      },
+      "startX": 848,
+      "startY": 344,
+      "endX": 560,
+      "endY": 408
+    },
+    {
+      "id": "ed5d6253-0f5b-41f2-8055-7a57155662c1",
+      "start": {
+        "id": "delayBetweenLikes",
+        "type": "output"
+      },
+      "end": {
+        "id": "incrementCounter",
+        "type": "input"
+      },
+      "startX": 848,
+      "startY": 408,
+      "endX": 560,
+      "endY": 472
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 74,
+  "canvasOffsetY": 300,
+  "isTinyNodeMode": false,
+  "isShareable": false,
+  "customTools": []
+}

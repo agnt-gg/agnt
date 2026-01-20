@@ -1,0 +1,350 @@
+{
+  "name": "openweathermap-api-plugin",
+  "version": "1.0.0",
+  "description": "Tools for retrieving weather, forecasts, air pollution, and geocoding data from the OpenWeatherMap API.",
+  "author": "AGNT User",
+  "icon": "weather",
+  "tools": [
+    {
+      "type": "openweathermap-current-weather",
+      "entryPoint": "./openweathermap.js",
+      "schema": {
+        "title": "Get Current Weather",
+        "category": "action",
+        "type": "openweathermap-current-weather",
+        "icon": "weather",
+        "description": "Fetch current weather conditions by city, coordinates, or ZIP code using OpenWeatherMap Current Weather API.",
+        "authRequired": "apiKey",
+        "authProvider": "openweathermap",
+        "parameters": {
+          "locationMode": {
+            "type": "string",
+            "inputType": "select",
+            "description": "How to specify the location for the query.",
+            "required": true,
+            "options": [
+              "city",
+              "coords",
+              "zip"
+            ],
+            "default": "city"
+          },
+          "city": {
+            "type": "string",
+            "inputType": "text",
+            "description": "City name (optionally include state code and country code, e.g., 'London,GB' or 'Portland,OR,US').",
+            "required": false,
+            "conditional": {
+              "field": "locationMode",
+              "value": "city"
+            }
+          },
+          "lat": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Latitude (decimal degrees).",
+            "required": false,
+            "conditional": {
+              "field": "locationMode",
+              "value": "coords"
+            }
+          },
+          "lon": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Longitude (decimal degrees).",
+            "required": false,
+            "conditional": {
+              "field": "locationMode",
+              "value": "coords"
+            }
+          },
+          "zip": {
+            "type": "string",
+            "inputType": "text",
+            "description": "ZIP or postal code. For best results include country code, e.g., '94040,US'.",
+            "required": false,
+            "conditional": {
+              "field": "locationMode",
+              "value": "zip"
+            }
+          },
+          "units": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Units for temperature and wind speed.",
+            "required": false,
+            "options": [
+              "standard",
+              "metric",
+              "imperial"
+            ],
+            "default": "metric"
+          },
+          "lang": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Language code for localized condition descriptions (e.g., 'en', 'es', 'fr').",
+            "required": false,
+            "default": "en"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "If true, include the full raw API response in the output.",
+            "required": false,
+            "default": false
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the request succeeded."
+          },
+          "location": {
+            "type": "object",
+            "description": "Resolved location metadata (name, country, coordinates) when available."
+          },
+          "current": {
+            "type": "object",
+            "description": "Current weather summary (temperature, feels_like, humidity, pressure, wind, clouds, visibility, condition)."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Full raw OpenWeatherMap API response (present when includeRaw=true)."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success=false."
+          }
+        }
+      }
+    },
+    {
+      "type": "openweathermap-forecast-5day",
+      "entryPoint": "./openweathermap.js",
+      "schema": {
+        "title": "Get 5-Day / 3-Hour Forecast",
+        "category": "action",
+        "type": "openweathermap-forecast-5day",
+        "icon": "weather",
+        "description": "Fetch 5-day forecast data in 3-hour intervals by city, coordinates, or ZIP code using OpenWeatherMap Forecast API.",
+        "authRequired": "apiKey",
+        "authProvider": "openweathermap",
+        "parameters": {
+          "locationMode": {
+            "type": "string",
+            "inputType": "select",
+            "description": "How to specify the location for the query.",
+            "required": true,
+            "options": [
+              "city",
+              "coords",
+              "zip"
+            ],
+            "default": "city"
+          },
+          "city": {
+            "type": "string",
+            "inputType": "text",
+            "description": "City name (optionally include state code and country code, e.g., 'Paris,FR').",
+            "required": false,
+            "conditional": {
+              "field": "locationMode",
+              "value": "city"
+            }
+          },
+          "lat": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Latitude (decimal degrees).",
+            "required": false,
+            "conditional": {
+              "field": "locationMode",
+              "value": "coords"
+            }
+          },
+          "lon": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Longitude (decimal degrees).",
+            "required": false,
+            "conditional": {
+              "field": "locationMode",
+              "value": "coords"
+            }
+          },
+          "zip": {
+            "type": "string",
+            "inputType": "text",
+            "description": "ZIP or postal code. For best results include country code, e.g., '10001,US'.",
+            "required": false,
+            "conditional": {
+              "field": "locationMode",
+              "value": "zip"
+            }
+          },
+          "units": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Units for temperature and wind speed.",
+            "required": false,
+            "options": [
+              "standard",
+              "metric",
+              "imperial"
+            ],
+            "default": "metric"
+          },
+          "lang": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Language code for localized condition descriptions (e.g., 'en', 'de').",
+            "required": false,
+            "default": "en"
+          },
+          "cnt": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Maximum number of forecast items to return (each item is a 3-hour step). If omitted, API returns the default set.",
+            "required": false
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "If true, include the full raw API response in the output.",
+            "required": false,
+            "default": false
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the request succeeded."
+          },
+          "location": {
+            "type": "object",
+            "description": "City/location metadata (name, country, coordinates, timezone) when available."
+          },
+          "forecast": {
+            "type": "array",
+            "description": "Array of forecast entries (typically 3-hour steps) with time, temperature, weather condition, wind, and precipitation fields."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Full raw OpenWeatherMap API response (present when includeRaw=true)."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success=false."
+          }
+        }
+      }
+    },
+    {
+      "type": "openweathermap-geocode",
+      "entryPoint": "./openweathermap.js",
+      "schema": {
+        "title": "Geocode Location (Direct)",
+        "category": "utility",
+        "type": "openweathermap-geocode",
+        "icon": "web",
+        "description": "Convert a place name to geographic coordinates using OpenWeatherMap Geocoding API (Direct Geocoding).",
+        "authRequired": "apiKey",
+        "authProvider": "openweathermap",
+        "parameters": {
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Place name to geocode (e.g., 'New York,US', 'Berlin', 'Austin,TX,US').",
+            "required": true
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Maximum number of results to return (1-5 recommended).",
+            "required": false,
+            "default": 5
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "If true, include the full raw API response in the output.",
+            "required": false,
+            "default": false
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the request succeeded."
+          },
+          "results": {
+            "type": "array",
+            "description": "List of matching locations with name, local_names (if present), lat, lon, country, and state (if present)."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Full raw OpenWeatherMap API response (present when includeRaw=true)."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success=false."
+          }
+        }
+      }
+    },
+    {
+      "type": "openweathermap-air-pollution",
+      "entryPoint": "./openweathermap.js",
+      "schema": {
+        "title": "Get Air Pollution (Current)",
+        "category": "action",
+        "type": "openweathermap-air-pollution",
+        "icon": "weather",
+        "description": "Fetch current air quality and pollutant concentrations by coordinates using OpenWeatherMap Air Pollution API.",
+        "authRequired": "apiKey",
+        "authProvider": "openweathermap",
+        "parameters": {
+          "lat": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Latitude (decimal degrees).",
+            "required": true
+          },
+          "lon": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Longitude (decimal degrees).",
+            "required": true
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "If true, include the full raw API response in the output.",
+            "required": false,
+            "default": false
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the request succeeded."
+          },
+          "air": {
+            "type": "object",
+            "description": "Air quality summary including AQI and pollutant concentrations (CO, NO, NO2, O3, SO2, PM2_5, PM10, NH3) and timestamp."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Full raw OpenWeatherMap API response (present when includeRaw=true)."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success=false."
+          }
+        }
+      }
+    }
+  ]
+}

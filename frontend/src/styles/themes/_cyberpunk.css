@@ -1,0 +1,303 @@
+/* CYBERPUNK THEME */
+body.dark.cyberpunk {
+  --color-primary: var(--color-green);
+  /* --color-background is now set dynamically by JavaScript */
+  /* --font-weight: bold; */
+  --terminal-width: calc(100vw - 16px);
+  --terminal-height: calc(100vh - 16px);
+  --terminal-border-radius: 16px;
+  --terminal-border-color: rgba(18, 224, 255, 0.1);
+  --terminal-border-color-light: rgba(18, 224, 255, 0.1);
+  --terminal-box-shadow: 0 0 15px rgba(25, 239, 131, 0.05), inset 0 0 10px rgba(0, 0, 0, 0.25);
+  --terminal-screen-lines: 0.25;
+  --terminal-muted-color: linear-gradient(135deg, rgba(18, 224, 255, 0.04) 0%, rgba(18, 224, 255, 0.02) 100%);
+
+  --color-dark-0: rgba(0, 0, 0, 0.1);
+  --color-dark-1: rgba(0, 0, 0, 0.2);
+  --color-dark-2: rgba(0, 0, 0, 0.4);
+  --color-dark-3: rgba(0, 0, 0, 0.8);
+
+  /* --color-darker-0: rgba(0, 0, 0, 0.1);
+  --color-darker-1: rgba(0, 0, 0, 0.2);
+  --color-darker-2: rgba(0, 0, 0, 0.4);
+  --color-darker-3: rgba(0, 0, 0, 0.8); */
+
+  --color-popup: rgba(16, 16, 38, 0.95);
+
+  --color-primary: var(--color-green);
+  --color-secondary: var(--color-blue);
+
+  /* --base-font-size: 14px; */
+  --font-size-xs: calc(var(--base-font-size) * 0.75);
+  --font-size-sm: calc(var(--base-font-size) * 0.875);
+  --font-size-md: var(--base-font-size);
+  --font-size-lg: calc(var(--base-font-size) * 1.125);
+  --font-size-xl: calc(var(--base-font-size) * 1.25);
+  --font-size-xxl: calc(var(--base-font-size) * 1.5);
+  --font-size-xxxl: calc(var(--base-font-size) * 2);
+  --font-size-display: calc(var(--base-font-size) * 2.5);
+
+  line-height: 1.25;
+}
+
+body.dark.cyberpunk {
+  /* Remove body background - terminal-screen will handle backgrounds */
+  background: transparent;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  /* font-family: var(--font-family-mono); */
+  font-size: var(--font-size-sm);
+  color: var(--color-dull-white);
+  /* backdrop-filter: blur(5px); */
+}
+
+body.dark.cyberpunk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* Game Highlight Overlay */
+  background: linear-gradient(45deg, transparent, rgba(0, 255, 136, 0.025));
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.terminal-screen.glitch-active {
+  /* animation: glitch 1s linear;
+  border-color: var(--color-red); */
+  font-kerning: inherit;
+}
+
+/* body.dark.cyberpunk input[type='text'],
+body.dark.cyberpunk input[type='number'],
+body.dark.cyberpunk input[type='email'],
+body.dark.cyberpunk input[type='password'],
+body.dark.cyberpunk input[type='time'],
+body.dark.cyberpunk input[type='date'],
+body.dark.cyberpunk input[type='datetime-local'] {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 12px 3px !important;
+} */
+body.dark.cyberpunk #canvas-container {
+  /* left: 48px; */
+  background-color: transparent;
+}
+
+body.dark.cyberpunk main-area {
+  background: transparent;
+}
+
+body.dark.cyberpunk editor-area {
+  background: transparent;
+}
+
+body.dark.cyberpunk .docs-container {
+  background: transparent;
+}
+body.dark.cyberpunk inner-editor-area {
+  background-color: #070710dc !important;
+}
+
+/* body.dark.cyberpunk editor-panel {
+  border: none;
+  background: transparent;
+  max-height: 100%;
+} */
+
+body.dark.cyberpunk template-fields {
+  background: transparent;
+}
+
+body.dark.cyberpunk .field-group.model-selector {
+  background: transparent;
+}
+
+body.dark.cyberpunk bottom-menu {
+  background: transparent;
+}
+
+body.dark.cyberpunk .docs-container .content.markdown-body {
+  background: #070710dc;
+}
+
+/* body.dark.cyberpunk #sidebar-wrapper {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+} */
+
+body.dark.cyberpunk .docs-container .sidebar {
+  background: #070710dc;
+}
+
+body.dark.cyberpunk settings-panel {
+  background: #070710dc !important;
+}
+
+body.dark.cyberpunk #left-sidebar {
+  background: #070710dc;
+}
+
+/* body.dark.cyberpunk .card-inner {
+  background: #070710dc !important;
+}
+
+body.dark.cyberpunk .card-inner.gradient-border {
+  background: var(--color-ultra-dark-navy) !important;
+} */
+
+body.dark.cyberpunk .panel-body {
+  background: rgba(0, 0, 0, 0.5) !important;
+}
+
+body.dark.cyberpunk .form-group select {
+  /* font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 8px 3px !important; */
+  color: var(--color-text);
+  background-color: var(--color-darker-0);
+  border-color: var(--terminal-border-color);
+}
+
+body.dark.cyberpunk .form-group select option {
+  background-color: var(--color-ultra-dark-navy) !important;
+  border: 1px solid var(--color-dull-navy) !important;
+  border-top: none !important;
+  position: relative;
+  display: flex;
+  width: auto;
+  padding: 0 8px;
+  color: var(--color-white);
+  cursor: pointer;
+  height: 31px;
+  flex-direction: row;
+  align-content: center;
+  align-items: center;
+  justify-content: flex-start;
+  text-wrap: nowrap;
+  overflow-x: hidden;
+}
+
+body.dark.cyberpunk input[type='text'],
+body.dark.cyberpunk input[type='number'],
+body.dark.cyberpunk input[type='password'],
+body.dark.cyberpunk input[type='textarea'],
+body.dark.cyberpunk textarea {
+  color: var(--color-text);
+  background-color: var(--color-darker-0);
+  border-color: var(--terminal-border-color);
+}
+
+/* body.dark.cyberpunk .cm-editor {
+  background: var(--color-darker-1) !important;
+  outline: 1px solid var(--terminal-border-color);
+  color: var(--color-text);
+} */
+
+body.dark.cyberpunk .ͼo .cm-activeLineGutter {
+  background-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* body.dark.cyberpunk #editor-panel .panel-header,
+body.dark.cyberpunk #editor-panel .panel-body {
+  background: rgba(6, 10, 26, 0.9) !important;
+  border-color: var(--color-dull-navy);
+} */
+
+body.dark.cyberpunk #editor-panel .panel-header .title {
+  color: var(--color-green) !important;
+}
+
+body[data-page='agent-details'].dark.cyberpunk {
+  background: url(/src/assets/images/bg.jpg) !important;
+  background-size: cover !important;
+  background-repeat: no-repeat !important;
+}
+
+body.dark.cyberpunk #sidebar .search-input {
+  background: rgba(0, 0, 0, 0.2) !important;
+}
+
+/* body.dark.cyberpunk .window-controls {
+  background: rgba(0, 0, 0, 0.3) !important;
+} */
+
+body.dark.cyberpunk #sidebar.closed p.title {
+  font-size: calc(var(--base-font-size) * 0.7);
+}
+
+body.dark.cyberpunk .node {
+  color: var(--color-white);
+  /* padding: 12px 16px 16px; */
+  background-color: var(--color-darker-1);
+  /* font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm); */
+  border: 2px solid #3e405a85;
+}
+
+body.dark.cyberpunk .node.starter {
+  background-color: var(--color-darker-0);
+  /* background-color: var(--color-dark-1) !important; */
+  /* font-family: var(--font-family-mono); */
+  /* font-size: var(--font-size-sm); */
+  border: none;
+}
+
+body.dark.cyberpunk #sidebar .node p {
+  color: var(--color-white);
+  /* font-family: var(--font-family-mono); */
+}
+
+/* body.dark.cyberpunk #sidebar .node p,
+body.dark.cyberpunk #canvas .node .node-content {
+  margin-top: -3px !important;
+} */
+
+body.dark.cyberpunk #canvas .node svg path[fill] {
+  fill: var(--color-dull-white);
+}
+
+body.dark.cyberpunk #canvas .node svg path[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark.cyberpunk .node.starter svg path[fill] {
+  fill: var(--color-dull-white);
+}
+
+body.dark.cyberpunk .node.starter svg path[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark.cyberpunk #canvas .node svg rect[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark.cyberpunk #canvas .node svg rect[fill] {
+  fill: var(--color-dull-white);
+}
+
+body.dark.cyberpunk .node.starter svg rect[stroke] {
+  stroke: var(--color-dull-white);
+}
+
+body.dark.cyberpunk .canvas-state-controls button {
+  border: 1px solid var(--color-dull-navy);
+  background: transparent;
+  color: var(--color-white);
+}
+
+body.dark.cyberpunk #workflow-engine-toggle {
+  border: 1px solid var(--color-dull-navy);
+  background: transparent;
+  color: var(--color-white);
+}
+
+body.dark.cyberpunk .canvas-state-controls button:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* body.dark.cyberpunk .grid-overlay {
+  opacity: 0;
+} */

@@ -1,0 +1,11 @@
+{
+  "name": "agnt-slack-plugin",
+  "version": "1.0.0",
+  "description": "Slack integration plugin for AGNT",
+  "type": "module",
+  "main": "slack-api.js",
+  "dependencies": {
+    "@slack/web-api": "^7.8.0",
+    "node-fetch": "^3.3.2"
+  }
+}

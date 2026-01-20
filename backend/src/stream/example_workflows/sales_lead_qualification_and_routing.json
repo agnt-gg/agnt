@@ -1,0 +1,201 @@
+{
+  "id": "04add7fe-6deb-4e02-b137-b4c6ed6d2aa7",
+  "name": "Sales Lead Qualification and Routing",
+  "nodes": [
+    {
+      "id": "receiveInquiry",
+      "text": "Receive Sales Inquiry",
+      "x": 240,
+      "y": 128,
+      "type": "receive-email",
+      "icon": "inbox",
+      "category": "trigger",
+      "parameters": { "emailAddress": "sales@example.com" },
+      "outputs": {
+        "from": "",
+        "to": "",
+        "subject": "",
+        "body": "",
+        "attachments": []
+      },
+      "description": "This trigger node listens for incoming sales inquiries via email.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "analyzeLead",
+      "text": "Analyze and Score Lead",
+      "x": 240,
+      "y": 192,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Analyze the following sales inquiry email. Extract key information and score the lead. Provide a JSON object with these properties:\n- score: (a number between 1-100, where 100 is the highest quality lead)\n- keyInfo: (an object containing key information such as company name, contact person, product interest, etc.)\n- category: (categorize the lead as 'Hot', 'Warm', or 'Cold')\n- reason: (a brief explanation for the score and category)\n\nEmail Subject: {{receiveSalesInquiry.subject}}\nEmail Body: {{receiveSalesInquiry.body}}\n\nReturn ONLY the JSON object without any additional text.",
+        "maxTokens": "500",
+        "temperature": "0.3"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node uses an AI model to analyze and score the sales lead.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "routeLead",
+      "text": "Route Lead",
+      "x": 240,
+      "y": 256,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const leadInfo = JSON.parse({{analyzeAndScoreLead.generatedText}});\nconst from = {{receiveSalesInquiry.from}};\nconst subject = {{receiveSalesInquiry.subject}};\n\nlet assignTo = \"\";\nlet responseTemplate = \"\";\n\nswitch (leadInfo.category) {\n case \"Hot\":\n assignTo = \"admin@bizop.io\";\n responseTemplate = \"hot-lead\";\n break;\n case \"Warm\":\n assignTo = \"example@email.com\";\n responseTemplate = \"warm-lead\";\n break;\n case \"Cold\":\n assignTo = \"example2@email.com\";\n responseTemplate = \"cold-lead\";\n break;\n default:\n assignTo = \"example@email.com\";\n responseTemplate = \"general-lead\";\n}\n\nreturn {\n from,\n subject,\n leadInfo,\n assignTo,\n responseTemplate\n};"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This utility node determines the appropriate sales team and response template based on the lead score and category.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "notifySalesTeam",
+      "text": "Notify Sales Team",
+      "x": 560,
+      "y": 128,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "{{routeLead.result.assignTo}}",
+        "subject": "[{{routeLead.result.leadInfo.category}}] New Lead: {{routeLead.result.subject}}",
+        "body": "A new lead has been received and analyzed:\n\nFrom: {{routeLead.result.from}}\nSubject: {{routeLead.result.subject}}\n\nLead Score: {{routeLead.result.leadInfo.score}}\nCategory: {{routeLead.result.leadInfo.category}}\nReason: {{routeLead.result.leadInfo.reason}}\n\nKey Information:\n{{routeLead.result.leadInfo.keyInfo}}\n\nOriginal Email:\n{{receiveSalesInquiry.body}}\n\nPlease follow up with this lead as soon as possible.",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": { "success": false, "messageId": "", "error": null },
+      "description": "This action node notifies the appropriate sales team about the new lead.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "generateResponse",
+      "text": "Generate Personalized Response",
+      "x": 560,
+      "y": 192,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-5-sonnet-20240620",
+        "prompt": "Generate a personalized response to the sales inquiry based on the lead information and template. Use the following information:\n\nLead Information: {{routeLead.result.leadInfo}}\nResponse Template: {{routeLead.result.responseTemplate}}\n\nThe response should:\n1. Thank the sender for their inquiry\n2. Acknowledge their specific interests or needs\n3. Provide a brief, relevant piece of information or benefit about our product/service\n4. Outline the next steps (e.g., scheduling a call, demo, or sending more information)\n5. Include a friendly closing with the name Albert\n\nImportant:\n1. Do NOT mention lead status or score or any internal analyzation details to the sender.\n2. NEVER use placeholders within your message (e.g. [Prospect]). This is going directly to the sender so it must read like a personally written email from one person to another.\n3. Use the sender's name (e.g. Hi Nathan, ) ONLY if you know it from prior messages or info. If name is not known just say \"Hi there, \" to start your message.\n\nKeep the response under 200 words and maintain a professional, engaging tone.",
+        "maxTokens": "300",
+        "temperature": "0.7"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node generates a personalized response to the sales inquiry.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendResponse",
+      "text": "Send Response to Lead",
+      "x": 560,
+      "y": 256,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "{{routeLead.result.from}}",
+        "subject": "Re: {{routeLead.result.subject}}",
+        "body": "{{generatePersonalizedResponse.generatedText}}",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": { "success": false, "messageId": "", "error": null },
+      "description": "This action node sends the personalized response back to the lead.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "salesLeadQualificationLabel",
+      "text": "Sales Lead Qualification and Routing",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This utility node displays a label for the Sales Lead Qualification and Routing workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveInquiry", "type": "output" },
+      "end": { "id": "analyzeLead", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "analyzeLead", "type": "output" },
+      "end": { "id": "routeLead", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "routeLead", "type": "output" },
+      "end": { "id": "notifySalesTeam", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 152
+    },
+    {
+      "id": "edge4",
+      "start": { "id": "routeLead", "type": "output" },
+      "end": { "id": "generateResponse", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 216
+    },
+    {
+      "id": "edge5",
+      "start": { "id": "generateResponse", "type": "output" },
+      "end": { "id": "sendResponse", "type": "input" },
+      "startX": 848,
+      "startY": 216,
+      "endX": 560,
+      "endY": 280
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 133,
+  "canvasOffsetY": 292,
+  "isTinyNodeMode": false
+}

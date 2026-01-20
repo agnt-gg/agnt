@@ -1,0 +1,261 @@
+{
+  "name": "notion-plugin",
+  "version": "1.1.0",
+  "description": "Notion integration plugin for AGNT - Search, query databases, create pages, and manage your Notion workspace.",
+  "author": "AGNT",
+  "icon": "notion",
+  "tools": [
+    {
+      "type": "notion-api",
+      "entryPoint": "./notion-api.js",
+      "schema": {
+        "title": "Notion API",
+        "category": "action",
+        "type": "notion-api",
+        "icon": "notion",
+        "description": "Interact with Notion - search, query databases, get pages, and create pages.",
+        "authRequired": "oauth",
+        "authProvider": "notion",
+        "parameters": {
+          "operation": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Operation to perform",
+            "options": ["search", "getDatabases", "queryDatabase", "getPage", "createPage"],
+            "default": "search"
+          },
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Search query text",
+            "conditional": {
+              "field": "operation",
+              "value": "search"
+            }
+          },
+          "filterType": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["all", "page", "database"],
+            "default": "all",
+            "description": "Filter results by type",
+            "conditional": {
+              "field": "operation",
+              "value": "search"
+            }
+          },
+          "databaseId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Database ID to query",
+            "conditional": {
+              "field": "operation",
+              "value": "queryDatabase"
+            }
+          },
+          "enableFilter": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["No", "Yes"],
+            "default": "No",
+            "description": "Enable filtering",
+            "conditional": {
+              "field": "operation",
+              "value": "queryDatabase"
+            }
+          },
+          "enableSort": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["No", "Yes"],
+            "default": "No",
+            "description": "Enable sorting",
+            "conditional": {
+              "field": "operation",
+              "value": "queryDatabase"
+            }
+          },
+          "filterProperty": {
+            "type": "string",
+            "inputType": "text",
+            "inputSize": "half",
+            "description": "Property name to filter by",
+            "conditional": {
+              "field": "enableFilter",
+              "value": "Yes"
+            }
+          },
+          "filterCondition": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["equals", "does_not_equal", "contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty"],
+            "default": "contains",
+            "description": "Filter condition",
+            "conditional": {
+              "field": "enableFilter",
+              "value": "Yes"
+            }
+          },
+          "filterValue": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Value to filter by",
+            "conditional": {
+              "field": "enableFilter",
+              "value": "Yes"
+            }
+          },
+          "sortProperty": {
+            "type": "string",
+            "inputType": "text",
+            "inputSize": "half",
+            "description": "Property name to sort by",
+            "conditional": {
+              "field": "enableSort",
+              "value": "Yes"
+            }
+          },
+          "sortDirection": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["ascending", "descending"],
+            "default": "descending",
+            "description": "Sort direction",
+            "conditional": {
+              "field": "enableSort",
+              "value": "Yes"
+            }
+          },
+          "pageId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Page ID to retrieve",
+            "conditional": {
+              "field": "operation",
+              "value": "getPage"
+            }
+          },
+          "includeContent": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["Yes", "No"],
+            "default": "Yes",
+            "description": "Include page content blocks",
+            "conditional": {
+              "field": "operation",
+              "value": "getPage"
+            }
+          },
+          "parentType": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["database", "page"],
+            "default": "database",
+            "description": "Type of parent",
+            "conditional": {
+              "field": "operation",
+              "value": "createPage"
+            }
+          },
+          "parentId": {
+            "type": "string",
+            "inputType": "text",
+            "inputSize": "half",
+            "description": "Parent database or page ID",
+            "conditional": {
+              "field": "operation",
+              "value": "createPage"
+            }
+          },
+          "title": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Page title",
+            "conditional": {
+              "field": "operation",
+              "value": "createPage"
+            }
+          },
+          "icon": {
+            "type": "string",
+            "inputType": "text",
+            "inputSize": "half",
+            "description": "Page icon emoji (e.g., 📝)",
+            "conditional": {
+              "field": "operation",
+              "value": "createPage"
+            }
+          },
+          "content": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Page content (markdown-like):\n# Heading 1\n## Heading 2\n- Bullet\n1. Numbered\n[ ] Todo\n> Quote\n--- Divider",
+            "conditional": {
+              "field": "operation",
+              "value": "createPage"
+            }
+          },
+          "pageSize": {
+            "type": "number",
+            "inputType": "number",
+            "inputSize": "half",
+            "description": "Max results (default: 10-100)",
+            "default": 10
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation was successful"
+          },
+          "results": {
+            "type": "array",
+            "description": "Array of results (search/query operations)"
+          },
+          "databases": {
+            "type": "array",
+            "description": "Array of databases (getDatabases operation)"
+          },
+          "page": {
+            "type": "object",
+            "description": "Page data (getPage operation)"
+          },
+          "content": {
+            "type": "array",
+            "description": "Page content blocks (getPage operation)"
+          },
+          "plainText": {
+            "type": "string",
+            "description": "Plain text content (getPage operation)"
+          },
+          "pageId": {
+            "type": "string",
+            "description": "Created page ID (createPage operation)"
+          },
+          "pageUrl": {
+            "type": "string",
+            "description": "Created page URL (createPage operation)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of results"
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Whether more results are available"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if operation failed"
+          }
+        }
+      }
+    }
+  ]
+}

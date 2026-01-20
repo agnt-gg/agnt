@@ -1,0 +1,10 @@
+{
+  "name": "gmail-plugin",
+  "version": "1.0.0",
+  "description": "Gmail integration plugin for AGNT",
+  "type": "module",
+  "main": "gmail-api.js",
+  "dependencies": {
+    "googleapis": "^140.0.0"
+  }
+}

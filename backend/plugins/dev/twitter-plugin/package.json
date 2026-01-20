@@ -1,0 +1,10 @@
+{
+  "name": "twitter-plugin",
+  "version": "1.0.0",
+  "description": "X (Twitter) integration plugin for AGNT",
+  "type": "module",
+  "main": "twitter-api.js",
+  "dependencies": {
+    "twitter-api-sdk": "^1.2.1"
+  }
+}

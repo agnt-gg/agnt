@@ -1,0 +1,69 @@
+{
+  "id": "f6bbe63e-440e-4759-9d14-3ade4a9b1179",
+  "name": "Simple Email Forward",
+  "nodes": [
+    {
+      "id": "receiveEmail",
+      "text": "Receive Email",
+      "x": 816,
+      "y": 176,
+      "isEditing": false,
+      "type": "receive-email",
+      "icon": "inbox",
+      "category": "trigger",
+      "isSelected": false,
+      "parameters": { "emailAddress": "" },
+      "description": "This trigger node listens for incoming emails and triggers the workflow when a new email is received. Returns the received email details like from address, subject, body, etc.",
+      "outputs": { "from": "", "subject": "", "body": "", "attachments": [] }
+    },
+    {
+      "id": "forwardEmail",
+      "text": "Forward Email",
+      "x": 816,
+      "y": 240,
+      "isEditing": false,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "to": "forward@example.com",
+        "subject": "Fwd: {{receiveEmail.subject}}",
+        "body": "Forwarded message:\n\nFrom: {{receiveEmail.from}}\nSubject: {{receiveEmail.subject}}\n\n{{receiveEmail.body}}",
+        "isHtml": false,
+        "attachments": "{{receiveEmail.attachments}}"
+      },
+      "description": "This action node sends an email to a specified recipient with a customizable subject and body.",
+      "outputs": { "success": false, "messageId": "", "error": null }
+    },
+    {
+      "id": "emailForwarderLabel",
+      "text": "Simple Email Forwarder",
+      "x": 816,
+      "y": 112,
+      "isEditing": false,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {},
+      "description": "This utility node displays a text label in the workflow, providing additional context or information.",
+      "outputs": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveEmail", "type": "output" },
+      "end": { "id": "forwardEmail", "type": "input" },
+      "startX": 1104,
+      "startY": 200,
+      "endX": 816,
+      "endY": 264
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": -350,
+  "canvasOffsetY": 238,
+  "isTinyNodeMode": false
+}

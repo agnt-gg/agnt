@@ -1,0 +1,100 @@
+{
+  "name": "google-sheets-plugin",
+  "version": "1.0.0",
+  "description": "Google Sheets integration plugin for AGNT - Monitor new rows, read, write, append, and clear data in Google Sheets.",
+  "author": "AGNT Team",
+  "icon": "table",
+  "tools": [
+    {
+      "type": "google-sheets-new-row",
+      "entryPoint": "./google-sheets-new-row.js",
+      "schema": {
+        "title": "Google Sheets New Row",
+        "category": "trigger",
+        "type": "google-sheets-new-row",
+        "icon": "table",
+        "description": "Listen for new rows added to a specified Google Sheet and trigger the workflow when a new row is detected.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "spreadsheetId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the Google Spreadsheet to monitor"
+          },
+          "sheetName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the sheet within the spreadsheet to monitor"
+          }
+        },
+        "outputs": {
+          "newRow": {
+            "type": "object",
+            "description": "The data of the newly added row"
+          }
+        }
+      }
+    },
+    {
+      "type": "google-sheets-api",
+      "entryPoint": "./google-sheets-api.js",
+      "schema": {
+        "title": "Google Sheets API",
+        "category": "action",
+        "type": "google-sheets-api",
+        "icon": "table",
+        "description": "Interact with Google Sheets to read, write, append, or clear data in a spreadsheet.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "operation": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["Read", "Write", "Append", "Clear"],
+            "description": "The operation to perform on the Google Sheet"
+          },
+          "spreadsheetId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the Google Sheet to interact with"
+          },
+          "range": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The range of cells to interact with (e.g., 'Sheet1!A1:B5')"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "inputType": "textarea",
+            "description": "Comma separated array of values to write or append (for write and append operations).",
+            "conditional": {
+              "field": "operation",
+              "value": ["Write", "Append"]
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the Google Sheets operation was successful"
+          },
+          "result": {
+            "type": "array",
+            "description": "The data returned by the Google Sheets operation (for read operations)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the Google Sheets operation failed"
+          }
+        }
+      }
+    }
+  ]
+}

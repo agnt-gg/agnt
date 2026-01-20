@@ -1,0 +1,14 @@
+{
+  "name": "agnt-plugins",
+  "version": "1.0.0",
+  "description": "AGNT Plugin Build Tools",
+  "type": "module",
+  "scripts": {
+    "build": "node build-plugin.js",
+    "build:discord": "node build-plugin.js discord-plugin",
+    "list": "node build-plugin.js"
+  },
+  "dependencies": {
+    "tar": "^6.2.0"
+  }
+}

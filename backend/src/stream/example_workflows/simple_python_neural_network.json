@@ -1,0 +1,227 @@
+{
+  "id": "51f51e1c-a6ba-4fb5-adee-55d5095bbab1",
+  "name": "Simple Python Neural Network",
+  "nodes": [
+    {
+      "id": "receiveDiscordMessage",
+      "text": "Receive Discord Message",
+      "x": 208,
+      "y": 208,
+      "isEditing": false,
+      "type": "receive-discord-message",
+      "icon": "discord",
+      "category": "trigger",
+      "isSelected": false,
+      "parameters": { "channelId": "1291267166116511838" },
+      "description": "This trigger node listens for incoming Discord messages in a specified channel and triggers the workflow when a new message is received.",
+      "error": null,
+      "outputs": {
+        "content": "",
+        "author": "",
+        "channelId": "",
+        "guildId": "",
+        "timestamp": 0,
+        "response": {}
+      },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "initializeNeuralNetwork",
+      "text": "Initialize Neural Network",
+      "x": 208,
+      "y": 272,
+      "isEditing": false,
+      "type": "execute-python",
+      "icon": "python",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "import numpy as np\n\nclass SimpleNeuralNetwork:\n\tdef __init__(self, input_size, hidden_size, output_size):\n\t\tself.input_size = input_size\n\t\tself.hidden_size = hidden_size\n\t\tself.output_size = output_size\n\t\t\n\t\tself.W1 = np.random.randn(self.input_size, self.hidden_size)\n\t\tself.b1 = np.zeros((1, self.hidden_size))\n\t\tself.W2 = np.random.randn(self.hidden_size, self.output_size)\n\t\tself.b2 = np.zeros((1, self.output_size))\n\t\n\tdef sigmoid(self, x):\n\t\treturn 1 / (1 + np.exp(-x))\n\t\n\tdef sigmoid_derivative(self, x):\n\t\treturn x * (1 - x)\n\nnn = SimpleNeuralNetwork(input_size=2, hidden_size=4, output_size=1)\n\nX = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])\ny = np.array([[0], [1], [1], [0]])\n\nresult = {\n\t'W1': nn.W1.tolist(),\n\t'b1': nn.b1.tolist(),\n\t'W2': nn.W2.tolist(),\n\t'b2': nn.b2.tolist(),\n\t'X': X.tolist(),\n\t'y': y.tolist()\n}\n"
+      },
+      "description": "Initialize the neural network and prepare the dataset.",
+      "error": null,
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "forwardPass",
+      "text": "Forward Pass",
+      "x": 208,
+      "y": 336,
+      "isEditing": false,
+      "type": "execute-python",
+      "icon": "python",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "import numpy as np\n\nclass SimpleNeuralNetwork:\n\tdef __init__(self, W1, b1, W2, b2):\n\t\tself.W1 = np.array(W1)\n\t\tself.b1 = np.array(b1)\n\t\tself.W2 = np.array(W2)\n\t\tself.b2 = np.array(b2)\n\t\n\tdef sigmoid(self, x):\n\t\treturn 1 / (1 + np.exp(-x))\n\ndef forward(nn, X):\n\tnn.z1 = np.dot(X, nn.W1) + nn.b1\n\tnn.a1 = nn.sigmoid(nn.z1)\n\tnn.z2 = np.dot(nn.a1, nn.W2) + nn.b2\n\tnn.a2 = nn.sigmoid(nn.z2)\n\treturn nn.a2\n\nnn_data = {{initializeNeuralNetwork.result}}\nnn = SimpleNeuralNetwork(nn_data['W1'], nn_data['b1'], nn_data['W2'], nn_data['b2'])\nX = np.array(nn_data['X'])\n\noutput = forward(nn, X)\n\nresult = {\n\t'W1': nn.W1.tolist(),\n\t'b1': nn.b1.tolist(),\n\t'W2': nn.W2.tolist(),\n\t'b2': nn.b2.tolist(),\n\t'a1': nn.a1.tolist(),\n\t'output': output.tolist()\n}\n"
+      },
+      "description": "Perform the forward pass of the neural network.",
+      "error": null,
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "backwardPass",
+      "text": "Backward Pass",
+      "x": 208,
+      "y": 400,
+      "isEditing": false,
+      "type": "execute-python",
+      "icon": "python",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "import numpy as np\n\nclass SimpleNeuralNetwork:\n\tdef __init__(self, W1, b1, W2, b2, a1):\n\t\tself.W1 = np.array(W1, dtype=np.float64)\n\t\tself.b1 = np.array(b1, dtype=np.float64)\n\t\tself.W2 = np.array(W2, dtype=np.float64)\n\t\tself.b2 = np.array(b2, dtype=np.float64)\n\t\tself.a1 = np.array(a1, dtype=np.float64)\n\t\n\tdef sigmoid(self, x):\n\t\treturn 1 / (1 + np.exp(-x))\n\t\n\tdef sigmoid_derivative(self, x):\n\t\treturn x * (1 - x)\n\ndef backward(nn, X, y, output):\n\terror = y - output\n\td_output = error * nn.sigmoid_derivative(output)\n\t\n\terror_hidden = np.dot(d_output, nn.W2.T)\n\td_hidden = error_hidden * nn.sigmoid_derivative(nn.a1)\n\t\n\tnn.W2 += np.dot(nn.a1.T, d_output)\n\tnn.b2 += np.sum(d_output, axis=0, keepdims=True)\n\tnn.W1 += np.dot(X.T, d_hidden)\n\tnn.b1 += np.sum(d_hidden, axis=0, keepdims=True)\n\nnn_data = {{forwardPass.result}}\nnn = SimpleNeuralNetwork(nn_data['W1'], nn_data['b1'], nn_data['W2'], nn_data['b2'], nn_data['a1'])\nX = np.array({{initializeNeuralNetwork.result.X}}, dtype=np.float64)\ny = np.array({{initializeNeuralNetwork.result.y}}, dtype=np.float64)\noutput = np.array(nn_data['output'], dtype=np.float64)\n\nbackward(nn, X, y, output)\n\nresult = {\n\t'W1': nn.W1.tolist(),\n\t'b1': nn.b1.tolist(),\n\t'W2': nn.W2.tolist(),\n\t'b2': nn.b2.tolist(),\n\t'a1': nn.a1.tolist()\n}\n"
+      },
+      "description": "Perform the backward pass of the neural network.",
+      "error": null,
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "trainNeuralNetwork",
+      "text": "Train Neural Network",
+      "x": 208,
+      "y": 464,
+      "isEditing": false,
+      "type": "execute-python",
+      "icon": "python",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "import numpy as np\n\nclass SimpleNeuralNetwork:\n\tdef __init__(self, W1, b1, W2, b2):\n\t\tself.W1 = np.array(W1)\n\t\tself.b1 = np.array(b1)\n\t\tself.W2 = np.array(W2)\n\t\tself.b2 = np.array(b2)\n\t\n\tdef sigmoid(self, x):\n\t\treturn 1 / (1 + np.exp(-x))\n\t\n\tdef sigmoid_derivative(self, x):\n\t\treturn x * (1 - x)\n\t\n\tdef forward(self, X):\n\t\tself.z1 = np.dot(X, self.W1) + self.b1\n\t\tself.a1 = self.sigmoid(self.z1)\n\t\tself.z2 = np.dot(self.a1, self.W2) + self.b2\n\t\tself.a2 = self.sigmoid(self.z2)\n\t\treturn self.a2\n\t\n\tdef backward(self, X, y, output):\n\t\terror = y - output\n\t\td_output = error * self.sigmoid_derivative(output)\n\t\t\n\t\terror_hidden = np.dot(d_output, self.W2.T)\n\t\td_hidden = error_hidden * self.sigmoid_derivative(self.a1)\n\t\t\n\t\tself.W2 += np.dot(self.a1.T, d_output)\n\t\tself.b2 += np.sum(d_output, axis=0, keepdims=True)\n\t\tself.W1 += np.dot(X.T, d_hidden)\n\t\tself.b1 += np.sum(d_hidden, axis=0, keepdims=True)\n\ndef train(nn, X, y, epochs):\n\tfor _ in range(epochs):\n\t\toutput = nn.forward(X)\n\t\tnn.backward(X, y, output)\n\nnn_data = {{backwardPass.result}}\nnn = SimpleNeuralNetwork(nn_data['W1'], nn_data['b1'], nn_data['W2'], nn_data['b2'])\nX = np.array({{initializeNeuralNetwork.result.X}})\ny = np.array({{initializeNeuralNetwork.result.y}})\n\ntrain(nn, X, y, epochs=10000)\n\nresult = {\n\t'W1': nn.W1.tolist(),\n\t'b1': nn.b1.tolist(),\n\t'W2': nn.W2.tolist(),\n\t'b2': nn.b2.tolist()\n}\n"
+      },
+      "description": "Train the neural network.",
+      "error": null,
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "makePredictions",
+      "text": "Make Predictions",
+      "x": 208,
+      "y": 528,
+      "isEditing": false,
+      "type": "execute-python",
+      "icon": "python",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "import numpy as np\n\nclass SimpleNeuralNetwork:\n\tdef __init__(self, W1, b1, W2, b2):\n\t\tself.W1 = np.array(W1)\n\t\tself.b1 = np.array(b1)\n\t\tself.W2 = np.array(W2)\n\t\tself.b2 = np.array(b2)\n\t\n\tdef sigmoid(self, x):\n\t\treturn 1 / (1 + np.exp(-x))\n\t\n\tdef forward(self, X):\n\t\tself.z1 = np.dot(X, self.W1) + self.b1\n\t\tself.a1 = self.sigmoid(self.z1)\n\t\tself.z2 = np.dot(self.a1, self.W2) + self.b2\n\t\tself.a2 = self.sigmoid(self.z2)\n\t\treturn self.a2\n\nnn_data = {{trainNeuralNetwork.result}}\nnn = SimpleNeuralNetwork(nn_data['W1'], nn_data['b1'], nn_data['W2'], nn_data['b2'])\nX = np.array({{initializeNeuralNetwork.result.X}})\ny = np.array({{initializeNeuralNetwork.result.y}})\n\nresult = []\nfor i in range(len(X)):\n\tprediction = nn.forward(X[i].reshape(1, -1))\n\tresult.append({\n\t\t\"input\": X[i].tolist(),\n\t\t\"target\": int(y[i][0]),\n\t\t\"prediction\": float(prediction[0][0])\n\t})\n\noutput = \"Final results:\\n\"\nfor r in result:\n\toutput += f\"Input: {r['input']}, Target: {r['target']}, Prediction: {r['prediction']:.4f}\\n\"\n\nresult = {\n\t'output': output\n}\n"
+      },
+      "description": "Make predictions using the trained neural network.",
+      "error": null,
+      "outputs": { "result": null, "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "sendDiscordMessage",
+      "text": "Send Discord Message",
+      "x": 208,
+      "y": 592,
+      "isEditing": false,
+      "type": "send-discord-message",
+      "icon": "discord",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "channelId": "1291267166116511838",
+        "message": "{{makePredictions.result.output}}"
+      },
+      "description": "This action node sends a message to a specified Discord channel.",
+      "error": null,
+      "outputs": {
+        "success": false,
+        "messageId": "",
+        "timestamp": 0,
+        "error": ""
+      },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "7ebe0ea2-4e4d-44ba-856c-c8773b1ca8d0",
+      "text": "Python Neural Network",
+      "x": 208,
+      "y": 144,
+      "isEditing": false,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {},
+      "description": "This utility node displays a text label in the workflow, providing additional context or information.",
+      "error": null,
+      "outputs": {},
+      "isActive": false,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "start": { "id": "receiveDiscordMessage", "type": "output" },
+      "end": { "id": "initializeNeuralNetwork", "type": "input" },
+      "startX": 496,
+      "startY": 232,
+      "endX": 208,
+      "endY": 296
+    },
+    {
+      "id": "edge-2",
+      "start": { "id": "initializeNeuralNetwork", "type": "output" },
+      "end": { "id": "forwardPass", "type": "input" },
+      "startX": 496,
+      "startY": 296,
+      "endX": 208,
+      "endY": 360
+    },
+    {
+      "id": "edge-3",
+      "start": { "id": "forwardPass", "type": "output" },
+      "end": { "id": "backwardPass", "type": "input" },
+      "startX": 496,
+      "startY": 360,
+      "endX": 208,
+      "endY": 424
+    },
+    {
+      "id": "edge-4",
+      "start": { "id": "backwardPass", "type": "output" },
+      "end": { "id": "trainNeuralNetwork", "type": "input" },
+      "startX": 496,
+      "startY": 424,
+      "endX": 208,
+      "endY": 488
+    },
+    {
+      "id": "edge-5",
+      "start": { "id": "trainNeuralNetwork", "type": "output" },
+      "end": { "id": "makePredictions", "type": "input" },
+      "startX": 496,
+      "startY": 488,
+      "endX": 208,
+      "endY": 552
+    },
+    {
+      "id": "edge-6",
+      "start": { "id": "makePredictions", "type": "output" },
+      "end": { "id": "sendDiscordMessage", "type": "input" },
+      "startX": 496,
+      "startY": 552,
+      "endX": 208,
+      "endY": 616
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 568,
+  "canvasOffsetY": 84,
+  "isTinyNodeMode": false
+}

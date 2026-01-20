@@ -1,0 +1,8 @@
+{
+  "name": "github-plugin",
+  "version": "1.0.0",
+  "description": "GitHub integration plugin for AGNT",
+  "type": "module",
+  "main": "github-api.js",
+  "dependencies": {}
+}

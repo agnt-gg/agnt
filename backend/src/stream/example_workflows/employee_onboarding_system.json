@@ -1,0 +1,230 @@
+{
+  "id": "1fa9274d-fb8e-46f0-ba6b-3f63fa2fb0c4",
+  "name": "Employee Onboarding System",
+  "nodes": [
+    {
+      "id": "newEmployeeAdded",
+      "text": "New Employee Added",
+      "x": 240,
+      "y": 128,
+      "type": "google-sheets-new-row",
+      "icon": "table",
+      "category": "trigger",
+      "parameters": {
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "sheetName": "Sheet1"
+      },
+      "outputs": { "newRow": {} },
+      "description": "This trigger node listens for new rows added to a Google Sheet and triggers the workflow when a new employee is added.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null,
+      "isEditing": false
+    },
+    {
+      "id": "generateOnboardingChecklist",
+      "text": "Generate Onboarding Checklist",
+      "x": 240,
+      "y": 256,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Generate a personalized onboarding checklist for a new employee. Use the following information:\n\nEmployee Name: {{getEmployeeData.result.employee.name}}\nEmail: {{getEmployeeData.result.employee.email}}\nPosition: {{getEmployeeData.result.employee.position}}\nDepartment: {{getEmployeeData.result.employee.department}}\nStart Date: {{getEmployeeData.result.employee.startDate}}\n\nCreate a JSON object with the following properties:\n- welcomeMessage: A personalized welcome message\n- checklistItems: An array of onboarding tasks, each with 'task' and 'dueDate' properties, sorted by date\n- resources: An array of relevant resources or documents for the employee's role\n\nEnsure the checklist is tailored to the employee's position and department. Include standard onboarding tasks as well as role-specific items.\n\nReturn ONLY the JSON object without any additional text.",
+        "maxTokens": "500",
+        "temperature": "0.7"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node generates a personalized onboarding checklist for the new employee.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "formatWelcomeEmail",
+      "text": "Format Welcome Email",
+      "x": 240,
+      "y": 320,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const employeeData = {{getEmployeeData.result.employee}};\nconst checklist = JSON.parse({{generateOnboardingChecklist.generatedText}});\n\nconst formattedChecklist = checklist.checklistItems.map(item => \n `- ${item.task} (Due: ${item.dueDate})`\n).join('\\n');\n\nconst formattedResources = checklist.resources.map(resource => \n `- ${resource}`\n).join('\\n');\n\nconst emailBody = `Dear ${employeeData.name},\n\n${checklist.welcomeMessage}\n\nHere's your personalized onboarding checklist:\n\n${formattedChecklist}\n\nHelpful resources for your role:\n\n${formattedResources}\n\nIf you have any questions, please don't hesitate to reach out to HR or your manager.\n\nWe're excited to have you on board!\n\nBest regards,\nHR Team`;\n\nreturn { emailBody };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This utility node formats the welcome email with the personalized onboarding checklist.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendWelcomeEmail",
+      "text": "Send Welcome Email",
+      "x": 576,
+      "y": 320,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "{{getEmployeeData.result.employee.email}}",
+        "subject": "Welcome to Our Company - Your Onboarding Checklist",
+        "body": "{{formatWelcomeEmail.result.emailBody}}",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      },
+      "description": "This action node sends the welcome email with the onboarding checklist to the new employee.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "updateTaskSheet",
+      "text": "Update Task Sheet",
+      "x": 576,
+      "y": 192,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "parameters": {
+        "operation": "write",
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "Sheet2",
+        "values": "{{formatTaskData.result.taskData}}"
+      },
+      "outputs": { "success": false, "result": [], "error": "" },
+      "description": "This action node updates a Google Sheet with the new employee's onboarding tasks.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "formatTaskData",
+      "text": "Format Task Data",
+      "x": 576,
+      "y": 128,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const employeeData = {{getEmployeeData.result.employee}};\nconst checklist = JSON.parse({{generateOnboardingChecklist.generatedText}});\n\nconst taskData = checklist.checklistItems.map(item => [\n employeeData.name,\n employeeData.email,\n employeeData.position,\n employeeData.department,\n item.task,\n item.dueDate,\n 'Not Started'\n]);\n\nreturn { taskData };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This utility node formats the task data for updating the Google Sheet.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "employeeOnboardingLabel",
+      "text": "Employee Onboarding Workflow",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This utility node displays a label for the Employee Onboarding Workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "5759fec9-5d04-4162-8f8e-daeba8ee464f",
+      "text": "Get Employee Data",
+      "x": 240,
+      "y": 192,
+      "isEditing": false,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "const newRow = {{newEmployeeAdded.newRow}};\nconst employee = {\n  name: newRow[0],\n  email: newRow[1],\n  position: newRow[2],\n  department: newRow[3],\n  startDate: newRow[4]\n}\nreturn { employee };"
+      },
+      "description": "This utility node allows you to execute custom JavaScript code within the workflow, enabling advanced logic and data transformations.",
+      "error": null,
+      "isActive": false,
+      "output": null,
+      "outputs": { "result": null, "error": "" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge5",
+      "start": { "id": "formatTaskData", "type": "output" },
+      "end": { "id": "updateTaskSheet", "type": "input" },
+      "startX": 864,
+      "startY": 152,
+      "endX": 576,
+      "endY": 216
+    },
+    {
+      "id": "078480fb-ccb5-4724-85d2-9c20805c0c12",
+      "start": { "id": "newEmployeeAdded", "type": "output" },
+      "end": { "id": "5759fec9-5d04-4162-8f8e-daeba8ee464f", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216
+    },
+    {
+      "id": "cddcfe1f-2d97-45fc-acf4-50ac6f2fcddc",
+      "start": {
+        "id": "5759fec9-5d04-4162-8f8e-daeba8ee464f",
+        "type": "output"
+      },
+      "end": { "id": "generateOnboardingChecklist", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280
+    },
+    {
+      "id": "d0213f68-0b83-4804-8804-817802949a34",
+      "start": { "id": "generateOnboardingChecklist", "type": "output" },
+      "end": { "id": "formatWelcomeEmail", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 240,
+      "endY": 344
+    },
+    {
+      "id": "2dcc2257-c557-4e6c-a1f8-64b213957f20",
+      "start": { "id": "generateOnboardingChecklist", "type": "output" },
+      "end": { "id": "formatTaskData", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 576,
+      "endY": 152
+    },
+    {
+      "id": "55748af1-b629-409e-829a-da3f49f37b11",
+      "start": { "id": "formatWelcomeEmail", "type": "output" },
+      "end": { "id": "sendWelcomeEmail", "type": "input" },
+      "startX": 528,
+      "startY": 344,
+      "endX": 576,
+      "endY": 344
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 111,
+  "canvasOffsetY": 239,
+  "isTinyNodeMode": false
+}

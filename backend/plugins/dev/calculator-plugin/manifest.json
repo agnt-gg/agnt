@@ -1,0 +1,69 @@
+{
+  "name": "calculator-plugin",
+  "version": "1.0.0",
+  "description": "Provides arithmetic and scientific expression evaluation",
+  "author": "AGNT User",
+  "icon": "calculator",
+  "tools": [
+    {
+      "type": "calc-evaluate",
+      "entryPoint": "./calculator.js",
+      "schema": {
+        "title": "Expression Evaluator",
+        "category": "utility",
+        "type": "calc-evaluate",
+        "icon": "calculator",
+        "description": "Evaluates a mathematical expression and returns the result.",
+        "parameters": {
+          "expression": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Mathematical expression to evaluate",
+            "required": true
+          },
+          "mode": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Calculation mode",
+            "options": ["basic", "scientific"],
+            "default": "basic"
+          },
+          "precision": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Number of decimal places for the result",
+            "default": 2,
+            "conditional": {
+              "field": "mode",
+              "value": "basic"
+            }
+          },
+          "allowConstants": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Allow use of constants like π and e",
+            "default": true,
+            "conditional": {
+              "field": "mode",
+              "value": "scientific"
+            }
+          }
+        },
+        "outputs": {
+          "result": {
+            "type": "number",
+            "description": "Result of the evaluated expression"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the evaluation succeeded"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if evaluation failed"
+          }
+        }
+      }
+    }
+  ]
+}

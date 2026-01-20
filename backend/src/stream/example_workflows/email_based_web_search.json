@@ -1,0 +1,159 @@
+{
+  "id": "56c9e27e-a90f-4c3b-80a0-7835de279631",
+  "name": "Email Based Web Search",
+  "nodes": [
+    {
+      "id": "9e13a879-7283-4975-8a9b-c538f234d202",
+      "text": "Receive Email",
+      "x": 192,
+      "y": 176,
+      "isEditing": false,
+      "type": "receive-email",
+      "icon": "inbox",
+      "category": "trigger",
+      "isSelected": false,
+      "parameters": { "emailAddress": "" },
+      "description": "This trigger node listens for incoming emails and triggers the workflow when a new email is received. Returns the received email details like from address, subject, body, etc.",
+      "error": null,
+      "isActive": false,
+      "output": null,
+      "outputs": {
+        "from": "",
+        "to": "",
+        "subject": "",
+        "body": "",
+        "attachments": []
+      }
+    },
+    {
+      "id": "29363da7-2675-4683-874d-a28f1c441701",
+      "text": "Send Email",
+      "x": 192,
+      "y": 416,
+      "isEditing": false,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "to": "{{receiveEmail.from}}",
+        "subject": "Re: {{receiveEmail.subject}}",
+        "body": "{{formatSearch.result}}",
+        "isHtml": "true",
+        "attachments": ""
+      },
+      "description": "This action node sends an email to a specified recipient with a customizable subject and body.",
+      "error": null,
+      "isActive": false,
+      "output": null,
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      }
+    },
+    {
+      "id": "5c5b5f55-2e6a-4b9b-b927-4ca5743e5cc0",
+      "text": "Format Search",
+      "x": 192,
+      "y": 336,
+      "isEditing": false,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "function formatSearchResults(results) {\n  if (!results || results.length === 0) {\n    return \"<p>No results found.</p>\";\n  }\n\n  let html = \"<h2>Search Results</h2>\";\n  \n  html += \"<ul style='list-style-type: none; padding: 0;'>\";\n  \n  results.forEach(item => {\n    html += `\n      <li style='margin-bottom: 20px;'>\n        <h3 style='margin-bottom: 5px;'>\n          <a href='${item.link}' style='color: #1a0dab; text-decoration: none;'>\n            ${item.title}\n          </a>\n        </h3>\n        <div style='color: #006621; font-size: 14px;'>${new URL(item.link).hostname}</div>\n        <div style='color: #545454; font-size: 13px;'>${item.snippet}</div>\n      </li>\n    `;\n  });\n  \n  html += \"</ul>\";\n\n  return html;\n}\n\nconst html = formatSearchResults({{webSearch.results}});\n\nreturn html;"
+      },
+      "description": "This utility node allows you to execute custom JavaScript code within the workflow, enabling advanced logic and data transformations.",
+      "error": null,
+      "isActive": false,
+      "output": null,
+      "outputs": { "result": null, "error": "" }
+    },
+    {
+      "id": "d59da9a6-721d-47aa-835d-41fd945e3611",
+      "text": "Email Based Web Search",
+      "x": 192,
+      "y": 112,
+      "isEditing": false,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {},
+      "description": "This utility node displays a text label in the workflow, providing additional context or information.",
+      "error": null,
+      "isActive": false,
+      "output": null,
+      "outputs": {}
+    },
+    {
+      "id": "21d64df7-ca24-4c61-ad66-61be1f019309",
+      "text": "Web Search",
+      "x": 192,
+      "y": 256,
+      "isEditing": false,
+      "type": "web-search",
+      "icon": "web",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "searchQuery": "{{receiveEmail.body}}",
+        "numResults": "3",
+        "sort": "relevance"
+      },
+      "description": "This action node performs a web search using Google Custom Search API and returns the top results.",
+      "error": null,
+      "isActive": false,
+      "output": null,
+      "outputs": { "results": [], "error": "" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "23587b77-be5f-47b1-8def-16ab05272795",
+      "start": {
+        "id": "5c5b5f55-2e6a-4b9b-b927-4ca5743e5cc0",
+        "type": "output"
+      },
+      "end": { "id": "29363da7-2675-4683-874d-a28f1c441701", "type": "input" },
+      "startX": 480,
+      "startY": 360,
+      "endX": 192,
+      "endY": 440,
+      "isActive": false
+    },
+    {
+      "id": "1dac0991-7bc7-4c0a-97b5-11a54bea7462",
+      "start": {
+        "id": "9e13a879-7283-4975-8a9b-c538f234d202",
+        "type": "output"
+      },
+      "end": { "id": "21d64df7-ca24-4c61-ad66-61be1f019309", "type": "input" },
+      "startX": 480,
+      "startY": 200,
+      "endX": 192,
+      "endY": 280,
+      "isActive": false
+    },
+    {
+      "id": "24af05a0-f2e3-4988-aa0e-36f4d0ec399d",
+      "start": {
+        "id": "21d64df7-ca24-4c61-ad66-61be1f019309",
+        "type": "output"
+      },
+      "end": { "id": "5c5b5f55-2e6a-4b9b-b927-4ca5743e5cc0", "type": "input" },
+      "startX": 480,
+      "startY": 280,
+      "endX": 192,
+      "endY": 360,
+      "isActive": false
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 308,
+  "canvasOffsetY": 136,
+  "isTinyNodeMode": false
+}

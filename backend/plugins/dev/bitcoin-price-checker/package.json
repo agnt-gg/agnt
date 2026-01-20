@@ -1,0 +1,6 @@
+{
+  "name": "bitcoin-price-checker",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {}
+}

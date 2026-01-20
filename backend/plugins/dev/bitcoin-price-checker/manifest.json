@@ -1,0 +1,50 @@
+{
+  "name": "bitcoin-price-checker",
+  "version": "1.0.0",
+  "description": "Retrieve the latest Bitcoin price in USD using the CoinGecko API.",
+  "author": "AGNT User",
+  "icon": "bitcoin",
+  "tools": [
+    {
+      "type": "get-bitcoin-price",
+      "entryPoint": "./get-bitcoin-price.js",
+      "schema": {
+        "title": "Get Bitcoin Price",
+        "category": "action",
+        "type": "get-bitcoin-price",
+        "icon": "bitcoin",
+        "description": "Fetches the current price of Bitcoin (BTC) in USD from the CoinGecko API.",
+        "parameters": {
+          "currency": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Fiat currency code to get the Bitcoin price in.",
+            "required": false,
+            "options": [
+              "usd"
+            ],
+            "default": "usd"
+          }
+        },
+        "outputs": {
+          "bitcoinPrice": {
+            "type": "number",
+            "description": "The latest price of Bitcoin in the selected currency."
+          },
+          "currency": {
+            "type": "string",
+            "description": "The fiat currency code for the quoted price."
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the request was successful."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the request failed."
+          }
+        }
+      }
+    }
+  ]
+}

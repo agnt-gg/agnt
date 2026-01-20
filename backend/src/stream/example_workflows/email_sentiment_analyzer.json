@@ -1,0 +1,198 @@
+{
+  "id": "b0e10445-a50a-437a-b38e-df695c278cb3",
+  "name": "Email Sentiment Analyzer",
+  "nodes": [
+    {
+      "id": "receiveEmail",
+      "text": "Receive Email",
+      "x": 816,
+      "y": 176,
+      "type": "receive-email",
+      "icon": "inbox",
+      "category": "trigger",
+      "parameters": { "emailAddress": "sentiment@example.com" },
+      "outputs": { "from": "", "subject": "", "body": "", "attachments": [] },
+      "description": "This trigger node listens for incoming emails and triggers the workflow when a new email is received.",
+      "isSelected": false
+    },
+    {
+      "id": "analyzeSentiment",
+      "text": "Analyze Sentiment",
+      "x": 816,
+      "y": 240,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Analyze the sentiment of the following email. Provide a JSON object with these properties:\n- sentiment: (positive, neutral, or negative)\n- score: (a number between -1 and 1, where -1 is very negative, 0 is neutral, and 1 is very positive)\n- keywords: (an array of up to 5 key words or phrases that contribute to the sentiment)\n- summary: (a brief 1-2 sentence summary of the email content)\n\nEmail Subject: {{receiveEmail.subject}}\nEmail Body: {{receiveEmail.body}}\n\nReturn ONLY the JSON object without any additional text.",
+        "maxTokens": "300",
+        "temperature": "0.3"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node uses an AI model to analyze the sentiment of the email content.",
+      "isSelected": false
+    },
+    {
+      "id": "processResults",
+      "text": "Process Results",
+      "x": 816,
+      "y": 304,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const sentimentAnalysis = {{analyzeSentiment.generatedText}};\nconst from = {{receiveEmail.from}};\nconst subject = {{receiveEmail.subject}};\n\nreturn {\n  from,\n  subject,\n  sentiment: sentimentAnalysis.sentiment,\n  score: sentimentAnalysis.score,\n  keywords: sentimentAnalysis.keywords,\n  summary: sentimentAnalysis.summary\n};"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This utility node processes the sentiment analysis results and prepares data for the next steps.",
+      "isSelected": false
+    },
+    {
+      "id": "generateResponse",
+      "text": "Generate Response",
+      "x": 816,
+      "y": 368,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Generate a brief, professional response to the analyzed email. Use the following information:\n\nFrom: {{processResults.result.from}}\nSubject: {{processResults.result.subject}}\nSentiment: {{processResults.result.sentiment}}\nScore: {{processResults.result.score}}\nSummary: {{processResults.result.summary}}\n\nThe response should:\n1. Thank the sender for their email\n2. Acknowledge the general tone of their message (positive, neutral, or negative)\n3. Provide a brief, empathetic response based on the sentiment\n4. Assure them that their feedback is valued\n5. Mention that a team member will follow up if necessary\n\nKeep the response under 100 words and maintain a professional, friendly tone.",
+        "maxTokens": "200",
+        "temperature": "0.7"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node generates an appropriate response based on the sentiment analysis.",
+      "isSelected": false
+    },
+    {
+      "id": "sendResponse",
+      "text": "Send Response",
+      "x": 816,
+      "y": 432,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "{{processResults.result.from}}",
+        "subject": "Re: {{processResults.result.subject}}",
+        "body": "{{generateResponse.generatedText}}",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": { "success": false, "messageId": "", "error": null },
+      "description": "This action node sends the generated response back to the original sender.",
+      "isSelected": false
+    },
+    {
+      "id": "logSentimentData",
+      "text": "Log Sentiment Data",
+      "x": 1136,
+      "y": 176,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const logEntry = {\n  timestamp: new Date().toISOString(),\n  from: {{processResults.result.from}},\n  subject: {{processResults.result.subject}},\n  sentiment: {{processResults.result.sentiment}},\n  score: {{processResults.result.score}},\n  keywords: {{processResults.result.keywords}},\n  summary: {{processResults.result.summary}}\n};\n\n// In a real scenario, you would send this data to a database or logging service\nconsole.log('Sentiment Log Entry:', JSON.stringify(logEntry, null, 2));\n\nreturn { logged: true };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This utility node logs the sentiment analysis data for future reference and reporting.",
+      "isSelected": false
+    },
+    {
+      "id": "notifyTeam",
+      "text": "Notify Team",
+      "x": 1136,
+      "y": 240,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "example@email.com",
+        "subject": "New Sentiment Analysis: {{processResults.result.sentiment}}",
+        "body": "A new email has been analyzed:\n\nFrom: {{processResults.result.from}}\nSubject: {{processResults.result.subject}}\nSentiment: {{processResults.result.sentiment}}\nScore: {{processResults.result.score}}\n\nSummary: {{processResults.result.summary}}\n\nKeywords: {{processResults.result.keywords}}\n\nPlease review and take appropriate action if necessary.",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": { "success": false, "messageId": "", "error": null },
+      "description": "This action node notifies the support team about the new sentiment analysis.",
+      "isSelected": false
+    },
+    {
+      "id": "emailSentimentAnalyzerLabel",
+      "text": "Email Sentiment Analyzer",
+      "x": 816,
+      "y": 112,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This utility node displays a label for the Email Sentiment Analyzer workflow.",
+      "isSelected": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveEmail", "type": "output" },
+      "end": { "id": "analyzeSentiment", "type": "input" },
+      "startX": 1104,
+      "startY": 200,
+      "endX": 816,
+      "endY": 264
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "analyzeSentiment", "type": "output" },
+      "end": { "id": "processResults", "type": "input" },
+      "startX": 1104,
+      "startY": 264,
+      "endX": 816,
+      "endY": 328
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "processResults", "type": "output" },
+      "end": { "id": "generateResponse", "type": "input" },
+      "startX": 1104,
+      "startY": 328,
+      "endX": 816,
+      "endY": 392
+    },
+    {
+      "id": "edge4",
+      "start": { "id": "generateResponse", "type": "output" },
+      "end": { "id": "sendResponse", "type": "input" },
+      "startX": 1104,
+      "startY": 392,
+      "endX": 816,
+      "endY": 456
+    },
+    {
+      "id": "edge5",
+      "start": { "id": "processResults", "type": "output" },
+      "end": { "id": "logSentimentData", "type": "input" },
+      "startX": 1104,
+      "startY": 328,
+      "endX": 1136,
+      "endY": 200
+    },
+    {
+      "id": "edge6",
+      "start": { "id": "logSentimentData", "type": "output" },
+      "end": { "id": "notifyTeam", "type": "input" },
+      "startX": 1424,
+      "startY": 200,
+      "endX": 1136,
+      "endY": 264
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": -466,
+  "canvasOffsetY": 218,
+  "isTinyNodeMode": false
+}

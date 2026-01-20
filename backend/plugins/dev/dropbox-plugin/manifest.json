@@ -1,0 +1,77 @@
+{
+  "name": "dropbox-plugin",
+  "version": "1.0.0",
+  "description": "Dropbox integration plugin for AGNT - Manage files and folders in Dropbox",
+  "author": "AGNT",
+  "icon": "dropbox",
+  "tools": [
+    {
+      "type": "dropbox-api",
+      "entryPoint": "./dropbox-api.js",
+      "schema": {
+        "title": "Dropbox API",
+        "category": "action",
+        "type": "dropbox-api",
+        "icon": "dropbox",
+        "description": "Interact with Dropbox to perform various operations on files and folders.",
+        "authRequired": "oauth",
+        "authProvider": "dropbox",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "LIST_FOLDER",
+              "UPLOAD_FILE",
+              "DOWNLOAD_FILE",
+              "DELETE_FILE",
+              "MOVE_FILE",
+              "CREATE_FOLDER",
+              "GET_FILE_METADATA",
+              "CREATE_SHARED_LINK"
+            ],
+            "description": "The action to perform on Dropbox"
+          },
+          "path": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The path of the file or folder in Dropbox (e.g., '/Documents/file.txt')",
+            "placeholder": "/path/to/file/or/folder"
+          },
+          "content": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The content of the file to upload (for UPLOAD_FILE action)",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "newPath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The new path for the file or folder (for MOVE_FILE action)",
+            "conditional": {
+              "field": "action",
+              "value": "MOVE_FILE"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the Dropbox operation was successful"
+          },
+          "result": {
+            "type": "object",
+            "description": "The data returned by the Dropbox operation"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the Dropbox operation failed"
+          }
+        }
+      }
+    }
+  ]
+}

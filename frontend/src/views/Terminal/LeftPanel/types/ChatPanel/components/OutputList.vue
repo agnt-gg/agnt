@@ -1,0 +1,967 @@
+<template>
+  <div class="output-list-container">
+    <SimpleModal ref="simpleModal" />
+    <div class="panel-header">
+      <h2 class="title">/ Saved Outputs</h2>
+      <div class="panel-stats">
+        <span class="stat-item">
+          <i class="fas fa-file-alt"></i>
+          {{ outputs.length }}
+        </span>
+      </div>
+    </div>
+    <div class="card-inner output-list">
+      <!-- <div class="create-new" :class="{ 'zero-outputs': outputs.length < 1 }">
+        <button @click="createNewOutput" class="icon create-output-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="33" height="32" viewBox="0 0 33 32" fill="none">
+            <rect x="0.544922" y="0.5" width="31" height="31" rx="7.5" stroke="#01052A" stroke-opacity="0.25" stroke-dasharray="5 5"></rect>
+            <path
+              d="M15.1878 16.8571H10.0449V15.1429H15.1878V10H16.9021V15.1429H22.0449V16.8571H16.9021V22H15.1878V16.8571Z"
+              fill="#01052A"
+              fill-opacity="0.5"
+            ></path>
+          </svg>
+          Create New Output
+        </button>
+      </div> -->
+      <!-- Empty State -->
+      <div v-if="outputs.length === 0" class="no-outputs">
+        <div class="empty-state">
+          <i class="fas fa-file-alt"></i>
+          <p>No saved outputs yet</p>
+          <button class="create-link" @click="createNewOutput"><i class="fas fa-comments"></i> Create via Chat</button>
+        </div>
+      </div>
+
+      <div v-else class="list-container">
+        <div class="list-header">
+          <input v-model="searchQuery" type="text" placeholder="Search outputs..." class="search-input" />
+        </div>
+        <div id="saved-outputs" class="saved-items">
+          <div class="sort-controls">
+            <button @click="sortBy('created_at')" class="sort-button" :class="{ active: sortKey === 'created_at' }">
+              <span>Date</span>
+              <i :class="getSortIcon('created_at')"></i>
+            </button>
+            <!-- <button @click="sortBy('content')" class="sort-button" :class="{ active: sortKey === 'content' }">
+              <span>Content</span>
+              <i :class="getSortIcon('content')"></i>
+            </button> -->
+            <Tooltip text="New Chat" width="auto">
+              <button @click="handleNewChat" class="new-chat-btn">
+                <i class="fas fa-plus"></i>
+                <span>New Chat</span>
+              </button>
+            </Tooltip>
+          </div>
+          <div class="output-list-items">
+            <div v-for="output in sortedOutputs" :key="output.id" class="output-item">
+              <div class="output-content" @click="navigateToOutput(output.id)">
+                <div class="output-date">
+                  {{ formatDate(output.created_at) }}
+                </div>
+                <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+              </div>
+              <div class="output-actions">
+                <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
+                  <i class="fas fa-ellipsis-v"></i>
+                </button>
+              </div>
+              <Teleport to="body">
+                <div v-if="activeMenu === output.id" class="action-menu" @click.stop :style="menuPosition">
+                  <button @click="startRename(output)" class="menu-item">
+                    <i class="fas fa-edit"></i>
+                    <span>Rename</span>
+                  </button>
+                  <!-- <button @click="shareOutput(output)" class="menu-item">
+                    <i class="fas fa-share-alt"></i>
+                    <span>Share</span>
+                  </button> -->
+                  <!-- <button @click="openInToolForge(output)" class="menu-item">
+                    <i class="fas fa-tools"></i>
+                    <span>Open in Tool Forge</span>
+                  </button> -->
+                  <button @click="deleteOutput(output.id)" class="menu-item delete">
+                    <i class="fas fa-trash"></i>
+                    <span>Delete</span>
+                  </button>
+                </div>
+              </Teleport>
+            </div>
+          </div>
+
+          <!-- Pagination Controls -->
+          <div v-if="hasMore && !hasLoadedAll" class="pagination-controls">
+            <div class="pagination-info">Showing {{ outputs.length }} of {{ totalCount }} outputs</div>
+            <div class="pagination-buttons">
+              <button @click="loadMore" :disabled="isFetchingMore" class="pagination-btn load-more">
+                <i v-if="isFetchingMore" class="fas fa-spinner fa-spin"></i>
+                <i v-else class="fas fa-arrow-down"></i>
+                <span>{{ isFetchingMore ? 'Loading...' : 'Load More (20)' }}</span>
+              </button>
+              <button @click="loadAll" :disabled="isFetchingMore" class="pagination-btn load-all">
+                <i v-if="isFetchingMore" class="fas fa-spinner fa-spin"></i>
+                <i v-else class="fas fa-list"></i>
+                <span>{{ isFetchingMore ? 'Loading...' : 'Load All' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- All Loaded Message -->
+          <div v-else-if="hasLoadedAll && outputs.length > 0" class="all-loaded-message">
+            <i class="fas fa-check-circle"></i>
+            <span>All {{ totalCount }} outputs loaded</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import { useRouter } from 'vue-router';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, inject } from 'vue';
+import { useStore } from 'vuex';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
+export default {
+  name: 'OutputList',
+  components: {
+    SimpleModal,
+    Tooltip,
+  },
+  setup() {
+    const router = useRouter();
+    const store = useStore();
+    const playSound = inject('playSound', () => {});
+    const simpleModal = ref(null);
+    const searchQuery = ref('');
+    const sortKey = ref('created_at');
+    const sortOrder = ref('desc');
+    const activeMenu = ref(null);
+    const menuPosition = ref({});
+    const menuButtonRefs = ref({});
+
+    // Get outputs from store
+    const outputs = computed(() => store.getters['contentOutputs/outputs']);
+    const totalCount = computed(() => store.getters['contentOutputs/totalCount']);
+    const hasMore = computed(() => store.getters['contentOutputs/hasMore']);
+    const hasLoadedAll = computed(() => store.getters['contentOutputs/hasLoadedAll']);
+    const isFetchingMore = computed(() => store.getters['contentOutputs/isFetching']);
+
+    const sortedOutputs = computed(() => {
+      return outputs.value
+        .filter((output) => {
+          if (!searchQuery.value) return true;
+
+          const query = searchQuery.value.toLowerCase();
+
+          // Search in title
+          const title = getPreviewText(output.content, output).toLowerCase();
+          if (title.includes(query)) return true;
+
+          // Search in full content for conversation-type outputs
+          if (output.content_type === 'conversation') {
+            try {
+              const conversationData = JSON.parse(output.content);
+              // Search through all message contents
+              return conversationData.messages.some((msg) => msg.content && msg.content.toLowerCase().includes(query));
+            } catch (e) {
+              // If parsing fails, fall back to searching raw content
+              return output.content.toLowerCase().includes(query);
+            }
+          }
+
+          // For HTML outputs, search in the text content
+          const tempElement = document.createElement('div');
+          tempElement.innerHTML = output.content;
+          const textContent = (tempElement.textContent || tempElement.innerText || '').toLowerCase();
+          return textContent.includes(query);
+        })
+        .sort((a, b) => {
+          let aValue = sortKey.value === 'content' ? getPreviewText(a.content, a) : a[sortKey.value];
+          let bValue = sortKey.value === 'content' ? getPreviewText(b.content, b) : b[sortKey.value];
+
+          if (aValue < bValue) return sortOrder.value === 'asc' ? -1 : 1;
+          if (aValue > bValue) return sortOrder.value === 'asc' ? 1 : -1;
+          return 0;
+        });
+    });
+
+    function createNewOutput() {
+      try {
+        router.push('/chat');
+      } catch (error) {
+        console.error('Navigation failed:', error);
+        // Fallback for navigation failure
+        window.location.href = '/chat';
+      }
+    }
+
+    function handleNewChat() {
+      playSound('buttonClick');
+      // Navigate to chat screen without query params
+      router.push('/chat');
+      // Dispatch event to trigger full clear and re-initialization in Chat.vue
+      window.dispatchEvent(new CustomEvent('trigger-new-chat'));
+    }
+
+    async function fetchSavedOutputs() {
+      // Use store action instead of direct API call - fetch initial 20
+      // Caching is now handled in the store (pre-fetched in state.js)
+      await store.dispatch('contentOutputs/fetchOutputs', { limit: 20, offset: 0 });
+    }
+
+    async function loadMore() {
+      playSound('buttonClick');
+      await store.dispatch('contentOutputs/loadMore');
+    }
+
+    async function loadAll() {
+      playSound('buttonClick');
+      await store.dispatch('contentOutputs/loadAll');
+    }
+
+    function formatDate(date) {
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    }
+
+    function getPreviewText(content, output) {
+      // First, check if there's a title field in the output object
+      if (output && output.title) {
+        return truncateText(output.title);
+      }
+
+      // Try to parse as JSON (for conversation-type outputs)
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.title) {
+          return truncateText(parsed.title);
+        }
+      } catch (e) {
+        // Not JSON, continue with HTML parsing
+      }
+
+      // Fall back to HTML text extraction for legacy outputs
+      const tempElement = document.createElement('div');
+      tempElement.innerHTML = content;
+
+      const textContent = tempElement.textContent || tempElement.innerText;
+
+      const firstLine = textContent.split('\n')[0];
+      return truncateText(firstLine);
+    }
+
+    function truncateText(text, maxLength = 100) {
+      if (typeof text !== 'string') {
+        return '';
+      }
+      if (text.length <= maxLength) {
+        return text;
+      }
+      return text.slice(0, maxLength) + '...';
+    }
+
+    function sortBy(key) {
+      if (sortKey.value === key) {
+        sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortKey.value = key;
+        sortOrder.value = 'asc';
+      }
+    }
+
+    function getSortIcon(key) {
+      if (sortKey.value !== key) return 'fas fa-sort';
+      return sortOrder.value === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+    }
+
+    function navigateToOutput(outputId) {
+      playSound('buttonClick');
+      try {
+        router.push(`/chat?content-id=${outputId}`);
+      } catch (error) {
+        console.error('Navigation failed:', error);
+        window.location.href = `/chat?content-id=${outputId}`;
+      }
+    }
+
+    function setMenuButtonRef(outputId, el) {
+      if (el) {
+        menuButtonRefs.value[outputId] = el;
+      }
+    }
+
+    function toggleMenu(outputId, event) {
+      if (activeMenu.value === outputId) {
+        activeMenu.value = null;
+        menuPosition.value = {};
+      } else {
+        activeMenu.value = outputId;
+
+        // Position the menu next to the button using Teleport
+        nextTick(() => {
+          const button = event.currentTarget;
+          const rect = button.getBoundingClientRect();
+
+          // Calculate position - menu appears to the right of the button
+          menuPosition.value = {
+            position: 'fixed',
+            top: `${rect.top}px`,
+            left: `${rect.right + 8}px`,
+          };
+        });
+      }
+    }
+
+    async function shareOutput(output) {
+      playSound('buttonClick');
+      // Create a shareable link
+      const shareUrl = `${window.location.origin}/chat?content-id=${output.id}`;
+
+      // Copy to clipboard
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        await simpleModal.value.showModal({
+          title: 'Success',
+          message: 'Link copied to clipboard!',
+          confirmText: 'OK',
+          showCancel: false,
+        });
+        activeMenu.value = null;
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        await simpleModal.value.showModal({
+          title: 'Error',
+          message: 'Failed to copy link',
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      }
+    }
+
+    function openInToolForge(output) {
+      playSound('buttonClick');
+      activeMenu.value = null;
+      try {
+        // Navigate to Tool Forge with the output ID
+        router.push({
+          path: '/tool-forge',
+          query: {
+            'content-id': output.id,
+          },
+        });
+      } catch (error) {
+        console.error('Navigation failed:', error);
+        window.location.href = `/tool-forge?content-id=${output.id}`;
+      }
+    }
+
+    async function deleteOutput(outputId) {
+      playSound('buttonClick');
+
+      const confirmed = await simpleModal.value.showModal({
+        title: 'Delete Output',
+        message: 'Are you sure you want to delete this output?',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-danger',
+      });
+
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await store.dispatch('contentOutputs/deleteOutput', outputId);
+        activeMenu.value = null;
+        await simpleModal.value.showModal({
+          title: 'Success',
+          message: 'Output deleted successfully',
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      } catch (error) {
+        console.error('Error deleting output:', error);
+        await simpleModal.value.showModal({
+          title: 'Error',
+          message: 'Failed to delete output',
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      }
+    }
+
+    // Close menu when clicking outside
+    function handleClickOutside(event) {
+      if (activeMenu.value && !event.target.closest('.output-actions')) {
+        activeMenu.value = null;
+      }
+    }
+
+    async function startRename(output) {
+      playSound('buttonClick');
+      activeMenu.value = null;
+
+      // Get current title
+      const currentTitle = getPreviewText(output.content, output);
+
+      // Use SimpleModal with isPrompt for input
+      const newTitle = await simpleModal.value.showModal({
+        title: 'Rename Conversation',
+        message: 'Enter a new title for this conversation:',
+        isPrompt: true,
+        defaultValue: currentTitle,
+        placeholder: 'Conversation title...',
+        confirmText: 'Rename',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-primary',
+      });
+
+      if (!newTitle || newTitle.trim() === '') {
+        return;
+      }
+
+      try {
+        // Call Vuex action to rename
+        await store.dispatch('chat/updateConversationTitle', {
+          outputId: output.id,
+          title: newTitle.trim(),
+        });
+
+        // Refresh the outputs list
+        await store.dispatch('contentOutputs/refreshOutputs');
+
+        await simpleModal.value.showModal({
+          title: 'Success',
+          message: 'Conversation renamed successfully',
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      } catch (error) {
+        console.error('Error renaming conversation:', error);
+        await simpleModal.value.showModal({
+          title: 'Error',
+          message: 'Failed to rename conversation',
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      }
+    }
+
+    // Handle conversation saved event
+    function handleConversationSaved() {
+      // Refresh the outputs list when a conversation is saved
+      store.dispatch('contentOutputs/refreshOutputs');
+    }
+
+    // Handle conversation renamed event
+    function handleConversationRenamed() {
+      // Refresh the outputs list when a conversation is renamed
+      store.dispatch('contentOutputs/refreshOutputs');
+    }
+
+    // Setup lifecycle hooks
+    onMounted(() => {
+      fetchSavedOutputs();
+      document.addEventListener('click', handleClickOutside);
+      window.addEventListener('conversation-saved', handleConversationSaved);
+      window.addEventListener('conversation-renamed', handleConversationRenamed);
+    });
+
+    onBeforeUnmount(() => {
+      document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('conversation-saved', handleConversationSaved);
+      window.removeEventListener('conversation-renamed', handleConversationRenamed);
+    });
+
+    return {
+      simpleModal,
+      outputs,
+      totalCount,
+      hasMore,
+      hasLoadedAll,
+      isFetchingMore,
+      searchQuery,
+      sortKey,
+      sortOrder,
+      sortedOutputs,
+      activeMenu,
+      menuPosition,
+      createNewOutput,
+      fetchSavedOutputs,
+      loadMore,
+      loadAll,
+      formatDate,
+      getPreviewText,
+      sortBy,
+      getSortIcon,
+      navigateToOutput,
+      setMenuButtonRef,
+      toggleMenu,
+      shareOutput,
+      openInToolForge,
+      deleteOutput,
+      startRename,
+      handleClickOutside,
+      handleNewChat,
+    };
+  },
+};
+</script>
+
+<style scoped>
+.panel-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0 12px 0;
+  border-bottom: 1px solid var(--terminal-border-color-light);
+  user-select: none;
+  /* margin-bottom: 16px; */
+}
+
+.panel-header .title {
+  color: var(--color-green);
+  font-family: 'League Spartan', sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.48px;
+  margin: 0;
+}
+
+.card-inner.output-list {
+  border: none;
+  background: transparent;
+}
+
+.panel-stats {
+  display: flex;
+  gap: 12px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-light-med-navy);
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.stat-item i {
+  width: 14px;
+  text-align: center;
+}
+
+div#saved-outputs {
+  border: none !important;
+  height: 100%;
+  width: 100%;
+}
+
+.list-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 16px 0;
+  background: var(--color-dull-white);
+  border-bottom: 1px solid var(--color-light-navy);
+  width: calc(100%);
+}
+
+.search-input {
+  padding: 8px 16px;
+  border: 1px solid var(--color-light-navy);
+  border-radius: 8px;
+  width: 200px;
+  height: 18px;
+}
+
+.new-chat-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-green);
+  border: 1px solid var(--color-green);
+  border-radius: 6px;
+  color: var(--color-black-navy);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  margin-left: auto;
+  transition: all 0.2s;
+}
+
+.new-chat-btn:hover {
+  background: transparent;
+  color: var(--color-green);
+}
+
+.new-chat-btn i {
+  font-size: 11px;
+}
+
+.sortable-header {
+  cursor: pointer;
+}
+
+.sortable-header i {
+  margin-left: 5px;
+}
+
+.list-header {
+  background: transparent;
+  border-bottom: none;
+}
+
+/* .search-input {
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-black-navy);
+  color: var(--color-med-navy);
+} */
+
+.sort-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 16px;
+  /* border-bottom: 1px solid var(--terminal-border-color); */
+  /* margin-bottom: 16px; */
+}
+
+.sort-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-med-navy);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.sort-button:hover {
+  background: var(--color-black-navy);
+  border-color: var(--color-green);
+}
+
+.sort-button.active {
+  border-color: var(--color-green);
+  color: var(--color-green);
+}
+
+.sort-button i {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.output-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: visible;
+}
+
+.output-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 40px 12px 12px;
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  transition: all 0.2s;
+  position: relative;
+  overflow: visible;
+  backdrop-filter: blur(4px);
+}
+
+.output-item:hover {
+  border-color: var(--color-green);
+  background: var(--color-darker-1);
+}
+
+.output-content {
+  flex: 1;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.output-actions {
+  position: absolute;
+  right: 8px;
+  top: 12px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.action-menu-btn {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--color-med-navy);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.action-menu-btn:hover {
+  background: var(--color-black-navy);
+  color: var(--color-green);
+}
+
+.action-menu {
+  position: fixed;
+  margin-top: -14px;
+  margin-left: 32px;
+  background: var(--color-popup);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  min-width: 180px;
+  overflow: hidden;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--color-med-navy);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  transition: all 0.2s;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+.menu-item:last-child {
+  border-bottom: none;
+}
+
+.menu-item:hover {
+  background: var(--color-darker-1);
+  color: var(--color-light-med-navy);
+}
+
+.menu-item.delete:hover {
+  background: rgba(220, 38, 38, 0.1);
+  color: #ef4444;
+}
+
+.menu-item i {
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.output-date {
+  margin-bottom: 6px;
+}
+
+.output-date {
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+}
+
+.output-preview {
+  color: var(--color-med-navy);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-container {
+  width: 100%;
+}
+
+.hide-list {
+  display: none;
+}
+
+.zero-outputs {
+  border-bottom: none !important;
+}
+
+.create-new {
+  padding: 16px;
+  border-bottom: 1px solid var(--color-light-navy);
+}
+
+.create-output-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-dark-navy);
+  transition: opacity 0.2s;
+}
+
+.create-output-btn:hover {
+  opacity: 0.7;
+}
+
+/* body.dark .create-new {
+  border-bottom: 1px solid var(--color-dull-navy);
+} */
+
+body.dark .create-output-btn {
+  color: var(--color-med-navy);
+}
+
+/* Pagination Controls */
+.pagination-controls {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.pagination-info {
+  color: var(--color-med-navy);
+  font-size: 13px;
+  text-align: center;
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+}
+
+.pagination-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-med-navy);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  flex: 1;
+  max-width: 200px;
+  justify-content: center;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--color-black-navy);
+  border-color: var(--color-green);
+  color: var(--color-green);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-btn i {
+  font-size: 12px;
+}
+
+.pagination-btn.load-all {
+  border-color: var(--color-blue);
+}
+
+.pagination-btn.load-all:hover:not(:disabled) {
+  border-color: var(--color-blue);
+  color: var(--color-blue);
+}
+
+.all-loaded-message {
+  margin-top: 16px;
+  padding: 8px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--color-green);
+  font-size: var(--font-size-sm);
+}
+
+.all-loaded-message i {
+  font-size: var(--font-size-sm);
+}
+
+/* Empty State Styles */
+.no-outputs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* min-height: 300px; */
+  padding: 40px 20px;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.empty-state i {
+  font-size: 2em;
+  margin-bottom: 8px;
+  display: block;
+  opacity: 0.5;
+}
+
+.empty-state p {
+  margin: 0 0 12px 0;
+  font-size: 0.9em;
+}
+
+.create-link {
+  background: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s ease;
+}
+
+.create-link:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+.create-link i {
+  margin-right: 4px;
+  font-size: 0.9em;
+}
+</style>

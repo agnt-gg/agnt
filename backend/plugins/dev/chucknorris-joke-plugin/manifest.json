@@ -1,0 +1,81 @@
+{
+  "name": "chucknorris-joke-plugin",
+  "version": "1.0.0",
+  "description": "Fetch random Chuck Norris jokes from the public Chuck Norris API.",
+  "author": "AGNT User",
+  "icon": "puzzle-piece",
+  "tools": [
+    {
+      "type": "chucknorris-get-joke",
+      "entryPoint": "./chucknorris-api.js",
+      "schema": {
+        "title": "Get Random Chuck Norris Joke",
+        "category": "action",
+        "type": "chucknorris-get-joke",
+        "icon": "puzzle-piece",
+        "description": "Retrieves a random Chuck Norris joke, optionally filtered by category.",
+        "parameters": {
+          "category": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Joke category to filter by (optional).",
+            "required": false,
+            "options": [
+              "animal",
+              "career",
+              "celebrity",
+              "dev",
+              "explicit",
+              "fashion",
+              "food",
+              "history",
+              "money",
+              "movie",
+              "music",
+              "political",
+              "religion",
+              "science",
+              "sport",
+              "travel"
+            ],
+            "default": null
+          }
+        },
+        "outputs": {
+          "joke": {
+            "type": "string",
+            "description": "The joke text."
+          },
+          "icon_url": {
+            "type": "string",
+            "description": "URL of the Chuck Norris avatar image."
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the joke."
+          },
+          "url": {
+            "type": "string",
+            "description": "Direct URL to the joke on the API website."
+          },
+          "categories": {
+            "type": "array",
+            "description": "Array of categories the joke belongs to."
+          },
+          "created_at": {
+            "type": "string",
+            "description": "Timestamp when the joke was created."
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "Timestamp when the joke was last updated."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the request fails."
+          }
+        }
+      }
+    }
+  ]
+}

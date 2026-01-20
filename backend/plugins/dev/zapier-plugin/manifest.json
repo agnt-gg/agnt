@@ -1,0 +1,126 @@
+{
+  "name": "zapier-plugin",
+  "version": "1.0.0",
+  "description": "Zapier integration plugin for AGNT - Send data to Zapier webhooks and receive triggers from Zapier.",
+  "author": "AGNT Team",
+  "icon": "zapier",
+  "tools": [
+    {
+      "type": "zapier-trigger",
+      "entryPoint": "./zapier-trigger.js",
+      "schema": {
+        "title": "Zapier Trigger",
+        "category": "trigger",
+        "type": "zapier-trigger",
+        "icon": "zapier",
+        "description": "Receive events from 6,000+ apps via Zapier. When something happens in your connected apps (new email, form submission, sale, etc.), this trigger fires your workflow.",
+        "documentation": "https://docs.slop.ai/docs/triggers/zapier-trigger",
+        "parameters": {
+          "webhookUrl": {
+            "type": "string",
+            "inputType": "readonly",
+            "value": "{{WEBHOOK_URL}}/webhook/{{WORKFLOWID}}",
+            "description": "Copy this URL into your Zapier webhook action. In Zapier, add a 'Webhooks by Zapier' action and paste this URL."
+          },
+          "authType": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["None", "Basic", "Bearer"],
+            "default": "Bearer",
+            "description": "Authentication method (recommended: Bearer for security)"
+          },
+          "authToken": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Secret token to verify requests from Zapier. Generate a random string and add it to your Zap's headers as 'Authorization: Bearer YOUR_TOKEN'",
+            "conditional": {
+              "field": "authType",
+              "value": ["Bearer"]
+            }
+          },
+          "username": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Username for Basic authentication",
+            "conditional": {
+              "field": "authType",
+              "value": "Basic"
+            }
+          },
+          "password": {
+            "type": "string",
+            "inputType": "password",
+            "description": "Password for Basic authentication",
+            "conditional": {
+              "field": "authType",
+              "value": "Basic"
+            }
+          }
+        },
+        "outputs": {
+          "method": {
+            "type": "string",
+            "description": "The HTTP method (always POST for Zapier)"
+          },
+          "headers": {
+            "type": "object",
+            "description": "Request headers from Zapier"
+          },
+          "body": {
+            "type": "object",
+            "description": "All data sent from Zapier - access fields like zapierTrigger.body.email, zapierTrigger.body.name, etc."
+          },
+          "query": {
+            "type": "object",
+            "description": "Query parameters (if any)"
+          },
+          "params": {
+            "type": "object",
+            "description": "Route parameters (if any)"
+          }
+        }
+      }
+    },
+    {
+      "type": "zapier-action",
+      "entryPoint": "./zapier-action.js",
+      "schema": {
+        "title": "Zapier Webhook",
+        "category": "action",
+        "type": "zapier-action",
+        "icon": "zapier",
+        "description": "Send data to 6,000+ apps via Zapier webhooks. Trigger actions like sending emails, creating tasks, posting to social media, and more by sending JSON data to your Zap's webhook URL.",
+        "parameters": {
+          "zapWebhookUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Your Zap's webhook URL. In Zapier: 1) Create a new Zap, 2) Choose 'Webhooks by Zapier' as the trigger, 3) Select 'Catch Hook', 4) Copy the webhook URL and paste it here."
+          },
+          "payload": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "JSON data to send to Zapier. Example: {\"email\": \"user@example.com\", \"name\": \"John Doe\", \"amount\": 100}. This data will be available in your Zap for mapping to other apps."
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the webhook was triggered successfully"
+          },
+          "zapResponse": {
+            "type": "object",
+            "description": "Response from Zapier webhook"
+          },
+          "triggeredZaps": {
+            "type": "array",
+            "description": "List of triggered Zaps with status and timestamp"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the webhook failed"
+          }
+        }
+      }
+    }
+  ]
+}

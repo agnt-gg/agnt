@@ -1,0 +1,102 @@
+{
+  "id": "e80723de-bc91-4f64-a986-34b8410e71e3",
+  "name": "Slack Message Encoder / Decoder",
+  "nodes": [
+    {
+      "id": "receiveSlackMessage",
+      "text": "Receive Slack Message",
+      "x": 240,
+      "y": 128,
+      "type": "receive-slack-message",
+      "icon": "slack-receive",
+      "category": "trigger",
+      "parameters": { "channelId": "C07KKR1GW07" },
+      "outputs": { "user": "", "text": "", "timestamp": "" },
+      "description": "This trigger node listens for incoming Slack messages in the specified channel.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "processMessage",
+      "text": "Process Message",
+      "x": 240,
+      "y": 192,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const message = {{receiveSlackMessage.text}};\n\nclass CryptoHelper {\n  constructor(key) {\n    this.key = key;\n  }\n\n  encrypt(plaintext) {\n    let ciphertext = \"\";\n    for (let i = 0; i < plaintext.length; i++) {\n      let charCode = plaintext.charCodeAt(i) ^ this.key.charCodeAt(i % this.key.length);\n      ciphertext += this.toHex(charCode);\n    }\n    return ciphertext;\n  }\n\n  decrypt(ciphertext) {\n    let plaintext = \"\";\n    for (let i = 0; i < ciphertext.length; i += 2) {\n      let charCode = parseInt(ciphertext.substr(i, 2), 16) ^ this.key.charCodeAt((i / 2) % this.key.length);\n      plaintext += String.fromCharCode(charCode);\n    }\n    return plaintext;\n  }\n\n  toHex(num) {\n    return num.toString(16).padStart(2, '0').toUpperCase();\n  }\n}\n\nconst cryptoHelper = new CryptoHelper(\"secretkey\");\n\nlet result;\nif (message.startsWith(\"encode: \")) {\n  const plaintext = message.slice(8); // Remove \"encode: \" prefix\n  result = cryptoHelper.encrypt(plaintext);\n} else if (message.startsWith(\"decode: \")) {\n  const ciphertext = message.slice(8); // Remove \"decode: \" prefix\n  result = cryptoHelper.decrypt(ciphertext);\n} else {\n  result = \"Invalid input. Please start your message with 'encode: ' or 'decode: '\";\n}\n\nreturn { result };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This node processes the incoming message, encrypts or decrypts it based on the command.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendSlackResponse",
+      "text": "Send Slack Response",
+      "x": 240,
+      "y": 256,
+      "type": "send-slack-message",
+      "icon": "slack-send",
+      "category": "action",
+      "parameters": {
+        "channelId": "C07KKR1GW07",
+        "message": "{{processMessage.result.result}}"
+      },
+      "outputs": { "success": false, "timestamp": "", "error": "" },
+      "description": "This action node sends the processed message back to the Slack channel.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "slackMessageEncoderDecoderLabel",
+      "text": "Slack Message Encoder/Decoder",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This label node provides a title for the workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null,
+      "isEditing": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveSlackMessage", "type": "output" },
+      "end": { "id": "processMessage", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216,
+      "isActive": false
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "processMessage", "type": "output" },
+      "end": { "id": "sendSlackResponse", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280,
+      "isActive": false
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 311,
+  "canvasOffsetY": 233,
+  "isTinyNodeMode": false
+}

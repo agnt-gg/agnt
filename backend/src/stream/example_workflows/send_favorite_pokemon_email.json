@@ -1,0 +1,208 @@
+{
+  "id": "f8e7d9c2-3a6b-4f5e-b1c0-9d2e8f3a4b5d",
+  "name": "Send Favorite Pokemon Email",
+  "nodes": [
+    {
+      "id": "timerTrigger",
+      "text": "Timer Trigger",
+      "x": 240,
+      "y": 128,
+      "type": "trigger-timer",
+      "icon": "clock",
+      "category": "trigger",
+      "toolConfig": {
+        "title": "Timer Trigger",
+        "category": "trigger",
+        "type": "trigger-timer",
+        "icon": "clock",
+        "description": "This trigger node fires the workflow at specified intervals or at a specific time.",
+        "parameters": {
+          "fireOnStart": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["Yes", "No"],
+            "default": "Yes",
+            "description": "Fire the trigger immediately when the workflow starts"
+          },
+          "scheduleType": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["Interval", "Specific Time"],
+            "default": "Interval",
+            "description": "Choose between interval-based or specific time scheduling"
+          },
+          "schedule": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["Every Minute", "Every 5 Minutes", "Every 15 Minutes", "Every 30 Minutes", "Hourly", "Daily", "Weekly", "Monthly"],
+            "description": "Select the interval for the timer",
+            "conditional": {
+              "field": "scheduleType",
+              "value": "Interval"
+            }
+          },
+          "specificTime": {
+            "type": "string",
+            "inputType": "time",
+            "inputSize": "half",
+            "description": "Select the specific time to run the trigger",
+            "conditional": {
+              "field": "scheduleType",
+              "value": "Specific Time"
+            }
+          },
+          "specificDays": {
+            "type": "array",
+            "inputType": "checkbox",
+            "inputSize": "half",
+            "options": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+            "description": "Select the days to run the trigger at the specific time",
+            "conditional": {
+              "field": "scheduleType",
+              "value": "Specific Time"
+            }
+          }
+        },
+        "outputs": {
+          "timestamp": {
+            "type": "string",
+            "description": "The timestamp when the trigger fired"
+          }
+        }
+      },
+      "parameters": {
+        "fireOnStart": "No",
+        "scheduleType": "Interval",
+        "schedule": "Every 5 Minutes",
+        "specificTime": "",
+        "specificDays": []
+      },
+      "outputs": { "timestamp": "" },
+      "description": "This trigger node fires the workflow every 5 minutes.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "generatePokemon",
+      "text": "Generate Favorite Pokemon",
+      "x": 240,
+      "y": 192,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Generate a favorite Pokemon name and a brief description of why it's a favorite. Keep the response concise, within 2-3 sentences.\n\nRETURN ONLY THE FINAL TEXT WITHOUT ANY ADDITIONAL TEXT.",
+        "maxTokens": 0,
+        "temperature": 0,
+        "parseJson": "false",
+        "image": ""
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node generates a favorite Pokemon and description using AI.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendEmail",
+      "text": "Send Email",
+      "x": 240,
+      "y": 256,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "example@email.com",
+        "subject": "Your Favorite Pokemon of the Moment",
+        "body": "Hello Nathan,\n\nHere's your favorite Pokemon for this moment:\n\n{{generateFavoritePokemon.generatedText}}\n\nEnjoy your Pokemon-filled day!\n\nBest regards,\nYour Pokemon Emailer",
+        "isHtml": null,
+        "attachments": []
+      },
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      },
+      "description": "This action node sends an email with the generated favorite Pokemon.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "stopWorkflow",
+      "text": "Stop Workflow",
+      "x": 240,
+      "y": 320,
+      "type": "stop-workflow",
+      "icon": "stop-danger",
+      "category": "control",
+      "parameters": { "reason": "Email sent successfully" },
+      "outputs": { "stopped": false, "reason": "" },
+      "description": "This control node stops the workflow execution after sending the email.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "workflowLabel",
+      "text": "Send Favorite Pokemon Email",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This label node provides a title for the workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "timerTrigger", "type": "output" },
+      "end": { "id": "generatePokemon", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "generatePokemon", "type": "output" },
+      "end": { "id": "sendEmail", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "sendEmail", "type": "output" },
+      "end": { "id": "stopWorkflow", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 240,
+      "endY": 344
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 242,
+  "canvasOffsetY": 240,
+  "isTinyNodeMode": false,
+  "customTools": []
+}

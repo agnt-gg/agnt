@@ -1,0 +1,1 @@
+export const RenderComponent = (color, size, label, rotation = 0) => ({ color, size, label, rotation }); 

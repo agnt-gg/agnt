@@ -1,0 +1,276 @@
+import { API_CONFIG } from '@/tt.config.js';
+import axios from 'axios';
+
+const state = {
+  connectedApps: [],
+  allProviders: [],
+  connectionHealth: null,
+  lastHealthCheck: null,
+  isHealthCheckLoading: false,
+  pollingIntervalId: null,
+};
+
+const mutations = {
+  SET_CONNECTED_APPS(state, apps) {
+    state.connectedApps = apps;
+  },
+  SET_ALL_PROVIDERS(state, providers) {
+    state.allProviders = providers;
+  },
+  SET_CONNECTION_HEALTH(state, health) {
+    state.connectionHealth = health;
+    state.lastHealthCheck = new Date().toISOString();
+  },
+  SET_HEALTH_CHECK_LOADING(state, isLoading) {
+    state.isHealthCheckLoading = isLoading;
+  },
+  SET_POLLING_INTERVAL_ID(state, intervalId) {
+    state.pollingIntervalId = intervalId;
+  },
+};
+
+const actions = {
+  async fetchConnectedApps({ commit }) {
+    try {
+      const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/connected`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      commit('SET_CONNECTED_APPS', response.data);
+    } catch (error) {
+      console.error('Error fetching connected apps:', error);
+    }
+  },
+  async fetchAllProviders({ commit }) {
+    try {
+      const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      commit('SET_ALL_PROVIDERS', response.data);
+    } catch (error) {
+      console.error('Error fetching all providers:', error);
+    }
+  },
+  async checkConnectionHealth({ commit }) {
+    try {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/users/connection-health`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      if (response.data.success) {
+        commit('SET_CONNECTION_HEALTH', response.data.data);
+        return response.data.data;
+      }
+    } catch (error) {
+      console.error('Error checking connection health:', error);
+      return null;
+    }
+  },
+  async checkSingleProviderHealth({ commit }, providerId) {
+    try {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/users/connection-health/${providerId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (error) {
+      console.error('Error checking provider health:', error);
+      return null;
+    }
+  },
+  async updateProvider({ commit, dispatch }, { id, providerData }) {
+    try {
+      const response = await axios.put(`${API_CONFIG.REMOTE_URL}/auth/providers/${id}`, providerData, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Refresh the providers list after update
+      await dispatch('fetchAllProviders');
+      return { success: true, ...response.data };
+    } catch (error) {
+      console.error('Error updating provider:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  async deleteProvider({ commit, dispatch }, providerId) {
+    try {
+      const response = await axios.delete(`${API_CONFIG.REMOTE_URL}/auth/providers/${providerId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Refresh the connected apps list after deletion
+      await dispatch('fetchConnectedApps');
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting provider:', error);
+      throw error;
+    }
+  },
+  async checkConnectionHealthStream({ commit, state }) {
+    // If already loading, don't start another check
+    if (state.isHealthCheckLoading) return;
+
+    commit('SET_HEALTH_CHECK_LOADING', true);
+
+    try {
+      return new Promise((resolve, reject) => {
+        const token = localStorage.getItem('token');
+        const eventSource = new EventSource(`${API_CONFIG.BASE_URL}/users/connection-health-stream?token=${encodeURIComponent(token)}`);
+
+        let providers = [];
+        let summary = null;
+
+        const messageHandler = (event) => {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'init') {
+            providers = data.providers.map((p) => ({ provider: p, status: 'checking' }));
+            commit('SET_CONNECTION_HEALTH', {
+              overall: 'checking',
+              healthyConnections: 0,
+              totalConnections: data.totalProviders,
+              providers: providers,
+              timestamp: new Date().toISOString(),
+            });
+          } else if (data.type === 'provider') {
+            const index = providers.findIndex((p) => p.provider === data.provider.provider);
+            if (index !== -1) {
+              providers[index] = data.provider;
+            }
+
+            commit('SET_CONNECTION_HEALTH', {
+              overall: 'checking',
+              healthyConnections: data.progress.healthy,
+              totalConnections: data.progress.total,
+              providers: [...providers],
+              timestamp: new Date().toISOString(),
+              progress: data.progress,
+            });
+          } else if (data.type === 'summary') {
+            summary = data.data;
+            commit('SET_CONNECTION_HEALTH', summary);
+          }
+        };
+
+        const completeHandler = () => {
+          eventSource.removeEventListener('message', messageHandler);
+          eventSource.removeEventListener('complete', completeHandler);
+          eventSource.removeEventListener('error', errorHandler);
+          eventSource.close();
+          commit('SET_HEALTH_CHECK_LOADING', false);
+          resolve(summary);
+        };
+
+        const errorHandler = (event) => {
+          eventSource.removeEventListener('message', messageHandler);
+          eventSource.removeEventListener('complete', completeHandler);
+          eventSource.removeEventListener('error', errorHandler);
+          eventSource.close();
+          commit('SET_HEALTH_CHECK_LOADING', false);
+          if (event.data) {
+            try {
+              const error = JSON.parse(event.data);
+              reject(new Error(error.error));
+            } catch {
+              reject(new Error('Connection failed'));
+            }
+          } else {
+            reject(new Error('Connection failed'));
+          }
+        };
+
+        eventSource.addEventListener('message', messageHandler);
+        eventSource.addEventListener('complete', completeHandler);
+        eventSource.addEventListener('error', errorHandler);
+
+        eventSource.onerror = () => {
+          eventSource.removeEventListener('message', messageHandler);
+          eventSource.removeEventListener('complete', completeHandler);
+          eventSource.removeEventListener('error', errorHandler);
+          eventSource.close();
+          commit('SET_HEALTH_CHECK_LOADING', false);
+          reject(new Error('Stream connection error'));
+        };
+      });
+    } catch (error) {
+      commit('SET_HEALTH_CHECK_LOADING', false);
+      throw error;
+    }
+  },
+  // Start centralized polling for connected apps (60 second interval)
+  startPolling({ dispatch, commit, state }) {
+    // Don't start if already polling
+    if (state.pollingIntervalId) {
+      console.log('[appAuth] Polling already active');
+      return;
+    }
+
+    console.log('[appAuth] Starting centralized polling (60s interval)');
+
+    // Poll every 60 seconds
+    const intervalId = setInterval(() => {
+      dispatch('fetchConnectedApps');
+    }, 60000);
+
+    commit('SET_POLLING_INTERVAL_ID', intervalId);
+  },
+  // Stop centralized polling
+  stopPolling({ commit, state }) {
+    if (state.pollingIntervalId) {
+      console.log('[appAuth] Stopping centralized polling');
+      clearInterval(state.pollingIntervalId);
+      commit('SET_POLLING_INTERVAL_ID', null);
+    }
+  },
+};
+
+const HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+const getters = {
+  connectedApps: (state) => state.connectedApps,
+  connectionHealthStatus: (state) => {
+    if (!state.connectionHealth) return 'unknown';
+    return state.connectionHealth.overall;
+  },
+  healthyConnectionsCount: (state) => {
+    if (!state.connectionHealth) return 0;
+    return state.connectionHealth.healthyConnections;
+  },
+  totalConnectionsCount: (state) => {
+    if (!state.connectionHealth) return 0;
+    return state.connectionHealth.totalConnections;
+  },
+  providerHealthDetails: (state) => {
+    if (!state.connectionHealth) return [];
+    return state.connectionHealth.providers;
+  },
+  isHealthCheckLoading: (state) => state.isHealthCheckLoading,
+  needsHealthCheck: (state) => {
+    if (!state.lastHealthCheck) return true;
+
+    const now = new Date().getTime();
+    const lastCheck = new Date(state.lastHealthCheck).getTime();
+    return now - lastCheck > HEALTH_CHECK_INTERVAL;
+  },
+};
+
+export default {
+  namespaced: true,
+  state,
+  mutations,
+  actions,
+  getters,
+};

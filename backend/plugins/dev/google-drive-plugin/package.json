@@ -1,0 +1,10 @@
+{
+  "name": "google-drive-plugin",
+  "version": "1.0.0",
+  "description": "Google Drive integration plugin for AGNT",
+  "type": "module",
+  "main": "google-drive-api.js",
+  "dependencies": {
+    "googleapis": "^140.0.0"
+  }
+}

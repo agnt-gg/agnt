@@ -1,0 +1,10 @@
+{
+  "name": "dropbox-plugin",
+  "version": "1.0.0",
+  "description": "Dropbox integration plugin for AGNT",
+  "type": "module",
+  "main": "dropbox-api.js",
+  "dependencies": {
+    "axios": "^1.7.0"
+  }
+}

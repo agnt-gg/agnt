@@ -1,0 +1,101 @@
+{
+  "name": "google-slides-plugin",
+  "version": "1.0.0",
+  "description": "Google Slides integration plugin for AGNT - Create and manage presentations",
+  "author": "AGNT",
+  "icon": "google-slides",
+  "tools": [
+    {
+      "type": "google-slides-api",
+      "entryPoint": "./google-slides-api.js",
+      "schema": {
+        "title": "Google Slides API",
+        "category": "action",
+        "type": "google-slides-api",
+        "icon": "google-slides",
+        "description": "Perform actions on Google Slides presentations and slides",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "Create Presentation",
+              "Read Presentation",
+              "Update Presentation",
+              "Delete Presentation",
+              "Create Slide",
+              "Read Slide",
+              "Update Slide",
+              "Delete Slide"
+            ],
+            "description": "The action to perform"
+          },
+          "presentationId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the Google Slides presentation (not required for 'Create Presentation')",
+            "conditional": {
+              "field": "action",
+              "value": ["Read Presentation", "Update Presentation", "Delete Presentation", "Create Slide", "Read Slide", "Update Slide", "Delete Slide"]
+            }
+          },
+          "slideId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the slide (required for slide-specific actions)",
+            "conditional": {
+              "field": "action",
+              "value": ["Read Slide", "Update Slide", "Delete Slide"]
+            }
+          },
+          "title": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The title for creating or updating a presentation",
+            "conditional": {
+              "field": "action",
+              "value": ["Create Presentation", "Update Presentation"]
+            }
+          },
+          "slideContent": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "JSON-formatted content for creating or updating a slide",
+            "conditional": {
+              "field": "action",
+              "value": ["Create Slide", "Update Slide"]
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the action was successful"
+          },
+          "presentationId": {
+            "type": "string",
+            "description": "The ID of the affected presentation"
+          },
+          "slideId": {
+            "type": "string",
+            "description": "The ID of the affected slide (if applicable)"
+          },
+          "presentation": {
+            "type": "object",
+            "description": "The full presentation data (for Read Presentation action)"
+          },
+          "slide": {
+            "type": "object",
+            "description": "The slide data (for Read Slide action)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the action failed"
+          }
+        }
+      }
+    }
+  ]
+}

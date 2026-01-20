@@ -1,0 +1,177 @@
+{
+  "id": "03ee6df4-9325-4e06-a100-5b6ebb467dff",
+  "name": "Ethereum Price Checker",
+  "nodes": [
+    {
+      "id": "receiveEmail",
+      "text": "Receive Email",
+      "x": 240,
+      "y": 128,
+      "type": "receive-email",
+      "icon": "inbox",
+      "category": "trigger",
+      "parameters": { "emailAddress": "ethereum-price@example.com" },
+      "outputs": {
+        "from": "",
+        "to": "",
+        "subject": "",
+        "body": "",
+        "attachments": []
+      },
+      "description": "This trigger node listens for incoming emails requesting Ethereum price information.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "fetchEthereumPrice",
+      "text": "Fetch Ethereum Price",
+      "x": 240,
+      "y": 192,
+      "type": "custom-api",
+      "icon": "connect",
+      "category": "action",
+      "parameters": {
+        "url": "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+        "method": "GET",
+        "headers": "",
+        "data": "",
+        "auth": ""
+      },
+      "outputs": {
+        "success": false,
+        "status": 0,
+        "result": {},
+        "headers": {},
+        "error": ""
+      },
+      "description": "This action node fetches the current Ethereum price from the CoinGecko API.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "processEthereumPrice",
+      "text": "Process Ethereum Price",
+      "x": 240,
+      "y": 256,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const data = {{fetchEthereumPrice.result}};\nconst ethereumPrice = data.ethereum.usd;\nconst formattedPrice = ethereumPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' });\nreturn {\n price: formattedPrice,\n timestamp: new Date().toISOString()\n};"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This utility node processes the Ethereum price data and formats it for the email response.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "generateEmailResponse",
+      "text": "Generate Email Response",
+      "x": 240,
+      "y": 320,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const priceData = {{processEthereumPrice.result}};\nconst emailBody = `Current Ethereum Price: ${priceData.price}\\n\\nTimestamp: ${priceData.timestamp}\\n\\nThis price information is provided by the CoinGecko API and is for informational purposes only.`;\nreturn { emailBody };"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This utility node generates the email response with the formatted Ethereum price information.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendPriceEmail",
+      "text": "Send Price Email",
+      "x": 240,
+      "y": 384,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "{{receiveEmail.from}}",
+        "subject": "Current Ethereum Price",
+        "body": "{{generateEmailResponse.result.emailBody}}",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      },
+      "description": "This action node sends the email with the current Ethereum price to the requester.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "ethereumPriceCheckerLabel",
+      "text": "Ethereum Price Checker",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This utility node displays a label for the Ethereum Price Checker workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveEmail", "type": "output" },
+      "end": { "id": "fetchEthereumPrice", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "fetchEthereumPrice", "type": "output" },
+      "end": { "id": "processEthereumPrice", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "processEthereumPrice", "type": "output" },
+      "end": { "id": "generateEmailResponse", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 240,
+      "endY": 344
+    },
+    {
+      "id": "edge4",
+      "start": { "id": "generateEmailResponse", "type": "output" },
+      "end": { "id": "sendPriceEmail", "type": "input" },
+      "startX": 528,
+      "startY": 344,
+      "endX": 240,
+      "endY": 408
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 346,
+  "canvasOffsetY": 208,
+  "isTinyNodeMode": false
+}

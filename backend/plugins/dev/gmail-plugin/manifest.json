@@ -1,0 +1,135 @@
+{
+  "name": "gmail-plugin",
+  "version": "1.0.0",
+  "description": "Gmail integration plugin for AGNT - Send, reply, read, organize, and manage attachments",
+  "author": "AGNT",
+  "icon": "gmail",
+  "tools": [
+    {
+      "type": "gmail-api",
+      "entryPoint": "./gmail-api.js",
+      "schema": {
+        "title": "Gmail API",
+        "category": "action",
+        "type": "gmail-api",
+        "icon": "gmail",
+        "description": "A powerful tool to send, reply, read, organize, and manage attachments in Gmail.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "operation": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "Search and Read Emails",
+              "Send Email",
+              "Reply to Email",
+              "Read Email",
+              "Modify Email",
+              "Get Attachments"
+            ],
+            "description": "The Gmail operation to perform.",
+            "default": "Search and Read Emails",
+            "inputSize": "full"
+          },
+          "searchQuery": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional. Gmail search query (e.g., 'from:user is:unread'). If blank, fetches latest emails.",
+            "conditional": {
+              "field": "operation",
+              "value": "Search and Read Emails"
+            }
+          },
+          "maxResults": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Maximum number of emails to return.",
+            "default": 10,
+            "conditional": {
+              "field": "operation",
+              "value": "Search and Read Emails"
+            }
+          },
+          "to": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Recipient's email address. e.g. hello@example.com",
+            "conditional": {
+              "field": "operation",
+              "value": "Send Email"
+            }
+          },
+          "subject": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Email subject.",
+            "conditional": {
+              "field": "operation",
+              "value": "Send Email"
+            }
+          },
+          "body": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "Email body. Can be plain text or HTML.",
+            "conditional": {
+              "field": "operation",
+              "value": ["Send Email", "Reply to Email"]
+            }
+          },
+          "attachments": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "Optional. JSON array of attachment objects: [{ filename: 'file.txt', mimetype: 'text/plain', content: 'base64_string' }]",
+            "conditional": {
+              "field": "operation",
+              "value": ["Send Email", "Reply to Email"]
+            }
+          },
+          "messageId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the email message to act on.",
+            "conditional": {
+              "field": "operation",
+              "value": ["Reply to Email", "Read Email", "Modify Email", "Get Attachments"]
+            }
+          },
+          "addLabelIds": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated list of Label IDs to add (e.g., 'STARRED', 'UNREAD').",
+            "conditional": {
+              "field": "operation",
+              "value": "Modify Email"
+            }
+          },
+          "removeLabelIds": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated list of Label IDs to remove (e.g., 'INBOX', 'UNREAD').",
+            "conditional": {
+              "field": "operation",
+              "value": "Modify Email"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the operation was successful."
+          },
+          "result": {
+            "type": "object",
+            "description": "Result of the operation. Can be a list of emails, a single email object, attachment data, or API confirmation."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the operation failed."
+          }
+        }
+      }
+    }
+  ]
+}

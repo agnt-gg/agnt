@@ -1,0 +1,203 @@
+{
+  "name": "agnt",
+  "productName": "AGNT",
+  "version": "0.3.7",
+  "description": "AGNT AI Agent Framework",
+  "main": "main.js",
+  "author": "Nathan Wilbanks <nathan@agnt.gg>",
+  "homepage": "https://agnt.gg",
+  "license": "Custom - See LICENSE.MD",
+  "type": "module",
+  "scripts": {
+    "postinstall": "cross-env PUPPETEER_SKIP_DOWNLOAD=true PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 electron-builder install-app-deps && node scripts/patch-onnxruntime.js",
+    "start": "electron .",
+    "test:e2e": "playwright test",
+    "dev": "node backend/server.js",
+    "generate-icons": "node scripts/generate-icons.js",
+    "prebuild": "npm run generate-icons",
+    "rebuild": "electron-rebuild -f",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder -mwl"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.16.1",
+    "@cerebras/cerebras_cloud_sdk": "^1.59.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@google/genai": "^1.30.0",
+    "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.6.0",
+    "@xenova/transformers": "^2.17.2",
+    "ajv": "^8.17.1",
+    "axios": "^1.7.7",
+    "cheerio": "^1.1.0",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.5.0",
+    "express": "^4.18.3",
+    "express-session": "^1.18.0",
+    "ffmpeg-static": "^5.3.0",
+    "imap": "^0.8.17",
+    "jsdom": "^26.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "lodash": "^4.17.21",
+    "mailparser": "^3.7.1",
+    "mammoth": "^1.6.0",
+    "mathjs": "^14.5.0",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^6.9.14",
+    "openai": "^4.103.0",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "pdfreader": "3.0.2",
+    "playwright": "^1.56.0",
+    "puppeteer": "^24.10.2",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "readline": "^1.3.0",
+    "sharp": "^0.32.6",
+    "sqlite3": "^5.1.7",
+    "uuid": "^11.1.0",
+    "vm2": "^3.9.19",
+    "wavefile": "^11.0.0",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.0.2",
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9",
+    "png2icons": "^2.0.1"
+  },
+  "build": {
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sharp/**/*",
+      "node_modules/onnxruntime-node/**/*",
+      "node_modules/@xenova/transformers/**/*",
+      "node_modules/sqlite3/**/*",
+      "node_modules/better-sqlite3/**/*",
+      "backend/plugins/plugin-builds/**/*"
+    ],
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "nodeGypRebuild": false,
+    "appId": "com.agnt.app",
+    "productName": "AGNT",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    },
+    "linux": {
+      "maintainer": "Nathan Wilbanks <nathan@agnt.gg>",
+      "executableName": "agnt",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icons/",
+      "category": "Utility",
+      "desktop": {
+        "Icon": "agnt",
+        "StartupWMClass": "AGNT"
+      },
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AGNT",
+      "include": "build/installer.nsh"
+    },
+    "extraResources": [
+      {
+        "from": "node_modules/ffmpeg-static/",
+        "to": "ffmpeg",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**/*",
+      "backend/**/*",
+      "frontend/dist/**/*",
+      "scripts/**/*",
+      "build/**/*",
+      "node_modules/**/*",
+      "!node_modules/**/test/**/*",
+      "!node_modules/**/tests/**/*",
+      "!node_modules/**/*.md",
+      "!node_modules/**/.bin/**/*",
+      "!node_modules/ffmpeg-static/**/*",
+      "!node_modules/puppeteer/.local-chromium/**/*",
+      "!node_modules/playwright/.local-browsers/**/*",
+      "!node_modules/playwright-core/.local-browsers/**/*",
+      "!node_modules/onnxruntime-node/bin/**/*",
+      "!backend/.chrome/**/*",
+      "!backend/node_modules/**/*"
+    ]
+  }
+}

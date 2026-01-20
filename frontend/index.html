@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AGNT.gg</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.css" />
+    <script id="Highlight-script" src="/js/libs/highlight.js"></script>
+    <script defer>
+      window.MathJax = {
+        tex: {
+          inlineMath: [['\\(', '\\)']],
+          displayMath: [
+            ['\\[', '\\]'],
+            ['$$', '$$'],
+            // ['$', '$'],
+          ],
+          processEscapes: true,
+          processEnvironments: true,
+          packages: { '[+]': ['mhchem'] }, // Enable mhchem package
+        },
+        svg: {
+          fontCache: 'global',
+        },
+        loader: {
+          load: ['[tex]/mhchem'], // Load mhchem extension
+        },
+        startup: {
+          pageReady: () => {
+            return MathJax.startup.defaultPageReady().then(() => {
+              // console.log('MathJax initial typesetting complete');
+            });
+          },
+        },
+      };
+      hljs.configure({
+        ignoreUnescapedHTML: true,
+      });
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+    <script defer>
+      // Add this script at the end of the head section
+      document.addEventListener('DOMContentLoaded', function () {
+        if (window.electron !== undefined) {
+          document.body.classList.add('electron');
+        }
+      });
+    </script>
+  </head>
+  <body class="dark">
+    <!-- LIBRARIES -->
+    <div id="app"></div>
+    <script id="Showdown-script" src="/js/libs/showdown.js"></script>
+    <script id="HTML2Canvas-script" src="/js/libs/html2canvas.js"></script>
+    <script id="JSPDF-script" src="/js/libs/jspdf.js"></script>
+    <script id="JSPDF-Autotable-script" src="/js/libs/jspdf-autotable.js"></script>
+    <script id="Common-script" src="/js/common.js"></script>
+    <script id="Main-Vue-script" src="/src/main.js" type="module"></script>
+  </body>
+</html>

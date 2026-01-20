@@ -1,0 +1,50 @@
+{
+  "name": "firecrawl-plugin",
+  "version": "1.0.0",
+  "description": "Web scraping plugin for AGNT using Firecrawl API - Extract clean markdown or HTML from any webpage",
+  "author": "AGNT",
+  "icon": "fire",
+  "tools": [
+    {
+      "type": "firecrawl-api",
+      "entryPoint": "./firecrawl-api.js",
+      "schema": {
+        "title": "Firecrawl API",
+        "category": "action",
+        "type": "firecrawl-api",
+        "icon": "fire",
+        "description": "Scrape web content using Firecrawl API",
+        "authRequired": "apiKey",
+        "authProvider": "firecrawl",
+        "parameters": {
+          "url": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The URL to scrape"
+          },
+          "format": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["Markdown", "HTML"],
+            "default": "Markdown",
+            "description": "The desired output format"
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the scraping was successful"
+          },
+          "result": {
+            "type": "object",
+            "description": "The scraped content in the selected format"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the scraping failed"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,185 @@
+/* LIGHT THEME - Default theme styles */
+
+/* Light theme uses the default CSS variables and doesn't need body classes */
+/* This file exists for completeness and future light theme customizations */
+
+body:not(.dark) {
+  /* Light theme is the default - uses base styles from main.css */
+  --color-primary: var(--color-pink);
+  --color-secondary: var(--color-blue);
+  --color-text: var(--color-dull-navy);
+  --font-weight: bold;
+  font-size: var(--font-size-sm);
+  --terminal-border-color: var(--color-light-navy);
+  --terminal-muted-color: var(--color-med-navy);
+
+  --color-darker-0: rgba(10, 0, 80, 0.1);
+  --color-darker-1: rgba(10, 0, 80, 0.2);
+  --color-darker-2: rgba(10, 0, 80, 0.4);
+  --color-darker-3: rgba(10, 0, 80, 0.8);
+  line-height: 1.25;
+}
+
+/* Light theme specific overrides if needed */
+body:not(.dark) h1,
+body:not(.dark) h2,
+body:not(.dark) h3,
+body:not(.dark) h4,
+body:not(.dark) h5 {
+  color: var(--color-dark-navy);
+  opacity: 1;
+}
+
+body:not(.dark) p,
+body:not(.dark) li,
+body:not(.dark) th,
+body:not(.dark) td {
+  color: var(--color-dull-navy);
+  opacity: 1;
+}
+
+body:not(.dark) button {
+  color: var(--color-dull-navy);
+}
+
+body:not(.dark) header {
+  border-bottom: 1px solid var(--color-light-navy);
+  background: var(--color-white);
+  color: var(--color-dark-navy);
+}
+
+body:not(.dark) .separator {
+  color: var(--color-med-navy);
+  opacity: 0.75;
+}
+
+body:not(.dark) #left-sidebar {
+  border-right: 1px solid var(--color-light-navy);
+  background: var(--color-ultra-light-navy);
+}
+
+body:not(.dark) .left-sidebar-bottom-nav .svg-icon path {
+  fill: var(--color-med-navy);
+}
+
+body:not(.dark) a.router-link-active .svg-icon path {
+  fill: var(--color-pink);
+}
+
+body:not(.dark) button.generate {
+  background-image: linear-gradient(45deg, #e53d8f, #e53de3);
+  color: var(--color-white);
+  font-weight: 600;
+}
+
+body:not(.dark) main-area {
+  background: var(--color-bright-light-navy);
+}
+
+body:not(.dark) .card-inner {
+  border: 1px solid var(--color-light-navy);
+  background: var(--color-white);
+}
+
+/* Form elements */
+body:not(.dark) input[type='text'],
+body:not(.dark) input[type='number'],
+body:not(.dark) input[type='email'],
+body:not(.dark) input[type='password'],
+body:not(.dark) input[type='date'],
+body:not(.dark) input[type='datetime-local'],
+body:not(.dark) input[type='month'],
+body:not(.dark) input[type='week'],
+body:not(.dark) input[type='tel'],
+body:not(.dark) input[type='url'],
+body:not(.dark) input[type='search'],
+body:not(.dark) input[type='color'],
+body:not(.dark) textarea,
+body:not(.dark) select {
+  color: var(--color-text);
+  background-color: var(--color-white);
+  border-color: var(--terminal-border-color);
+}
+
+body:not(.dark) input[type='text']:focus,
+body:not(.dark) input[type='number']:focus,
+body:not(.dark) textarea:focus,
+body:not(.dark) select:focus {
+  outline: none;
+  border: 1px solid var(--color-pink);
+}
+
+body:not(.dark) input::placeholder,
+body:not(.dark) textarea::placeholder {
+  color: var(--color-med-navy);
+  opacity: 0.5;
+}
+
+/* Panels and containers */
+body:not(.dark) .panel-body {
+  background: var(--color-white);
+  border: 1px solid var(--color-light-navy);
+}
+
+/* body:not(.dark) editor-panel {
+  background: var(--color-white);
+  border-right: 1px solid var(--color-light-navy);
+} */
+
+body:not(.dark) inner-editor-area {
+  background: var(--color-white);
+  border: 1px solid var(--color-light-navy);
+}
+
+body:not(.dark) bottom-menu {
+  /* background: var(--color-ultra-light-navy); */
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+/* Workflow Designer */
+/* body:not(.dark) #canvas-container {
+  background-color: var(--color-bright-light-navy);
+} */
+
+body:not(.dark) .grid-overlay {
+  opacity: 0.125;
+  background-image: radial-gradient(circle, var(--color-darker-3) 1px, transparent 1px);
+}
+
+body:not(.dark) .node {
+  color: var(--color-dark-navy);
+  background: var(--color-lighter-2);
+  border: 2px solid var(--terminal-border-color);
+}
+
+body:not(.dark) .node.starter {
+  background-image: url("data:image/svg+xml,%3Csvg width='240' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='238' height='46' fill='none' stroke='rgba(125,125,175,0.3)' stroke-width='1' stroke-dasharray='5,8' rx='8' ry='8'/%3E%3C/svg%3E");
+  /* background-image: none !important;
+  background: rgba(230, 229, 237, 0.95);
+  border: 2px dashed var(--terminal-border-color) !important;
+  stroke-dasharray: 10, 5 !important;
+  stroke-width: 3px !important; */
+}
+
+body:not(.dark) .edges path {
+  stroke: var(--color-med-navy);
+  opacity: 0.5;
+}
+
+body:not(.dark) .edges path.selected {
+  stroke: var(--color-pink);
+  opacity: 1;
+}
+
+/* Code highlighting for light theme */
+body:not(.dark) pre,
+body:not(.dark) mjx-container {
+  background: var(--color-ultra-light-navy);
+  color: var(--color-dark-navy);
+  border: 1px solid var(--color-light-navy);
+}
+
+body:not(.dark) .hljs {
+  background: var(--color-ultra-light-navy);
+  color: var(--color-dark-navy);
+}

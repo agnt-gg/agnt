@@ -1,0 +1,1 @@
+export const PositionComponent = (x, y) => ({ x, y }); 

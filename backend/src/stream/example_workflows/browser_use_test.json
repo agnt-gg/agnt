@@ -1,0 +1,157 @@
+{
+  "id": "3212fb54-bed0-4663-8919-8e93bba69f29",
+  "name": "Browser Use Test",
+  "nodes": [
+    {
+      "id": "cc24dc22-4d80-4e6c-8d88-a4f7c6532170",
+      "text": "AI Browser Use",
+      "x": 720,
+      "y": 368,
+      "isEditing": false,
+      "type": "ai-browser-use",
+      "icon": "web",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "instructions": "ORIGINAL TASK:\n{{receiveDiscordMessage.content}}\n\nHELPFUL NOTES (optional):\n{{aILLMCall.generatedText}}",
+        "provider": "OpenAI"
+      },
+      "description": "Executes instructions using Browser Use to run browser automation tasks. Used to search the web for information.",
+      "error": null,
+      "outputs": { "result": "", "gifPath": "", "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "f2fa5fd0-861f-4c54-abc3-5d31b5552de8",
+      "text": "AI LLM Call",
+      "x": 1040,
+      "y": 432,
+      "isEditing": false,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "provider": "OpenAI",
+        "model": "gpt-4o-mini",
+        "prompt": "based on the output of the browser agent, either summarize / finish what was done and if the task completed, or prompt the user for the next information needed to complete the task:\n\nORIGINAL TASK:\n{{receiveDiscordMessage.content}}\n\nBROWSER OUTPUT:\n{{aIBrowserUse.result}}\n\nBROWSER ERROR:\n{{aIBrowserUse.error}}",
+        "maxTokens": "500",
+        "temperature": ".7",
+        "parseJson": "false",
+        "image": ""
+      },
+      "description": "This action node uses a large language model (LLM) to generate text based on a given prompt or input. Returns a generated text string & final token count integer.",
+      "error": null,
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "81798fc9-d1fc-45a3-a8f9-817b81ba9a7d",
+      "text": "Receive Discord Message",
+      "x": 720,
+      "y": 304,
+      "isEditing": false,
+      "type": "receive-discord-message",
+      "icon": "discord",
+      "category": "trigger",
+      "isSelected": false,
+      "parameters": { "channelId": "1326995796075483186" },
+      "description": "This trigger node listens for incoming Discord messages in a specified channel and triggers the workflow when a new message is received.",
+      "error": null,
+      "outputs": {
+        "content": "",
+        "author": "",
+        "timestamp": 0,
+        "response": {}
+      },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "b413a73c-be8d-419c-8838-7cacd3d68812",
+      "text": "Discord API",
+      "x": 1040,
+      "y": 496,
+      "isEditing": false,
+      "type": "discord-api",
+      "icon": "discord",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "action": "SEND_MESSAGE",
+        "channelId": "1326995796075483186",
+        "message": "{{aILLMCall.generatedText}}",
+        "guildId": "",
+        "roleId": "",
+        "memberIds": "",
+        "fileName": "",
+        "fileData": ""
+      },
+      "description": "Interact with Discord to perform various operations such as sending messages, managing roles, and uploading files.",
+      "error": null,
+      "outputs": { "success": false, "result": {}, "error": "" },
+      "isActive": false,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "748dd71d-32d7-409e-ab61-3fd5bfcee1f2",
+      "start": {
+        "id": "cc24dc22-4d80-4e6c-8d88-a4f7c6532170",
+        "type": "output"
+      },
+      "end": { "id": "f2fa5fd0-861f-4c54-abc3-5d31b5552de8", "type": "input" },
+      "startX": 1008,
+      "startY": 392,
+      "endX": 1040,
+      "endY": 456
+    },
+    {
+      "id": "4c2e4d3f-f28c-4d7d-ac8e-7f85efa08687",
+      "start": {
+        "id": "f2fa5fd0-861f-4c54-abc3-5d31b5552de8",
+        "type": "output"
+      },
+      "end": { "id": "cc24dc22-4d80-4e6c-8d88-a4f7c6532170", "type": "input" },
+      "startX": 1328,
+      "startY": 456,
+      "endX": 720,
+      "endY": 392,
+      "if": "{{aIBrowserUse.error}}",
+      "condition": "is_not_empty",
+      "maxIterations": "3"
+    },
+    {
+      "id": "64785c4b-da34-40b2-aa16-8803bb4210c9",
+      "start": {
+        "id": "81798fc9-d1fc-45a3-a8f9-817b81ba9a7d",
+        "type": "output"
+      },
+      "end": { "id": "cc24dc22-4d80-4e6c-8d88-a4f7c6532170", "type": "input" },
+      "startX": 1008,
+      "startY": 328,
+      "endX": 720,
+      "endY": 392
+    },
+    {
+      "id": "d7f97efe-deec-4cf7-99ab-b0567fb7b3bc",
+      "start": {
+        "id": "f2fa5fd0-861f-4c54-abc3-5d31b5552de8",
+        "type": "output"
+      },
+      "end": { "id": "b413a73c-be8d-419c-8838-7cacd3d68812", "type": "input" },
+      "startX": 1328,
+      "startY": 456,
+      "endX": 1040,
+      "endY": 520
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": -265,
+  "canvasOffsetY": -6,
+  "isTinyNodeMode": false,
+  "isShareable": false
+}

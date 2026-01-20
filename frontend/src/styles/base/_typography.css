@@ -1,0 +1,259 @@
+@import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..700&display=swap');
+
+/* TYPOGRAPHY */
+:root {
+  --font-family-primary: 'League Spartan', sans-serif;
+  --font-family-mono: 'Fira Code', monospace;
+}
+
+/* BASE TYPOGRAPHY */
+body {
+  font-family: var(--font-family-primary);
+  font-size: var(--base-font-size);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* HEADINGS */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: var(--font-weight-bold);
+  margin-top: 0;
+  margin-bottom: var(--spacing-sm);
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: var(--font-size-xxl);
+  font-weight: 700;
+  line-height: 125%;
+}
+
+h2 {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 125%;
+}
+
+h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: 125%;
+}
+
+h4 {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  line-height: 150%;
+}
+
+h5 {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: 150%;
+}
+
+h6 {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 150%;
+}
+
+/* PARAGRAPHS & TEXT */
+p {
+  margin-top: 0;
+  /* margin-bottom: var(--spacing-md); */
+}
+
+p.label {
+  font-weight: 600;
+}
+
+strong {
+  font-weight: 700;
+}
+
+em {
+  font-size: inherit;
+  font-style: italic;
+  line-height: inherit;
+  color: var(--color-text);
+}
+
+small {
+  font-size: var(--font-size-sm);
+}
+
+/* LISTS */
+ol,
+ul {
+  margin-top: 0;
+  margin-bottom: var(--spacing-md);
+  padding-left: var(--spacing-lg);
+}
+
+ol ol,
+ul ul,
+ol ul,
+ul ol {
+  margin-bottom: 0;
+}
+
+li {
+  margin-bottom: var(--spacing-xs);
+}
+
+li:last-child {
+  margin-bottom: 0;
+}
+
+/* CODE */
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-family-mono);
+}
+
+code {
+  padding: var(--spacing-xxs) var(--spacing-xs);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+pre {
+  margin-top: 0;
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-md);
+  overflow: auto;
+  border-radius: var(--border-radius-md);
+}
+
+/* LINKS */
+a {
+  color: var(--color-blue);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* QUOTES */
+blockquote {
+  margin: 0 0 var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-md) var(--spacing-md) var(--spacing-xl);
+  border-left: 4px solid var(--color-light-gray);
+}
+
+blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* HORIZONTAL RULES */
+hr {
+  margin: var(--spacing-lg) 0;
+  border: 0;
+  border-top: 1px solid var(--color-med-navy);
+}
+
+/* LISTS */
+inner-editor-area ol,
+inner-editor-area ul {
+  width: 100%;
+  width: -webkit-fill-available;
+  /* list-style: auto; */
+  display: flex;
+  flex-flow: column;
+  place-content: flex-start;
+  align-items: flex-start;
+  gap: 8px;
+  /* list-style-position: inside; */
+}
+
+inner-editor-area#response-area ol li {
+  /* list-style: disc; */
+  /* list-style: none; */
+  text-align: left;
+  width: 100%;
+  list-style-position: inside !important;
+}
+
+inner-editor-area#response-area ol {
+  list-style: decimal;
+}
+
+inner-editor-area#response-area ul {
+  list-style: disc;
+  margin-left: 16px;
+}
+
+inner-editor-area#response-area h2 {
+  border-top: 1px solid var(--color-light-navy);
+  padding-top: 16px;
+  width: 100%;
+}
+
+body.dark inner-editor-area#response-area h2 {
+  border-top: 1px solid var(--color-dull-navy);
+}
+
+ol li:last-child {
+  margin-bottom: 16px;
+}
+
+#response-area ol li:last-child {
+  margin-bottom: 0;
+}
+
+/* TEXT UTILITIES */
+.text-left {
+  text-align: left;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-justify {
+  text-align: justify;
+}
+
+.text-lowercase {
+  text-transform: lowercase;
+}
+
+.text-uppercase {
+  text-transform: uppercase;
+}
+
+.text-capitalize {
+  text-transform: capitalize;
+}
+
+.text-nowrap {
+  white-space: nowrap;
+}
+
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-break {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}

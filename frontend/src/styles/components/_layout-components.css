@@ -1,0 +1,386 @@
+/* main-area {
+  display: flex;
+  position: relative;
+  top: 0;
+  left: 48px;
+  z-index: 1;
+  flex: 1;
+  width: calc(100% - 48px);
+  width: -webkit-fill-available;
+  height: calc(100% - 48px);
+  height: 100vh;
+  background: var(--color-bright-light-navy);
+  overflow-y: scroll;
+} */
+
+/* dashboard-panel {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 24px;
+  overflow-y: scroll;
+  width: calc(100% - 32px);
+} */
+
+/* .inner-dashboard-panel {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  overflow-y: hidden;
+} */
+
+div#saved-templates,
+div#saved-outputs {
+  border: 1px solid var(--color-light-navy);
+  border-radius: 8px;
+}
+
+bottom-menu {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
+  width: -webkit-fill-available;
+  height: fit-content;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--color-light-navy);
+}
+
+form {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
+  width: -webkit-fill-available;
+  gap: 16px;
+}
+
+.field-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+.new-field-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
+  width: -webkit-fill-available;
+  gap: 16px;
+  padding: 16px 12px;
+  border: 1px dashed var(--color-light-navy);
+  border-radius: 8px;
+}
+
+.action-items {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: space-between;
+  width: 100%;
+  height: 32px;
+}
+
+.left-actions {
+  position: absolute;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  gap: 12px;
+  top: 0;
+  left: 0;
+}
+
+.right-actions {
+  position: absolute;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  gap: 12px;
+  top: 0;
+  right: -1px;
+}
+
+.add-new-field {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: center;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  width: -webkit-fill-available;
+}
+
+.custom-fields {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+  width: -webkit-fill-available;
+}
+
+editor-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: center;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+  width: -webkit-fill-available;
+  height: calc(100% - 40px);
+  height: -webkit-fill-available;
+  min-height: 400px;
+  padding: 16px 24px 24px;
+  background: var(--color-bright-light-navy);
+  user-select: none;
+}
+
+editor-area img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+inner-editor-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  /* gap: 64px; */
+  width: calc(800px - 64px);
+  height: 100%;
+  min-height: 240px;
+  padding: 32px;
+  background: var(--color-dull-white);
+  border: 1px solid var(--color-light-navy);
+  border-radius: 16px 16px 0 0;
+  user-select: all;
+  line-height: 150%;
+  overflow-y: scroll;
+  font-weight: 400;
+}
+
+body[data-page='chat'] inner-editor-area {
+  width: calc(800px - 32px);
+  background: var(--color-dull-white);
+  /* border-bottom: none !important; */
+}
+
+/* inner-editor-area:first-child {
+  gap: 32px;
+} */
+
+body[data-page='create'] inner-editor-area {
+  gap: 32px;
+  border-radius: 16px;
+}
+
+.placeholder-text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 32px;
+  width: 100%;
+  height: 100%;
+}
+
+inner-editor-area .placeholder-text .placeholder {
+  opacity: 0.25;
+  font-weight: 400;
+}
+
+inner-editor-area .placeholder-text hr {
+  width: 100%;
+  border-color: var(--color-ultra-light-navy);
+  opacity: 0.5;
+  margin: 0;
+}
+
+inner-editor-area#response-area hr {
+  width: 100%;
+  width: -webkit-fill-available;
+}
+
+inner-editor-area#response-area span {
+  line-height: 125%;
+}
+
+#response-area details p {
+  margin-top: 16px;
+}
+
+#respose-area p:empty {
+  display: none;
+}
+
+.content-actions {
+  /* position: absolute;
+  right: calc(50% - 400px - 44px); */
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.content-actions-wrapper {
+  position: relative;
+  /* right: calc(50% - 400px - 44px); */
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+#content-actions {
+  top: 60px;
+}
+
+.pdf-download-loader {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: center;
+  justify-content: flex-start;
+  align-items: center;
+  z-index: 99;
+  background: rgb(0 0 0 / 50%);
+  padding: 16px;
+  height: calc(100vh);
+}
+
+inner-editor-area.pdf-download {
+  display: flex !important;
+  gap: 32px !important;
+}
+
+.hide {
+  display: none; /* Ensures the element being dragged is not shown in its original position while dragging */
+}
+
+.drop-placeholder {
+  width: 100%;
+  background-color: var(--color-ultra-light-navy);
+  border-top: 2px dashed var(--color-med-navy);
+  min-height: 20px;
+  margin-bottom: 8px;
+  padding-top: 16px;
+}
+
+.custom-fields .field-group.drag-target {
+  transition: background-color 0.3s ease;
+}
+
+.placeholder.active {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.field-group.drag-over {
+  border-bottom: none;
+}
+
+summary {
+  cursor: pointer;
+}
+
+.modal {
+  display: flex;
+  position: fixed;
+  z-index: 99;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background-color: rgb(0, 0, 0);
+  background-color: rgba(0, 0, 0, 0.4);
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: center;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  background-color: #fefefe;
+  margin: 15% auto; /* 15% from the top and centered */
+  padding: 20px;
+  border: 1px solid #888;
+  border-radius: 8px;
+  width: fit-content;
+}
+
+think {
+  color: var(--color-white);
+  padding: 16px;
+  background: rgb(0 0 0 / 20%);
+  border-radius: 8px;
+  font-style: italic;
+  opacity: 0.5;
+  line-height: 150%;
+  transition: 0.3s ease-in-out;
+  height: 38px;
+  overflow: hidden;
+}
+
+think:hover {
+  height: fit-content;
+  opacity: 1;
+}
+
+body.dark think {
+  background: rgb(0 0 0 / 20%);
+}

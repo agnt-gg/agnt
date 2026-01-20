@@ -1,0 +1,81 @@
+{
+  "name": "claude-agent-plugin",
+  "version": "1.0.0",
+  "description": "Autonomous Claude Agent powered by @anthropic-ai/claude-agent-sdk",
+  "author": "AGNT Team",
+  "icon": "claude",
+  "tools": [
+    {
+      "type": "claude-agent",
+      "entryPoint": "./claude-agent.js",
+      "schema": {
+        "title": "Claude Agent",
+        "category": "action",
+        "type": "claude-agent",
+        "icon": "claude",
+        "description": "An autonomous agent that can use tools to accomplish complex tasks.",
+        "parameters": {
+          "prompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The task for the agent to perform",
+            "required": true
+          },
+          "permissionMode": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["default", "acceptEdits", "bypassPermissions", "plan"],
+            "default": "default",
+            "description": "The permission mode for the agent"
+          },
+          "maxBudgetUsd": {
+            "type": "number",
+            "inputType": "number",
+            "default": 1.0,
+            "description": "Maximum budget in USD for this task"
+          },
+          "allowedTools": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Comma-separated list of AGNT tool types the agent is allowed to use. Leave blank for all.",
+            "default": ""
+          },
+          "systemPrompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Optional additional system prompt instructions"
+          },
+          "useSandbox": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "options": ["true"],
+            "default": "false",
+            "description": "Enable sandbox for the agent"
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the agent successfully completed the task"
+          },
+          "result": {
+            "type": "string",
+            "description": "The final result or summary from the agent"
+          },
+          "totalCost": {
+            "type": "number",
+            "description": "Total cost of the operation in USD"
+          },
+          "turns": {
+            "type": "number",
+            "description": "Number of turns taken by the agent"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the task failed"
+          }
+        }
+      }
+    }
+  ]
+}

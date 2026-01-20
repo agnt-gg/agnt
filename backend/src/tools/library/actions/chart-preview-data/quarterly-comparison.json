@@ -1,0 +1,15 @@
+{
+  "labels": ["Q1", "Q2", "Q3", "Q4"],
+  "datasets": [
+    {
+      "label": "2023 Revenue",
+      "data": [45000, 52000, 48000, 61000],
+      "backgroundColor": "#e53d8f"
+    },
+    {
+      "label": "2024 Revenue",
+      "data": [48000, 58000, 54000, 67000],
+      "backgroundColor": "#12e0ff"
+    }
+  ]
+}

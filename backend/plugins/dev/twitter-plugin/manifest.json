@@ -1,0 +1,149 @@
+{
+  "name": "twitter-plugin",
+  "version": "1.0.0",
+  "description": "X (Twitter) integration plugin for AGNT - Post tweets, search, manage follows, and monitor mentions",
+  "author": "AGNT",
+  "icon": "twitter",
+  "tools": [
+    {
+      "type": "twitter-api",
+      "entryPoint": "./twitter-api.js",
+      "schema": {
+        "title": "X (Twitter) API",
+        "category": "action",
+        "type": "twitter-api",
+        "icon": "twitter",
+        "description": "Interact with Twitter to post tweets, delete tweets, retrieve user tweets, search tweets, and fetch user profiles.",
+        "authRequired": "oauth",
+        "authProvider": "twitter",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "POST",
+              "DELETE",
+              "REPLY",
+              "LIKE",
+              "GET_TWEETS",
+              "GET_TIMELINE",
+              "SEARCH",
+              "GET_PROFILE",
+              "MONITOR_REPLIES",
+              "CHECK_MENTIONS",
+              "FOLLOW",
+              "UNFOLLOW",
+              "BULK_UNFOLLOW"
+            ],
+            "description": "The action to perform on Twitter"
+          },
+          "text": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The content of the tweet or reply",
+            "conditional": {
+              "field": "action",
+              "value": ["POST", "REPLY"]
+            }
+          },
+          "tweetId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the tweet to delete, reply to, like, or monitor replies for",
+            "conditional": {
+              "field": "action",
+              "value": ["DELETE", "REPLY", "LIKE", "MONITOR_REPLIES"]
+            }
+          },
+          "userId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The user ID or username to fetch tweets, timeline, or profile",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_TWEETS", "GET_TIMELINE", "GET_PROFILE"]
+            }
+          },
+          "targetUserId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The target user ID or username to follow or unfollow",
+            "conditional": {
+              "field": "action",
+              "value": ["FOLLOW", "UNFOLLOW"]
+            }
+          },
+          "userIds": {
+            "type": "array",
+            "inputType": "textarea",
+            "description": "Array of user IDs or usernames to unfollow (max 100)",
+            "conditional": {
+              "field": "action",
+              "value": "BULK_UNFOLLOW"
+            }
+          },
+          "maxResults": {
+            "type": "number",
+            "inputType": "number",
+            "description": "The maximum number of results to return",
+            "default": 10,
+            "conditional": {
+              "field": "action",
+              "value": ["GET_TWEETS", "GET_TIMELINE", "SEARCH"]
+            }
+          },
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The search query for finding tweets",
+            "conditional": {
+              "field": "action",
+              "value": "SEARCH"
+            }
+          },
+          "sortOrder": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["RECENCY", "POPULARITY"],
+            "default": "RECENCY",
+            "description": "How to sort the search results",
+            "conditional": {
+              "field": "action",
+              "value": "SEARCH"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the action was successful"
+          },
+          "tweetId": {
+            "type": "string",
+            "description": "The ID of the posted tweet"
+          },
+          "tweets": {
+            "type": "array",
+            "description": "Array of tweets from the user"
+          },
+          "searchResults": {
+            "type": "array",
+            "description": "Array of tweets matching the search query"
+          },
+          "userProfile": {
+            "type": "object",
+            "description": "User profile information"
+          },
+          "mentions": {
+            "type": "array",
+            "description": "Array of tweets mentioning the user"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the action failed"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "agnt-firecrawl-plugin",
+  "version": "1.0.0",
+  "description": "Firecrawl web scraping plugin for AGNT",
+  "type": "module",
+  "main": "firecrawl-api.js",
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}

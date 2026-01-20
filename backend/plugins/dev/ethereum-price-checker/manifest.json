@@ -1,0 +1,55 @@
+{
+  "name": "ethereum-price-checker",
+  "version": "1.0.0",
+  "description": "Retrieves the current price of Ethereum using the CoinGecko API.",
+  "author": "AGNT User",
+  "icon": "ethereum",
+  "tools": [
+    {
+      "type": "get-ethereum-price",
+      "entryPoint": "./index.js",
+      "schema": {
+        "title": "Get Ethereum Price",
+        "category": "action",
+        "type": "get-ethereum-price",
+        "icon": "ethereum",
+        "description": "Fetches the current market price of Ethereum (ETH).",
+        "parameters": {
+          "currency": {
+            "type": "string",
+            "inputType": "select",
+            "description": "The target currency to display the price in.",
+            "options": [
+              "usd",
+              "eur",
+              "gbp",
+              "jpy",
+              "aud",
+              "cad"
+            ],
+            "default": "usd",
+            "required": true
+          }
+        },
+        "outputs": {
+          "price": {
+            "type": "number",
+            "description": "The current price of Ethereum in the selected currency."
+          },
+          "currency": {
+            "type": "string",
+            "description": "The currency symbol (e.g., usd)."
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the API call was successful."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the fetch failed."
+          }
+        }
+      }
+    }
+  ]
+}

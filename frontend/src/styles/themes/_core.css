@@ -1,0 +1,58 @@
+/* THEME CORE - Theme switching mechanics */
+
+/* Default theme variables */
+:root {
+  /* Default color scheme */
+  --color-surface: var(--color-white);
+  --color-text: var(--color-navy);
+  --color-text-secondary: var(--color-med-navy);
+  --color-text-dull: var(--color-light-navy);
+  --color-text-muted: var(--color-dull-navy);
+  --color-border: var(--color-light-navy);
+  --terminal-border-color: var(--color-light-navy);
+  --terminal-border-color-light: var(--color-bright-light-navy);
+  --terminal-highlight-color: var(--color-med-navy);
+  --terminal-muted-color: var(--color-med-navy);
+  --terminal-darken-color: rgba(0, 0, 0, 0.05);
+  --terminal-lighten-color: rgba(255, 255, 255, 0.05);
+
+  /* Default shadows */
+  --shadow-default: var(--shadow-md);
+
+  /* Default transitions */
+  --transition-default: var(--transition-medium);
+}
+
+/* Theme classes for switching */
+.theme-light {
+  /* Uses default variables */
+}
+
+.theme-dark {
+  /* Dark theme overrides are in _dark.css */
+}
+
+.theme-cyberpunk {
+  /* Cyberpunk theme overrides are in _cyberpunk.css */
+}
+
+/* Theme transition for smooth switching */
+body {
+  background: transparent;
+  transition: background-color, color var(--transition-default);
+  font-family: var(--font-family-primary);
+  font-size: var(--font-size-md);
+}
+
+/* Theme-specific utility classes */
+.theme-light .text-primary {
+  color: var(--color-primary);
+}
+
+.theme-light .bg-primary {
+  background-color: var(--color-primary);
+}
+
+.theme-light .border-primary {
+  border-color: var(--color-primary);
+}

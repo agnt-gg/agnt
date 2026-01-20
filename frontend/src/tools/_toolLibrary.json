@@ -1,0 +1,3594 @@
+{
+  "triggers": [
+    {
+      "title": "Timer Trigger",
+      "category": "trigger",
+      "type": "trigger-timer",
+      "icon": "clock",
+      "description": "This trigger node fires the workflow at specified intervals or at a specific time.",
+      "documentation": "https://docs.slop.ai/docs/triggers/timer-trigger",
+      "parameters": {
+        "fireOnStart": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": ["Yes", "No"],
+          "default": "Yes",
+          "description": "Fire the trigger immediately when the workflow starts"
+        },
+        "scheduleType": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": ["Interval", "Specific Time"],
+          "default": "Interval",
+          "description": "Choose between interval-based or specific time scheduling"
+        },
+        "schedule": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["Every Minute", "Every 5 Minutes", "Every 15 Minutes", "Every 30 Minutes", "Hourly", "Daily", "Weekly", "Monthly"],
+          "description": "Select the interval for the timer",
+          "conditional": {
+            "field": "scheduleType",
+            "value": "Interval"
+          }
+        },
+        "specificTime": {
+          "type": "string",
+          "inputType": "time",
+          "inputSize": "half",
+          "description": "Select the specific time to run the trigger",
+          "conditional": {
+            "field": "scheduleType",
+            "value": "Specific Time"
+          }
+        },
+        "specificDays": {
+          "type": "array",
+          "inputType": "checkbox",
+          "inputSize": "half",
+          "options": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+          "description": "Select the days to run the trigger at the specific time",
+          "conditional": {
+            "field": "scheduleType",
+            "value": "Specific Time"
+          }
+        }
+      },
+      "outputs": {
+        "timestamp": {
+          "type": "string",
+          "description": "The timestamp when the trigger fired"
+        }
+      }
+    },
+    {
+      "title": "Webhook Listener",
+      "category": "trigger",
+      "type": "webhook-listener",
+      "icon": "connect",
+      "description": "This trigger node listens for incoming webhook requests and triggers the workflow when a request is received.",
+      "requiresPro": true,
+      "parameters": {
+        "webhookUrl": {
+          "type": "string",
+          "inputType": "readonly",
+          "value": "{{WEBHOOK_URL}}/webhook/{{WORKFLOWID}}",
+          "description": "The unique webhook URL for this workflow"
+        },
+        "method": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["POST", "GET", "PUT", "PATCH", "DELETE"],
+          "description": "The HTTP method to accept"
+        },
+        "authType": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["None", "Basic", "Bearer", "Webhook"],
+          "description": "The type of authentication"
+        },
+        "authToken": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Authentication token for Bearer or Webhook authentication",
+          "conditional": {
+            "field": "authType",
+            "value": ["Bearer", "Webhook"]
+          }
+        },
+        "username": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Username for Basic authentication",
+          "conditional": {
+            "field": "authType",
+            "value": "Basic"
+          }
+        },
+        "password": {
+          "type": "string",
+          "inputType": "password",
+          "description": "Password for Basic authentication",
+          "conditional": {
+            "field": "authType",
+            "value": "Basic"
+          }
+        },
+        "responseMode": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["Immediate", "Wait for Result"],
+          "description": "Whether to return 200 OK immediately or wait for the workflow to complete and return the result",
+          "default": "Immediate"
+        },
+        "responseBody": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "Template for the response body. You can use variables from the workflow steps (e.g. {{stepName.output}}).",
+          "conditional": {
+            "field": "responseMode",
+            "value": "Wait for Result"
+          }
+        },
+        "responseContentType": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Content-Type header for the response (e.g. application/json)",
+          "default": "application/json",
+          "conditional": {
+            "field": "responseMode",
+            "value": "Wait for Result"
+          }
+        }
+      },
+      "outputs": {
+        "method": {
+          "type": "string",
+          "description": "The HTTP method of the received request"
+        },
+        "headers": {
+          "type": "object",
+          "description": "The headers of the incoming request"
+        },
+        "body": {
+          "type": "object",
+          "description": "The body of the incoming request"
+        },
+        "query": {
+          "type": "object",
+          "description": "The query parameters of the incoming request"
+        },
+        "params": {
+          "type": "object",
+          "description": "The route parameters of the incoming request"
+        }
+      }
+    },
+    {
+      "title": "Receive Email",
+      "category": "trigger",
+      "type": "receive-email",
+      "icon": "inbox",
+      "description": "This trigger node listens for incoming emails and triggers the workflow when a new email is received. Returns the received email details like from address, subject, body, etc.",
+      "requiresPro": true,
+      "parameters": {
+        "emailConfig": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["Built-in Email", "Custom IMAP"],
+          "description": "Choose between built-in email or custom IMAP settings",
+          "default": "Built-in Email"
+        },
+        "emailAddress": {
+          "type": "string",
+          "inputType": "readonly",
+          "value": "workflow-{{WORKFLOWID}}@{{IMAP_EMAIL_DOMAIN}}",
+          "description": "The email address to monitor for incoming emails",
+          "conditional": {
+            "field": "emailConfig",
+            "value": "Built-in Email"
+          }
+        },
+        "imapUser": {
+          "type": "string",
+          "inputType": "text",
+          "description": "IMAP username",
+          "conditional": {
+            "field": "emailConfig",
+            "value": "Custom IMAP"
+          }
+        },
+        "imapPassword": {
+          "type": "string",
+          "inputType": "password",
+          "description": "IMAP password",
+          "conditional": {
+            "field": "emailConfig",
+            "value": "Custom IMAP"
+          }
+        },
+        "imapHost": {
+          "type": "string",
+          "inputType": "text",
+          "description": "IMAP host",
+          "conditional": {
+            "field": "emailConfig",
+            "value": "Custom IMAP"
+          }
+        },
+        "imapPort": {
+          "type": "string",
+          "inputType": "text",
+          "description": "IMAP port",
+          "default": "993",
+          "conditional": {
+            "field": "emailConfig",
+            "value": "Custom IMAP"
+          }
+        },
+        "imapTls": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Use TLS (SSL) - set 'true' or 'false'",
+          "default": "true",
+          "conditional": {
+            "field": "emailConfig",
+            "value": "Custom IMAP"
+          }
+        }
+      },
+      "outputs": {
+        "from": {
+          "type": "string",
+          "description": "The sender's email address"
+        },
+        "to": {
+          "type": "string",
+          "description": "This workflow email address"
+        },
+        "subject": {
+          "type": "string",
+          "description": "The subject of the received email"
+        },
+        "body": {
+          "type": "string",
+          "description": "The body content of the received email"
+        },
+        "attachments": {
+          "type": "array",
+          "description": "An array of attachment objects, if any"
+        }
+      }
+    },
+    {
+      "title": "Receive Discord Message",
+      "category": "trigger",
+      "type": "receive-discord-message",
+      "icon": "discord",
+      "description": "This trigger node listens for incoming Discord messages in a specified channel and triggers the workflow when a new message is received.",
+      "authRequired": "apiKey",
+      "authProvider": "discord",
+      "parameters": {
+        "channelId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the Discord channel to monitor"
+        }
+      },
+      "outputs": {
+        "content": {
+          "type": "string",
+          "description": "The content of the message"
+        },
+        "author": {
+          "type": "string",
+          "description": "The username of the message author"
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "The timestamp of when the message was created"
+        },
+        "response": {
+          "type": "object",
+          "description": "The complete raw API response as received from Slack"
+        }
+      }
+    },
+    {
+      "title": "Receive Slack Message",
+      "category": "trigger",
+      "type": "receive-slack-message",
+      "icon": "slack-receive",
+      "description": "This trigger node listens for incoming Slack messages in a specified channel and triggers the workflow when a new message is received.",
+      "authRequired": "oauth",
+      "authProvider": "slack",
+      "parameters": {
+        "channelId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the Slack channel to monitor"
+        }
+      },
+      "outputs": {
+        "user": {
+          "type": "string",
+          "description": "The user who sent the message"
+        },
+        "text": {
+          "type": "string",
+          "description": "The content of the message"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The timestamp of the message"
+        },
+        "image": {
+          "type": "object",
+          "description": "Image data if an image was attached to the message",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "The MIME type of the image"
+            },
+            "data": {
+              "type": "string",
+              "description": "The base64-encoded image data"
+            }
+          }
+        },
+        "response": {
+          "type": "object",
+          "description": "The complete raw API response as received from Slack"
+        }
+      }
+    },
+    {
+      "title": "Google Sheets New Row",
+      "category": "trigger",
+      "type": "google-sheets-new-row",
+      "icon": "table",
+      "description": "This trigger node listens for new rows added to a specified Google Sheet and triggers the workflow when a new row is detected.",
+      "authRequired": "oauth",
+      "authProvider": "google",
+      "parameters": {
+        "spreadsheetId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the Google Spreadsheet to monitor"
+        },
+        "sheetName": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the sheet within the spreadsheet to monitor"
+        }
+      },
+      "outputs": {
+        "newRow": {
+          "type": "object",
+          "description": "The data of the newly added row"
+        }
+      }
+    },
+    {
+      "title": "Zapier Trigger",
+      "category": "trigger",
+      "type": "zapier-trigger",
+      "icon": "zapier",
+      "description": "Receive events from 6,000+ apps via Zapier. When something happens in your connected apps (new email, form submission, sale, etc.), this trigger fires your workflow.",
+      "documentation": "https://docs.slop.ai/docs/triggers/zapier-trigger",
+      "parameters": {
+        "webhookUrl": {
+          "type": "string",
+          "inputType": "readonly",
+          "value": "{{WEBHOOK_URL}}/webhook/{{WORKFLOWID}}",
+          "description": "Copy this URL into your Zapier webhook action. In Zapier, add a 'Webhooks by Zapier' action and paste this URL."
+        },
+        "authType": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["None", "Basic", "Bearer"],
+          "default": "Bearer",
+          "description": "Authentication method (recommended: Bearer for security)"
+        },
+        "authToken": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Secret token to verify requests from Zapier. Generate a random string and add it to your Zap's headers as 'Authorization: Bearer YOUR_TOKEN'",
+          "conditional": {
+            "field": "authType",
+            "value": ["Bearer"]
+          }
+        },
+        "username": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Username for Basic authentication",
+          "conditional": {
+            "field": "authType",
+            "value": "Basic"
+          }
+        },
+        "password": {
+          "type": "string",
+          "inputType": "password",
+          "description": "Password for Basic authentication",
+          "conditional": {
+            "field": "authType",
+            "value": "Basic"
+          }
+        }
+      },
+      "outputs": {
+        "method": {
+          "type": "string",
+          "description": "The HTTP method (always POST for Zapier)"
+        },
+        "headers": {
+          "type": "object",
+          "description": "Request headers from Zapier"
+        },
+        "body": {
+          "type": "object",
+          "description": "All data sent from Zapier - access fields like zapierTrigger.body.email, zapierTrigger.body.name, etc."
+        },
+        "query": {
+          "type": "object",
+          "description": "Query parameters (if any)"
+        },
+        "params": {
+          "type": "object",
+          "description": "Route parameters (if any)"
+        }
+      }
+    }
+  ],
+  "actions": [
+    {
+      "title": "AI LLM Call",
+      "category": "action",
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "description": "This action node uses AI models for text generation, vision analysis, and image generation. Supports multiple providers including OpenAI, Anthropic, Gemini, and Grok.",
+      "parameters": {
+        "mode": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "full",
+          "options": ["Text Generation", "Vision (Image → Text)", "Image Generation"],
+          "default": "Text Generation",
+          "description": "Choose the operation mode: generate text, analyze images, or create images"
+        },
+        "provider": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "default": "OpenAI",
+          "description": "The AI provider to use"
+        },
+        "model": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "default": "gpt-4o-mini",
+          "description": "The specific model to use"
+        },
+        "prompt": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The input prompt or text for the LLM",
+          "conditional": {
+            "field": "mode",
+            "value": "Text Generation"
+          }
+        },
+        "visionPrompt": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Question or instruction about the image(s)",
+          "conditional": {
+            "field": "mode",
+            "value": "Vision (Image → Text)"
+          }
+        },
+        "visionImage": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Image data in base64 format (data:image/[type];base64,[data])",
+          "conditional": {
+            "field": "mode",
+            "value": "Vision (Image → Text)"
+          }
+        },
+        "imagePrompt": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Describe the image you want to generate",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation"
+          }
+        },
+        "imageOperation": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["Generate", "Edit", "Variation"],
+          "default": "Generate",
+          "description": "Type of image operation (only OpenAI supports Edit/Variation)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation",
+            "and": {
+              "field": "provider",
+              "value": "OpenAI"
+            }
+          }
+        },
+        "referenceImage": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Base64 image for editing or creating variations (OpenAI only)",
+          "conditional": {
+            "field": "imageOperation",
+            "value": ["Edit", "Variation"],
+            "and": {
+              "field": "provider",
+              "value": "OpenAI"
+            }
+          }
+        },
+        "numberOfImages": {
+          "type": "number",
+          "inputType": "number",
+          "default": 1,
+          "description": "Number of images to generate (1-10, OpenAI/Grok only)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation"
+          }
+        },
+        "imageSize": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["256x256", "512x512", "1024x1024", "1792x1024", "1024x1792"],
+          "default": "1024x1024",
+          "description": "Image size (OpenAI only)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation",
+            "and": {
+              "field": "provider",
+              "value": "OpenAI"
+            }
+          }
+        },
+        "imageQuality": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["standard", "hd"],
+          "default": "standard",
+          "description": "Image quality (OpenAI DALL-E 3 only)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation",
+            "and": {
+              "field": "provider",
+              "value": "OpenAI"
+            }
+          }
+        },
+        "imageStyle": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["vivid", "natural"],
+          "default": "vivid",
+          "description": "Image style (OpenAI DALL-E 3 only)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation",
+            "and": {
+              "field": "provider",
+              "value": "OpenAI"
+            }
+          }
+        },
+        "aspectRatio": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
+          "default": "1:1",
+          "description": "Aspect ratio (Gemini only)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation",
+            "and": {
+              "field": "provider",
+              "value": "Gemini"
+            }
+          }
+        },
+        "imageResolution": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["1K", "2K", "4K"],
+          "default": "1K",
+          "description": "Image resolution (Gemini Pro only)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation",
+            "and": {
+              "field": "provider",
+              "value": "Gemini"
+            }
+          }
+        },
+        "useGoogleSearch": {
+          "type": "string",
+          "inputType": "checkbox",
+          "options": ["true"],
+          "default": "false",
+          "description": "Ground generation with real-time Google Search data (Gemini only)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation",
+            "and": {
+              "field": "provider",
+              "value": "Gemini"
+            }
+          }
+        },
+        "responseFormat": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["url", "b64_json"],
+          "default": "b64_json",
+          "description": "Response format: URL or base64 JSON (OpenAI/Grok only)",
+          "conditional": {
+            "field": "mode",
+            "value": "Image Generation"
+          }
+        },
+        "maxTokens": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "description": "The maximum number of tokens to generate",
+          "conditional": {
+            "field": "mode",
+            "value": ["Text Generation", "Vision (Image → Text)"]
+          }
+        },
+        "temperature": {
+          "type": "number",
+          "inputType": "number",
+          "inputSize": "half",
+          "description": "Controls randomness in the output (0.0 to 1.0)",
+          "conditional": {
+            "field": "mode",
+            "value": ["Text Generation", "Vision (Image → Text)"]
+          }
+        },
+        "parseJson": {
+          "type": "string",
+          "inputType": "checkbox",
+          "options": ["true"],
+          "description": "Parse the generated text as JSON",
+          "default": "false",
+          "conditional": {
+            "field": "mode",
+            "value": ["Text Generation", "Vision (Image → Text)"]
+          }
+        }
+      },
+      "outputs": {
+        "generatedText": {
+          "type": "string",
+          "description": "The text generated by the LLM"
+        },
+        "tokenCount": {
+          "type": "integer",
+          "description": "The number of tokens in the generated text"
+        },
+        "generatedImages": {
+          "type": "array",
+          "description": "Array of generated images (URLs or base64 data)"
+        },
+        "firstImage": {
+          "type": "string",
+          "description": "The first generated image (convenience field for single image access)"
+        },
+        "revisedPrompt": {
+          "type": "string",
+          "description": "Auto-enhanced prompt (Grok only)"
+        },
+        "imageMetadata": {
+          "type": "object",
+          "description": "Image generation metadata (size, format, etc.)"
+        },
+        "groundingMetadata": {
+          "type": "object",
+          "description": "Google Search grounding data (Gemini only)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the operation failed"
+        }
+      }
+    },
+    {
+      "title": "Agent Chat",
+      "category": "action",
+      "type": "agnt-agent",
+      "icon": "agent",
+      "description": "Chat with an AI agent from your agent library. Select an agent and send messages to interact with it within your workflow.",
+      "parameters": {
+        "agentId": {
+          "type": "string",
+          "inputType": "agent-select",
+          "description": "Select the agent to chat with"
+        },
+        "message": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The message to send to the agent"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the chat was successful"
+        },
+        "response": {
+          "type": "string",
+          "description": "The agent's response"
+        },
+        "agentId": {
+          "type": "string",
+          "description": "The ID of the agent that responded"
+        },
+        "conversationId": {
+          "type": "string",
+          "description": "The conversation ID for tracking"
+        },
+        "toolExecutions": {
+          "type": "array",
+          "description": "Array of tools executed by the agent with their inputs and outputs"
+        },
+        "toolsUsed": {
+          "type": "number",
+          "description": "Number of tools used by the agent"
+        },
+        "conversationHistory": {
+          "type": "array",
+          "description": "Updated conversation history"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the chat failed"
+        }
+      }
+    },
+    {
+      "title": "Custom API Request",
+      "category": "action",
+      "type": "custom-api",
+      "icon": "connect",
+      "description": "This action node makes a custom API request to any endpoint with configurable method, headers, and authentication.",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The URL of the API endpoint"
+        },
+        "method": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": ["GET", "POST", "PUT", "DELETE", "PATCH"],
+          "description": "The HTTP method for the request"
+        },
+        "authType": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": ["None", "Basic", "Bearer", "Webhook"],
+          "description": "The type of authentication"
+        },
+        "query": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Query parameters for the request (e.g., 'key1=value1&key2=value2')"
+        },
+        "headers": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "Optional headers for the request. e.g., {\"Content-Type\": \"application/json\"}"
+        },
+        "body": {
+          "type": "object",
+          "inputType": "codearea",
+          "description": "Optional data to send with the request. Often JSON for APIs, but could be other formats depending on the API requirements.",
+          "conditional": {
+            "field": "method",
+            "value": ["POST", "PUT", "DELETE", "PATCH"]
+          }
+        },
+        "authToken": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Authentication token or credentials",
+          "conditional": {
+            "field": "authType",
+            "value": ["Bearer", "Webhook"]
+          }
+        },
+        "username": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Username for Basic authentication",
+          "conditional": {
+            "field": "authType",
+            "value": "Basic"
+          }
+        },
+        "password": {
+          "type": "string",
+          "inputType": "password",
+          "description": "Password for Basic authentication",
+          "conditional": {
+            "field": "authType",
+            "value": "Basic"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the API request was successful"
+        },
+        "status": {
+          "type": "number",
+          "description": "The HTTP status code of the response"
+        },
+        "result": {
+          "type": "object",
+          "description": "The data returned by the API"
+        },
+        "headers": {
+          "type": "object",
+          "description": "The headers of the API response"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the API request failed"
+        }
+      }
+    },
+    {
+      "title": "SLOP Connector",
+      "category": "action",
+      "type": "slop-connector",
+      "icon": "custom",
+      "description": "Connect to any SLOP-compatible API endpoints",
+      "parameters": {
+        "baseUrl": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Base URL of the SLOP API (e.g., https://api.example.com)"
+        },
+        "endpoint": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["info", "chat", "memory", "tools", "resources", "pay"],
+          "description": "SLOP endpoint to connect to",
+          "default": "info"
+        },
+        "method": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["GET", "POST", "PUT", "DELETE"],
+          "description": "HTTP method to use",
+          "default": "GET",
+          "conditional": {
+            "field": "endpoint",
+            "value": ["chat", "memory", "tools", "resources", "pay"]
+          }
+        },
+        "authToken": {
+          "type": "string",
+          "inputType": "password",
+          "description": "Authentication token (if required by the SLOP API)",
+          "default": ""
+        },
+        "streamMode": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["none", "sse", "websocket"],
+          "description": "Streaming mode (if supported by endpoint)",
+          "default": "none",
+          "conditional": {
+            "field": "endpoint",
+            "value": ["chat"]
+          }
+        },
+        "resourceId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "ID of the specific resource to access",
+          "conditional": {
+            "field": "endpoint",
+            "value": ["memory", "resources", "pay"]
+          }
+        },
+        "toolId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "ID of the specific tool to use",
+          "conditional": {
+            "field": "endpoint",
+            "value": "tools"
+          }
+        },
+        "payload": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "JSON payload to send with the request",
+          "conditional": {
+            "field": "method",
+            "value": ["POST", "PUT"]
+          }
+        },
+        "queryParams": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "JSON object of query parameters",
+          "conditional": {
+            "field": "method",
+            "value": "GET"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the request was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The result data from the SLOP endpoint"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the request failed"
+        },
+        "status": {
+          "type": "number",
+          "description": "HTTP status code of the response"
+        }
+      }
+    },
+    {
+      "title": "MCP Client",
+      "category": "action",
+      "type": "mcp-client",
+      "icon": "claude",
+      "description": "Connect to MCP (Model Context Protocol) servers. Automatically discovers servers from mcp.json. WORKFLOW: 1) List Servers to see available MCPs, 2) Get Server Capabilities to see what tools/resources a server offers, 3) Use Server to call those tools/resources.",
+      "parameters": {
+        "operation": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "full",
+          "options": ["List Servers", "Get Server Capabilities", "Use Server", "Connect to Remote URL", "Close Connection", "Close All Connections"],
+          "default": "List Servers",
+          "description": "REQUIRED WORKFLOW: First use 'List Servers' to see available MCPs, then 'Get Server Capabilities' to see what a specific server offers (tools/resources/prompts), finally 'Use Server' to call those capabilities. 'Connect to Remote URL' connects directly to a remote MCP server via URL. 'Close Connection' resets a specific server connection. 'Close All Connections' resets all server connections."
+        },
+        "serverUrl": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Remote MCP server URL (e.g., https://api.githubcopilot.com/mcp/, https://mcp.notion.com/mcp, https://mcp.sentry.dev/sse, https://mcp.linear.app/sse)",
+          "conditional": {
+            "field": "operation",
+            "value": "Connect to Remote URL"
+          }
+        },
+        "authToken": {
+          "type": "string",
+          "inputType": "password",
+          "description": "Optional Bearer token for authentication (if required by the remote server)",
+          "conditional": {
+            "field": "operation",
+            "value": "Connect to Remote URL"
+          }
+        },
+        "serverName": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Name of the MCP server (from the List Servers output). Example: chrome-devtools, local-example-server",
+          "conditional": {
+            "field": "operation",
+            "value": ["Get Server Capabilities", "Use Server", "Close Connection"]
+          }
+        },
+        "action": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["List Tools", "Call Tool", "List Resources", "Read Resource", "List Prompts", "Get Prompt"],
+          "default": "List Tools",
+          "description": "The action to perform on the MCP server",
+          "conditional": {
+            "field": "operation",
+            "value": ["Use Server", "Connect to Remote URL"]
+          }
+        },
+        "toolName": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Name of the tool to call (from the server's tools list)",
+          "conditional": {
+            "field": "action",
+            "value": "Call Tool"
+          }
+        },
+        "toolArgs": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "JSON STRING of arguments for the tool. Must be a valid JSON string, not an object. Example: \"{\\\"query\\\": \\\"hello\\\", \\\"limit\\\": 10}\"",
+          "conditional": {
+            "field": "action",
+            "value": "Call Tool"
+          }
+        },
+        "resourceUri": {
+          "type": "string",
+          "inputType": "text",
+          "description": "URI of the resource (from the server's resources list). Example: file:///path/to/file.txt",
+          "conditional": {
+            "field": "action",
+            "value": "Read Resource"
+          }
+        },
+        "promptName": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Name of the prompt to retrieve (from the server's prompts list)",
+          "conditional": {
+            "field": "action",
+            "value": "Get Prompt"
+          }
+        },
+        "promptArgs": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "JSON object of arguments for the prompt template. Example: {\"name\": \"John\", \"topic\": \"AI\"}",
+          "conditional": {
+            "field": "action",
+            "value": "Get Prompt"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the operation was successful"
+        },
+        "servers": {
+          "type": "array",
+          "description": "List of available MCP servers (for List Servers operation)"
+        },
+        "count": {
+          "type": "number",
+          "description": "Number of available servers (for List Servers operation)"
+        },
+        "serverName": {
+          "type": "string",
+          "description": "Name of the server (for Get Server Capabilities operation)"
+        },
+        "capabilities": {
+          "type": "object",
+          "description": "Server capabilities including tools, resources, and prompts arrays (for Get Server Capabilities operation)"
+        },
+        "toolCount": {
+          "type": "number",
+          "description": "Number of tools available (for Get Server Capabilities operation)"
+        },
+        "resourceCount": {
+          "type": "number",
+          "description": "Number of resources available (for Get Server Capabilities operation)"
+        },
+        "promptCount": {
+          "type": "number",
+          "description": "Number of prompts available (for Get Server Capabilities operation)"
+        },
+        "result": {
+          "type": "object",
+          "description": "The result of the action (for Use Server operation)"
+        },
+        "serverInfo": {
+          "type": "object",
+          "description": "Server information including version and capabilities"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the operation failed"
+        }
+      }
+    },
+    {
+      "title": "Browser Agent",
+      "category": "action",
+      "type": "ai-browser-use",
+      "icon": "web",
+      "description": "Executes instructions using Browser Use to run browser automation tasks.",
+      "parameters": {
+        "instructions": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Instructions for the browser automation task."
+        },
+        "provider": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["OpenAI", "Gemini", "DeepSeek"],
+          "default": "OpenAI",
+          "description": "Which LLM provider to use."
+        }
+      },
+      "outputs": {
+        "result": {
+          "type": "string",
+          "description": "Text result from the automation"
+        },
+        "gifPath": {
+          "type": "string",
+          "description": "Path or URL to the generated GIF"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the tool fails"
+        }
+      }
+    },
+    {
+      "title": "Discord API",
+      "category": "action",
+      "type": "discord-api",
+      "icon": "discord",
+      "description": "Interact with Discord to perform various operations such as sending messages, managing roles, and uploading files.",
+      "authRequired": "apiKey",
+      "authProvider": "discord",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["SEND_MESSAGE", "ASSIGN_ROLE", "GET_MEMBERS", "UPLOAD_FILE"],
+          "description": "The action to perform on Discord"
+        },
+        "channelId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the Discord channel (for SEND_MESSAGE and UPLOAD_FILE actions)",
+          "conditional": {
+            "field": "action",
+            "value": ["SEND_MESSAGE", "UPLOAD_FILE"]
+          }
+        },
+        "message": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The message to send (for SEND_MESSAGE action)",
+          "conditional": {
+            "field": "action",
+            "value": ["SEND_MESSAGE", "UPLOAD_FILE"]
+          }
+        },
+        "guildId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the Discord guild (server) (for ASSIGN_ROLE and GET_MEMBERS actions)",
+          "conditional": {
+            "field": "action",
+            "value": ["ASSIGN_ROLE", "GET_MEMBERS"]
+          }
+        },
+        "roleId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the role to assign (for ASSIGN_ROLE action)",
+          "conditional": {
+            "field": "action",
+            "value": "ASSIGN_ROLE"
+          }
+        },
+        "memberIds": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Comma-separated list of member IDs to assign the role to (for ASSIGN_ROLE action)",
+          "conditional": {
+            "field": "action",
+            "value": "ASSIGN_ROLE"
+          }
+        },
+        "fileName": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the file to upload (for UPLOAD_FILE action)",
+          "conditional": {
+            "field": "action",
+            "value": "UPLOAD_FILE"
+          }
+        },
+        "fileData": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The base64-encoded file data to upload (for UPLOAD_FILE action)",
+          "conditional": {
+            "field": "action",
+            "value": "UPLOAD_FILE"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the Discord operation was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The result of the Discord operation"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the Discord operation failed"
+        }
+      }
+    },
+    {
+      "title": "Dropbox API",
+      "category": "action",
+      "type": "dropbox-api",
+      "icon": "dropbox",
+      "description": "This action node interacts with Dropbox to perform various operations on files and folders.",
+      "authRequired": "oauth",
+      "authProvider": "dropbox",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "select",
+          "options": [
+            "LIST_FOLDER",
+            "UPLOAD_FILE",
+            "DOWNLOAD_FILE",
+            "DELETE_FILE",
+            "MOVE_FILE",
+            "CREATE_FOLDER",
+            "GET_FILE_METADATA",
+            "CREATE_SHARED_LINK"
+          ],
+          "description": "The action to perform on Dropbox"
+        },
+        "path": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The path of the file or folder in Dropbox (e.g., '/Documents/file.txt' or '/Photos/Vacation')",
+          "placeholder": "/path/to/file/or/folder"
+        },
+        "content": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The content of the file to upload (for UPLOAD_FILE action)",
+          "conditional": {
+            "field": "action",
+            "value": "UPLOAD_FILE"
+          }
+        },
+        "newPath": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The new path for the file or folder (for MOVE_FILE action)",
+          "conditional": {
+            "field": "action",
+            "value": "MOVE_FILE"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the Dropbox operation was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The data returned by the Dropbox operation"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the Dropbox operation failed"
+        }
+      }
+    },
+    {
+      "title": "Firecrawl API",
+      "category": "action",
+      "type": "firecrawl-api",
+      "icon": "fire",
+      "description": "Scrape web content using Firecrawl API",
+      "authRequired": "apiKey",
+      "authProvider": "firecrawl",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The URL to scrape"
+        },
+        "format": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["Markdown", "HTML"],
+          "default": "Markdown",
+          "description": "The desired output format"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the scraping was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The scraped content in the selected format"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the scraping failed"
+        }
+      }
+    },
+    {
+      "title": "GitHub API",
+      "category": "action",
+      "type": "github-api",
+      "icon": "github",
+      "description": "Interact with GitHub to perform various operations on repositories, issues, pull requests, and more.",
+      "authRequired": "oauth",
+      "authProvider": "github",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "select",
+          "options": [
+            "CREATE_ISSUE",
+            "CREATE_PR",
+            "GET_REPO_INFO",
+            "CREATE_BRANCH",
+            "MERGE_PR",
+            "LIST_PRS",
+            "GET_PR_CHANGES",
+            "ADD_LABELS",
+            "REMOVE_LABELS",
+            "GET_FILE_CONTENT",
+            "GET_REPO_CONTENTS",
+            "CREATE_FILE",
+            "UPDATE_FILE",
+            "CREATE_RELEASE",
+            "LIST_COMMITS"
+          ],
+          "description": "The action to perform on GitHub"
+        },
+        "owner": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The owner of the repository"
+        },
+        "repo": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the repository"
+        },
+        "title": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The title of the issue or pull request",
+          "conditional": {
+            "field": "action",
+            "value": ["CREATE_ISSUE", "CREATE_PR"]
+          }
+        },
+        "body": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The body of the issue or pull request",
+          "conditional": {
+            "field": "action",
+            "value": ["CREATE_ISSUE", "CREATE_PR"]
+          }
+        },
+        "head": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the branch where your changes are implemented",
+          "conditional": {
+            "field": "action",
+            "value": "CREATE_PR"
+          }
+        },
+        "base": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the branch you want the changes pulled into",
+          "conditional": {
+            "field": "action",
+            "value": "CREATE_PR"
+          }
+        },
+        "baseBranch": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the branch to create the new branch from",
+          "conditional": {
+            "field": "action",
+            "value": "CREATE_BRANCH"
+          }
+        },
+        "newBranch": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the new branch to create",
+          "conditional": {
+            "field": "action",
+            "value": "CREATE_BRANCH"
+          }
+        },
+        "pullNumber": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The number of the pull request",
+          "conditional": {
+            "field": "action",
+            "value": ["MERGE_PR", "GET_PR_CHANGES"]
+          }
+        },
+        "mergeMethod": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["merge", "squash", "rebase"],
+          "description": "The method to use when merging the pull request",
+          "conditional": {
+            "field": "action",
+            "value": "MERGE_PR"
+          }
+        },
+        "state": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["open", "closed", "all"],
+          "description": "The state of pull requests to list",
+          "conditional": {
+            "field": "action",
+            "value": "LIST_PRS"
+          }
+        },
+        "labels": {
+          "type": "array",
+          "inputType": "text",
+          "description": "The labels to add or remove",
+          "conditional": {
+            "field": "action",
+            "value": ["ADD_LABELS", "REMOVE_LABELS"]
+          }
+        },
+        "filePath": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The path to the file",
+          "conditional": {
+            "field": "action",
+            "value": ["GET_FILE_CONTENT", "CREATE_FILE", "UPDATE_FILE"]
+          }
+        },
+        "content": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The content of the file",
+          "conditional": {
+            "field": "action",
+            "value": ["CREATE_FILE", "UPDATE_FILE"]
+          }
+        },
+        "commitMessage": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The commit message",
+          "conditional": {
+            "field": "action",
+            "value": ["CREATE_FILE", "UPDATE_FILE"]
+          }
+        },
+        "tagName": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the tag",
+          "conditional": {
+            "field": "action",
+            "value": "CREATE_RELEASE"
+          }
+        },
+        "releaseName": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the release",
+          "conditional": {
+            "field": "action",
+            "value": "CREATE_RELEASE"
+          }
+        },
+        "releaseNotes": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The release notes",
+          "conditional": {
+            "field": "action",
+            "value": "CREATE_RELEASE"
+          }
+        },
+        "branch": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The branch to list commits from",
+          "conditional": {
+            "field": "action",
+            "value": "LIST_COMMITS"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the action was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The result of the action, varies based on the action performed"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the action failed"
+        }
+      }
+    },
+    {
+      "title": "Gmail API",
+      "category": "action",
+      "type": "gmail-api",
+      "icon": "gmail",
+      "authRequired": "oauth",
+      "authProvider": "google",
+      "description": "A powerful tool to send, reply, read, organize, and manage attachments in Gmail.",
+      "parameters": {
+        "operation": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["Search and Read Emails", "Send Email", "Reply to Email", "Read Email", "Modify Email", "Get Attachments"],
+          "description": "The Gmail operation to perform.",
+          "default": "Search and Read Emails",
+          "inputSize": "full"
+        },
+        "searchQuery": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Optional. Gmail search query (e.g., 'from:user is:unread'). If blank, fetches latest emails.",
+          "conditional": {
+            "field": "operation",
+            "value": "Search and Read Emails"
+          }
+        },
+        "maxResults": {
+          "type": "number",
+          "inputType": "number",
+          "description": "Maximum number of emails to return.",
+          "default": 10,
+          "conditional": {
+            "field": "operation",
+            "value": "Search and Read Emails"
+          }
+        },
+        "to": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Recipient's email address. e.g. hello@example.com",
+          "conditional": {
+            "field": "operation",
+            "value": "Send Email"
+          }
+        },
+        "subject": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Email subject.",
+          "conditional": {
+            "field": "operation",
+            "value": "Send Email"
+          }
+        },
+        "body": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "Email body. Can be plain text or HTML.",
+          "conditional": {
+            "field": "operation",
+            "value": ["Send Email", "Reply to Email"]
+          }
+        },
+        "attachments": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "Optional. JSON array of attachment objects: [{ filename: 'file.txt', mimetype: 'text/plain', content: 'base64_string' }]",
+          "conditional": {
+            "field": "operation",
+            "value": ["Send Email", "Reply to Email"]
+          }
+        },
+        "messageId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the email message to act on.",
+          "conditional": {
+            "field": "operation",
+            "value": ["Reply to Email", "Read Email", "Modify Email", "Get Attachments"]
+          }
+        },
+        "addLabelIds": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Comma-separated list of Label IDs to add (e.g., 'STARRED', 'UNREAD').",
+          "conditional": {
+            "field": "operation",
+            "value": "Modify Email"
+          }
+        },
+        "removeLabelIds": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Comma-separated list of Label IDs to remove (e.g., 'INBOX', 'UNREAD').",
+          "conditional": {
+            "field": "operation",
+            "value": "Modify Email"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the operation was successful."
+        },
+        "result": {
+          "type": "object",
+          "description": "Result of the operation. Can be a list of emails, a single email object, attachment data, or API confirmation."
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the operation failed."
+        }
+      }
+    },
+    {
+      "title": "Google Sheets API",
+      "category": "action",
+      "type": "google-sheets-api",
+      "icon": "table",
+      "description": "This action node interacts with Google Sheets to read, write or modify data in a spreadsheet.",
+      "authRequired": "oauth",
+      "authProvider": "google",
+      "parameters": {
+        "operation": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["Read", "Write", "Append", "Clear"],
+          "description": "The operation to perform on the Google Sheet"
+        },
+        "spreadsheetId": {
+          "type": "string",
+          "description": "The ID of the Google Sheet to interact with"
+        },
+        "range": {
+          "type": "string",
+          "description": "The range of cells to interact with (e.g., 'Sheet1!A1:B5')"
+        },
+        "values": {
+          "type": "array",
+          "inputType": "textarea",
+          "description": "Comma separated array of values to write or append (for write and append operations).",
+          "conditional": {
+            "field": "operation",
+            "value": ["Write", "Append"]
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the Google Sheets operation was successful"
+        },
+        "result": {
+          "type": "array",
+          "description": "The data returned by the Google Sheets operation (for read operations)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the Google Sheets operation failed"
+        }
+      }
+    },
+    {
+      "title": "Google Slides API",
+      "category": "action",
+      "type": "google-slides-api",
+      "icon": "google-slides",
+      "description": "Perform actions on Google Slides presentations and slides",
+      "authRequired": "oauth",
+      "authProvider": "google",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "select",
+          "options": [
+            "Create Presentation",
+            "Read Presentation",
+            "Update Presentation",
+            "Delete Presentation",
+            "Create Slide",
+            "Read Slide",
+            "Update Slide",
+            "Delete Slide"
+          ],
+          "description": "The action to perform"
+        },
+        "presentationId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the Google Slides presentation (not required for 'Create Presentation')",
+          "conditional": {
+            "field": "action",
+            "value": ["Read Presentation", "Update Presentation", "Delete Presentation", "Create Slide", "Read Slide", "Update Slide", "Delete Slide"]
+          }
+        },
+        "slideId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the slide (required for slide-specific actions)",
+          "conditional": {
+            "field": "action",
+            "value": ["Read Slide", "Update Slide", "Delete Slide"]
+          }
+        },
+        "title": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The title for creating or updating a presentation",
+          "conditional": {
+            "field": "action",
+            "value": ["Create Presentation", "Update Presentation"]
+          }
+        },
+        "slideContent": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "JSON-formatted content for creating or updating a slide",
+          "conditional": {
+            "field": "action",
+            "value": ["Create Slide", "Update Slide"]
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the action was successful"
+        },
+        "presentationId": {
+          "type": "string",
+          "description": "The ID of the affected presentation"
+        },
+        "slideId": {
+          "type": "string",
+          "description": "The ID of the affected slide (if applicable)"
+        },
+        "presentation": {
+          "type": "object",
+          "description": "The full presentation data (for Read Presentation action)"
+        },
+        "slide": {
+          "type": "object",
+          "description": "The slide data (for Read Slide action)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the action failed"
+        }
+      }
+    },
+    {
+      "title": "Google Web Search API",
+      "category": "action",
+      "type": "web-search",
+      "icon": "web",
+      "description": "This action node performs a web search using Google Custom Search API and returns the top results.",
+      "requiresPro": true,
+      "parameters": {
+        "searchQuery": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The search query to be executed"
+        },
+        "numResults": {
+          "type": "text",
+          "inputType": "text",
+          "description": "The number of results to return (default: 5)",
+          "default": 3
+        },
+        "sort": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["date", "relevance"],
+          "description": "Sort order for the results",
+          "default": "date"
+        }
+      },
+      "outputs": {
+        "results": {
+          "type": "array",
+          "description": "An array of search result objects"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the search failed"
+        }
+      }
+    },
+    {
+      "title": "Notion API",
+      "category": "action",
+      "type": "notion-api",
+      "icon": "notion",
+      "description": "Interact with Notion databases, pages, and blocks.",
+      "parameters": {
+        "operation": {
+          "type": "string",
+          "inputType": "select",
+          "description": "Operation to perform",
+          "options": ["search", "getDatabaseList", "queryDatabase", "getPageContent", "createPage"],
+          "default": "search"
+        },
+        "query": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Search query",
+          "conditional": {
+            "field": "operation",
+            "value": "search"
+          }
+        },
+        "databaseId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "ID of the database to query",
+          "conditional": {
+            "field": "operation",
+            "value": "queryDatabase"
+          }
+        },
+        "pageId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "ID of the page to retrieve",
+          "conditional": {
+            "field": "operation",
+            "value": "getPageContent"
+          }
+        },
+        "parentId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "ID of the parent database or page",
+          "conditional": {
+            "field": "operation",
+            "value": "createPage"
+          }
+        },
+        "parentType": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["database", "page"],
+          "default": "database",
+          "description": "Type of parent (database or page)",
+          "conditional": {
+            "field": "operation",
+            "value": "createPage"
+          }
+        },
+        "properties": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "Properties for the new page (JSON format). Example:\n{\n  \"Name\": { \"title\": [{ \"text\": { \"content\": \"Page Title\" } }] },\n  \"Tags\": { \"multi_select\": [{ \"name\": \"Tag1\" }, { \"name\": \"Tag2\" }] },\n  \"Date\": { \"date\": { \"start\": \"2023-04-22\" } }\n}",
+          "conditional": {
+            "field": "operation",
+            "value": "createPage"
+          }
+        },
+        "content": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "Content blocks for the new page (JSON format). Example:\n[\n  {\n    \"object\": \"block\",\n    \"type\": \"paragraph\",\n    \"paragraph\": {\n      \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"Hello, world!\" } }]\n    }\n  },\n  {\n    \"object\": \"block\",\n    \"type\": \"heading_1\",\n    \"heading_1\": {\n      \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"Heading 1\" } }]\n    }\n  }\n]",
+          "conditional": {
+            "field": "operation",
+            "value": "createPage"
+          }
+        },
+        "filter": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "Filter criteria (JSON format). Example:\n{\n  \"property\": \"Status\",\n  \"select\": {\n    \"equals\": \"Done\"\n  }\n}",
+          "conditional": {
+            "field": "operation",
+            "value": ["search", "queryDatabase"]
+          }
+        },
+        "sorts": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "Sort criteria (JSON format). Example:\n[\n  {\n    \"property\": \"Date\",\n    \"direction\": \"descending\"\n  }\n]",
+          "conditional": {
+            "field": "operation",
+            "value": "queryDatabase"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the operation was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The result of the operation"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if operation failed"
+        }
+      }
+    },
+    {
+      "title": "Send Email",
+      "category": "action",
+      "type": "send-email",
+      "icon": "outbox",
+      "description": "This action node sends an email to a specified recipient with a customizable subject and body.",
+      "requiresPro": true,
+      "parameters": {
+        "to": {
+          "type": "string",
+          "description": "The recipient's email address"
+        },
+        "subject": {
+          "type": "string",
+          "description": "The subject of the email"
+        },
+        "body": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The body content of the email"
+        },
+        "isHtml": {
+          "inputType": "checkbox",
+          "options": ["true"],
+          "description": "Whether the body content is HTML"
+        },
+        "attachments": {
+          "type": "array",
+          "inputType": "textarea",
+          "description": "An array of attachment objects"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the email was sent successfully"
+        },
+        "content": {
+          "type": "Object",
+          "description": "The content of the sent email"
+        },
+        "messageId": {
+          "type": "string",
+          "description": "The unique message ID of the sent email"
+        },
+        "serverResponse": {
+          "type": "object",
+          "description": "Server response details including status, statusText, data, and headers"
+        },
+        "error": {
+          "type": "null",
+          "description": "Error message if the email sending failed"
+        }
+      }
+    },
+    {
+      "title": "Slack API",
+      "category": "action",
+      "type": "send-slack-message",
+      "icon": "slack-send",
+      "description": "This action node sends a message to a specified Slack channel.",
+      "authRequired": "oauth",
+      "authProvider": "slack",
+      "parameters": {
+        "channelId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the Slack channel to send the message to"
+        },
+        "message": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The message to send"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the message was sent successfully"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The timestamp of the sent message"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the message sending failed"
+        }
+      }
+    },
+    {
+      "title": "Stripe API",
+      "category": "action",
+      "type": "stripe-invoice",
+      "icon": "stripe",
+      "description": "Create and send an invoice using Stripe",
+      "authRequired": "apiKey",
+      "authProvider": "stripe",
+      "parameters": {
+        "customerEmail": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Email address of the customer to bill"
+        },
+        "amount": {
+          "type": "number",
+          "inputType": "text",
+          "description": "Amount to bill in cents (e.g., 1000 for $10.00)"
+        },
+        "currency": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["USD", "EUR", "GBP", "JPY"],
+          "default": "USD",
+          "description": "Currency for the invoice"
+        },
+        "description": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Description of the invoice"
+        },
+        "dueDate": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Due date for the invoice (YYYY-MM-DD)"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the invoice was created successfully"
+        },
+        "invoiceId": {
+          "type": "string",
+          "description": "The ID of the created invoice"
+        },
+        "invoiceUrl": {
+          "type": "string",
+          "description": "URL to view the invoice"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the invoice creation failed"
+        }
+      }
+    },
+    {
+      "title": "Text to Speech",
+      "category": "utility",
+      "type": "text-to-speech",
+      "icon": "speaker",
+      "description": "Converts text to speech using OpenAI's TTS API.",
+      "authRequired": "apiKey",
+      "authProvider": "openai",
+      "parameters": {
+        "text": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The text to convert to speech (max 4096 characters)"
+        },
+        "voice": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+          "description": "The voice to use for the speech",
+          "default": "alloy"
+        },
+        "speed": {
+          "type": "number",
+          "inputType": "number",
+          "description": "The speed of the generated audio (0.25 to 4.0)",
+          "default": 1
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the action was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The result of the action, varies based on the action performed"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the action failed"
+        }
+      }
+    },
+    {
+      "title": "Unsplash API",
+      "category": "action",
+      "type": "unsplash-api",
+      "icon": "unsplash",
+      "description": "Access high-quality photos from Unsplash. Search photos, get random images, browse collections, and download photos with proper attribution.",
+      "authRequired": "apiKey",
+      "authProvider": "unsplash",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "select",
+          "options": [
+            "SEARCH_PHOTOS",
+            "GET_RANDOM_PHOTO",
+            "GET_PHOTO",
+            "LIST_PHOTOS",
+            "GET_COLLECTIONS",
+            "GET_COLLECTION_PHOTOS",
+            "GET_USER_PROFILE",
+            "GET_USER_PHOTOS",
+            "DOWNLOAD_PHOTO"
+          ],
+          "description": "The action to perform with Unsplash API"
+        },
+        "query": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Search query for photos (e.g., 'nature', 'technology', 'people')",
+          "conditional": {
+            "field": "action",
+            "value": ["SEARCH_PHOTOS", "GET_RANDOM_PHOTO"]
+          }
+        },
+        "photoId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the specific photo to retrieve or download",
+          "conditional": {
+            "field": "action",
+            "value": ["GET_PHOTO", "DOWNLOAD_PHOTO"]
+          }
+        },
+        "collectionId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the collection to retrieve photos from",
+          "conditional": {
+            "field": "action",
+            "value": "GET_COLLECTION_PHOTOS"
+          }
+        },
+        "username": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Unsplash username to get profile or photos from",
+          "conditional": {
+            "field": "action",
+            "value": ["GET_USER_PROFILE", "GET_USER_PHOTOS"]
+          }
+        },
+        "page": {
+          "type": "number",
+          "inputType": "number",
+          "description": "Page number for pagination (1-1000)",
+          "default": 1,
+          "inputSize": "half",
+          "conditional": {
+            "field": "action",
+            "value": ["SEARCH_PHOTOS", "LIST_PHOTOS", "GET_COLLECTIONS", "GET_COLLECTION_PHOTOS", "GET_USER_PHOTOS"]
+          }
+        },
+        "perPage": {
+          "type": "number",
+          "inputType": "number",
+          "description": "Number of results per page (1-30)",
+          "default": 10,
+          "inputSize": "half",
+          "conditional": {
+            "field": "action",
+            "value": ["SEARCH_PHOTOS", "LIST_PHOTOS", "GET_COLLECTIONS", "GET_COLLECTION_PHOTOS", "GET_USER_PHOTOS"]
+          }
+        },
+        "orientation": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["landscape", "portrait", "squarish"],
+          "description": "Filter photos by orientation",
+          "inputSize": "half",
+          "conditional": {
+            "field": "action",
+            "value": ["SEARCH_PHOTOS", "GET_RANDOM_PHOTO", "GET_COLLECTION_PHOTOS", "GET_USER_PHOTOS"]
+          }
+        },
+        "color": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["black_and_white", "black", "white", "yellow", "orange", "red", "purple", "magenta", "green", "teal", "blue"],
+          "description": "Filter photos by color",
+          "inputSize": "half",
+          "conditional": {
+            "field": "action",
+            "value": "SEARCH_PHOTOS"
+          }
+        },
+        "orderBy": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["latest", "oldest", "popular", "relevant"],
+          "description": "Sort order for results",
+          "default": "relevant",
+          "conditional": {
+            "field": "action",
+            "value": ["SEARCH_PHOTOS", "LIST_PHOTOS", "GET_USER_PHOTOS"]
+          }
+        },
+        "featured": {
+          "type": "boolean",
+          "inputType": "checkbox",
+          "options": ["true"],
+          "description": "Limit random photos to featured photos only",
+          "conditional": {
+            "field": "action",
+            "value": "GET_RANDOM_PHOTO"
+          }
+        },
+        "count": {
+          "type": "number",
+          "inputType": "number",
+          "description": "Number of random photos to retrieve (1-30)",
+          "default": 1,
+          "conditional": {
+            "field": "action",
+            "value": "GET_RANDOM_PHOTO"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the Unsplash API request was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The photo data, collection data, or user data returned by Unsplash. Includes URLs, attribution info, and metadata."
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the Unsplash API request failed"
+        }
+      }
+    },
+    {
+      "title": "Unturf AI",
+      "category": "action",
+      "type": "unturf-ai",
+      "icon": "magic",
+      "description": "Interact with Unturf.ai's free LLM (Hermes) and text-to-speech services without needing an API key.",
+      "parameters": {
+        "service": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["LLM", "Text-to-Speech"],
+          "description": "Choose which Unturf service to use",
+          "default": "LLM"
+        },
+        "prompt": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Input text or prompt for the AI",
+          "conditional": {
+            "field": "service",
+            "value": "LLM"
+          }
+        },
+        "model": {
+          "type": "string",
+          "inputType": "select",
+          "options": [
+            "adamo1139/Hermes-3-Llama-3.1-8B-FP8-Dynamic",
+            "NousResearch/Hermes-3-Llama-3.1-8B",
+            "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M"
+          ],
+          "default": "adamo1139/Hermes-3-Llama-3.1-8B-FP8-Dynamic",
+          "description": "The AI model to use (Hermes for general purpose, Qwen for coding)",
+          "conditional": {
+            "field": "service",
+            "value": "LLM"
+          }
+        },
+        "temperature": {
+          "type": "number",
+          "inputType": "number",
+          "description": "Controls randomness (0.0 to 1.0)",
+          "default": 0.5,
+          "conditional": {
+            "field": "service",
+            "value": "LLM"
+          }
+        },
+        "maxTokens": {
+          "type": "number",
+          "inputType": "number",
+          "description": "Maximum tokens to generate",
+          "default": 150,
+          "conditional": {
+            "field": "service",
+            "value": "LLM"
+          }
+        },
+        "text": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Text to convert to speech",
+          "conditional": {
+            "field": "service",
+            "value": "Text-to-Speech"
+          }
+        },
+        "voice": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+          "default": "alloy",
+          "description": "Voice to use for TTS",
+          "conditional": {
+            "field": "service",
+            "value": "Text-to-Speech"
+          }
+        },
+        "speed": {
+          "type": "number",
+          "inputType": "number",
+          "description": "Speech rate (0.25 to 4.0)",
+          "default": 1.0,
+          "conditional": {
+            "field": "service",
+            "value": "Text-to-Speech"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the request was successful"
+        },
+        "result": {
+          "type": "string",
+          "description": "Generated text from the LLM"
+        },
+        "audioUrl": {
+          "type": "string",
+          "description": "URL to the generated audio file"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the request failed"
+        }
+      }
+    },
+    {
+      "title": "Web Scrape",
+      "category": "action",
+      "type": "web-scrape",
+      "icon": "web",
+      "description": "Scrapes a URL to extract main text content, all links, AND all code snippets on the page. Use the returned `links` array for recursive research and `codeContent` to build documentation.",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The URL to scrape."
+        }
+      },
+      "outputs": {
+        "textContent": {
+          "type": "string",
+          "description": "The main text content extracted from the page"
+        },
+        "links": {
+          "type": "array",
+          "description": "Array of all links found on the page"
+        },
+        "codeContent": {
+          "type": "string",
+          "description": "All code snippets found on the page"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the scraping failed"
+        }
+      }
+    },
+    {
+      "title": "X (Twitter) API",
+      "category": "action",
+      "type": "twitter-api",
+      "icon": "twitter",
+      "description": "This action node interacts with Twitter to post tweets, delete tweets, retrieve user tweets, search tweets, and fetch user profiles.",
+      "authRequired": "oauth",
+      "authProvider": "twitter",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "select",
+          "options": [
+            "POST",
+            "DELETE",
+            "REPLY",
+            "LIKE",
+            "GET_TWEETS",
+            "GET_TIMELINE",
+            "SEARCH",
+            "GET_PROFILE",
+            "MONITOR_REPLIES",
+            "CHECK_MENTIONS",
+            "FOLLOW",
+            "UNFOLLOW",
+            "BULK_UNFOLLOW"
+          ],
+          "description": "The action to perform on Twitter"
+        },
+        "text": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The content of the tweet or reply",
+          "conditional": {
+            "field": "action",
+            "value": ["POST", "REPLY"]
+          }
+        },
+        "tweetId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the tweet to delete, reply to, like, or monitor replies for",
+          "conditional": {
+            "field": "action",
+            "value": ["DELETE", "REPLY", "LIKE", "MONITOR_REPLIES"]
+          }
+        },
+        "userId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The user ID or username to fetch tweets, timeline, or profile",
+          "conditional": {
+            "field": "action",
+            "value": ["GET_TWEETS", "GET_TIMELINE", "GET_PROFILE"]
+          }
+        },
+        "targetUserId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The target user ID or username to follow or unfollow",
+          "conditional": {
+            "field": "action",
+            "value": ["FOLLOW", "UNFOLLOW"]
+          }
+        },
+        "userIds": {
+          "type": "array",
+          "inputType": "textarea",
+          "description": "Array of user IDs or usernames to unfollow (max 100)",
+          "conditional": {
+            "field": "action",
+            "value": "BULK_UNFOLLOW"
+          }
+        },
+        "maxResults": {
+          "type": "number",
+          "inputType": "number",
+          "description": "The maximum number of results to return",
+          "default": 10,
+          "conditional": {
+            "field": "action",
+            "value": ["GET_TWEETS", "GET_TIMELINE", "SEARCH"]
+          }
+        },
+        "query": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The search query for finding tweets",
+          "conditional": {
+            "field": "action",
+            "value": "SEARCH"
+          }
+        },
+        "sortOrder": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["RECENCY", "POPULARITY"],
+          "default": "RECENCY",
+          "description": "How to sort the search results",
+          "conditional": {
+            "field": "action",
+            "value": "SEARCH"
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the action was successful"
+        },
+        "tweetId": {
+          "type": "string",
+          "description": "The ID of the posted tweet (for POST action)"
+        },
+        "deletedTweetId": {
+          "type": "string",
+          "description": "The ID of the deleted tweet (for DELETE action)"
+        },
+        "replyTweetId": {
+          "type": "string",
+          "description": "The ID of the reply tweet (for REPLY action)"
+        },
+        "likedTweetId": {
+          "type": "string",
+          "description": "The ID of the liked tweet (for LIKE action)"
+        },
+        "tweets": {
+          "type": "array",
+          "description": "Array of tweets from the user (for GET_TWEETS action)"
+        },
+        "timeline": {
+          "type": "array",
+          "description": "Array of tweets from the user's timeline (for GET_TIMELINE action)"
+        },
+        "searchResults": {
+          "type": "array",
+          "description": "Array of tweets matching the search query (for SEARCH action). Each tweet includes author_username and author_name."
+        },
+        "userProfile": {
+          "type": "object",
+          "description": "User profile information (for GET_PROFILE action)"
+        },
+        "replies": {
+          "type": "array",
+          "description": "Array of replies to the specified tweet (for MONITOR_REPLIES action). Each reply includes author_username and author_name."
+        },
+        "following": {
+          "type": "array",
+          "description": "Array of users that the specified user is following (for GET_FOLLOWING action)"
+        },
+        "followers": {
+          "type": "array",
+          "description": "Array of users that are following the specified user (for GET_FOLLOWERS action)"
+        },
+        "analysis": {
+          "type": "object",
+          "description": "Analysis of mutual relationships including mutuals, non-mutual following, and non-mutual followers (for GET_MUTUALS action)"
+        },
+        "followedUserId": {
+          "type": "string",
+          "description": "The ID of the followed user (for FOLLOW action)"
+        },
+        "followedUsername": {
+          "type": "string",
+          "description": "The username of the followed user (for FOLLOW action)"
+        },
+        "unfollowedUserId": {
+          "type": "string",
+          "description": "The ID of the unfollowed user (for UNFOLLOW action)"
+        },
+        "unfollowedUsername": {
+          "type": "string",
+          "description": "The username of the unfollowed user (for UNFOLLOW action)"
+        },
+        "result": {
+          "type": "object",
+          "description": "Detailed result of the follow/unfollow operation (for FOLLOW/UNFOLLOW actions)"
+        },
+        "summary": {
+          "type": "object",
+          "description": "Summary of bulk unfollow operation including attempted, successful, and failed counts (for BULK_UNFOLLOW action)"
+        },
+        "mentions": {
+          "type": "array",
+          "description": "Array of tweets mentioning the user (for CHECK_MENTIONS action). Each mention includes author_username, author_name, and author_profile_image_url."
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the action failed"
+        }
+      }
+    },
+    {
+      "title": "YouTube API",
+      "category": "action",
+      "type": "youtube-api",
+      "icon": "youtube",
+      "description": "Interact with the YouTube API to manage videos, comments, playlists, and more.",
+      "authRequired": "oauth",
+      "authProvider": "google",
+      "parameters": {
+        "action": {
+          "type": "string",
+          "inputType": "select",
+          "options": [
+            "ADD_VIDEO_TO_PLAYLIST",
+            "COMMENT_ON_VIDEO",
+            "CREATE_PLAYLIST",
+            "DISLIKE_VIDEO",
+            "GET_MY_SUBSCRIPTIONS",
+            "GET_PLAYLIST_ITEMS",
+            "GET_TRANSCRIPTION",
+            "GET_VIDEO_DETAILS",
+            "LIKE_VIDEO",
+            "LIST_CHANNEL_VIDEOS",
+            "REPLY_TO_COMMENT",
+            "SEARCH_VIDEOS",
+            "SUBSCRIBE_TO_CHANNEL",
+            "UNSUBSCRIBE_FROM_CHANNEL",
+            "UPDATE_VIDEO_METADATA",
+            "UPLOAD_VIDEO"
+          ],
+          "description": "The action to perform on YouTube"
+        },
+        "query": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The search query",
+          "conditional": {
+            "field": "action",
+            "value": "SEARCH_VIDEOS"
+          }
+        },
+        "videoId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "YouTube video ID or full URL (e.g., 'dQw4w9WgXcQ' or 'https://www.youtube.com/watch?v=dQw4w9WgXcQ') - automatically converts URLs to video IDs",
+          "conditional": {
+            "field": "action",
+            "value": ["GET_VIDEO_DETAILS", "LIKE_VIDEO", "DISLIKE_VIDEO", "COMMENT_ON_VIDEO", "UPDATE_VIDEO_METADATA", "GET_TRANSCRIPTION"]
+          }
+        },
+        "fallbackMethod": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["all", "api", "ytdlp", "whisper"],
+          "default": "all",
+          "description": "Transcription method: 'all' (try all methods), 'api' (YouTube API only), 'ytdlp' (yt-dlp only), 'whisper' (OpenAI Whisper only). IMPORTANT: Use 'all' for best results - tries YouTube API first, then yt-dlp, then Whisper as fallbacks.",
+          "conditional": {
+            "field": "action",
+            "value": "GET_TRANSCRIPTION"
+          }
+        },
+        "channelId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the YouTube channel",
+          "conditional": {
+            "field": "action",
+            "value": ["LIST_CHANNEL_VIDEOS", "SUBSCRIBE_TO_CHANNEL", "UNSUBSCRIBE_FROM_CHANNEL"]
+          }
+        },
+        "text": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The text of the comment or reply",
+          "conditional": {
+            "field": "action",
+            "value": ["COMMENT_ON_VIDEO", "REPLY_TO_COMMENT"]
+          }
+        },
+        "commentId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the comment to reply to",
+          "conditional": {
+            "field": "action",
+            "value": "REPLY_TO_COMMENT"
+          }
+        },
+        "title": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The title of the playlist or video",
+          "conditional": {
+            "field": "action",
+            "value": ["CREATE_PLAYLIST", "UPDATE_VIDEO_METADATA", "UPLOAD_VIDEO"]
+          }
+        },
+        "description": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The description of the playlist or video",
+          "conditional": {
+            "field": "action",
+            "value": ["CREATE_PLAYLIST", "UPDATE_VIDEO_METADATA", "UPLOAD_VIDEO"]
+          }
+        },
+        "tags": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Comma-separated list of tags for the video",
+          "conditional": {
+            "field": "action",
+            "value": ["UPDATE_VIDEO_METADATA", "UPLOAD_VIDEO"]
+          }
+        },
+        "playlistId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the playlist",
+          "conditional": {
+            "field": "action",
+            "value": ["ADD_VIDEO_TO_PLAYLIST", "GET_PLAYLIST_ITEMS"]
+          }
+        },
+        "videoPath": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The local path to the video file to upload",
+          "conditional": {
+            "field": "action",
+            "value": "UPLOAD_VIDEO"
+          }
+        },
+        "maxResults": {
+          "type": "number",
+          "inputType": "number",
+          "description": "The maximum number of results to return",
+          "default": 10,
+          "conditional": {
+            "field": "action",
+            "value": ["SEARCH_VIDEOS", "LIST_CHANNEL_VIDEOS", "GET_MY_SUBSCRIPTIONS", "GET_PLAYLIST_ITEMS"]
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the action was successful"
+        },
+        "result": {
+          "type": "object",
+          "description": "The result of the action"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the action failed"
+        }
+      }
+    },
+    {
+      "title": "Zapier Webhook",
+      "category": "action",
+      "type": "zapier-action",
+      "icon": "zapier",
+      "description": "Send data to 6,000+ apps via Zapier webhooks. Trigger actions like sending emails, creating tasks, posting to social media, and more by sending JSON data to your Zap's webhook URL.",
+      "parameters": {
+        "zapWebhookUrl": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Your Zap's webhook URL. In Zapier: 1) Create a new Zap, 2) Choose 'Webhooks by Zapier' as the trigger, 3) Select 'Catch Hook', 4) Copy the webhook URL and paste it here."
+        },
+        "payload": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "JSON data to send to Zapier. Example: {\"email\": \"user@example.com\", \"name\": \"John Doe\", \"amount\": 100}. This data will be available in your Zap for mapping to other apps."
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the webhook was triggered successfully"
+        },
+        "zapResponse": {
+          "type": "object",
+          "description": "Response from Zapier webhook"
+        },
+        "triggeredZaps": {
+          "type": "array",
+          "description": "List of triggered Zaps with status and timestamp"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the webhook failed"
+        }
+      }
+    }
+  ],
+  "utilities": [
+    {
+      "title": "Text Label",
+      "category": "utility",
+      "type": "label",
+      "icon": "text",
+      "description": "This utility node displays a text label in the workflow, providing additional context or information."
+    },
+    {
+      "title": "Counter",
+      "category": "utility",
+      "type": "counter",
+      "icon": "abacus",
+      "description": "Increments a counter each time it is executed.",
+      "parameters": {
+        "initialValue": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The initial value of the counter",
+          "default": "0"
+        }
+      },
+      "outputs": {
+        "count": {
+          "type": "number",
+          "description": "The current count value"
+        }
+      }
+    },
+    {
+      "title": "Database Operation",
+      "category": "utility",
+      "type": "database-operation",
+      "icon": "database",
+      "description": "This utility node performs database operations on user-specific data.",
+      "parameters": {
+        "operation": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["SELECT", "INSERT", "UPDATE", "DELETE"],
+          "description": "The type of database operation to perform"
+        },
+        "tableName": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The name of the virtual table to operate on"
+        },
+        "columns": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Comma-separated list of columns (for SELECT, INSERT, UPDATE)",
+          "conditional": {
+            "field": "operation",
+            "value": ["SELECT", "INSERT", "UPDATE"]
+          }
+        },
+        "condition": {
+          "type": "string",
+          "inputType": "text",
+          "description": "WHERE clause for the operation (for SELECT, UPDATE, DELETE)",
+          "conditional": {
+            "field": "operation",
+            "value": ["SELECT", "UPDATE", "DELETE"]
+          }
+        },
+        "values": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Comma-separated list of values (for INSERT, UPDATE)",
+          "conditional": {
+            "field": "operation",
+            "value": ["INSERT", "UPDATE", "DELETE"]
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the database operation was successful"
+        },
+        "result": {
+          "type": "array",
+          "description": "The data returned by the database operation (for SELECT)"
+        },
+        "affectedRows": {
+          "type": "number",
+          "description": "The number of rows affected by the operation (for INSERT, UPDATE, DELETE)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the database operation failed"
+        }
+      }
+    },
+    {
+      "title": "Data Transformer",
+      "category": "utility",
+      "type": "data-transformer",
+      "icon": "transform",
+      "description": "This utility node allows you to transform and manipulate data using common transformation functions.",
+      "parameters": {
+        "input": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "The input data to be transformed"
+        },
+        "operation": {
+          "type": "string",
+          "inputType": "select",
+          "options": [
+            "Parse",
+            "Stringify",
+            "ToBase64",
+            "Trim",
+            "Uppercase",
+            "Lowercase",
+            "Capitalize",
+            "Replace",
+            "Split",
+            "Join",
+            "Slice",
+            "Substring",
+            "PadStart",
+            "PadEnd",
+            "Round",
+            "Floor",
+            "Ceil",
+            "ToFixed"
+          ],
+          "description": "The transformation operation to apply"
+        },
+        "arg1": {
+          "type": "string",
+          "inputType": "text",
+          "description": "First argument for the transformation",
+          "conditional": {
+            "field": "operation",
+            "value": ["Replace", "Split", "Join", "Slice", "Substring", "PadStart", "PadEnd", "ToFixed"]
+          }
+        },
+        "arg2": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Second argument for the transformation",
+          "conditional": {
+            "field": "operation",
+            "value": ["Replace", "Slice", "Substring", "PadStart", "PadEnd"]
+          }
+        }
+      },
+      "outputs": {
+        "result": {
+          "type": "any",
+          "description": "The transformed data"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the transformation failed"
+        }
+      }
+    },
+    {
+      "title": "Execute Javascript",
+      "category": "utility",
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "description": "This utility node allows you to execute custom JavaScript code within the workflow, enabling advanced logic and data transformations.",
+      "parameters": {
+        "code": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "The JavaScript code to execute"
+        }
+      },
+      "outputs": {
+        "result": {
+          "type": "any",
+          "description": "The result of the JavaScript code execution"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the code execution failed"
+        }
+      }
+    },
+    {
+      "title": "Execute Python",
+      "category": "utility",
+      "type": "execute-python",
+      "icon": "python",
+      "description": "This utility node allows you to execute custom Python code within the workflow, enabling advanced logic and data transformations.",
+      "parameters": {
+        "code": {
+          "type": "string",
+          "inputType": "codearea",
+          "description": "The Python code to execute"
+        }
+      },
+      "outputs": {
+        "result": {
+          "type": "any",
+          "description": "The result of the Python code execution"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the code execution failed"
+        }
+      }
+    },
+    {
+      "title": "File System Operation",
+      "category": "utility",
+      "type": "file-system-operation",
+      "icon": "folder",
+      "description": "This utility node performs file system operations within a specified root directory.",
+      "parameters": {
+        "rootDirectory": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The root directory for file system operations"
+        },
+        "operation": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["readFile", "writeFile", "appendFile", "executeFile", "listFiles"],
+          "description": "The type of file system operation to perform"
+        },
+        "path": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The relative path for the file or directory"
+        },
+        "content": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "The content to write or append to the file (for writeFile and appendFile operations)",
+          "conditional": {
+            "field": "operation",
+            "value": ["writeFile", "appendFile"]
+          }
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the file system operation was successful"
+        },
+        "result": {
+          "type": "any",
+          "description": "The result of the operation (file content for readFile, execution output for executeFile, list of files for listFiles, or operation status for writeFile and appendFile)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the file system operation failed"
+        }
+      }
+    },
+    {
+      "title": "Random Number",
+      "category": "utility",
+      "type": "random-number",
+      "icon": "dice",
+      "description": "Generates a random number within a specified range.",
+      "parameters": {
+        "min": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "The minimum value (inclusive)"
+        },
+        "max": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "The maximum value (inclusive)"
+        }
+      },
+      "outputs": {
+        "randomNumber": {
+          "type": "number",
+          "description": "The generated random number"
+        }
+      }
+    }
+  ],
+  "widgets": [
+    {
+      "title": "Media Preview",
+      "category": "utility",
+      "type": "media-preview",
+      "icon": "image",
+      "description": "Advanced media preview tool that displays images or videos from URLs, base64 data, or streaming platforms. Automatically detects media types, extracts metadata (dimensions, file size), and processes base64 data with enhanced validation and optimization.",
+      "parameters": {
+        "mediaSource": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Media URL, base64 data (with or without data URI prefix), or blob URL. Supports images (jpg, png, gif, webp, bmp, svg), videos (mp4, webm, mov, avi, mkv, wmv), and streaming URLs (YouTube, Vimeo, etc.). Automatically detects format from magic bytes for raw base64."
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the media was successfully processed"
+        },
+        "mediaType": {
+          "type": "string",
+          "description": "The detected media type ('image', 'video', or 'unknown')"
+        },
+        "originalUrl": {
+          "type": "string",
+          "description": "The original media URL before processing"
+        },
+        "base64Data": {
+          "type": "string",
+          "description": "Full data URI with prefix (data:image/jpeg;base64,abc123...) - ready for HTML display"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Extracted media metadata including dimensions, format, file size, and processing info"
+        },
+        "fileSize": {
+          "type": "number",
+          "description": "File size in bytes (calculated for base64 data, fetched for URLs)"
+        },
+        "dimensions": {
+          "type": "object",
+          "description": "Image dimensions as {width, height} (when available)"
+        },
+        "format": {
+          "type": "string",
+          "description": "Detected media format/MIME type"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if media processing failed"
+        }
+      }
+    },
+    {
+      "title": "HTML Preview",
+      "category": "utility",
+      "type": "html-preview",
+      "icon": "code",
+      "description": "Renders HTML content in a sandboxed preview window. Supports raw HTML strings, URLs, base64-encoded HTML, and drag & drop .html files. Automatically extracts metadata about scripts, styles, and external resources.",
+      "parameters": {
+        "htmlSource": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "HTML content to preview. Can be raw HTML string, URL to fetch HTML from, base64-encoded HTML (data:text/html;base64,...), or blob URL. Supports drag & drop of .html files."
+        },
+        "sandboxMode": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": ["Strict", "Allow Scripts", "Full Access"],
+          "default": "Strict",
+          "description": "Security sandbox level: Strict (blocks all scripts), Allow Scripts (allows scripts but blocks inline event handlers), Full Access (no restrictions)"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the HTML was successfully processed"
+        },
+        "htmlContent": {
+          "type": "string",
+          "description": "The processed HTML content ready for rendering"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Extracted HTML metadata including character count, script/style detection, external resources, and source type"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if HTML processing failed"
+        }
+      }
+    },
+    {
+      "title": "Code Preview",
+      "category": "utility",
+      "type": "code-preview",
+      "icon": "code",
+      "description": "Displays syntax-highlighted code with language detection. Supports drag & drop of code files and auto-detects programming language from file extensions.",
+      "parameters": {
+        "codeSource": {
+          "type": "code",
+          "inputType": "textarea",
+          "description": "Code content to display. Supports drag & drop of code files (.js, .py, .java, .html, .css, etc.)"
+        },
+        "language": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": ["javascript", "typescript", "python", "java", "csharp", "cpp", "html", "css", "json", "markdown", "sql", "bash", "plaintext"],
+          "default": "javascript",
+          "description": "Programming language for syntax highlighting"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the code was successfully processed"
+        },
+        "codeContent": {
+          "type": "string",
+          "description": "The code content"
+        },
+        "language": {
+          "type": "string",
+          "description": "The detected or specified programming language"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Code metadata including line count, complexity, and detected features (functions, classes, comments)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if code processing failed"
+        }
+      }
+    },
+    {
+      "title": "PDF Preview",
+      "category": "utility",
+      "type": "pdf-preview",
+      "icon": "file",
+      "description": "Displays PDF documents with download capability. Supports URLs, blob URLs, and base64-encoded PDFs up to 20MB.",
+      "parameters": {
+        "pdfSource": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "PDF source. Can be URL, blob URL, or base64 data (data:application/pdf;base64,...). Supports drag & drop of .pdf files."
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the PDF was successfully processed"
+        },
+        "pdfUrl": {
+          "type": "string",
+          "description": "The PDF URL ready for rendering"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "PDF metadata including source type, file size, and page count (when available)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if PDF processing failed"
+        }
+      }
+    },
+    {
+      "title": "Audio Preview",
+      "category": "utility",
+      "type": "audio-preview",
+      "icon": "speaker",
+      "description": "Audio player with waveform visualization. Supports MP3, WAV, OGG, WebM, AAC, and M4A formats up to 10MB.",
+      "parameters": {
+        "audioSource": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Audio source. Can be URL, blob URL, or base64 data (data:audio/...). Supports drag & drop of audio files."
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the audio was successfully processed"
+        },
+        "audioUrl": {
+          "type": "string",
+          "description": "The audio URL ready for playback"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Audio metadata including source type, file size, duration, format, bitrate, and sample rate (when available)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if audio processing failed"
+        }
+      }
+    },
+    {
+      "title": "Markdown Preview",
+      "category": "utility",
+      "type": "markdown-preview",
+      "icon": "text",
+      "description": "Renders markdown content with preview/source toggle. Supports headers, bold, italic, links, code blocks, inline code, and lists.",
+      "parameters": {
+        "markdownSource": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Markdown content to render. Supports drag & drop of .md files."
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the markdown was successfully processed"
+        },
+        "markdownContent": {
+          "type": "string",
+          "description": "The original markdown content"
+        },
+        "htmlContent": {
+          "type": "string",
+          "description": "The rendered HTML from markdown"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Markdown metadata including line count, word count, and detected features (headers, links, images, code blocks, tables, lists)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if markdown processing failed"
+        }
+      }
+    },
+    {
+      "title": "Chart Preview",
+      "category": "utility",
+      "type": "chart-preview",
+      "icon": "flow-3",
+      "description": "Data visualization with multiple chart types (bar, line, pie, doughnut, radar). Supports JSON and CSV data formats.",
+      "parameters": {
+        "chartData": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Chart data in JSON or CSV format. JSON format: {\"labels\": [...], \"datasets\": [{\"label\": \"...\", \"data\": [...]}]}. Supports drag & drop of .json and .csv files."
+        },
+        "chartType": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": ["bar", "line", "pie", "doughnut", "radar"],
+          "default": "bar",
+          "description": "Type of chart to display"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Whether the chart data was successfully processed"
+        },
+        "chartData": {
+          "type": "object",
+          "description": "The parsed and formatted chart data"
+        },
+        "chartType": {
+          "type": "string",
+          "description": "The chart type"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Chart metadata including data point count, dataset count, value range, total, and average"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if chart processing failed"
+        }
+      }
+    }
+  ],
+  "controls": [
+    {
+      "title": "Delay",
+      "category": "control",
+      "type": "delay",
+      "icon": "timer",
+      "description": "This control node introduces a delay in the workflow execution.",
+      "parameters": {
+        "duration": {
+          "type": "string",
+          "inputType": "text",
+          "inputSize": "half",
+          "description": "The duration of the delay in milliseconds"
+        },
+        "unit": {
+          "type": "string",
+          "inputType": "select",
+          "inputSize": "half",
+          "options": ["milliseconds", "seconds", "minutes", "hours"],
+          "description": "The unit of time for the delay duration"
+        }
+      },
+      "outputs": {
+        "delayedUntil": {
+          "type": "string",
+          "description": "The timestamp when the delay will end"
+        }
+      }
+    },
+    {
+      "title": "For Loop",
+      "category": "control",
+      "type": "for-loop",
+      "icon": "loop",
+      "description": "Executes a set of actions repeatedly for a specified number of iterations or over a list of items.",
+      "parameters": {
+        "loopType": {
+          "type": "string",
+          "inputType": "select",
+          "options": ["Range", "List"],
+          "description": "The type of loop to execute"
+        },
+        "initialValue": {
+          "type": "number",
+          "inputType": "number",
+          "description": "The initial value for the iteration counter",
+          "default": 0
+        },
+        "start": {
+          "type": "number",
+          "inputType": "number",
+          "description": "The starting value for range-based loops",
+          "conditional": {
+            "field": "loopType",
+            "value": "Range"
+          }
+        },
+        "end": {
+          "type": "number",
+          "inputType": "number",
+          "description": "The ending value (exclusive) for range-based loops",
+          "conditional": {
+            "field": "loopType",
+            "value": "Range"
+          }
+        },
+        "step": {
+          "type": "number",
+          "inputType": "number",
+          "description": "The step value for range-based loops",
+          "default": 1,
+          "conditional": {
+            "field": "loopType",
+            "value": "Range"
+          }
+        },
+        "list": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Comma-separated list of items to iterate over",
+          "conditional": {
+            "field": "loopType",
+            "value": "List"
+          }
+        },
+        "actions": {
+          "type": "string",
+          "inputType": "textarea",
+          "description": "Comma-separated list of action node IDs to execute in each iteration"
+        }
+      },
+      "outputs": {
+        "iterations": {
+          "type": "number",
+          "description": "The total number of iterations executed"
+        },
+        "currentIteration": {
+          "type": "number",
+          "description": "The current iteration count"
+        },
+        "results": {
+          "type": "array",
+          "description": "An array of results from each iteration"
+        }
+      }
+    },
+    {
+      "title": "Parallel Execution",
+      "category": "control",
+      "type": "parallel-execution",
+      "icon": "flow-2",
+      "description": "This control node executes multiple tasks in parallel.",
+      "parameters": {
+        "tasks": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Comma-separated list of node ids to be executed in parallel (e.g., 'webSearch, sendEmail'). Names are case-insensitive and spaces are ignored."
+        }
+      },
+      "outputs": {
+        "results": {
+          "type": "array",
+          "description": "Array of results from parallel execution"
+        }
+      }
+    },
+    {
+      "title": "Run Workflow",
+      "category": "control",
+      "type": "run-workflow",
+      "icon": "flow-3",
+      "description": "This action node executes another complete workflow within the current workflow.",
+      "parameters": {
+        "workflowId": {
+          "type": "string",
+          "inputType": "text",
+          "description": "The ID of the workflow to run"
+        },
+        "inputData": {
+          "type": "object",
+          "inputType": "codearea",
+          "description": "JSON object containing input data for the sub-workflow"
+        },
+        "waitForCompletion": {
+          "type": "boolean",
+          "inputType": "checkbox",
+          "options": ["true"],
+          "description": "Wait for the sub-workflow to complete before continuing",
+          "default": "true"
+        }
+      },
+      "outputs": {
+        "success": {
+          "type": "boolean",
+          "description": "Indicates whether the sub-workflow execution was successful"
+        },
+        "subWorkflowCompleted": {
+          "type": "boolean",
+          "description": "Indicates whether the sub-workflow has completed execution"
+        },
+        "outputs": {
+          "type": "object",
+          "description": "The output data from the executed sub-workflow"
+        },
+        "errors": {
+          "type": "object",
+          "description": "Any errors that occurred during sub-workflow execution"
+        }
+      }
+    },
+    {
+      "title": "Stop Workflow",
+      "category": "control",
+      "type": "stop-workflow",
+      "icon": "stop-danger",
+      "description": "This control node stops the workflow execution.",
+      "parameters": {
+        "reason": {
+          "type": "string",
+          "inputType": "text",
+          "description": "Reason for stopping the workflow (optional)"
+        }
+      },
+      "outputs": {
+        "stopped": {
+          "type": "boolean",
+          "description": "Indicates whether the workflow was stopped"
+        },
+        "reason": {
+          "type": "string",
+          "description": "The reason provided for stopping the workflow"
+        }
+      }
+    }
+  ],
+  "custom": []
+}

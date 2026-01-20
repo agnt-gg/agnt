@@ -1,0 +1,121 @@
+{
+  "name": "unturf-ai-plugin",
+  "version": "1.0.0",
+  "description": "Unturf AI integration plugin for AGNT - Free LLM and text-to-speech services without API keys",
+  "author": "AGNT",
+  "icon": "magic",
+  "tools": [
+    {
+      "type": "unturf-ai",
+      "entryPoint": "./unturf-ai.js",
+      "schema": {
+        "title": "Unturf AI",
+        "category": "action",
+        "type": "unturf-ai",
+        "icon": "magic",
+        "description": "Interact with Unturf.ai's free LLM (Hermes) and text-to-speech services without needing an API key.",
+        "parameters": {
+          "service": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["LLM", "Text-to-Speech"],
+            "description": "Choose which Unturf service to use",
+            "default": "LLM"
+          },
+          "prompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Input text or prompt for the AI",
+            "conditional": {
+              "field": "service",
+              "value": "LLM"
+            }
+          },
+          "model": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "adamo1139/Hermes-3-Llama-3.1-8B-FP8-Dynamic",
+              "NousResearch/Hermes-3-Llama-3.1-8B",
+              "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M"
+            ],
+            "default": "adamo1139/Hermes-3-Llama-3.1-8B-FP8-Dynamic",
+            "description": "The AI model to use (Hermes for general purpose, Qwen for coding)",
+            "conditional": {
+              "field": "service",
+              "value": "LLM"
+            }
+          },
+          "temperature": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Controls randomness (0.0 to 1.0)",
+            "default": 0.5,
+            "inputSize": "half",
+            "conditional": {
+              "field": "service",
+              "value": "LLM"
+            }
+          },
+          "maxTokens": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Maximum tokens to generate",
+            "default": 150,
+            "inputSize": "half",
+            "conditional": {
+              "field": "service",
+              "value": "LLM"
+            }
+          },
+          "text": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Text to convert to speech",
+            "conditional": {
+              "field": "service",
+              "value": "Text-to-Speech"
+            }
+          },
+          "voice": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+            "default": "alloy",
+            "description": "Voice to use for TTS",
+            "inputSize": "half",
+            "conditional": {
+              "field": "service",
+              "value": "Text-to-Speech"
+            }
+          },
+          "speed": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Speech rate (0.25 to 4.0)",
+            "default": 1.0,
+            "inputSize": "half",
+            "conditional": {
+              "field": "service",
+              "value": "Text-to-Speech"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the request was successful"
+          },
+          "result": {
+            "type": "string",
+            "description": "Generated text from the LLM or audio content for TTS"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the request failed"
+          }
+        }
+      }
+    }
+  ]
+}

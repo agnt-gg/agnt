@@ -1,0 +1,697 @@
+{
+  "plugins": [
+    {
+      "name": "discord-plugin",
+      "displayName": "Discord",
+      "icon": "discord",
+      "version": "1.0.0",
+      "description": "Discord integration for AGNT - send messages, manage roles, upload files, and receive messages from Discord channels.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/discord-plugin.agnt",
+      "size": 2500000,
+      "tags": ["discord", "messaging", "social", "bot"],
+      "category": "social",
+      "tools": [
+        {
+          "type": "discord-api",
+          "schema": {
+            "title": "Discord API",
+            "description": "Interact with Discord to perform various operations such as sending messages, managing roles, and uploading files."
+          }
+        },
+        {
+          "type": "receive-discord-message",
+          "schema": {
+            "title": "Receive Discord Message",
+            "description": "Listen for incoming Discord messages in a specified channel and trigger workflows."
+          }
+        }
+      ]
+    },
+    {
+      "name": "firecrawl-plugin",
+      "displayName": "Firecrawl",
+      "icon": "fire",
+      "version": "1.0.0",
+      "description": "Web scraping plugin for AGNT using Firecrawl API - Extract clean markdown or HTML from any webpage.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/firecrawl-plugin.agnt",
+      "size": 500000,
+      "tags": ["firecrawl", "web-scraping", "markdown", "html", "scraper"],
+      "category": "utility",
+      "tools": [
+        {
+          "type": "firecrawl-api",
+          "schema": {
+            "title": "Firecrawl API",
+            "description": "Scrape web content using Firecrawl API - extract clean markdown or HTML from any URL."
+          }
+        }
+      ]
+    },
+    {
+      "name": "slack-plugin",
+      "displayName": "Slack",
+      "icon": "slack",
+      "version": "1.0.0",
+      "description": "Slack integration plugin for AGNT - Send messages, receive messages, manage channels, and interact with Slack workspaces.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/slack-plugin.agnt",
+      "size": 2500000,
+      "tags": ["slack", "messaging", "social", "bot", "workspace"],
+      "category": "social",
+      "tools": [
+        {
+          "type": "slack-api",
+          "schema": {
+            "title": "Slack API",
+            "description": "Interact with Slack to perform various operations such as sending messages, uploading files, managing reactions, and more."
+          }
+        },
+        {
+          "type": "receive-slack-message",
+          "schema": {
+            "title": "Receive Slack Message",
+            "description": "Listen for incoming Slack messages in a specified channel and trigger the workflow when a new message is received."
+          }
+        }
+      ]
+    },
+    {
+      "name": "notion-plugin",
+      "displayName": "Notion",
+      "icon": "notion",
+      "version": "1.1.0",
+      "description": "Notion integration plugin for AGNT - Search, query databases, create pages, and manage your Notion workspace.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/notion-plugin.agnt",
+      "size": 1500000,
+      "tags": ["notion", "productivity", "database", "notes", "workspace"],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "notion-api",
+          "schema": {
+            "title": "Notion API",
+            "description": "Interact with Notion - search, query databases, get pages, and create pages."
+          }
+        }
+      ]
+    },
+    {
+      "name": "google-sheets-plugin",
+      "displayName": "Google Sheets",
+      "icon": "table",
+      "version": "1.0.0",
+      "description": "Google Sheets integration plugin for AGNT - Monitor new rows, read, write, append, and clear data in Google Sheets.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/google-sheets-plugin.agnt",
+      "size": 1800000,
+      "tags": ["google", "sheets", "spreadsheet", "data", "automation"],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "google-sheets-new-row",
+          "schema": {
+            "title": "Google Sheets New Row",
+            "description": "Listen for new rows added to a specified Google Sheet and trigger the workflow when a new row is detected."
+          }
+        },
+        {
+          "type": "google-sheets-api",
+          "schema": {
+            "title": "Google Sheets API",
+            "description": "Interact with Google Sheets to read, write, append, or clear data in a spreadsheet."
+          }
+        }
+      ]
+    },
+    {
+      "name": "claude-agent-plugin",
+      "displayName": "Claude Agent",
+      "icon": "claude",
+      "version": "1.0.0",
+      "description": "Autonomous Claude Agent powered by @anthropic-ai/claude-agent-sdk. This agent can use any available AGNT tools to accomplish complex tasks autonomously.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/claude-agent-plugin.agnt",
+      "size": 1500000,
+      "tags": ["ai", "claude", "agent", "autonomous", "sdk"],
+      "category": "ai",
+      "tools": [
+        {
+          "type": "claude-agent",
+          "schema": {
+            "title": "Claude Agent",
+            "description": "An autonomous agent that can use tools to accomplish complex tasks."
+          }
+        }
+      ]
+    },
+    {
+      "name": "zapier-plugin",
+      "displayName": "Zapier",
+      "icon": "zapier",
+      "version": "1.0.0",
+      "description": "Zapier integration plugin for AGNT - Send data to Zapier webhooks and receive triggers from Zapier.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/zapier-plugin.agnt",
+      "size": 10000,
+      "tags": ["zapier", "automation", "webhook", "integration"],
+      "category": "automation",
+      "tools": [
+        {
+          "type": "zapier-trigger",
+          "schema": {
+            "title": "Zapier Trigger",
+            "description": "Receive events from 6,000+ apps via Zapier. When something happens in your connected apps (new email, form submission, sale, etc.), this trigger fires your workflow."
+          }
+        },
+        {
+          "type": "zapier-action",
+          "schema": {
+            "title": "Zapier Webhook",
+            "description": "Send data to 6,000+ apps via Zapier webhooks. Trigger actions like sending emails, creating tasks, posting to social media, and more by sending JSON data to your Zap's webhook URL."
+          }
+        }
+      ]
+    },
+    {
+      "name": "bitcoin-price-checker",
+      "displayName": "Bitcoin Price",
+      "icon": "bitcoin",
+      "version": "1.0.0",
+      "description": "Retrieve the latest Bitcoin price in USD using the CoinGecko API.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/bitcoin-price-checker.agnt",
+      "size": 100000,
+      "tags": ["bitcoin", "crypto", "price", "coingecko"],
+      "category": "finance",
+      "tools": [
+        {
+          "type": "get-bitcoin-price",
+          "schema": {
+            "title": "Get Bitcoin Price",
+            "description": "Fetches the current price of Bitcoin (BTC) in USD from the CoinGecko API."
+          }
+        }
+      ]
+    },
+    {
+      "name": "chucknorris-joke-plugin",
+      "displayName": "Chuck Norris Jokes",
+      "icon": "puzzle-piece",
+      "version": "1.0.0",
+      "description": "Fetch random Chuck Norris jokes from the public Chuck Norris API.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/chucknorris-joke-plugin.agnt",
+      "size": 100000,
+      "tags": ["jokes", "fun", "chuck-norris", "entertainment"],
+      "category": "entertainment",
+      "tools": [
+        {
+          "type": "chucknorris-get-joke",
+          "schema": {
+            "title": "Get Random Chuck Norris Joke",
+            "description": "Retrieves a random Chuck Norris joke, optionally filtered by category."
+          }
+        }
+      ]
+    },
+    {
+      "name": "dice-roller-plugin",
+      "displayName": "Dice Roller",
+      "icon": "dice",
+      "version": "1.0.0",
+      "description": "Rolls dice ranging from d1 to d20 with optional count and modifier.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/dice-roller-plugin.agnt",
+      "size": 100000,
+      "tags": ["dice", "games", "random", "tabletop"],
+      "category": "entertainment",
+      "tools": [
+        {
+          "type": "roll-dice",
+          "schema": {
+            "title": "Dice Roller",
+            "description": "Roll one or more dice (d1–d20) and optionally apply a numeric modifier. Returns total and individual roll values."
+          }
+        }
+      ]
+    },
+    {
+      "name": "dropbox-plugin",
+      "displayName": "Dropbox",
+      "icon": "dropbox",
+      "version": "1.0.0",
+      "description": "Dropbox integration plugin for AGNT - Manage files and folders in Dropbox.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/dropbox-plugin.agnt",
+      "size": 500000,
+      "tags": ["dropbox", "cloud", "storage", "files"],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "dropbox-api",
+          "schema": {
+            "title": "Dropbox API",
+            "description": "Interact with Dropbox to perform various operations on files and folders."
+          }
+        }
+      ]
+    },
+    {
+      "name": "ethereum-price-checker",
+      "displayName": "Ethereum Price",
+      "icon": "ethereum",
+      "version": "1.0.0",
+      "description": "Retrieves the current price of Ethereum using the CoinGecko API.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/ethereum-price-checker.agnt",
+      "size": 100000,
+      "tags": ["ethereum", "crypto", "price", "coingecko"],
+      "category": "finance",
+      "tools": [
+        {
+          "type": "get-ethereum-price",
+          "schema": {
+            "title": "Get Ethereum Price",
+            "description": "Fetches the current market price of Ethereum (ETH)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "github-plugin",
+      "displayName": "GitHub",
+      "icon": "github",
+      "version": "1.0.0",
+      "description": "GitHub integration plugin for AGNT - Manage repositories, issues, pull requests, branches, and releases.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/github-plugin.agnt",
+      "size": 800000,
+      "tags": ["github", "git", "repository", "code", "developer"],
+      "category": "developer",
+      "tools": [
+        {
+          "type": "github-api",
+          "schema": {
+            "title": "GitHub API",
+            "description": "Interact with GitHub to perform various operations on repositories, issues, pull requests, and more."
+          }
+        }
+      ]
+    },
+    {
+      "name": "gmail-plugin",
+      "displayName": "Gmail",
+      "icon": "gmail",
+      "version": "1.0.0",
+      "description": "Gmail integration plugin for AGNT - Send, reply, read, organize, and manage attachments.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/gmail-plugin.agnt",
+      "size": 600000,
+      "tags": ["gmail", "email", "google", "communication"],
+      "category": "communication",
+      "tools": [
+        {
+          "type": "gmail-api",
+          "schema": {
+            "title": "Gmail API",
+            "description": "A powerful tool to send, reply, read, organize, and manage attachments in Gmail."
+          }
+        }
+      ]
+    },
+    {
+      "name": "google-drive-plugin",
+      "displayName": "Google Drive",
+      "icon": "google-drive",
+      "version": "1.0.0",
+      "description": "Google Drive integration plugin for AGNT - Manage files and folders in Google Drive.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/google-drive-plugin.agnt",
+      "size": 600000,
+      "tags": ["google", "drive", "cloud", "storage", "files"],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "google-drive-api",
+          "schema": {
+            "title": "Google Drive API",
+            "description": "Interact with Google Drive to perform various operations on files and folders."
+          }
+        }
+      ]
+    },
+    {
+      "name": "google-slides-plugin",
+      "displayName": "Google Slides",
+      "icon": "google-slides",
+      "version": "1.0.0",
+      "description": "Google Slides integration plugin for AGNT - Create and manage presentations.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/google-slides-plugin.agnt",
+      "size": 600000,
+      "tags": ["google", "slides", "presentations", "productivity"],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "google-slides-api",
+          "schema": {
+            "title": "Google Slides API",
+            "description": "Perform actions on Google Slides presentations and slides."
+          }
+        }
+      ]
+    },
+    {
+      "name": "openweathermap-api-plugin",
+      "displayName": "OpenWeatherMap",
+      "icon": "weather",
+      "version": "1.0.0",
+      "description": "Tools for retrieving weather, forecasts, air pollution, and geocoding data from the OpenWeatherMap API.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/openweathermap-api-plugin.agnt",
+      "size": 300000,
+      "tags": ["weather", "forecast", "air-quality", "geocoding"],
+      "category": "utility",
+      "tools": [
+        {
+          "type": "openweathermap-current-weather",
+          "schema": {
+            "title": "Get Current Weather",
+            "description": "Fetch current weather conditions by city, coordinates, or ZIP code using OpenWeatherMap Current Weather API."
+          }
+        },
+        {
+          "type": "openweathermap-forecast-5day",
+          "schema": {
+            "title": "Get 5-Day / 3-Hour Forecast",
+            "description": "Fetch 5-day forecast data in 3-hour intervals by city, coordinates, or ZIP code using OpenWeatherMap Forecast API."
+          }
+        },
+        {
+          "type": "openweathermap-geocode",
+          "schema": {
+            "title": "Geocode Location (Direct)",
+            "description": "Convert a place name to geographic coordinates using OpenWeatherMap Geocoding API (Direct Geocoding)."
+          }
+        },
+        {
+          "type": "openweathermap-air-pollution",
+          "schema": {
+            "title": "Get Air Pollution (Current)",
+            "description": "Fetch current air quality and pollutant concentrations by coordinates using OpenWeatherMap Air Pollution API."
+          }
+        }
+      ]
+    },
+    {
+      "name": "stripe-plugin",
+      "displayName": "Stripe",
+      "icon": "stripe",
+      "version": "1.0.0",
+      "description": "Stripe integration plugin for AGNT - Create and send invoices with line items.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/stripe-plugin.agnt",
+      "size": 400000,
+      "tags": ["stripe", "payments", "invoices", "billing"],
+      "category": "finance",
+      "tools": [
+        {
+          "type": "stripe-invoice",
+          "schema": {
+            "title": "Stripe API",
+            "description": "Create and send a Stripe invoice with support for single or multiple line items."
+          }
+        }
+      ]
+    },
+    {
+      "name": "twitter-plugin",
+      "displayName": "X (Twitter)",
+      "icon": "twitter",
+      "version": "1.0.0",
+      "description": "X (Twitter) integration plugin for AGNT - Post tweets, search, manage follows, and monitor mentions.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/twitter-plugin.agnt",
+      "size": 600000,
+      "tags": ["twitter", "x", "social", "tweets", "messaging"],
+      "category": "social",
+      "tools": [
+        {
+          "type": "twitter-api",
+          "schema": {
+            "title": "X (Twitter) API",
+            "description": "Interact with Twitter to post tweets, delete tweets, retrieve user tweets, search tweets, and fetch user profiles."
+          }
+        }
+      ]
+    },
+    {
+      "name": "unsplash-plugin",
+      "displayName": "Unsplash",
+      "icon": "unsplash",
+      "version": "1.0.0",
+      "description": "Unsplash integration plugin for AGNT - Search and download high-quality stock photos.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/unsplash-plugin.agnt",
+      "size": 400000,
+      "tags": ["unsplash", "photos", "images", "stock", "media"],
+      "category": "media",
+      "tools": [
+        {
+          "type": "unsplash-api",
+          "schema": {
+            "title": "Unsplash API",
+            "description": "Search and download high-quality stock photos from Unsplash."
+          }
+        }
+      ]
+    },
+    {
+      "name": "unturf-ai-plugin",
+      "displayName": "Unturf AI",
+      "icon": "magic",
+      "version": "1.0.0",
+      "description": "Unturf AI integration plugin for AGNT - Free LLM and text-to-speech services without API keys.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/unturf-ai-plugin.agnt",
+      "size": 300000,
+      "tags": ["ai", "llm", "tts", "text-to-speech", "free"],
+      "category": "ai",
+      "tools": [
+        {
+          "type": "unturf-ai",
+          "schema": {
+            "title": "Unturf AI",
+            "description": "Interact with Unturf.ai's free LLM (Hermes) and text-to-speech services without needing an API key."
+          }
+        }
+      ]
+    },
+    {
+      "name": "youtube-plugin",
+      "displayName": "YouTube",
+      "icon": "youtube",
+      "version": "1.0.0",
+      "description": "YouTube integration plugin for AGNT - Manage videos, comments, playlists, and transcriptions.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/youtube-plugin.agnt",
+      "size": 800000,
+      "tags": ["youtube", "video", "google", "media", "transcription"],
+      "category": "media",
+      "tools": [
+        {
+          "type": "youtube-api",
+          "schema": {
+            "title": "YouTube API",
+            "description": "Interact with the YouTube API to manage videos, comments, playlists, and more."
+          }
+        }
+      ]
+    },
+    {
+      "name": "calculator-plugin",
+      "displayName": "Calculator",
+      "icon": "calculator",
+      "version": "1.0.0",
+      "description": "Provides arithmetic and scientific expression evaluation.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/calculator-plugin.agnt",
+      "size": 100000,
+      "tags": ["calculator", "math", "expression", "utility"],
+      "category": "utility",
+      "tools": [
+        {
+          "type": "calc-evaluate",
+          "schema": {
+            "title": "Expression Evaluator",
+            "description": "Evaluates a mathematical expression and returns the result."
+          }
+        }
+      ]
+    },
+    {
+      "name": "facebook-api-plugin",
+      "displayName": "Facebook",
+      "icon": "facebook",
+      "version": "1.0.0",
+      "description": "Interact with the Facebook Graph API to post updates, fetch user/profile/page data, and manage Facebook content.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/facebook-api-plugin.agnt",
+      "size": 500000,
+      "tags": ["facebook", "social", "api", "posts"],
+      "category": "social",
+      "tools": [
+        {
+          "type": "facebook-post-status",
+          "schema": {
+            "title": "Facebook Post Status",
+            "description": "Posts a status update to a user's Facebook timeline or page."
+          }
+        },
+        {
+          "type": "facebook-get-profile",
+          "schema": {
+            "title": "Facebook Get Profile",
+            "description": "Fetches the profile data of the authenticated user or a Facebook page."
+          }
+        },
+        {
+          "type": "facebook-list-pages",
+          "schema": {
+            "title": "Facebook List Managed Pages",
+            "description": "Retrieves a list of Facebook pages managed by the authenticated user."
+          }
+        }
+      ]
+    },
+    {
+      "name": "fetch-tool-plugin",
+      "displayName": "HTTP Fetch",
+      "icon": "api",
+      "version": "1.0.0",
+      "description": "A generic fetch tool for making HTTP requests to external APIs or websites.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/fetch-tool-plugin.agnt",
+      "size": 100000,
+      "tags": ["fetch", "http", "api", "request"],
+      "category": "utility",
+      "tools": [
+        {
+          "type": "fetch-request",
+          "schema": {
+            "title": "HTTP Fetch Request",
+            "description": "Fetches data from a provided URL using the specified HTTP method and optional headers or body."
+          }
+        }
+      ]
+    },
+    {
+      "name": "fibonacci-sequence-plugin",
+      "displayName": "Fibonacci",
+      "icon": "code",
+      "version": "1.0.0",
+      "description": "Provides utilities to calculate Fibonacci numbers and generate Fibonacci sequences.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/fibonacci-sequence-plugin.agnt",
+      "size": 100000,
+      "tags": ["fibonacci", "math", "sequence", "numbers"],
+      "category": "utility",
+      "tools": [
+        {
+          "type": "fib-calc-term",
+          "schema": {
+            "title": "Calculate Fibonacci Term",
+            "description": "Calculates the nth Fibonacci number using the selected algorithm."
+          }
+        },
+        {
+          "type": "fib-generate-list",
+          "schema": {
+            "title": "Generate Fibonacci Sequence",
+            "description": "Generates a list of Fibonacci numbers based on count or maximum value."
+          }
+        }
+      ]
+    },
+    {
+      "name": "list-files-plugin",
+      "displayName": "List Files",
+      "icon": "folder",
+      "version": "1.0.0",
+      "description": "Lists files in the current directory and provides their metadata.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/list-files-plugin.agnt",
+      "size": 100000,
+      "tags": ["files", "directory", "filesystem", "utility"],
+      "category": "utility",
+      "tools": [
+        {
+          "type": "list-files",
+          "schema": {
+            "title": "List Files in Directory",
+            "description": "Lists all files in the current directory with optional filtering and metadata."
+          }
+        }
+      ]
+    },
+    {
+      "name": "random-dice-roller",
+      "displayName": "Random Dice & Coin",
+      "icon": "dice",
+      "version": "1.0.0",
+      "description": "A utility plugin to simulate rolling dice and flipping coins for games and randomization tasks.",
+      "author": "AGNT User",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/random-dice-roller.agnt",
+      "size": 100000,
+      "tags": ["dice", "coin", "random", "games"],
+      "category": "entertainment",
+      "tools": [
+        {
+          "type": "roll-dice",
+          "schema": {
+            "title": "Roll Dice",
+            "description": "Roll a specified number of dice with a custom number of sides and optional modifier."
+          }
+        },
+        {
+          "type": "flip-coin",
+          "schema": {
+            "title": "Flip Coin",
+            "description": "Flip a virtual coin to get Heads or Tails."
+          }
+        }
+      ]
+    }
+  ]
+}

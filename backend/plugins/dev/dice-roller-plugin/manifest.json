@@ -1,0 +1,84 @@
+{
+  "name": "dice-roller-plugin",
+  "version": "1.0.0",
+  "description": "Rolls dice ranging from d1 to d20 with optional count and modifier.",
+  "author": "AGNT User",
+  "icon": "dice",
+  "tools": [
+    {
+      "type": "roll-dice",
+      "entryPoint": "./dice-roller.js",
+      "schema": {
+        "title": "Dice Roller",
+        "category": "action",
+        "type": "roll-dice",
+        "icon": "dice",
+        "description": "Roll one or more dice (d1–d20) and optionally apply a numeric modifier. Returns total and individual roll values.",
+        "parameters": {
+          "dieType": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Type of die to roll (e.g., d6, d20).",
+            "required": true,
+            "options": [
+              "d1",
+              "d2",
+              "d3",
+              "d4",
+              "d5",
+              "d6",
+              "d7",
+              "d8",
+              "d9",
+              "d10",
+              "d11",
+              "d12",
+              "d13",
+              "d14",
+              "d15",
+              "d16",
+              "d17",
+              "d18",
+              "d19",
+              "d20"
+            ]
+          },
+          "count": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Number of dice to roll.",
+            "required": true,
+            "default": 1,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "modifier": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Numeric modifier to add to the total roll.",
+            "required": false,
+            "default": 0
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the roll was successful."
+          },
+          "total": {
+            "type": "number",
+            "description": "Sum of all dice rolls plus modifier."
+          },
+          "individualRolls": {
+            "type": "array",
+            "description": "Array of each individual die roll result."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the roll failed."
+          }
+        }
+      }
+    }
+  ]
+}

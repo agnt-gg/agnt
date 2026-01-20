@@ -1,0 +1,9 @@
+{
+  "name": "google-sheets-plugin",
+  "version": "1.0.0",
+  "description": "Google Sheets integration plugin for AGNT",
+  "type": "module",
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  }
+}

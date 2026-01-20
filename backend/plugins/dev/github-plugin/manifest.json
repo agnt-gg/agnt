@@ -1,0 +1,233 @@
+{
+  "name": "github-plugin",
+  "version": "1.0.0",
+  "description": "GitHub integration plugin for AGNT - Manage repositories, issues, pull requests, branches, and releases",
+  "author": "AGNT",
+  "icon": "github",
+  "tools": [
+    {
+      "type": "github-api",
+      "entryPoint": "./github-api.js",
+      "schema": {
+        "title": "GitHub API",
+        "category": "action",
+        "type": "github-api",
+        "icon": "github",
+        "description": "Interact with GitHub to perform various operations on repositories, issues, pull requests, and more.",
+        "authRequired": "oauth",
+        "authProvider": "github",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "CREATE_ISSUE",
+              "CREATE_PR",
+              "GET_REPO_INFO",
+              "CREATE_BRANCH",
+              "MERGE_PR",
+              "LIST_PRS",
+              "GET_PR_CHANGES",
+              "ADD_LABELS",
+              "REMOVE_LABELS",
+              "GET_FILE_CONTENT",
+              "GET_REPO_CONTENTS",
+              "CREATE_FILE",
+              "UPDATE_FILE",
+              "CREATE_RELEASE",
+              "LIST_COMMITS"
+            ],
+            "description": "The action to perform on GitHub"
+          },
+          "owner": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The owner of the repository",
+            "inputSize": "half"
+          },
+          "repo": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the repository",
+            "inputSize": "half"
+          },
+          "title": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The title of the issue or pull request",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_ISSUE", "CREATE_PR"]
+            }
+          },
+          "body": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The body of the issue or pull request",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_ISSUE", "CREATE_PR"]
+            }
+          },
+          "head": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the branch where your changes are implemented",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_PR"
+            }
+          },
+          "base": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the branch you want the changes pulled into",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_PR"
+            }
+          },
+          "baseBranch": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the branch to create the new branch from",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_BRANCH"
+            }
+          },
+          "newBranch": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the new branch to create",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_BRANCH"
+            }
+          },
+          "pullNumber": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The number of the pull request",
+            "conditional": {
+              "field": "action",
+              "value": ["MERGE_PR", "GET_PR_CHANGES"]
+            }
+          },
+          "mergeMethod": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["merge", "squash", "rebase"],
+            "description": "The method to use when merging the pull request",
+            "conditional": {
+              "field": "action",
+              "value": "MERGE_PR"
+            }
+          },
+          "state": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["open", "closed", "all"],
+            "description": "The state of pull requests to list",
+            "conditional": {
+              "field": "action",
+              "value": "LIST_PRS"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "inputType": "text",
+            "description": "The labels to add or remove (comma-separated)",
+            "conditional": {
+              "field": "action",
+              "value": ["ADD_LABELS", "REMOVE_LABELS"]
+            }
+          },
+          "filePath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The path to the file",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_FILE_CONTENT", "CREATE_FILE", "UPDATE_FILE"]
+            }
+          },
+          "content": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The content of the file",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_FILE", "UPDATE_FILE"]
+            }
+          },
+          "commitMessage": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The commit message",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_FILE", "UPDATE_FILE"]
+            }
+          },
+          "tagName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the tag",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_RELEASE"
+            }
+          },
+          "releaseName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the release",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_RELEASE"
+            }
+          },
+          "releaseNotes": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The release notes",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_RELEASE"
+            }
+          },
+          "branch": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The branch to list commits from",
+            "conditional": {
+              "field": "action",
+              "value": "LIST_COMMITS"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the action was successful"
+          },
+          "result": {
+            "type": "object",
+            "description": "The result of the action, varies based on the action performed"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the action failed"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,339 @@
+{
+  "id": "4644ddc3-b6f8-4359-9eb6-4bea4b72ad82",
+  "name": "Email Categorization and Response System",
+  "nodes": [
+    {
+      "id": "receiveEmail",
+      "text": "Receive Email",
+      "x": -80,
+      "y": -16,
+      "type": "receive-email",
+      "icon": "inbox",
+      "category": "trigger",
+      "parameters": { "emailAddress": "categorize@example.com" },
+      "outputs": {
+        "from": "",
+        "to": "",
+        "subject": "",
+        "body": "",
+        "attachments": []
+      },
+      "description": "This trigger node listens for incoming emails and starts the workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "analyzeEmailContent",
+      "text": "Analyze Email Content",
+      "x": -80,
+      "y": 48,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Analyze the following email and categorize it into one of these categories: 'Support', 'Sales', 'Feedback', or 'Other'. Provide a JSON object with these properties:\n- category: the determined category\n- confidence: a number between 0 and 1 indicating your confidence in the categorization\n- keywords: an array of up to 5 key words or phrases that contributed to the categorization\n\nEmail Subject: {{receiveEmail.subject}}\nEmail Body: {{receiveEmail.body}}\n\nReturn ONLY the JSON object without any additional text.",
+        "maxTokens": "300",
+        "temperature": "0.3"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node uses an AI model to analyze and categorize the email content.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "processAnalysis",
+      "text": "Process Analysis",
+      "x": -80,
+      "y": 112,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "parameters": {
+        "code": "const analysis = JSON.parse({{analyzeEmailContent.generatedText}});\nreturn {\n  category: analysis.category,\n  confidence: analysis.confidence,\n  keywords: analysis.keywords\n};"
+      },
+      "outputs": { "result": null, "error": "" },
+      "description": "This utility node processes the AI analysis results.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "handleSupport",
+      "text": "Handle Support",
+      "x": 240,
+      "y": 176,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "support@example.com",
+        "subject": "Support Request: {{receiveEmail.subject}}",
+        "body": "A new support request has been received:\n\nFrom: {{receiveEmail.from}}\nSubject: {{receiveEmail.subject}}\nKeywords: {{processAnalysis.result.keywords}}\n\nOriginal message:\n{{receiveEmail.body}}",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      },
+      "description": "This action node forwards support requests to the support team.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "handleSales",
+      "text": "Handle Sales",
+      "x": 240,
+      "y": -16,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "sales@example.com",
+        "subject": "Sales Inquiry: {{receiveEmail.subject}}",
+        "body": "A new sales inquiry has been received:\n\nFrom: {{receiveEmail.from}}\nSubject: {{receiveEmail.subject}}\nKeywords: {{processAnalysis.result.keywords}}\n\nOriginal message:\n{{receiveEmail.body}}",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      },
+      "description": "This action node forwards sales inquiries to the sales team.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "handleFeedback",
+      "text": "Handle Feedback",
+      "x": 240,
+      "y": 48,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "feedback@example.com",
+        "subject": "Customer Feedback: {{receiveEmail.subject}}",
+        "body": "New customer feedback has been received:\n\nFrom: {{receiveEmail.from}}\nSubject: {{receiveEmail.subject}}\nKeywords: {{processAnalysis.result.keywords}}\n\nOriginal message:\n{{receiveEmail.body}}",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      },
+      "description": "This action node forwards customer feedback to the appropriate team.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "handleOther",
+      "text": "Handle Other",
+      "x": 240,
+      "y": 112,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "info@example.com",
+        "subject": "Miscellaneous Email: {{receiveEmail.subject}}",
+        "body": "An email that doesn't fit into other categories has been received:\n\nFrom: {{receiveEmail.from}}\nSubject: {{receiveEmail.subject}}\nKeywords: {{processAnalysis.result.keywords}}\n\nOriginal message:\n{{receiveEmail.body}}",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      },
+      "description": "This action node handles emails that don't fit into other categories.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "logEmailCategory",
+      "text": "Log Email Category",
+      "x": 560,
+      "y": 80,
+      "type": "custom-api",
+      "icon": "connect",
+      "category": "action",
+      "parameters": {
+        "url": "https://api.example.com/log-email",
+        "method": "POST",
+        "headers": { "Content-Type": "application/json" },
+        "data": "{\"category\": \"{{processAnalysis.result.category}}\", \"confidence\": {{processAnalysis.result.confidence}}, \"subject\": \"{{receiveEmail.subject}}\"}",
+        "auth": {}
+      },
+      "outputs": {
+        "success": false,
+        "status": 0,
+        "result": {},
+        "headers": {},
+        "error": ""
+      },
+      "description": "This action node logs the email category to an external API.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "d82ed61c-736e-4519-83f3-855c3a2764dd",
+      "text": "Email Categorization and Response System",
+      "x": 240,
+      "y": -96,
+      "isEditing": false,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {},
+      "description": "This utility node displays a text label in the workflow, providing additional context or information.",
+      "error": null,
+      "outputs": {},
+      "isActive": false,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveEmail", "type": "output" },
+      "end": { "id": "analyzeEmailContent", "type": "input" },
+      "startX": 208,
+      "startY": 8,
+      "endX": -80,
+      "endY": 72,
+      "isActive": false
+    },
+    {
+      "id": "edge2",
+      "start": { "id": "analyzeEmailContent", "type": "output" },
+      "end": { "id": "processAnalysis", "type": "input" },
+      "startX": 208,
+      "startY": 72,
+      "endX": -80,
+      "endY": 136,
+      "isActive": false
+    },
+    {
+      "id": "edge3",
+      "start": { "id": "processAnalysis", "type": "output" },
+      "end": { "id": "handleSupport", "type": "input" },
+      "startX": 208,
+      "startY": 136,
+      "endX": 240,
+      "endY": 200,
+      "condition": "equals",
+      "if": "{{processAnalysis.result.category}}",
+      "value": "Support",
+      "isActive": false
+    },
+    {
+      "id": "edge4",
+      "start": { "id": "processAnalysis", "type": "output" },
+      "end": { "id": "handleSales", "type": "input" },
+      "startX": 208,
+      "startY": 136,
+      "endX": 240,
+      "endY": 8,
+      "condition": "equals",
+      "if": "{{processAnalysis.result.category}}",
+      "value": "Sales",
+      "isActive": false
+    },
+    {
+      "id": "edge5",
+      "start": { "id": "processAnalysis", "type": "output" },
+      "end": { "id": "handleFeedback", "type": "input" },
+      "startX": 208,
+      "startY": 136,
+      "endX": 240,
+      "endY": 72,
+      "condition": "equals",
+      "if": "{{processAnalysis.result.category}}",
+      "value": "Feedback",
+      "isActive": false
+    },
+    {
+      "id": "edge6",
+      "start": { "id": "processAnalysis", "type": "output" },
+      "end": { "id": "handleOther", "type": "input" },
+      "startX": 208,
+      "startY": 136,
+      "endX": 240,
+      "endY": 136,
+      "condition": "equals",
+      "if": "{{processAnalysis.result.category}}",
+      "value": "Other",
+      "isActive": false
+    },
+    {
+      "id": "edge7",
+      "start": { "id": "handleSupport", "type": "output" },
+      "end": { "id": "logEmailCategory", "type": "input" },
+      "startX": 528,
+      "startY": 200,
+      "endX": 560,
+      "endY": 104,
+      "isActive": false
+    },
+    {
+      "id": "edge8",
+      "start": { "id": "handleSales", "type": "output" },
+      "end": { "id": "logEmailCategory", "type": "input" },
+      "startX": 528,
+      "startY": 8,
+      "endX": 560,
+      "endY": 104,
+      "isActive": false
+    },
+    {
+      "id": "edge9",
+      "start": { "id": "handleFeedback", "type": "output" },
+      "end": { "id": "logEmailCategory", "type": "input" },
+      "startX": 528,
+      "startY": 72,
+      "endX": 560,
+      "endY": 104,
+      "isActive": false
+    },
+    {
+      "id": "edge10",
+      "start": { "id": "handleOther", "type": "output" },
+      "end": { "id": "logEmailCategory", "type": "input" },
+      "startX": 528,
+      "startY": 136,
+      "endX": 560,
+      "endY": 104,
+      "isActive": false
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 377,
+  "canvasOffsetY": 352,
+  "isTinyNodeMode": false
+}

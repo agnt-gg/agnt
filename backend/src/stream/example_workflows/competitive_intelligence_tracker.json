@@ -1,0 +1,212 @@
+{
+  "id": "9597cb2c-eec9-47ae-84fb-ca8db9760a49",
+  "name": "Competitive Intelligence Tracker",
+  "nodes": [
+    {
+      "id": "receiveCompetitorUpdate",
+      "text": "Receive Competitor Update",
+      "x": 240,
+      "y": 128,
+      "type": "receive-email",
+      "icon": "inbox",
+      "category": "trigger",
+      "parameters": { "emailAddress": "competitor-updates@example.com" },
+      "outputs": {
+        "from": "",
+        "to": "",
+        "subject": "",
+        "body": "",
+        "attachments": []
+      },
+      "description": "This trigger node listens for incoming emails containing competitor updates.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "analyzeUpdate",
+      "text": "Analyze Competitor Update",
+      "x": 240,
+      "y": 192,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Analyze the following competitor update email. Extract key information and assess its potential impact. Provide a JSON object with these properties:\n- competitor: (name of the competitor)\n- updateType: (e.g., 'Product Launch', 'Price Change', 'Marketing Campaign', 'Partnership', etc.)\n- keyPoints: (array of up to 5 key points from the update)\n- potentialImpact: (assess the potential impact on our business, rate as 'High', 'Medium', or 'Low')\n- actionRecommendations: (array of up to 3 recommended actions we should consider in response)\n\nEmail Subject: {{receiveCompetitorUpdate.subject}}\nEmail Body: {{receiveCompetitorUpdate.body}}\n\nReturn ONLY the JSON object without any additional text.",
+        "maxTokens": "500",
+        "temperature": "0.3"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node uses an AI model to analyze the competitor update and assess its potential impact.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "updateGoogleSheet",
+      "text": "Update Google Sheet",
+      "x": 560,
+      "y": 128,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "parameters": {
+        "operation": "write",
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "Sheet1!A1",
+        "values": "[{{parseAnalysis.result.date}}, {{parseAnalysis.result.competitor}}, {{parseAnalysis.result.updateType}}, {{parseAnalysis.result.keyPoints}}, {{parseAnalysis.result.potentialImpact}}, {{parseAnalysis.result.actionRecommendations}}]"
+      },
+      "outputs": { "success": false, "result": [], "error": "" },
+      "description": "This action node updates a Google Sheet with the analyzed competitor update information.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "generateBriefing",
+      "text": "Generate Strategy Briefing",
+      "x": 560,
+      "y": 192,
+      "type": "generate-with-ai-llm",
+      "icon": "magic",
+      "category": "action",
+      "parameters": {
+        "provider": "Anthropic",
+        "model": "claude-3-haiku-20240307",
+        "prompt": "Generate a concise strategy briefing based on the competitor update analysis. Use the following information:\n\nCompetitor Update Analysis: {{analyzeCompetitorUpdate.generatedText}}\n\nThe briefing should include:\n1. A brief introduction summarizing the competitor and update type\n2. Key points of the update\n3. Assessment of potential impact on our business\n4. Recommended actions\n5. A call to action for the strategy team\n\nKeep the briefing professional, concise, and actionable. Limit the response to 250 words.",
+        "maxTokens": "350",
+        "temperature": "0.7"
+      },
+      "outputs": { "generatedText": "", "tokenCount": 0, "error": "" },
+      "description": "This action node generates a strategy briefing based on the analyzed competitor update.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "sendBriefing",
+      "text": "Send Briefing to Strategy Team",
+      "x": 560,
+      "y": 256,
+      "type": "send-email",
+      "icon": "outbox",
+      "category": "action",
+      "parameters": {
+        "to": "example@email.com",
+        "subject": "Competitor Update: {{parseAnalysis.result.competitor}} - {{parseAnalysis.result.updateType}}",
+        "body": "{{generateStrategyBriefing.generatedText}}\n\nFor more details, please refer to the Competitor Updates spreadsheet.",
+        "isHtml": false,
+        "attachments": []
+      },
+      "outputs": {
+        "success": false,
+        "content": null,
+        "messageId": "",
+        "error": null
+      },
+      "description": "This action node sends the strategy briefing to the strategy team via email.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "competitiveIntelligenceLabel",
+      "text": "Competitive Intelligence Tracker",
+      "x": 240,
+      "y": 64,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "parameters": {},
+      "outputs": {},
+      "description": "This utility node displays a label for the Competitive Intelligence Tracker workflow.",
+      "isSelected": false,
+      "isActive": false,
+      "error": null,
+      "output": null
+    },
+    {
+      "id": "ebf7475b-fd09-4aee-a3f3-d0f04066a589",
+      "text": "Parse Analysis",
+      "x": 240,
+      "y": 256,
+      "isEditing": false,
+      "type": "execute-javascript",
+      "icon": "javascript",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {
+        "code": "const update = JSON.parse({{analyzeCompetitorUpdate.generatedText}});\nconst date = new Date().toISOString();\n\nreturn { \n  date, \n  competitor: update.competitor, \n  updateType: update.updateType, \n  keyPoints: update.keyPoints, \n  potentialImpact: update.potentialImpact, \n  actionRecommendations: update.actionRecommendations \n};"
+      },
+      "description": "This utility node allows you to execute custom JavaScript code within the workflow, enabling advanced logic and data transformations.",
+      "error": null,
+      "isActive": false,
+      "output": null,
+      "outputs": { "result": null, "error": "" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "start": { "id": "receiveCompetitorUpdate", "type": "output" },
+      "end": { "id": "analyzeUpdate", "type": "input" },
+      "startX": 528,
+      "startY": 152,
+      "endX": 240,
+      "endY": 216
+    },
+    {
+      "id": "edge4",
+      "start": { "id": "generateBriefing", "type": "output" },
+      "end": { "id": "sendBriefing", "type": "input" },
+      "startX": 848,
+      "startY": 216,
+      "endX": 560,
+      "endY": 280
+    },
+    {
+      "id": "f411c95c-d4e8-493c-b9cf-7dc55a8aa061",
+      "start": { "id": "analyzeUpdate", "type": "output" },
+      "end": { "id": "ebf7475b-fd09-4aee-a3f3-d0f04066a589", "type": "input" },
+      "startX": 528,
+      "startY": 216,
+      "endX": 240,
+      "endY": 280
+    },
+    {
+      "id": "78b3f445-f2cb-4847-ac1b-223c55975b2f",
+      "start": {
+        "id": "ebf7475b-fd09-4aee-a3f3-d0f04066a589",
+        "type": "output"
+      },
+      "end": { "id": "updateGoogleSheet", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 152
+    },
+    {
+      "id": "40398f2b-a149-4b8f-97d7-972cd9b7b9b9",
+      "start": {
+        "id": "ebf7475b-fd09-4aee-a3f3-d0f04066a589",
+        "type": "output"
+      },
+      "end": { "id": "generateBriefing", "type": "input" },
+      "startX": 528,
+      "startY": 280,
+      "endX": 560,
+      "endY": 216
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 148,
+  "canvasOffsetY": 269,
+  "isTinyNodeMode": false
+}

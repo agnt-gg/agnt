@@ -1,0 +1,117 @@
+{
+  "name": "google-drive-plugin",
+  "version": "1.0.0",
+  "description": "Google Drive integration plugin for AGNT - Manage files and folders in Google Drive",
+  "author": "AGNT",
+  "icon": "google-drive",
+  "tools": [
+    {
+      "type": "google-drive-api",
+      "entryPoint": "./google-drive-api.js",
+      "schema": {
+        "title": "Google Drive API",
+        "category": "action",
+        "type": "google-drive-api",
+        "icon": "google-drive",
+        "description": "Interact with Google Drive to perform various operations on files and folders.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "LIST_FILES",
+              "UPLOAD_FILE",
+              "DOWNLOAD_FILE",
+              "CREATE_FOLDER",
+              "DELETE_FILE",
+              "MOVE_FILE",
+              "GET_FILE_INFO",
+              "SHARE_FILE"
+            ],
+            "description": "The action to perform on Google Drive"
+          },
+          "folderId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the folder (for LIST_FILES, UPLOAD_FILE, CREATE_FOLDER)",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_FILES", "UPLOAD_FILE", "CREATE_FOLDER"]
+            }
+          },
+          "fileName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name or ID of the file",
+            "conditional": {
+              "field": "action",
+              "value": ["UPLOAD_FILE", "DOWNLOAD_FILE", "DELETE_FILE", "MOVE_FILE", "GET_FILE_INFO", "SHARE_FILE"]
+            }
+          },
+          "fileContent": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The content of the file to upload",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "newFolderName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The name of the new folder to create",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_FOLDER"
+            }
+          },
+          "destinationFolderId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the destination folder",
+            "conditional": {
+              "field": "action",
+              "value": "MOVE_FILE"
+            }
+          },
+          "shareEmail": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Email address to share the file with",
+            "conditional": {
+              "field": "action",
+              "value": "SHARE_FILE"
+            }
+          },
+          "shareRole": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["reader", "writer", "commenter"],
+            "description": "The role to grant to the shared user",
+            "conditional": {
+              "field": "action",
+              "value": "SHARE_FILE"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the Google Drive operation was successful"
+          },
+          "result": {
+            "type": "object",
+            "description": "The data returned by the Google Drive operation"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the Google Drive operation failed"
+          }
+        }
+      }
+    }
+  ]
+}

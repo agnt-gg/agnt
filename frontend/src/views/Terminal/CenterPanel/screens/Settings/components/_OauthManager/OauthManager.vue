@@ -1,0 +1,581 @@
+<template>
+  <div class="auth-manager">
+    <h2>App Integrations</h2>
+
+    <div class="search-bar">
+      <input type="text" v-model="searchQuery" placeholder="Search connected apps..." @input="searchApps" />
+    </div>
+
+    <!-- Category Selector -->
+    <!-- <div class="categories">
+      <template v-for="(category, index) in categories" :key="category">
+        <button
+          @click="selectCategory(category)"
+          :class="{ active: selectedCategory === category }"
+        >
+          {{ category }}
+        </button>
+        <span v-if="index < categories.length - 1" class="category-separator"
+          >|</span
+        >
+      </template>
+    </div> -->
+
+    <!-- App Grid -->
+    <div class="all-apps">
+      <!-- <h3>{{ categoryHeading }}</h3> -->
+      <div class="app-grid" ref="appGrid" @scroll="handleScroll">
+        <div v-for="app in visibleApps" :key="app.id" class="app-item" :class="{ connected: app.connected }">
+          <div class="app-item-inner" @click="handleAppClick(app)">
+            <div class="app-icon" :title="app.instructions">
+              <SvgIcon :name="app.icon" />
+            </div>
+            <span :title="app.instructions">{{ app.name }}</span>
+            <span v-if="app.connected" class="connected-status">Connected</span>
+          </div>
+          <!-- <div class="app-actions">
+            <button @click="editProvider(app)">Edit</button>
+            <button @click="deleteProvider(app.id)">Delete</button>
+          </div> -->
+        </div>
+      </div>
+    </div>
+
+    <!-- <div class="provider-form">
+      <button @click="showAddProviderForm = true">Add New Provider</button>
+
+      <ProviderForm
+        v-if="showAddProviderForm"
+        @provider-added="handleProviderAdded"
+      />
+
+      <ProviderForm
+        v-if="editingProvider"
+        :provider="editingProvider"
+        @provider-updated="handleProviderUpdated"
+      />
+    </div> -->
+    <SimpleModal ref="modal" />
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useStore, mapActions } from 'vuex';
+import SvgIcon from '@/views/_components/common/SvgIcon.vue';
+import { API_CONFIG } from '@/tt.config.js';
+import { useRoute, useRouter } from 'vue-router';
+import { encrypt, decrypt } from '@/views/_utils/encryption.js';
+import ProviderForm from './components/ProviderForm/ProviderForm.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+
+const store = useStore();
+const route = useRoute();
+const router = useRouter();
+
+const searchQuery = ref('');
+const selectedCategory = ref('All');
+const categories = computed(() => {
+  const categorySet = new Set(allApps.value.flatMap((app) => app.categories));
+  return ['All', ...Array.from(categorySet).sort()];
+});
+
+const categoryHeading = computed(() => {
+  if (selectedCategory.value === 'All') {
+    return 'All Apps';
+  } else {
+    return `${selectedCategory.value} Apps`;
+  }
+});
+
+const allApps = ref([]);
+
+const appGrid = ref(null);
+const loadingMore = ref(false);
+
+const currentPage = ref(1);
+const appsPerPage = 20;
+
+const showAddProviderForm = ref(false);
+const editingProvider = ref(null);
+
+const modal = ref(null);
+
+const filteredApps = computed(() => {
+  return allApps.value.filter(
+    (app) =>
+      (selectedCategory.value === 'All' || app.categories.includes(selectedCategory.value)) &&
+      app.name.toLowerCase().includes(searchQuery.value.toLowerCase())
+  );
+});
+
+const visibleApps = computed(() => {
+  return filteredApps.value.sort((a, b) => {
+    if (a.connected === b.connected) {
+      return a.name.localeCompare(b.name);
+    }
+    return a.connected ? -1 : 1;
+  });
+});
+
+const showAlert = async (title, message) => {
+  await modal.value.showModal({
+    title,
+    message,
+    confirmText: 'OK',
+    showCancel: false,
+  });
+};
+
+const fetchAuthProviders = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    console.log(response);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const providers = await response.json();
+    allApps.value = providers.map((provider) => ({
+      ...provider,
+      categories: Array.isArray(provider.categories) ? provider.categories : JSON.parse(provider.categories),
+      connected: allApps.value.find((app) => app.id === provider.id)?.connected || false,
+      connectionType: provider.connectionType || provider.connection_type,
+      instructions: provider.instructions,
+      custom_prompt: provider.custom_prompt,
+    }));
+    console.log('Fetched auth providers with instructions:', allApps.value);
+  } catch (error) {
+    console.error('Error fetching auth providers:', error);
+    await showAlert('Error', 'Failed to fetch auth providers. Please try again.');
+  }
+};
+
+const handleScroll = () => {
+  if (loadingMore.value) return;
+
+  const grid = appGrid.value;
+  if (!grid) return;
+
+  const bottomOfGrid = grid.scrollTop + grid.clientHeight;
+  const totalHeight = grid.scrollHeight;
+
+  if (bottomOfGrid >= totalHeight - 100) {
+    loadMoreApps();
+  }
+};
+
+const loadMoreApps = () => {
+  if (currentPage.value * appsPerPage < visibleApps.value.length) {
+    currentPage.value++;
+  }
+};
+
+const searchApps = () => {
+  currentPage.value = 1;
+};
+
+const selectCategory = (category) => {
+  selectedCategory.value = category;
+  searchApps();
+};
+
+const handleAppClick = (app) => {
+  console.log('Handling app click:', app);
+  if (app.connected) {
+    disconnectApp(app);
+  } else if (app.connectionType === 'oauth') {
+    connectOAuthApp(app);
+  } else if (app.connectionType === 'apikey') {
+    promptApiKey(app);
+  } else {
+    console.log('Unsupported app type:', app.connectionType);
+  }
+};
+
+const connectOAuthApp = async (app) => {
+  // Show instructions before connecting
+  if (app.instructions) {
+    const proceed = await modal.value.showModal({
+      title: `Connect to ${app.name}`,
+      message: app.instructions,
+      confirmText: 'Continue',
+      cancelText: 'Cancel',
+      confirmClass: 'btn-primary',
+    });
+
+    if (!proceed) return;
+  }
+
+  try {
+    const token = localStorage.getItem('token');
+    // Pass origin as query parameter for reliable Electron support
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/connect/${app.id}?origin=${encodeURIComponent(window.location.origin)}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    console.log('OAuth connect response:', data);
+    if (data.authUrl) {
+      console.log('Redirecting to:', data.authUrl);
+      window.location.href = data.authUrl;
+    } else {
+      console.error('No authUrl provided in the response');
+    }
+  } catch (error) {
+    console.error(`Error connecting to ${app.name}:`, error);
+    await showAlert('Connection Error', `Failed to connect to ${app.name}: ${error.message}`);
+  }
+};
+
+const disconnectApp = async (app) => {
+  const confirmDisconnect = await modal.value.showModal({
+    title: 'Confirm Disconnection',
+    message: `Are you sure you want to disconnect from ${app.name}?`,
+    confirmText: 'Disconnect',
+    cancelText: 'Cancel',
+    confirmClass: 'btn-danger',
+  });
+
+  if (!confirmDisconnect) return;
+
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${app.id}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    if (data.success) {
+      app.connected = false;
+      await showAlert('Success', `Successfully disconnected from ${app.name}`);
+    } else {
+      throw new Error('Disconnection failed');
+    }
+  } catch (error) {
+    console.error(`Error disconnecting from ${app.name}:`, error);
+    await showAlert('Disconnection Error', `Failed to disconnect from ${app.name}: ${error.message}`);
+  }
+};
+
+const promptApiKey = async (app) => {
+  console.log('promptApiKey called with app:', app);
+  console.log('app.instructions:', app.instructions);
+  console.log('app.custom_prompt:', app.custom_prompt);
+
+  // Use instructions as the message, or fall back to custom_prompt or default
+  const promptMessage = app.instructions || app.custom_prompt || `Enter API Key for ${app.name}:`;
+  console.log('Final promptMessage:', promptMessage);
+
+  const apiKey = await showPrompt(`Connect to ${app.name}`, promptMessage, '', {
+    confirmText: 'Save',
+    cancelText: 'Cancel',
+    confirmClass: 'btn-primary',
+    cancelClass: 'btn-secondary',
+  });
+
+  if (apiKey) {
+    await saveApiKey(app, apiKey);
+  }
+};
+
+const showPrompt = async (title, message, defaultValue = '', options = {}) => {
+  const result = await modal.value.showModal({
+    title,
+    message,
+    isPrompt: true,
+    isTextArea: options.isTextArea || false,
+    placeholder: defaultValue,
+    defaultValue: defaultValue,
+    confirmText: options.confirmText || 'Save',
+    cancelText: options.cancelText || 'Cancel',
+    confirmClass: options.confirmClass || 'btn-primary',
+    cancelClass: options.cancelClass || 'btn-secondary',
+    showCancel: options.showCancel !== undefined ? options.showCancel : true,
+  });
+  return result === null ? null : result || defaultValue;
+};
+
+const saveApiKey = async (app, apiKey) => {
+  try {
+    const token = localStorage.getItem('token');
+    const encryptedApiKey = apiKey;
+
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${app.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ apiKey: encryptedApiKey }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (result.success) {
+      app.connected = true;
+      await showAlert('Success', `API key for ${app.name} saved successfully!`);
+    } else {
+      throw new Error(result.message || 'Failed to save API key');
+    }
+  } catch (error) {
+    console.error(`Error saving API key for ${app.name}:`, error);
+    await showAlert('Error', `Failed to save API key for ${app.name}: ${error.message}`);
+  }
+};
+
+const completeOAuth = async (code, state, provider) => {
+  try {
+    const token = localStorage.getItem('token');
+
+    // Split state into its components
+    const stateParts = state.split(':');
+    const providerId = stateParts[0]; // Take the first part as provider
+
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/callback`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        code,
+        state, // Send the entire state string
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.success) {
+      const app = allApps.value.find((a) => a.id === data.provider);
+      if (app) {
+        app.connected = true;
+      }
+      await fetchConnectedApps(); // Refresh the list of connected apps
+      await showAlert('Success', `Successfully connected to ${data.provider}`);
+    } else {
+      throw new Error('OAuth completion failed');
+    }
+  } catch (error) {
+    console.error('Error completing OAuth:', error);
+    await showAlert('OAuth Error', `Failed to complete OAuth: ${error.message}`);
+  }
+};
+
+const fetchConnectedApps = async () => {
+  await store.dispatch('appAuth/fetchConnectedApps');
+  const connectedApps = store.state.appAuth.connectedApps;
+  allApps.value.forEach((app) => {
+    app.connected = connectedApps.includes(app.id);
+  });
+};
+
+const handleProviderAdded = (newProvider) => {
+  const formattedProvider = {
+    ...newProvider,
+    connected: false,
+  };
+  allApps.value.push(formattedProvider);
+  showAddProviderForm.value = false;
+  console.log('Updated allApps:', allApps.value);
+};
+
+const handleProviderUpdated = (updatedProvider) => {
+  const index = allApps.value.findIndex((app) => app.id === updatedProvider.id);
+  if (index !== -1) {
+    allApps.value[index] = updatedProvider;
+  }
+  editingProvider.value = null;
+};
+
+const editProvider = (provider) => {
+  editingProvider.value = { ...provider };
+};
+
+const deleteProvider = async (providerId) => {
+  const confirmDelete = await modal.value.showModal({
+    title: 'Confirm Deletion',
+    message: 'Are you sure you want to delete this provider?',
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    confirmClass: 'btn-danger',
+  });
+
+  if (!confirmDelete) return;
+
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers/${providerId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    allApps.value = allApps.value.filter((app) => app.id !== providerId);
+  } catch (error) {
+    console.error('Error deleting provider:', error);
+    await showAlert('Deletion Error', 'Failed to delete provider. Please try again.');
+  }
+};
+
+onMounted(async () => {
+  await fetchAuthProviders();
+  await fetchConnectedApps();
+  loadMoreApps();
+  window.addEventListener('resize', handleScroll);
+
+  const code = route.query.code;
+  const state = route.query.state;
+  if (code && state) {
+    const [provider, originalState] = state.split(':');
+    if (provider && originalState) {
+      completeOAuth(code, originalState, provider);
+      router.replace({ query: {} });
+    } else {
+      console.error('Invalid state format');
+    }
+  }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleScroll);
+});
+</script>
+
+<style scoped>
+.auth-manager {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.auth-manager h2,
+.auth-manager h3 {
+  padding-left: 1px;
+}
+
+.app-grid {
+  display: flex;
+  gap: 8px;
+  max-height: 600px;
+  overflow-y: auto;
+  flex-wrap: wrap;
+  flex-direction: row;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.app-item {
+  display: flex;
+  cursor: pointer;
+  border: 3px solid transparent;
+  padding: 8px 8px 2px;
+  border-radius: 16px;
+  transition: all 0.3s ease;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: center;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.app-item-inner {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: center;
+  justify-content: center;
+  align-items: center;
+}
+
+.app-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+body.dark .app-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.app-item.connected {
+  border-color: var(--color-green);
+}
+
+.connected-status {
+  color: var(--color-green);
+  font-size: 0.6em;
+  line-height: 100%;
+}
+
+.app-item :deep(svg) {
+  width: 18px;
+  height: 18px;
+  margin-bottom: 3px;
+}
+
+.all-apps h3 {
+  margin-bottom: 16px;
+}
+
+.categories {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-bar {
+  width: 100%;
+}
+
+.categories button {
+  padding: 4px 8px;
+  border: 1px solid var(--color-light-navy);
+  border-radius: 8px;
+}
+
+.categories button.active {
+  outline: 2px solid var(--color-pink);
+}
+
+body.dark .categories button {
+  border: 1px solid var(--color-dull-navy);
+}
+
+.category-separator {
+  font-weight: normal;
+  margin-top: 3px;
+  opacity: 0.15;
+}
+</style>

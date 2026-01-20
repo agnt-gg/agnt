@@ -1,0 +1,192 @@
+{
+  "id": "42cef71e-d87c-43a4-8192-abb0ce844bb2",
+  "name": "All Rows from Sheet to Slack",
+  "nodes": [
+    {
+      "id": "38610bda-f569-467b-a296-3979a66c90b6",
+      "text": "Timer Trigger",
+      "x": 368,
+      "y": 256,
+      "isEditing": false,
+      "type": "trigger-timer",
+      "icon": "clock",
+      "category": "trigger",
+      "isSelected": false,
+      "toolConfig": {
+        "title": "Timer Trigger",
+        "category": "trigger",
+        "type": "trigger-timer",
+        "icon": "clock",
+        "description": "This trigger node fires the workflow at specified intervals or at a specific time.",
+        "parameters": {
+          "fireOnStart": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["Yes", "No"],
+            "default": "Yes",
+            "description": "Fire the trigger immediately when the workflow starts"
+          },
+          "scheduleType": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": ["Interval", "Specific Time"],
+            "default": "Interval",
+            "description": "Choose between interval-based or specific time scheduling"
+          },
+          "schedule": {
+            "type": "string",
+            "inputType": "select",
+            "inputSize": "half",
+            "options": [
+              "Every Minute",
+              "Every 5 Minutes",
+              "Every 15 Minutes",
+              "Every 30 Minutes",
+              "Hourly",
+              "Daily",
+              "Weekly",
+              "Monthly"
+            ],
+            "description": "Select the interval for the timer",
+            "conditional": {
+              "field": "scheduleType",
+              "value": "Interval"
+            }
+          },
+          "specificTime": {
+            "type": "string",
+            "inputType": "time",
+            "inputSize": "half",
+            "description": "Select the specific time to run the trigger",
+            "conditional": {
+              "field": "scheduleType",
+              "value": "Specific Time"
+            }
+          },
+          "specificDays": {
+            "type": "array",
+            "inputType": "checkbox",
+            "inputSize": "half",
+            "options": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "description": "Select the days to run the trigger at the specific time",
+            "conditional": {
+              "field": "scheduleType",
+              "value": "Specific Time"
+            }
+          }
+        },
+        "outputs": {
+          "timestamp": {
+            "type": "string",
+            "description": "The timestamp when the trigger fired"
+          }
+        }
+      },
+      "parameters": { "schedule": "Every Minute", "customSchedule": "" },
+      "description": "This trigger node fires the workflow at specified intervals.",
+      "error": null,
+      "outputs": { "timestamp": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "51de6e99-f310-4c54-b500-bd459b4fe55c",
+      "text": "Google Sheets",
+      "x": 368,
+      "y": 320,
+      "isEditing": false,
+      "type": "google-sheets-api",
+      "icon": "table",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "operation": "Read",
+        "spreadsheetId": "1fAiyiXAe0DTftqkx_mJK9khNd-4mojF5OeHshAD-L3E",
+        "range": "Sheet1",
+        "values": ""
+      },
+      "description": "This action node interacts with Google Sheets to read, write or modify data in a spreadsheet.",
+      "error": null,
+      "outputs": { "success": false, "result": [], "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "e9021278-780b-4e2a-9670-46430b702afd",
+      "text": "Send Slack Message",
+      "x": 368,
+      "y": 384,
+      "isEditing": false,
+      "type": "send-slack-message",
+      "icon": "slack-send",
+      "category": "action",
+      "isSelected": false,
+      "parameters": {
+        "channelId": "C07KKR1GW07",
+        "message": "{{googleSheets.result}}"
+      },
+      "description": "This action node sends a message to a specified Slack channel.",
+      "error": null,
+      "outputs": { "success": false, "timestamp": "", "error": "" },
+      "isActive": false,
+      "output": null
+    },
+    {
+      "id": "b241be72-eb8c-4465-938a-eb7b9d9f532c",
+      "text": "All Rows from Sheet to Slack",
+      "x": 368,
+      "y": 192,
+      "isEditing": false,
+      "type": "label",
+      "icon": "text",
+      "category": "utility",
+      "isSelected": false,
+      "parameters": {},
+      "description": "This utility node displays a text label in the workflow, providing additional context or information.",
+      "error": null,
+      "outputs": {},
+      "isActive": false,
+      "output": null
+    }
+  ],
+  "edges": [
+    {
+      "id": "5760ddd9-649d-4a7d-b163-1f506dbcd06b",
+      "start": {
+        "id": "38610bda-f569-467b-a296-3979a66c90b6",
+        "type": "output"
+      },
+      "end": { "id": "51de6e99-f310-4c54-b500-bd459b4fe55c", "type": "input" },
+      "startX": 656,
+      "startY": 280,
+      "endX": 368,
+      "endY": 344
+    },
+    {
+      "id": "8faceb4c-4b79-48c5-b7a2-4a4330de8c4c",
+      "start": {
+        "id": "51de6e99-f310-4c54-b500-bd459b4fe55c",
+        "type": "output"
+      },
+      "end": { "id": "e9021278-780b-4e2a-9670-46430b702afd", "type": "input" },
+      "startX": 656,
+      "startY": 344,
+      "endX": 368,
+      "endY": 408
+    }
+  ],
+  "zoomLevel": 1,
+  "canvasOffsetX": 175,
+  "canvasOffsetY": 111,
+  "isTinyNodeMode": false
+}
