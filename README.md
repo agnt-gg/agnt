@@ -198,6 +198,30 @@ cd frontend && npm install && cd ..
 npm start
 ```
 
+### 🐳 Docker Install (Self-Hosting)
+
+Use Docker for an isolated, production-ready deployment:
+
+```bash
+# Clone the repository
+git clone https://github.com/agnt-gg/agnt.git
+cd agnt
+
+# Option 1: Full version with browser automation (1.3GB)
+docker-compose up -d
+
+# Option 2: Lite version without browser automation (620MB)
+docker-compose -f docker-compose.lite.yml up -d
+
+# Access at http://localhost:3333
+```
+
+**Two variants available:**
+- 🔋 **Full** (~1.3GB): Includes Chromium for web scraping & browser automation
+- 🪶 **Lite** (~620MB): Smaller image without browser features
+
+📖 See the [Self-Hosting Guide](docs/SELF_HOSTING.md) for complete Docker setup, networking, and configuration.
+
 ### 📥 Download Pre-built Binaries
 
 <p align="center">
@@ -443,6 +467,8 @@ See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md) for more details.
 | [📚 API Documentation](docs/_API-DOCUMENTATION.md)        | Complete REST API reference |
 | [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)      | Detailed build guide        |
 | [🐧 Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | Linux-specific setup        |
+| [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)             | Docker deployment & hosting |
+| [🪶 Lite Mode Guide](docs/LITE_MODE.md)                   | Handling browser-less mode  |
 | [🔌 Plugin Development](backend/plugins/README.md)        | Creating custom plugins     |
 | [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)         | Native module rebuilding    |
 

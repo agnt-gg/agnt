@@ -1,0 +1,92 @@
+version: '3.8'
+
+# AGNT Full Version - Complete image with Chromium (~1.3GB)
+# ✅ Includes Puppeteer/Playwright browser automation support
+# Use this for:
+# - Full-featured deployments
+# - When you need web scraping/browser automation
+# - Local/self-hosted environments with sufficient resources
+#
+# For lighter version without Chromium (~600MB), use:
+# docker-compose -f docker-compose.lite.yml up -d
+
+services:
+  agnt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agnt:latest
+    container_name: agnt
+    ports:
+      - "3333:3333"
+    environment:
+      # Application Environment
+      - NODE_ENV=production
+
+      # URLs Configuration
+      - BASE_URL=http://localhost:3333
+      - REMOTE_URL=https://api.agnt.gg
+      - WEBHOOK_URL=http://localhost:3001
+      - FRONTEND_URL=http://localhost:3333
+
+      # Security Secrets (CHANGE THESE IN PRODUCTION!)
+      # Generate secure secrets with: openssl rand -base64 32
+      - JWT_SECRET=${JWT_SECRET:-CHANGE_ME_IN_PRODUCTION}
+      - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION}
+
+      # Optional: License Key
+      # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
+
+    volumes:
+      # Persistent data storage
+      - agnt-data:/app/data
+
+      # Plugin storage
+      - agnt-plugins:/app/backend/plugins/installed
+      - agnt-plugin-builds:/app/backend/plugins/plugin-builds
+
+      # Application logs
+      - agnt-logs:/app/logs
+
+      # Optional: Custom environment file
+      # - ./backend/.env:/app/backend/.env:ro
+
+    restart: unless-stopped
+
+    # Allow container to access services on host machine (e.g., local AI providers, MCP servers)
+    # Uncomment the following lines to enable host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # Health check to ensure service is running
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+volumes:
+  # Persistent volumes for data storage
+  agnt-data:
+    driver: local
+  agnt-plugins:
+    driver: local
+  agnt-plugin-builds:
+    driver: local
+  agnt-logs:
+    driver: local
+
+# Example network configuration for running with other services
+# networks:
+#   default:
+#     name: agnt-network
