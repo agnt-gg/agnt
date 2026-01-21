@@ -22,9 +22,9 @@ Complete guide for installing and self-hosting AGNT using Docker or Electron des
 
 ---
 
-## 📦 Four Installation Methods
+## 📦 Four Installation Methods (+ Hybrid)
 
-AGNT offers **4 installation types** to match your deployment needs:
+AGNT offers **4 installation types** plus a **hybrid mode** to match your deployment needs:
 
 ### Quick Comparison
 
@@ -34,6 +34,7 @@ AGNT offers **4 installation types** to match your deployment needs:
 | **🐳 Docker Lite** | ~715MB | ❌ No | Server | Self-hosted, multi-device, lightweight |
 | **💻 Electron Full** | ~150-200MB | ✅ Yes | Desktop | Single device, native app, all features |
 | **💻 Electron Lite** | ~80-120MB | ❌ No | Desktop | Single device, native app, smaller |
+| **🔀 Hybrid Mode** | Docker + Electron | ✅/❌ | Both | Native UI + shared backend |
 
 ### 🐳 Docker Installations (Server/Self-Hosted)
 
@@ -71,6 +72,40 @@ AGNT offers **4 installation types** to match your deployment needs:
 - ❌ No browser automation
 - 🎯 **Use when:** Single device use, limited bandwidth/storage
 
+### 🔀 Hybrid Mode (Electron + Docker Backend)
+
+**Best of both worlds:** Native desktop UI connected to shared Docker backend
+
+**How it works:**
+- Run Docker backend on a server (local or remote)
+- Configure Electron app to connect to external backend
+- Get native app experience with multi-device data sharing
+
+**Benefits:**
+- ✅ Native desktop UI (Electron)
+- ✅ Shared backend for family/team (Docker)
+- ✅ One source of truth for all data
+- ✅ Easier backend updates
+- ✅ Each person gets native app experience
+
+**Setup:**
+```bash
+# Step 1: Start Docker backend
+docker-compose up -d
+
+# Step 2: Configure Electron to use external backend
+USE_EXTERNAL_BACKEND=true npm start
+# Or set in .env file
+```
+
+**When to use Hybrid Mode:**
+- ✅ Family/team wants native desktop apps but shared data
+- ✅ Server running Docker, users want native UI
+- ✅ Remote work with central server backend
+- ✅ Best UX + data sharing combination
+
+See [Electron vs Web Guide](ELECTRON_VS_WEB.md) for detailed hybrid setup.
+
 ---
 
 ## 🤔 Which Installation Should I Choose?
@@ -105,6 +140,13 @@ AGNT offers **4 installation types** to match your deployment needs:
 - ✅ You don't need browser automation
 - ✅ You want the smallest download size
 - ✅ Don't need multi-device access
+
+### Choose Hybrid Mode (Electron + Docker) if:
+- ✅ You want native desktop UI for each person
+- ✅ You want shared backend for family/team
+- ✅ You're running Docker on a server/NAS
+- ✅ Remote team with central backend
+- ✅ Best of both: native UX + data sharing
 
 ---
 
@@ -771,16 +813,17 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 
 ### Docker vs Electron
 
-| Aspect | Docker | Electron |
-|--------|--------|----------|
-| **Access** | Browser (any device) | Native desktop app |
-| **Devices** | Multi-device | Single device |
-| **Users** | Personal, family (2-5), or team (2-10) | Single user |
-| **Platform** | Server (Linux/Mac/Win) | Desktop (Win/Mac/Linux) |
-| **Size** | 1.5GB (full), 715MB (lite) | 150-200MB (full), 80-120MB (lite) |
-| **Updates** | Pull new image | Auto-update or reinstall |
-| **Network** | Requires open port | Runs locally |
-| **Best For** | Multi-device, sharing, always-on | Single device, native app |
+| Aspect | Docker | Electron | Hybrid |
+|--------|--------|----------|--------|
+| **Access** | Browser (any device) | Native desktop app | Native desktop app |
+| **Backend** | Docker | Built-in | Docker (external) |
+| **Data Sharing** | Yes (2-10 users) | No (single user) | Yes (2-10 users) |
+| **Devices** | Multi-device | Single device | One device per user |
+| **Platform** | Server (Linux/Mac/Win) | Desktop (Win/Mac/Linux) | Both |
+| **Size** | 1.5GB (full), 715MB (lite) | 150-200MB (full), 80-120MB (lite) | Both combined |
+| **Updates** | Pull new image | Auto-update or reinstall | Update each separately |
+| **Network** | Requires open port | Runs locally | Requires network to backend |
+| **Best For** | Multi-device, sharing, always-on | Single device, native app | Team with native apps + shared data |
 
 ### Feature Comparison: Full vs Lite
 
@@ -801,22 +844,29 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 ### Quick Decision Tree
 
 ```
-Need multi-device access or sharing?
-├─ Yes → Choose Docker (personal, family, or team)
-│   └─ Need browser automation?
-│       ├─ Yes → Docker Full (~1.5GB)
-│       └─ No  → Docker Lite (~715MB)
+Want to share data with others (family/team)?
+├─ Yes → Need native desktop UI for everyone?
+│   ├─ Yes → Hybrid Mode (Electron + Docker backend)
+│   │   └─ Need browser automation?
+│   │       ├─ Yes → Docker Full backend + Electron Full clients
+│   │       └─ No  → Docker Lite backend + Electron Lite clients
+│   │
+│   └─ No (browser access OK) → Choose Docker
+│       └─ Need browser automation?
+│           ├─ Yes → Docker Full (~1.5GB)
+│           └─ No  → Docker Lite (~715MB)
 │
-└─ No (single device) → Choose Electron (single user)
+└─ No (just me, single device) → Choose Electron
     └─ Need browser automation?
         ├─ Yes → Electron Full (~150-200MB)
         └─ No  → Electron Lite (~80-120MB)
 ```
 
-**Key Question: How many devices?**
-- **Multiple devices** (phone, laptop, tablet) → Docker
-- **Family/team sharing** (2-10 people) → Docker
-- **Single device only** → Electron
+**Key Questions:**
+1. **Sharing data?** Yes → Docker backend (or Hybrid)
+2. **Multiple devices for you?** Yes → Docker
+3. **Want native app UI?** Yes → Electron (or Hybrid)
+4. **Need browser automation?** Yes → Full version
 
 ---
 
