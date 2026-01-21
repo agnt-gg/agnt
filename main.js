@@ -42,6 +42,32 @@ process.env.FFMPEG_PATH = ffmpegPath;
 process.env.PUPPETEER_SKIP_DOWNLOAD = 'true';
 process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1';
 
+// Detect if this is an AGNT Lite build
+// Lite builds have a marker file created during the build process
+const isLiteBuild = (() => {
+  if (process.env.AGNT_LITE_MODE === 'true') {
+    return true; // Explicitly set via environment variable
+  }
+
+  if (app.isPackaged) {
+    const resourcesPath = process.resourcesPath || path.join(__dirname, '..');
+    const liteMarkerPath = path.join(resourcesPath, '.agnt-lite-mode');
+
+    if (fs.existsSync(liteMarkerPath)) {
+      console.log('[Lite Mode] Detected AGNT Lite build');
+      return true;
+    }
+  }
+
+  return false;
+})();
+
+// Set AGNT_LITE_MODE environment variable for backend
+if (isLiteBuild) {
+  process.env.AGNT_LITE_MODE = 'true';
+  console.log('[Lite Mode] Browser automation features disabled');
+}
+
 let mainWindow;
 let backendProcess;
 

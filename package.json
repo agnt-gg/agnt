@@ -11,6 +11,7 @@
   "scripts": {
     "postinstall": "cross-env PUPPETEER_SKIP_DOWNLOAD=true PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 electron-builder install-app-deps && node scripts/patch-onnxruntime.js",
     "start": "electron .",
+    "start:lite": "cross-env AGNT_LITE_MODE=true electron .",
     "test:e2e": "playwright test",
     "dev": "node backend/server.js",
     "generate-icons": "node scripts/generate-icons.js",
@@ -20,7 +21,16 @@
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
-    "build:all": "electron-builder -mwl"
+    "build:all": "electron-builder -mwl",
+    "build:lite": "cross-env AGNT_BUILD_VARIANT=lite electron-builder",
+    "build:lite:win": "cross-env AGNT_BUILD_VARIANT=lite electron-builder --win",
+    "build:lite:mac": "cross-env AGNT_BUILD_VARIANT=lite electron-builder --mac",
+    "build:lite:linux": "cross-env AGNT_BUILD_VARIANT=lite electron-builder --linux",
+    "build:lite:all": "cross-env AGNT_BUILD_VARIANT=lite electron-builder -mwl",
+    "build:both": "npm run build && npm run build:lite",
+    "build:both:win": "npm run build:win && npm run build:lite:win",
+    "build:both:mac": "npm run build:mac && npm run build:lite:mac",
+    "build:both:linux": "npm run build:linux && npm run build:lite:linux"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.16.1",
@@ -54,10 +64,6 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "pdfreader": "3.0.2",
-    "playwright": "^1.56.0",
-    "puppeteer": "^24.10.2",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "readline": "^1.3.0",
     "sharp": "^0.32.6",
     "socket.io": "^4.8.1",
@@ -66,6 +72,12 @@
     "vm2": "^3.9.19",
     "wavefile": "^11.0.0",
     "ws": "^8.18.1"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.56.0",
+    "puppeteer": "^24.10.2",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
@@ -88,6 +100,7 @@
     "npmRebuild": false,
     "buildDependenciesFromSource": false,
     "nodeGypRebuild": false,
+    "afterPack": "./scripts/electron-builder-lite.js",
     "appId": "com.agnt.app",
     "productName": "AGNT",
     "directories": {
@@ -104,7 +117,7 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT === 'lite' ? '-Lite' : ''}-${version}-${os}-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -129,7 +142,7 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT === 'lite' ? '-Lite' : ''}-${version}-${os}-${arch}.${ext}"
     },
     "linux": {
       "maintainer": "Nathan Wilbanks <nathan@agnt.gg>",
@@ -160,7 +173,7 @@
         "Icon": "agnt",
         "StartupWMClass": "AGNT"
       },
-      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT === 'lite' ? '-Lite' : ''}-${version}-${os}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -199,6 +212,9 @@
       "!node_modules/onnxruntime-node/bin/**/*",
       "!backend/.chrome/**/*",
       "!backend/node_modules/**/*"
-    ]
+    ],
+    "extraMetadata": {
+      "AGNT_LITE_MODE": "${env.AGNT_BUILD_VARIANT}"
+    }
   }
 }
