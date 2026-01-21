@@ -38,6 +38,21 @@ export function useRealtimeSync() {
     socket.on('connect', () => {
       console.log('[Realtime] Connected to server');
       isConnected.value = true;
+
+      // Authenticate with user ID to join user-specific room
+      const userId = store.state.userAuth?.user?.id;
+      if (userId) {
+        console.log('[Realtime] Authenticating with userId:', userId);
+        socket.emit('authenticate', { userId });
+      }
+    });
+
+    socket.on('authenticated', (data) => {
+      if (data.success) {
+        console.log('[Realtime] Authenticated successfully for user:', data.userId);
+      } else {
+        console.error('[Realtime] Authentication failed:', data.error);
+      }
     });
 
     socket.on('disconnect', () => {
@@ -93,6 +108,56 @@ export function useRealtimeSync() {
 
     socket.on('execution:failed', (data) => {
       console.log('[Realtime] Execution failed:', data);
+    });
+
+    // Chat events (real-time message sync across tabs)
+    socket.on('chat:user_message', (data) => {
+      console.log('[Realtime] User message from another tab:', data);
+      // Store will handle updating the UI
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'user_message',
+        ...data,
+      });
+    });
+
+    socket.on('chat:message_start', (data) => {
+      console.log('[Realtime] Assistant message started:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'message_start',
+        ...data,
+      });
+    });
+
+    socket.on('chat:content_delta', (data) => {
+      console.log('[Realtime] Content delta:', data.delta);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'content_delta',
+        ...data,
+      });
+    });
+
+    socket.on('chat:tool_start', (data) => {
+      console.log('[Realtime] Tool started:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'tool_start',
+        ...data,
+      });
+    });
+
+    socket.on('chat:tool_end', (data) => {
+      console.log('[Realtime] Tool ended:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'tool_end',
+        ...data,
+      });
+    });
+
+    socket.on('chat:message_end', (data) => {
+      console.log('[Realtime] Message ended:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'message_end',
+        ...data,
+      });
     });
   };
 

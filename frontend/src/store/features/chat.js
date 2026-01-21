@@ -930,6 +930,92 @@ export default {
         });
       }
     },
+
+    /**
+     * Handle real-time chat events from Socket.IO (messages from other tabs)
+     */
+    handleRealtimeChatEvent({ commit, state }, eventData) {
+      const { type, conversationId, assistantMessageId } = eventData;
+
+      // Only handle events for the current conversation
+      if (conversationId && conversationId !== state.currentConversationId) {
+        console.log('[Realtime Chat] Ignoring event for different conversation:', conversationId);
+        return;
+      }
+
+      console.log('[Realtime Chat] Processing event:', type, eventData);
+
+      switch (type) {
+        case 'user_message':
+          // Another tab sent a user message
+          const userMsg = eventData.message;
+          if (userMsg && !state.messages.find((m) => m.content === userMsg.content && m.role === 'user')) {
+            commit('ADD_MESSAGE', {
+              id: `msg-user-${Date.now()}`,
+              role: 'user',
+              content: userMsg.content,
+              timestamp: eventData.timestamp || Date.now(),
+            });
+          }
+          break;
+
+        case 'message_start':
+          // Assistant message started in another tab
+          if (!state.messages.find((m) => m.id === assistantMessageId)) {
+            commit('ADD_MESSAGE', {
+              id: assistantMessageId,
+              role: 'assistant',
+              content: '',
+              timestamp: eventData.timestamp || Date.now(),
+            });
+          }
+          break;
+
+        case 'content_delta':
+          // Streaming text chunk from another tab
+          commit('APPEND_MESSAGE_CONTENT', {
+            messageId: assistantMessageId,
+            delta: eventData.delta,
+          });
+          break;
+
+        case 'tool_start':
+          // Tool execution started in another tab
+          if (eventData.toolCall) {
+            commit('ADD_TOOL_CALL', {
+              messageId: assistantMessageId,
+              toolCall: {
+                id: eventData.toolCall.id,
+                name: eventData.toolCall.name,
+                args: eventData.toolCall.args,
+                status: 'running',
+              },
+            });
+          }
+          break;
+
+        case 'tool_end':
+          // Tool execution completed in another tab
+          if (eventData.toolCall) {
+            commit('UPDATE_TOOL_CALL', {
+              messageId: assistantMessageId,
+              toolCallId: eventData.toolCall.id,
+              result: eventData.toolCall.result,
+              error: eventData.toolCall.error,
+              status: eventData.toolCall.error ? 'error' : 'completed',
+            });
+          }
+          break;
+
+        case 'message_end':
+          // Message completed in another tab
+          console.log('[Realtime Chat] Message completed');
+          break;
+
+        default:
+          console.warn('[Realtime Chat] Unknown event type:', type);
+      }
+    },
   },
 };
 

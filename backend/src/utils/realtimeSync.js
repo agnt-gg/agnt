@@ -62,6 +62,14 @@ export const RealtimeEvents = {
   TOOL_CREATED: 'tool:created',
   TOOL_UPDATED: 'tool:updated',
   TOOL_DELETED: 'tool:deleted',
+
+  // Chat Messages (real-time sync across tabs)
+  CHAT_MESSAGE_START: 'chat:message_start',
+  CHAT_CONTENT_DELTA: 'chat:content_delta',
+  CHAT_TOOL_START: 'chat:tool_start',
+  CHAT_TOOL_END: 'chat:tool_end',
+  CHAT_MESSAGE_END: 'chat:message_end',
+  CHAT_USER_MESSAGE: 'chat:user_message',
 };
 
 export default {

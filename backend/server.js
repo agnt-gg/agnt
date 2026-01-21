@@ -225,12 +225,31 @@ function startServer() {
       transports: ['websocket', 'polling'],
     });
 
-    // Socket.IO connection handling
+    // Socket.IO connection handling with authentication
     io.on('connection', (socket) => {
       console.log(`[Socket.IO] Client connected: ${socket.id}`);
 
+      // Handle user authentication and room joining
+      socket.on('authenticate', (data) => {
+        const { userId } = data;
+        if (userId) {
+          // Join user-specific room
+          socket.join(`user:${userId}`);
+          socket.userId = userId; // Store userId on socket
+          console.log(`[Socket.IO] User ${userId} authenticated and joined room user:${userId}`);
+          socket.emit('authenticated', { success: true, userId });
+        } else {
+          console.log(`[Socket.IO] Authentication failed - no userId provided`);
+          socket.emit('authenticated', { success: false, error: 'No userId provided' });
+        }
+      });
+
       socket.on('disconnect', () => {
-        console.log(`[Socket.IO] Client disconnected: ${socket.id}`);
+        if (socket.userId) {
+          console.log(`[Socket.IO] User ${socket.userId} disconnected: ${socket.id}`);
+        } else {
+          console.log(`[Socket.IO] Client disconnected: ${socket.id}`);
+        }
       });
     });
 

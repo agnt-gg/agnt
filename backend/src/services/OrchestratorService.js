@@ -15,6 +15,7 @@ import AuthManager from './auth/AuthManager.js';
 import StreamEngine from '../stream/StreamEngine.js';
 import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
+import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 
 /**
  * Extract images from tool results and replace with references
@@ -327,10 +328,33 @@ async function universalChatHandler(req, res, context = {}) {
 
   const sendEvent = (eventName, data) => {
     try {
+      // Send via SSE (Server-Sent Events) to current client
       res.write(`event: ${eventName}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     } catch (e) {
       console.error('Error writing to stream, client likely disconnected', e);
+    }
+
+    // Broadcast via Socket.IO to all user's connected clients (real-time sync across tabs)
+    if (userId) {
+      // Map SSE event names to Socket.IO event names for chat events
+      const chatEventMappings = {
+        'assistant_message': RealtimeEvents.CHAT_MESSAGE_START,
+        'content_delta': RealtimeEvents.CHAT_CONTENT_DELTA,
+        'tool_start': RealtimeEvents.CHAT_TOOL_START,
+        'tool_end': RealtimeEvents.CHAT_TOOL_END,
+        'done': RealtimeEvents.CHAT_MESSAGE_END,
+      };
+
+      const socketEvent = chatEventMappings[eventName];
+      if (socketEvent) {
+        broadcastToUser(userId, socketEvent, {
+          ...data,
+          conversationId,
+          chatType,
+          timestamp: Date.now(),
+        });
+      }
     }
   };
 
@@ -466,6 +490,19 @@ async function universalChatHandler(req, res, context = {}) {
         tool_calls: msg.tool_calls,
         tool_call_id: msg.tool_call_id,
       }));
+
+    // Broadcast user message to all connected tabs (real-time sync)
+    if (userId && messages.length > 0) {
+      const lastUserMessage = messages[messages.length - 1];
+      if (lastUserMessage && lastUserMessage.role === 'user') {
+        broadcastToUser(userId, RealtimeEvents.CHAT_USER_MESSAGE, {
+          conversationId,
+          chatType,
+          message: lastUserMessage,
+          timestamp: Date.now(),
+        });
+      }
+    }
 
     // Add file context to the first user message if files were uploaded
     // Images are handled separately via vision API
