@@ -25,7 +25,9 @@ export function useRealtimeSync() {
       return;
     }
 
-    const socketUrl = API_CONFIG.BASE_URL.replace(/^http/, 'ws');
+    // Socket.IO client connects using http/https, not ws/wss
+    // Socket.IO handles the protocol upgrade internally
+    const socketUrl = API_CONFIG.BASE_URL.replace('/api', '');
     console.log('[Realtime] Connecting to:', socketUrl);
 
     socket = io(socketUrl, {
