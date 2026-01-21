@@ -90,7 +90,12 @@ jobs:
         with:
           name: electron-full-${{ matrix.platform }}
           path: |
-            dist/${{ matrix.artifact }}
+            dist/AGNT*-${{ matrix.platform }}-*.exe
+            dist/AGNT*-${{ matrix.platform }}-*.dmg
+            dist/AGNT*-${{ matrix.platform }}-*.zip
+            dist/AGNT*-${{ matrix.platform }}-*.AppImage
+            dist/AGNT*-${{ matrix.platform }}-*.deb
+            dist/AGNT*-${{ matrix.platform }}-*.rpm
           retention-days: 30
 
   build-electron-lite:
@@ -170,7 +175,12 @@ jobs:
         with:
           name: electron-lite-${{ matrix.platform }}
           path: |
-            dist/${{ matrix.artifact }}
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.exe
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.dmg
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.zip
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.AppImage
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.deb
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.rpm
           retention-days: 30
 
   release:
