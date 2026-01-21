@@ -9,7 +9,8 @@
   "license": "Custom - See LICENSE.MD",
   "type": "module",
   "scripts": {
-    "postinstall": "cross-env PUPPETEER_SKIP_DOWNLOAD=true PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 electron-builder install-app-deps && node scripts/patch-onnxruntime.js",
+    "preinstall": "node scripts/validate-install-path.js",
+    "postinstall": "cross-env PUPPETEER_SKIP_DOWNLOAD=true PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 electron-builder install-app-deps && node scripts/patch-onnxruntime.js && node scripts/check-build-requirements.js",
     "start": "electron .",
     "test:e2e": "playwright test",
     "dev": "node backend/server.js",

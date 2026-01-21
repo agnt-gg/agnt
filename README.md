@@ -186,7 +186,7 @@ Native desktop app with full system access. No browser limitations. Your data st
 ```bash
 # Clone the repository
 git clone https://github.com/agnt-gg/agnt.git
-cd agnt/desktop
+cd agnt
 
 # Install dependencies
 npm install
@@ -234,6 +234,18 @@ Ensure Xcode Command Line Tools are installed:
 xcode-select --install
 ```
 
+### macOS Security Notice
+
+The app is not yet signed with an Apple Developer certificate. You'll see a security warning on first launch.
+
+**To bypass the warning, run this in Terminal:**
+
+```bash
+sudo xattr -cr /Applications/AGNT.app
+```
+
+We're working on official Apple signing. This is temporary for the Genesis alpha phase.
+
 </details>
 
 <details>
@@ -252,6 +264,138 @@ sudo dnf install gcc-c++ make libX11-devel libxkbfile-devel
 See [Linux Build Instructions](docs/_LINUX-BUILD-INSTRUCTIONS.md) for detailed setup.
 
 </details>
+
+---
+
+## 🔧 Troubleshooting
+
+### Installation Issues
+
+#### Path Contains Spaces Error
+
+**Problem:** `npm install` fails with errors about sqlite3 native module build failures.
+
+**Cause:** Native modules (like sqlite3) fail to build when the project path contains spaces because build tools split paths incorrectly.
+
+**Solution:**
+1. Move the project to a path without spaces:
+   ```bash
+   # Good paths:
+   ~/projects/agnt
+   /Users/yourname/code/agnt
+   C:\Users\yourname\projects\agnt  # Windows
+   
+   # Bad paths:
+   ~/My Projects/agnt  # Contains space
+   /Users/yourname/Cloned Git Repos/agnt  # Contains spaces
+   ```
+2. Run `npm install` again from the new location.
+
+#### sqlite3 Native Module Build Failure
+
+**Problem:** Backend crashes on startup with "Could not locate the bindings file" or "node_sqlite3.node not found".
+
+**Solutions (try in order):**
+
+1. **Rebuild native modules:**
+   ```bash
+   npm run rebuild
+   ```
+
+2. **Check your project path** (see "Path Contains Spaces" above)
+
+3. **Clean install:**
+   ```bash
+   rm -rf node_modules package-lock.json
+   npm install
+   ```
+
+4. **Verify build tools are installed:**
+   - **macOS:** `xcode-select --install`
+   - **Windows:** Install Visual Studio Build Tools
+   - **Linux:** `sudo apt-get install build-essential` (Ubuntu/Debian)
+
+#### Backend Won't Start / Chat Can't Fetch
+
+**Problem:** Frontend loads but chat fails with connection errors.
+
+**Common Causes:**
+1. Backend crashed due to sqlite3 issue (see above)
+2. Port 3333 is already in use
+3. Native modules not rebuilt for Electron
+
+**Solutions:**
+
+1. **Check backend logs** - Look for sqlite3/bindings errors in the terminal
+2. **Check port availability:**
+   ```bash
+   # macOS/Linux
+   lsof -i :3333
+   
+   # Windows
+   netstat -ano | findstr :3333
+   ```
+3. **Rebuild native modules:**
+   ```bash
+   npm run rebuild
+   ```
+4. **Restart the application**
+
+#### npm install Shows Security Vulnerabilities
+
+**Problem:** `npm install` reports moderate or high severity vulnerabilities.
+
+**Note:** Some dependencies have known vulnerabilities. We're working on updating them, but they don't affect core functionality in the current alpha phase.
+
+**To see details:**
+```bash
+npm audit
+```
+
+**To attempt automatic fixes (may break things):**
+```bash
+npm audit fix
+```
+
+### Runtime Issues
+
+#### macOS: "AGNT.app is damaged and can't be opened"
+
+**Problem:** macOS Gatekeeper blocks the unsigned app.
+
+**Solution:** Run this command in Terminal:
+```bash
+sudo xattr -cr /Applications/AGNT.app
+```
+
+Then try opening the app again. See the macOS Platform-Specific Notes above for more details.
+
+#### Frontend Dev Server Won't Start
+
+**Problem:** `npm run dev` in frontend directory fails.
+
+**Solutions:**
+1. Check if port 5173 is in use:
+   ```bash
+   lsof -i :5173
+   ```
+2. Kill the process if needed:
+   ```bash
+   kill -9 <PID>
+   ```
+3. Clear node_modules and reinstall:
+   ```bash
+   cd frontend
+   rm -rf node_modules package-lock.json
+   npm install
+   ```
+
+### Getting More Help
+
+- Check the [API Documentation](docs/_API-DOCUMENTATION.md)
+- Review [Build Instructions](docs/_BUILD-INSTRUCTIONS.md)
+- Join our [Discord](https://discord.gg/agnt) community
+- Open an issue on [GitHub](https://github.com/agnt-gg/agnt)
 
 ---
 

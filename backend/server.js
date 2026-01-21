@@ -5,6 +5,56 @@ import bodyParser from 'body-parser';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+
+// Validate sqlite3 native bindings before importing anything that uses the database
+function validateSqlite3Bindings() {
+  try {
+    // Try to require sqlite3 - this will fail if native bindings are missing
+    require('sqlite3');
+    // If we get here, the module loaded successfully
+    return { valid: true, error: null };
+  } catch (error) {
+    // Check if it's a bindings error
+    if (error.message && (error.message.includes('bindings') || error.message.includes('node_sqlite3'))) {
+      const projectPath = process.cwd();
+      const hasSpaces = projectPath.includes(' ');
+      
+      let errorMessage = '\n❌ DATABASE ERROR: sqlite3 native module failed to load\n\n';
+      errorMessage += 'The sqlite3 native bindings could not be found. This prevents the backend from starting.\n\n';
+      
+      if (hasSpaces) {
+        errorMessage += '⚠️  Your project path contains spaces:\n';
+        errorMessage += `   ${projectPath}\n\n`;
+        errorMessage += 'SOLUTION:\n';
+        errorMessage += '1. Move the project to a path without spaces\n';
+        errorMessage += '2. Run: npm run rebuild\n';
+        errorMessage += '3. Restart the application\n\n';
+      } else {
+        errorMessage += 'SOLUTION:\n';
+        errorMessage += '1. Run: npm run rebuild\n';
+        errorMessage += '2. If that fails, check the README.md Troubleshooting section\n';
+        errorMessage += '3. Ensure Xcode Command Line Tools are installed (macOS)\n\n';
+      }
+      
+      errorMessage += 'For more help, see: README.md → Troubleshooting\n';
+      
+      return { valid: false, error: errorMessage };
+    }
+    // Some other error - let it propagate
+    return { valid: false, error: error.message };
+  }
+}
+
+// Check sqlite3 bindings early
+const sqlite3Check = validateSqlite3Bindings();
+if (!sqlite3Check.valid) {
+  console.error(sqlite3Check.error);
+  console.error('\nBackend startup aborted. Please fix the sqlite3 issue and try again.\n');
+  process.exit(1);
+}
 
 // Import plugin system
 import PluginInstaller from './src/plugins/PluginInstaller.js';
@@ -176,8 +226,17 @@ if (frontendExists) {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  console.error('=== ERROR HANDLER ===');
+  console.error('Request:', req.method, req.path);
+  console.error('Error:', err.message);
+  console.error('Stack:', err.stack);
+  console.error('====================');
+  res.status(500).json({ 
+    error: 'Something went wrong!',
+    message: err.message,
+    path: req.path,
+    method: req.method
+  });
 });
 
 async function initializePlugins() {

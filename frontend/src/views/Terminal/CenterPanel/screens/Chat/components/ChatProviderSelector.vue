@@ -44,6 +44,18 @@
             maxHeight="156px"
             @option-selected="handleModelSelected"
           />
+          <!-- Error Message -->
+          <div v-if="modelError" class="model-error-message">
+            <div class="error-content">
+              <i class="fas fa-exclamation-circle"></i>
+              <span class="error-text">{{ modelError }}</span>
+            </div>
+            <button v-if="modelError.includes('API key') || modelError.includes('configure')" 
+                    @click="openSettings" 
+                    class="btn-settings-link">
+              Open Settings
+            </button>
+          </div>
         </div>
 
         <!-- Connection Status -->
@@ -94,6 +106,7 @@
 <script>
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue';
 import { useStore } from 'vuex';
+import { useRouter } from 'vue-router';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import CustomProviderDialog from '../../Settings/components/ProviderSelector/CustomProviderDialog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -116,6 +129,7 @@ export default {
   emits: ['close'],
   setup(props, { emit }) {
     const store = useStore();
+    const router = useRouter();
     const selectorRef = ref(null);
     const providerSelect = ref(null);
     const modelSelect = ref(null);
@@ -146,6 +160,10 @@ export default {
     });
     const filteredModels = computed(() => store.getters['aiProvider/filteredModels']);
     const isLoadingModels = computed(() => store.state.aiProvider.loadingModels[store.state.aiProvider.selectedProvider] || false);
+    const modelError = computed(() => {
+      if (!selectedProvider.value) return null;
+      return store.state.aiProvider.modelErrors?.[selectedProvider.value] || null;
+    });
 
     // Check if current provider is connected
     const isProviderConnected = computed(() => {
@@ -207,6 +225,12 @@ export default {
     const modelOptions = computed(() => {
       if (isLoadingModels.value) {
         return [{ label: 'Loading models...', value: '', disabled: true }];
+      }
+      if (modelError.value) {
+        return [{ label: 'No models available', value: '', disabled: true }];
+      }
+      if (filteredModels.value.length === 0) {
+        return [{ label: 'No models found', value: '', disabled: true }];
       }
       return filteredModels.value.map((model) => ({
         label: model,
@@ -368,6 +392,14 @@ export default {
       }
     };
 
+    // Open settings page
+    const openSettings = () => {
+      // Close the dropdown first
+      closeDropdown();
+      // Navigate to settings using router
+      router.push('/settings');
+    };
+
     // Delete current custom provider
     const deleteCurrentProvider = async () => {
       if (!selectedProvider.value) return;
@@ -434,6 +466,8 @@ export default {
       editCurrentProvider,
       deleteCurrentProvider,
       toolSupportWarning,
+      modelError,
+      openSettings,
     };
   },
 };
@@ -682,5 +716,56 @@ export default {
 .tool-support-warning .warning-text {
   color: rgba(255, 193, 7, 0.9);
   line-height: 1.4;
+}
+
+/* Model Error Message */
+.model-error-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 6px;
+  font-size: 0.8em;
+}
+
+.model-error-message .error-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.model-error-message i {
+  color: var(--color-red);
+  font-size: 1em;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.model-error-message .error-text {
+  color: rgba(255, 107, 107, 0.9);
+  line-height: 1.4;
+  flex: 1;
+}
+
+.btn-settings-link {
+  margin-top: 4px;
+  padding: 4px 10px;
+  background: rgba(255, 107, 107, 0.15);
+  color: var(--color-red);
+  border: 1px solid rgba(255, 107, 107, 0.4);
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: flex-start;
+}
+
+.btn-settings-link:hover {
+  background: rgba(255, 107, 107, 0.25);
+  border-color: var(--color-red);
 }
 </style>

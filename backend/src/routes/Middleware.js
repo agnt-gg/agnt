@@ -1,13 +1,25 @@
 import session from "express-session";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load .env file from backend directory
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 class Middleware {
   constructor() {
+    const sessionSecret = process.env.SESSION_SECRET;
+    if (!sessionSecret) {
+      console.error('ERROR: SESSION_SECRET is not set in environment variables!');
+      console.error('Please ensure .env file exists in the backend directory with SESSION_SECRET defined.');
+      throw new Error('SESSION_SECRET is required for session middleware');
+    }
     this.sessionMiddleware = session({
-      secret: process.env.SESSION_SECRET,
+      secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: { 

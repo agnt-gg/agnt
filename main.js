@@ -297,12 +297,42 @@ function startBackend() {
       console.log(`Backend process exited with code ${code}`);
 
       if (code !== 0 && code !== null) {
-        console.error('Backend process crashed!');
+        console.error('\n❌ Backend process crashed!');
         console.error('Exit code:', code);
-        console.error('Last stderr output:', backendStderr.slice(-500));
-        console.error('Last stdout output:', backendStdout.slice(-500));
+        
+        // Check for common error patterns and provide helpful guidance
+        const stderrLast = backendStderr.slice(-1000);
+        const stdoutLast = backendStdout.slice(-1000);
+        const combinedOutput = stderrLast + stdoutLast;
+        
+        let helpfulMessage = '';
+        
+        if (combinedOutput.includes('bindings') || combinedOutput.includes('sqlite3') || combinedOutput.includes('node_sqlite3')) {
+          helpfulMessage = '\n⚠️  DATABASE ERROR DETECTED\n';
+          helpfulMessage += 'The sqlite3 native module failed to load. This is usually caused by:\n';
+          helpfulMessage += '1. Project path containing spaces\n';
+          helpfulMessage += '2. Native modules not being rebuilt for Electron\n\n';
+          helpfulMessage += 'SOLUTION:\n';
+          helpfulMessage += '1. Check if your project path has spaces (move to a path without spaces if needed)\n';
+          helpfulMessage += '2. Run: npm run rebuild\n';
+          helpfulMessage += '3. Restart the application\n';
+          helpfulMessage += '\nFor more help, see README.md → Troubleshooting section\n';
+        } else if (combinedOutput.includes('EADDRINUSE') || combinedOutput.includes('port')) {
+          helpfulMessage = '\n⚠️  PORT ALREADY IN USE\n';
+          helpfulMessage += 'Another process is using port 3333. Close it or change PORT in .env\n';
+        } else {
+          helpfulMessage = '\n⚠️  BACKEND STARTUP FAILED\n';
+          helpfulMessage += 'Check the error output below for details.\n';
+          helpfulMessage += 'For troubleshooting help, see README.md → Troubleshooting section\n';
+        }
+        
+        console.error(helpfulMessage);
+        console.error('--- Last stderr output ---');
+        console.error(stderrLast);
+        console.error('--- Last stdout output ---');
+        console.error(stdoutLast);
 
-        console.error('App will quit in 5 seconds...');
+        console.error('\nApp will quit in 5 seconds...');
         setTimeout(() => {
           app.quit();
         }, 5000);
@@ -348,13 +378,43 @@ function startBackend() {
       console.log(`Backend process exited with code ${code}, signal ${signal}`);
 
       if (code !== 0 && code !== null) {
-        console.error('Backend process crashed!');
+        console.error('\n❌ Backend process crashed!');
         console.error('Exit code:', code);
         console.error('Signal:', signal);
-        console.error('Last stderr output:', backendStderr.slice(-500));
-        console.error('Last stdout output:', backendStdout.slice(-500));
+        
+        // Check for common error patterns and provide helpful guidance
+        const stderrLast = backendStderr.slice(-1000);
+        const stdoutLast = backendStdout.slice(-1000);
+        const combinedOutput = stderrLast + stdoutLast;
+        
+        let helpfulMessage = '';
+        
+        if (combinedOutput.includes('bindings') || combinedOutput.includes('sqlite3') || combinedOutput.includes('node_sqlite3')) {
+          helpfulMessage = '\n⚠️  DATABASE ERROR DETECTED\n';
+          helpfulMessage += 'The sqlite3 native module failed to load. This is usually caused by:\n';
+          helpfulMessage += '1. Project path containing spaces\n';
+          helpfulMessage += '2. Native modules not being rebuilt for Electron\n\n';
+          helpfulMessage += 'SOLUTION:\n';
+          helpfulMessage += '1. Check if your project path has spaces (move to a path without spaces if needed)\n';
+          helpfulMessage += '2. Run: npm run rebuild\n';
+          helpfulMessage += '3. Restart the application\n';
+          helpfulMessage += '\nFor more help, see README.md → Troubleshooting section\n';
+        } else if (combinedOutput.includes('EADDRINUSE') || combinedOutput.includes('port')) {
+          helpfulMessage = '\n⚠️  PORT ALREADY IN USE\n';
+          helpfulMessage += 'Another process is using port 3333. Close it or change PORT in .env\n';
+        } else {
+          helpfulMessage = '\n⚠️  BACKEND STARTUP FAILED\n';
+          helpfulMessage += 'Check the error output below for details.\n';
+          helpfulMessage += 'For troubleshooting help, see README.md → Troubleshooting section\n';
+        }
+        
+        console.error(helpfulMessage);
+        console.error('--- Last stderr output ---');
+        console.error(stderrLast);
+        console.error('--- Last stdout output ---');
+        console.error(stdoutLast);
 
-        console.error('App will quit in 5 seconds...');
+        console.error('\nApp will quit in 5 seconds...');
         setTimeout(() => {
           app.quit();
         }, 5000);

@@ -37,6 +37,7 @@ export default {
     selectedProvider: localStorage.getItem('selectedProvider') || null, // Load from local storage, no default yet
     selectedModel: localStorage.getItem('selectedModel') || null, // Load from local storage, no default yet
     loadingModels: {}, // Track loading state for each provider
+    modelErrors: {}, // Track error messages for each provider
     modelCache: {}, // Cache models with timestamps
   },
   mutations: {
@@ -86,6 +87,16 @@ export default {
         state.loadingModels = {};
       }
       state.loadingModels[provider] = loading;
+    },
+    SET_MODEL_ERROR(state, { provider, error }) {
+      if (!state.modelErrors) {
+        state.modelErrors = {};
+      }
+      if (error) {
+        state.modelErrors[provider] = error;
+      } else {
+        delete state.modelErrors[provider];
+      }
     },
     SET_CUSTOM_PROVIDERS(state, providers) {
       state.customProviders = providers;
@@ -268,11 +279,14 @@ export default {
       }
 
       commit('SET_LOADING_MODELS', { provider, loading: true });
+      commit('SET_MODEL_ERROR', { provider, error: null }); // Clear previous errors
 
       try {
         const token = localStorage.getItem('token');
         if (!token) {
-          throw new Error(`Authentication required to fetch ${provider} models`);
+          const errorMsg = 'Authentication required. Please log in to fetch models.';
+          commit('SET_MODEL_ERROR', { provider, error: errorMsg });
+          throw new Error(errorMsg);
         }
 
         const providerLower = provider.toLowerCase();
@@ -285,7 +299,19 @@ export default {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+          let errorMessage = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+          
+          // Provide user-friendly error messages
+          if (errorMessage.includes('API key') || errorMessage.includes('configure')) {
+            errorMessage = `Please configure your ${provider} API key in Settings to view available models.`;
+          } else if (response.status === 401) {
+            errorMessage = 'Authentication failed. Please log in again.';
+          } else if (response.status === 403) {
+            errorMessage = `Access denied. Please check your ${provider} API key permissions.`;
+          }
+          
+          commit('SET_MODEL_ERROR', { provider, error: errorMessage });
+          throw new Error(errorMessage);
         }
 
         const data = await response.json();
@@ -293,6 +319,7 @@ export default {
 
         // Update state
         commit('SET_PROVIDER_MODELS', { provider, models });
+        commit('SET_MODEL_ERROR', { provider, error: null }); // Clear error on success
 
         // Cache the results
         localStorage.setItem(
@@ -308,20 +335,30 @@ export default {
       } catch (error) {
         console.error(`Failed to fetch ${provider} models:`, error);
 
-        // Try to use cached models even if expired
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-          try {
-            const { models } = JSON.parse(cached);
-            console.log('Using expired cached models due to fetch error');
-            commit('SET_PROVIDER_MODELS', { provider, models });
-            return models;
-          } catch (e) {
-            console.warn('Failed to parse expired cached models:', e);
+        // Only use cached models if we don't have a clear error about API key
+        const hasApiKeyError = error.message && (
+          error.message.includes('API key') || 
+          error.message.includes('configure') ||
+          error.message.includes('Authentication')
+        );
+
+        if (!hasApiKeyError) {
+          // Try to use cached models even if expired
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            try {
+              const { models } = JSON.parse(cached);
+              console.log('Using expired cached models due to fetch error');
+              commit('SET_PROVIDER_MODELS', { provider, models });
+              commit('SET_MODEL_ERROR', { provider, error: null }); // Clear error if using cache
+              return models;
+            } catch (e) {
+              console.warn('Failed to parse expired cached models:', e);
+            }
           }
         }
 
-        // Return current models as fallback
+        // Return current models as fallback (might be empty)
         return state.allModels[provider] || [];
       } finally {
         commit('SET_LOADING_MODELS', { provider, loading: false });
