@@ -63,7 +63,9 @@ Excludes puppeteer packages while maintaining all core functionality. Dynamic im
 - Parallel builds (6 concurrent jobs)
 - **Status:** ✅ All builds passing (6/6 artifacts uploading)
 
-**Triggers:** Push to main, PRs, version tags, manual dispatch
+**Triggers:** Git tags (`v*.*.*` or `*.*.*`), manual dispatch only
+- Optimized for release builds only
+- Supports both `v0.3.7` and `0.3.7` tag formats
 
 **Platform-specific fixes:**
 - Windows: VS 2019 runner for node-gyp compatibility
@@ -178,13 +180,32 @@ Excludes puppeteer packages while maintaining all core functionality. Dynamic im
 
 ## 🚀 Installation Methods
 
-| Method         | Size      | Browser | Best For                     |
-|----------------|-----------|---------|------------------------------|
-| Docker Full    | ~1.5GB    | ✅ Yes  | Server + browser automation  |
-| Docker Lite    | ~715MB    | ❌ No   | Lightweight server           |
-| Electron Full  | 150-200MB | ✅ Yes  | Desktop + browser automation |
-| Electron Lite  | 80-120MB  | ❌ No   | Lightweight desktop          |
-| Hybrid Mode    | Both      | Both    | Web + native apps + shared backend |
+| Method         | Size      | Browser | Best For                     | Installation                |
+|----------------|-----------|---------|------------------------------|-----------------------------|
+| Docker Full    | ~1.5GB    | ✅ Yes  | Server + browser automation  | Pull from GHCR (recommended) |
+| Docker Lite    | ~715MB    | ❌ No   | Lightweight server           | Pull from GHCR (recommended) |
+| Electron Full  | 150-200MB | ✅ Yes  | Desktop + browser automation | Download from releases      |
+| Electron Lite  | 80-120MB  | ❌ No   | Lightweight desktop          | Download from releases      |
+| Hybrid Mode    | Both      | Both    | Web + native apps + shared backend | Docker + Electron combo |
+
+### Quick Install (Docker)
+
+**Pull and run from GHCR:**
+```bash
+# Full variant (with browser automation)
+docker run -d \
+  --name agnt-full \
+  -p 33333:33333 \
+  -v agnt-data:/root/.agnt/data \
+  ghcr.io/agnt-gg/agnt:latest
+
+# Lite variant (without browser automation)
+docker run -d \
+  --name agnt-lite \
+  -p 3333:3333 \
+  -v agnt-data:/root/.agnt/data \
+  ghcr.io/agnt-gg/agnt:lite
+```
 
 ## 🎨 Use Cases
 
@@ -311,7 +332,7 @@ Data preserved (same volume mounts)
 
 **New documentation:** ~1,800 lines
 **Updated documentation:** ~500 lines
-**Total:** 33 commits, 40+ files changed
+**Total:** 35 commits, 45+ files changed
 
 ## 🙏 Credits
 
@@ -378,6 +399,10 @@ Closes #[CI/CD automation request]
 31. `7745275` - fix: simplify artifactName template to avoid JavaScript expressions
 32. `3a3a4bf` - fix: update artifact path patterns to match new naming scheme
 33. `c77f58c` - fix: use separate glob patterns instead of brace expansion for artifacts
+
+### Final Documentation and Workflow Optimization
+34. `e8a0541` - docs: update PR body with final CI/CD status and complete commit history
+35. `f774594` - feat: configure CI/CD to build only on git tags and add GHCR pull instructions
 
 </details>
 
