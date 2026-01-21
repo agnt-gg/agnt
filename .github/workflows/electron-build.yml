@@ -41,11 +41,6 @@ jobs:
           node-version: '20'
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
-      - name: Install Windows SDK in VS 2022 (Windows only - for native module builds)
-        if: matrix.os == 'windows-2019'
-        run: |
-          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --quiet --wait
-
       - name: Setup MSVC (Windows only - for native module builds)
         if: matrix.os == 'windows-2019'
         uses: ilammy/msvc-dev-cmd@v1
@@ -65,10 +60,8 @@ jobs:
         run: npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
-          WindowsSDKVersion: ${{ matrix.os == 'windows-2019' && '10.0.26100.0\\' || '' }}
-          WindowsSDKDir: ${{ matrix.os == 'windows-2019' && 'C:\\Program Files (x86)\\Windows Kits\\10\\' || '' }}
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
 
       - name: Install frontend dependencies
         run: |
@@ -76,8 +69,8 @@ jobs:
           npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
 
       - name: Build frontend
         run: |
@@ -89,8 +82,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SETUPTOOLS_USE_DISTUTILS: local
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -128,11 +121,6 @@ jobs:
           node-version: '20'
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
-      - name: Install Windows SDK in VS 2022 (Windows only - for native module builds)
-        if: matrix.os == 'windows-2019'
-        run: |
-          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --quiet --wait
-
       - name: Setup MSVC (Windows only - for native module builds)
         if: matrix.os == 'windows-2019'
         uses: ilammy/msvc-dev-cmd@v1
@@ -152,10 +140,8 @@ jobs:
         run: npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
-          WindowsSDKVersion: ${{ matrix.os == 'windows-2019' && '10.0.26100.0\\' || '' }}
-          WindowsSDKDir: ${{ matrix.os == 'windows-2019' && 'C:\\Program Files (x86)\\Windows Kits\\10\\' || '' }}
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
 
       - name: Install frontend dependencies
         run: |
@@ -163,8 +149,8 @@ jobs:
           npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
 
       - name: Build frontend
         run: |
@@ -176,8 +162,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SETUPTOOLS_USE_DISTUTILS: local
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2022' || '' }}
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
