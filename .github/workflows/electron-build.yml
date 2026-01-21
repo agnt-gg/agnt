@@ -41,21 +41,32 @@ jobs:
           node-version: '20'
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
+      - name: Setup MSVC (Windows only - for native module builds)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Setup Python (for native modules)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'  # Python 3.14+ removed distutils
+          python-version: '3.x'  # Latest Python
 
-      - name: Install Python setuptools (for native module building)
-        run: python -m pip install setuptools
+      - name: Install Python setuptools with distutils (for native module building)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install setuptools wheel
+          # Setuptools provides distutils compatibility for Python 3.14+
 
       - name: Install dependencies
         run: npm install
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
 
       - name: Install frontend dependencies
         run: |
           cd frontend
           npm install
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
 
       - name: Build frontend
         run: |
@@ -66,6 +77,7 @@ jobs:
         run: npm run build:${{ matrix.platform }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SETUPTOOLS_USE_DISTUTILS: local
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -103,21 +115,32 @@ jobs:
           node-version: '20'
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
+      - name: Setup MSVC (Windows only - for native module builds)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Setup Python (for native modules)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'  # Python 3.14+ removed distutils
+          python-version: '3.x'  # Latest Python
 
-      - name: Install Python setuptools (for native module building)
-        run: python -m pip install setuptools
+      - name: Install Python setuptools with distutils (for native module building)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install setuptools wheel
+          # Setuptools provides distutils compatibility for Python 3.14+
 
       - name: Install dependencies
         run: npm install
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
 
       - name: Install frontend dependencies
         run: |
           cd frontend
           npm install
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
 
       - name: Build frontend
         run: |
