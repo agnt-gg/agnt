@@ -8,6 +8,10 @@ version: '3.8'
 #   docker-compose -f docker-compose.both.yml up -d
 #   or
 #   make run-both
+#
+# ⚠️ PERMISSIONS: If you get "EACCES: permission denied" errors, run:
+#   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/logs/lite ~/.agnt/plugins/installed ~/.agnt/plugins/builds
+#   sudo chown -R 1000:1000 ~/.agnt
 
 services:
   agnt-full:

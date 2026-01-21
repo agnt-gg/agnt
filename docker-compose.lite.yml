@@ -11,6 +11,10 @@ version: '3.8'
 #
 # To run both full and lite simultaneously:
 # make run-both
+#
+# ⚠️ PERMISSIONS: If you get "EACCES: permission denied" errors, run:
+#   mkdir -p ~/.agnt/data ~/.agnt/logs/lite ~/.agnt/plugins/installed ~/.agnt/plugins/builds
+#   sudo chown -R 1000:1000 ~/.agnt
 
 services:
   agnt:
