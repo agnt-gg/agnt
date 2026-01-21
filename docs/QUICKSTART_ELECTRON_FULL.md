@@ -80,28 +80,32 @@ npm run build
 
 ## Data Location
 
-All data stored locally:
+All data stored in home directory (unified across all platforms):
 
 **Windows:**
 ```
-%APPDATA%\AGNT\Data\agnt.db
-%APPDATA%\AGNT\Plugins\
-%APPDATA%\AGNT\Logs\
+C:\Users\YourName\.agnt\data\agnt.db
+C:\Users\YourName\.agnt\plugins\installed\
+C:\Users\YourName\.agnt\logs\
+
+Or using environment variable: %USERPROFILE%\.agnt\data\
 ```
 
 **macOS:**
 ```
-~/Library/Application Support/AGNT/Data/agnt.db
-~/Library/Application Support/AGNT/Plugins/
-~/Library/Application Support/AGNT/Logs/
+~/.agnt/data/agnt.db
+~/.agnt/plugins/installed/
+~/.agnt/logs/
 ```
 
 **GNU/Linux:**
 ```
-~/.config/AGNT/Data/agnt.db
-~/.config/AGNT/Plugins/
-~/.config/AGNT/Logs/
+~/.agnt/data/agnt.db
+~/.agnt/plugins/installed/
+~/.agnt/logs/
 ```
+
+**Note:** Unified path across all platforms ensures Hybrid Mode (Docker + Electron) can share the same data.
 
 ## Features Available
 
