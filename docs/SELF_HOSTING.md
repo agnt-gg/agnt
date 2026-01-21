@@ -1,6 +1,6 @@
-# Self-Hosting AGNT with Docker
+# AGNT Installation Guide
 
-This guide will help you self-host AGNT using Docker for a production-ready deployment.
+Complete guide for installing and self-hosting AGNT using Docker or Electron desktop apps.
 
 ## Who Is This For?
 
@@ -20,7 +20,142 @@ This guide will help you self-host AGNT using Docker for a production-ready depl
 
 **Each organization should self-host their own AGNT instance.**
 
-## What You Get
+---
+
+## 📦 Four Installation Methods
+
+AGNT offers **4 installation types** to match your deployment needs:
+
+### Quick Comparison
+
+| Type | Size | Browser | Platform | Best For |
+|------|------|---------|----------|----------|
+| **🐳 Docker Full** | ~1.5GB | ✅ Yes | Server | Self-hosted with scraping, teams |
+| **🐳 Docker Lite** | ~715MB | ❌ No | Server | Cloud deployment, lightweight |
+| **💻 Electron Full** | ~150-200MB | ✅ Yes | Desktop | Personal desktop use, all features |
+| **💻 Electron Lite** | ~80-120MB | ❌ No | Desktop | Personal desktop, smaller install |
+
+### 🐳 Docker Installations (Server/Self-Hosted)
+
+**Docker Full (~1.5GB)**
+- ✅ Complete web application accessible via browser
+- ✅ Chromium included for web scraping & browser automation
+- ✅ Multi-user support (2-10 concurrent users)
+- ✅ Remote access from any device on your network
+- ✅ Production-ready with health checks
+- 🎯 **Use when:** Self-hosting for team, need browser features, running on server
+
+**Docker Lite (~715MB, 52% smaller)**
+- ✅ All core features (AI agents, workflows, plugins)
+- ✅ API integrations and image processing
+- ❌ No browser automation (Puppeteer/Playwright)
+- ❌ No web scraping tools
+- 🎯 **Use when:** Cloud deployment, don't need browser features, want faster pulls
+
+### 💻 Electron Installations (Desktop Apps)
+
+**Electron Full (~150-200MB)**
+- ✅ Native desktop application (Windows/macOS/Linux)
+- ✅ Browser automation included
+- ✅ Portable installer, easy updates
+- ✅ System tray integration
+- ✅ Single-user optimized
+- 🎯 **Use when:** Personal desktop use, want native app experience
+
+**Electron Lite (~80-120MB, ~50% smaller)**
+- ✅ All core AGNT features
+- ✅ Smaller download and faster install
+- ❌ No browser automation
+- 🎯 **Use when:** Personal desktop use, limited bandwidth/storage
+
+---
+
+## 🤔 Which Installation Should I Choose?
+
+### Choose Docker Full if:
+- ✅ You want to access AGNT from multiple devices
+- ✅ You need to share with family/team (2-10 people)
+- ✅ You need web scraping or browser automation
+- ✅ You're running on a server (local or cloud)
+- ✅ You want 24/7 availability
+
+### Choose Docker Lite if:
+- ✅ You're deploying to cloud (AWS, GCP, Azure)
+- ✅ You want faster image pulls and deployments
+- ✅ You don't need browser automation features
+- ✅ You want to minimize resource usage
+- ✅ Storage/bandwidth is limited
+
+### Choose Electron Full if:
+- ✅ You want a native desktop application
+- ✅ Personal use on your laptop/desktop
+- ✅ You need browser automation features
+- ✅ You want auto-updates and system integration
+- ✅ Single-user setup
+
+### Choose Electron Lite if:
+- ✅ You want a native desktop app
+- ✅ Personal use on your laptop/desktop
+- ✅ You don't need browser automation
+- ✅ You want the smallest download size
+- ✅ Single-user setup
+
+---
+
+## 📥 Installation Instructions
+
+### 🐳 Docker Installation
+
+See the Docker-specific sections below for complete setup instructions.
+
+**Quick Start:**
+```bash
+# Docker Full (1.5GB, with browser)
+docker-compose up -d
+# Access at http://localhost:33333
+
+# Docker Lite (715MB, no browser)
+docker-compose -f docker-compose.lite.yml up -d
+# Access at http://localhost:3333
+```
+
+### 💻 Electron Desktop Installation
+
+**Download Installers:**
+
+Visit [agnt.gg/downloads](https://agnt.gg/downloads) for pre-built installers.
+
+**Build from Source:**
+
+```bash
+# Build frontend first
+cd frontend && npm run build && cd ..
+
+# Build Electron Full (with browser)
+npm run build              # Current platform
+npm run build:win          # Windows
+npm run build:mac          # macOS
+npm run build:linux        # Linux
+
+# Build Electron Lite (without browser)
+npm run build:lite         # Current platform
+npm run build:lite:win     # Windows
+npm run build:lite:mac     # macOS
+npm run build:lite:linux   # Linux
+
+# Output: dist/ folder with installers
+```
+
+**Platform-specific installers:**
+- **Windows**: `.exe` installer (NSIS)
+- **macOS**: `.dmg` and `.zip` (x64 + ARM64 universal)
+- **Linux**: `.AppImage`, `.deb`, `.rpm`
+
+See [Electron Lite Mode Guide](ELECTRON_LITE_MODE.md) for build details.
+
+---
+
+## 🐳 Docker: What You Get
 
 Docker containerization provides:
 
@@ -32,16 +167,16 @@ Docker containerization provides:
 - ✅ **Easy Updates** - Rebuild and restart without affecting your data
 - ✅ **Persistent Data** - All workflows, agents, and plugins saved in Docker volumes
 
-## Prerequisites
+## 🐳 Docker Prerequisites
 
 - Docker Engine 20.10+ or Docker Desktop
 - Docker Compose (optional, but recommended)
 - At least 2GB of available RAM
-- 10GB of free disk space (for full version) or 6GB (for lite version)
+- 2GB of free disk space (for full version) or 1GB (for lite version)
 
-## Image Variants
+## 🐳 Docker Image Variants
 
-AGNT offers two Docker image variants to suit different needs:
+Docker offers two image variants:
 
 ### 🔋 Full Version (Default) - `agnt:latest`
 **Size:** ~1.5GB | **Dockerfile:** `Dockerfile`
@@ -623,6 +758,58 @@ Speed up builds with BuildKit cache:
 ```bash
 DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 ```
+
+---
+
+## 📊 Installation Method Summary
+
+### Docker vs Electron
+
+| Aspect | Docker | Electron |
+|--------|--------|----------|
+| **Access** | Browser (any device) | Native desktop app |
+| **Users** | Multi-user (2-10) | Single user |
+| **Platform** | Server (Linux/Mac/Win) | Desktop (Win/Mac/Linux) |
+| **Size** | 1.5GB (full), 715MB (lite) | 150-200MB (full), 80-120MB (lite) |
+| **Updates** | Pull new image | Auto-update or reinstall |
+| **Network** | Requires open port | Runs locally |
+| **Best For** | Teams, servers, remote access | Personal desktop use |
+
+### Feature Comparison: Full vs Lite
+
+| Feature | Full | Lite |
+|---------|------|------|
+| **Image Size (Docker)** | ~1.5GB | ~715MB |
+| **Image Size (Electron)** | ~150-200MB | ~80-120MB |
+| **Browser Automation** | ✅ Puppeteer/Playwright | ❌ Disabled |
+| **Web Scraping** | ✅ Full support | ❌ Disabled |
+| **Screenshot Capture** | ✅ Browser-based | ❌ Disabled |
+| **AI Agents** | ✅ | ✅ |
+| **Workflows** | ✅ | ✅ |
+| **Plugins** | ✅ | ✅ |
+| **API Integrations** | ✅ | ✅ |
+| **Image Processing** | ✅ | ✅ (non-browser) |
+| **Email Automation** | ✅ | ✅ |
+
+### Quick Decision Tree
+
+```
+Need browser automation (web scraping)?
+├─ Yes → Choose Full version
+└─ No  → Choose Lite version (smaller, faster)
+
+Multiple users or remote access?
+├─ Yes → Choose Docker
+└─ No  → Choose Electron
+
+Result:
+├─ Docker Full (~1.5GB) - Teams + browser features
+├─ Docker Lite (~715MB) - Teams, no browser
+├─ Electron Full (~150-200MB) - Personal + browser features
+└─ Electron Lite (~80-120MB) - Personal, no browser
+```
+
+---
 
 ## Support
 
