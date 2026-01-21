@@ -41,9 +41,10 @@ jobs:
           node-version: '20'
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
-      - name: Install Windows 10 SDK (Windows only - for native module builds)
+      - name: Install Windows SDK in VS 2022 (Windows only - for native module builds)
         if: matrix.os == 'windows-latest'
-        run: choco install windows-sdk-10-version-2104-all
+        run: |
+          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --quiet --wait
 
       - name: Setup MSVC (Windows only - for native module builds)
         if: matrix.os == 'windows-latest'
@@ -66,6 +67,8 @@ jobs:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
           npm_config_msvs_version: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
+          WindowsSDKVersion: ${{ matrix.os == 'windows-latest' && '10.0.26100.0\\' || '' }}
+          WindowsSDKDir: ${{ matrix.os == 'windows-latest' && 'C:\\Program Files (x86)\\Windows Kits\\10\\' || '' }}
 
       - name: Install frontend dependencies
         run: |
@@ -125,9 +128,10 @@ jobs:
           node-version: '20'
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
-      - name: Install Windows 10 SDK (Windows only - for native module builds)
+      - name: Install Windows SDK in VS 2022 (Windows only - for native module builds)
         if: matrix.os == 'windows-latest'
-        run: choco install windows-sdk-10-version-2104-all
+        run: |
+          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --quiet --wait
 
       - name: Setup MSVC (Windows only - for native module builds)
         if: matrix.os == 'windows-latest'
@@ -150,6 +154,8 @@ jobs:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
           npm_config_msvs_version: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
+          WindowsSDKVersion: ${{ matrix.os == 'windows-latest' && '10.0.26100.0\\' || '' }}
+          WindowsSDKDir: ${{ matrix.os == 'windows-latest' && 'C:\\Program Files (x86)\\Windows Kits\\10\\' || '' }}
 
       - name: Install frontend dependencies
         run: |
