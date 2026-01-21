@@ -34,6 +34,10 @@ services:
       - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION_FULL}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION_FULL}
 
+      # Trust remote authentication (for semi-local mode)
+      # When enabled, JWT tokens from REMOTE_URL are accepted without local verification
+      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}
+
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
 
@@ -101,6 +105,10 @@ services:
       - JWT_SECRET=${JWT_SECRET:-CHANGE_ME_IN_PRODUCTION_LITE}
       - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION_LITE}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION_LITE}
+
+      # Trust remote authentication (for semi-local mode)
+      # When enabled, JWT tokens from REMOTE_URL are accepted without local verification
+      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}
 
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
