@@ -21,13 +21,13 @@ jobs:
         include:
           - os: windows-2019
             platform: win
-            artifact: AGNT-*-win-x64.exe
+            artifact: AGNT*-win-*.exe
           - os: macos-latest
             platform: mac
-            artifact: AGNT-*-mac-*.{dmg,zip}
+            artifact: AGNT*-mac-*.{dmg,zip}
           - os: ubuntu-latest
             platform: linux
-            artifact: AGNT-*-linux-x64.{AppImage,deb,rpm}
+            artifact: AGNT*-linux-*.{AppImage,deb,rpm}
 
     runs-on: ${{ matrix.os }}
 
@@ -101,13 +101,13 @@ jobs:
         include:
           - os: windows-2019
             platform: win
-            artifact: AGNT-Lite-*-win-x64.exe
+            artifact: AGNT-Lite*-win-*.exe
           - os: macos-latest
             platform: mac
-            artifact: AGNT-Lite-*-mac-*.{dmg,zip}
+            artifact: AGNT-Lite*-mac-*.{dmg,zip}
           - os: ubuntu-latest
             platform: linux
-            artifact: AGNT-Lite-*-linux-x64.{AppImage,deb,rpm}
+            artifact: AGNT-Lite*-linux-*.{AppImage,deb,rpm}
 
     runs-on: ${{ matrix.os }}
 
