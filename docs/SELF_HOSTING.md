@@ -34,7 +34,7 @@ AGNT offers **4 installation types** plus a **hybrid mode** to match your deploy
 | **🐳 Docker Lite** | ~715MB | ❌ No | Server | Self-hosted, multi-device, lightweight |
 | **💻 Electron Full** | ~150-200MB | ✅ Yes | Desktop | Single device, native app, all features |
 | **💻 Electron Lite** | ~80-120MB | ❌ No | Desktop | Single device, native app, smaller |
-| **🔀 Hybrid Mode** | Docker + Electron | ✅/❌ | Both | Native UI + shared backend |
+| **🔀 Hybrid Mode** | Docker + Electron | ✅/❌ | Both | Native apps + web app + shared backend |
 
 ### 🐳 Docker Installations (Server/Self-Hosted)
 
@@ -72,37 +72,45 @@ AGNT offers **4 installation types** plus a **hybrid mode** to match your deploy
 - ❌ No browser automation
 - 🎯 **Use when:** Single device use, limited bandwidth/storage
 
-### 🔀 Hybrid Mode (Electron + Docker Backend)
+### 🔀 Hybrid Mode (Electron + Web + Docker Backend)
 
-**Best of both worlds:** Native desktop UI connected to shared Docker backend
+**Best of both worlds:** Mix native desktop apps, web browser access, and shared Docker backend
 
 **How it works:**
 - Run Docker backend on a server (local or remote)
-- Configure Electron app to connect to external backend
-- Get native app experience with multi-device data sharing
+- Access via web browser (any device): http://server-ip:3333
+- Configure Electron apps to connect to same backend
+- Everyone shares the same data, workflows, and agents
 
 **Benefits:**
-- ✅ Native desktop UI (Electron)
+- ✅ Native desktop UI for some users (Electron)
+- ✅ Web browser access for others (mobile, tablets, laptops)
+- ✅ Mix and match: some use native app, some use browser
 - ✅ Shared backend for family/team (Docker)
 - ✅ One source of truth for all data
 - ✅ Easier backend updates
-- ✅ Each person gets native app experience
+- ✅ Maximum flexibility in how users access AGNT
 
 **Setup:**
 ```bash
-# Step 1: Start Docker backend
+# Step 1: Start Docker backend on server
 docker-compose up -d
+# Backend now accessible at http://server-ip:3333
 
-# Step 2: Configure Electron to use external backend
+# Step 2a: Access via web browser (any device)
+# Just open http://server-ip:3333 in browser
+
+# Step 2b: Access via Electron native app (optional)
 USE_EXTERNAL_BACKEND=true npm start
-# Or set in .env file
+# Configure to point to http://server-ip:3333
 ```
 
 **When to use Hybrid Mode:**
-- ✅ Family/team wants native desktop apps but shared data
-- ✅ Server running Docker, users want native UI
+- ✅ Family/team wants flexibility (some native apps, some browser)
+- ✅ Server running Docker, users can choose how to access
 - ✅ Remote work with central server backend
-- ✅ Best UX + data sharing combination
+- ✅ Mobile users (browser) + desktop users (native app)
+- ✅ Best UX + data sharing + maximum flexibility
 
 See [Electron vs Web Guide](ELECTRON_VS_WEB.md) for detailed hybrid setup.
 
@@ -141,12 +149,13 @@ See [Electron vs Web Guide](ELECTRON_VS_WEB.md) for detailed hybrid setup.
 - ✅ You want the smallest download size
 - ✅ Don't need multi-device access
 
-### Choose Hybrid Mode (Electron + Docker) if:
-- ✅ You want native desktop UI for each person
+### Choose Hybrid Mode (Electron + Web + Docker) if:
+- ✅ You want flexibility: some users use native app, some use browser
 - ✅ You want shared backend for family/team
 - ✅ You're running Docker on a server/NAS
 - ✅ Remote team with central backend
-- ✅ Best of both: native UX + data sharing
+- ✅ Mobile users need browser, desktop users want native app
+- ✅ Best of both: native UX + web access + data sharing
 
 ---
 
@@ -815,15 +824,15 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 
 | Aspect | Docker | Electron | Hybrid |
 |--------|--------|----------|--------|
-| **Access** | Browser (any device) | Native desktop app | Native desktop app |
-| **Backend** | Docker | Built-in | Docker (external) |
+| **Access** | Browser (any device) | Native desktop app | Browser AND/OR native app |
+| **Backend** | Docker | Built-in | Docker (shared) |
 | **Data Sharing** | Yes (2-10 users) | No (single user) | Yes (2-10 users) |
-| **Devices** | Multi-device | Single device | One device per user |
-| **Platform** | Server (Linux/Mac/Win) | Desktop (Win/Mac/Linux) | Both |
-| **Size** | 1.5GB (full), 715MB (lite) | 150-200MB (full), 80-120MB (lite) | Both combined |
-| **Updates** | Pull new image | Auto-update or reinstall | Update each separately |
+| **Devices** | Multi-device | Single device | Multi-device + mixed access |
+| **Platform** | Server (Linux/Mac/Win) | Desktop (Win/Mac/Linux) | Server + Any client |
+| **Size** | 1.5GB (full), 715MB (lite) | 150-200MB (full), 80-120MB (lite) | Docker + optional Electron |
+| **Updates** | Pull new image | Auto-update or reinstall | Update backend + clients |
 | **Network** | Requires open port | Runs locally | Requires network to backend |
-| **Best For** | Multi-device, sharing, always-on | Single device, native app | Team with native apps + shared data |
+| **Best For** | Multi-device, sharing, always-on | Single device, native app | Flexibility: mix browsers + native apps |
 
 ### Feature Comparison: Full vs Lite
 
