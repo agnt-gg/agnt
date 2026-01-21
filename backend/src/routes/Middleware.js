@@ -22,11 +22,42 @@ class Middleware {
   async authenticateToken(req, res, next) {
     const authHeader = req.headers["authorization"];
     const token = authHeader && authHeader.split(" ")[1];
-    
+
     if (!token || token === 'null' || token === 'undefined') {
       console.log('No token provided, continuing as unauthenticated');
       req.user = { isAuthenticated: false };
       return next();
+    }
+
+    // If TRUST_REMOTE_AUTH is enabled, decode token without verification
+    // This is used in "semi-local" mode where tokens are issued by remote auth server
+    if (process.env.TRUST_REMOTE_AUTH === 'true') {
+      try {
+        // Decode without verification (just parse the JWT)
+        const decoded = jwt.decode(token);
+
+        if (decoded && decoded.id) {
+          req.user = {
+            isAuthenticated: true,
+            id: decoded.id,
+            userId: decoded.id,
+            email: decoded.email,
+            auth_type: decoded.auth_type
+          };
+
+          // Store token and user data in session for backend operations
+          if (req.session) {
+            req.session.userToken = token;
+            req.session.userData = req.user;
+            req.session.lastActivity = Date.now();
+          }
+
+          console.log('✅ Trusted remote auth token for user:', decoded.email);
+          return next();
+        }
+      } catch (err) {
+        console.log('Failed to decode remote auth token:', err.message);
+      }
     }
 
     try {
@@ -52,13 +83,13 @@ class Middleware {
     } catch (err) {
       console.log('Token verification failed, continuing as unauthenticated');
       req.user = { isAuthenticated: false };
-      
+
       // Clear session data if token is invalid
       if (req.session) {
         delete req.session.userToken;
         delete req.session.userData;
       }
-      
+
       next();
     }
   }

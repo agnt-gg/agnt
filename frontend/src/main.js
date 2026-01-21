@@ -54,7 +54,16 @@ const initializeApp = async () => {
     await store.dispatch('userAuth/fetchUserData');
     console.log('✅ User data fetched, token exists:', !!store.state.userAuth.token);
 
-    // Load user settings after authentication is established
+    // Fetch custom providers first, then load user settings
+    // (user settings may reference a custom provider)
+    try {
+      await store.dispatch('aiProvider/fetchCustomProviders');
+      console.log('✅ Custom providers fetched');
+    } catch (error) {
+      console.error('Failed to fetch custom providers:', error);
+    }
+
+    // Load user settings after authentication and custom providers are loaded
     store.dispatch('aiProvider/loadUserSettings').catch((error) => {
       console.error('Failed to load user settings:', error);
     });
