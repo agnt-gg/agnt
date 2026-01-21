@@ -1,12 +1,26 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import PathManager from './PathManager.js';
 
-const LOG_DIR = PathManager.getPath('_logs');
+let LOG_DIR = PathManager.getPath('_logs');
 
-// Ensure the log directory exists
-if (!fs.existsSync(LOG_DIR)) {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
+// Ensure the log directory exists, with fallback to temp directory
+try {
+  if (!fs.existsSync(LOG_DIR)) {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  }
+  // Test write access
+  const testFile = path.join(LOG_DIR, '.write-test');
+  fs.writeFileSync(testFile, '');
+  fs.unlinkSync(testFile);
+} catch (error) {
+  // Fallback to temp directory if we can't write to the data directory
+  console.warn(`Cannot write to ${LOG_DIR}, falling back to temp directory:`, error.message);
+  LOG_DIR = path.join(os.tmpdir(), 'agnt-logs');
+  if (!fs.existsSync(LOG_DIR)) {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  }
 }
 
 /**

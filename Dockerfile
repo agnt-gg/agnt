@@ -97,10 +97,13 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Create necessary directories with correct ownership
+# Note: /app/data/_logs is created here so the logger can write to it
+# even when /app/data is mounted as a volume from the host
 RUN mkdir -p /app/backend/plugins/installed \
     /app/backend/plugins/plugin-builds \
     /app/logs \
     /app/data \
+    /app/data/_logs \
     && chown -R node:node /app
 
 # Switch to non-root user BEFORE copying files
