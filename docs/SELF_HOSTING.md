@@ -30,27 +30,29 @@ AGNT offers **4 installation types** to match your deployment needs:
 
 | Type | Size | Browser | Platform | Best For |
 |------|------|---------|----------|----------|
-| **🐳 Docker Full** | ~1.5GB | ✅ Yes | Server | Self-hosted with scraping, teams |
-| **🐳 Docker Lite** | ~715MB | ❌ No | Server | Cloud deployment, lightweight |
-| **💻 Electron Full** | ~150-200MB | ✅ Yes | Desktop | Personal desktop use, all features |
-| **💻 Electron Lite** | ~80-120MB | ❌ No | Desktop | Personal desktop, smaller install |
+| **🐳 Docker Full** | ~1.5GB | ✅ Yes | Server | Self-hosted, multi-device, browser automation |
+| **🐳 Docker Lite** | ~715MB | ❌ No | Server | Self-hosted, multi-device, lightweight |
+| **💻 Electron Full** | ~150-200MB | ✅ Yes | Desktop | Single device, native app, all features |
+| **💻 Electron Lite** | ~80-120MB | ❌ No | Desktop | Single device, native app, smaller |
 
 ### 🐳 Docker Installations (Server/Self-Hosted)
 
 **Docker Full (~1.5GB)**
 - ✅ Complete web application accessible via browser
 - ✅ Chromium included for web scraping & browser automation
-- ✅ Multi-user support (2-10 concurrent users)
-- ✅ Remote access from any device on your network
+- ✅ Multi-device access from any device on your network
+- ✅ Supports personal, family, or team use (2-10 concurrent users)
 - ✅ Production-ready with health checks
-- 🎯 **Use when:** Self-hosting for team, need browser features, running on server
+- 🎯 **Use when:** Want multi-device access, need browser features, or running on server
 
 **Docker Lite (~715MB, 52% smaller)**
 - ✅ All core features (AI agents, workflows, plugins)
 - ✅ API integrations and image processing
+- ✅ Multi-device access from any device on your network
+- ✅ Supports personal, family, or team use (2-10 concurrent users)
 - ❌ No browser automation (Puppeteer/Playwright)
 - ❌ No web scraping tools
-- 🎯 **Use when:** Cloud deployment, don't need browser features, want faster pulls
+- 🎯 **Use when:** Want multi-device access, don't need browser features, or want faster pulls
 
 ### 💻 Electron Installations (Desktop Apps)
 
@@ -59,46 +61,50 @@ AGNT offers **4 installation types** to match your deployment needs:
 - ✅ Browser automation included
 - ✅ Portable installer, easy updates
 - ✅ System tray integration
-- ✅ Single-user optimized
-- 🎯 **Use when:** Personal desktop use, want native app experience
+- ✅ Single-device, single-user
+- 🎯 **Use when:** Single device use, want native app experience
 
 **Electron Lite (~80-120MB, ~50% smaller)**
 - ✅ All core AGNT features
 - ✅ Smaller download and faster install
+- ✅ Single-device, single-user
 - ❌ No browser automation
-- 🎯 **Use when:** Personal desktop use, limited bandwidth/storage
+- 🎯 **Use when:** Single device use, limited bandwidth/storage
 
 ---
 
 ## 🤔 Which Installation Should I Choose?
 
 ### Choose Docker Full if:
-- ✅ You want to access AGNT from multiple devices
-- ✅ You need to share with family/team (2-10 people)
+- ✅ You want to access AGNT from multiple devices (phone, laptop, tablet)
+- ✅ Personal use with multi-device access
+- ✅ Family sharing (2-5 people in household)
+- ✅ Small team collaboration (2-10 people)
 - ✅ You need web scraping or browser automation
-- ✅ You're running on a server (local or cloud)
-- ✅ You want 24/7 availability
+- ✅ You want 24/7 availability on a server
 
 ### Choose Docker Lite if:
-- ✅ You're deploying to cloud (AWS, GCP, Azure)
-- ✅ You want faster image pulls and deployments
+- ✅ You want to access AGNT from multiple devices
+- ✅ Personal use with multi-device access
+- ✅ Family sharing (2-5 people in household)
+- ✅ Small team collaboration (2-10 people)
 - ✅ You don't need browser automation features
-- ✅ You want to minimize resource usage
+- ✅ You want faster image pulls and deployments
 - ✅ Storage/bandwidth is limited
 
 ### Choose Electron Full if:
+- ✅ Single device, single user
 - ✅ You want a native desktop application
-- ✅ Personal use on your laptop/desktop
 - ✅ You need browser automation features
 - ✅ You want auto-updates and system integration
-- ✅ Single-user setup
+- ✅ Don't need multi-device access
 
 ### Choose Electron Lite if:
+- ✅ Single device, single user
 - ✅ You want a native desktop app
-- ✅ Personal use on your laptop/desktop
 - ✅ You don't need browser automation
 - ✅ You want the smallest download size
-- ✅ Single-user setup
+- ✅ Don't need multi-device access
 
 ---
 
@@ -768,12 +774,13 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 | Aspect | Docker | Electron |
 |--------|--------|----------|
 | **Access** | Browser (any device) | Native desktop app |
-| **Users** | Multi-user (2-10) | Single user |
+| **Devices** | Multi-device | Single device |
+| **Users** | Personal, family (2-5), or team (2-10) | Single user |
 | **Platform** | Server (Linux/Mac/Win) | Desktop (Win/Mac/Linux) |
 | **Size** | 1.5GB (full), 715MB (lite) | 150-200MB (full), 80-120MB (lite) |
 | **Updates** | Pull new image | Auto-update or reinstall |
 | **Network** | Requires open port | Runs locally |
-| **Best For** | Teams, servers, remote access | Personal desktop use |
+| **Best For** | Multi-device, sharing, always-on | Single device, native app |
 
 ### Feature Comparison: Full vs Lite
 
@@ -794,20 +801,87 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 ### Quick Decision Tree
 
 ```
-Need browser automation (web scraping)?
-├─ Yes → Choose Full version
-└─ No  → Choose Lite version (smaller, faster)
-
-Multiple users or remote access?
-├─ Yes → Choose Docker
-└─ No  → Choose Electron
-
-Result:
-├─ Docker Full (~1.5GB) - Teams + browser features
-├─ Docker Lite (~715MB) - Teams, no browser
-├─ Electron Full (~150-200MB) - Personal + browser features
-└─ Electron Lite (~80-120MB) - Personal, no browser
+Need multi-device access or sharing?
+├─ Yes → Choose Docker (personal, family, or team)
+│   └─ Need browser automation?
+│       ├─ Yes → Docker Full (~1.5GB)
+│       └─ No  → Docker Lite (~715MB)
+│
+└─ No (single device) → Choose Electron (single user)
+    └─ Need browser automation?
+        ├─ Yes → Electron Full (~150-200MB)
+        └─ No  → Electron Lite (~80-120MB)
 ```
+
+**Key Question: How many devices?**
+- **Multiple devices** (phone, laptop, tablet) → Docker
+- **Family/team sharing** (2-10 people) → Docker
+- **Single device only** → Electron
+
+---
+
+## 🤔 Why Are Electron Installers So Much Smaller?
+
+**Electron Full: ~150-200MB vs Docker Full: ~1.5GB**
+**Electron Lite: ~80-120MB vs Docker Lite: ~715MB**
+
+### No Downloads on First Run
+
+✅ **Electron installers are fully self-contained** - everything needed is in the installer
+❌ **No additional downloads** when you first run the app
+
+### Why Docker Images Are Larger
+
+Docker images include:
+- 🐧 **Full OS layer** (Alpine Linux ~40MB)
+- 📦 **Uncompressed filesystem** with all system libraries
+- 🔧 **Runtime system dependencies** (cairo, pango, fonts, etc.)
+- 🌐 **System Chromium** (~650MB uncompressed in Docker Full)
+- 📚 **Multiple architecture binaries** (some dependencies include both x64/ARM)
+
+### Why Electron Installers Are Smaller
+
+Electron installers benefit from:
+- 📦 **ASAR packaging** - Files compressed into single archive
+- 🗜️ **Installer compression** - Final .exe/.dmg/.AppImage is compressed
+- ✂️ **Tree shaking** - electron-builder removes unused code
+- 🎯 **Platform-specific** - Only includes binaries for target OS
+- ⚡ **Built-in Chromium** - Electron includes optimized Chromium (not full system browser)
+
+### Electron Full vs Lite Difference
+
+**Electron Full (~150-200MB):**
+- Includes `puppeteer-extra` (~15MB)
+- Includes Playwright packages (~25MB)
+- Browser automation capabilities
+
+**Electron Lite (~80-120MB, ~50% smaller):**
+- No puppeteer/playwright packages (~40MB saved)
+- Still has Electron's built-in Chromium for the UI
+- Just can't use it for automation/scraping
+
+### Size Breakdown Example (Electron Full on Windows)
+
+```
+Electron runtime + Chromium:  ~85MB (ASAR compressed)
+Node modules (production):    ~50MB (ASAR compressed)
+Backend code:                 ~8MB
+Frontend (built):             ~12MB
+Puppeteer-extra packages:     ~15MB
+Application code:             ~5MB
+Installer compression:        ~25MB saved
+────────────────────────────────────
+Final .exe installer:         ~150MB
+```
+
+### Docker Can't Do This Because
+
+- 🔒 **Security**: Can't modify system files after build
+- 🐧 **Linux**: Needs full system libraries at runtime
+- 🌐 **Multi-arch**: Often includes both x64 and ARM binaries
+- 📦 **No compression**: Docker layers stored uncompressed
+
+**Bottom line:** Electron installers use aggressive compression and packaging optimizations that Docker images can't use. Both are fully self-contained with no additional downloads.
 
 ---
 
