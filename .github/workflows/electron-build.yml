@@ -1,0 +1,149 @@
+name: Build Electron Apps
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-electron-full:
+    name: Build Electron Full
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            platform: win
+            artifact: AGNT-*-win-x64.exe
+          - os: macos-latest
+            platform: mac
+            artifact: AGNT-*-mac-*.{dmg,zip}
+          - os: ubuntu-latest
+            platform: linux
+            artifact: AGNT-*-linux-x64.{AppImage,deb,rpm}
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Build Electron Full (${{ matrix.platform }})
+        run: npm run build:${{ matrix.platform }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-full-${{ matrix.platform }}
+          path: |
+            dist/${{ matrix.artifact }}
+          retention-days: 30
+
+  build-electron-lite:
+    name: Build Electron Lite
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            platform: win
+            artifact: AGNT-Lite-*-win-x64.exe
+          - os: macos-latest
+            platform: mac
+            artifact: AGNT-Lite-*-mac-*.{dmg,zip}
+          - os: ubuntu-latest
+            platform: linux
+            artifact: AGNT-Lite-*-linux-x64.{AppImage,deb,rpm}
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Build Electron Lite (${{ matrix.platform }})
+        run: npm run build:lite:${{ matrix.platform }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-lite-${{ matrix.platform }}
+          path: |
+            dist/${{ matrix.artifact }}
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: [build-electron-full, build-electron-lite]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/**/*
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
