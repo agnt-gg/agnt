@@ -16,7 +16,7 @@ Run Docker backend with **web browser + native desktop apps** sharing the same d
 ## Prerequisites
 
 **Server (Docker backend):**
-- Docker 20.10+ or Docker Desktop
+- Docker 20.10+ or Docker Desktop (any OS: Windows, macOS, Linux, FreeBSD, etc.)
 - 2GB RAM (Full) or 1GB RAM (Lite)
 - 2GB disk (Full) or 1GB disk (Lite)
 

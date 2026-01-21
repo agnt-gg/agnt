@@ -14,7 +14,7 @@ Get AGNT running **lightweight** (no browser automation) in under 5 minutes.
 
 ## Prerequisites
 
-- Docker 20.10+ or Docker Desktop
+- Docker 20.10+ or Docker Desktop (any OS: Windows, macOS, Linux, FreeBSD, etc.)
 - 1GB free RAM
 - 1GB free disk space
 

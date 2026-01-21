@@ -18,9 +18,11 @@ Builds and publishes Docker images to Docker Hub.
 - Git tags matching `v*.*.*`
 - Manual workflow dispatch
 
-**Platforms:**
+**Container Architectures:**
 - `linux/amd64` (x86_64)
 - `linux/arm64` (ARM64/Apple Silicon)
+
+**Runs on:** Any OS with Docker support (Windows, macOS, Linux, FreeBSD, etc.)
 
 **Docker Hub Tags:**
 ```
@@ -285,12 +287,14 @@ gh run download <run-id>
 
 ## Build Matrix Summary
 
-| Variant        | Docker | Electron | Platforms               | Size        |
-|----------------|--------|----------|-------------------------|-------------|
-| Full           | ✅     | ✅       | All                     | 1.5GB / 150-200MB |
-| Lite           | ✅     | ✅       | All                     | 715MB / 80-120MB |
-| **Docker**     | ✅     | -        | linux/amd64, linux/arm64 | -           |
-| **Electron**   | -      | ✅       | Windows, macOS, Linux   | -           |
+| Variant        | Docker | Electron | Platforms/Architectures          | Size        |
+|----------------|--------|----------|----------------------------------|-------------|
+| Full           | ✅     | ✅       | All                              | 1.5GB / 150-200MB |
+| Lite           | ✅     | ✅       | All                              | 715MB / 80-120MB |
+| **Docker**     | ✅     | -        | Any OS with Docker (amd64, arm64) | -          |
+| **Electron**   | -      | ✅       | Windows, macOS, Linux (native)   | -           |
+
+**Note:** Docker images run on any OS with Docker support (Windows, macOS, Linux, FreeBSD, etc.). Electron apps are native binaries for specific platforms.
 
 ## Environment Variables
 
