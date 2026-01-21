@@ -149,7 +149,7 @@ export default {
     };
 
     // Initialize screen based on URL parameters or default
-    onMounted(() => {
+    onMounted(async () => {
       // Check if route specifies a terminal screen
       if (route.meta?.terminalScreen) {
         activeScreen.value = route.meta.terminalScreen;
@@ -157,6 +157,17 @@ export default {
         activeScreen.value = 'WorkflowForgeScreen';
       } else {
         activeScreen.value = getDefaultScreen();
+      }
+
+      // Load custom providers if user is authenticated
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          await store.dispatch('aiProvider/fetchCustomProviders');
+          console.log('✅ Custom providers loaded on startup');
+        } catch (error) {
+          console.error('Failed to load custom providers on startup:', error);
+        }
       }
     });
 
