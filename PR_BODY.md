@@ -52,16 +52,23 @@ Excludes puppeteer packages while maintaining all core functionality. Dynamic im
 `.github/workflows/docker-build.yml`
 - Builds Docker Full and Lite
 - Multi-arch: linux/amd64, linux/arm64
-- Pushes to Docker Hub with version tags
+- Pushes to GHCR (GitHub Container Registry)
 - Separate caching for faster builds
+- **Status:** ✅ All builds passing
 
 `.github/workflows/electron-build.yml`
 - Builds Electron Full and Lite
-- All platforms: Windows, macOS, GNU/Linux
+- All platforms: Windows (NSIS), macOS (DMG/ZIP), GNU/Linux (AppImage/DEB/RPM)
 - Creates GitHub Releases on tags
 - Parallel builds (6 concurrent jobs)
+- **Status:** ✅ All builds passing (6/6 artifacts uploading)
 
 **Triggers:** Push to main, PRs, version tags, manual dispatch
+
+**Platform-specific fixes:**
+- Windows: VS 2019 runner for node-gyp compatibility
+- Windows: Python 3.14+ distutils fix via setuptools
+- All platforms: Separate glob patterns for artifact uploads
 
 ### 5. Comprehensive Documentation
 
@@ -239,17 +246,19 @@ make run-full  # or run-lite
 USE_EXTERNAL_BACKEND=true BACKEND_URL=http://server-ip:3333 npm start
 ```
 
-## 📦 Docker Hub Tags
+## 📦 Container Image Tags (GHCR)
+
+Images available at `ghcr.io/russellballestrini/agnt`:
 
 ```
-agnt/agnt:latest        # Full variant (main branch)
-agnt/agnt:full          # Full variant (main branch)
-agnt/agnt:lite          # Lite variant (main branch)
-agnt/agnt:0.3.7         # Version (Full)
-agnt/agnt:0.3.7-full    # Version (Full)
-agnt/agnt:0.3.7-lite    # Version (Lite)
-agnt/agnt:sha-abc1234   # Git SHA (Full)
-agnt/agnt:sha-lite-abc1234  # Git SHA (Lite)
+ghcr.io/russellballestrini/agnt:latest        # Full variant (main branch)
+ghcr.io/russellballestrini/agnt:full          # Full variant (main branch)
+ghcr.io/russellballestrini/agnt:lite          # Lite variant (main branch)
+ghcr.io/russellballestrini/agnt:0.3.7         # Version (Full)
+ghcr.io/russellballestrini/agnt:0.3.7-full    # Version (Full)
+ghcr.io/russellballestrini/agnt:0.3.7-lite    # Version (Lite)
+ghcr.io/russellballestrini/agnt:sha-abc1234   # Git SHA (Full)
+ghcr.io/russellballestrini/agnt:sha-lite-abc1234  # Git SHA (Lite)
 ```
 
 ## 🧪 Testing
@@ -291,8 +300,8 @@ Data preserved (same volume mounts)
 
 ## 🎯 Post-Merge Tasks
 
-- [ ] Verify CI/CD workflows run successfully
-- [ ] Publish Docker images to Docker Hub
+- [x] Verify CI/CD workflows run successfully
+- [x] Publish Docker images to GHCR (GitHub Container Registry)
 - [ ] Test auto-update for Electron Lite
 - [ ] Update agnt.gg downloads page
 - [ ] Announce new Docker support in Discord
@@ -302,7 +311,7 @@ Data preserved (same volume mounts)
 
 **New documentation:** ~1,800 lines
 **Updated documentation:** ~500 lines
-**Total:** 13 commits, 27 files changed
+**Total:** 33 commits, 40+ files changed
 
 ## 🙏 Credits
 
@@ -319,21 +328,56 @@ Closes #[CI/CD automation request]
 ## Commit History
 
 <details>
-<summary>View all 13 commits</summary>
+<summary>View all 33 commits</summary>
 
+### Initial Features (Docker + Real-Time Sync)
 1. `df30884` - feat: add Docker support with full and lite variants
 2. `c48c9a4` - fix: improve custom provider error handling and update health checks
 3. `be5b913` - feat: add multi-client real-time sync for teams and families
 4. `75a5449` - perf: optimize Docker images to 1.5GB full and 715MB lite
+
+### Documentation Phase 1
 5. `e223be8` - docs: add comprehensive 4-installation-method guide to SELF_HOSTING
 6. `59604dc` - docs: clarify Docker is for personal/family/team and explain size differences
 7. `01e50a4` - docs: add Hybrid Mode (Electron + Docker backend) to installation options
 8. `c9273fe` - docs: clarify Hybrid Mode includes web app + Electron + Docker
 9. `b4ba3e4` - docs: add dedicated quickstart guides for all 5 installation methods
+
+### Electron Lite + CI/CD
 10. `53b9ce1` - feat: add Electron Lite mode build support and documentation
 11. `26d2c31` - feat: add comprehensive CI/CD pipelines for all build variants
+
+### Documentation Phase 2
 12. `5a46fb8` - docs: clarify Docker runs on any OS with Docker support
-13. `c3f7418` - docs: update all references from GNU/Linux to GNU/Linux
+13. `c3f7418` - docs: update all references from Linux to GNU/Linux
+14. `bf30ead` - docs: clarify GNU/Linux has three package formats (AppImage, DEB, RPM)
+15. `e5a97e3` - docs: clarify Windows uses %USERPROFILE% not ~ for paths
+
+### Database Migration (Hybrid Mode Support)
+16. `fc1faae` - fix: restore proper platform-specific data paths
+17. `368ca25` - fix: use unified ~/.agnt/data path on all platforms for Hybrid Mode
+18. `fb8869a` - feat: add automatic data migration to unified ~/.agnt/data path
+
+### Docker CI/CD Fixes (GHCR Migration)
+19. `13d2f88` - feat: switch from Docker Hub to GitHub Container Registry (GHCR)
+20. `3d726d8` - fix: disable npm cache in workflows (package-lock.json is gitignored)
+21. `314010e` - fix: use npm install instead of npm ci (package-lock.json gitignored)
+
+### Electron Windows Build Fixes
+22. `d58a326` - fix: add Python 3.12 setup for native module builds
+23. `8c2f479` - fix: add Windows SDK setup for native module builds
+24. `5bab421` - fix: install Windows 10 SDK for native module builds
+25. `9c5e279` - fix: configure npm to use Visual Studio 2022 for Windows builds
+26. `107315c` - fix: pass Visual Studio 2022 version to node-gyp via environment
+27. `3c12c81` - fix: install Windows SDK via Visual Studio Installer
+28. `124ffef` - fix: use windows-2019 runners for better node-gyp compatibility
+29. `3ca7699` - fix: configure node-gyp for VS 2019 on windows-2019 runners
+
+### Electron Artifact Upload Fixes
+30. `ceef7c5` - fix: set AGNT_BUILD_VARIANT to empty string for Full builds
+31. `7745275` - fix: simplify artifactName template to avoid JavaScript expressions
+32. `3a3a4bf` - fix: update artifact path patterns to match new naming scheme
+33. `c77f58c` - fix: use separate glob patterns instead of brace expansion for artifacts
 
 </details>
 
