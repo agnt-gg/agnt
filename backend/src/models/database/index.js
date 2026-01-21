@@ -28,9 +28,9 @@ const getUserDataPath = () => {
   // 4. User home fallback (self-hosted, non-Docker)
   const userPath =
     process.platform === 'darwin'
-      ? path.join(process.env.HOME, '.agnt', 'data') // Mac: ~/.agnt/data
+      ? path.join(process.env.HOME, 'Library', 'Application Support', 'AGNT', 'Data') // Mac: ~/Library/Application Support/AGNT/Data
       : process.platform === 'win32'
-      ? path.join(process.env.APPDATA || process.env.USERPROFILE, 'agnt', 'data') // Windows: %APPDATA%/agnt/data
+      ? path.join(process.env.APPDATA || process.env.USERPROFILE, 'AGNT', 'Data') // Windows: %APPDATA%/AGNT/Data
       : path.join(process.env.HOME || '/tmp', '.agnt', 'data'); // GNU/Linux: ~/.agnt/data
 
   console.log('Using user home directory for database:', userPath);
