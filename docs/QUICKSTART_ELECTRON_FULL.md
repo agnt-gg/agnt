@@ -37,17 +37,24 @@ Get AGNT **native desktop app with browser automation** in under 5 minutes.
 4. Launch from Applications
 
 **GNU/Linux:**
+
+Choose the format for your distribution:
+
+**AppImage (Universal - works on any distro):**
 1. Download `AGNT-0.3.7-linux-x64.AppImage`
 2. Make executable: `chmod +x AGNT-*.AppImage`
 3. Run: `./AGNT-*.AppImage`
 
-Or install DEB/RPM:
+**DEB (Debian/Ubuntu/Mint/Pop!_OS):**
 ```bash
-# Debian/Ubuntu
 sudo dpkg -i AGNT-0.3.7-amd64.deb
+# Or double-click in file manager to install
+```
 
-# Fedora/RHEL
+**RPM (Fedora/RHEL/CentOS/openSUSE):**
+```bash
 sudo rpm -i AGNT-0.3.7.x86_64.rpm
+# Or double-click in file manager to install
 ```
 
 ### Option 2: Build from Source
@@ -143,18 +150,25 @@ Or download latest installer from [agnt.gg/downloads](https://agnt.gg/downloads)
 1. Drag AGNT from Applications to Trash
 2. Delete data: `~/Library/Application Support/AGNT`
 
-**GNU/Linux (AppImage):**
+**GNU/Linux:**
+
+**AppImage:**
 1. Delete the AppImage file
-2. Delete data: `~/.config/AGNT`
+2. Delete data: `~/.agnt/`
 
-**GNU/Linux (DEB/RPM):**
+**DEB (Debian/Ubuntu):**
 ```bash
-# Debian/Ubuntu
 sudo apt remove agnt
-
-# Fedora/RHEL
-sudo rpm -e agnt
+# Or use Software Center to uninstall
 ```
+
+**RPM (Fedora/RHEL):**
+```bash
+sudo rpm -e agnt
+# Or use Software Center to uninstall
+```
+
+To remove all data: `rm -rf ~/.agnt/`
 
 ### Backup Your Data
 

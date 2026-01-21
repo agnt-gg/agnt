@@ -401,7 +401,7 @@ Build outputs are saved to the `dist/` directory:
 | -------- | ---- | ---- | -------------- |
 | Windows | AGNT-0.3.7-win-x64.exe (~150MB) | AGNT-Lite-0.3.7-win-x64.exe (~80MB) | ~47% |
 | macOS | AGNT-0.3.7-mac-x64.dmg (~200MB) | AGNT-Lite-0.3.7-mac-x64.dmg (~120MB) | ~40% |
-| GNU/Linux | AGNT-0.3.7-linux-x64.AppImage (~180MB) | AGNT-Lite-0.3.7-linux-x64.AppImage (~100MB) | ~44% |
+| GNU/Linux | AppImage (~180MB), DEB, RPM | AppImage (~100MB), DEB, RPM | ~44% |
 
 ---
 
