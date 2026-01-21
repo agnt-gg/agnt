@@ -4,18 +4,18 @@ Get AGNT **lightweight native desktop app** (no browser automation) in under 5 m
 
 ## What You Get
 
-- ✅ Native desktop application (Windows/macOS/Linux)
+- ✅ Native desktop application (Windows/macOS/GNU/Linux)
 - ✅ All core features (AI agents, workflows, plugins)
 - ✅ Single-device, single-user
 - ✅ System tray integration
 - ✅ Auto-updates
 - ❌ No browser automation (Puppeteer/Playwright)
 - 📦 Installer size: **~80-120MB** (50% smaller than Full)
-- 💻 Platform: **Windows, macOS, Linux**
+- 💻 Platform: **Windows, macOS, GNU/Linux**
 
 ## Prerequisites
 
-- Windows 10+, macOS 10.13+, or Linux (Ubuntu 18.04+)
+- Windows 10+, macOS 10.13+, or GNU/Linux (Ubuntu 18.04+)
 - 200MB free disk space
 - 1GB free RAM
 
@@ -37,7 +37,7 @@ Get AGNT **lightweight native desktop app** (no browser automation) in under 5 m
 3. Drag AGNT Lite to Applications folder
 4. Launch from Applications
 
-**Linux:**
+**GNU/Linux:**
 1. Download `AGNT-Lite-0.3.7-linux-x64.AppImage`
 2. Make executable: `chmod +x AGNT-Lite-*.AppImage`
 3. Run: `./AGNT-Lite-*.AppImage`
@@ -97,7 +97,7 @@ All data stored locally:
 ~/Library/Application Support/AGNT/Logs/
 ```
 
-**Linux:**
+**GNU/Linux:**
 ```
 ~/.config/AGNT/Data/agnt.db
 ~/.config/AGNT/Plugins/
@@ -148,11 +148,11 @@ Or download latest installer from [agnt.gg/downloads](https://agnt.gg/downloads)
 1. Drag AGNT Lite from Applications to Trash
 2. Delete data: `~/Library/Application Support/AGNT`
 
-**Linux (AppImage):**
+**GNU/Linux (AppImage):**
 1. Delete the AppImage file
 2. Delete data: `~/.config/AGNT`
 
-**Linux (DEB/RPM):**
+**GNU/Linux (DEB/RPM):**
 ```bash
 # Debian/Ubuntu
 sudo apt remove agnt-lite
@@ -167,7 +167,7 @@ sudo rpm -e agnt-lite
 # Windows
 copy %APPDATA%\AGNT\Data\agnt.db backup.db
 
-# macOS/Linux
+# macOS/GNU/Linux
 cp ~/Library/Application\ Support/AGNT/Data/agnt.db backup.db
 ```
 
@@ -178,7 +178,7 @@ cp ~/Library/Application\ Support/AGNT/Data/agnt.db backup.db
 **Check logs:**
 - Windows: `%APPDATA%\AGNT\Logs\`
 - macOS: `~/Library/Logs/AGNT/`
-- Linux: `~/.config/AGNT/Logs/`
+- GNU/Linux: `~/.config/AGNT/Logs/`
 
 **Common fixes:**
 1. Restart your computer
@@ -202,7 +202,7 @@ macOS Gatekeeper blocking unsigned app:
 xattr -cr /Applications/AGNT\ Lite.app
 ```
 
-### Linux: Missing dependencies
+### GNU/Linux: Missing dependencies
 
 Install required libraries:
 ```bash

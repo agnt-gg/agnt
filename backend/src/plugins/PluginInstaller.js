@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
  * Plugin Storage Location:
  * - Windows: %APPDATA%/AGNT/plugins/
  * - macOS: ~/Library/Application Support/AGNT/plugins/
- * - Linux: ~/.config/AGNT/plugins/
+ * - GNU/Linux: ~/.config/AGNT/plugins/
  *
  * Plugin Distribution Model (VSCode Extension style):
  * 1. Plugins are distributed as source code only (no node_modules)

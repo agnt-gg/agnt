@@ -58,7 +58,7 @@ AGNT offers **4 installation types** plus a **hybrid mode** to match your deploy
 ### 💻 Electron Installations (Desktop Apps)
 
 **Electron Full (~150-200MB)**
-- ✅ Native desktop application (Windows/macOS/Linux)
+- ✅ Native desktop application (Windows/macOS/GNU/Linux)
 - ✅ Browser automation included
 - ✅ Portable installer, easy updates
 - ✅ System tray integration
@@ -192,13 +192,13 @@ cd frontend && npm run build && cd ..
 npm run build              # Current platform
 npm run build:win          # Windows
 npm run build:mac          # macOS
-npm run build:linux        # Linux
+npm run build:linux        # GNU/Linux
 
 # Build Electron Lite (without browser)
 npm run build:lite         # Current platform
 npm run build:lite:win     # Windows
 npm run build:lite:mac     # macOS
-npm run build:lite:linux   # Linux
+npm run build:lite:linux   # GNU/Linux
 
 # Output: dist/ folder with installers
 ```
@@ -206,7 +206,7 @@ npm run build:lite:linux   # Linux
 **Platform-specific installers:**
 - **Windows**: `.exe` installer (NSIS)
 - **macOS**: `.dmg` and `.zip` (x64 + ARM64 universal)
-- **Linux**: `.AppImage`, `.deb`, `.rpm`
+- **GNU/Linux**: `.AppImage`, `.deb`, `.rpm`
 
 See [Electron Lite Mode Guide](ELECTRON_LITE_MODE.md) for build details.
 
@@ -220,7 +220,7 @@ Docker containerization provides:
 - ✅ **Web UI Accessible** - Full frontend accessible on port 3333
 - ✅ **Cloud API Access** - Connect to OpenAI, Anthropic, Google, and all cloud AI providers
 - ✅ **Localhost Access** - Optional support for local services on your host machine
-- ✅ **Cross-Platform** - Works on Windows, macOS, and Linux (including ARM64)
+- ✅ **Cross-Platform** - Works on Windows, macOS, and GNU/Linux (including ARM64)
 - ✅ **Easy Updates** - Rebuild and restart without affecting your data
 - ✅ **Persistent Data** - All workflows, agents, and plugins saved in Docker volumes
 
@@ -493,8 +493,8 @@ Then configure AGNT to use `host.docker.internal` instead of `localhost`:
 - Example: `http://host.docker.internal:8080` instead of `http://localhost:8080`
 - Works for AI provider endpoints, MCP servers, databases, etc.
 
-**Alternative: Host Network Mode (Linux only)**
-For direct host network access on Linux:
+**Alternative: Host Network Mode (GNU/Linux only)**
+For direct host network access on GNU/Linux:
 ```yaml
 network_mode: "host"
 ```
@@ -549,7 +549,7 @@ labels:
 ### Image Specifications
 
 **Full Version (`Dockerfile`):**
-- **Base**: Alpine Linux (minimal footprint)
+- **Base**: Alpine GNU/Linux (minimal footprint)
 - **Runtime**: Node.js 20 LTS
 - **Browser**: Chromium (for Puppeteer/Playwright features)
 - **Image Size**: ~1.5GB
@@ -561,10 +561,10 @@ labels:
 - ~180MB: Node.js 20 runtime
 - ~100MB: Backend source code and plugins
 - ~80MB: Built Vue.js frontend
-- ~40MB: Alpine Linux base
+- ~40MB: Alpine GNU/Linux base
 
 **Lite Version (`Dockerfile.lite`):**
-- **Base**: Alpine Linux (minimal footprint)
+- **Base**: Alpine GNU/Linux (minimal footprint)
 - **Runtime**: Node.js 20 LTS
 - **Browser**: None (no Chromium)
 - **Image Size**: ~715MB (52% smaller)
@@ -575,7 +575,7 @@ labels:
 - ~180MB: Node.js 20 runtime
 - ~100MB: Backend source code and plugins
 - ~80MB: Built Vue.js frontend
-- ~40MB: Alpine Linux base
+- ~40MB: Alpine GNU/Linux base
 - ~20MB: Graphics libraries (minimal, no browser)
 
 ### Build Commands
@@ -828,7 +828,7 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 | **Backend** | Docker | Built-in | Docker (shared) |
 | **Data Sharing** | Yes (2-10 users) | No (single user) | Yes (2-10 users) |
 | **Devices** | Multi-device | Single device | Multi-device + mixed access |
-| **Platform** | Server (Linux/Mac/Win) | Desktop (Win/Mac/Linux) | Server + Any client |
+| **Platform** | Server (GNU/Linux/Mac/Win) | Desktop (Win/Mac/GNU/Linux) | Server + Any client |
 | **Size** | 1.5GB (full), 715MB (lite) | 150-200MB (full), 80-120MB (lite) | Docker + optional Electron |
 | **Updates** | Pull new image | Auto-update or reinstall | Update backend + clients |
 | **Network** | Requires open port | Runs locally | Requires network to backend |
@@ -892,7 +892,7 @@ Want to share data with others (family/team)?
 ### Why Docker Images Are Larger
 
 Docker images include:
-- 🐧 **Full OS layer** (Alpine Linux ~40MB)
+- 🐧 **Full OS layer** (Alpine GNU/Linux ~40MB)
 - 📦 **Uncompressed filesystem** with all system libraries
 - 🔧 **Runtime system dependencies** (cairo, pango, fonts, etc.)
 - 🌐 **System Chromium** (~650MB uncompressed in Docker Full)
@@ -936,7 +936,7 @@ Final .exe installer:         ~150MB
 ### Docker Can't Do This Because
 
 - 🔒 **Security**: Can't modify system files after build
-- 🐧 **Linux**: Needs full system libraries at runtime
+- 🐧 **GNU/Linux**: Needs full system libraries at runtime
 - 🌐 **Multi-arch**: Often includes both x64 and ARM binaries
 - 📦 **No compression**: Docker layers stored uncompressed
 

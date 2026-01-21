@@ -1,6 +1,6 @@
 /**
  * Patch @xenova/transformers ONNX backend to use dynamic imports
- * This fixes ESM resolution issues in Docker/Alpine Linux
+ * This fixes ESM resolution issues in Docker/Alpine GNU/Linux
  */
 
 import fs from 'fs';

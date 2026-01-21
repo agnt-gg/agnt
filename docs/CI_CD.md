@@ -22,7 +22,7 @@ Builds and publishes Docker images to Docker Hub.
 - `linux/amd64` (x86_64)
 - `linux/arm64` (ARM64/Apple Silicon)
 
-**Runs on:** Any OS with Docker support (Windows, macOS, Linux, FreeBSD, etc.)
+**Runs on:** Any OS with Docker support (Windows, macOS, GNU/Linux, FreeBSD, etc.)
 
 **Docker Hub Tags:**
 ```
@@ -62,7 +62,7 @@ Builds native desktop applications for all platforms.
 **Platforms:**
 - Windows (x64) - NSIS installer (.exe)
 - macOS (x64 + ARM64) - DMG + ZIP
-- Linux (x64) - AppImage, DEB, RPM
+- GNU/Linux (x64) - AppImage, DEB, RPM
 
 **Build Matrix:**
 
@@ -169,7 +169,7 @@ npm run build:lite
 # Build specific platform
 npm run build:win          # Windows Full
 npm run build:lite:mac     # macOS Lite
-npm run build:linux        # Linux Full
+npm run build:linux        # GNU/Linux Full
 ```
 
 ## Build Caching
@@ -263,7 +263,7 @@ Should show `DOCKERHUB_USERNAME`.
 **Platform-specific issues:**
 - **Windows**: Requires `windows-build-tools` (pre-installed on GitHub runners)
 - **macOS**: Builds both x64 and ARM64 (universal builds)
-- **Linux**: Requires build tools (pre-installed on GitHub runners)
+- **GNU/Linux**: Requires build tools (pre-installed on GitHub runners)
 
 **Check Node.js version:**
 Workflow uses Node.js 20. If building locally, ensure same version:
@@ -292,9 +292,9 @@ gh run download <run-id>
 | Full           | ✅     | ✅       | All                              | 1.5GB / 150-200MB |
 | Lite           | ✅     | ✅       | All                              | 715MB / 80-120MB |
 | **Docker**     | ✅     | -        | Any OS with Docker (amd64, arm64) | -          |
-| **Electron**   | -      | ✅       | Windows, macOS, Linux (native)   | -           |
+| **Electron**   | -      | ✅       | Windows, macOS, GNU/Linux (native)   | -           |
 
-**Note:** Docker images run on any OS with Docker support (Windows, macOS, Linux, FreeBSD, etc.). Electron apps are native binaries for specific platforms.
+**Note:** Docker images run on any OS with Docker support (Windows, macOS, GNU/Linux, FreeBSD, etc.). Electron apps are native binaries for specific platforms.
 
 ## Environment Variables
 
@@ -345,10 +345,10 @@ gh variable set DOCKERHUB_USERNAME
 | Docker Lite    | Multi-arch | 10-15 min   |
 | Electron Full  | Windows  | 10-15 min   |
 | Electron Full  | macOS    | 12-18 min   |
-| Electron Full  | Linux    | 8-12 min    |
+| Electron Full  | GNU/Linux    | 8-12 min    |
 | Electron Lite  | Windows  | 8-12 min    |
 | Electron Lite  | macOS    | 10-15 min   |
-| Electron Lite  | Linux    | 6-10 min    |
+| Electron Lite  | GNU/Linux    | 6-10 min    |
 
 **Total pipeline time (tagged release):** ~30-40 minutes (parallel execution)
 

@@ -20,7 +20,7 @@ AGNT supports building two Electron variants:
 | **Windows (NSIS)** | ~150MB | ~80MB | ~70MB (47%) |
 | **macOS (DMG)** | ~200MB | ~120MB | ~80MB (40%) |
 | **macOS (Installed)** | ~500MB | ~300MB | ~200MB (40%) |
-| **Linux (AppImage)** | ~180MB | ~100MB | ~80MB (44%) |
+| **GNU/Linux (AppImage)** | ~180MB | ~100MB | ~80MB (44%) |
 
 ## What's Disabled in Lite Mode
 
@@ -55,7 +55,7 @@ npm run build:lite
 # Build Lite for specific platforms
 npm run build:lite:win      # Windows
 npm run build:lite:mac      # macOS (x64 + ARM64)
-npm run build:lite:linux    # Linux (AppImage, DEB, RPM)
+npm run build:lite:linux    # GNU/Linux (AppImage, DEB, RPM)
 npm run build:lite:all      # All platforms
 
 # Build BOTH Full and Lite (recommended)

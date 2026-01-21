@@ -166,7 +166,7 @@ if (electron?.getAppVersion) {
 
 | Mode | Database Location | Persistent? |
 |------|------------------|-------------|
-| **Desktop** | `~/Library/Application Support/AGNT/Data/agnt.db` (Mac)<br>`%APPDATA%/AGNT/Data/agnt.db` (Windows)<br>`~/.config/AGNT/Data/agnt.db` (Linux) | ✅ Yes |
+| **Desktop** | `~/Library/Application Support/AGNT/Data/agnt.db` (Mac)<br>`%APPDATA%/AGNT/Data/agnt.db` (Windows)<br>`~/.config/AGNT/Data/agnt.db` (GNU/Linux) | ✅ Yes |
 | **Web (Docker)** | `/app/data/agnt.db` (inside container)<br>Mounted to Docker volume `agnt-db` | ✅ Yes |
 | **Development** | `./data/agnt.db` (project root) | ✅ Yes |
 
@@ -314,7 +314,7 @@ cd frontend && npm run build && cd ..
 npm run build          # Current platform
 npm run build:win      # Windows
 npm run build:mac      # macOS (x64 + ARM64)
-npm run build:linux    # Linux (AppImage, DEB, RPM)
+npm run build:linux    # GNU/Linux (AppImage, DEB, RPM)
 ```
 
 Output: `dist/` folder with installers
@@ -401,7 +401,7 @@ cd frontend && npm run build
 
 ### Docker: Native module errors
 
-Rebuild native modules for Alpine Linux:
+Rebuild native modules for Alpine GNU/Linux:
 
 ```dockerfile
 RUN npm rebuild sqlite3 sharp

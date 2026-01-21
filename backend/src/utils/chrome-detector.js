@@ -36,7 +36,7 @@ export function findSystemChrome() {
   } else if (platform === 'darwin') {
     possiblePaths = ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium'];
   } else {
-    // Linux
+    // GNU/Linux
     possiblePaths = [
       '/usr/bin/google-chrome',
       '/usr/bin/google-chrome-stable',
@@ -179,7 +179,7 @@ export function getChromeNotFoundMessage() {
   } else if (platform === 'darwin') {
     installInstructions = 'Please install Google Chrome from https://www.google.com/chrome/';
   } else {
-    // Linux
+    // GNU/Linux
     installInstructions = `Please install Chrome or Chromium:
   - Ubuntu/Debian: sudo apt install chromium-browser
   - Fedora/RHEL: sudo dnf install chromium

@@ -270,7 +270,7 @@ make run-both
     <img src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS">
   </a>
   <a href="https://agnt.gg/downloads/">
-    <img src="https://img.shields.io/badge/Download-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download for Linux">
+    <img src="https://img.shields.io/badge/Download-GNU/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download for GNU/Linux">
   </a>
 </p>
 
@@ -299,7 +299,7 @@ xcode-select --install
 </details>
 
 <details>
-<summary><strong>🐧 Linux</strong></summary>
+<summary><strong>🐧 GNU/Linux</strong></summary>
 
 Install required system dependencies:
 
@@ -311,7 +311,7 @@ sudo apt-get install build-essential libx11-dev libxkbfile-dev
 sudo dnf install gcc-c++ make libX11-devel libxkbfile-devel
 ```
 
-See [Linux Build Instructions](docs/_LINUX-BUILD-INSTRUCTIONS.md) for detailed setup.
+See [GNU/Linux Build Instructions](docs/_LINUX-BUILD-INSTRUCTIONS.md) for detailed setup.
 
 </details>
 
@@ -357,7 +357,7 @@ npm run build
 # Build for specific platforms
 npm run build:win      # Windows (NSIS installer)
 npm run build:mac      # macOS (DMG + ZIP)
-npm run build:linux    # Linux (AppImage, DEB, RPM)
+npm run build:linux    # GNU/Linux (AppImage, DEB, RPM)
 
 # Build for all platforms
 npm run build:all
@@ -372,7 +372,7 @@ Build **AGNT Lite** variants that exclude browser automation for ~50% smaller in
 npm run build:lite
 npm run build:lite:win      # Windows
 npm run build:lite:mac      # macOS
-npm run build:lite:linux    # Linux
+npm run build:lite:linux    # GNU/Linux
 
 # Build BOTH Full and Lite (recommended)
 npm run build:both
@@ -401,7 +401,7 @@ Build outputs are saved to the `dist/` directory:
 | -------- | ---- | ---- | -------------- |
 | Windows | AGNT-0.3.7-win-x64.exe (~150MB) | AGNT-Lite-0.3.7-win-x64.exe (~80MB) | ~47% |
 | macOS | AGNT-0.3.7-mac-x64.dmg (~200MB) | AGNT-Lite-0.3.7-mac-x64.dmg (~120MB) | ~40% |
-| Linux | AGNT-0.3.7-linux-x64.AppImage (~180MB) | AGNT-Lite-0.3.7-linux-x64.AppImage (~100MB) | ~44% |
+| GNU/Linux | AGNT-0.3.7-linux-x64.AppImage (~180MB) | AGNT-Lite-0.3.7-linux-x64.AppImage (~100MB) | ~44% |
 
 ---
 
@@ -534,7 +534,7 @@ See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md) for more details.
 | --------------------------------------------------------- | ---------------------------------- |
 | [📚 API Documentation](docs/_API-DOCUMENTATION.md)        | Complete REST API reference        |
 | [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)      | Detailed build guide               |
-| [🐧 Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | Linux-specific setup               |
+| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup               |
 | [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)             | Docker deployment & hosting        |
 | [🪶 Docker Lite Mode](docs/LITE_MODE.md)                  | Docker without browser automation  |
 | [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)       | Smaller desktop builds (~50% size) |

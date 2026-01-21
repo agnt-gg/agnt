@@ -1,4 +1,4 @@
-# Linux Build & Runtime Instructions
+# GNU/Linux Build & Runtime Instructions
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ sudo apt install libfuse2
 
 **Other Distributions:**
 *   **Fedora/RedHat:** `sudo dnf install fuse` or `sudo dnf install fuse-libs`
-*   **Arch Linux:** `sudo pacman -S fuse2`
+*   **Arch GNU/Linux:** `sudo pacman -S fuse2`
 
 **Workaround (Run without FUSE):**
 If you cannot install FUSE, you can run the AppImage directly by extracting it on the fly:
@@ -38,8 +38,8 @@ Ensure you have the necessary build tools installed:
 sudo apt-get install build-essential libssl-dev
 ```
 
-## Icons on Linux
-Linux desktop environments (GNOME, KDE, etc.) handle icons differently than Windows or macOS.
+## Icons on GNU/Linux
+GNU/Linux desktop environments (GNOME, KDE, etc.) handle icons differently than Windows or macOS.
 
 *   **Window Icon:** The icon in the title bar or dock while the app is running. This is handled by `main.js` loading `assets/icon.png`.
 *   **App Icon (File Manager / Launcher):** The icon you see for the installed app or the AppImage file. This is handled by the `package.json` configuration and the `.desktop` file metadata.
@@ -52,9 +52,9 @@ If your icon is missing in the file manager or launcher:
     Or try moving the AppImage to a new location.
 2.  **AppImage Integration:** AppImages don't automatically "install" their icon into the system theme unless you use a tool like "AppImageLauncher". Without it, you might only see the generic executable icon until you run it.
 
-## Building for Linux
+## Building for GNU/Linux
 
-To build for Linux (AppImage, deb, rpm):
+To build for GNU/Linux (AppImage, deb, rpm):
 
 ```bash
 npm run build:linux

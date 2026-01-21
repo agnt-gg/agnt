@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
  * Plugin Storage Location:
  * - Windows: %APPDATA%/AGNT/plugins/installed/
  * - macOS: ~/Library/Application Support/AGNT/plugins/installed/
- * - Linux: ~/.config/AGNT/plugins/installed/
+ * - GNU/Linux: ~/.config/AGNT/plugins/installed/
  *
  * Each plugin has:
  *   - manifest.json: Contains tool schemas and metadata

@@ -16,12 +16,12 @@ Run Docker backend with **web browser + native desktop apps** sharing the same d
 ## Prerequisites
 
 **Server (Docker backend):**
-- Docker 20.10+ or Docker Desktop (any OS: Windows, macOS, Linux, FreeBSD, etc.)
+- Docker 20.10+ or Docker Desktop (any OS: Windows, macOS, GNU/Linux, FreeBSD, etc.)
 - 2GB RAM (Full) or 1GB RAM (Lite)
 - 2GB disk (Full) or 1GB disk (Lite)
 
 **Clients (optional Electron apps):**
-- Windows 10+, macOS 10.13+, or Linux
+- Windows 10+, macOS 10.13+, or GNU/Linux
 - 200-300MB disk space per client
 - Network access to server
 

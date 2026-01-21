@@ -31,7 +31,7 @@ const getUserDataPath = () => {
       ? path.join(process.env.HOME, '.agnt', 'data') // Mac: ~/.agnt/data
       : process.platform === 'win32'
       ? path.join(process.env.APPDATA || process.env.USERPROFILE, 'agnt', 'data') // Windows: %APPDATA%/agnt/data
-      : path.join(process.env.HOME || '/tmp', '.agnt', 'data'); // Linux: ~/.agnt/data
+      : path.join(process.env.HOME || '/tmp', '.agnt', 'data'); // GNU/Linux: ~/.agnt/data
 
   console.log('Using user home directory for database:', userPath);
   return userPath;

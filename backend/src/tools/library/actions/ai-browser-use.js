@@ -285,7 +285,7 @@ asyncio.run(main())
     const findPython = async () => {
       if (isWin) return 'python';
 
-      // On Linux/Mac, try python3 first, then python
+      // On GNU/Linux/Mac, try python3 first, then python
       return new Promise((resolve) => {
         const checkPython3 = spawn('python3', ['--version']);
         checkPython3.on('error', () => {

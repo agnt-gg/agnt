@@ -38,7 +38,7 @@ process.env.FFMPEG_PATH = ffmpegPath;
 
 // Configure Puppeteer/Playwright to skip downloading browsers
 // We will rely on system-installed browsers (Chrome, Edge, etc.) detected at runtime
-// This prevents package conflicts on Linux and reduces bundle size
+// This prevents package conflicts on GNU/Linux and reduces bundle size
 process.env.PUPPETEER_SKIP_DOWNLOAD = 'true';
 process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1';
 
@@ -94,7 +94,7 @@ function getPlatformId() {
   } else if (platform === 'darwin') {
     return arch === 'arm64' ? 'mac-arm' : 'mac-intel';
   } else if (platform === 'linux') {
-    return 'linux-appimage'; // Default to AppImage for Linux
+    return 'linux-appimage'; // Default to AppImage for GNU/Linux
   }
   return 'win'; // Fallback
 }

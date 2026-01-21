@@ -5,7 +5,7 @@
 AGNT is an Electron-based desktop AI agent framework for building, deploying, and orchestrating intelligent workflows. It combines a Vue.js frontend, Express.js backend, and Electron shell to provide a cross-platform desktop application for managing AI agents, workflows, and plugins.
 
 **Version**: 0.3.7
-**Platform**: Windows, macOS, Linux
+**Platform**: Windows, macOS, GNU/Linux
 **Website**: https://agnt.gg
 **Author**: Nathan Wilbanks
 
@@ -129,7 +129,7 @@ npm start
 ├── build/                     # Electron builder resources
 │   ├── icon.ico               # Windows icon
 │   ├── icon.icns              # macOS icon
-│   ├── icons/                 # Linux icons
+│   ├── icons/                 # GNU/Linux icons
 │   └── installer.nsh          # NSIS installer config
 │
 ├── tests/                     # Playwright E2E tests
@@ -155,7 +155,7 @@ cd frontend && npm run build && cd ..
 npm run build                  # Current platform
 npm run build:win              # Windows (NSIS)
 npm run build:mac              # macOS (DMG + ZIP, x64 + ARM64)
-npm run build:linux            # Linux (AppImage, DEB, RPM)
+npm run build:linux            # GNU/Linux (AppImage, DEB, RPM)
 npm run build:all              # All platforms
 
 # Outputs go to dist/
@@ -276,7 +276,7 @@ GROQ_API_KEY=
 - Output: `dist/AGNT-{version}-mac-{arch}.dmg` and `.zip`
 - **Code Signing**: Disabled by default (`hardenedRuntime: false`)
 
-**Linux**:
+**GNU/Linux**:
 - Requires build tools: `build-essential libx11-dev libxkbfile-dev`
 - Output: AppImage, DEB, RPM
 - See `docs/_LINUX-BUILD-INSTRUCTIONS.md`
@@ -287,7 +287,7 @@ GROQ_API_KEY=
 | -------- | ------------------ | ------------ | ------------------------ |
 | Windows  | NSIS (.exe)        | x64          | One-click installer      |
 | macOS    | DMG, ZIP           | x64, ARM64   | Universal builds         |
-| Linux    | AppImage, DEB, RPM | x64          | Portable + distro pkgs   |
+| GNU/Linux    | AppImage, DEB, RPM | x64          | Portable + distro pkgs   |
 
 All outputs saved to `dist/` (gitignored).
 
@@ -362,7 +362,7 @@ See `docs/_TESTS_INSTRUCTIONS.md` for more details.
 ### Frontend Not Loading
 1. Check if frontend dev server is running: `cd frontend && npm run dev`
 2. Or build frontend: `cd frontend && npm run build`
-3. Hard refresh browser: Ctrl+Shift+R (Linux/Win) or Cmd+Shift+R (Mac)
+3. Hard refresh browser: Ctrl+Shift+R (GNU/Linux/Win) or Cmd+Shift+R (Mac)
 
 ### Backend Port Conflicts
 If port 3333 is in use, change in `.env`:
@@ -408,7 +408,7 @@ See `docs/_REBUILD-INSTRUCTIONS.md` for native module rebuilding.
 | ------------------------------------------------------------ | ---------------------------- |
 | [📚 API Documentation](docs/_API-DOCUMENTATION.md)           | REST API reference           |
 | [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)         | Detailed build guide         |
-| [🐧 Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md)    | Linux-specific setup         |
+| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md)    | GNU/Linux-specific setup         |
 | [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                | Docker deployment & hosting  |
 | [🔌 Plugin Development](backend/plugins/README.md)           | Creating custom plugins      |
 | [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)            | Native module rebuilding     |

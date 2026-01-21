@@ -454,9 +454,9 @@ make electron-build-mac-full         # macOS Full (x64 + ARM64)
 make electron-build-mac-lite         # macOS Lite (x64 + ARM64)
 make electron-build-mac-both         # macOS both variants
 
-make electron-build-linux-full       # Linux Full (AppImage, DEB, RPM)
-make electron-build-linux-lite       # Linux Lite (AppImage, DEB, RPM)
-make electron-build-linux-both       # Linux both variants
+make electron-build-linux-full       # GNU/Linux Full (AppImage, DEB, RPM)
+make electron-build-linux-lite       # GNU/Linux Lite (AppImage, DEB, RPM)
+make electron-build-linux-both       # GNU/Linux both variants
 
 # Build for all platforms (takes a while!)
 make electron-build-all-full         # All platforms Full
@@ -473,14 +473,14 @@ Installers are saved to `dist/` directory:
 - `dist/AGNT-0.3.7-mac-x64.dmg` (~200MB)
 - `dist/AGNT-0.3.7-mac-arm64.dmg` (~200MB)
 - `dist/AGNT-0.3.7-linux-x64.AppImage` (~180MB)
-- Plus `.deb` and `.rpm` packages for Linux
+- Plus `.deb` and `.rpm` packages for GNU/Linux
 
 **Lite Version:**
 - `dist/AGNT-Lite-0.3.7-win-x64.exe` (~80MB)
 - `dist/AGNT-Lite-0.3.7-mac-x64.dmg` (~120MB)
 - `dist/AGNT-Lite-0.3.7-mac-arm64.dmg` (~120MB)
 - `dist/AGNT-Lite-0.3.7-linux-x64.AppImage` (~100MB)
-- Plus `.deb` and `.rpm` packages for Linux
+- Plus `.deb` and `.rpm` packages for GNU/Linux
 
 ### Desktop Build Workflow
 
@@ -513,7 +513,7 @@ ls -lh dist/
 # 5. Test installers on each platform
 # Windows: Run .exe
 # macOS: Open .dmg
-# Linux: Run .AppImage
+# GNU/Linux: Run .AppImage
 
 # 6. Upload to release server/GitHub Releases
 ```
