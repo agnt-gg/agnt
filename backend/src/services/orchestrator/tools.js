@@ -2835,6 +2835,8 @@ export async function executeTool(toolName, args, authToken, context) {
         currentTriggerData: {},
         nodeNameToId: new Map(),
         outputs: {},
+        // Add DB object for execute-python workflowContext
+        DB: {},
       };
 
       // Attach ParameterResolver to mockWorkflowEngine
