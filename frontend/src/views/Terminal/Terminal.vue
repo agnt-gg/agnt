@@ -159,16 +159,8 @@ export default {
         activeScreen.value = getDefaultScreen();
       }
 
-      // Load custom providers if user is authenticated
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          await store.dispatch('aiProvider/fetchCustomProviders');
-          console.log('✅ Custom providers loaded on startup');
-        } catch (error) {
-          console.error('Failed to load custom providers on startup:', error);
-        }
-      }
+      // Note: Custom providers and user settings are loaded in main.js
+      // during app initialization. No need to reload them here.
     });
 
     // Watch for route changes and update active screen

@@ -213,10 +213,9 @@ except Exception as e:
         stdio: ['pipe', 'pipe', 'pipe'],
       };
 
-      if (process.platform !== 'win32') {
-        spawnOptions.uid = 1001;
-        spawnOptions.gid = 1001;
-      }
+      // Note: Don't override uid/gid - let subprocess inherit from parent process
+      // Setting explicit uid/gid can cause EPERM errors in containers where
+      // the process is running as a different user (e.g., node:1000 vs hardcoded 1001)
 
       const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
       const pythonProcess = spawn(pythonCommand, ['-c', wrappedCode], spawnOptions);
