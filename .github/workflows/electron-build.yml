@@ -42,12 +42,12 @@ jobs:
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Install frontend dependencies
         run: |
           cd frontend
-          npm ci
+          npm install
 
       - name: Build frontend
         run: |
@@ -96,12 +96,12 @@ jobs:
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Install frontend dependencies
         run: |
           cd frontend
-          npm ci
+          npm install
 
       - name: Build frontend
         run: |
