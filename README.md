@@ -225,7 +225,39 @@ npm start
 
 ### 🐳 Docker Install (Self-Hosting)
 
-Use Docker for an isolated, production-ready deployment:
+Use Docker for an isolated, production-ready deployment.
+
+#### Option A: Pull Pre-built Images from GHCR (Recommended)
+
+```bash
+# Full version with browser automation (~1.5GB) - Port 33333
+docker run -d \
+  --name agnt-full \
+  -p 33333:33333 \
+  -v agnt-data:/root/.agnt/data \
+  ghcr.io/agnt-gg/agnt:latest
+
+# Access at http://localhost:33333
+```
+
+```bash
+# Lite version without browser automation (~715MB) - Port 3333
+docker run -d \
+  --name agnt-lite \
+  -p 3333:3333 \
+  -v agnt-data:/root/.agnt/data \
+  ghcr.io/agnt-gg/agnt:lite
+
+# Access at http://localhost:3333
+```
+
+**Available tags:**
+- `latest` / `full` - Latest Full variant with browser automation
+- `lite` - Latest Lite variant without browser automation
+- `v0.3.7` / `v0.3.7-full` - Specific version (Full)
+- `v0.3.7-lite` - Specific version (Lite)
+
+#### Option B: Build from Source (Advanced)
 
 ```bash
 # Clone the repository

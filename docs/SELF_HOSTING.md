@@ -303,9 +303,53 @@ docker build -f Dockerfile.lite -t agnt:lite .
 
 ## Quick Start with Docker
 
-### Option 1: Docker Run (Simple)
+### Option 1: Pull Pre-built Images from GHCR (Recommended)
+
+**Full variant with browser automation (~1.5GB):**
+```bash
+docker run -d \
+  --name agnt-full \
+  -p 33333:33333 \
+  -v agnt-data:/root/.agnt/data \
+  -e NODE_ENV=production \
+  -e BASE_URL=http://localhost:33333 \
+  --restart unless-stopped \
+  ghcr.io/agnt-gg/agnt:latest
+
+# Access at http://localhost:33333
+```
+
+**Lite variant without browser automation (~715MB):**
+```bash
+docker run -d \
+  --name agnt-lite \
+  -p 3333:3333 \
+  -v agnt-data:/root/.agnt/data \
+  -e NODE_ENV=production \
+  -e BASE_URL=http://localhost:3333 \
+  --restart unless-stopped \
+  ghcr.io/agnt-gg/agnt:lite
+
+# Access at http://localhost:3333
+```
+
+**Available GHCR tags:**
+- `ghcr.io/agnt-gg/agnt:latest` - Latest Full variant (main branch)
+- `ghcr.io/agnt-gg/agnt:full` - Latest Full variant (main branch)
+- `ghcr.io/agnt-gg/agnt:lite` - Latest Lite variant (main branch)
+- `ghcr.io/agnt-gg/agnt:v0.3.7` - Specific version (Full)
+- `ghcr.io/agnt-gg/agnt:v0.3.7-full` - Specific version (Full)
+- `ghcr.io/agnt-gg/agnt:v0.3.7-lite` - Specific version (Lite)
+- `ghcr.io/agnt-gg/agnt:0.3.7` - Specific version without 'v' prefix (Full)
+- `ghcr.io/agnt-gg/agnt:0.3.7-lite` - Specific version without 'v' prefix (Lite)
+
+### Option 2: Build from Source (Advanced)
 
 ```bash
+# Clone the repository
+git clone https://github.com/agnt-gg/agnt.git
+cd agnt
+
 # Build the Docker image
 docker build -t agnt:latest .
 
@@ -323,7 +367,72 @@ docker run -d \
 
 Access AGNT at `http://localhost:3333`
 
-### Option 2: Docker Compose (Recommended)
+### Option 3: Docker Compose with GHCR Images
+
+**Using Full variant:**
+```yaml
+version: '3.8'
+
+services:
+  agnt-full:
+    image: ghcr.io/agnt-gg/agnt:latest
+    container_name: agnt-full
+    ports:
+      - "33333:33333"
+    environment:
+      - NODE_ENV=production
+      - BASE_URL=http://localhost:33333
+      - REMOTE_URL=https://api.agnt.gg
+      - JWT_SECRET=${JWT_SECRET:-your-random-jwt-secret-here}
+      - SESSION_SECRET=${SESSION_SECRET:-your-random-session-secret-here}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-random-encryption-key-here}
+    volumes:
+      - agnt-data:/root/.agnt/data
+    restart: unless-stopped
+
+volumes:
+  agnt-data:
+```
+
+**Using Lite variant:**
+```yaml
+version: '3.8'
+
+services:
+  agnt-lite:
+    image: ghcr.io/agnt-gg/agnt:lite
+    container_name: agnt-lite
+    ports:
+      - "3333:3333"
+    environment:
+      - NODE_ENV=production
+      - BASE_URL=http://localhost:3333
+      - REMOTE_URL=https://api.agnt.gg
+      - JWT_SECRET=${JWT_SECRET:-your-random-jwt-secret-here}
+      - SESSION_SECRET=${SESSION_SECRET:-your-random-session-secret-here}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-random-encryption-key-here}
+    volumes:
+      - agnt-data:/root/.agnt/data
+    restart: unless-stopped
+
+volumes:
+  agnt-data:
+```
+
+Start the service:
+
+```bash
+# Start AGNT
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop AGNT
+docker-compose down
+```
+
+### Option 4: Docker Compose Building from Source
 
 Create a `docker-compose.yml` file:
 
@@ -366,6 +475,10 @@ volumes:
 Start the service:
 
 ```bash
+# Clone repository
+git clone https://github.com/agnt-gg/agnt.git
+cd agnt
+
 # Start AGNT
 docker-compose up -d
 

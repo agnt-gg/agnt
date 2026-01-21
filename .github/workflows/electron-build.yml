@@ -2,14 +2,9 @@ name: Build Electron Apps
 
 on:
   push:
-    branches:
-      - main
-      - docker-i-barely  # Testing branch
     tags:
-      - 'v*.*.*'
-  pull_request:
-    branches:
-      - main
+      - 'v*.*.*'  # Supports v0.3.7
+      - '*.*.*'   # Supports 0.3.7
   workflow_dispatch:
 
 jobs:

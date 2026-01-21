@@ -6,16 +6,14 @@ AGNT uses GitHub Actions to automate building and publishing all distribution va
 
 ### 1. Docker Build (`docker-build.yml`)
 
-Builds and publishes Docker images to Docker Hub.
+Builds and publishes Docker images to GitHub Container Registry (GHCR).
 
 **Variants:**
 - **Full** (~1.5GB) - With Chromium and browser automation
 - **Lite** (~715MB) - Without browser automation
 
 **Triggers:**
-- Push to `main` branch
-- Pull requests to `main`
-- Git tags matching `v*.*.*`
+- Git tags matching `v*.*.*` or `*.*.*` (with or without 'v' prefix)
 - Manual workflow dispatch
 
 **Container Architectures:**
@@ -52,9 +50,7 @@ Builds native desktop applications for all platforms.
 - **Lite** (~80-120MB) - Without browser automation
 
 **Triggers:**
-- Push to `main` branch
-- Pull requests to `main`
-- Git tags matching `v*.*.*`
+- Git tags matching `v*.*.*` or `*.*.*` (with or without 'v' prefix)
 - Manual workflow dispatch
 
 **Platforms:**
@@ -86,34 +82,37 @@ Builds native desktop applications for all platforms.
 
 ### Docker Builds
 
-**Pull Request:**
-- Builds images but doesn't push to Docker Hub
-- Validates Dockerfiles and build process
+**Tagged Release (v*.*.* or *.*.*):**
+- Builds and pushes to GitHub Container Registry (GHCR)
+- Tags with version numbers (e.g., `v0.3.7`, `0.3.7`, `v0.3.7-full`, `0.3.7-lite`)
+- Also tags `latest`, `full`, and `lite` for the newest version
 
-**Main Branch:**
-- Builds and pushes to Docker Hub
-- Tags with `latest`, `full`, `lite`, `sha-*`
-- Updates Docker Hub description
-
-**Tagged Release (v*.*.*):**
-- Builds and pushes to Docker Hub
-- Tags with version numbers (e.g., `0.3.7`, `0.3.7-full`, `0.3.7-lite`)
+**Available at:**
+```
+ghcr.io/agnt-gg/agnt:latest        # Latest Full variant
+ghcr.io/agnt-gg/agnt:full          # Latest Full variant
+ghcr.io/agnt-gg/agnt:lite          # Latest Lite variant
+ghcr.io/agnt-gg/agnt:v0.3.7        # Specific version (Full)
+ghcr.io/agnt-gg/agnt:0.3.7         # Specific version without 'v' (Full)
+ghcr.io/agnt-gg/agnt:v0.3.7-lite   # Specific version (Lite)
+ghcr.io/agnt-gg/agnt:0.3.7-lite    # Specific version without 'v' (Lite)
+```
 
 ### Electron Builds
 
-**Pull Request:**
-- Builds all variants for all platforms
-- Uploads artifacts to GitHub Actions (30 days)
-
-**Main Branch:**
-- Builds all variants for all platforms
-- Uploads artifacts to GitHub Actions (30 days)
-
-**Tagged Release (v*.*.*):**
-- Builds all variants for all platforms
+**Tagged Release (v*.*.* or *.*.*):**
+- Builds all variants for all platforms (6 total builds)
 - Uploads artifacts to GitHub Actions (30 days)
 - Creates draft GitHub Release with all installers
 - Auto-generates release notes
+
+**Build Artifacts:**
+- `electron-full-win` - Windows Full installer
+- `electron-lite-win` - Windows Lite installer
+- `electron-full-mac` - macOS Full installers (x64 + ARM64)
+- `electron-lite-mac` - macOS Lite installers (x64 + ARM64)
+- `electron-full-linux` - GNU/Linux Full packages
+- `electron-lite-linux` - GNU/Linux Lite packages
 
 ## Running Workflows Manually
 

@@ -20,7 +20,61 @@ Get AGNT running **lightweight** (no browser automation) in under 5 minutes.
 
 ## Installation
 
-### Option 1: Using Makefile (Recommended)
+### Option 1: Pull from GHCR (Recommended - Fastest)
+
+```bash
+# Run container with pre-built image
+docker run -d \
+  --name agnt-lite \
+  -p 3333:3333 \
+  -v agnt-data:/root/.agnt/data \
+  -e NODE_ENV=production \
+  -e BASE_URL=http://localhost:3333 \
+  --restart unless-stopped \
+  ghcr.io/agnt-gg/agnt:lite
+```
+
+**Using specific version:**
+```bash
+docker run -d \
+  --name agnt-lite \
+  -p 3333:3333 \
+  -v agnt-data:/root/.agnt/data \
+  -e NODE_ENV=production \
+  -e BASE_URL=http://localhost:3333 \
+  --restart unless-stopped \
+  ghcr.io/agnt-gg/agnt:v0.3.7-lite
+```
+
+### Option 2: Docker Compose with GHCR
+
+Create `docker-compose.yml`:
+```yaml
+version: '3.8'
+
+services:
+  agnt-lite:
+    image: ghcr.io/agnt-gg/agnt:lite
+    container_name: agnt-lite
+    ports:
+      - "3333:3333"
+    environment:
+      - NODE_ENV=production
+      - BASE_URL=http://localhost:3333
+    volumes:
+      - agnt-data:/root/.agnt/data
+    restart: unless-stopped
+
+volumes:
+  agnt-data:
+```
+
+Start the service:
+```bash
+docker-compose up -d
+```
+
+### Option 3: Build from Source (Advanced)
 
 ```bash
 # Clone repository
@@ -29,34 +83,9 @@ cd agnt
 
 # Start Docker Lite
 make run-lite
-```
 
-### Option 2: Using Docker Compose
-
-```bash
-# Clone repository
-git clone https://github.com/agnt-gg/agnt.git
-cd agnt
-
-# Start container
+# Or use docker-compose directly
 docker-compose -f docker-compose.lite.yml up -d
-```
-
-### Option 3: Using Docker Run
-
-```bash
-# Pull image
-docker pull ghcr.io/agnt-gg/agnt:lite
-
-# Run container
-docker run -d \
-  --name agnt-lite \
-  -p 3333:3333 \
-  -e AGNT_LITE_MODE=true \
-  -v ~/.agnt/data:/app/data \
-  -v ~/.agnt/plugins/installed:/app/backend/plugins/installed \
-  -v ~/.agnt/logs:/app/logs \
-  agnt/agnt:lite
 ```
 
 ## Access AGNT
