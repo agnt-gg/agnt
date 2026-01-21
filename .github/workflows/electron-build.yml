@@ -60,16 +60,12 @@ jobs:
           python -m pip install setuptools wheel
           # Setuptools provides distutils compatibility for Python 3.14+
 
-      - name: Configure npm for Visual Studio (Windows only)
-        if: matrix.os == 'windows-latest'
-        run: |
-          npm config set msvs_version 2022 --global
-          npm config set msbuild_path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" --global
-
       - name: Install dependencies
         run: npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          npm_config_msvs_version: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
 
       - name: Install frontend dependencies
         run: |
@@ -77,6 +73,8 @@ jobs:
           npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          npm_config_msvs_version: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
 
       - name: Build frontend
         run: |
@@ -88,6 +86,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SETUPTOOLS_USE_DISTUTILS: local
+          npm_config_msvs_version: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -144,16 +144,12 @@ jobs:
           python -m pip install setuptools wheel
           # Setuptools provides distutils compatibility for Python 3.14+
 
-      - name: Configure npm for Visual Studio (Windows only)
-        if: matrix.os == 'windows-latest'
-        run: |
-          npm config set msvs_version 2022 --global
-          npm config set msbuild_path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" --global
-
       - name: Install dependencies
         run: npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          npm_config_msvs_version: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
 
       - name: Install frontend dependencies
         run: |
@@ -161,6 +157,8 @@ jobs:
           npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          npm_config_msvs_version: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
 
       - name: Build frontend
         run: |
@@ -171,6 +169,9 @@ jobs:
         run: npm run build:lite:${{ matrix.platform }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SETUPTOOLS_USE_DISTUTILS: local
+          npm_config_msvs_version: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-latest' && '2022' || '' }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
