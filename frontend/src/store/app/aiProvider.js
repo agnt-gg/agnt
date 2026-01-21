@@ -214,10 +214,15 @@ export default {
 
             // Only update if we have valid settings
             if (provider) {
+              // Check if this is a custom provider (UUID format)
+              const isCustomProvider = state.customProviders.some((cp) => cp.id === provider);
+
               // Fetch models for the provider first before setting it
               // This ensures models are available when the provider is set
               if (provider === 'Local') {
                 await dispatch('fetchLocalModels');
+              } else if (isCustomProvider) {
+                await dispatch('fetchCustomProviderModels', provider);
               } else if (state.providers.includes(provider)) {
                 await dispatch('fetchProviderModels', { provider });
               }
