@@ -26,12 +26,34 @@ const getUserDataPath = () => {
   }
 
   // 4. User home fallback (self-hosted, non-Docker)
-  // Use ~/.agnt/data on all platforms for consistency with Docker mounts
-  // This ensures Hybrid Mode works (Electron + Docker sharing same data)
-  const userPath = path.join(process.env.HOME || process.env.USERPROFILE || '/tmp', '.agnt', 'data');
+  // Unified path across all platforms for consistency and Hybrid Mode support
+  const newPath = path.join(process.env.HOME || process.env.USERPROFILE, '.agnt', 'data');
 
-  console.log('Using user home directory for database:', userPath);
-  return userPath;
+  // Old platform-specific locations (for migration)
+  const oldPaths = {
+    darwin: path.join(process.env.HOME, 'Library', 'Application Support', 'AGNT', 'Data'),
+    win32: path.join(process.env.APPDATA || process.env.USERPROFILE, 'AGNT', 'Data'),
+    linux: path.join(process.env.HOME, '.config', 'AGNT', 'Data')
+  };
+
+  const oldPath = oldPaths[process.platform];
+
+  // Auto-migrate from old location if it exists and new location doesn't
+  if (oldPath && fs.existsSync(oldPath) && !fs.existsSync(newPath)) {
+    try {
+      console.log(`Migrating data from ${oldPath} to ${newPath}...`);
+      fs.mkdirSync(path.dirname(newPath), { recursive: true });
+      fs.cpSync(oldPath, newPath, { recursive: true });
+      console.log('✓ Data migration completed successfully');
+    } catch (error) {
+      console.error('Migration failed:', error);
+      console.log('Falling back to old location:', oldPath);
+      return oldPath;
+    }
+  }
+
+  console.log('Using user home directory for database:', newPath);
+  return newPath;
 };
 
 // Ensure database directory exists with error handling
