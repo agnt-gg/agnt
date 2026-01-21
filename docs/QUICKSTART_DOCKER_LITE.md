@@ -46,7 +46,7 @@ docker-compose -f docker-compose.lite.yml up -d
 
 ```bash
 # Pull image
-docker pull agnt/agnt:lite
+docker pull ghcr.io/agnt-gg/agnt:lite
 
 # Run container
 docker run -d \
@@ -115,7 +115,7 @@ docker restart agnt-lite
 docker rm agnt-lite
 
 # Update to latest version
-docker pull agnt/agnt:lite
+docker pull ghcr.io/agnt-gg/agnt:lite
 docker stop agnt-lite
 docker rm agnt-lite
 # Re-run docker run command above

@@ -14,7 +14,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agnt/agnt:latest
+    image: ghcr.io/agnt-gg/agnt:latest
     container_name: agnt-full
     ports:
       - "33333:3333"
@@ -81,7 +81,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.lite
-    image: agnt/agnt:lite
+    image: ghcr.io/agnt-gg/agnt:lite
     container_name: agnt-lite
     ports:
       - "3333:3333"

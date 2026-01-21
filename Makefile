@@ -3,10 +3,10 @@
 
 # Configuration
 VERSION := $(shell node -p "require('./package.json').version")
-DOCKERHUB_USER ?= agnt
+GITHUB_ORG ?= agnt-gg
 IMAGE_NAME := agnt
-FULL_IMAGE := $(DOCKERHUB_USER)/$(IMAGE_NAME)
-LITE_IMAGE := $(DOCKERHUB_USER)/$(IMAGE_NAME)
+FULL_IMAGE := ghcr.io/$(GITHUB_ORG)/$(IMAGE_NAME)
+LITE_IMAGE := ghcr.io/$(GITHUB_ORG)/$(IMAGE_NAME)
 
 # Image tags
 FULL_TAG_LATEST := $(FULL_IMAGE):latest
@@ -44,7 +44,7 @@ help: ## Show this help message
 	@echo "    make electron-info               # Show Electron build info"
 	@echo ""
 	@echo "$(GREEN)Configuration:$(NC)"
-	@echo "  DockerHub User: $(DOCKERHUB_USER)"
+	@echo "  GitHub Org: $(DOCKERHUB_USER)"
 	@echo "  Full Image:     $(FULL_TAG_LATEST)"
 	@echo "  Lite Image:     $(LITE_TAG_LATEST)"
 
@@ -317,7 +317,7 @@ info: ## Show build information
 	@echo "$(BLUE)AGNT Build Information$(NC)"
 	@echo "$(YELLOW)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo "  Version:          $(VERSION)"
-	@echo "  DockerHub User:   $(DOCKERHUB_USER)"
+	@echo "  GitHub Org:   $(DOCKERHUB_USER)"
 	@echo ""
 	@echo "$(BLUE)Full Image (with Chromium):$(NC)"
 	@echo "  Latest Tag:       $(FULL_TAG_LATEST)"

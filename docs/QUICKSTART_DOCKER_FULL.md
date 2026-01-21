@@ -45,7 +45,7 @@ docker-compose up -d
 
 ```bash
 # Pull image
-docker pull agnt/agnt:latest
+docker pull ghcr.io/agnt-gg/agnt:latest
 
 # Run container
 docker run -d \
@@ -113,7 +113,7 @@ docker restart agnt
 docker rm agnt
 
 # Update to latest version
-docker pull agnt/agnt:latest
+docker pull ghcr.io/agnt-gg/agnt:latest
 docker stop agnt
 docker rm agnt
 # Re-run docker run command above

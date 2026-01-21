@@ -24,26 +24,24 @@ Builds and publishes Docker images to Docker Hub.
 
 **Runs on:** Any OS with Docker support (Windows, macOS, GNU/Linux, FreeBSD, etc.)
 
-**Docker Hub Tags:**
+**GitHub Container Registry Tags:**
 ```
-agnt/agnt:latest        # Full variant (main branch)
-agnt/agnt:full          # Full variant (main branch)
-agnt/agnt:lite          # Lite variant (main branch)
-agnt/agnt:0.3.7         # Version (Full)
-agnt/agnt:0.3.7-full    # Version (Full)
-agnt/agnt:0.3.7-lite    # Version (Lite)
-agnt/agnt:sha-abc1234   # Git SHA (Full)
-agnt/agnt:sha-lite-abc1234  # Git SHA (Lite)
+ghcr.io/agnt-gg/agnt:latest        # Full variant (main branch)
+ghcr.io/agnt-gg/agnt:full          # Full variant (main branch)
+ghcr.io/agnt-gg/agnt:lite          # Lite variant (main branch)
+ghcr.io/agnt-gg/agnt:0.3.7         # Version (Full)
+ghcr.io/agnt-gg/agnt:0.3.7-full    # Version (Full)
+ghcr.io/agnt-gg/agnt:0.3.7-lite    # Version (Lite)
+ghcr.io/agnt-gg/agnt:sha-abc1234   # Git SHA (Full)
+ghcr.io/agnt-gg/agnt:sha-lite-abc1234  # Git SHA (Lite)
 ```
 
 **Build Jobs:**
 - `build-full` - Builds Full variant with Chromium
 - `build-lite` - Builds Lite variant without browser automation
-- `update-dockerhub-description` - Updates Docker Hub README
 
 **Secrets Required:**
-- `DOCKERHUB_USERNAME` (variable)
-- `DOCKERHUB_TOKEN` (secret)
+- `GITHUB_TOKEN` (automatic, no setup needed)
 
 ### 2. Electron Build (`electron-build.yml`)
 
@@ -216,8 +214,8 @@ Users can then:
 - Download installers from GitHub Releases
 - Pull Docker images from Docker Hub:
   ```bash
-  docker pull agnt/agnt:0.3.8      # Full
-  docker pull agnt/agnt:0.3.8-lite # Lite
+  docker pull ghcr.io/agnt-gg/agnt:0.3.8      # Full
+  docker pull ghcr.io/agnt-gg/agnt:0.3.8-lite # Lite
   ```
 
 ## Monitoring Builds

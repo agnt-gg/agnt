@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.lite
-    image: agnt/agnt:lite
+    image: ghcr.io/agnt-gg/agnt:lite
     container_name: agnt-lite
     ports:
       - "3333:3333"

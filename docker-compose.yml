@@ -20,7 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agnt/agnt:latest
+    image: ghcr.io/agnt-gg/agnt:latest
     container_name: agnt
     ports:
       - "33333:3333"

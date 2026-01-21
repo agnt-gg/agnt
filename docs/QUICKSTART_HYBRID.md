@@ -176,7 +176,7 @@ All users see changes instantly:
 docker stop agnt
 
 # Pull latest image
-docker pull agnt/agnt:latest
+docker pull ghcr.io/agnt-gg/agnt:latest
 
 # Start with new version
 docker start agnt
