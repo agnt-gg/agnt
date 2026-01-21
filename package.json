@@ -22,11 +22,11 @@
     "build:mac": "cross-env AGNT_BUILD_VARIANT= electron-builder --mac",
     "build:linux": "cross-env AGNT_BUILD_VARIANT= electron-builder --linux",
     "build:all": "cross-env AGNT_BUILD_VARIANT= electron-builder -mwl",
-    "build:lite": "cross-env AGNT_BUILD_VARIANT=lite electron-builder",
-    "build:lite:win": "cross-env AGNT_BUILD_VARIANT=lite electron-builder --win",
-    "build:lite:mac": "cross-env AGNT_BUILD_VARIANT=lite electron-builder --mac",
-    "build:lite:linux": "cross-env AGNT_BUILD_VARIANT=lite electron-builder --linux",
-    "build:lite:all": "cross-env AGNT_BUILD_VARIANT=lite electron-builder -mwl",
+    "build:lite": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder",
+    "build:lite:win": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder --win",
+    "build:lite:mac": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder --mac",
+    "build:lite:linux": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder --linux",
+    "build:lite:all": "cross-env AGNT_BUILD_VARIANT=-Lite electron-builder -mwl",
     "build:both": "npm run build && npm run build:lite",
     "build:both:win": "npm run build:win && npm run build:lite:win",
     "build:both:mac": "npm run build:mac && npm run build:lite:mac",
@@ -117,7 +117,7 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT === 'lite' ? '-Lite' : ''}-${version}-${os}-${arch}.${ext}"
+      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT}-${version}-${os}-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -142,7 +142,7 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT === 'lite' ? '-Lite' : ''}-${version}-${os}-${arch}.${ext}"
+      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT}-${version}-${os}-${arch}.${ext}"
     },
     "linux": {
       "maintainer": "Nathan Wilbanks <nathan@agnt.gg>",
@@ -173,7 +173,7 @@
         "Icon": "agnt",
         "StartupWMClass": "AGNT"
       },
-      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT === 'lite' ? '-Lite' : ''}-${version}-${os}-${arch}.${ext}"
+      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT}-${version}-${os}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
