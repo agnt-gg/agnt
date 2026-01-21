@@ -49,9 +49,9 @@ services:
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
 
-      # SQLite WAL mode (disabled for single container mode)
-      # Automatically enabled when running both containers via docker-compose.both.yml
-      # - SQLITE_WAL_MODE=false
+      # SQLite WAL mode (enable for multi-container database sharing)
+      # When enabled, multiple containers can safely access the same database
+      - SQLITE_WAL_MODE=true
 
     volumes:
       # SQLite database (persistent across restarts)
