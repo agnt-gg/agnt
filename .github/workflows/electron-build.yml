@@ -41,6 +41,10 @@ jobs:
           node-version: '20'
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
+      - name: Install Windows 10 SDK (Windows only - for native module builds)
+        if: matrix.os == 'windows-latest'
+        run: choco install windows-sdk-10-version-2104-all
+
       - name: Setup MSVC (Windows only - for native module builds)
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
@@ -114,6 +118,10 @@ jobs:
         with:
           node-version: '20'
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
+
+      - name: Install Windows 10 SDK (Windows only - for native module builds)
+        if: matrix.os == 'windows-latest'
+        run: choco install windows-sdk-10-version-2104-all
 
       - name: Setup MSVC (Windows only - for native module builds)
         if: matrix.os == 'windows-latest'
