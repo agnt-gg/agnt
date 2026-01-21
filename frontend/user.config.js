@@ -42,9 +42,14 @@ export const AI_PROVIDERS_CONFIG = {
 // };
 
 // Semi Local Configuration
+// Dynamically detect port and use corresponding backend
+const currentPort = typeof window !== 'undefined' ? window.location.port : '3333';
+const backendPort = currentPort === '33333' ? '33333' : '3333';
+const backendBaseUrl = `http://localhost:${backendPort}/api`;
+
 export const API_CONFIG = {
-  BASE_URL: 'http://localhost:3333/api', // local backend url
-  FRONTEND_URL: 'http://localhost:5173', // local frontend url
+  BASE_URL: backendBaseUrl, // dynamically set based on frontend port
+  FRONTEND_URL: 'http://localhost:5173', // local frontend url (dev server)
   WEBHOOK_URL: 'https://api.agnt.gg', // remote webhook url
   REMOTE_URL: 'https://api.agnt.gg', // remote url for sharing, login, app auths, and webhooks
 };
