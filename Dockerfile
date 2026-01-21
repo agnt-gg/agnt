@@ -1,7 +1,7 @@
 # Multi-stage build for AGNT - AI Agent Framework (FULL VERSION)
 # Using Node 20 LTS with Chromium for complete features
-# ~1.3GB image size - includes Puppeteer/Playwright browser automation
-# For lighter version without Chromium (~600MB), use Dockerfile.lite
+# ~1.5GB image size - includes Puppeteer/Playwright browser automation
+# For lighter version without Chromium (~715MB), use Dockerfile.lite
 # Stage 1: Build frontend
 FROM node:20-alpine AS frontend-builder
 
@@ -38,21 +38,28 @@ RUN apk add --no-cache \
 # Copy root package files
 COPY package*.json ./
 
-# Install backend dependencies
-# Skip puppeteer, playwright, and electron-builder dependencies
+# Install backend dependencies (FULL VERSION - includes optional deps like puppeteer)
+# Skip browser downloads (we use system Chromium)
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV npm_config_optional=false
 
-# Install dependencies and ignore postinstall scripts (electron-builder not needed in Docker)
+# Install ALL dependencies including optionalDependencies (puppeteer-extra, etc.)
+# Ignore postinstall scripts (electron-builder not needed in Docker)
 RUN npm install --production --ignore-scripts
 
 # Rebuild native bindings for the Docker environment
 RUN npm rebuild sqlite3 sharp
 
 # Manually install onnxruntime packages (needed by @xenova/transformers)
-# Use npm install without --no-save to ensure they're properly added to node_modules
-RUN npm install onnxruntime-node onnxruntime-web
+# Use --production --no-save to avoid installing devDependencies (electron, etc.)
+RUN npm install --production --no-save --ignore-scripts onnxruntime-node onnxruntime-web
+
+# Remove devDependencies and unused packages that snuck in
+RUN npm prune --production
+
+# Remove ffmpeg npm packages (Docker uses system ffmpeg instead)
+# Saves ~65MB - code uses system binary via 'ffmpeg' command, not npm packages
+RUN rm -rf node_modules/@ffmpeg-installer node_modules/ffmpeg-static
 
 # Patch transformers.js to use dynamic imports (fixes ESM resolution in Docker)
 COPY scripts/patch-transformers-onnx.js ./scripts/
@@ -80,7 +87,9 @@ RUN apk add --no-cache \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    sqlite \
+    ffmpeg
 
 # Set Puppeteer to use installed Chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true

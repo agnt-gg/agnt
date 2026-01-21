@@ -33,8 +33,8 @@ AGNT provides two Docker image variants:
 
 | Variant | Size    | Browser Support | Use Case                                      |
 | ------- | ------- | --------------- | --------------------------------------------- |
-| **Full** | ~1.3GB  | ✅ Yes (Chromium)| Full-featured deployments, web scraping       |
-| **Lite** | ~600MB  | ❌ No           | Cloud deployments, smaller resource footprint |
+| **Full** | ~1.5GB  | ✅ Yes (Chromium)| Full-featured deployments, web scraping       |
+| **Lite** | ~715MB  | ❌ No           | Cloud deployments, 52% smaller footprint      |
 
 ## Configuration
 
@@ -417,6 +417,126 @@ docker-compose -f docker-compose.both.yml logs -f
 | `docker-compose.yml` | Full version with Chromium | 33333 |
 | `docker-compose.lite.yml` | Lite version without Chromium | 3333 |
 | `docker-compose.both.yml` | Both versions simultaneously | 33333 & 3333 |
+
+## Electron Desktop Builds
+
+AGNT also supports building desktop installers with Full and Lite variants.
+
+### Desktop Build Variants
+
+| Variant | Size | Browser Automation | Use Case |
+|---------|------|-------------------|----------|
+| **Full** | ~150-200MB | ✅ Yes (Puppeteer/Playwright) | Full-featured desktop app |
+| **Lite** | ~80-120MB | ❌ No | Smaller downloads, faster installs |
+
+**Size reduction**: ~50% smaller Lite builds across all platforms.
+
+### Building Desktop Installers
+
+```bash
+# Show Electron build information
+make electron-info
+
+# Build frontend first (required)
+make build-frontend
+
+# Build for current platform
+make electron-build-full      # Full version
+make electron-build-lite      # Lite version
+make electron-build-both      # Both variants
+
+# Build for specific platforms
+make electron-build-win-full         # Windows Full
+make electron-build-win-lite         # Windows Lite
+make electron-build-win-both         # Windows both variants
+
+make electron-build-mac-full         # macOS Full (x64 + ARM64)
+make electron-build-mac-lite         # macOS Lite (x64 + ARM64)
+make electron-build-mac-both         # macOS both variants
+
+make electron-build-linux-full       # Linux Full (AppImage, DEB, RPM)
+make electron-build-linux-lite       # Linux Lite (AppImage, DEB, RPM)
+make electron-build-linux-both       # Linux both variants
+
+# Build for all platforms (takes a while!)
+make electron-build-all-full         # All platforms Full
+make electron-build-all-lite         # All platforms Lite
+make electron-build-all-both         # All platforms both variants
+```
+
+### Build Outputs
+
+Installers are saved to `dist/` directory:
+
+**Full Version:**
+- `dist/AGNT-0.3.7-win-x64.exe` (~150MB)
+- `dist/AGNT-0.3.7-mac-x64.dmg` (~200MB)
+- `dist/AGNT-0.3.7-mac-arm64.dmg` (~200MB)
+- `dist/AGNT-0.3.7-linux-x64.AppImage` (~180MB)
+- Plus `.deb` and `.rpm` packages for Linux
+
+**Lite Version:**
+- `dist/AGNT-Lite-0.3.7-win-x64.exe` (~80MB)
+- `dist/AGNT-Lite-0.3.7-mac-x64.dmg` (~120MB)
+- `dist/AGNT-Lite-0.3.7-mac-arm64.dmg` (~120MB)
+- `dist/AGNT-Lite-0.3.7-linux-x64.AppImage` (~100MB)
+- Plus `.deb` and `.rpm` packages for Linux
+
+### Desktop Build Workflow
+
+**For Testing:**
+```bash
+# 1. Build frontend
+make build-frontend
+
+# 2. Build for current platform
+make electron-build-both
+
+# 3. Test the installers
+# Install from dist/ and verify functionality
+```
+
+**For Release:**
+```bash
+# 1. Ensure clean state
+git status
+
+# 2. Build frontend
+make build-frontend
+
+# 3. Build all platforms (takes 15-30 minutes)
+make electron-build-all-both
+
+# 4. Verify outputs
+ls -lh dist/
+
+# 5. Test installers on each platform
+# Windows: Run .exe
+# macOS: Open .dmg
+# Linux: Run .AppImage
+
+# 6. Upload to release server/GitHub Releases
+```
+
+### What's Different in Lite Mode?
+
+**Lite Mode removes:**
+- ❌ Puppeteer/Playwright packages (~80-100MB)
+- ❌ Browser automation capabilities
+- ❌ Web scraping tools
+- ❌ Screenshot capture via browser
+- ❌ HTML to PDF conversion via browser
+
+**Everything else works:**
+- ✅ AI agents and workflows
+- ✅ All API integrations (OpenAI, Anthropic, Google, etc.)
+- ✅ Plugin system
+- ✅ Image processing (Sharp, non-browser)
+- ✅ Email automation
+- ✅ MCP server support
+- ✅ All other built-in tools
+
+See [Electron Lite Mode Guide](ELECTRON_LITE_MODE.md) for complete details.
 
 ## Advanced Usage
 

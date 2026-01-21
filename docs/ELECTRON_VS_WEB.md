@@ -323,8 +323,8 @@ Output: `dist/` folder with installers
 
 ```bash
 # Build images
-make build-full        # With Chromium (~1.3GB)
-make build-lite        # Without Chromium (~600MB)
+make build-full        # With Chromium (~1.5GB)
+make build-lite        # Without Chromium (~715MB)
 
 # Push to DockerHub
 docker push agnt/agnt:latest

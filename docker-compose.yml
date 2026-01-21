@@ -1,6 +1,6 @@
 version: '3.8'
 
-# AGNT Full Version - Complete image with Chromium (~1.3GB)
+# AGNT Full Version - Complete image with Chromium (~1.5GB)
 # ✅ Includes Puppeteer/Playwright browser automation support
 # Runs on port 33333
 #
@@ -9,7 +9,7 @@ version: '3.8'
 # - When you need web scraping/browser automation
 # - Local/self-hosted environments with sufficient resources
 #
-# For lighter version without Chromium (~600MB) on port 3333, use:
+# For lighter version without Chromium (~715MB) on port 3333, use:
 # docker-compose -f docker-compose.lite.yml up -d
 #
 # To run both simultaneously:
@@ -43,20 +43,20 @@ services:
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
 
-      # SQLite WAL mode (multi-client support, disabled by default)
-      # Enable if running multiple Electron/browser clients simultaneously
-      # - SQLITE_WAL_MODE=true
+      # SQLite WAL mode (disabled for single container mode)
+      # Automatically enabled when running both containers via docker-compose.both.yml
+      # - SQLITE_WAL_MODE=false
 
     volumes:
       # SQLite database (persistent across restarts)
-      - agnt-db:/app/data
+      - ${AGNT_HOME}/.agnt/data:/app/data
 
       # Plugin storage
-      - agnt-plugins:/app/backend/plugins/installed
-      - agnt-plugin-builds:/app/backend/plugins/plugin-builds
+      - ${AGNT_HOME}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
       # Application logs
-      - agnt-logs:/app/logs
+      - ${AGNT_HOME}/.agnt/logs/full:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
@@ -84,16 +84,7 @@ services:
         reservations:
           memory: 2G
 
-volumes:
-  # Persistent volumes for data storage
-  agnt-db:
-    driver: local
-  agnt-plugins:
-    driver: local
-  agnt-plugin-builds:
-    driver: local
-  agnt-logs:
-    driver: local
+# No named volumes needed - using bind mounts to ~/.agnt/
 
 # Example network configuration for running with other services
 # networks:

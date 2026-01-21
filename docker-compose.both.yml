@@ -1,8 +1,8 @@
 version: '3.8'
 
 # AGNT Both Versions - Run Full and Lite simultaneously
-# Full version on port 33333 (with Chromium ~1.3GB)
-# Lite version on port 3333 (without Chromium ~600MB)
+# Full version on port 33333 (with Chromium ~1.5GB)
+# Lite version on port 3333 (without Chromium ~715MB)
 #
 # Usage:
 #   docker-compose -f docker-compose.both.yml up -d
@@ -37,20 +37,20 @@ services:
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
 
-      # SQLite WAL mode (multi-client support, disabled by default)
-      # Enable if running multiple Electron/browser clients simultaneously
-      # - SQLITE_WAL_MODE=true
+      # SQLite WAL mode (multi-client support, ENABLED for shared database)
+      # Required when both full and lite containers access the same database
+      - SQLITE_WAL_MODE=true
 
     volumes:
-      # SQLite database (persistent across restarts)
-      - agnt-full-db:/app/data
+      # SHARED SQLite database (both full and lite use the same database)
+      - ${AGNT_HOME}/.agnt/data:/app/data
 
-      # Plugin storage
-      - agnt-full-plugins:/app/backend/plugins/installed
-      - agnt-full-plugin-builds:/app/backend/plugins/plugin-builds
+      # SHARED plugin storage (both containers use same plugins)
+      - ${AGNT_HOME}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
-      # Application logs
-      - agnt-full-logs:/app/logs
+      # Separate logs for each container
+      - ${AGNT_HOME}/.agnt/logs/full:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
@@ -105,20 +105,20 @@ services:
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
 
-      # SQLite WAL mode (multi-client support, disabled by default)
-      # Enable if running multiple Electron/browser clients simultaneously
-      # - SQLITE_WAL_MODE=true
+      # SQLite WAL mode (multi-client support, ENABLED for shared database)
+      # Required when both full and lite containers access the same database
+      - SQLITE_WAL_MODE=true
 
     volumes:
-      # SQLite database (persistent across restarts)
-      - agnt-lite-db:/app/data
+      # SHARED SQLite database (both full and lite use the same database)
+      - ${AGNT_HOME}/.agnt/data:/app/data
 
-      # Plugin storage
-      - agnt-lite-plugins:/app/backend/plugins/installed
-      - agnt-lite-plugin-builds:/app/backend/plugins/plugin-builds
+      # SHARED plugin storage (both containers use same plugins)
+      - ${AGNT_HOME}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
-      # Application logs
-      - agnt-lite-logs:/app/logs
+      # Separate logs for each container
+      - ${AGNT_HOME}/.agnt/logs/lite:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
@@ -145,26 +145,7 @@ services:
         reservations:
           memory: 1G
 
-volumes:
-  # Persistent volumes for full version
-  agnt-full-db:
-    driver: local
-  agnt-full-plugins:
-    driver: local
-  agnt-full-plugin-builds:
-    driver: local
-  agnt-full-logs:
-    driver: local
-
-  # Persistent volumes for lite version
-  agnt-lite-db:
-    driver: local
-  agnt-lite-plugins:
-    driver: local
-  agnt-lite-plugin-builds:
-    driver: local
-  agnt-lite-logs:
-    driver: local
+# No named volumes needed - using bind mounts to ~/.agnt/
 
 # Example network configuration for running with other services
 # networks:

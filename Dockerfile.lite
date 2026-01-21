@@ -1,6 +1,6 @@
 # Multi-stage build for AGNT - AI Agent Framework (LITE VERSION)
 # Using Node 20 LTS - WITHOUT Chromium for smaller image size
-# ~600MB instead of ~1.3GB
+# ~715MB instead of ~1.6GB (55% reduction)
 # ⚠️ No Puppeteer/Playwright browser automation support
 
 # Stage 1: Build frontend
@@ -39,21 +39,29 @@ RUN apk add --no-cache \
 # Copy root package files
 COPY package*.json ./
 
-# Install backend dependencies
-# Skip puppeteer, playwright, and electron-builder dependencies
+# Install backend dependencies (LITE VERSION - excludes optional deps like puppeteer)
+# Skip browser downloads and optional dependencies (puppeteer, playwright)
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV npm_config_optional=false
 
-# Install dependencies and ignore postinstall scripts (electron-builder not needed in Docker)
+# Install dependencies WITHOUT optionalDependencies (excludes puppeteer-extra, etc.)
+# Ignore postinstall scripts (electron-builder not needed in Docker)
 RUN npm install --production --ignore-scripts
 
 # Rebuild native bindings for the Docker environment
 RUN npm rebuild sqlite3 sharp
 
 # Manually install onnxruntime packages (needed by @xenova/transformers)
-# Use npm install without --no-save to ensure they're properly added to node_modules
-RUN npm install onnxruntime-node onnxruntime-web
+# Use --production --no-save to avoid installing devDependencies (electron, etc.)
+RUN npm install --production --no-save --ignore-scripts onnxruntime-node onnxruntime-web
+
+# Remove devDependencies and unused packages that snuck in
+RUN npm prune --production
+
+# Remove ffmpeg npm packages (Docker uses system ffmpeg instead)
+# Saves ~65MB - code uses system binary via 'ffmpeg' command, not npm packages
+RUN rm -rf node_modules/@ffmpeg-installer node_modules/ffmpeg-static
 
 # Patch transformers.js to use dynamic imports (fixes ESM resolution in Docker)
 COPY scripts/patch-transformers-onnx.js ./scripts/
@@ -76,7 +84,9 @@ RUN apk add --no-cache \
     giflib \
     pixman \
     python3 \
-    ca-certificates
+    ca-certificates \
+    sqlite \
+    ffmpeg
 
 # Mark that browser features are disabled
 ENV PUPPETEER_SKIP_DOWNLOAD=true

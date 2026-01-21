@@ -37,14 +37,14 @@ Docker containerization provides:
 - Docker Engine 20.10+ or Docker Desktop
 - Docker Compose (optional, but recommended)
 - At least 2GB of available RAM
-- 5GB of free disk space (for full version) or 2GB (for lite version)
+- 10GB of free disk space (for full version) or 6GB (for lite version)
 
 ## Image Variants
 
 AGNT offers two Docker image variants to suit different needs:
 
 ### 🔋 Full Version (Default) - `agnt:latest`
-**Size:** ~1.3GB | **Dockerfile:** `Dockerfile`
+**Size:** ~1.5GB | **Dockerfile:** `Dockerfile`
 
 **Includes:**
 - ✅ Chromium browser (Puppeteer/Playwright support)
@@ -69,14 +69,14 @@ docker build -t agnt:latest .
 ---
 
 ### 🪶 Lite Version - `agnt:lite`
-**Size:** ~620MB | **Dockerfile:** `Dockerfile.lite`
+**Size:** ~715MB (52% smaller) | **Dockerfile:** `Dockerfile.lite`
 
 **Includes:**
 - ✅ All core AGNT features
 - ✅ AI agent workflows
 - ✅ Plugin system
 - ✅ Image processing (without browser)
-- ❌ No Chromium (saves ~700MB)
+- ❌ No Chromium (saves ~900MB)
 - ❌ No Puppeteer/Playwright browser automation
 
 **Best for:**
@@ -98,14 +98,14 @@ docker build -f Dockerfile.lite -t agnt:lite .
 
 | Feature | Full | Lite |
 |---------|------|------|
-| Image Size | 1.3GB | 620MB |
+| Image Size | ~1.5GB | ~715MB (52% smaller) |
 | Browser Automation | ✅ | ❌ |
 | Web Scraping | ✅ | ❌ |
 | AI Agents & Workflows | ✅ | ✅ |
 | Plugin System | ✅ | ✅ |
 | API Integrations | ✅ | ✅ |
 | Image Processing | ✅ | ✅ |
-| Memory Usage | ~2GB | ~1GB |
+| Memory Usage | ~1.2GB | ~700MB |
 
 **💡 Recommendation:** Start with **Lite** unless you specifically need browser automation. You can always switch to Full later if needed.
 
@@ -360,31 +360,31 @@ labels:
 - **Base**: Alpine Linux (minimal footprint)
 - **Runtime**: Node.js 20 LTS
 - **Browser**: Chromium (for Puppeteer/Playwright features)
-- **Image Size**: ~1.3GB
+- **Image Size**: ~1.5GB
 - **Architecture**: linux/amd64, linux/arm64
 
 **Size breakdown:**
-- ~760MB: Chromium browser + graphics libraries (cairo, pango, fonts)
-- ~290MB: Node.js dependencies (AI SDKs, image processing, etc.)
-- ~120MB: Backend source code and plugins
-- ~120MB: Node.js 20 runtime
-- ~20MB: Built Vue.js frontend
-- ~8MB: Alpine Linux base
+- ~650MB: Chromium browser + graphics libraries (cairo, pango, fonts)
+- ~494MB: Node.js dependencies (AI SDKs, puppeteer-extra, image processing)
+- ~180MB: Node.js 20 runtime
+- ~100MB: Backend source code and plugins
+- ~80MB: Built Vue.js frontend
+- ~40MB: Alpine Linux base
 
 **Lite Version (`Dockerfile.lite`):**
 - **Base**: Alpine Linux (minimal footprint)
 - **Runtime**: Node.js 20 LTS
 - **Browser**: None (no Chromium)
-- **Image Size**: ~620MB (53% smaller!)
+- **Image Size**: ~715MB (52% smaller)
 - **Architecture**: linux/amd64, linux/arm64
 
 **Size breakdown:**
-- ~290MB: Node.js dependencies (AI SDKs, image processing, etc.)
-- ~120MB: Backend source code and plugins
-- ~120MB: Node.js 20 runtime
-- ~65MB: Graphics libraries (cairo, pango, fonts - without browser)
-- ~20MB: Built Vue.js frontend
-- ~8MB: Alpine Linux base
+- ~315MB: Node.js dependencies (AI SDKs, image processing, no puppeteer)
+- ~180MB: Node.js 20 runtime
+- ~100MB: Backend source code and plugins
+- ~80MB: Built Vue.js frontend
+- ~40MB: Alpine Linux base
+- ~20MB: Graphics libraries (minimal, no browser)
 
 ### Build Commands
 

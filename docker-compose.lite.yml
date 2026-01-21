@@ -1,6 +1,6 @@
 version: '3.8'
 
-# AGNT Lite Version - Smaller image without Chromium (~600MB)
+# AGNT Lite Version - Smaller image without Chromium (~715MB, 52% smaller)
 # ⚠️ No Puppeteer/Playwright browser automation support
 # Runs on port 3333
 #
@@ -41,20 +41,20 @@ services:
       # Optional: License Key
       # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
 
-      # SQLite WAL mode (multi-client support, disabled by default)
-      # Enable if running multiple Electron/browser clients simultaneously
-      # - SQLITE_WAL_MODE=true
+      # SQLite WAL mode (disabled for single container mode)
+      # Automatically enabled when running both containers via docker-compose.both.yml
+      # - SQLITE_WAL_MODE=false
 
     volumes:
       # SQLite database (persistent across restarts)
-      - agnt-db:/app/data
+      - ${AGNT_HOME}/.agnt/data:/app/data
 
       # Plugin storage
-      - agnt-plugins:/app/backend/plugins/installed
-      - agnt-plugin-builds:/app/backend/plugins/plugin-builds
+      - ${AGNT_HOME}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
       # Application logs
-      - agnt-logs:/app/logs
+      - ${AGNT_HOME}/.agnt/logs/lite:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
@@ -82,16 +82,7 @@ services:
         reservations:
           memory: 1G
 
-volumes:
-  # Persistent volumes for data storage
-  agnt-db:
-    driver: local
-  agnt-plugins:
-    driver: local
-  agnt-plugin-builds:
-    driver: local
-  agnt-logs:
-    driver: local
+# No named volumes needed - using bind mounts to ~/.agnt/
 
 # Example network configuration for running with other services
 # networks:

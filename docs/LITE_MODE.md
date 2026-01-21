@@ -2,7 +2,7 @@
 
 ## Overview
 
-AGNT Lite Mode is a Docker-only feature that disables Chromium-based browser automation to reduce the image size by ~53% (from 1.3GB to 620MB).
+AGNT Lite Mode is a Docker-only feature that disables Chromium-based browser automation to reduce the image size by ~52% (from 1.5GB to 715MB).
 
 When `AGNT_LITE_MODE=true`, the application should gracefully disable browser automation features and provide clear error messages to users attempting to use these features.
 
@@ -354,7 +354,7 @@ Port: 3333
 ║   ⚡ AGNT LITE MODE ENABLED ⚡        ║
 ╟────────────────────────────────────────╢
 ║  Browser automation: DISABLED          ║
-║  Image size: ~620MB (vs 1.3GB full)    ║
+║  Image size: ~715MB (vs 1.5GB full)    ║
 ║  All other features: ENABLED           ║
 ╚════════════════════════════════════════╝
 
