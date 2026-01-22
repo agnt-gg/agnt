@@ -57,7 +57,7 @@
 
 <p align="center">
   <a href="https://star-history.com/#agnt-gg/agnt&Date">
-    <img src="https://api.star-history.com/svg?repos=agnt-gg/agnt&type=Date" alt="Star History Chart" width="600">
+    <img src="https://api.star-history.com/svg?repos=agnt-gg/agnt&type=Date" alt="Star History Chart" width="100%">
   </a>
 </p>
 
