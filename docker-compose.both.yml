@@ -9,6 +9,11 @@ version: '3.8'
 #   or
 #   make run-both
 #
+# ⚠️ DOCKER SNAP USERS: If using Docker installed via snap, you MUST set AGNT_HOME:
+#   export AGNT_HOME=$HOME  # or use absolute path like /home/username
+#   AGNT_HOME=$HOME docker-compose -f docker-compose.both.yml up -d
+#   The ~ shortcut doesn't work correctly with Docker snap (resolves to ~/snap/docker/...)
+#
 # ⚠️ PERMISSIONS: If you get "EACCES: permission denied" errors, run:
 #   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/logs/lite ~/.agnt/plugins/installed ~/.agnt/plugins/builds
 #   sudo chown -R 1000:1000 ~/.agnt
