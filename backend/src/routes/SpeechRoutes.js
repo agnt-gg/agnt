@@ -89,7 +89,7 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
  * GET /api/speech/status
  * Get Whisper service status
  */
-router.get('/status', async (req, res) => {
+router.get('/status', (req, res) => {
   try {
     const status = whisperService.getStatus();
     res.json({

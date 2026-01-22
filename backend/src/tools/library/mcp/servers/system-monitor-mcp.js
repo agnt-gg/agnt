@@ -185,7 +185,7 @@ class SystemMonitorMCP {
               content: [{ type: 'text', text: JSON.stringify(processes, null, 2) }],
             };
           }
-          // Unix/Linux/Mac
+          // Unix/GNU/Linux/Mac
           const { stdout } = await execAsync(`ps aux | head -n ${limit + 1}`);
           return {
             content: [{ type: 'text', text: stdout }],

@@ -8,6 +8,7 @@ import scrapeUtil from '../../utils/webScrape.js';
 import toolRegistry from './toolRegistry.js';
 import AuthManager from '../auth/AuthManager.js';
 import jwt from 'jsonwebtoken';
+import ParameterResolver from '../../workflow/ParameterResolver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2830,7 +2831,16 @@ export async function executeTool(toolName, args, authToken, context) {
       const mockWorkflowEngine = {
         userId: userId,
         ...context,
+        // Add empty maps/objects required by ParameterResolver
+        currentTriggerData: {},
+        nodeNameToId: new Map(),
+        outputs: {},
+        // Add DB object for execute-python workflowContext
+        DB: {},
       };
+
+      // Attach ParameterResolver to mockWorkflowEngine
+      mockWorkflowEngine.parameterResolver = new ParameterResolver(mockWorkflowEngine);
 
       if (registryTool.authConfig.authRequired) {
         if (!userId) {

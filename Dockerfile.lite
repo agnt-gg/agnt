@@ -1,0 +1,135 @@
+# Multi-stage build for AGNT - AI Agent Framework (LITE VERSION)
+# Using Node 20 LTS - WITHOUT Chromium for smaller image size
+# ~715MB instead of ~1.6GB (55% reduction)
+# ⚠️ No Puppeteer/Playwright browser automation support
+
+# Stage 1: Build frontend
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy frontend package files
+COPY frontend/package*.json ./
+
+# Install frontend dependencies (including devDependencies for build)
+RUN npm install
+
+# Copy frontend source
+COPY frontend/ ./
+
+# Build frontend
+RUN npm run build
+
+# Stage 2: Build backend dependencies
+FROM node:20-alpine AS backend-builder
+
+WORKDIR /app
+
+# Install Python and build dependencies for native modules
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    cairo-dev \
+    jpeg-dev \
+    pango-dev \
+    giflib-dev \
+    pixman-dev
+
+# Copy root package files
+COPY package*.json ./
+
+# Install backend dependencies (LITE VERSION - excludes optional deps like puppeteer)
+# Skip browser downloads and optional dependencies (puppeteer, playwright)
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV npm_config_optional=false
+
+# Install dependencies WITHOUT optionalDependencies (excludes puppeteer-extra, etc.)
+# Ignore postinstall scripts (electron-builder not needed in Docker)
+RUN npm install --production --ignore-scripts
+
+# Rebuild native bindings for the Docker environment
+RUN npm rebuild sqlite3 sharp
+
+# Manually install onnxruntime packages (needed by @xenova/transformers)
+# Use --production --no-save to avoid installing devDependencies (electron, etc.)
+RUN npm install --production --no-save --ignore-scripts onnxruntime-node onnxruntime-web
+
+# Remove devDependencies and unused packages that snuck in
+RUN npm prune --production
+
+# Remove ffmpeg npm packages (Docker uses system ffmpeg instead)
+# Saves ~65MB - code uses system binary via 'ffmpeg' command, not npm packages
+RUN rm -rf node_modules/@ffmpeg-installer node_modules/ffmpeg-static
+
+# Patch transformers.js to use dynamic imports (fixes ESM resolution in Docker)
+COPY scripts/patch-transformers-onnx.js ./scripts/
+RUN node scripts/patch-transformers-onnx.js || echo "Transformers patch failed, continuing anyway"
+
+# Run onnxruntime patch script (for web backend compatibility)
+COPY scripts/patch-onnxruntime.js ./scripts/
+RUN node scripts/patch-onnxruntime.js || echo "ONNX patch failed, continuing anyway"
+
+# Stage 3: Final runtime image (LITE - No Chromium)
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install minimal runtime dependencies (NO CHROMIUM)
+RUN apk add --no-cache \
+    cairo \
+    jpeg \
+    pango \
+    giflib \
+    pixman \
+    python3 \
+    ca-certificates \
+    sqlite \
+    ffmpeg \
+    su-exec
+
+# Mark that browser features are disabled
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV AGNT_LITE_MODE=true
+
+# Create necessary directories with correct ownership
+# Note: /app/data/_logs is created here so the logger can write to it
+# even when /app/data is mounted as a volume from the host
+RUN mkdir -p /app/backend/plugins/installed \
+    /app/backend/plugins/plugin-builds \
+    /app/logs \
+    /app/data \
+    /app/data/_logs \
+    && chown -R node:node /app
+
+# Copy built frontend from frontend-builder with correct ownership
+# Note: We stay as root here so the entrypoint can fix volume permissions
+COPY --from=frontend-builder --chown=node:node /app/frontend/dist /app/frontend/dist
+
+# Copy dependencies from backend-builder with correct ownership
+COPY --from=backend-builder --chown=node:node /app/node_modules /app/node_modules
+
+# Copy application code with correct ownership
+COPY --chown=node:node backend/ /app/backend/
+COPY --chown=node:node scripts/ /app/scripts/
+COPY --chown=node:node main.js /app/
+COPY --chown=node:node preload.js /app/
+COPY --chown=node:node package*.json /app/
+COPY --chown=node:node assets/ /app/assets/
+
+# Copy and set up entrypoint script
+COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Expose backend port
+EXPOSE 3333
+
+# Health check
+HEALTHCHECK --interval=33s --timeout=9s --start-period=33s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
+
+# Use entrypoint to fix permissions on mounted volumes, then run as node user
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["node", "backend/server.js"]

@@ -5,6 +5,8 @@ import bodyParser from 'body-parser';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 
 // Import plugin system
 import PluginInstaller from './src/plugins/PluginInstaller.js';
@@ -214,9 +216,31 @@ function startServer() {
   let retries = 0;
 
   const tryStarting = async () => {
+    // Create HTTP server from Express app
+    const httpServer = createServer(app);
+
+    // Initialize Socket.IO with CORS configuration
+    const io = new SocketIOServer(httpServer, {
+      cors: config.corsOptions,
+      transports: ['websocket', 'polling'],
+    });
+
+    // Socket.IO connection handling
+    io.on('connection', (socket) => {
+      console.log(`[Socket.IO] Client connected: ${socket.id}`);
+
+      socket.on('disconnect', () => {
+        console.log(`[Socket.IO] Client disconnected: ${socket.id}`);
+      });
+    });
+
+    // Export io instance for use in other modules
+    global.io = io;
+
     // Start server FIRST so health check responds immediately
-    const server = app.listen(config.port, async () => {
+    const server = httpServer.listen(config.port, async () => {
       console.log(`Master server listening on port ${config.port}`);
+      console.log(`[Socket.IO] Real-time sync enabled`);
       retries = 0; // Reset retries on successful start
 
       // Initialize plugins FIRST before spawning workflow process

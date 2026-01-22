@@ -32,7 +32,7 @@ backend/plugins/
 ```
 %APPDATA%/AGNT/plugins/     # Windows
 ~/Library/Application Support/AGNT/plugins/  # macOS
-~/.config/AGNT/plugins/     # Linux
+~/.config/AGNT/plugins/     # GNU/Linux
 ├── installed/              # Extracted plugins
 │   └── my-plugin/
 ├── registry.json           # Installed plugins registry

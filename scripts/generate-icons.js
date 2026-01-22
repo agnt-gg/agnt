@@ -23,10 +23,10 @@ try {
       fs.writeFileSync(OUTPUT_ICNS, icns);
       console.log(`Successfully created: ${OUTPUT_ICNS}`);
     } else {
-      console.error('Failed to create ICNS file (skippable on Windows/Linux)');
+      console.error('Failed to create ICNS file (skippable on Windows/GNU/Linux)');
     }
   } catch (icnsErr) {
-    console.warn('Skipping ICNS generation (not critical for Windows/Linux builds):', icnsErr.message);
+    console.warn('Skipping ICNS generation (not critical for Windows/GNU/Linux builds):', icnsErr.message);
   }
 
   // Generate ICO (Windows)

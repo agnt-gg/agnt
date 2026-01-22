@@ -1,12 +1,8 @@
 import { JSDOM } from 'jsdom';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { fileURLToPath } from 'url';
 import { URL } from 'url';
 import { getBestChromePath, getChromeNotFoundMessage } from './chrome-detector.js';
-
-// Apply the stealth plugin to hide that we're using a headless browser
-puppeteer.use(StealthPlugin());
+import { isLiteMode } from './liteModeHelper.js';
 
 /**
  * Scrapes a URL, aggressively cleans the DOM, extracts main content, all code snippets, and finds all links on the page.
@@ -14,6 +10,23 @@ puppeteer.use(StealthPlugin());
  * @returns {Promise<{textContent: string, links: string[], codeContent: string}>} A promise that resolves to the text content, links, and all found code snippets.
  */
 async function scrape(url) {
+  // Check if browser automation is available (not in lite mode)
+  if (isLiteMode()) {
+    throw new Error(
+      'Web scraping is not available in AGNT Lite Mode. ' +
+      'Browser automation (Puppeteer) is disabled to reduce image size. ' +
+      'Please use the full AGNT image for web scraping features.'
+    );
+  }
+
+  // Dynamically import puppeteer (only loads if not in lite mode)
+  const puppeteerModule = await import('puppeteer-extra');
+  const puppeteer = puppeteerModule.default;
+  const StealthPlugin = (await import('puppeteer-extra-plugin-stealth')).default;
+
+  // Apply the stealth plugin to hide that we're using a headless browser
+  puppeteer.use(StealthPlugin());
+
   // Get the best available Chrome executable path
   const chromePath = getBestChromePath();
   if (!chromePath) {

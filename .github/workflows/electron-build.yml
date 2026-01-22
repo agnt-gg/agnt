@@ -1,0 +1,207 @@
+name: Build Electron Apps
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Supports v0.3.7
+      - '*.*.*'   # Supports 0.3.7
+  workflow_dispatch:
+
+jobs:
+  build-electron-full:
+    name: Build Electron Full
+    strategy:
+      matrix:
+        os: [windows-2019, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-2019
+            platform: win
+            artifact: AGNT*-win-*.exe
+          - os: macos-latest
+            platform: mac
+            artifact: AGNT*-mac-*.{dmg,zip}
+          - os: ubuntu-latest
+            platform: linux
+            artifact: AGNT*-linux-*.{AppImage,deb,rpm}
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # cache: 'npm'  # Disabled - package-lock.json is gitignored
+
+      - name: Setup MSVC (Windows only - for native module builds)
+        if: matrix.os == 'windows-2019'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Python (for native modules)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'  # Latest Python
+
+      - name: Install Python setuptools with distutils (for native module building)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install setuptools wheel
+          # Setuptools provides distutils compatibility for Python 3.14+
+
+      - name: Install dependencies
+        run: npm install
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Build Electron Full (${{ matrix.platform }})
+        run: npm run build:${{ matrix.platform }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SETUPTOOLS_USE_DISTUTILS: local
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-full-${{ matrix.platform }}
+          path: |
+            dist/AGNT*-${{ matrix.platform }}-*.exe
+            dist/AGNT*-${{ matrix.platform }}-*.dmg
+            dist/AGNT*-${{ matrix.platform }}-*.zip
+            dist/AGNT*-${{ matrix.platform }}-*.AppImage
+            dist/AGNT*-${{ matrix.platform }}-*.deb
+            dist/AGNT*-${{ matrix.platform }}-*.rpm
+          retention-days: 30
+
+  build-electron-lite:
+    name: Build Electron Lite
+    strategy:
+      matrix:
+        os: [windows-2019, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-2019
+            platform: win
+            artifact: AGNT-Lite*-win-*.exe
+          - os: macos-latest
+            platform: mac
+            artifact: AGNT-Lite*-mac-*.{dmg,zip}
+          - os: ubuntu-latest
+            platform: linux
+            artifact: AGNT-Lite*-linux-*.{AppImage,deb,rpm}
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # cache: 'npm'  # Disabled - package-lock.json is gitignored
+
+      - name: Setup MSVC (Windows only - for native module builds)
+        if: matrix.os == 'windows-2019'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Python (for native modules)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'  # Latest Python
+
+      - name: Install Python setuptools with distutils (for native module building)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install setuptools wheel
+          # Setuptools provides distutils compatibility for Python 3.14+
+
+      - name: Install dependencies
+        run: npm install
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+        env:
+          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Build Electron Lite (${{ matrix.platform }})
+        run: npm run build:lite:${{ matrix.platform }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SETUPTOOLS_USE_DISTUTILS: local
+          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-lite-${{ matrix.platform }}
+          path: |
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.exe
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.dmg
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.zip
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.AppImage
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.deb
+            dist/AGNT-Lite*-${{ matrix.platform }}-*.rpm
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: [build-electron-full, build-electron-lite]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/**/*
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -29,6 +29,13 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/agnt-gg/agnt/docker-build.yml?branch=main&style=flat-square&logo=docker&label=Docker%20Build" alt="Docker Build">
+  <img src="https://img.shields.io/github/actions/workflow/status/agnt-gg/agnt/electron-build.yml?branch=main&style=flat-square&logo=electron&label=Electron%20Build" alt="Electron Build">
+  <img src="https://img.shields.io/badge/Docker%20Full-~1.5GB-blue?style=flat-square&logo=docker" alt="Docker Full Size">
+  <img src="https://img.shields.io/badge/Docker%20Lite-~715MB-blue?style=flat-square&logo=docker" alt="Docker Lite Size">
+</p>
+
+<p align="center">
   <a href="https://agnt.gg">🌐 Website</a> •
   <a href="#-features">✨ Features</a> •
   <a href="#-installation">📦 Installation</a> •
@@ -43,6 +50,24 @@
 <p align="center">
   <img src="https://agnt.gg/_assets/images/agnt-banner.png" alt="AGNT Hero Banner" width="100%">
 </p>
+
+---
+
+## 👥 Who Is This For?
+
+**AGNT is local-first and designed for:**
+
+- ✅ **Single users** - Run on your personal computer
+- ✅ **Families** - Share across household devices
+- ✅ **Small teams** - 2-10 people in your organization
+
+**NOT designed for:**
+
+- ❌ Multi-tenant SaaS (isolating hundreds of unrelated users)
+- ❌ Public hosting (each org should self-host their own instance)
+- ❌ Large enterprises (50+ concurrent users)
+
+AGNT uses SQLite and real-time sync that broadcasts to all connected clients. Perfect for trusted groups sharing a workspace, not for isolating thousands of separate organizations.
 
 ---
 
@@ -198,6 +223,75 @@ cd frontend && npm install && cd ..
 npm start
 ```
 
+### 🐳 Docker Install (Self-Hosting)
+
+Use Docker for an isolated, production-ready deployment.
+
+#### Option A: Pull Pre-built Images from GHCR (Recommended)
+
+```bash
+# Full version with browser automation (~1.5GB) - Port 33333
+docker run -d \
+  --name agnt-full \
+  -p 33333:33333 \
+  -v agnt-data:/root/.agnt/data \
+  ghcr.io/agnt-gg/agnt:latest
+
+# Access at http://localhost:33333
+```
+
+```bash
+# Lite version without browser automation (~715MB) - Port 3333
+docker run -d \
+  --name agnt-lite \
+  -p 3333:3333 \
+  -v agnt-data:/root/.agnt/data \
+  ghcr.io/agnt-gg/agnt:lite
+
+# Access at http://localhost:3333
+```
+
+**Available tags:**
+- `latest` / `full` - Latest Full variant with browser automation
+- `lite` - Latest Lite variant without browser automation
+- `v0.3.7` / `v0.3.7-full` - Specific version (Full)
+- `v0.3.7-lite` - Specific version (Lite)
+
+#### Option B: Build from Source (Advanced)
+
+```bash
+# Clone the repository
+git clone https://github.com/agnt-gg/agnt.git
+cd agnt
+
+# Option 1: Full version with browser automation (~1.5GB) - Port 33333
+docker-compose up -d
+# Access at http://localhost:33333
+
+# Option 2: Lite version without browser automation (~715MB) - Port 3333
+docker-compose -f docker-compose.lite.yml up -d
+# Access at http://localhost:3333
+
+# Option 3: Run both versions simultaneously
+docker-compose -f docker-compose.both.yml up -d
+# Full: http://localhost:33333
+# Lite: http://localhost:3333
+
+# Or use the Makefile
+make run-both
+```
+
+**Docker variants available:**
+- 🔋 **Full** (~1.5GB): Includes Chromium for web scraping & browser automation (Port **33333**)
+- 🪶 **Lite** (~715MB): Smaller image without browser features, ~52% smaller (Port **3333**)
+- 🚀 **Both**: Run full and lite versions side-by-side for testing
+
+**Desktop installers available:**
+- 💻 **Electron Full** (~150-200MB): Portable desktop app with browser automation
+- 📦 **Electron Lite** (~80-120MB): Lightweight desktop app, ~50% smaller
+
+📖 See the [Self-Hosting Guide](docs/SELF_HOSTING.md) for complete Docker setup, networking, and configuration.
+
 ### 📥 Download Pre-built Binaries
 
 <p align="center">
@@ -208,7 +302,7 @@ npm start
     <img src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS">
   </a>
   <a href="https://agnt.gg/downloads/">
-    <img src="https://img.shields.io/badge/Download-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download for Linux">
+    <img src="https://img.shields.io/badge/Download-GNU/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download for GNU/Linux">
   </a>
 </p>
 
@@ -237,7 +331,7 @@ xcode-select --install
 </details>
 
 <details>
-<summary><strong>🐧 Linux</strong></summary>
+<summary><strong>🐧 GNU/Linux</strong></summary>
 
 Install required system dependencies:
 
@@ -249,7 +343,7 @@ sudo apt-get install build-essential libx11-dev libxkbfile-dev
 sudo dnf install gcc-c++ make libX11-devel libxkbfile-devel
 ```
 
-See [Linux Build Instructions](docs/_LINUX-BUILD-INSTRUCTIONS.md) for detailed setup.
+See [GNU/Linux Build Instructions](docs/_LINUX-BUILD-INSTRUCTIONS.md) for detailed setup.
 
 </details>
 
@@ -295,21 +389,51 @@ npm run build
 # Build for specific platforms
 npm run build:win      # Windows (NSIS installer)
 npm run build:mac      # macOS (DMG + ZIP)
-npm run build:linux    # Linux (AppImage, DEB, RPM)
+npm run build:linux    # GNU/Linux (AppImage, DEB, RPM)
 
 # Build for all platforms
 npm run build:all
 ```
 
-Build outputs are saved to the `dist/` directory.
+### 🪶 Lite Mode - Smaller Desktop Builds
+
+Build **AGNT Lite** variants that exclude browser automation for ~50% smaller installers:
+
+```bash
+# Build Lite variant (~80-120MB vs ~150-200MB)
+npm run build:lite
+npm run build:lite:win      # Windows
+npm run build:lite:mac      # macOS
+npm run build:lite:linux    # GNU/Linux
+
+# Build BOTH Full and Lite (recommended)
+npm run build:both
+npm run build:both:win
+npm run build:both:mac
+npm run build:both:linux
+```
+
+**Lite Mode removes:**
+- ❌ Puppeteer/Playwright browser automation
+- ❌ Web scraping tools
+- ❌ Screenshot capture via browser
+
+**Everything else works:**
+- ✅ AI agents and workflows
+- ✅ All API integrations
+- ✅ Plugins, image processing, email automation
+
+📖 See [Electron Lite Mode Guide](docs/ELECTRON_LITE_MODE.md) for details.
+
+Build outputs are saved to the `dist/` directory:
 
 ### Build Artifacts
 
-| Platform | Formats            | Architecture |
-| -------- | ------------------ | ------------ |
-| Windows  | NSIS               | x64          |
-| macOS    | DMG, ZIP           | x64, ARM64   |
-| Linux    | AppImage, DEB, RPM | x64          |
+| Platform | Full | Lite | Size Reduction |
+| -------- | ---- | ---- | -------------- |
+| Windows | AGNT-0.3.7-win-x64.exe (~150MB) | AGNT-Lite-0.3.7-win-x64.exe (~80MB) | ~47% |
+| macOS | AGNT-0.3.7-mac-x64.dmg (~200MB) | AGNT-Lite-0.3.7-mac-x64.dmg (~120MB) | ~40% |
+| GNU/Linux | AppImage (~180MB), DEB, RPM | AppImage (~100MB), DEB, RPM | ~44% |
 
 ---
 
@@ -438,13 +562,17 @@ See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md) for more details.
 
 ## 📖 Documentation
 
-| Document                                                  | Description                 |
-| --------------------------------------------------------- | --------------------------- |
-| [📚 API Documentation](docs/_API-DOCUMENTATION.md)        | Complete REST API reference |
-| [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)      | Detailed build guide        |
-| [🐧 Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | Linux-specific setup        |
-| [🔌 Plugin Development](backend/plugins/README.md)        | Creating custom plugins     |
-| [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)         | Native module rebuilding    |
+| Document                                                  | Description                        |
+| --------------------------------------------------------- | ---------------------------------- |
+| [📚 API Documentation](docs/_API-DOCUMENTATION.md)        | Complete REST API reference        |
+| [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)      | Detailed build guide               |
+| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup               |
+| [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)             | Docker deployment & hosting        |
+| [🪶 Docker Lite Mode](docs/LITE_MODE.md)                  | Docker without browser automation  |
+| [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)       | Smaller desktop builds (~50% size) |
+| [🔌 Plugin Development](backend/plugins/README.md)        | Creating custom plugins            |
+| [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)         | Native module rebuilding           |
+| [🚀 CI/CD Pipelines](docs/CI_CD.md)                       | GitHub Actions workflows           |
 
 ---
 

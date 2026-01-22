@@ -1,0 +1,101 @@
+version: '3.8'
+
+# AGNT Full Version - Complete image with Chromium (~1.5GB)
+# ✅ Includes Puppeteer/Playwright browser automation support
+# Runs on port 33333
+#
+# Use this for:
+# - Full-featured deployments
+# - When you need web scraping/browser automation
+# - Local/self-hosted environments with sufficient resources
+#
+# For lighter version without Chromium (~715MB) on port 3333, use:
+# docker-compose -f docker-compose.lite.yml up -d
+#
+# To run both simultaneously:
+# make run-both
+#
+# ⚠️ PERMISSIONS: If you get "EACCES: permission denied" errors, run:
+#   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/plugins/installed ~/.agnt/plugins/builds
+#   sudo chown -R 1000:1000 ~/.agnt
+
+services:
+  agnt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/agnt-gg/agnt:latest
+    container_name: agnt
+    ports:
+      - "33333:3333"
+    environment:
+      # Application Environment
+      - NODE_ENV=production
+      - APP_PATH=/app
+
+      # URLs Configuration
+      - BASE_URL=http://localhost:33333
+      - REMOTE_URL=https://api.agnt.gg
+      - WEBHOOK_URL=http://localhost:3001
+      - FRONTEND_URL=http://localhost:33333
+
+      # Security Secrets (CHANGE THESE IN PRODUCTION!)
+      # Generate secure secrets with: openssl rand -base64 32
+      - JWT_SECRET=${JWT_SECRET:-CHANGE_ME_IN_PRODUCTION}
+      - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION}
+
+      # Trust remote authentication (for semi-local mode)
+      # When enabled, JWT tokens from REMOTE_URL are accepted without local verification
+      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}
+
+      # Optional: License Key
+      # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
+
+      # SQLite WAL mode (enable for multi-container database sharing)
+      # When enabled, multiple containers can safely access the same database
+      - SQLITE_WAL_MODE=true
+
+    volumes:
+      # SQLite database (persistent across restarts)
+      - ${AGNT_HOME:-~}/.agnt/data:/app/data
+
+      # Plugin storage
+      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
+
+      # Application logs
+      - ${AGNT_HOME:-~}/.agnt/logs/full:/app/logs
+
+      # Optional: Custom environment file
+      # - ./backend/.env:/app/backend/.env:ro
+
+    restart: unless-stopped
+
+    # Allow container to access services on host machine (e.g., local AI providers, MCP servers)
+    # Uncomment the following lines to enable host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # Health check to ensure service is running
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 33s
+      timeout: 9s
+      retries: 3
+      start_period: 33s
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+# No named volumes needed - using bind mounts to ~/.agnt/
+
+# Example network configuration for running with other services
+# networks:
+#   default:
+#     name: agnt-network

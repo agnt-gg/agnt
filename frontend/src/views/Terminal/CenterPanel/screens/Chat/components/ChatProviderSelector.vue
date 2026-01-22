@@ -317,10 +317,10 @@ export default {
       document.addEventListener('click', handleClickOutside);
       document.addEventListener('keydown', handleEscape);
 
-      // Poll for local server status
+      // Poll for local server status (check every 60 seconds)
       localServerCheckInterval = setInterval(() => {
         checkLocalServer();
-      }, 5000);
+      }, 60000);
     });
 
     onUnmounted(() => {

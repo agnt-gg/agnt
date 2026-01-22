@@ -149,7 +149,7 @@ export default {
     };
 
     // Initialize screen based on URL parameters or default
-    onMounted(() => {
+    onMounted(async () => {
       // Check if route specifies a terminal screen
       if (route.meta?.terminalScreen) {
         activeScreen.value = route.meta.terminalScreen;
@@ -158,6 +158,9 @@ export default {
       } else {
         activeScreen.value = getDefaultScreen();
       }
+
+      // Note: Custom providers and user settings are loaded in main.js
+      // during app initialization. No need to reload them here.
     });
 
     // Watch for route changes and update active screen

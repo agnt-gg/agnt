@@ -122,15 +122,43 @@ class CustomOpenAIProviderService {
    */
   async getProviderCredentials(providerId, userId) {
     return new Promise((resolve, reject) => {
+      // First check if provider exists at all (for better error messages)
       db.get(
-        `SELECT * FROM custom_openai_providers 
+        `SELECT id, user_id, provider_name, is_active FROM custom_openai_providers WHERE id = ?`,
+        [providerId],
+        (err, providerCheck) => {
+          if (err) {
+            console.error('[CustomProvider] Error checking provider:', err);
+          } else if (providerCheck) {
+            console.log('[CustomProvider] Provider found:', {
+              id: providerCheck.id,
+              name: providerCheck.provider_name,
+              owner_user_id: providerCheck.user_id,
+              requested_user_id: userId,
+              is_active: providerCheck.is_active,
+              user_match: providerCheck.user_id === userId,
+            });
+          } else {
+            console.log('[CustomProvider] Provider does not exist in database:', providerId);
+          }
+        }
+      );
+
+      // Now get the actual credentials
+      db.get(
+        `SELECT * FROM custom_openai_providers
         WHERE id = ? AND user_id = ? AND is_active = 1`,
         [providerId, userId],
         (err, row) => {
           if (err) {
-            console.error('Error fetching provider credentials:', err);
+            console.error('[CustomProvider] Error fetching provider credentials:', err);
             reject(err);
           } else if (!row) {
+            console.warn('[CustomProvider] No credentials found for:', {
+              providerId,
+              userId,
+              reason: 'Either user_id mismatch, provider inactive, or provider does not exist',
+            });
             resolve(null);
           } else {
             try {
@@ -143,7 +171,7 @@ class CustomOpenAIProviderService {
                 api_key: decryptedApiKey,
               });
             } catch (decryptError) {
-              console.error('Error decrypting API key:', decryptError);
+              console.error('[CustomProvider] Error decrypting API key:', decryptError);
               reject(new Error('Failed to decrypt API key'));
             }
           }

@@ -24,10 +24,9 @@ out/
 *.tar.gz
 
 # Environment files
-# .env
-# .env.local
-# .env.production
-# backend/.env
+.env
+.env.local
+.env.production
 
 # Keep example env file
 !backend/.env.example
@@ -100,4 +99,4 @@ test-results/
 # MCP config (contains sensitive data)
 *mcp.json
 
-dup.js
+dup.jsPR_BODY.md

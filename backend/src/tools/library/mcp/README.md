@@ -122,7 +122,7 @@ const stdioServers = discovery.getServersByTransport('stdio');
 
 1. **Current directory**: `./mcp.json`
 2. **User config**:
-   - Linux: `~/.config/mcp/mcp.json`
+   - GNU/Linux: `~/.config/mcp/mcp.json`
    - macOS: `~/Library/Application Support/mcp/mcp.json`
    - Windows: `%APPDATA%/mcp/mcp.json`
 3. **VSCode workspace**: `./.vscode/mcp.json`

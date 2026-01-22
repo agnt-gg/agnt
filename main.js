@@ -38,9 +38,35 @@ process.env.FFMPEG_PATH = ffmpegPath;
 
 // Configure Puppeteer/Playwright to skip downloading browsers
 // We will rely on system-installed browsers (Chrome, Edge, etc.) detected at runtime
-// This prevents package conflicts on Linux and reduces bundle size
+// This prevents package conflicts on GNU/Linux and reduces bundle size
 process.env.PUPPETEER_SKIP_DOWNLOAD = 'true';
 process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1';
+
+// Detect if this is an AGNT Lite build
+// Lite builds have a marker file created during the build process
+const isLiteBuild = (() => {
+  if (process.env.AGNT_LITE_MODE === 'true') {
+    return true; // Explicitly set via environment variable
+  }
+
+  if (app.isPackaged) {
+    const resourcesPath = process.resourcesPath || path.join(__dirname, '..');
+    const liteMarkerPath = path.join(resourcesPath, '.agnt-lite-mode');
+
+    if (fs.existsSync(liteMarkerPath)) {
+      console.log('[Lite Mode] Detected AGNT Lite build');
+      return true;
+    }
+  }
+
+  return false;
+})();
+
+// Set AGNT_LITE_MODE environment variable for backend
+if (isLiteBuild) {
+  process.env.AGNT_LITE_MODE = 'true';
+  console.log('[Lite Mode] Browser automation features disabled');
+}
 
 let mainWindow;
 let backendProcess;
@@ -68,7 +94,7 @@ function getPlatformId() {
   } else if (platform === 'darwin') {
     return arch === 'arm64' ? 'mac-arm' : 'mac-intel';
   } else if (platform === 'linux') {
-    return 'linux-appimage'; // Default to AppImage for Linux
+    return 'linux-appimage'; // Default to AppImage for GNU/Linux
   }
   return 'win'; // Fallback
 }

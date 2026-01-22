@@ -67,7 +67,7 @@ The build process will:
 - `npm run build` - Build for current platform
 - `npm run build:win` - Build for Windows (x64 and ia32)
 - `npm run build:mac` - Build for macOS (x64 and arm64)
-- `npm run build:linux` - Build for Linux (x64)
+- `npm run build:linux` - Build for GNU/Linux (x64)
 - `npm run build:all` - Build for all platforms
 
 ## Troubleshooting

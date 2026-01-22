@@ -2,6 +2,7 @@ import WorkflowModel from '../models/WorkflowModel.js';
 import WebhookModel from '../models/WebhookModel.js';
 import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
 import generateUUID from '../utils/generateUUID.js';
+import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
 
 class WorkflowService {
   healthCheck(req, res) {
@@ -55,6 +56,14 @@ class WorkflowService {
         console.log('Workflow process not ready yet, skipping restart check');
       }
 
+      // Broadcast real-time update to all connected clients
+      broadcast(existingWorkflow ? RealtimeEvents.WORKFLOW_UPDATED : RealtimeEvents.WORKFLOW_CREATED, {
+        id: workflow.id,
+        name: workflow.name,
+        userId: userId,
+        timestamp: new Date().toISOString(),
+      });
+
       res.status(201).json({
         message: existingWorkflow ? 'Workflow updated' : 'New workflow created',
         workflowId: workflow.id,
@@ -68,6 +77,15 @@ class WorkflowService {
     try {
       const workflowData = JSON.stringify(req.body.workflow);
       const result = await WorkflowModel.update(req.params.id, workflowData, req.user.userId);
+
+      // Broadcast real-time update to all connected clients
+      broadcast(RealtimeEvents.WORKFLOW_UPDATED, {
+        id: req.params.id,
+        name: req.body.workflow.name,
+        userId: req.user.userId,
+        timestamp: new Date().toISOString(),
+      });
+
       res.json({
         message: result === 1 ? 'Workflow updated' : 'New workflow created',
         workflowId: req.params.id,
@@ -156,6 +174,13 @@ class WorkflowService {
 
       // Delete workflow from database
       await WorkflowModel.delete(req.params.id, req.user.userId);
+
+      // Broadcast real-time deletion to all connected clients
+      broadcast(RealtimeEvents.WORKFLOW_DELETED, {
+        id: req.params.id,
+        userId: req.user.userId,
+        timestamp: new Date().toISOString(),
+      });
 
       res.json({ message: `Workflow ${req.params.id} deleted successfully.` });
     } catch (error) {

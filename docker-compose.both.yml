@@ -1,0 +1,167 @@
+version: '3.8'
+
+# AGNT Both Versions - Run Full and Lite simultaneously
+# Full version on port 33333 (with Chromium ~1.5GB)
+# Lite version on port 3333 (without Chromium ~715MB)
+#
+# Usage:
+#   docker-compose -f docker-compose.both.yml up -d
+#   or
+#   make run-both
+#
+# ⚠️ PERMISSIONS: If you get "EACCES: permission denied" errors, run:
+#   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/logs/lite ~/.agnt/plugins/installed ~/.agnt/plugins/builds
+#   sudo chown -R 1000:1000 ~/.agnt
+
+services:
+  agnt-full:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/agnt-gg/agnt:latest
+    container_name: agnt-full
+    ports:
+      - "33333:3333"
+    environment:
+      # Application Environment
+      - NODE_ENV=production
+      - APP_PATH=/app
+
+      # URLs Configuration
+      - BASE_URL=http://localhost:33333
+      - REMOTE_URL=https://api.agnt.gg
+      - WEBHOOK_URL=http://localhost:3001
+      - FRONTEND_URL=http://localhost:33333
+
+      # Security Secrets (CHANGE THESE IN PRODUCTION!)
+      # Generate secure secrets with: openssl rand -base64 32
+      - JWT_SECRET=${JWT_SECRET:-CHANGE_ME_IN_PRODUCTION_FULL}
+      - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION_FULL}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION_FULL}
+
+      # Trust remote authentication (for semi-local mode)
+      # When enabled, JWT tokens from REMOTE_URL are accepted without local verification
+      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}
+
+      # Optional: License Key
+      # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
+
+      # SQLite WAL mode (multi-client support, ENABLED for shared database)
+      # Required when both full and lite containers access the same database
+      - SQLITE_WAL_MODE=true
+
+    volumes:
+      # SHARED SQLite database (both full and lite use the same database)
+      - ${AGNT_HOME:-~}/.agnt/data:/app/data
+
+      # SHARED plugin storage (both containers use same plugins)
+      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
+
+      # Separate logs for each container
+      - ${AGNT_HOME:-~}/.agnt/logs/full:/app/logs
+
+      # Optional: Custom environment file
+      # - ./backend/.env:/app/backend/.env:ro
+
+    restart: unless-stopped
+
+    # Allow container to access services on host machine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # Health check to ensure service is running
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 33s
+      timeout: 9s
+      retries: 3
+      start_period: 33s
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  agnt-lite:
+    build:
+      context: .
+      dockerfile: Dockerfile.lite
+    image: ghcr.io/agnt-gg/agnt:lite
+    container_name: agnt-lite
+    ports:
+      - "3333:3333"
+    environment:
+      # Application Environment
+      - NODE_ENV=production
+      - AGNT_LITE_MODE=true
+      - APP_PATH=/app
+
+      # URLs Configuration
+      - BASE_URL=http://localhost:3333
+      - REMOTE_URL=https://api.agnt.gg
+      - WEBHOOK_URL=http://localhost:3002
+      - FRONTEND_URL=http://localhost:3333
+
+      # Security Secrets (CHANGE THESE IN PRODUCTION!)
+      # Generate secure secrets with: openssl rand -base64 32
+      - JWT_SECRET=${JWT_SECRET:-CHANGE_ME_IN_PRODUCTION_LITE}
+      - SESSION_SECRET=${SESSION_SECRET:-CHANGE_ME_IN_PRODUCTION_LITE}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-CHANGE_ME_IN_PRODUCTION_LITE}
+
+      # Trust remote authentication (for semi-local mode)
+      # When enabled, JWT tokens from REMOTE_URL are accepted without local verification
+      - TRUST_REMOTE_AUTH=${TRUST_REMOTE_AUTH:-true}
+
+      # Optional: License Key
+      # - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
+
+      # SQLite WAL mode (multi-client support, ENABLED for shared database)
+      # Required when both full and lite containers access the same database
+      - SQLITE_WAL_MODE=true
+
+    volumes:
+      # SHARED SQLite database (both full and lite use the same database)
+      - ${AGNT_HOME:-~}/.agnt/data:/app/data
+
+      # SHARED plugin storage (both containers use same plugins)
+      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
+
+      # Separate logs for each container
+      - ${AGNT_HOME:-~}/.agnt/logs/lite:/app/logs
+
+      # Optional: Custom environment file
+      # - ./backend/.env:/app/backend/.env:ro
+
+    restart: unless-stopped
+
+    # Allow container to access services on host machine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # Health check to ensure service is running
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 33s
+      timeout: 9s
+      retries: 3
+      start_period: 33s
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+# No named volumes needed - using bind mounts to ~/.agnt/
+
+# Example network configuration for running with other services
+# networks:
+#   default:
+#     name: agnt-network

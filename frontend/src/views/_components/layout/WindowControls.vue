@@ -21,21 +21,18 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue';
+import { computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { useElectron, electronUtils } from '@/composables/useElectron';
 
 export default {
   name: 'WindowControls',
   setup() {
-    const isElectron = ref(false);
+    const { isElectron } = useElectron();
     const route = useRoute();
 
     const currentRouteName = computed(() => {
       return route.name || 'Unknown';
-    });
-
-    onMounted(() => {
-      isElectron.value = window.electron !== undefined;
     });
 
     return {
@@ -45,19 +42,13 @@ export default {
   },
   methods: {
     minimize() {
-      if (window.electron) {
-        window.electron.send('minimize-window');
-      }
+      electronUtils.window.minimize();
     },
     maximize() {
-      if (window.electron) {
-        window.electron.send('maximize-window');
-      }
+      electronUtils.window.maximize();
     },
     close() {
-      if (window.electron) {
-        window.electron.send('close-window');
-      }
+      electronUtils.window.close();
     },
   },
 };

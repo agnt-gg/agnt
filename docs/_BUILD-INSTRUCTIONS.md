@@ -19,7 +19,7 @@
 - Xcode Command Line Tools: `xcode-select --install`
 - For code signing (optional): Apple Developer account
 
-### Linux
+### GNU/Linux
 
 - Ubuntu 18.04+ / Debian 10+ / Fedora 30+ or equivalent
 - Additional dependencies:
@@ -125,7 +125,7 @@ export APPLE_ID=your@apple.id
 export APPLE_ID_PASSWORD=app-specific-password
 ```
 
-#### Linux
+#### GNU/Linux
 
 ```bash
 npm run build:linux
@@ -133,7 +133,7 @@ npm run build:linux
 
 Creates:
 
-- `dist/AGNT-0.3.1-linux-x64.AppImage` (Universal Linux)
+- `dist/AGNT-0.3.1-linux-x64.AppImage` (Universal GNU/Linux)
 - `dist/AGNT-0.3.1-linux-x64.deb` (Debian/Ubuntu)
 - `dist/AGNT-0.3.1-linux-x64.rpm` (Fedora/RHEL)
 
@@ -146,8 +146,67 @@ npm run build:all
 **Note:** Cross-platform building has limitations:
 
 - Windows → Can build for Windows only
-- macOS → Can build for macOS and Linux
-- Linux → Can build for Linux and Windows (with Wine)
+- macOS → Can build for macOS and GNU/Linux
+- GNU/Linux → Can build for GNU/Linux and Windows (with Wine)
+
+### Build Lite Mode (Smaller Installers)
+
+AGNT supports building **Lite variants** that exclude browser automation packages for ~50% smaller installers.
+
+**What's removed in Lite:**
+- ❌ Puppeteer/Playwright (~80-100MB)
+- ❌ Browser automation features
+- ❌ Web scraping tools
+
+**What still works:**
+- ✅ AI agents and workflows
+- ✅ All API integrations
+- ✅ Plugins, image processing, email automation
+
+**Build commands:**
+
+```bash
+# Build Lite for current platform
+npm run build:lite
+
+# Build Lite for specific platforms
+npm run build:lite:win      # Windows Lite
+npm run build:lite:mac      # macOS Lite (x64 + ARM64)
+npm run build:lite:linux    # GNU/Linux Lite
+
+# Build Lite for all platforms
+npm run build:lite:all
+
+# Build BOTH Full and Lite (recommended for distribution)
+npm run build:both          # Current platform
+npm run build:both:win      # Windows both
+npm run build:both:mac      # macOS both
+npm run build:both:linux    # GNU/Linux both
+```
+
+**Build outputs:**
+
+**Full:**
+- `dist/AGNT-0.3.7-win-x64.exe` (~150MB)
+- `dist/AGNT-0.3.7-mac-x64.dmg` (~200MB)
+- `dist/AGNT-0.3.7-linux-x64.AppImage` (~180MB)
+
+**Lite:**
+- `dist/AGNT-Lite-0.3.7-win-x64.exe` (~80MB)
+- `dist/AGNT-Lite-0.3.7-mac-x64.dmg` (~120MB)
+- `dist/AGNT-Lite-0.3.7-linux-x64.AppImage` (~100MB)
+
+**Using Makefile (recommended):**
+
+```bash
+make electron-build-both        # Current platform
+make electron-build-win-both    # Windows both
+make electron-build-mac-both    # macOS both
+make electron-build-linux-both  # GNU/Linux both
+make electron-build-all-both    # All platforms both
+```
+
+See [Electron Lite Mode Guide](ELECTRON_LITE_MODE.md) for complete details.
 
 ## Development Mode
 
@@ -195,7 +254,7 @@ npm run dev
   }
   ```
 
-### Build Fails on Linux
+### Build Fails on GNU/Linux
 
 - Install missing dependencies (see Prerequisites)
 - For AppImage issues: `sudo apt-get install -y fuse libfuse2`
@@ -234,7 +293,7 @@ npm run dev
 - For unsigned apps, users must right-click → Open first time
 - Consider notarization for better user experience
 
-### Linux
+### GNU/Linux
 
 - **AppImage**: Universal, no installation needed
   - Make executable: `chmod +x AGNT-*.AppImage`
@@ -261,7 +320,7 @@ product/desktop/
 └── _electron/           # Electron assets
     ├── icon.ico        # Windows icon
     ├── icon.icns       # macOS icon
-    ├── icon.png        # Linux icon
+    ├── icon.png        # GNU/Linux icon
     └── entitlements.mac.plist  # macOS entitlements
 ```
 

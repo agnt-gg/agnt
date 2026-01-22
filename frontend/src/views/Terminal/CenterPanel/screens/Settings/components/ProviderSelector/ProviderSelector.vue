@@ -309,10 +309,10 @@ export default {
       // Initialize CustomSelect components with current values
       updateCustomSelects();
 
-      // Poll for local server status every 30 seconds (reduced from 5)
+      // Poll for local server status every 60 seconds
       localServerCheckIntervalId = setInterval(() => {
         checkLocalServer();
-      }, 30000);
+      }, 60000);
     });
 
     onUnmounted(() => {

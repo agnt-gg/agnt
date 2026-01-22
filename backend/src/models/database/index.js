@@ -5,23 +5,55 @@ import WebhookModel from '../WebhookModel.js';
 
 // Get user data path - prioritize USER_DATA_PATH env var (set by Electron)
 const getUserDataPath = () => {
-  // Use USER_DATA_PATH from Electron if available (ASAR-compatible)
+  // 1. Docker: Use /app/data if it exists (mounted volume)
+  if (process.env.NODE_ENV === 'production' && fs.existsSync('/app/data')) {
+    console.log('Using Docker volume for database: /app/data');
+    return '/app/data';
+  }
+
+  // 2. Electron: Use USER_DATA_PATH env var (ASAR-compatible)
   if (process.env.USER_DATA_PATH) {
     const userPath = path.join(process.env.USER_DATA_PATH, 'Data');
     console.log('Using USER_DATA_PATH for database:', userPath);
     return userPath;
   }
 
-  // Fallback for development or when not running in Electron
-  const userPath =
-    process.platform === 'darwin'
-      ? path.join(process.env.HOME, 'Library', 'Application Support', 'AGNT', 'Data') // Mac: User's Library
-      : process.platform === 'win32'
-      ? path.join(process.env.APPDATA || process.env.USERPROFILE, 'AGNT', 'Data') // Windows: AppData
-      : path.join(process.env.HOME || '/tmp', '.config', 'AGNT', 'Data'); // Linux: .config
+  // 3. Development: Use ./data in project root
+  const devPath = path.resolve(process.cwd(), 'data');
+  if (process.env.NODE_ENV !== 'production' || process.cwd().includes('backend')) {
+    console.log('Using development data directory:', devPath);
+    return devPath;
+  }
 
-  console.log('Attempting to use directory:', userPath);
-  return userPath;
+  // 4. User home fallback (self-hosted, non-Docker)
+  // Unified path across all platforms for consistency and Hybrid Mode support
+  const newPath = path.join(process.env.HOME || process.env.USERPROFILE, '.agnt', 'data');
+
+  // Old platform-specific locations (for migration)
+  const oldPaths = {
+    darwin: path.join(process.env.HOME, 'Library', 'Application Support', 'AGNT', 'Data'),
+    win32: path.join(process.env.APPDATA || process.env.USERPROFILE, 'AGNT', 'Data'),
+    linux: path.join(process.env.HOME, '.config', 'AGNT', 'Data')
+  };
+
+  const oldPath = oldPaths[process.platform];
+
+  // Auto-migrate from old location if it exists and new location doesn't
+  if (oldPath && fs.existsSync(oldPath) && !fs.existsSync(newPath)) {
+    try {
+      console.log(`Migrating data from ${oldPath} to ${newPath}...`);
+      fs.mkdirSync(path.dirname(newPath), { recursive: true });
+      fs.cpSync(oldPath, newPath, { recursive: true });
+      console.log('✓ Data migration completed successfully');
+    } catch (error) {
+      console.error('Migration failed:', error);
+      console.log('Falling back to old location:', oldPath);
+      return oldPath;
+    }
+  }
+
+  console.log('Using user home directory for database:', newPath);
+  return newPath;
 };
 
 // Ensure database directory exists with error handling
@@ -60,14 +92,23 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('Database initialization error:', err);
   } else {
     console.log('Database successfully initialized at:', dbPath);
-    // Enable WAL mode for better concurrency
-    db.run('PRAGMA journal_mode = WAL', (err) => {
-      if (err) {
-        console.error('Failed to enable WAL mode:', err);
-      } else {
-        console.log('WAL mode enabled');
-      }
-    });
+
+    // WAL mode for better concurrency (optional, disabled by default)
+    // Enable with SQLITE_WAL_MODE=true environment variable
+    // WARNING: WAL mode may cause issues with single-user scenarios or networked filesystems
+    const enableWAL = process.env.SQLITE_WAL_MODE === 'true';
+    if (enableWAL) {
+      db.run('PRAGMA journal_mode = WAL', (err) => {
+        if (err) {
+          console.error('Failed to enable WAL mode:', err);
+        } else {
+          console.log('✓ WAL mode enabled (multi-client concurrency support)');
+        }
+      });
+    } else {
+      console.log('WAL mode disabled (default). Set SQLITE_WAL_MODE=true to enable multi-client support.');
+    }
+
     // Set busy timeout to 5 seconds to handle concurrent access
     db.run('PRAGMA busy_timeout = 5000', (err) => {
       if (err) {
