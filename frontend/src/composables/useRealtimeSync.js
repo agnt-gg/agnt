@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { io } from 'socket.io-client';
 import { API_CONFIG } from '../tt.config.js';
 import { useStore } from 'vuex';
@@ -6,6 +6,7 @@ import { useStore } from 'vuex';
 // Singleton socket instance
 let socket = null;
 const isConnected = ref(false);
+const isAuthenticated = ref(false);
 
 /**
  * Composable for real-time sync via Socket.IO
@@ -15,6 +16,19 @@ const isConnected = ref(false);
  */
 export function useRealtimeSync() {
   const store = useStore();
+
+  // Computed property to get current user ID
+  const userId = computed(() => store.state.userAuth?.user?.id);
+
+  /**
+   * Authenticate socket with user ID
+   */
+  const authenticate = () => {
+    if (socket && socket.connected && userId.value && !isAuthenticated.value) {
+      console.log('[Realtime] Authenticating with userId:', userId.value);
+      socket.emit('authenticate', { userId: userId.value });
+    }
+  };
 
   /**
    * Initialize Socket.IO connection
@@ -40,26 +54,26 @@ export function useRealtimeSync() {
     socket.on('connect', () => {
       console.log('[Realtime] Connected to server');
       isConnected.value = true;
+      isAuthenticated.value = false; // Reset on new connection
 
-      // Authenticate with user ID to join user-specific room
-      const userId = store.state.userAuth?.user?.id;
-      if (userId) {
-        console.log('[Realtime] Authenticating with userId:', userId);
-        socket.emit('authenticate', { userId });
-      }
+      // Try to authenticate if user is already available
+      authenticate();
     });
 
     socket.on('authenticated', (data) => {
       if (data.success) {
         console.log('[Realtime] Authenticated successfully for user:', data.userId);
+        isAuthenticated.value = true;
       } else {
         console.error('[Realtime] Authentication failed:', data.error);
+        isAuthenticated.value = false;
       }
     });
 
     socket.on('disconnect', () => {
       console.log('[Realtime] Disconnected from server');
       isConnected.value = false;
+      isAuthenticated.value = false;
     });
 
     socket.on('connect_error', (error) => {
@@ -191,6 +205,15 @@ export function useRealtimeSync() {
     }
   };
 
+  // Watch for user changes - authenticate when user becomes available
+  watch(userId, (newUserId, oldUserId) => {
+    if (newUserId && newUserId !== oldUserId) {
+      console.log('[Realtime] User changed, authenticating:', newUserId);
+      isAuthenticated.value = false; // Reset so we can re-authenticate
+      authenticate();
+    }
+  });
+
   onMounted(() => {
     connect();
   });
@@ -201,9 +224,11 @@ export function useRealtimeSync() {
 
   return {
     isConnected,
+    isAuthenticated,
     socket,
     connect,
     disconnect,
+    authenticate,
   };
 }
 
