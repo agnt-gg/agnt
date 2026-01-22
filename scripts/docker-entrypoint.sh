@@ -7,7 +7,7 @@
 if [ "$(id -u)" = "0" ]; then
     echo "Fixing permissions on mounted volumes..."
     
-    # Fix /app/data directory (database and logs)
+    # Fix /app/data directory (USER_DATA_PATH - database, plugins, and registry)
     if [ -d "/app/data" ]; then
         chown -R node:node /app/data 2>/dev/null || true
     fi
@@ -17,17 +17,13 @@ if [ "$(id -u)" = "0" ]; then
         chown -R node:node /app/logs 2>/dev/null || true
     fi
     
-    # Fix plugin directories
-    if [ -d "/app/backend/plugins/installed" ]; then
-        chown -R node:node /app/backend/plugins/installed 2>/dev/null || true
-    fi
-    if [ -d "/app/backend/plugins/plugin-builds" ]; then
-        chown -R node:node /app/backend/plugins/plugin-builds 2>/dev/null || true
-    fi
-    
-    # Create _logs subdirectory if it doesn't exist
+    # Create required subdirectories in /app/data (USER_DATA_PATH)
+    # These are where PluginManager and PluginInstaller look for plugins
     mkdir -p /app/data/_logs 2>/dev/null || true
-    chown -R node:node /app/data/_logs 2>/dev/null || true
+    mkdir -p /app/data/plugins/installed 2>/dev/null || true
+    mkdir -p /app/data/plugins/.temp 2>/dev/null || true
+    mkdir -p /app/data/Data 2>/dev/null || true
+    chown -R node:node /app/data 2>/dev/null || true
     
     echo "Permissions fixed. Starting as node user..."
     

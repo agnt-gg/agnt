@@ -26,6 +26,7 @@ services:
       # Application Environment
       - NODE_ENV=production
       - APP_PATH=/app
+      - USER_DATA_PATH=/app/data
 
       # URLs Configuration
       - BASE_URL=http://localhost:33333
@@ -51,12 +52,9 @@ services:
       - SQLITE_WAL_MODE=true
 
     volumes:
-      # SHARED SQLite database (both full and lite use the same database)
+      # SHARED SQLite database and user data (both full and lite use the same)
+      # USER_DATA_PATH=/app/data - plugins, database, and registry are stored here
       - ${AGNT_HOME:-~}/.agnt/data:/app/data
-
-      # SHARED plugin storage (both containers use same plugins)
-      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
-      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
       # Separate logs for each container
       - ${AGNT_HOME:-~}/.agnt/logs/full:/app/logs
@@ -99,6 +97,7 @@ services:
       - NODE_ENV=production
       - AGNT_LITE_MODE=true
       - APP_PATH=/app
+      - USER_DATA_PATH=/app/data
 
       # URLs Configuration
       - BASE_URL=http://localhost:3333
@@ -124,12 +123,9 @@ services:
       - SQLITE_WAL_MODE=true
 
     volumes:
-      # SHARED SQLite database (both full and lite use the same database)
+      # SHARED SQLite database and user data (both full and lite use the same)
+      # USER_DATA_PATH=/app/data - plugins, database, and registry are stored here
       - ${AGNT_HOME:-~}/.agnt/data:/app/data
-
-      # SHARED plugin storage (both containers use same plugins)
-      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
-      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
       # Separate logs for each container
       - ${AGNT_HOME:-~}/.agnt/logs/lite:/app/logs

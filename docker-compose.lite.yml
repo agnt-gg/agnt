@@ -30,6 +30,7 @@ services:
       - NODE_ENV=production
       - AGNT_LITE_MODE=true
       - APP_PATH=/app
+      - USER_DATA_PATH=/app/data
 
       # URLs Configuration
       - BASE_URL=http://localhost:3333
@@ -55,12 +56,9 @@ services:
       - SQLITE_WAL_MODE=true
 
     volumes:
-      # SQLite database (persistent across restarts)
+      # SQLite database and user data (persistent across restarts)
+      # USER_DATA_PATH=/app/data - plugins, database, and registry are stored here
       - ${AGNT_HOME:-~}/.agnt/data:/app/data
-
-      # Plugin storage
-      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
-      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
       # Application logs
       - ${AGNT_HOME:-~}/.agnt/logs/lite:/app/logs
