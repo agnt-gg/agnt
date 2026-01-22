@@ -42,6 +42,15 @@ export default {
   mutations: {
     SET_SELECTED_PROVIDER(state, newProvider) {
       state.selectedProvider = newProvider;
+
+      // Handle null provider - clear from localStorage
+      if (!newProvider) {
+        localStorage.removeItem('selectedProvider');
+        state.selectedModel = null;
+        localStorage.removeItem('selectedModel');
+        return;
+      }
+
       localStorage.setItem('selectedProvider', newProvider); // Save to local storage
 
       // Always reset the model when switching providers
@@ -59,6 +68,13 @@ export default {
     },
     SET_SELECTED_MODEL(state, newModel) {
       state.selectedModel = newModel;
+
+      // Handle null model - clear from localStorage
+      if (!newModel) {
+        localStorage.removeItem('selectedModel');
+        return;
+      }
+
       localStorage.setItem('selectedModel', newModel); // Save to local storage
     },
     ENSURE_VALID_MODEL(state) {
@@ -483,7 +499,7 @@ export default {
     },
 
     // Custom provider management actions
-    async fetchCustomProviders({ commit }) {
+    async fetchCustomProviders({ commit, state }) {
       try {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -501,8 +517,24 @@ export default {
         }
 
         const data = await response.json();
-        commit('SET_CUSTOM_PROVIDERS', data.providers || []);
-        return data.providers;
+        const providers = data.providers || [];
+        commit('SET_CUSTOM_PROVIDERS', providers);
+
+        // CRITICAL: Validate that the currently selected provider still exists
+        // This handles the case where localStorage has a custom provider ID
+        // but we haven't fetched the custom providers yet (e.g., after hard refresh)
+        if (state.selectedProvider) {
+          const isBuiltIn = state.providers.includes(state.selectedProvider);
+          const isCustom = providers.some((p) => p.id === state.selectedProvider);
+
+          if (!isBuiltIn && !isCustom) {
+            console.warn(`Selected provider ${state.selectedProvider} no longer exists, clearing selection`);
+            commit('SET_SELECTED_PROVIDER', null);
+            commit('SET_SELECTED_MODEL', null);
+          }
+        }
+
+        return providers;
       } catch (error) {
         console.error('Error fetching custom providers:', error);
         return [];
