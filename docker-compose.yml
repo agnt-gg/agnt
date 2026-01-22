@@ -31,6 +31,7 @@ services:
     environment:
       # Application Environment
       - NODE_ENV=production
+      - APP_PATH=/app
 
       # URLs Configuration
       - BASE_URL=http://localhost:33333
@@ -57,14 +58,14 @@ services:
 
     volumes:
       # SQLite database (persistent across restarts)
-      - ${AGNT_HOME}/.agnt/data:/app/data
+      - ${AGNT_HOME:-~}/.agnt/data:/app/data
 
       # Plugin storage
-      - ${AGNT_HOME}/.agnt/plugins/installed:/app/backend/plugins/installed
-      - ${AGNT_HOME}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
+      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
       # Application logs
-      - ${AGNT_HOME}/.agnt/logs/full:/app/logs
+      - ${AGNT_HOME:-~}/.agnt/logs/full:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro

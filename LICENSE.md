@@ -55,9 +55,9 @@ You **MAY NOT**:
 
 To use AGNT for:
 
-- **Client projects or freelance work:** Upgrade to Personal Pro License ($99)
-- **Multi-client hosting or agencies:** Upgrade to Business Pro License ($999)
-- **Enterprise deployments:** Contact us for Enterprise License (starting at $25,000/year)
+- **Client projects or freelance work:** Upgrade to Personal Pro License ($333)
+- **Multi-client hosting or agencies:** Upgrade to Business Pro License ($3,333)
+- **Enterprise deployments:** Contact us for Enterprise License (starting at $33,000/year)
 
 ---
 
