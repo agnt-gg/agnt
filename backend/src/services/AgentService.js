@@ -3,7 +3,7 @@ import UserModel from '../models/UserModel.js';
 import generateUUID from '../utils/generateUUID.js';
 import openai from '../services/ai/providers/OpenAI.js';
 import universalChatHandler from './OrchestratorService.js';
-import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
+import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import {
   CRITICAL_IMAGE_HANDLING,
   CRITICAL_IMAGE_GENERATION,
@@ -86,8 +86,8 @@ class AgentService {
 
       const result = await AgentModel.createOrUpdate(agent.id, agent, userId);
 
-      // Broadcast real-time update to all connected clients
-      broadcast(isNewAgent ? RealtimeEvents.AGENT_CREATED : RealtimeEvents.AGENT_UPDATED, {
+      // Broadcast real-time update to user's connected clients (all tabs)
+      broadcastToUser(userId, isNewAgent ? RealtimeEvents.AGENT_CREATED : RealtimeEvents.AGENT_UPDATED, {
         id: agent.id,
         name: agent.name,
         status: agent.status,
@@ -175,8 +175,8 @@ class AgentService {
         return res.status(404).json({ error: 'Agent not found' });
       }
 
-      // Broadcast real-time deletion to all connected clients
-      broadcast(RealtimeEvents.AGENT_DELETED, {
+      // Broadcast real-time deletion to user's connected clients (all tabs)
+      broadcastToUser(userId, RealtimeEvents.AGENT_DELETED, {
         id: id,
         userId: userId,
         timestamp: new Date().toISOString(),

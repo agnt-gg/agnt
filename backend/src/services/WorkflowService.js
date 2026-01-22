@@ -2,7 +2,7 @@ import WorkflowModel from '../models/WorkflowModel.js';
 import WebhookModel from '../models/WebhookModel.js';
 import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
 import generateUUID from '../utils/generateUUID.js';
-import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
+import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 
 class WorkflowService {
   healthCheck(req, res) {
@@ -56,8 +56,8 @@ class WorkflowService {
         console.log('Workflow process not ready yet, skipping restart check');
       }
 
-      // Broadcast real-time update to all connected clients
-      broadcast(existingWorkflow ? RealtimeEvents.WORKFLOW_UPDATED : RealtimeEvents.WORKFLOW_CREATED, {
+      // Broadcast real-time update to user's connected clients (all tabs)
+      broadcastToUser(userId, existingWorkflow ? RealtimeEvents.WORKFLOW_UPDATED : RealtimeEvents.WORKFLOW_CREATED, {
         id: workflow.id,
         name: workflow.name,
         userId: userId,
@@ -78,8 +78,8 @@ class WorkflowService {
       const workflowData = JSON.stringify(req.body.workflow);
       const result = await WorkflowModel.update(req.params.id, workflowData, req.user.userId);
 
-      // Broadcast real-time update to all connected clients
-      broadcast(RealtimeEvents.WORKFLOW_UPDATED, {
+      // Broadcast real-time update to user's connected clients (all tabs)
+      broadcastToUser(req.user.userId, RealtimeEvents.WORKFLOW_UPDATED, {
         id: req.params.id,
         name: req.body.workflow.name,
         userId: req.user.userId,
@@ -175,8 +175,8 @@ class WorkflowService {
       // Delete workflow from database
       await WorkflowModel.delete(req.params.id, req.user.userId);
 
-      // Broadcast real-time deletion to all connected clients
-      broadcast(RealtimeEvents.WORKFLOW_DELETED, {
+      // Broadcast real-time deletion to user's connected clients (all tabs)
+      broadcastToUser(req.user.userId, RealtimeEvents.WORKFLOW_DELETED, {
         id: req.params.id,
         userId: req.user.userId,
         timestamp: new Date().toISOString(),
