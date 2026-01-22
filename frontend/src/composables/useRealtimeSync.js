@@ -112,6 +112,22 @@ export function useRealtimeSync() {
       console.log('[Realtime] Execution failed:', data);
     });
 
+    // Content output events (saved outputs / chat history)
+    socket.on('content:created', (data) => {
+      console.log('[Realtime] Content output created:', data);
+      store.dispatch('contentOutputs/refreshOutputs');
+    });
+
+    socket.on('content:updated', (data) => {
+      console.log('[Realtime] Content output updated:', data);
+      store.dispatch('contentOutputs/refreshOutputs');
+    });
+
+    socket.on('content:deleted', (data) => {
+      console.log('[Realtime] Content output deleted:', data);
+      store.dispatch('contentOutputs/refreshOutputs');
+    });
+
     // Chat events (real-time message sync across tabs)
     socket.on('chat:user_message', (data) => {
       console.log('[Realtime] User message from another tab:', data);

@@ -2,6 +2,7 @@ import ContentOutputModel from '../models/ContentOutputModel.js';
 import ExecutionModel from '../models/ExecutionModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import generateUUID from '../utils/generateUUID.js';
+import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 
 class RunService {
   // Health check method
@@ -84,6 +85,15 @@ class RunService {
         title || null
       );
 
+      // Broadcast real-time update to user's connected clients (all tabs)
+      broadcastToUser(userId, isNewOutput ? RealtimeEvents.CONTENT_CREATED : RealtimeEvents.CONTENT_UPDATED, {
+        id: outputId,
+        title: title,
+        contentType: contentType || 'html',
+        userId: userId,
+        timestamp: new Date().toISOString(),
+      });
+
       res.json({
         message: isNewOutput ? 'New content output created' : 'Content output updated',
         id: outputId,
@@ -123,6 +133,14 @@ class RunService {
       if (result === 0) {
         return res.status(404).json({ error: 'Content output not found' });
       }
+
+      // Broadcast real-time deletion to user's connected clients (all tabs)
+      broadcastToUser(userId, RealtimeEvents.CONTENT_DELETED, {
+        id: id,
+        userId: userId,
+        timestamp: new Date().toISOString(),
+      });
+
       res.json({ message: `Content output ${id} deleted successfully.` });
     } catch (error) {
       console.error('Error deleting content output:', error);
