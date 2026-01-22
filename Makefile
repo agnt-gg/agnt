@@ -8,8 +8,7 @@ IMAGE_NAME := agnt
 FULL_IMAGE := ghcr.io/$(GITHUB_ORG)/$(IMAGE_NAME)
 LITE_IMAGE := ghcr.io/$(GITHUB_ORG)/$(IMAGE_NAME)
 
-# Data directory - use absolute path to avoid Docker snap issues
-# HOME is a standard Make variable that resolves correctly
+# Data directory - $(HOME) is inherited from shell environment
 AGNT_DATA_HOME := $(HOME)
 
 # Image tags
