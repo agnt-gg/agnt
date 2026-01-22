@@ -9,11 +9,6 @@ version: '3.8'
 #   or
 #   make run-both
 #
-# ⚠️ DOCKER SNAP USERS: If using Docker installed via snap, you MUST set AGNT_HOME:
-#   export AGNT_HOME=$HOME  # or use absolute path like /home/username
-#   AGNT_HOME=$HOME docker-compose -f docker-compose.both.yml up -d
-#   The ~ shortcut doesn't work correctly with Docker snap (resolves to ~/snap/docker/...)
-#
 # ⚠️ PERMISSIONS: If you get "EACCES: permission denied" errors, run:
 #   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/logs/lite ~/.agnt/plugins/installed ~/.agnt/plugins/builds
 #   sudo chown -R 1000:1000 ~/.agnt
@@ -59,10 +54,10 @@ services:
     volumes:
       # SHARED SQLite database and user data (both full and lite use the same)
       # USER_DATA_PATH=/app/data - plugins, database, and registry are stored here
-      - ${AGNT_HOME:-~}/.agnt/data:/app/data
+      - ${AGNT_HOME:-$HOME}/.agnt/data:/app/data
 
       # Separate logs for each container
-      - ${AGNT_HOME:-~}/.agnt/logs/full:/app/logs
+      - ${AGNT_HOME:-$HOME}/.agnt/logs/full:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
@@ -130,10 +125,10 @@ services:
     volumes:
       # SHARED SQLite database and user data (both full and lite use the same)
       # USER_DATA_PATH=/app/data - plugins, database, and registry are stored here
-      - ${AGNT_HOME:-~}/.agnt/data:/app/data
+      - ${AGNT_HOME:-$HOME}/.agnt/data:/app/data
 
       # Separate logs for each container
-      - ${AGNT_HOME:-~}/.agnt/logs/lite:/app/logs
+      - ${AGNT_HOME:-$HOME}/.agnt/logs/lite:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
