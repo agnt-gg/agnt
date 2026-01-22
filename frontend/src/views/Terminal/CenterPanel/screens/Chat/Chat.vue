@@ -1187,6 +1187,23 @@ export default {
       }
     );
 
+    // Watch for remote streaming to show "Annie is thinking..." in message bubble
+    watch(
+      () => store.state.chat.isRemoteStreaming,
+      (remoteStreaming) => {
+        if (remoteStreaming) {
+          // Find the last assistant message (the one being streamed from other tab)
+          const lastAssistantMsg = [...displayMessages.value].reverse().find(m => m.role === 'assistant');
+          if (lastAssistantMsg) {
+            messageStates.value[lastAssistantMsg.id] = {
+              type: 'thinking',
+              text: 'Annie is thinking...',
+            };
+          }
+        }
+      }
+    );
+
     // Sync conversation ID from store
     watch(
       () => store.state.chat.currentConversationId,
