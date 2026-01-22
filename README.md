@@ -53,6 +53,16 @@
 
 ---
 
+## ⭐ Star History
+
+<p align="center">
+  <a href="https://star-history.com/#agnt-gg/agnt&Date">
+    <img src="https://api.star-history.com/svg?repos=agnt-gg/agnt&type=Date" alt="Star History Chart" width="600">
+  </a>
+</p>
+
+---
+
 ## 👥 Who Is This For?
 
 **AGNT is local-first and designed for:**
@@ -663,16 +673,6 @@ We welcome contributions! Here's how you can help:
 - Write tests for new features
 - Update documentation as needed
 - Keep commits atomic and well-described
-
----
-
-## ⭐ Star History
-
-<p align="center">
-  <a href="https://star-history.com/#agnt-gg/agnt&Date">
-    <img src="https://api.star-history.com/svg?repos=agnt-gg/agnt&type=Date" alt="Star History Chart" width="600">
-  </a>
-</p>
 
 ---
 
