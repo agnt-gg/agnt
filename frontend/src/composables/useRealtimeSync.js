@@ -140,6 +140,13 @@ export function useRealtimeSync() {
     socket.on('content:deleted', (data) => {
       console.log('[Realtime] Content output deleted:', data);
       store.dispatch('contentOutputs/refreshOutputs');
+
+      // If the deleted content is the current chat conversation, reset the chat
+      const currentSavedOutputId = store.state.chat?.savedOutputId;
+      if (currentSavedOutputId && data.id === currentSavedOutputId) {
+        console.log('[Realtime] Current conversation was deleted, resetting chat');
+        store.commit('chat/RESET_CHAT');
+      }
     });
 
     // Chat events (real-time message sync across tabs)
