@@ -252,6 +252,7 @@ docker run -d \
 ```
 
 **Available tags:**
+
 - `latest` / `full` - Latest Full variant with browser automation
 - `lite` - Latest Lite variant without browser automation
 - `v0.3.7` / `v0.3.7-full` - Specific version (Full)
@@ -281,12 +282,46 @@ docker-compose -f docker-compose.both.yml up -d
 make run-both
 ```
 
+#### Environment Configuration
+
+Before running Docker, set up your environment file:
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+```
+
+**Required variables for Docker:**
+
+```env
+# Docker data directory (where persistent data is stored)
+# On Windows: C:\Users\YourUsername
+# On Linux/Mac: /home/youruser or ~
+AGNT_HOME=~
+
+# App path for plugins (required for Docker)
+APP_PATH=/app
+```
+
+**Security secrets (change in production):**
+
+```env
+# Generate with: openssl rand -base64 32
+JWT_SECRET=your-random-jwt-secret
+SESSION_SECRET=your-random-session-secret
+ENCRYPTION_KEY=your-random-encryption-key
+```
+
+See `.env.example` for all available configuration options including AI provider API keys, OAuth settings, and plugin configuration.
+
 **Docker variants available:**
+
 - 🔋 **Full** (~1.5GB): Includes Chromium for web scraping & browser automation (Port **33333**)
 - 🪶 **Lite** (~715MB): Smaller image without browser features, ~52% smaller (Port **3333**)
 - 🚀 **Both**: Run full and lite versions side-by-side for testing
 
 **Desktop installers available:**
+
 - 💻 **Electron Full** (~150-200MB): Portable desktop app with browser automation
 - 📦 **Electron Lite** (~80-120MB): Lightweight desktop app, ~50% smaller
 
@@ -414,11 +449,13 @@ npm run build:both:linux
 ```
 
 **Lite Mode removes:**
+
 - ❌ Puppeteer/Playwright browser automation
 - ❌ Web scraping tools
 - ❌ Screenshot capture via browser
 
 **Everything else works:**
+
 - ✅ AI agents and workflows
 - ✅ All API integrations
 - ✅ Plugins, image processing, email automation
@@ -429,11 +466,11 @@ Build outputs are saved to the `dist/` directory:
 
 ### Build Artifacts
 
-| Platform | Full | Lite | Size Reduction |
-| -------- | ---- | ---- | -------------- |
-| Windows | AGNT-0.3.7-win-x64.exe (~150MB) | AGNT-Lite-0.3.7-win-x64.exe (~80MB) | ~47% |
-| macOS | AGNT-0.3.7-mac-x64.dmg (~200MB) | AGNT-Lite-0.3.7-mac-x64.dmg (~120MB) | ~40% |
-| GNU/Linux | AppImage (~180MB), DEB, RPM | AppImage (~100MB), DEB, RPM | ~44% |
+| Platform  | Full                            | Lite                                 | Size Reduction |
+| --------- | ------------------------------- | ------------------------------------ | -------------- |
+| Windows   | AGNT-0.3.7-win-x64.exe (~150MB) | AGNT-Lite-0.3.7-win-x64.exe (~80MB)  | ~47%           |
+| macOS     | AGNT-0.3.7-mac-x64.dmg (~200MB) | AGNT-Lite-0.3.7-mac-x64.dmg (~120MB) | ~40%           |
+| GNU/Linux | AppImage (~180MB), DEB, RPM     | AppImage (~100MB), DEB, RPM          | ~44%           |
 
 ---
 
@@ -562,17 +599,17 @@ See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md) for more details.
 
 ## 📖 Documentation
 
-| Document                                                  | Description                        |
-| --------------------------------------------------------- | ---------------------------------- |
-| [📚 API Documentation](docs/_API-DOCUMENTATION.md)        | Complete REST API reference        |
-| [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)      | Detailed build guide               |
-| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup               |
-| [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)             | Docker deployment & hosting        |
-| [🪶 Docker Lite Mode](docs/LITE_MODE.md)                  | Docker without browser automation  |
-| [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)       | Smaller desktop builds (~50% size) |
-| [🔌 Plugin Development](backend/plugins/README.md)        | Creating custom plugins            |
-| [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)         | Native module rebuilding           |
-| [🚀 CI/CD Pipelines](docs/CI_CD.md)                       | GitHub Actions workflows           |
+| Document                                                      | Description                        |
+| ------------------------------------------------------------- | ---------------------------------- |
+| [📚 API Documentation](docs/_API-DOCUMENTATION.md)            | Complete REST API reference        |
+| [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)          | Detailed build guide               |
+| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup           |
+| [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                 | Docker deployment & hosting        |
+| [🪶 Docker Lite Mode](docs/LITE_MODE.md)                      | Docker without browser automation  |
+| [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)           | Smaller desktop builds (~50% size) |
+| [🔌 Plugin Development](backend/plugins/README.md)            | Creating custom plugins            |
+| [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)             | Native module rebuilding           |
+| [🚀 CI/CD Pipelines](docs/CI_CD.md)                           | GitHub Actions workflows           |
 
 ---
 
