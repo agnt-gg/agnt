@@ -296,11 +296,18 @@ All outputs saved to `dist/` (gitignored).
 AGNT can run in Docker for server deployments:
 
 ```bash
-# Start with Docker Compose
-docker-compose up -d
+# Start with Docker Compose (use absolute path for AGNT_HOME)
+AGNT_HOME=/home/youruser docker-compose up -d
 
 # Access at http://localhost:3333
 ```
+
+**Data Directory:** `~/.agnt/data/`
+- SQLite database: `~/.agnt/data/agnt.db`
+- Plugins: `~/.agnt/data/plugins/`
+- Logs: `~/.agnt/logs/`
+
+**Important:** When using Docker snap, use absolute paths for `AGNT_HOME` (e.g., `/home/username`) instead of `$HOME` to avoid snap's home directory isolation.
 
 See `docs/SELF_HOSTING.md` for complete Docker setup, networking, and configuration.
 
