@@ -8,6 +8,10 @@ IMAGE_NAME := agnt
 FULL_IMAGE := ghcr.io/$(GITHUB_ORG)/$(IMAGE_NAME)
 LITE_IMAGE := ghcr.io/$(GITHUB_ORG)/$(IMAGE_NAME)
 
+# Data directory - use absolute path to avoid Docker snap issues
+# HOME is a standard Make variable that resolves correctly
+AGNT_DATA_HOME := $(HOME)
+
 # Image tags
 FULL_TAG_LATEST := $(FULL_IMAGE):latest
 FULL_TAG_VERSION := $(FULL_IMAGE):$(VERSION)
@@ -170,14 +174,14 @@ push-all: push-full push-lite ## Push both full and lite images to DockerHub
 .PHONY: run-full
 run-full: setup-dirs ## Run full image with docker-compose
 	@echo "$(BLUE)Starting AGNT (full version)...$(NC)"
-	AGNT_HOME=$(shell echo ~) docker-compose up -d
+	AGNT_HOME=$(AGNT_DATA_HOME) docker-compose up -d
 	@echo "$(GREEN)✓ AGNT Full is running at http://localhost:33333$(NC)"
 	@echo "$(YELLOW)View logs: make logs-full$(NC)"
 
 .PHONY: run-lite
 run-lite: setup-dirs ## Run lite image with docker-compose
 	@echo "$(BLUE)Starting AGNT (lite version)...$(NC)"
-	AGNT_HOME=$(shell echo ~) docker-compose -f docker-compose.lite.yml up -d
+	AGNT_HOME=$(AGNT_DATA_HOME) docker-compose -f docker-compose.lite.yml up -d
 	@echo "$(GREEN)✓ AGNT Lite is running at http://localhost:3333$(NC)"
 	@echo "$(YELLOW)View logs: make logs-lite$(NC)"
 
@@ -188,33 +192,33 @@ run-full-local: build-full run-full ## Build and run full image locally
 run-lite-local: build-lite run-lite ## Build and run lite image locally
 
 .PHONY: run-full-remote
-run-full-remote: pull-full ## Pull and run full image from DockerHub
+run-full-remote: pull-full setup-dirs ## Pull and run full image from DockerHub
 	@echo "$(BLUE)Starting AGNT (full version from DockerHub)...$(NC)"
-	docker-compose up -d
+	AGNT_HOME=$(AGNT_DATA_HOME) docker-compose up -d
 	@echo "$(GREEN)✓ AGNT Full is running at http://localhost:33333$(NC)"
 
 .PHONY: run-lite-remote
-run-lite-remote: pull-lite ## Pull and run lite image from DockerHub
+run-lite-remote: pull-lite setup-dirs ## Pull and run lite image from DockerHub
 	@echo "$(BLUE)Starting AGNT (lite version from DockerHub)...$(NC)"
-	docker-compose -f docker-compose.lite.yml up -d
+	AGNT_HOME=$(AGNT_DATA_HOME) docker-compose -f docker-compose.lite.yml up -d
 	@echo "$(GREEN)✓ AGNT Lite is running at http://localhost:3333$(NC)"
 
 .PHONY: setup-dirs
 setup-dirs: ## Create ~/.agnt directory structure for persistent data
 	@echo "$(BLUE)Setting up ~/.agnt directory structure...$(NC)"
-	@mkdir -p $(shell echo ~)/.agnt/data \
-		$(shell echo ~)/.agnt/plugins/installed \
-		$(shell echo ~)/.agnt/plugins/builds \
-		$(shell echo ~)/.agnt/logs/full \
-		$(shell echo ~)/.agnt/logs/lite
-	@chmod -R 777 $(shell echo ~)/.agnt
+	@mkdir -p $(AGNT_DATA_HOME)/.agnt/data \
+		$(AGNT_DATA_HOME)/.agnt/plugins/installed \
+		$(AGNT_DATA_HOME)/.agnt/plugins/builds \
+		$(AGNT_DATA_HOME)/.agnt/logs/full \
+		$(AGNT_DATA_HOME)/.agnt/logs/lite
+	@chmod -R 777 $(AGNT_DATA_HOME)/.agnt
 	@echo "$(GREEN)✓ Directory structure created at ~/.agnt$(NC)"
-	@echo "$(YELLOW)  Data will be stored in $(shell echo ~)/.agnt/data/ (SHARED between full and lite)$(NC)"
+	@echo "$(YELLOW)  Data will be stored in $(AGNT_DATA_HOME)/.agnt/data/ (SHARED between full and lite)$(NC)"
 
 .PHONY: run-both
 run-both: setup-dirs ## Run both full (port 33333) and lite (port 3333) simultaneously
 	@echo "$(BLUE)Starting both AGNT versions...$(NC)"
-	AGNT_HOME=$(shell echo ~) docker-compose -f docker-compose.both.yml up -d
+	AGNT_HOME=$(AGNT_DATA_HOME) docker-compose -f docker-compose.both.yml up -d
 	@echo "$(GREEN)✓ AGNT Full is running at http://localhost:33333$(NC)"
 	@echo "$(GREEN)✓ AGNT Lite is running at http://localhost:3333$(NC)"
 
@@ -234,7 +238,7 @@ stop-both: ## Stop both containers and checkpoint WAL database
 	@docker exec agnt-full sqlite3 /app/data/agnt.db "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
 	@echo "$(GREEN)✓ WAL checkpointed and collapsed to single file$(NC)"
 	@echo "$(YELLOW)Stopping both AGNT containers...$(NC)"
-	AGNT_HOME=$(shell echo ~) docker-compose -f docker-compose.both.yml down
+	AGNT_HOME=$(AGNT_DATA_HOME) docker-compose -f docker-compose.both.yml down
 	@echo "$(GREEN)✓ Both containers stopped$(NC)"
 
 # ============================================================================
@@ -246,9 +250,9 @@ stop: ## Stop all running containers
 	@echo "$(YELLOW)Checkpointing WAL database (if running)...$(NC)"
 	@docker exec agnt-full sqlite3 /app/data/agnt.db "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
 	@echo "$(YELLOW)Stopping AGNT containers...$(NC)"
-	-docker-compose down 2>/dev/null
-	-docker-compose -f docker-compose.lite.yml down 2>/dev/null
-	-AGNT_HOME=$(shell echo ~) docker-compose -f docker-compose.both.yml down 2>/dev/null
+	-AGNT_HOME=$(AGNT_DATA_HOME) docker-compose down 2>/dev/null
+	-AGNT_HOME=$(AGNT_DATA_HOME) docker-compose -f docker-compose.lite.yml down 2>/dev/null
+	-AGNT_HOME=$(AGNT_DATA_HOME) docker-compose -f docker-compose.both.yml down 2>/dev/null
 	@echo "$(GREEN)✓ Containers stopped$(NC)"
 
 .PHONY: restart-full
@@ -297,9 +301,9 @@ clean-volumes: ## Remove all persistent volumes (WARNING: destroys data!)
 	@echo "$(RED)WARNING: This will delete all AGNT data, plugins, and logs!$(NC)"
 	@echo "$(YELLOW)Press Ctrl+C to cancel, or Enter to continue...$(NC)"
 	@read -r
-	-docker-compose down -v 2>/dev/null
-	-docker-compose -f docker-compose.lite.yml down -v 2>/dev/null
-	-docker-compose -f docker-compose.both.yml down -v 2>/dev/null
+	-AGNT_HOME=$(AGNT_DATA_HOME) docker-compose down -v 2>/dev/null
+	-AGNT_HOME=$(AGNT_DATA_HOME) docker-compose -f docker-compose.lite.yml down -v 2>/dev/null
+	-AGNT_HOME=$(AGNT_DATA_HOME) docker-compose -f docker-compose.both.yml down -v 2>/dev/null
 	@echo "$(GREEN)✓ Volumes removed$(NC)"
 
 .PHONY: prune
