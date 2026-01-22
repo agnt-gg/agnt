@@ -1165,9 +1165,10 @@ export default {
       { immediate: true }
     );
 
-    // Watch store's isStreaming state to update local processing state
+    // Watch store's streaming states to update local processing state
+    // Includes both local streaming (this tab) and remote streaming (other tabs)
     watch(
-      () => store.state.chat.isStreaming,
+      () => store.state.chat.isStreaming || store.state.chat.isRemoteStreaming,
       (streaming) => {
         isProcessing.value = streaming;
 
@@ -1194,6 +1195,22 @@ export default {
           currentConversationId.value = newId;
         }
       }
+    );
+
+    // Auto-scroll to bottom when new messages arrive (if user is already near bottom)
+    watch(
+      displayMessages,
+      () => {
+        if (!conversationSpace.value) return;
+
+        const el = conversationSpace.value;
+        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+
+        if (isNearBottom) {
+          nextTick(() => scrollToBottom());
+        }
+      },
+      { deep: true }
     );
 
     return {

@@ -627,6 +627,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Send initial assistant message
     sendEvent('assistant_message', {
       id: assistantMessageId,
+      assistantMessageId, // Also include for Socket.IO broadcast consistency
       role: 'assistant',
       content: '',
       toolCalls: [],

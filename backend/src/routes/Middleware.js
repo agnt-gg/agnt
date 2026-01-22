@@ -108,7 +108,7 @@ class Middleware {
             req.session.lastActivity = Date.now();
           }
 
-          console.log('✅ Trusted remote auth token for user:', decoded.email);
+          // Auth successful - don't log email for privacy
           return next();
         }
       } catch (err) {

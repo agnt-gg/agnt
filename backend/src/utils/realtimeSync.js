@@ -23,8 +23,13 @@ export function broadcast(event, data) {
  */
 export function broadcastToUser(userId, event, data) {
   if (global.io) {
-    global.io.to(`user:${userId}`).emit(event, data);
-    console.log(`[Realtime] Broadcasted ${event} to user ${userId}`);
+    const room = `user:${userId}`;
+    const socketsInRoom = global.io.sockets.adapter.rooms.get(room);
+    const numClients = socketsInRoom ? socketsInRoom.size : 0;
+    console.log(`[Realtime] Broadcasting ${event} to room ${room} (${numClients} clients)`);
+    global.io.to(room).emit(event, data);
+  } else {
+    console.log(`[Realtime] Cannot broadcast - Socket.IO not initialized`);
   }
 }
 

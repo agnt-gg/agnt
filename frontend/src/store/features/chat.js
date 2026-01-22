@@ -9,6 +9,7 @@ export default {
     mainChatWindow: new ChatWindow(),
     activeStreamId: null,
     isStreaming: false,
+    isRemoteStreaming: false, // True when another tab is streaming (for "thinking" indicator)
     messageCount: 0,
     messages: [],
     page: null,
@@ -43,6 +44,9 @@ export default {
     },
     SET_STREAMING(state, value) {
       state.isStreaming = value;
+    },
+    SET_REMOTE_STREAMING(state, value) {
+      state.isRemoteStreaming = value;
     },
     SET_ACTIVE_STREAM(state, value) {
       state.activeStreamId = value;
@@ -117,6 +121,7 @@ export default {
     RESET_CHAT(state) {
       state.activeStreamId = null;
       state.isStreaming = false;
+      state.isRemoteStreaming = false;
       state.messages = [];
       state.currentConversationId = null;
       state.imageCache.clear();
@@ -279,6 +284,8 @@ export default {
         }
       });
     },
+    // Combined streaming indicator - true if THIS tab or ANOTHER tab is streaming
+    isAnyStreaming: (state) => state.isStreaming || state.isRemoteStreaming,
     // Agent chat getters
     isAgentChat: (state) => !!state.currentAgentId,
     currentAgent: (state) => ({
@@ -937,7 +944,23 @@ export default {
     handleRealtimeChatEvent({ commit, state }, eventData) {
       const { type, conversationId, assistantMessageId } = eventData;
 
-      // Only handle events for the current conversation
+      // Skip if this tab is actively streaming - it already receives SSE events directly
+      // Socket.IO events are only for OTHER tabs that need to sync
+      if (state.isStreaming) {
+        console.log('[Realtime Chat] Ignoring Socket.IO event - this tab is streaming via SSE');
+        return;
+      }
+
+      // Always adopt conversation ID on message_start or user_message from another tab
+      // This ensures tabs stay synced even when switching who is the "sender"
+      if (conversationId && (type === 'message_start' || type === 'user_message')) {
+        if (state.currentConversationId !== conversationId) {
+          console.log('[Realtime Chat] Syncing to conversation from other tab:', conversationId);
+          commit('SET_CONVERSATION_ID', conversationId);
+        }
+      }
+
+      // For other events, only handle if conversation ID matches
       if (conversationId && conversationId !== state.currentConversationId) {
         console.log('[Realtime Chat] Ignoring event for different conversation:', conversationId);
         return;
@@ -960,7 +983,8 @@ export default {
           break;
 
         case 'message_start':
-          // Assistant message started in another tab
+          // Assistant message started in another tab - show "thinking" indicator
+          commit('SET_REMOTE_STREAMING', true);
           if (!state.messages.find((m) => m.id === assistantMessageId)) {
             commit('ADD_MESSAGE', {
               id: assistantMessageId,
@@ -1008,7 +1032,8 @@ export default {
           break;
 
         case 'message_end':
-          // Message completed in another tab
+          // Message completed in another tab - hide "thinking" indicator
+          commit('SET_REMOTE_STREAMING', false);
           console.log('[Realtime Chat] Message completed');
           break;
 
