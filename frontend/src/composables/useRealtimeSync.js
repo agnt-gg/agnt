@@ -138,8 +138,10 @@ export function useRealtimeSync() {
     });
 
     socket.on('content:deleted', (data) => {
-      console.log('[Realtime] Content output deleted:', data);
-      store.dispatch('contentOutputs/refreshOutputs');
+      console.log('[Realtime] Content output deleted:', data.id);
+
+      // Directly remove the deleted item from the store (instant UI update)
+      store.commit('contentOutputs/REMOVE_OUTPUT', data.id);
 
       // If the deleted content is the current chat conversation, reset the chat
       const currentSavedOutputId = store.state.chat?.savedOutputId;
