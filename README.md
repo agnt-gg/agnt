@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="assets/icon.png" alt="AGNT Logo" width="140" height="140">
+  <img src="https://agnt.gg/_assets/images/agnt-banner.png" alt="AGNT Hero Banner" width="100%">
 </p>
-
-<h1 align="center">🤖 AGNT</h1>
 
 <p align="center">
   <strong>The AI Agent Framework for Building, Deploying, and Orchestrating Intelligent Workflows</strong>
@@ -43,12 +41,6 @@
   <a href="docs/_API-DOCUMENTATION.md">📚 API Docs</a> •
   <a href="#-plugin-development">🔌 Plugins</a> •
   <a href="https://discord.gg/agnt">💬 Discord</a>
-</p>
-
-<br>
-
-<p align="center">
-  <img src="https://agnt.gg/_assets/images/agnt-banner.png" alt="AGNT Hero Banner" width="100%">
 </p>
 
 ---
