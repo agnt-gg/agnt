@@ -89,7 +89,8 @@ RUN apk add --no-cache \
     ca-certificates \
     ttf-freefont \
     sqlite \
-    ffmpeg
+    ffmpeg \
+    su-exec
 
 # Set Puppeteer to use installed Chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true
@@ -106,9 +107,6 @@ RUN mkdir -p /app/backend/plugins/installed \
     /app/data/_logs \
     && chown -R node:node /app
 
-# Switch to non-root user BEFORE copying files
-USER node
-
 # Copy built frontend from frontend-builder with correct ownership
 COPY --from=frontend-builder --chown=node:node /app/frontend/dist /app/frontend/dist
 
@@ -123,6 +121,10 @@ COPY --chown=node:node preload.js /app/
 COPY --chown=node:node package*.json /app/
 COPY --chown=node:node assets/ /app/assets/
 
+# Copy and set up entrypoint script
+COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Expose backend port
 EXPOSE 3333
 
@@ -130,5 +132,6 @@ EXPOSE 3333
 HEALTHCHECK --interval=33s --timeout=9s --start-period=33s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3333/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
 
-# Start the backend server
+# Use entrypoint to fix permissions on mounted volumes, then run as node user
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "backend/server.js"]

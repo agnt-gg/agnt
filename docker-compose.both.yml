@@ -25,6 +25,7 @@ services:
     environment:
       # Application Environment
       - NODE_ENV=production
+      - APP_PATH=/app
 
       # URLs Configuration
       - BASE_URL=http://localhost:33333
@@ -51,14 +52,14 @@ services:
 
     volumes:
       # SHARED SQLite database (both full and lite use the same database)
-      - ${AGNT_HOME}/.agnt/data:/app/data
+      - ${AGNT_HOME:-~}/.agnt/data:/app/data
 
       # SHARED plugin storage (both containers use same plugins)
-      - ${AGNT_HOME}/.agnt/plugins/installed:/app/backend/plugins/installed
-      - ${AGNT_HOME}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
+      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
       # Separate logs for each container
-      - ${AGNT_HOME}/.agnt/logs/full:/app/logs
+      - ${AGNT_HOME:-~}/.agnt/logs/full:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
@@ -97,6 +98,7 @@ services:
       # Application Environment
       - NODE_ENV=production
       - AGNT_LITE_MODE=true
+      - APP_PATH=/app
 
       # URLs Configuration
       - BASE_URL=http://localhost:3333
@@ -123,14 +125,14 @@ services:
 
     volumes:
       # SHARED SQLite database (both full and lite use the same database)
-      - ${AGNT_HOME}/.agnt/data:/app/data
+      - ${AGNT_HOME:-~}/.agnt/data:/app/data
 
       # SHARED plugin storage (both containers use same plugins)
-      - ${AGNT_HOME}/.agnt/plugins/installed:/app/backend/plugins/installed
-      - ${AGNT_HOME}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
+      - ${AGNT_HOME:-~}/.agnt/plugins/installed:/app/backend/plugins/installed
+      - ${AGNT_HOME:-~}/.agnt/plugins/builds:/app/backend/plugins/plugin-builds
 
       # Separate logs for each container
-      - ${AGNT_HOME}/.agnt/logs/lite:/app/logs
+      - ${AGNT_HOME:-~}/.agnt/logs/lite:/app/logs
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
