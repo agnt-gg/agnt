@@ -293,17 +293,27 @@ Before running Docker, set up your environment file:
 cp .env.example .env
 ```
 
-**Required variables for Docker:**
+**Optional variables for Docker:**
 
 ```env
 # Docker data directory (where persistent data is stored)
-# On Windows: C:\Users\YourUsername
-# On Linux/Mac: /home/youruser or ~
-AGNT_HOME=~
+# Usually not needed - defaults to $HOME/.agnt/ which works on most systems
+# Only set this if using Docker snap on Linux or want a custom location
+# AGNT_HOME=/home/youruser
 
 # App path for plugins (required for Docker)
 APP_PATH=/app
 ```
+
+**Data Directory Structure:**
+
+Your data is stored at `~/.agnt/`:
+
+- SQLite database: `~/.agnt/data/agnt.db`
+- Plugins: `~/.agnt/data/plugins/`
+- Logs: `~/.agnt/logs/`
+
+> **Note for Docker snap users (Linux):** If you installed Docker via snap, you must set `AGNT_HOME` with an absolute path (e.g., `AGNT_HOME=/home/username docker-compose up -d`) to avoid snap's home directory isolation issues.
 
 **Security secrets (change in production):**
 
