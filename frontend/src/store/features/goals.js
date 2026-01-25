@@ -18,6 +18,7 @@ const state = {
   goalStatusSubscriptions: new Map(), // Track monitoring intervals
   lastFetchTime: null, // Add caching timestamp
   requestCache: new Map(), // Cache for API responses
+  isFetchingGoals: false, // Request deduplication flag
 };
 
 const getters = {
@@ -154,11 +155,27 @@ const mutations = {
     state.error = null;
     state.lastFetchTime = null;
     state.requestCache.clear();
+    state.isFetchingGoals = false;
+  },
+  SET_FETCHING_GOALS(state, isFetching) {
+    state.isFetchingGoals = isFetching;
   },
 };
 
 const actions = {
-  async fetchGoals({ commit, dispatch }) {
+  async fetchGoals({ commit, state, dispatch }) {
+    // Request deduplication - prevent duplicate concurrent calls
+    if (state.isFetchingGoals) {
+      return;
+    }
+
+    // Cache for 5 minutes (increased from no cache)
+    const now = Date.now();
+    if (state.lastFetchTime && now - state.lastFetchTime < 5 * 60 * 1000 && state.goals.length > 0) {
+      return;
+    }
+
+    commit('SET_FETCHING_GOALS', true);
     commit('SET_LOADING', true);
     commit('SET_ERROR', null);
 
@@ -194,6 +211,7 @@ const actions = {
       commit('SET_ERROR', error.message);
     } finally {
       commit('SET_LOADING', false);
+      commit('SET_FETCHING_GOALS', false);
     }
   },
 

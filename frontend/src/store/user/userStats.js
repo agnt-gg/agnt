@@ -19,7 +19,16 @@ const formatDate = (date) => {
 };
 
 // Calculate level from AGNT score with max level 100
+// Memoized to avoid recalculating for same score
+const levelCache = new Map();
+const MAX_LEVEL_CACHE_SIZE = 100;
+
 const calculateLevelFromScore = (score) => {
+  // Check memoization cache first
+  if (levelCache.has(score)) {
+    return levelCache.get(score);
+  }
+
   const MAX_LEVEL = 100;
 
   // Calculate XP needed for level 100 using exponential curve
@@ -28,52 +37,53 @@ const calculateLevelFromScore = (score) => {
   const baseXP = 1000; // XP needed for level 2
   const growthRate = 1.05; // 5% increase per level
 
-  // Calculate total XP needed for max level
-  let totalXPForMaxLevel = 0;
-  for (let i = 1; i < MAX_LEVEL; i++) {
-    totalXPForMaxLevel += Math.floor(baseXP * Math.pow(growthRate, i - 1));
-  }
-
   // Calculate current level
   let level = 1;
   let xpAccumulated = 0;
-  let xpForCurrentLevel = 0;
 
   for (let i = 1; i < MAX_LEVEL; i++) {
     const xpForThisLevel = Math.floor(baseXP * Math.pow(growthRate, i - 1));
     if (score >= xpAccumulated + xpForThisLevel) {
       level = i + 1;
       xpAccumulated += xpForThisLevel;
-      xpForCurrentLevel = xpForThisLevel;
     } else {
       break;
     }
   }
 
+  let result;
   // If score exceeds max level requirements, cap at 100
   if (level >= MAX_LEVEL) {
-    level = MAX_LEVEL;
-    return {
+    result = {
       level: MAX_LEVEL,
       currentXP: score,
       xpNeeded: score, // At max level, show full progress
       totalXP: score,
       progressPercent: 100,
     };
+  } else {
+    // Calculate XP needed for next level
+    const xpForNextLevel = Math.floor(baseXP * Math.pow(growthRate, level - 1));
+    const currentXP = score - xpAccumulated;
+    const progressPercent = Math.min(100, Math.max(0, (currentXP / xpForNextLevel) * 100));
+
+    result = {
+      level,
+      currentXP,
+      xpNeeded: xpForNextLevel,
+      totalXP: score,
+      progressPercent,
+    };
   }
 
-  // Calculate XP needed for next level
-  const xpForNextLevel = Math.floor(baseXP * Math.pow(growthRate, level - 1));
-  const currentXP = score - xpAccumulated;
-  const progressPercent = Math.min(100, Math.max(0, (currentXP / xpForNextLevel) * 100));
+  // Cache the result (with LRU eviction)
+  if (levelCache.size >= MAX_LEVEL_CACHE_SIZE) {
+    const oldestKey = levelCache.keys().next().value;
+    levelCache.delete(oldestKey);
+  }
+  levelCache.set(score, result);
 
-  return {
-    level,
-    currentXP,
-    xpNeeded: xpForNextLevel,
-    totalXP: score,
-    progressPercent,
-  };
+  return result;
 };
 
 const fillMissingDates = (data, startDate, endDate) => {

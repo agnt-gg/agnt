@@ -67,11 +67,13 @@ class AgentModel {
   }
   static findAllByUserId(userId) {
     return new Promise((resolve, reject) => {
+      // Single JOIN query to fetch agents WITH resources (eliminates N+1 pattern)
       db.all(
-        `SELECT a.*, 
+        `SELECT a.*, ar.credit_limit, ar.credits_used,
          (SELECT COUNT(*) FROM agent_workflows WHERE agent_id = a.id) as workflow_count
          FROM agents a
-         WHERE a.created_by = ? 
+         LEFT JOIN agent_resources ar ON a.id = ar.agent_id
+         WHERE a.created_by = ?
          ORDER BY a.updated_at DESC`,
         [userId],
         (err, agents) => {
@@ -82,7 +84,6 @@ class AgentModel {
               agent.assignedTools = agent.tools ? JSON.parse(agent.tools) : [];
               agent.assignedWorkflows = agent.workflows ? JSON.parse(agent.workflows) : [];
             });
-            console.log('Raw agents from database:', agents);
             resolve(agents);
           }
         }

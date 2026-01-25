@@ -96,6 +96,9 @@ export default {
     workflowTools: null,
     workflowToolsLoading: false,
     workflowToolsLastFetched: null,
+    // Request deduplication flags
+    isFetchingTools: false,
+    isFetchingWorkflowTools: false,
     categories: [
       'Plugins', // Plugin tools category
       'Automation',
@@ -147,6 +150,12 @@ export default {
       state.error = null;
       state.lastFetched = null;
     },
+    SET_FETCHING_TOOLS(state, isFetching) {
+      state.isFetchingTools = isFetching;
+    },
+    SET_FETCHING_WORKFLOW_TOOLS(state, isFetching) {
+      state.isFetchingWorkflowTools = isFetching;
+    },
     // Workflow tools mutations
     SET_WORKFLOW_TOOLS(state, tools) {
       state.workflowTools = tools;
@@ -160,6 +169,11 @@ export default {
   },
   actions: {
     async fetchTools({ commit, state }, { force = false } = {}) {
+      // Request deduplication - prevent duplicate concurrent calls
+      if (state.isFetchingTools) {
+        return;
+      }
+
       // Only fetch if tools is empty or lastFetched > 5 min ago, unless force is true
       const now = Date.now();
       if (!force && state.tools.length > 0 && state.lastFetched && now - state.lastFetched < 5 * 60 * 1000) {
@@ -167,6 +181,7 @@ export default {
         return;
       }
 
+      commit('SET_FETCHING_TOOLS', true);
       commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       try {
@@ -239,6 +254,7 @@ export default {
         commit('SET_TOOLS', BUILT_IN_TOOLS);
       } finally {
         commit('SET_LOADING', false);
+        commit('SET_FETCHING_TOOLS', false);
       }
     },
     /**
@@ -257,12 +273,18 @@ export default {
      * All components should use this instead of importing toolLibrary directly.
      */
     async fetchWorkflowTools({ commit, state }, { force = false } = {}) {
+      // Request deduplication - prevent duplicate concurrent calls
+      if (state.isFetchingWorkflowTools) {
+        return state.workflowTools;
+      }
+
       const now = Date.now();
       // Cache for 5 minutes unless force refresh
       if (!force && state.workflowTools && state.workflowToolsLastFetched && now - state.workflowToolsLastFetched < 5 * 60 * 1000) {
         return state.workflowTools;
       }
 
+      commit('SET_FETCHING_WORKFLOW_TOOLS', true);
       commit('SET_WORKFLOW_TOOLS_LOADING', true);
       try {
         const token = localStorage.getItem('token');
@@ -303,6 +325,7 @@ export default {
         return emptyTools;
       } finally {
         commit('SET_WORKFLOW_TOOLS_LOADING', false);
+        commit('SET_FETCHING_WORKFLOW_TOOLS', false);
       }
     },
     async createTool({ commit, state }, tool) {

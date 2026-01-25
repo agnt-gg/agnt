@@ -506,7 +506,26 @@ function createTables() {
       )`);
 
       // Index for faster agent tool execution lookups (CRITICAL for run details)
-      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tool_executions_execution_id ON agent_tool_executions(execution_id)`,
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tool_executions_execution_id ON agent_tool_executions(execution_id)`);
+
+      // ==================== PERFORMANCE INDEXES ====================
+      // Agents - faster lookup by user
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agents_created_by ON agents(created_by)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agents_updated_at ON agents(updated_at DESC)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_resources_agent_id ON agent_resources(agent_id)`);
+
+      // Goals - faster lookup by user and status
+      db.run(`CREATE INDEX IF NOT EXISTS idx_goals_user_id ON goals(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status)`);
+
+      // Tasks - faster lookup by goal
+      db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_goal_id ON tasks(goal_id)`);
+
+      // Custom tools - faster lookup by user
+      db.run(`CREATE INDEX IF NOT EXISTS idx_tools_created_by ON tools(created_by)`);
+
+      // Webhooks - faster lookup by user
+      db.run(`CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id)`,
         (err) => {
           if (err) {
             reject(err);

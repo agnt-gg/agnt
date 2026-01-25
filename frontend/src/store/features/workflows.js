@@ -61,6 +61,7 @@ export default {
     error: null,
     lastUpdate: null, // Track last update time
     lastFullFetch: null, // Track last full fetch time
+    isFetchingWorkflows: false, // Request deduplication flag
   },
   mutations: {
     SET_WORKFLOWS(state, workflows) {
@@ -97,6 +98,10 @@ export default {
       state.error = null;
       state.lastUpdate = null;
       state.lastFullFetch = null;
+      state.isFetchingWorkflows = false;
+    },
+    SET_FETCHING_WORKFLOWS(state, isFetching) {
+      state.isFetchingWorkflows = isFetching;
     },
   },
   actions: {
@@ -133,9 +138,10 @@ export default {
       }
     },
     async fetchWorkflows({ commit, state }, { activeOnly = false } = {}) {
-      // Don't fetch if we're already loading
-      if (state.isLoading) return;
+      // Request deduplication - prevent duplicate concurrent calls
+      if (state.isFetchingWorkflows) return;
 
+      commit('SET_FETCHING_WORKFLOWS', true);
       commit('SET_LOADING', true);
       try {
         const token = localStorage.getItem('token');
@@ -189,6 +195,7 @@ export default {
         }
       } finally {
         commit('SET_LOADING', false);
+        commit('SET_FETCHING_WORKFLOWS', false);
       }
     },
     async deleteWorkflow({ commit }, workflowId) {

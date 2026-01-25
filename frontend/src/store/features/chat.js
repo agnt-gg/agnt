@@ -2,6 +2,9 @@ import { Message, ChatWindow } from '@/views/_components/base/ChatWindow';
 import { API_CONFIG } from '@/tt.config.js';
 
 const MAX_MESSAGES = 100; // Limit messages to prevent memory leaks
+const MAX_IMAGE_CACHE = 50; // LRU limit for image cache
+const MAX_DATA_CACHE = 50; // LRU limit for data cache
+const MAX_AGENT_CONVERSATIONS = 20; // LRU limit for agent conversation cache
 
 export default {
   namespaced: true,
@@ -148,6 +151,11 @@ export default {
       state.autosaveDebounceTimer = null;
     },
     ADD_IMAGE_TO_CACHE(state, { imageId, imageData, toolCallId, messageId, index }) {
+      // LRU eviction - remove oldest entries if cache is full
+      if (state.imageCache.size >= MAX_IMAGE_CACHE) {
+        const oldestKey = state.imageCache.keys().next().value;
+        state.imageCache.delete(oldestKey);
+      }
       state.imageCache.set(imageId, {
         data: imageData,
         toolCallId: toolCallId,
@@ -156,6 +164,11 @@ export default {
       });
     },
     ADD_DATA_TO_CACHE(state, { dataId, fullContent, toolCallId, messageId, size, path }) {
+      // LRU eviction - remove oldest entries if cache is full
+      if (state.dataCache.size >= MAX_DATA_CACHE) {
+        const oldestKey = state.dataCache.keys().next().value;
+        state.dataCache.delete(oldestKey);
+      }
       state.dataCache.set(dataId, {
         content: fullContent,
         toolCallId: toolCallId,
@@ -163,7 +176,6 @@ export default {
         size: size,
         path: path,
       });
-      console.log(`[DataCache] Cached data ${dataId} (${size} chars)`);
     },
     RECEIVE_MESSAGE(state, { id, sender, content, timestamp }) {
       const message = new Message(id, sender, content, timestamp);
@@ -227,6 +239,12 @@ export default {
     SAVE_AGENT_CONVERSATION(state, { agentId }) {
       // Save current conversation state to agent cache before switching
       if (agentId && state.messages.length > 0) {
+        // LRU eviction - remove oldest agent conversation if cache is full
+        const conversationKeys = Object.keys(state.agentConversations);
+        if (conversationKeys.length >= MAX_AGENT_CONVERSATIONS) {
+          // Remove the oldest (first) conversation
+          delete state.agentConversations[conversationKeys[0]];
+        }
         state.agentConversations[agentId] = {
           messages: [...state.messages],
           conversationId: state.currentConversationId,

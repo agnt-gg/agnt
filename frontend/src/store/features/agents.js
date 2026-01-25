@@ -29,6 +29,7 @@ export default {
     error: null,
     recentActivities: [],
     lastFetched: null,
+    isFetchingAgents: false, // Request deduplication flag
   },
   mutations: {
     SET_AGENTS(state, agents) {
@@ -85,16 +86,27 @@ export default {
       state.error = null;
       state.recentActivities = [];
       state.lastFetched = null;
+      state.isFetchingAgents = false;
+    },
+    SET_FETCHING_AGENTS(state, isFetching) {
+      state.isFetchingAgents = isFetching;
     },
   },
   actions: {
     async fetchAgents({ commit, state }, { force = false } = {}) {
+      // Request deduplication - prevent duplicate concurrent calls
+      if (state.isFetchingAgents) {
+        return;
+      }
+
       // Only fetch if agents is empty or lastFetched > 5 min ago, unless force is true
       const now = Date.now();
       if (!force && state.agents.length > 0 && state.lastFetched && now - state.lastFetched < 5 * 60 * 1000) {
         // Use cache, skip fetch
         return;
       }
+
+      commit('SET_FETCHING_AGENTS', true);
       commit('SET_LOADING', true);
       try {
         const token = localStorage.getItem('token');
@@ -116,6 +128,7 @@ export default {
         commit('SET_ERROR', error.message);
       } finally {
         commit('SET_LOADING', false);
+        commit('SET_FETCHING_AGENTS', false);
       }
     },
     async updateAgent({ commit }, agentData) {
