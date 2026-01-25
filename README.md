@@ -697,7 +697,7 @@ We welcome contributions! Here's how you can help:
 
 ## 📄 License
 
-This project is licensed under a Custom License. See [LICENSE.md](../LICENSE.md) for details.
+This project is licensed under a Custom License. See [LICENSE.md](./LICENSE.md) for details.
 
 ---
 
