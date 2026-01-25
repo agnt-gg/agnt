@@ -35,7 +35,7 @@
       <div v-if="isSelecting" class="selection-rectangle" :style="selectionRectangleStyle"></div>
       <Node
         v-for="(node, index) in nodes"
-        :key="index"
+        :key="node.id || index"
         :node="node"
         :index="index"
         :gridSize="gridSize"
@@ -57,7 +57,7 @@
       <svg class="edges">
         <Edge
           v-for="(edge, index) in edges"
-          :key="index"
+          :key="edge.id || index"
           :edge="edge"
           :isAnimating="isAnimating"
           :nodeWidth="nodeWidth"

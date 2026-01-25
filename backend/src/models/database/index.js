@@ -211,6 +211,9 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
+      // Index for faster workflow queries by user_id
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflows_user_id ON workflows(user_id)`);
+
       db.run(`CREATE TABLE IF NOT EXISTS content_outputs (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -226,6 +229,9 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (workflow_id) REFERENCES workflows(id)
       )`);
+
+      // Index for faster content_outputs queries by user_id
+      db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_id ON content_outputs(user_id)`);
 
       db.run(
         `CREATE TABLE IF NOT EXISTS user_data (
@@ -252,6 +258,10 @@ function createTables() {
         FOREIGN KEY (workflow_id) REFERENCES workflows(id),
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
+
+      // Index for faster workflow execution queries
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_id ON workflow_executions(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_workflow_id ON workflow_executions(workflow_id)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS node_executions (
         id TEXT PRIMARY KEY,

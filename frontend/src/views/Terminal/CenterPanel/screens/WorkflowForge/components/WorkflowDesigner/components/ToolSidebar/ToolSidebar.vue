@@ -48,6 +48,7 @@
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { useStore } from 'vuex';
+import { debounce } from 'lodash-es';
 // NOTE: Static toolLibrary import removed - now using centralized Vuex store (tools/fetchWorkflowTools)
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -115,8 +116,9 @@ export default {
       // Fetch workflow tools from Vuex store (centralized)
       fetchWorkflowTools();
 
-      // Set up periodic refresh for plugin updates (every 30 seconds)
-      pluginUpdateInterval = setInterval(refreshPluginTools, 30000);
+      // Set up periodic refresh for plugin updates (every 5 minutes instead of 30 seconds)
+      // This reduces unnecessary API calls while still catching plugin updates
+      pluginUpdateInterval = setInterval(refreshPluginTools, 300000);
     });
 
     onUnmounted(() => {

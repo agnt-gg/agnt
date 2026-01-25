@@ -14,6 +14,37 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
+// Cache for toolLibrary.json to avoid disk reads on every request
+let toolLibraryCache = null;
+let toolLibraryCacheTime = 0;
+const TOOL_LIBRARY_CACHE_TTL = 60000; // 1 minute cache TTL
+
+/**
+ * Get toolLibrary.json from cache or disk
+ * Caches the result to avoid repeated file reads
+ */
+async function getToolLibrary() {
+  const now = Date.now();
+  if (toolLibraryCache && (now - toolLibraryCacheTime) < TOOL_LIBRARY_CACHE_TTL) {
+    return toolLibraryCache;
+  }
+
+  const toolLibraryPath = path.join(__dirname, '../tools/toolLibrary.json');
+  const toolLibraryContent = await fs.readFile(toolLibraryPath, 'utf-8');
+  toolLibraryCache = JSON.parse(toolLibraryContent);
+  toolLibraryCacheTime = now;
+
+  return toolLibraryCache;
+}
+
+/**
+ * Invalidate toolLibrary cache (call when plugins change)
+ */
+export function invalidateToolLibraryCache() {
+  toolLibraryCache = null;
+  toolLibraryCacheTime = 0;
+}
+
 // Get all orchestrator tools (both native, registry, and plugin tools)
 router.get('/orchestrator-tools', async (req, res) => {
   try {
@@ -56,11 +87,8 @@ router.get('/orchestrator-tools', async (req, res) => {
  */
 router.get('/workflow-tools', authenticateToken, async (req, res) => {
   try {
-    // Load toolLibrary.json directly as the primary source
-    // This ensures all regular tools are always available
-    const toolLibraryPath = path.join(__dirname, '../tools/toolLibrary.json');
-    const toolLibraryContent = await fs.readFile(toolLibraryPath, 'utf-8');
-    const toolLibrary = JSON.parse(toolLibraryContent);
+    // Load toolLibrary.json from cache (avoids disk read on every request)
+    const toolLibrary = await getToolLibrary();
 
     console.log('[ToolsRoutes] Loaded toolLibrary.json:', {
       triggers: toolLibrary.triggers?.length || 0,

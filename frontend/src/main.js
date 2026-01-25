@@ -100,10 +100,8 @@ const initializeApp = async () => {
     });
 
     // Initialize store data in background (non-blocking)
-    // This fetches agents, workflows, tools, etc.
-    store.dispatch('initializeStore').catch((error) => {
-      console.error('Failed to initialize store:', error);
-    });
+    // Screens will show their own loading states if data isn't ready yet
+    store.dispatch('initializeStore').catch(console.error);
 
     // Start centralized polling for connected apps (60 second interval)
     store.dispatch('appAuth/startPolling');
