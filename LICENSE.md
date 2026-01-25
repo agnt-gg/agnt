@@ -89,7 +89,7 @@ This license is governed by the laws of the United States and the State of Delaw
 
 **AGNT Labs Legal & Licensing**  
 📧 [legal@agnt.gg](mailto:legal@agnt.gg)  
-🌐 [https://agnt.gg/license](https://agnt.gg/license)
+🌐 [https://agnt.gg/LICENSE.md](https://agnt.gg/LICENSE.md)
 
 ---
 
