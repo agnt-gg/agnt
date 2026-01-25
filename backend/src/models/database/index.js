@@ -277,6 +277,9 @@ function createTables() {
         FOREIGN KEY (execution_id) REFERENCES workflow_executions(id)
       )`);
 
+      // Index for faster node execution lookups by execution_id (CRITICAL for run details)
+      db.run(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_id ON node_executions(execution_id)`);
+
       // Goal system tables - extending existing architecture
       db.run(`CREATE TABLE IF NOT EXISTS goals (
         id TEXT PRIMARY KEY,
@@ -483,6 +486,10 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
+      // Index for faster agent execution lookups
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_id ON agent_executions(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_agent_id ON agent_executions(agent_id)`);
+
       db.run(`CREATE TABLE IF NOT EXISTS agent_tool_executions (
         id TEXT PRIMARY KEY,
         execution_id TEXT NOT NULL,
@@ -496,7 +503,10 @@ function createTables() {
         error TEXT,
         credits_used REAL DEFAULT 0,
         FOREIGN KEY (execution_id) REFERENCES agent_executions(id)
-      )`,
+      )`);
+
+      // Index for faster agent tool execution lookups (CRITICAL for run details)
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tool_executions_execution_id ON agent_tool_executions(execution_id)`,
         (err) => {
           if (err) {
             reject(err);

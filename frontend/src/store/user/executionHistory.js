@@ -10,7 +10,7 @@ export default {
     agentExecutionSummaries: [], // Agent/Orchestrator executions
     // Cache for detailed execution data (limit size)
     detailedExecutionsCache: new Map(),
-    maxCacheSize: 20, // Keep only 20 detailed executions in memory
+    maxCacheSize: 50, // Keep 50 detailed executions in memory for faster re-access
     lastFetchTime: null,
     // Pagination state
     currentPage: 1,
@@ -70,46 +70,42 @@ export default {
           return;
         }
 
-        // Fetch workflow executions and strip out heavy data client-side
-        const workflowResponse = await axios.get(`${API_CONFIG.BASE_URL}/executions`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        // Fetch all execution types in PARALLEL for faster loading
+        // (Previously sequential - 3x slower)
+        const headers = { Authorization: `Bearer ${token}` };
 
-        // Strip out heavy data from response to keep only summary info
-        const summaries = (Array.isArray(workflowResponse.data) ? workflowResponse.data : []).map((exec) => ({
-          id: exec.id,
-          workflowName: exec.workflowName,
-          status: exec.status,
-          startTime: exec.startTime,
-          endTime: exec.endTime,
-          creditsUsed: exec.creditsUsed,
-          // Don't include nodeExecutions or log in summary
-          nodeCount: exec.nodeExecutions?.length || 0,
-        }));
+        const [workflowResult, goalsResult, agentResult] = await Promise.allSettled([
+          axios.get(`${API_CONFIG.BASE_URL}/executions`, { headers }),
+          axios.get(`${API_CONFIG.BASE_URL}/goals`, { headers }),
+          axios.get(`${API_CONFIG.BASE_URL}/executions/agents/list`, { headers }),
+        ]);
 
-        commit('SET_EXECUTION_SUMMARIES', summaries);
+        // Process workflow executions
+        if (workflowResult.status === 'fulfilled') {
+          const summaries = (Array.isArray(workflowResult.value.data) ? workflowResult.value.data : []).map((exec) => ({
+            id: exec.id,
+            workflowName: exec.workflowName,
+            status: exec.status,
+            startTime: exec.startTime,
+            endTime: exec.endTime,
+            creditsUsed: exec.creditsUsed,
+            nodeCount: exec.nodeExecutions?.length || 0,
+          }));
+          commit('SET_EXECUTION_SUMMARIES', summaries);
+        } else {
+          console.warn('Error fetching workflow executions:', workflowResult.reason);
+          commit('SET_EXECUTION_SUMMARIES', []);
+        }
 
-        // Fetch goal executions (summary only)
-        try {
-          const goalsResponse = await axios.get(`${API_CONFIG.BASE_URL}/goals`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          // Transform goals into execution-like format (summary only)
-          const goalSummaries = (goalsResponse.data.goals || [])
+        // Process goal executions
+        if (goalsResult.status === 'fulfilled') {
+          const goalSummaries = (goalsResult.value.data.goals || [])
             .filter((goal) => ['executing', 'completed', 'validated', 'needs_review', 'failed', 'stopped'].includes(goal.status))
             .map((goal) => {
               let calculatedEndTime = goal.completed_at || goal.updated_at;
-
-              // Calculate end time from tasks without loading full task data
               if (goal.task_count && goal.completed_tasks === goal.task_count) {
                 calculatedEndTime = goal.updated_at;
               }
-
               return {
                 id: `goal-${goal.id}`,
                 goalId: goal.id,
@@ -123,23 +119,15 @@ export default {
                 isGoalExecution: true,
               };
             });
-
           commit('SET_GOAL_EXECUTION_SUMMARIES', goalSummaries);
-        } catch (goalError) {
-          console.warn('Error fetching goal executions:', goalError);
+        } else {
+          console.warn('Error fetching goal executions:', goalsResult.reason);
           commit('SET_GOAL_EXECUTION_SUMMARIES', []);
         }
 
-        // Fetch agent/orchestrator executions
-        try {
-          const agentResponse = await axios.get(`${API_CONFIG.BASE_URL}/executions/agents/list`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          // Transform agent executions into execution-like format for display
-          const agentSummaries = (Array.isArray(agentResponse.data) ? agentResponse.data : []).map((exec) => ({
+        // Process agent executions
+        if (agentResult.status === 'fulfilled') {
+          const agentSummaries = (Array.isArray(agentResult.value.data) ? agentResult.value.data : []).map((exec) => ({
             id: `agent-${exec.id}`,
             agentExecutionId: exec.id,
             agentId: exec.agentId,
@@ -154,10 +142,9 @@ export default {
             provider: exec.provider,
             model: exec.model,
           }));
-
           commit('SET_AGENT_EXECUTION_SUMMARIES', agentSummaries);
-        } catch (agentError) {
-          console.warn('Error fetching agent executions:', agentError);
+        } else {
+          console.warn('Error fetching agent executions:', agentResult.reason);
           commit('SET_AGENT_EXECUTION_SUMMARIES', []);
         }
 
@@ -174,10 +161,10 @@ export default {
 
     async fetchExecutionDetails({ commit, state }, executionId) {
       try {
-        // Check cache first
+        // Check cache first - use 5 minute TTL for execution details
+        // (execution data doesn't change after completion)
         const cached = state.detailedExecutionsCache.get(executionId);
-        if (cached && Date.now() - cached.timestamp < 60000) {
-          // Return cached data if less than 1 minute old
+        if (cached && Date.now() - cached.timestamp < 300000) {
           return cached.data;
         }
 
