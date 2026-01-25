@@ -1,5 +1,6 @@
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { io } from 'socket.io-client';
+import { debounce } from 'lodash-es';
 import { API_CONFIG } from '../tt.config.js';
 import { useStore } from 'vuex';
 
@@ -7,6 +8,12 @@ import { useStore } from 'vuex';
 let socket = null;
 const isConnected = ref(false);
 const isAuthenticated = ref(false);
+
+// Debounced fetch functions to prevent cascade of API calls
+// When multiple events fire rapidly, only the last one triggers a fetch
+let debouncedAgentFetch = null;
+let debouncedWorkflowFetch = null;
+let debouncedContentFetch = null;
 
 /**
  * Composable for real-time sync via Socket.IO
@@ -81,36 +88,78 @@ export function useRealtimeSync() {
       isConnected.value = false;
     });
 
-    // Agent events
+    // Initialize debounced fetch functions
+    // These prevent multiple rapid events from triggering multiple API calls
+    if (!debouncedAgentFetch) {
+      debouncedAgentFetch = debounce(() => {
+        store.dispatch('agents/fetchAgents', { force: true });
+      }, 500, { leading: true, trailing: true });
+    }
+
+    if (!debouncedWorkflowFetch) {
+      debouncedWorkflowFetch = debounce(() => {
+        store.dispatch('workflows/fetchWorkflows', { force: true });
+      }, 500, { leading: true, trailing: true });
+    }
+
+    if (!debouncedContentFetch) {
+      debouncedContentFetch = debounce(() => {
+        store.dispatch('contentOutputs/refreshOutputs');
+      }, 500, { leading: true, trailing: true });
+    }
+
+    // Agent events - use optimistic updates + debounced sync
     socket.on('agent:created', (data) => {
       console.log('[Realtime] Agent created:', data);
-      store.dispatch('agents/fetchAgents'); // Refresh agent list
+      // Optimistic: add agent to store immediately if data provided
+      if (data.agent) {
+        store.commit('agents/ADD_AGENT', data.agent);
+      }
+      // Debounced full sync for consistency
+      debouncedAgentFetch();
     });
 
     socket.on('agent:updated', (data) => {
       console.log('[Realtime] Agent updated:', data);
-      store.dispatch('agents/fetchAgents'); // Refresh agent list
+      // Optimistic: update agent in store immediately if data provided
+      if (data.agent) {
+        store.commit('agents/UPDATE_AGENT', data.agent);
+      }
+      debouncedAgentFetch();
     });
 
     socket.on('agent:deleted', (data) => {
       console.log('[Realtime] Agent deleted:', data);
-      store.dispatch('agents/fetchAgents'); // Refresh agent list
+      // Optimistic: remove agent from store immediately
+      if (data.id) {
+        store.commit('agents/DELETE_AGENT', data.id);
+      }
+      debouncedAgentFetch();
     });
 
-    // Workflow events
+    // Workflow events - use optimistic updates + debounced sync
     socket.on('workflow:created', (data) => {
       console.log('[Realtime] Workflow created:', data);
-      store.dispatch('workflows/fetchWorkflows'); // Refresh workflow list
+      if (data.workflow) {
+        store.commit('workflows/ADD_WORKFLOW', data.workflow);
+      }
+      debouncedWorkflowFetch();
     });
 
     socket.on('workflow:updated', (data) => {
       console.log('[Realtime] Workflow updated:', data);
-      store.dispatch('workflows/fetchWorkflows'); // Refresh workflow list
+      if (data.workflow) {
+        store.commit('workflows/UPDATE_WORKFLOW', data.workflow);
+      }
+      debouncedWorkflowFetch();
     });
 
     socket.on('workflow:deleted', (data) => {
       console.log('[Realtime] Workflow deleted:', data);
-      store.dispatch('workflows/fetchWorkflows'); // Refresh workflow list
+      if (data.id) {
+        store.commit('workflows/DELETE_WORKFLOW', data.id);
+      }
+      debouncedWorkflowFetch();
     });
 
     // Execution events (future: show notifications)
@@ -126,15 +175,15 @@ export function useRealtimeSync() {
       console.log('[Realtime] Execution failed:', data);
     });
 
-    // Content output events (saved outputs / chat history)
+    // Content output events (saved outputs / chat history) - debounced
     socket.on('content:created', (data) => {
       console.log('[Realtime] Content output created:', data);
-      store.dispatch('contentOutputs/refreshOutputs');
+      debouncedContentFetch();
     });
 
     socket.on('content:updated', (data) => {
       console.log('[Realtime] Content output updated:', data);
-      store.dispatch('contentOutputs/refreshOutputs');
+      debouncedContentFetch();
     });
 
     socket.on('content:deleted', (data) => {

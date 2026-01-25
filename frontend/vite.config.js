@@ -45,6 +45,44 @@ export default defineConfig({
         entryFileNames: 'assets/js/[name].[hash].js',
         chunkFileNames: 'assets/js/[name].[hash].js',
         assetFileNames: 'assets/[ext]/[name].[hash].[ext]',
+
+        // Manual chunks for better code splitting and caching
+        // Separates vendor libraries so they can be cached independently
+        manualChunks: {
+          // Core Vue ecosystem - rarely changes, cache long-term
+          'vendor-vue': ['vue', 'vue-router', 'vuex'],
+
+          // Charting libraries - only used in Dashboard
+          'vendor-charts': ['chart.js', 'chartjs-plugin-datalabels', 'd3'],
+
+          // Code editor - only used in ToolForge
+          'vendor-editor': [
+            '@codemirror/lang-javascript',
+            '@codemirror/lang-python',
+            '@codemirror/theme-one-dark',
+            'vue-codemirror'
+          ],
+
+          // 3D graphics - only used in BallJumper minigame
+          'vendor-3d': ['three'],
+
+          // Diagram rendering - only used in workflows
+          'vendor-mermaid': ['mermaid'],
+
+          // Utility libraries - shared across app
+          'vendor-utils': [
+            'axios',
+            'dompurify',
+            'showdown',
+            'highlight.js',
+            'date-fns',
+            'lodash-es',
+            'crypto-js'
+          ],
+
+          // Real-time & payments - loaded on demand
+          'vendor-services': ['socket.io-client', '@stripe/stripe-js'],
+        },
       },
     },
   },

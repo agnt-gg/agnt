@@ -18,78 +18,92 @@ const app = createApp(App);
 app.use(router);
 app.use(store);
 
-// Initialize the new unified theme system
+// Initialize the new unified theme system (synchronous, fast)
 store.dispatch('theme/initTheme');
 
 // Initialize axios rate limit interceptor
 initializeAxiosInterceptor(store);
 
+// MOUNT IMMEDIATELY - show the app shell before data loading
+// This eliminates the blank screen while API calls complete
+app.mount('#app');
+
 // License refresh interval (1 hour)
 const LICENSE_REFRESH_INTERVAL = 60 * 60 * 1000;
 let licenseRefreshTimer = null;
 
-// CRITICAL: Ensure token is loaded from localStorage FIRST before any API calls
+// Initialize app data in background AFTER mount
 const initializeApp = async () => {
-  // FORCE CLEAR stale cached license on startup to ensure fresh validation
-  console.log('🧹 Clearing cached license to force fresh validation...');
-  localStorage.removeItem('signedLicense');
-  store.commit('userAuth/CLEAR_LICENSE');
-
-  // Check if token exists in localStorage
   const token = localStorage.getItem('token');
 
   if (!token) {
-    console.log('❌ No token found in localStorage');
-    // Still validate license (will get free tier)
-    await store.dispatch('userAuth/validateLicense').catch((error) => {
+    console.log('No token found, skipping authenticated init');
+    // Still validate license for free tier (non-blocking)
+    store.dispatch('userAuth/validateLicense').catch((error) => {
       console.log('License validation skipped (no auth):', error.message);
     });
     return;
   }
 
-  console.log('✅ Token found in localStorage, initializing app...');
+  console.log('Token found, initializing app in background...');
 
   try {
-    // Fetch user data (this will set the user info in the store)
-    await store.dispatch('userAuth/fetchUserData');
-    console.log('✅ User data fetched, token exists:', !!store.state.userAuth.token);
+    // Smart license caching - only clear if actually expired
+    let needsLicenseValidation = true;
+    const cachedLicense = localStorage.getItem('signedLicense');
 
-    // Fetch custom providers first, then load user settings
-    // (user settings may reference a custom provider)
-    try {
-      await store.dispatch('aiProvider/fetchCustomProviders');
-      console.log('✅ Custom providers fetched');
-    } catch (error) {
-      console.error('Failed to fetch custom providers:', error);
+    if (cachedLicense) {
+      try {
+        const parsed = JSON.parse(cachedLicense);
+        const expiresAt = parsed?.license?.expiresAt;
+        const now = Math.floor(Date.now() / 1000);
+
+        // License valid for more than 5 minutes - use cache
+        if (expiresAt && expiresAt > now + 300) {
+          needsLicenseValidation = false;
+          store.commit('userAuth/SET_SIGNED_LICENSE', parsed);
+          console.log('Using cached license (still valid)');
+        }
+      } catch (e) {
+        localStorage.removeItem('signedLicense');
+      }
     }
 
-    // Load user settings after authentication and custom providers are loaded
+    // PARALLEL: Run all independent auth calls together instead of sequentially
+    // This reduces 4 sequential waits into 1 parallel batch
+    console.log('Fetching auth data in parallel...');
+    const authPromises = [
+      store.dispatch('userAuth/fetchUserData'),
+      store.dispatch('aiProvider/fetchCustomProviders'),
+      store.dispatch('userAuth/fetchSubscription'),
+    ];
+
+    // Only validate license if cache is expired/missing
+    if (needsLicenseValidation) {
+      authPromises.push(store.dispatch('userAuth/validateLicense'));
+    }
+
+    const results = await Promise.allSettled(authPromises);
+
+    // Log any failures for debugging
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.warn(`Auth init item ${index} failed:`, result.reason?.message || result.reason);
+      }
+    });
+
+    console.log('Auth data fetched. planType:', store.state.userAuth.planType);
+
+    // Load user settings in background (non-blocking)
     store.dispatch('aiProvider/loadUserSettings').catch((error) => {
       console.error('Failed to load user settings:', error);
     });
 
-    // FORCE CLEAR subscription state to ensure fresh fetch every time
-    console.log('🧹 Clearing subscription state to force fresh fetch...');
-    store.commit('userAuth/CLEAR_SUBSCRIPTION');
-
-    // Fetch subscription data immediately after user data
-    console.log('🔄 Fetching subscription from API (forced fresh)...');
-    await store.dispatch('userAuth/fetchSubscription').catch((error) => {
-      console.error('Failed to fetch subscription:', error);
+    // Initialize store data in background (non-blocking)
+    // This fetches agents, workflows, tools, etc.
+    store.dispatch('initializeStore').catch((error) => {
+      console.error('Failed to initialize store:', error);
     });
-    console.log('✅ Subscription fetch completed. Current planType:', store.state.userAuth.planType);
-
-    // Validate license with AGNT server (this is the cryptographic verification)
-    // This should return the LATEST plan info from the server
-    console.log('🔐 Validating license with AGNT server...');
-    await store.dispatch('userAuth/validateLicense').catch((error) => {
-      console.error('License validation error:', error);
-    });
-    console.log('✅ License validation completed. Status:', store.state.userAuth.licenseStatus);
-    console.log('📋 Final planType after license validation:', store.state.userAuth.planType);
-
-    // Fetch ALL data needed for AGNT score calculation ONCE on app load
-    await store.dispatch('initializeStore');
 
     // Start centralized polling for connected apps (60 second interval)
     store.dispatch('appAuth/startPolling');
@@ -116,12 +130,11 @@ const startLicenseRefresh = () => {
     });
   }, LICENSE_REFRESH_INTERVAL);
 
-  console.log('✅ License refresh timer started (every 1 hour)');
+  console.log('License refresh timer started (every 1 hour)');
 };
 
 // Refresh license when window gains focus (user returns to app)
 const handleWindowFocus = () => {
-  console.log('👁️ Window focused, checking license...');
   store.dispatch('userAuth/refreshLicenseIfNeeded').catch((error) => {
     console.error('Focus license refresh failed:', error);
   });
@@ -130,24 +143,20 @@ const handleWindowFocus = () => {
 // Listen for window focus events
 window.addEventListener('focus', handleWindowFocus);
 
-// Call the initialization function
-initializeApp();
-
 // Stop polling and cleanup when app is closed/unmounted
 window.addEventListener('beforeunload', () => {
   store.dispatch('appAuth/stopPolling');
-  // Clear license refresh timer
   if (licenseRefreshTimer) {
     clearInterval(licenseRefreshTimer);
     licenseRefreshTimer = null;
   }
-  // Remove focus listener
   window.removeEventListener('focus', handleWindowFocus);
 });
 
-app.mount('#app');
+// Initialize app data in background AFTER mount (non-blocking)
+initializeApp().catch(console.error);
 
-// Update axios interceptor to use auth module state
+// Axios interceptor for auth headers
 axios.interceptors.request.use(
   (config) => {
     const token = store.state.userAuth.token;
@@ -156,7 +165,5 @@ axios.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
