@@ -7,6 +7,7 @@ const router = express.Router();
 
 /**
  * Helper function to extract user ID from auth token
+ * Supports multiple JWT field names: id, userId, user_id, sub (standard JWT)
  */
 function getUserIdFromToken(req) {
   const authToken = req.headers.authorization;
@@ -17,7 +18,7 @@ function getUserIdFromToken(req) {
   try {
     const token = authToken.split(' ')[1];
     const payload = jwt.decode(token);
-    return payload?.id || payload?.userId || payload?.sub;
+    return payload?.id || payload?.userId || payload?.user_id || payload?.sub || null;
   } catch (e) {
     return null;
   }

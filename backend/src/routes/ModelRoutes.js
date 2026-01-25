@@ -152,7 +152,7 @@ router.get('/:provider/models', async (req, res) => {
         try {
           const token = authToken.split(' ')[1];
           const payload = jwt.decode(token);
-          userId = payload?.id || payload?.userId || payload?.sub;
+          userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
         } catch (e) {
           return res.status(401).json({
             success: false,
@@ -275,7 +275,7 @@ router.post('/:provider/models/refresh', async (req, res) => {
       try {
         const token = authToken.split(' ')[1];
         const payload = jwt.decode(token);
-        userId = payload?.id || payload?.userId || payload?.sub;
+        userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
       } catch (e) {
         return res.status(401).json({
           success: false,
@@ -412,7 +412,7 @@ router.post('/provider-health/check', async (req, res) => {
       try {
         const token = authToken.split(' ')[1];
         const payload = jwt.decode(token);
-        userId = payload?.id || payload?.userId || payload?.sub;
+        userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
       } catch (e) {
         // Ignore
       }
