@@ -15,6 +15,8 @@ const state = {
     source: null,
     hint: null,
     checkedAt: null,
+    codexWorkdir: null,
+    toolRunner: null,
   },
   codexDeviceSession: null,
 };
@@ -44,6 +46,8 @@ const mutations = {
       source: status?.source || null,
       hint: status?.hint || null,
       checkedAt: status?.checkedAt || new Date().toISOString(),
+      codexWorkdir: status?.codexWorkdir || null,
+      toolRunner: status?.toolRunner || null,
     };
   },
   SET_CODEX_DEVICE_SESSION(state, session) {

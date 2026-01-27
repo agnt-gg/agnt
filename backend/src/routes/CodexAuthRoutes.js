@@ -1,5 +1,6 @@
 import express from 'express';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
+import CodexCliService from '../services/ai/CodexCliService.js';
 
 const router = express.Router();
 
@@ -20,6 +21,8 @@ router.get('/status', async (req, res) => {
     res.json({
       success: true,
       ...status,
+      codexWorkdir: CodexCliService.getDefaultWorkdir(),
+      toolRunner: CodexCliService.getToolRunnerPath(),
       hint,
     });
   } catch (error) {

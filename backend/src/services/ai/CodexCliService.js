@@ -74,6 +74,14 @@ class CodexCliService {
     return this.codexBin;
   }
 
+  getDefaultWorkdir() {
+    return DEFAULT_CODEX_WORKDIR;
+  }
+
+  getToolRunnerPath() {
+    return TOOL_RUNNER_PATH;
+  }
+
   async runExecStream(
     {
       prompt,

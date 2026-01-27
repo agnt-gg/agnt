@@ -86,6 +86,17 @@ export default {
       return result === null ? null : result || defaultValue;
     };
 
+    const getCodexWorkdirHtml = (status) => {
+      const workdir = status?.codexWorkdir || codexStatus.value?.codexWorkdir;
+      if (!workdir) return '';
+      return `
+        <div style="text-align:left;margin-top:8px">
+          <p><strong>Codex working directory:</strong></p>
+          <p><code>${workdir}</code></p>
+        </div>
+      `;
+    };
+
     // Map provider ID to the correct case used in the store
     const getProviderCase = (providerId) => {
       const providerMap = {
@@ -196,7 +207,7 @@ export default {
           const readyMessage = isCliProvider
             ? 'OpenAI Codex CLI is already connected on this machine.'
             : 'OpenAI Codex is already connected and API access is available.';
-          await showAlert('Provider Ready', readyMessage);
+          await showAlert('Provider Ready', `${readyMessage}${getCodexWorkdirHtml(status)}`);
           return;
         }
 
@@ -250,7 +261,7 @@ export default {
             const successMessage = isCliProvider
               ? 'OpenAI Codex CLI connected successfully.'
               : 'OpenAI Codex connected successfully.';
-            await showAlert('Success', successMessage);
+            await showAlert('Success', `${successMessage}${getCodexWorkdirHtml(latestStatus)}`);
             return;
           }
 
