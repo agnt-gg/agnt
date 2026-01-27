@@ -55,14 +55,27 @@ class CodexCliService {
   }
 
   async runExecStream(
-    { prompt, model, cwd = process.cwd(), extraArgs = [] },
+    {
+      prompt,
+      model,
+      cwd = process.cwd(),
+      extraArgs = [],
+      resumeThreadId = null,
+      fullAuto = true,
+    },
     { onDelta, onEvent } = {}
   ) {
     if (!prompt || !String(prompt).trim()) {
       throw new Error('Codex CLI prompt is required.');
     }
 
-    const args = ['exec', '--json', '--full-auto'];
+    const args = ['exec', '--json'];
+    if (fullAuto) {
+      args.push('--full-auto');
+    }
+    if (resumeThreadId) {
+      args.push('resume', String(resumeThreadId));
+    }
     if (model) {
       args.push('-m', model);
     }
@@ -81,6 +94,7 @@ class CodexCliService {
     let lastAgentMessage = '';
     let usage = null;
     let errorEvent = null;
+    let threadId = resumeThreadId ? String(resumeThreadId) : null;
 
     const rl = readline.createInterface({
       input: child.stdout,
@@ -92,6 +106,11 @@ class CodexCliService {
       if (!event) return;
 
       onEvent?.(event);
+
+      if (event.type === 'thread.started' && event.thread_id) {
+        threadId = String(event.thread_id);
+        return;
+      }
 
       if (event.type === 'error') {
         errorEvent = event;
@@ -150,6 +169,7 @@ class CodexCliService {
       usage,
       exitCode,
       stderr: stderr.trim() || null,
+      threadId,
     };
   }
 }

@@ -6,6 +6,7 @@ import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { createCodexCliClient } from './CodexCliClient.js';
+import CodexCliSessionManager from './CodexCliSessionManager.js';
 
 const baseURLs = {
   cerebras: 'https://api.cerebras.ai/v1',
@@ -28,8 +29,9 @@ const baseURLs = {
  * @returns {Promise<OpenAI|Anthropic>} An initialized SDK client instance.
  * @throws {Error} If the provider is unsupported or the access token is missing.
  */
-export async function createLlmClient(provider, userId) {
+export async function createLlmClient(provider, userId, options = {}) {
   const lowerCaseProvider = provider.toLowerCase();
+  const { conversationId = null, cwd = process.cwd(), codexFullAuto = true } = options;
 
   // Check if this is a custom provider by querying the database
   const isCustom = await CustomOpenAIProviderService.isCustomProvider(provider);
@@ -105,9 +107,22 @@ export async function createLlmClient(provider, userId) {
     if (!codexToken) {
       throw new Error('OpenAI Codex CLI is not connected. Use device login to connect.');
     }
+
+    const sessionKey = CodexCliSessionManager.getSessionKey({
+      userId,
+      conversationId,
+      provider: lowerCaseProvider,
+      scope: conversationId ? 'conversation' : 'user',
+    });
+
     return createCodexCliClient({
       defaultModel: 'gpt-5-codex',
-      cwd: process.cwd(),
+      cwd,
+      sessionKey,
+      userId,
+      conversationId,
+      provider: lowerCaseProvider,
+      fullAuto: codexFullAuto,
     });
   }
 

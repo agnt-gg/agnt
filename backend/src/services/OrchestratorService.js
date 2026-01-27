@@ -305,21 +305,6 @@ async function universalChatHandler(req, res, context = {}) {
     return res.status(400).json({ error: 'Messages or message with history are required in the request body.' });
   }
 
-  // DEBUG: Log what we received from frontend
-  console.log('[Input Debug] Received messageInput:');
-  console.log(`  Total messages: ${messageInput.length}`);
-  console.log(`  First 3 messages:`);
-  messageInput.slice(0, 3).forEach((msg, idx) => {
-    console.log(`    [${idx}] role: ${msg?.role}, content: ${typeof msg?.content}, keys: ${msg ? Object.keys(msg).join(', ') : 'null'}`);
-  });
-  console.log(`  Last message:`);
-  const lastMsg = messageInput[messageInput.length - 1];
-  console.log(
-    `    [${messageInput.length - 1}] role: ${lastMsg?.role}, content: ${typeof lastMsg?.content}, keys: ${
-      lastMsg ? Object.keys(lastMsg).join(', ') : 'null'
-    }`
-  );
-
   // Set up streaming response
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -392,9 +377,11 @@ async function universalChatHandler(req, res, context = {}) {
     goalId,
     goalContext,
     userId,
+    conversationId,
     // AI provider settings
     provider,
     model,
+    normalizedProvider,
   };
 
   try {
@@ -443,7 +430,7 @@ async function universalChatHandler(req, res, context = {}) {
       }
     }
 
-    const client = await createLlmClient(normalizedProvider, userId);
+    const client = await createLlmClient(normalizedProvider, userId, { conversationId });
     const adapter = await createLlmAdapter(normalizedProvider, client, model);
 
     // Store client in context
@@ -565,7 +552,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
         uniqueToolMap.set(tool.function.name, tool);
       }
     }
-    const finalToolSchemas = Array.from(uniqueToolMap.values());
+    let finalToolSchemas = Array.from(uniqueToolMap.values());
+    let toolsForcedSkippedReason = null;
+
+    // Codex CLI backend does not support function-calling tools reliably.
+    if (normalizedProvider === 'openai-codex-cli' && finalToolSchemas.length > 0) {
+      toolsForcedSkippedReason = 'OpenAI Codex CLI does not support tool calling. Responding directly without tools.';
+      finalToolSchemas = [];
+    }
 
     // Generate assistant message ID early (needed for image extraction events)
     const assistantMessageId = `msg-asst-${Date.now()}`;
@@ -588,20 +582,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
       });
     }
 
-    // DEBUG: Log messages BEFORE context management
-    console.log('[Pre-Context Debug] Messages before context management:');
-    messages.forEach((msg, idx) => {
-      console.log(`  [${idx}] role: ${msg?.role}, content type: ${typeof msg?.content}, has content: ${!!msg?.content}`);
-    });
-
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas);
-
-    // DEBUG: Log messages AFTER context management
-    console.log('[Post-Context Debug] Messages after context management:');
-    contextResult.messages.forEach((msg, idx) => {
-      console.log(`  [${idx}] role: ${msg?.role}, content type: ${typeof msg?.content}, has content: ${!!msg?.content}`);
-    });
 
     // Send context status
     sendEvent('context_status', {
@@ -633,6 +615,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
       toolCalls: [],
       timestamp: Date.now(),
     });
+
+    if (toolsForcedSkippedReason) {
+      sendEvent('tools_skipped', {
+        assistantMessageId,
+        reason: toolsForcedSkippedReason,
+        message: `⚠️ ${toolsForcedSkippedReason}`,
+      });
+    }
 
     let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason } = await adapter.callStream(
       contextResult.messages,

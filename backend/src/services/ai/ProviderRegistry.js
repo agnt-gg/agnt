@@ -69,7 +69,7 @@ export const PROVIDER_CAPABILITIES = {
     text: {
       models: ['gpt-5-codex', 'gpt-5'],
       supportsStreaming: true,
-      supportsTools: true,
+      supportsTools: false,
     },
   },
 

@@ -73,9 +73,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     this.rag = null;
     this.agnt = null;
   }
-  async startStream(req, res, userQuery, files, provider, modelName, isChat, messages, accessToken) {
+  async startStream(req, res, userQuery, files, provider, modelName, isChat, messages, accessToken, conversationId = null) {
     // Client is now initialized with the factory based on provider
-    const client = await createLlmClient(provider, this.userId);
+    const client = await createLlmClient(provider, this.userId, { conversationId });
 
     // Add these headers at the start of the method
     res.setHeader('Content-Type', 'text/event-stream');

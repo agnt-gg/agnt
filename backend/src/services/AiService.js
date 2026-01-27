@@ -23,7 +23,7 @@ class AiService {
   };
   startToolForgeStream = async (req, res) => {
     try {
-      const { query, provider, model } = req.body;
+      const { query, provider, model, conversationId = null } = req.body;
       const files = req.files;
       const userId = req.user.id;
 
@@ -104,7 +104,8 @@ class AiService {
         model,
         'false', // isChat
         null, // messages
-        accessTokenOrApiKey
+        accessTokenOrApiKey,
+        conversationId
       );
     } catch (error) {
       console.error('Error starting Tool Forge stream:', error);
@@ -130,7 +131,7 @@ class AiService {
   startChatStream = async (req, res) => {
     try {
       console.log(req.body);
-      const { query, provider, model, isChat, messages } = req.body;
+      const { query, provider, model, isChat, messages, conversationId = null } = req.body;
       const userId = req.user.id;
 
       console.log('Provider:', provider);
@@ -162,7 +163,7 @@ class AiService {
       }
 
       // Call the AI's startStream method with the correct parameters
-      this.ai(req).startStream(req, res, userMessage, null, provider, model, isChat === 'true', parsedMessages, accessToken);
+      this.ai(req).startStream(req, res, userMessage, null, provider, model, isChat === 'true', parsedMessages, accessToken, conversationId);
     } catch (error) {
       console.error('Error starting chat stream:', error);
       res.status(500).json({

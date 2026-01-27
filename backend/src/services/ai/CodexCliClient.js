@@ -1,4 +1,7 @@
 import CodexCliService from './CodexCliService.js';
+import CodexCliSessionManager from './CodexCliSessionManager.js';
+
+const RESUME_MESSAGE_LIMIT = 12;
 
 function normalizeMessages(messages) {
   if (!Array.isArray(messages)) return [];
@@ -43,6 +46,13 @@ function messagesToCodexPrompt(messages) {
   }
 
   return lines.join('\n').trim();
+}
+
+function limitMessagesForResume(messages, hasThread) {
+  if (!hasThread) return messages;
+  if (!Array.isArray(messages)) return [];
+  if (messages.length <= RESUME_MESSAGE_LIMIT) return messages;
+  return messages.slice(messages.length - RESUME_MESSAGE_LIMIT);
 }
 
 function createAsyncQueue() {
@@ -99,29 +109,65 @@ function createStreamGenerator(runPromise, queue) {
   })();
 }
 
-export function createCodexCliClient({ defaultModel = 'gpt-5-codex', cwd = process.cwd() } = {}) {
+export function createCodexCliClient({
+  defaultModel = 'gpt-5-codex',
+  cwd = process.cwd(),
+  sessionKey = null,
+  userId = null,
+  conversationId = null,
+  provider = 'openai-codex-cli',
+  fullAuto = true,
+} = {}) {
+  const resolvedSessionKey =
+    sessionKey ||
+    CodexCliSessionManager.getSessionKey({
+      userId,
+      conversationId,
+      provider,
+      scope: conversationId ? 'conversation' : 'user',
+    });
+
   return {
     __provider: 'openai-codex-cli',
     __codexBin: CodexCliService.getCodexBin(),
+    __sessionKey: resolvedSessionKey,
     chat: {
       completions: {
         async create(options = {}) {
           const model = options.model || defaultModel;
           const messages = normalizeMessages(options.messages);
-          const prompt = messagesToCodexPrompt(messages);
+          const existingThreadId = CodexCliSessionManager.getThreadId(resolvedSessionKey);
+          const messagesForPrompt = limitMessagesForResume(messages, Boolean(existingThreadId));
+          const prompt = messagesToCodexPrompt(messagesForPrompt);
+
+          const handleEvent = (event) => {
+            if (event?.type === 'thread.started' && event.thread_id) {
+              CodexCliSessionManager.setThreadId(resolvedSessionKey, event.thread_id);
+            }
+          };
 
           if (options.stream) {
             const queue = createAsyncQueue();
 
             const runPromise = CodexCliService.runExecStream(
-              { prompt, model, cwd },
+              {
+                prompt,
+                model,
+                cwd,
+                resumeThreadId: existingThreadId,
+                fullAuto,
+              },
               {
                 onDelta: (delta) => {
                   queue.push({ content: delta });
                 },
+                onEvent: handleEvent,
               }
             )
-              .then(() => {
+              .then((result) => {
+                if (result?.threadId) {
+                  CodexCliSessionManager.setThreadId(resolvedSessionKey, result.threadId);
+                }
                 queue.push({ __done: true });
               })
               .catch((error) => {
@@ -132,7 +178,17 @@ export function createCodexCliClient({ defaultModel = 'gpt-5-codex', cwd = proce
             return createStreamGenerator(runPromise, queue);
           }
 
-          const result = await CodexCliService.runExecStream({ prompt, model, cwd });
+          const result = await CodexCliService.runExecStream({
+            prompt,
+            model,
+            cwd,
+            resumeThreadId: existingThreadId,
+            fullAuto,
+          }, { onEvent: handleEvent });
+
+          if (result?.threadId) {
+            CodexCliSessionManager.setThreadId(resolvedSessionKey, result.threadId);
+          }
           const content = result.text || '';
 
           return {
@@ -159,4 +215,3 @@ export function createCodexCliClient({ defaultModel = 'gpt-5-codex', cwd = proce
 }
 
 export default createCodexCliClient;
-
