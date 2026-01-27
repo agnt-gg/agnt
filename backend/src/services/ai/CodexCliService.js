@@ -3,7 +3,14 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import readline from 'readline';
+import { fileURLToPath } from 'url';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const TOOL_RUNNER_PATH = path.resolve(__dirname, '../../cli/runTool.js');
+const BACKEND_ROOT = path.resolve(__dirname, '../../..');
+const REPO_ROOT = path.resolve(BACKEND_ROOT, '..');
 
 function resolveCodexBin() {
   const managerBin = CodexAuthManager?.codexBin;
@@ -93,6 +100,9 @@ class CodexCliService {
     if (conversationId) env.AGNT_CONVERSATION_ID = String(conversationId);
     if (authToken) env.AGNT_AUTH_TOKEN = String(authToken);
     if (provider) env.AGNT_PROVIDER = String(provider);
+    env.AGNT_TOOL_RUNNER = TOOL_RUNNER_PATH;
+    env.AGNT_BACKEND_ROOT = BACKEND_ROOT;
+    env.AGNT_REPO_ROOT = REPO_ROOT;
 
     const child = spawn(this.codexBin, args, {
       cwd,

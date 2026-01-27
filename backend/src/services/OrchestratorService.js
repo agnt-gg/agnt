@@ -251,12 +251,13 @@ function getCodexCliSystemInstructions() {
   return `Codex CLI Mode (no function calling tools):
 - You cannot call tools via function-calling in this session.
 - You CAN run shell commands.
-- To run AGNT tools/flows, use the local tool runner:
-  node backend/src/cli/runTool.js --tool <tool_name> --args '{"key":"value"}'
+- You may change directories (for example: cd /path/to/other/project).
+- To run AGNT tools/flows from ANY directory, use the tool runner path in $AGNT_TOOL_RUNNER:
+  node "$AGNT_TOOL_RUNNER" --tool <tool_name> --args '{"key":"value"}'
 - To discover tools, run:
-  node backend/src/cli/runTool.js --list
+  node "$AGNT_TOOL_RUNNER" --list
 - Environment variables are already set for you when needed:
-  AGNT_USER_ID, AGNT_CONVERSATION_ID, AGNT_AUTH_TOKEN
+  AGNT_USER_ID, AGNT_CONVERSATION_ID, AGNT_AUTH_TOKEN, AGNT_TOOL_RUNNER, AGNT_REPO_ROOT
 - Tool results are JSON. Parse them, decide next steps, and continue.`;
 }
 
@@ -570,11 +571,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     }
     let finalToolSchemas = Array.from(uniqueToolMap.values());
-    let toolsForcedSkippedReason = null;
 
     // Codex CLI backend does not support function-calling tools reliably.
     if (normalizedProvider === 'openai-codex-cli' && finalToolSchemas.length > 0) {
-      toolsForcedSkippedReason = 'OpenAI Codex CLI does not support tool calling. Responding directly without tools.';
       finalToolSchemas = [];
     }
 
@@ -632,14 +631,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
       toolCalls: [],
       timestamp: Date.now(),
     });
-
-    if (toolsForcedSkippedReason) {
-      sendEvent('tools_skipped', {
-        assistantMessageId,
-        reason: toolsForcedSkippedReason,
-        message: `⚠️ ${toolsForcedSkippedReason}`,
-      });
-    }
 
     let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason } = await adapter.callStream(
       contextResult.messages,
