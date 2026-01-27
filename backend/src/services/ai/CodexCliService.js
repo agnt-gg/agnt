@@ -11,6 +11,19 @@ const __dirname = path.dirname(__filename);
 const TOOL_RUNNER_PATH = path.resolve(__dirname, '../../cli/runTool.js');
 const BACKEND_ROOT = path.resolve(__dirname, '../../..');
 const REPO_ROOT = path.resolve(BACKEND_ROOT, '..');
+const DEFAULT_CODEX_WORKDIR = process.env.AGNT_CODEX_WORKDIR || path.join(os.homedir(), 'services', 'agnt-codex-work');
+
+function ensureDirectory(dirPath) {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+  } catch (error) {
+    console.warn(`[Codex CLI] Failed to ensure workdir '${dirPath}':`, error?.message || error);
+  }
+}
+
+ensureDirectory(DEFAULT_CODEX_WORKDIR);
 
 function resolveCodexBin() {
   const managerBin = CodexAuthManager?.codexBin;
@@ -65,7 +78,7 @@ class CodexCliService {
     {
       prompt,
       model,
-      cwd = process.cwd(),
+      cwd = DEFAULT_CODEX_WORKDIR,
       extraArgs = [],
       resumeThreadId = null,
       fullAuto = true,
@@ -80,7 +93,7 @@ class CodexCliService {
       throw new Error('Codex CLI prompt is required.');
     }
 
-    const args = ['exec', '--json'];
+    const args = ['exec', '--json', '--skip-git-repo-check'];
     if (fullAuto) {
       args.push('--full-auto');
     }

@@ -16,6 +16,7 @@ import StreamEngine from '../stream/StreamEngine.js';
 import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
+import * as ProviderRegistry from './ai/ProviderRegistry.js';
 
 /**
  * Extract images from tool results and replace with references
@@ -288,7 +289,7 @@ async function universalChatHandler(req, res, context = {}) {
     history = [],
     conversationId: inputConversationId = null,
     provider,
-    model,
+    model: inputModel,
     // Context-specific parameters
     agentId,
     agentContext,
@@ -304,13 +305,26 @@ async function universalChatHandler(req, res, context = {}) {
   } = req.body;
 
   // Validate required parameters
-  if (!provider || !model) {
+  if (!provider || !inputModel) {
     res.setHeader('Content-Type', 'application/json');
     return res.status(400).json({ error: 'Provider and model are required in the request body.' });
   }
 
   // CRITICAL: Normalize provider to lowercase to ensure consistent handling
   const normalizedProvider = provider.toLowerCase();
+  let model = inputModel;
+
+  // Guardrail: Codex CLI accounts do not support every OpenAI model name.
+  if (normalizedProvider === 'openai-codex-cli') {
+    const supportedModels = ProviderRegistry.getTextModels(normalizedProvider);
+    if (Array.isArray(supportedModels) && supportedModels.length > 0 && !supportedModels.includes(model)) {
+      const fallbackModel = supportedModels[0] || 'gpt-5-codex';
+      console.warn(
+        `[Codex CLI] Model '${model}' is not supported for Codex CLI. Falling back to '${fallbackModel}'.`
+      );
+      model = fallbackModel;
+    }
+  }
 
   // Validate message input (different formats for different handlers)
   const messageInput = originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
