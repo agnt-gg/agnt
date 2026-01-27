@@ -409,6 +409,20 @@ function createTables() {
       )`
       );
 
+      // Persist Codex CLI thread IDs so conversations can resume after restarts
+      db.run(
+        `CREATE TABLE IF NOT EXISTS codex_threads (
+        user_id TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'openai-codex-cli',
+        scope TEXT NOT NULL DEFAULT 'conversation',
+        conversation_id TEXT NOT NULL DEFAULT '',
+        thread_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, provider, scope, conversation_id)
+      )`
+      );
+
       db.run(
         `CREATE TABLE IF NOT EXISTS webhooks (
         id TEXT PRIMARY KEY,

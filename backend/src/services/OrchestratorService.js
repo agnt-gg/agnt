@@ -247,6 +247,19 @@ async function processUploadedFiles(files) {
   return { fileContext, imageData };
 }
 
+function getCodexCliSystemInstructions() {
+  return `Codex CLI Mode (no function calling tools):
+- You cannot call tools via function-calling in this session.
+- You CAN run shell commands.
+- To run AGNT tools/flows, use the local tool runner:
+  node backend/src/cli/runTool.js --tool <tool_name> --args '{"key":"value"}'
+- To discover tools, run:
+  node backend/src/cli/runTool.js --list
+- Environment variables are already set for you when needed:
+  AGNT_USER_ID, AGNT_CONVERSATION_ID, AGNT_AUTH_TOKEN
+- Tool results are JSON. Parse them, decide next steps, and continue.`;
+}
+
 /**
  * Universal chat handler that replaces all the duplicate chat handlers
  * Supports: orchestrator, agent, workflow, tool, goal, and suggestions
@@ -430,7 +443,7 @@ async function universalChatHandler(req, res, context = {}) {
       }
     }
 
-    const client = await createLlmClient(normalizedProvider, userId, { conversationId });
+    const client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
     const adapter = await createLlmAdapter(normalizedProvider, client, model);
 
     // Store client in context
@@ -462,10 +475,14 @@ async function universalChatHandler(req, res, context = {}) {
 
     // Build system prompt
     const currentDate = new Date().toString();
-    const systemPrompt = config.buildSystemPrompt(currentDate, {
+    let systemPrompt = config.buildSystemPrompt(currentDate, {
       ...conversationContext,
       toolSchemas,
     });
+
+    if (normalizedProvider === 'openai-codex-cli') {
+      systemPrompt = `${systemPrompt}\n\n${getCodexCliSystemInstructions()}`;
+    }
 
     // Prepare messages - filter out any corrupted messages first, then clone
     messages = messageInput

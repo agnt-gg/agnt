@@ -31,7 +31,7 @@ const baseURLs = {
  */
 export async function createLlmClient(provider, userId, options = {}) {
   const lowerCaseProvider = provider.toLowerCase();
-  const { conversationId = null, cwd = process.cwd(), codexFullAuto = true } = options;
+  const { conversationId = null, cwd = process.cwd(), codexFullAuto = true, authToken = null } = options;
 
   // Check if this is a custom provider by querying the database
   const isCustom = await CustomOpenAIProviderService.isCustomProvider(provider);
@@ -123,6 +123,7 @@ export async function createLlmClient(provider, userId, options = {}) {
       conversationId,
       provider: lowerCaseProvider,
       fullAuto: codexFullAuto,
+      authToken,
     });
   }
 

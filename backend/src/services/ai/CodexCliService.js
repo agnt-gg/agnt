@@ -62,6 +62,10 @@ class CodexCliService {
       extraArgs = [],
       resumeThreadId = null,
       fullAuto = true,
+      userId = null,
+      conversationId = null,
+      authToken = null,
+      provider = 'openai-codex-cli',
     },
     { onDelta, onEvent } = {}
   ) {
@@ -84,9 +88,15 @@ class CodexCliService {
     }
     args.push(String(prompt));
 
+    const env = { ...process.env };
+    if (userId) env.AGNT_USER_ID = String(userId);
+    if (conversationId) env.AGNT_CONVERSATION_ID = String(conversationId);
+    if (authToken) env.AGNT_AUTH_TOKEN = String(authToken);
+    if (provider) env.AGNT_PROVIDER = String(provider);
+
     const child = spawn(this.codexBin, args, {
       cwd,
-      env: process.env,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

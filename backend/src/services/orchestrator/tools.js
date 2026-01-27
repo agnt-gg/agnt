@@ -328,7 +328,7 @@ export const TOOLS = {
           scope: sessionScope === 'user' ? 'user' : 'conversation',
         });
 
-        const existingThreadId = resume && !sessionThreadId ? CodexCliSessionManager.getThreadId(sessionKey) : null;
+        const existingThreadId = resume && !sessionThreadId ? await CodexCliSessionManager.getThreadId(sessionKey) : null;
         const resumeThreadId = sessionThreadId || existingThreadId;
 
         const handleEvent = (event) => {
@@ -345,6 +345,10 @@ export const TOOLS = {
             resumeThreadId,
             fullAuto,
             extraArgs: Array.isArray(extraArgs) ? extraArgs : [],
+            userId,
+            conversationId,
+            authToken: _authToken,
+            provider: 'openai-codex-cli',
           },
           { onEvent: handleEvent }
         );

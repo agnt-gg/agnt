@@ -33,6 +33,7 @@ import SpeechRoutes from './src/routes/SpeechRoutes.js';
 import PluginRoutes from './src/routes/PluginRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
+import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -220,6 +221,13 @@ function startServer() {
   let retries = 0;
 
   const tryStarting = async () => {
+    // Warm Codex thread cache so conversations can resume after restarts
+    try {
+      await CodexCliSessionManager.init();
+    } catch (error) {
+      console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
+    }
+
     // Create HTTP server from Express app
     const httpServer = createServer(app);
 

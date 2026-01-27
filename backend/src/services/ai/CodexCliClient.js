@@ -117,6 +117,7 @@ export function createCodexCliClient({
   conversationId = null,
   provider = 'openai-codex-cli',
   fullAuto = true,
+  authToken = null,
 } = {}) {
   const resolvedSessionKey =
     sessionKey ||
@@ -136,7 +137,7 @@ export function createCodexCliClient({
         async create(options = {}) {
           const model = options.model || defaultModel;
           const messages = normalizeMessages(options.messages);
-          const existingThreadId = CodexCliSessionManager.getThreadId(resolvedSessionKey);
+          const existingThreadId = await CodexCliSessionManager.getThreadId(resolvedSessionKey);
           const messagesForPrompt = limitMessagesForResume(messages, Boolean(existingThreadId));
           const prompt = messagesToCodexPrompt(messagesForPrompt);
 
@@ -156,6 +157,10 @@ export function createCodexCliClient({
                 cwd,
                 resumeThreadId: existingThreadId,
                 fullAuto,
+                userId,
+                conversationId,
+                authToken,
+                provider,
               },
               {
                 onDelta: (delta) => {
@@ -184,6 +189,10 @@ export function createCodexCliClient({
             cwd,
             resumeThreadId: existingThreadId,
             fullAuto,
+            userId,
+            conversationId,
+            authToken,
+            provider,
           }, { onEvent: handleEvent });
 
           if (result?.threadId) {
