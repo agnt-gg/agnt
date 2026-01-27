@@ -50,8 +50,14 @@ export default {
       if (!this.message) return '';
 
       // Convert URLs to clickable links that open in new tab
-      const urlRegex = /(https?:\/\/[^\s]+)/g;
-      return this.message.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+      // Stop URL matching at whitespace or HTML tag delimiters.
+      const urlRegex = /(https?:\/\/[^\s<]+)/g;
+      return this.message.replace(urlRegex, (match) => {
+        // Trim trailing punctuation that commonly sticks to URLs in text.
+        const cleanUrl = match.replace(/[)\],.;:!?]+$/g, '');
+        const trailing = match.slice(cleanUrl.length);
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailing}`;
+      });
     },
   },
   methods: {

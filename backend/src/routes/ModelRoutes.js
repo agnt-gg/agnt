@@ -2,6 +2,7 @@ import express from 'express';
 import openRouterService from '../services/ai/providers/OpenRouter.js';
 import anthropicService from '../services/ai/providers/Anthropic.js';
 import openAIService from '../services/ai/providers/OpenAI.js';
+import openAICodexCliService from '../services/ai/providers/OpenAICodexCli.js';
 import geminiService from '../services/ai/providers/Gemini.js';
 import grokAIService from '../services/ai/providers/GrokAI.js';
 import groqService from '../services/ai/providers/Groq.js';
@@ -9,6 +10,7 @@ import togetherAIService from '../services/ai/providers/TogetherAI.js';
 import cerebrasService from '../services/ai/providers/Cerebras.js';
 import deepSeekService from '../services/ai/providers/DeepSeek.js';
 import AuthManager from '../services/auth/AuthManager.js';
+import CodexAuthManager from '../services/auth/CodexAuthManager.js';
 import jwt from 'jsonwebtoken';
 
 const router = express.Router();
@@ -22,13 +24,15 @@ const providerServices = {
   grokai: grokAIService,
   grok: grokAIService, // Alias for grokai
   groq: groqService,
+  'openai-codex': openAIService,
+  'openai-codex-cli': openAICodexCliService,
   togetherai: togetherAIService,
   cerebras: cerebrasService,
   deepseek: deepSeekService,
 };
 
 // Providers that have hardcoded models and don't require API key for model listing
-const providersWithHardcodedModels = ['cerebras', 'deepseek'];
+const providersWithHardcodedModels = ['cerebras', 'deepseek', 'openai-codex-cli'];
 
 // Generic endpoint for fetching models from any provider
 router.get('/:provider/models', async (req, res) => {
@@ -51,43 +55,79 @@ router.get('/:provider/models', async (req, res) => {
 
     let apiKey = null;
 
-    // Only require authentication and API key for providers that need it
-    if (!hasHardcodedModels) {
-      // Extract user ID from auth token
-      const authToken = req.headers.authorization;
-      if (!authToken || !authToken.startsWith('Bearer ')) {
-        return res.status(401).json({
-          success: false,
-          error: `Authentication required to fetch ${provider} models`,
-        });
-      }
-
-      let userId = null;
-      try {
-        const token = authToken.split(' ')[1];
-        const payload = jwt.decode(token);
-        userId = payload?.id || payload?.userId || payload?.sub;
-      } catch (e) {
-        return res.status(401).json({
-          success: false,
-          error: 'Invalid authentication token',
-        });
-      }
-
-      if (!userId) {
-        return res.status(401).json({
-          success: false,
-          error: 'Could not extract user ID from token',
-        });
-      }
-
-      // Get API key for the user
-      apiKey = await AuthManager.getValidAccessToken(userId, providerLower);
-      if (!apiKey) {
+    // Codex CLI provider does not use the OpenAI API, but still requires local Codex login.
+    if (providerLower === 'openai-codex-cli') {
+      const codexToken = CodexAuthManager.getAccessToken();
+      if (!codexToken) {
         return res.status(400).json({
           success: false,
-          error: `${provider} API key not found. Please configure your ${provider} API key in settings.`,
+          error: 'OpenAI Codex CLI is not connected. Start device login from the provider setup.',
         });
+      }
+    }
+
+    // Only require authentication and API key for providers that need it
+    if (!hasHardcodedModels) {
+      // OpenAI Codex: use local Codex CLI auth and allow unauthenticated access to this local route.
+      if (providerLower === 'openai-codex') {
+        const codexStatus = await CodexAuthManager.checkApiUsable();
+        if (!codexStatus.available) {
+          return res.status(400).json({
+            success: false,
+            error: 'OpenAI Codex is not connected. Start device login from the provider setup.',
+          });
+        }
+        if (!codexStatus.apiUsable) {
+          const detail = codexStatus.apiStatus ? ` (API status: ${codexStatus.apiStatus})` : '';
+          return res.status(400).json({
+            success: false,
+            error: `OpenAI Codex is connected but the OpenAI API is not usable${detail}.`,
+          });
+        }
+        apiKey = CodexAuthManager.getAccessToken();
+        if (!apiKey) {
+          return res.status(400).json({
+            success: false,
+            error: 'OpenAI Codex token not found after login.',
+          });
+        }
+      } else {
+        // Extract user ID from auth token
+        const authToken = req.headers.authorization;
+        if (!authToken || !authToken.startsWith('Bearer ')) {
+          return res.status(401).json({
+            success: false,
+            error: `Authentication required to fetch ${provider} models`,
+          });
+        }
+
+        let userId = null;
+        try {
+          const token = authToken.split(' ')[1];
+          const payload = jwt.decode(token);
+          userId = payload?.id || payload?.userId || payload?.sub;
+        } catch (e) {
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid authentication token',
+          });
+        }
+
+        if (!userId) {
+          return res.status(401).json({
+            success: false,
+            error: 'Could not extract user ID from token',
+          });
+        }
+
+        // Get API key for the user
+        apiKey = await AuthManager.getValidAccessToken(userId, providerLower);
+        if (!apiKey) {
+          return res.status(400).json({
+            success: false,
+            error: `${provider} API key not found. Please configure your ${provider} API key in settings.`,
+          });
+        }
       }
     }
 
@@ -138,32 +178,62 @@ router.post('/:provider/models/refresh', async (req, res) => {
 
     // Extract user ID from auth token
     const authToken = req.headers.authorization;
-    if (!authToken || !authToken.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication required',
-      });
-    }
+    let apiKey = null;
+    const hasHardcodedModels = providersWithHardcodedModels.includes(providerLower);
 
-    let userId = null;
-    try {
-      const token = authToken.split(' ')[1];
-      const payload = jwt.decode(token);
-      userId = payload?.id || payload?.userId || payload?.sub;
-    } catch (e) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid authentication token',
-      });
-    }
+    if (providerLower === 'openai-codex') {
+      const codexStatus = await CodexAuthManager.checkApiUsable({ forceRefresh: true });
+      if (!codexStatus.available) {
+        return res.status(400).json({
+          success: false,
+          error: 'OpenAI Codex is not connected. Start device login from the provider setup.',
+        });
+      }
+      if (!codexStatus.apiUsable) {
+        const detail = codexStatus.apiStatus ? ` (API status: ${codexStatus.apiStatus})` : '';
+        return res.status(400).json({
+          success: false,
+          error: `OpenAI Codex is connected but the OpenAI API is not usable${detail}.`,
+        });
+      }
+      apiKey = CodexAuthManager.getAccessToken();
+    } else if (providerLower === 'openai-codex-cli') {
+      const codexToken = CodexAuthManager.getAccessToken();
+      if (!codexToken) {
+        return res.status(400).json({
+          success: false,
+          error: 'OpenAI Codex CLI is not connected. Start device login from the provider setup.',
+        });
+      }
+      // No API key needed; models are static.
+    } else if (!hasHardcodedModels) {
+      if (!authToken || !authToken.startsWith('Bearer ')) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required',
+        });
+      }
 
-    // Get API key for the user
-    const apiKey = await AuthManager.getValidAccessToken(userId, providerLower);
-    if (!apiKey) {
-      return res.status(400).json({
-        success: false,
-        error: `${provider} API key not found`,
-      });
+      let userId = null;
+      try {
+        const token = authToken.split(' ')[1];
+        const payload = jwt.decode(token);
+        userId = payload?.id || payload?.userId || payload?.sub;
+      } catch (e) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid authentication token',
+        });
+      }
+
+      // Get API key for the user
+      apiKey = await AuthManager.getValidAccessToken(userId, providerLower);
+      if (!apiKey) {
+        return res.status(400).json({
+          success: false,
+          error: `${provider} API key not found`,
+        });
+      }
     }
 
     // Clear cache and fetch fresh models

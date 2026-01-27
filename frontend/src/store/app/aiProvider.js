@@ -1,7 +1,19 @@
 import { API_CONFIG } from '@/tt.config.js';
 
 // Single source of truth for AI providers that require API keys (excludes 'Local')
-export const AI_PROVIDERS_WITH_API = ['anthropic', 'cerebras', 'deepseek', 'gemini', 'grokai', 'groq', 'openai', 'openrouter', 'togetherai'];
+export const AI_PROVIDERS_WITH_API = [
+  'anthropic',
+  'cerebras',
+  'deepseek',
+  'gemini',
+  'grokai',
+  'groq',
+  'openai',
+  'openai-codex',
+  'openai-codex-cli',
+  'openrouter',
+  'togetherai',
+];
 
 // Mapping of provider names to their fetch action names
 export const PROVIDER_FETCH_ACTIONS = {
@@ -13,6 +25,8 @@ export const PROVIDER_FETCH_ACTIONS = {
   Groq: 'aiProvider/fetchGroqModels',
   Local: 'aiProvider/fetchLocalModels',
   OpenAI: 'aiProvider/fetchOpenAIModels',
+  'OpenAI-Codex': 'aiProvider/fetchOpenAICodexModels',
+  'OpenAI-Codex-CLI': 'aiProvider/fetchOpenAICodexCliModels',
   OpenRouter: 'aiProvider/fetchOpenRouterModels',
   TogetherAI: 'aiProvider/fetchTogetherAIModels',
 };
@@ -20,13 +34,28 @@ export const PROVIDER_FETCH_ACTIONS = {
 export default {
   namespaced: true,
   state: {
-    providers: ['Anthropic', 'Cerebras', 'DeepSeek', 'Gemini', 'GrokAI', 'Groq', 'Local', 'OpenAI', 'OpenRouter', 'TogetherAI'],
+    providers: [
+      'Anthropic',
+      'Cerebras',
+      'DeepSeek',
+      'Gemini',
+      'GrokAI',
+      'Groq',
+      'Local',
+      'OpenAI',
+      'OpenAI-Codex',
+      'OpenAI-Codex-CLI',
+      'OpenRouter',
+      'TogetherAI',
+    ],
     customProviders: [], // Custom OpenAI-compatible providers
     allModels: {
       Anthropic: [], // Will be populated dynamically from API
       Cerebras: [], // Will be populated dynamically from API
       DeepSeek: [], // Will be populated dynamically from API
       OpenAI: [], // Will be populated dynamically from API
+      'OpenAI-Codex': [], // Will be populated dynamically from API
+      'OpenAI-Codex-CLI': [], // Will be populated dynamically from API
       Gemini: [], // Will be populated dynamically from API
       GrokAI: [], // Will be populated dynamically from API
       Groq: [], // Will be populated dynamically from API
@@ -126,6 +155,14 @@ export default {
   getters: {
     filteredModels(state) {
       return state.allModels[state.selectedProvider] || [];
+    },
+    filteredProviders(state, _getters, rootState) {
+      const codexStatus = rootState?.appAuth?.codexStatus || {};
+      const shouldHideOpenAICodex = codexStatus.available === true && codexStatus.apiUsable !== true;
+      if (!shouldHideOpenAICodex) {
+        return state.providers;
+      }
+      return state.providers.filter((provider) => provider !== 'OpenAI-Codex');
     },
     allProviders(state) {
       // Combine built-in providers with custom providers
@@ -291,17 +328,22 @@ export default {
       commit('SET_LOADING_MODELS', { provider, loading: true });
 
       try {
+        const providerLower = provider.toLowerCase();
         const token = localStorage.getItem('token');
-        if (!token) {
+        const isLocalCodexProvider = providerLower === 'openai-codex' || providerLower === 'openai-codex-cli';
+        if (!token && !isLocalCodexProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }
 
-        const providerLower = provider.toLowerCase();
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+
         const response = await fetch(`${API_CONFIG.BASE_URL}/models/${providerLower}/models`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers,
         });
 
         if (!response.ok) {
@@ -363,6 +405,14 @@ export default {
 
     async fetchOpenAIModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'OpenAI', forceRefresh });
+    },
+
+    async fetchOpenAICodexModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'OpenAI-Codex', forceRefresh });
+    },
+
+    async fetchOpenAICodexCliModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'OpenAI-Codex-CLI', forceRefresh });
     },
 
     async fetchGeminiModels({ dispatch }, { forceRefresh = false } = {}) {

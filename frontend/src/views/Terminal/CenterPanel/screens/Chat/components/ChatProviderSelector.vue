@@ -123,7 +123,7 @@ export default {
     const isDialogOpen = ref(false);
     const editingProvider = ref(null);
 
-    const providers = computed(() => store.state.aiProvider.providers);
+    const providers = computed(() => store.getters['aiProvider/filteredProviders']);
     const customProviders = computed(() => store.state.aiProvider.customProviders || []);
     const connectedProviders = computed(() => store.state.appAuth.connectedApps);
     const connectedProvidersLower = computed(() => connectedProviders.value.map((p) => p.toLowerCase()));

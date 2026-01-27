@@ -448,7 +448,7 @@ async function universalChatHandler(req, res, context = {}) {
 
     // Store client in context
     conversationContext.llmClient = client;
-    if (normalizedProvider === 'openai') {
+    if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex' || normalizedProvider === 'openai-codex-cli') {
       conversationContext.openai = client;
     }
 

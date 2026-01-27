@@ -318,7 +318,7 @@ export default {
     const categoryOptions = computed(() => (store.getters['agents/agentCategories'] || []).map((cat) => ({ value: cat, label: cat })));
 
     // AI Provider and Model options
-    const aiProviders = computed(() => store.state.aiProvider.providers);
+    const aiProviders = computed(() => store.getters['aiProvider/filteredProviders']);
     const availableModels = computed(() => {
       const provider = newAgent.value.provider;
       return provider ? store.state.aiProvider.allModels[provider] || [] : [];

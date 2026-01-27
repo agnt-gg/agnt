@@ -2306,9 +2306,9 @@ export const TOOLS = {
             },
             provider: {
               type: 'string',
-              enum: ['openai', 'gemini', 'grokai'],
+              enum: ['openai', 'openai-codex', 'gemini', 'grokai'],
               description:
-                "AI provider to use for vision analysis. Options: 'openai' (GPT-4 Vision), 'gemini' (Google), 'grokai' (Grok). If not specified, defaults to 'openai'.",
+                "AI provider to use for vision analysis. Options: 'openai' or 'openai-codex' (OpenAI), 'gemini' (Google), 'grokai' (Grok). If not specified, defaults to 'openai'.",
             },
             model: {
               type: 'string',
@@ -2340,7 +2340,7 @@ export const TOOLS = {
       try {
         // Validate provider
         const normalizedProvider = provider.toLowerCase();
-        const supportedProviders = ['openai', 'gemini', 'grokai'];
+        const supportedProviders = ['openai', 'openai-codex', 'gemini', 'grokai'];
         if (!supportedProviders.includes(normalizedProvider)) {
           return JSON.stringify({
             success: false,
@@ -2498,9 +2498,9 @@ export const TOOLS = {
             },
             provider: {
               type: 'string',
-              enum: ['gemini', 'grokai', 'openai'],
+              enum: ['gemini', 'grokai', 'openai', 'openai-codex'],
               description:
-                "AI provider to use for image generation. Options: 'gemini' (Google), 'grokai' (Grok), 'openai' (DALL-E). If not specified, defaults to 'openai'.",
+                "AI provider to use for image generation. Options: 'gemini' (Google), 'grokai' (Grok), 'openai' or 'openai-codex' (DALL-E). If not specified, defaults to 'openai'.",
             },
             model: {
               type: 'string',

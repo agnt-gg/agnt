@@ -11,6 +11,7 @@ class AiService {
       return new StreamEngine(req.user.id);
     };
     this.authManager = AuthManager;
+    this.localAuthProviders = new Set(['local', 'openai-codex', 'openai-codex-cli']);
   }
 
   // Break typical controller pattern and use arrow functions to automatically bind 'this'
@@ -80,9 +81,10 @@ class AiService {
       let accessTokenOrApiKey = null;
 
       // Only attempt to get an access token or API key if it's not the local provider
-      if (provider.toLowerCase() !== 'local') {
+      const providerLower = provider.toLowerCase();
+      if (!this.localAuthProviders.has(providerLower)) {
         try {
-          accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, provider.toLowerCase());
+          accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, providerLower);
         } catch (authError) {
           console.error('Authentication error:', authError);
           return res.status(401).json({
@@ -143,17 +145,20 @@ class AiService {
 
       // Get the access token or API key for the provider
       let accessToken;
-      try {
-        accessToken = await this.authManager.getValidAccessToken(userId, provider.toLowerCase());
-      } catch (authError) {
-        if (authError.message === 'No valid access token. User needs to authenticate.') {
-          return res.status(401).json({
-            error: 'Authentication required',
-            message: 'Please authenticate with the provider before starting a chat.',
-            provider: provider,
-          });
+      const providerLower = provider.toLowerCase();
+      if (!this.localAuthProviders.has(providerLower)) {
+        try {
+          accessToken = await this.authManager.getValidAccessToken(userId, providerLower);
+        } catch (authError) {
+          if (authError.message === 'No valid access token. User needs to authenticate.') {
+            return res.status(401).json({
+              error: 'Authentication required',
+              message: 'Please authenticate with the provider before starting a chat.',
+              provider: provider,
+            });
+          }
+          throw authError; // Re-throw if it's a different error
         }
-        throw authError; // Re-throw if it's a different error
       }
 
       // Call the AI's startStream method with the correct parameters

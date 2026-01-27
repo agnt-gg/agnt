@@ -2875,11 +2875,16 @@ export async function createLlmAdapter(provider, client, model) {
       return new CerebrasAdapter(client, model);
 
     case 'openai':
+    case 'openai-codex':
       // Check if this model requires the new Responses API (GPT-5, o-series)
       if (requiresResponsesApi(model)) {
         console.log(`[LLM Adapter] Using OpenAIResponsesAdapter for model: ${model} (Responses API)`);
         return new OpenAIResponsesAdapter(client, model);
       }
+      return new OpenAiLikeAdapter(client, model);
+
+    case 'openai-codex-cli':
+      // Codex CLI does not implement the Responses API; always use chat-completions-style adapter.
       return new OpenAiLikeAdapter(client, model);
 
     case 'deepseek':
