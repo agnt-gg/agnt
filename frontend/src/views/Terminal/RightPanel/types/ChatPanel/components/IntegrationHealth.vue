@@ -202,19 +202,6 @@ export default {
         };
       }
 
-      if (normalizedId === 'openai-codex') {
-        return {
-          id: 'openai-codex',
-          name: 'OpenAI Codex',
-          icon: 'openai',
-          categories: ['AI'],
-          connectionType: 'oauth',
-          instructions:
-            'Connect using Codex CLI device login. You will be given a URL and one-time code to complete sign-in.',
-          localOnly: true,
-        };
-      }
-
       try {
         const token = localStorage.getItem('token');
         if (!token) {

@@ -96,24 +96,6 @@ class UserService {
               source: codexStatus.source || 'codex-auth-access-token',
             },
           });
-
-          if (codexStatus.apiUsable) {
-            providers.push({
-              status: 'healthy',
-              provider: 'openai-codex',
-              lastChecked: new Date().toISOString(),
-              details: {
-                apiStatus: codexStatus.apiStatus || 200,
-              },
-            });
-          } else {
-            providers.push({
-              status: 'error',
-              provider: 'openai-codex',
-              lastChecked: new Date().toISOString(),
-              error: codexStatus?.hint || 'Codex auth present but OpenAI API is not usable.',
-            });
-          }
         }
 
         const healthyCount = providers.filter((p) => p.status === 'healthy').length;

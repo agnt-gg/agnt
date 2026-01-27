@@ -86,7 +86,6 @@ const actions = {
 
     // Local Codex auth:
     // - openai-codex-cli: connected when Codex login exists locally.
-    // - openai-codex: connected only when the OpenAI API is usable.
     try {
       const codexStatusResponse = await axios.get(`${API_CONFIG.BASE_URL}/codex/status`);
       const codexStatus = codexStatusResponse?.data || {};
@@ -95,10 +94,6 @@ const actions = {
       if (codexStatus.available === true) {
         if (!connectedApps.includes('openai-codex-cli')) {
           connectedApps = [...connectedApps, 'openai-codex-cli'];
-        }
-
-        if (codexStatus.apiUsable === true && !connectedApps.includes('openai-codex')) {
-          connectedApps = [...connectedApps, 'openai-codex'];
         }
       }
     } catch (error) {
@@ -131,16 +126,6 @@ const actions = {
             'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
           localOnly: true,
         },
-        {
-          id: 'openai-codex',
-          name: 'OpenAI Codex',
-          icon: 'openai',
-          categories: ['AI'],
-          connectionType: 'oauth',
-          instructions:
-            'Connect using Codex CLI device login. You will be given a URL and one-time code to complete sign-in.',
-          localOnly: true,
-        },
       ];
 
       const existingIds = new Set(remoteProviders.map((p) => p.id));
@@ -164,16 +149,6 @@ const actions = {
           connectionType: 'oauth',
           instructions:
             'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
-          localOnly: true,
-        },
-        {
-          id: 'openai-codex',
-          name: 'OpenAI Codex',
-          icon: 'openai',
-          categories: ['AI'],
-          connectionType: 'oauth',
-          instructions:
-            'Connect using Codex CLI device login. You will be given a URL and one-time code to complete sign-in.',
           localOnly: true,
         },
       ]);

@@ -22,7 +22,6 @@ export const AI_PROVIDERS_CONFIG = {
     'Groq',
     'Local',
     'OpenAI',
-    'OpenAI-Codex',
     'OpenAI-Codex-CLI',
     'OpenRouter',
     'TogetherAI',
@@ -37,7 +36,6 @@ export const AI_PROVIDERS_CONFIG = {
     Groq: [], // Fetched from /api/models/groq/models
     Local: [], // Fetched from LM Studio at http://127.0.0.1:1234/v1/models
     OpenAI: [], // Fetched from /api/models/openai/models
-    'OpenAI-Codex': [], // Fetched from /api/models/openai-codex/models
     'OpenAI-Codex-CLI': [], // Fetched from /api/models/openai-codex-cli/models
     OpenRouter: [], // Fetched from /api/models/openrouter/models
     TogetherAI: [], // Fetched from /api/models/togetherai/models
