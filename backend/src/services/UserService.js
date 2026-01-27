@@ -1,6 +1,7 @@
 import UserModel from '../models/UserModel.js';
 import { getUserTokenFromSession } from '../routes/Middleware.js';
 import AuthManager from '../services/auth/AuthManager.js';
+import CodexAuthManager from './auth/CodexAuthManager.js';
 
 class UserService {
   healthCheck(req, res) {
@@ -77,9 +78,61 @@ class UserService {
   }
   async getConnectionHealth(req, res) {
     try {
-      const userId = req.user.id;
-      // Get the token from the Authorization header
-      const authToken = req.headers.authorization.split(' ')[1];
+      const userId = req.user?.id || 'local-user';
+      const authHeader = req.headers.authorization || '';
+      const authToken = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+      // In local mode we may not have a remote auth token. Provide a local-only health summary.
+      if (!authToken) {
+        const codexStatus = await CodexAuthManager.checkApiUsable();
+        const providers = [];
+
+        if (codexStatus?.available) {
+          providers.push({
+            status: 'healthy',
+            provider: 'openai-codex-cli',
+            lastChecked: new Date().toISOString(),
+            details: {
+              source: codexStatus.source || 'codex-auth-access-token',
+            },
+          });
+
+          if (codexStatus.apiUsable) {
+            providers.push({
+              status: 'healthy',
+              provider: 'openai-codex',
+              lastChecked: new Date().toISOString(),
+              details: {
+                apiStatus: codexStatus.apiStatus || 200,
+              },
+            });
+          } else {
+            providers.push({
+              status: 'error',
+              provider: 'openai-codex',
+              lastChecked: new Date().toISOString(),
+              error: codexStatus?.hint || 'Codex auth present but OpenAI API is not usable.',
+            });
+          }
+        }
+
+        const healthyCount = providers.filter((p) => p.status === 'healthy').length;
+        const totalCount = providers.length;
+        const overall =
+          totalCount === 0 ? 'no_connections' : healthyCount === totalCount ? 'healthy' : healthyCount === 0 ? 'critical' : 'degraded';
+
+        return res.json({
+          success: true,
+          data: {
+            overall,
+            healthyConnections: healthyCount,
+            totalConnections: totalCount,
+            providers,
+            timestamp: new Date().toISOString(),
+            localOnly: true,
+          },
+        });
+      }
 
       const healthStatus = await AuthManager.checkConnectionHealth(userId, authToken);
 
