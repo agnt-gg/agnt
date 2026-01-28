@@ -11,6 +11,7 @@ class POSTTransport {
     this.headers = options.headers || {};
     this.sessionId = null;
     this.connected = false;
+    this.requestCounter = 0;
   }
 
   async connect() {
@@ -32,7 +33,7 @@ class POSTTransport {
       throw new Error('Transport not connected');
     }
 
-    const requestId = message.id || `req-${Date.now()}`;
+    const requestId = message.id || `req-${Date.now()}-${++this.requestCounter}`;
     message.id = requestId;
 
     const headers = {
