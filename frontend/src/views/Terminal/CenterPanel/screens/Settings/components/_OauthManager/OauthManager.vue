@@ -127,31 +127,38 @@ const showAlert = async (title, message) => {
   });
 };
 
-const fetchAuthProviders = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    console.log(response);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const providers = await response.json();
-    allApps.value = providers.map((provider) => ({
+const syncProvidersFromStore = () => {
+  const providers = Array.isArray(store.state.appAuth.allProviders) ? store.state.appAuth.allProviders : [];
+  const connected = Array.isArray(store.state.appAuth.connectedApps) ? store.state.appAuth.connectedApps : [];
+
+  allApps.value = providers.map((provider) => {
+    const categories = Array.isArray(provider.categories)
+      ? provider.categories
+      : provider.categories
+        ? JSON.parse(provider.categories)
+        : [];
+    const isConnected = connected.some((id) => String(id).toLowerCase() === String(provider.id).toLowerCase());
+
+    return {
       ...provider,
-      categories: Array.isArray(provider.categories) ? provider.categories : JSON.parse(provider.categories),
-      connected: allApps.value.find((app) => app.id === provider.id)?.connected || false,
+      categories,
+      connected: isConnected,
       connectionType: provider.connectionType || provider.connection_type,
       instructions: provider.instructions,
       custom_prompt: provider.custom_prompt,
-    }));
-    console.log('Fetched auth providers with instructions:', allApps.value);
+    };
+  });
+};
+
+const fetchAuthProviders = async () => {
+  try {
+    await store.dispatch('appAuth/fetchAllProviders');
+    await store.dispatch('appAuth/fetchConnectedApps');
+    syncProvidersFromStore();
   } catch (error) {
     console.error('Error fetching auth providers:', error);
-    await showAlert('Error', 'Failed to fetch auth providers. Please try again.');
+    // Fall back to whatever the store currently has.
+    syncProvidersFromStore();
   }
 };
 
@@ -186,6 +193,17 @@ const selectCategory = (category) => {
 
 const handleAppClick = (app) => {
   console.log('Handling app click:', app);
+  const appLower = String(app.id || '').toLowerCase();
+
+  if (appLower === 'openai-codex' || appLower === 'openai-codex-cli') {
+    connectCodexProvider(app);
+    return;
+  }
+  if (appLower === 'kimi-code') {
+    promptApiKey(app);
+    return;
+  }
+
   if (app.connected) {
     disconnectApp(app);
   } else if (app.connectionType === 'oauth') {
@@ -249,6 +267,45 @@ const disconnectApp = async (app) => {
 
   try {
     const token = localStorage.getItem('token');
+    const appLower = String(app.id || '').toLowerCase();
+
+    if (appLower === 'openai-codex' || appLower === 'openai-codex-cli') {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/codex/logout`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.success) {
+        await showAlert('Success', `Successfully disconnected from ${app.name}`);
+        await store.dispatch('appAuth/fetchConnectedApps');
+        syncProvidersFromStore();
+        return;
+      }
+      throw new Error(data.message || 'Disconnection failed');
+    }
+
+    if (appLower === 'kimi-code') {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.success) {
+        await showAlert('Success', `Successfully disconnected from ${app.name}`);
+        await store.dispatch('appAuth/fetchConnectedApps');
+        syncProvidersFromStore();
+        return;
+      }
+      throw new Error(data.message || 'Disconnection failed');
+    }
+
     const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${app.id}`, {
       method: 'POST',
       headers: {
@@ -313,6 +370,32 @@ const saveApiKey = async (app, apiKey) => {
   try {
     const token = localStorage.getItem('token');
     const encryptedApiKey = apiKey;
+    const appLower = String(app.id || '').toLowerCase();
+
+    if (appLower === 'kimi-code') {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ apiKey }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        await showAlert('Success', `API key for ${app.name} saved successfully!`);
+        await store.dispatch('appAuth/fetchConnectedApps');
+        syncProvidersFromStore();
+        return;
+      }
+
+      throw new Error(result.message || 'Failed to save API key');
+    }
 
     const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${app.id}`, {
       method: 'POST',
@@ -381,11 +464,71 @@ const completeOAuth = async (code, state, provider) => {
   }
 };
 
+const connectCodexProvider = async (provider) => {
+  try {
+    const providerLower = provider.id.toLowerCase();
+    const isCliProvider = providerLower === 'openai-codex-cli';
+    const status = await store.dispatch('appAuth/fetchCodexStatus');
+    if (status?.available && (isCliProvider || status?.apiUsable)) {
+      await showAlert('Provider Ready', `${provider.name} is already connected on this machine.`);
+      await store.dispatch('appAuth/fetchConnectedApps');
+      syncProvidersFromStore();
+      return;
+    }
+
+    const session = await store.dispatch('appAuth/startCodexDeviceAuth');
+    if (!session?.success) {
+      throw new Error(session?.error || 'Failed to start Codex device login');
+    }
+
+    if (session.state === 'error') {
+      await showAlert('Codex Device Login', session.message || 'Codex device login failed to start.');
+      return;
+    }
+
+    const deviceUrl = session.deviceUrl || 'https://auth.openai.com/codex/device';
+    const deviceCode = session.deviceCode || '(code unavailable)';
+    const instructions = `
+1. Open this URL in your browser:<br/><br/>
+<strong>${deviceUrl}</strong><br/><br/>
+2. Enter this one-time code:<br/><br/>
+<strong>${deviceCode}</strong><br/><br/>
+Then return here and click <strong>Continue</strong>.
+    `;
+
+    const confirmed = await modal.value.showModal({
+      title: 'OpenAI Codex Device Login',
+      message: instructions,
+      confirmText: 'Continue',
+      cancelText: 'Cancel',
+      confirmClass: 'btn-primary',
+      showCancel: true,
+    });
+
+    if (!confirmed) return;
+
+    const result = await store.dispatch('appAuth/pollCodexDeviceAuth', { sessionId: session.sessionId });
+    if (result?.state === 'success') {
+      await showAlert('Success', `${provider.name} connected successfully.`);
+      await store.dispatch('appAuth/fetchConnectedApps');
+      syncProvidersFromStore();
+      return;
+    }
+
+    const latestStatus = await store.dispatch('appAuth/fetchCodexStatus');
+    const hint = latestStatus?.hint ? `\n\n${latestStatus.hint}` : '';
+    await showAlert('Codex Not Ready', `${result?.message || 'Device login not completed yet.'}${hint}`);
+  } catch (error) {
+    console.error('Error connecting OpenAI Codex:', error);
+    await showAlert('Connection Error', `Failed to connect OpenAI Codex: ${error.message}`);
+  }
+};
 const fetchConnectedApps = async () => {
   await store.dispatch('appAuth/fetchConnectedApps');
-  const connectedApps = store.state.appAuth.connectedApps;
+  const connectedApps = Array.isArray(store.state.appAuth.connectedApps) ? store.state.appAuth.connectedApps : [];
+  const connectedSet = new Set(connectedApps.map((id) => String(id).toLowerCase()));
   allApps.value.forEach((app) => {
-    app.connected = connectedApps.includes(app.id);
+    app.connected = connectedSet.has(String(app.id).toLowerCase());
   });
 };
 
