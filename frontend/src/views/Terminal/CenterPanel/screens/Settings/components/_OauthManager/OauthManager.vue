@@ -127,16 +127,23 @@ const showAlert = async (title, message) => {
   });
 };
 
+const safeParseCategories = (input) => {
+  if (!input) return [];
+  if (Array.isArray(input)) return input;
+  try {
+    const parsed = JSON.parse(input);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 const syncProvidersFromStore = () => {
   const providers = Array.isArray(store.state.appAuth.allProviders) ? store.state.appAuth.allProviders : [];
   const connected = Array.isArray(store.state.appAuth.connectedApps) ? store.state.appAuth.connectedApps : [];
 
   allApps.value = providers.map((provider) => {
-    const categories = Array.isArray(provider.categories)
-      ? provider.categories
-      : provider.categories
-        ? JSON.parse(provider.categories)
-        : [];
+    const categories = safeParseCategories(provider.categories);
     const isConnected = connected.some((id) => String(id).toLowerCase() === String(provider.id).toLowerCase());
 
     return {
