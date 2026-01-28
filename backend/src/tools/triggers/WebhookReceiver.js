@@ -208,6 +208,8 @@ class LocalWebhookReceiver extends EventEmitter {
   //   }
   // }
   async pollForTriggers() {
+    let claimedTriggerIds = []; // Track claimed triggers for release on error
+
     try {
       // Security: Only request triggers for workflows we own
       const workflowIds = Array.from(this.webhooks.keys());
@@ -218,6 +220,7 @@ class LocalWebhookReceiver extends EventEmitter {
       }
 
       // POST with workflowIds for security filtering - server only returns our triggers
+      // Server atomically claims these triggers (sets status='processing') to prevent race conditions
       const response = await axios.post(`${this.remoteUrl}/webhooks/poll`, {
         workflowIds: workflowIds,
       });
@@ -226,23 +229,27 @@ class LocalWebhookReceiver extends EventEmitter {
       // Only log if there are triggers to process
       if (!triggers || triggers.length === 0) return;
 
-      console.log(`LocalWebhookReceiver: Received ${triggers.length} webhook triggers`);
+      console.log(`LocalWebhookReceiver: Received and claimed ${triggers.length} webhook triggers`);
+
+      // Track all claimed trigger IDs (server has already claimed them)
+      claimedTriggerIds = triggers.map((t) => t.id);
 
       const processedTriggerIds = [];
       const results = {};
+      const failedTriggerIds = []; // Triggers that couldn't be processed
 
       for (const trigger of triggers) {
         console.log('LocalWebhookReceiver: Trigger data:', trigger);
         const result = await this._processWebhookTrigger(trigger.workflowId, trigger.triggerData);
 
         // Only mark as processed if the workflow was actually triggered
-        // If result is null or has pendingRetry flag, don't confirm - let it be retried
         if (result && !result.pendingRetry) {
           processedTriggerIds.push(trigger.id);
           results[trigger.id] = result;
         } else if (result === null) {
-          // Workflow not ready yet - don't confirm, will retry on next poll
-          console.log(`LocalWebhookReceiver: Workflow ${trigger.workflowId} not ready, will retry on next poll`);
+          // Workflow not ready - release this trigger back to pending for retry
+          console.log(`LocalWebhookReceiver: Workflow ${trigger.workflowId} not ready, releasing trigger for retry`);
+          failedTriggerIds.push(trigger.id);
         }
       }
 
@@ -258,8 +265,32 @@ class LocalWebhookReceiver extends EventEmitter {
           console.error('LocalWebhookReceiver: Error confirming processed triggers:', confirmError);
         }
       }
+
+      // Release failed triggers back to pending state
+      if (failedTriggerIds.length > 0) {
+        try {
+          await axios.post(`${this.remoteUrl}/webhooks/release`, {
+            triggerIds: failedTriggerIds,
+          });
+          console.log(`LocalWebhookReceiver: Released ${failedTriggerIds.length} triggers back to pending`);
+        } catch (releaseError) {
+          console.error('LocalWebhookReceiver: Error releasing triggers:', releaseError);
+        }
+      }
     } catch (error) {
       console.error('LocalWebhookReceiver: Error polling for webhook triggers:', error);
+
+      // If we claimed triggers but failed to process, release them
+      if (claimedTriggerIds.length > 0) {
+        try {
+          await axios.post(`${this.remoteUrl}/webhooks/release`, {
+            triggerIds: claimedTriggerIds,
+          });
+          console.log(`LocalWebhookReceiver: Released ${claimedTriggerIds.length} triggers after error`);
+        } catch (releaseError) {
+          console.error('LocalWebhookReceiver: Error releasing triggers after failure:', releaseError);
+        }
+      }
     }
   }
   async _processWebhookTrigger(workflowId, triggerData) {
