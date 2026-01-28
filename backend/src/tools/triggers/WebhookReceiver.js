@@ -11,6 +11,15 @@ class LocalWebhookReceiver extends EventEmitter {
     this.pollInterval = null;
     this.webhooks = new Map();
 
+    // Only the Workflow Process should poll for triggers
+    // Main process has IS_WORKFLOW_PROCESS undefined, child process has it set to 'true'
+    // This prevents duplicate polling and race conditions
+    this.pollingEnabled = process.env.IS_WORKFLOW_PROCESS === 'true';
+
+    if (!this.pollingEnabled) {
+      console.log('LocalWebhookReceiver: Polling disabled (main process). Workflow Process will handle polling.');
+    }
+
     // Load webhooks and auto-start polling if there are active webhook workflows
     this.initializeWebhooks();
     console.log('LocalWebhookReceiver instantiated.');
@@ -168,6 +177,12 @@ class LocalWebhookReceiver extends EventEmitter {
     return webhookUrl;
   }
   startPolling() {
+    // Only allow polling in the Workflow Process to prevent duplicate triggers
+    if (!this.pollingEnabled) {
+      console.log('LocalWebhookReceiver: Polling disabled in main process, skipping.');
+      return;
+    }
+
     // Prevent duplicate polling intervals
     if (this.pollInterval) {
       console.log('LocalWebhookReceiver: Polling already active, skipping duplicate start.');
