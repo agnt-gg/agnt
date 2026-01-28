@@ -73,14 +73,6 @@ export const PROVIDER_CAPABILITIES = {
     },
   },
 
-  'kimi-code': {
-    text: {
-      models: ['kimi-for-coding'],
-      supportsStreaming: true,
-      supportsTools: true,
-    },
-  },
-
   anthropic: {
     text: {
       models: ['claude-haiku-4-5-20251001', 'claude-opus-4-5-20251101', 'claude-sonnet-4-5-20250929'],

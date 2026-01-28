@@ -3,7 +3,6 @@ import openRouterService from '../services/ai/providers/OpenRouter.js';
 import anthropicService from '../services/ai/providers/Anthropic.js';
 import openAIService from '../services/ai/providers/OpenAI.js';
 import openAICodexCliService from '../services/ai/providers/OpenAICodexCli.js';
-import kimiCodeService from '../services/ai/providers/KimiCode.js';
 import geminiService from '../services/ai/providers/Gemini.js';
 import grokAIService from '../services/ai/providers/GrokAI.js';
 import groqService from '../services/ai/providers/Groq.js';
@@ -27,14 +26,13 @@ const providerServices = {
   groq: groqService,
   'openai-codex': openAIService,
   'openai-codex-cli': openAICodexCliService,
-  'kimi-code': kimiCodeService,
   togetherai: togetherAIService,
   cerebras: cerebrasService,
   deepseek: deepSeekService,
 };
 
 // Providers that have hardcoded models and don't require API key for model listing
-const providersWithHardcodedModels = ['cerebras', 'deepseek', 'openai-codex-cli', 'kimi-code'];
+const providersWithHardcodedModels = ['cerebras', 'deepseek', 'openai-codex-cli'];
 
 // Generic endpoint for fetching models from any provider
 router.get('/:provider/models', async (req, res) => {

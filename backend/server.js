@@ -15,7 +15,6 @@ import PluginManager from './src/plugins/PluginManager.js';
 // Import your API routes
 import UserRoutes from './src/routes/UserRoutes.js';
 import CodexAuthRoutes from './src/routes/CodexAuthRoutes.js';
-import KimiCodeRoutes from './src/routes/KimiCodeRoutes.js';
 import StreamRoutes from './src/routes/StreamRoutes.js';
 import WorkflowRoutes from './src/routes/WorkflowRoutes.js';
 import ExecutionRoutes from './src/routes/ExecutionRoutes.js';
@@ -101,7 +100,6 @@ if (frontendExists) {
 app.use('/lite', express.static(path.join(__dirname, '..', 'lite')));
 app.use('/api/users', UserRoutes);
 app.use('/api/codex', CodexAuthRoutes);
-app.use('/api/kimi-code', KimiCodeRoutes);
 app.use('/api/stream', StreamRoutes);
 app.use('/api/agents', AgentRoutes);
 app.use('/api/workflows', WorkflowRoutes);

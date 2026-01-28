@@ -201,18 +201,6 @@ export default {
           localOnly: true,
         };
       }
-      if (normalizedId === 'kimi-code') {
-        return {
-          id: 'kimi-code',
-          name: 'Kimi Code',
-          icon: 'code',
-          categories: ['AI'],
-          connectionType: 'apikey',
-          instructions:
-            'Enter your Kimi Code API key. This uses the OpenAI-compatible Kimi Code endpoint and the kimi-for-coding model.',
-          localOnly: true,
-        };
-      }
 
       try {
         const token = localStorage.getItem('token');
@@ -332,24 +320,6 @@ export default {
 
       try {
         const token = localStorage.getItem('token');
-        if (String(app.id).toLowerCase() === 'kimi-code') {
-          const response = await fetch(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, {
-            method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const data = await response.json();
-          if (data.success) {
-            await showAlert('Success', `Successfully disconnected from ${app.name}`);
-            await refreshHealth();
-            return;
-          }
-          throw new Error(data.message || 'Disconnection failed');
-        }
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${app.id}`, {
           method: 'POST',
           headers: {
@@ -392,29 +362,6 @@ export default {
       try {
         const token = localStorage.getItem('token');
         const encryptedApiKey = encrypt(apiKey);
-        if (String(app.id).toLowerCase() === 'kimi-code') {
-          const response = await fetch(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ apiKey }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          const result = await response.json();
-          if (result.success) {
-            await showAlert('Success', `API key for ${app.name} saved successfully!`);
-            await refreshHealth();
-            return;
-          }
-
-          throw new Error(result.message || 'Failed to save API key');
-        }
 
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${app.id}`, {
           method: 'POST',

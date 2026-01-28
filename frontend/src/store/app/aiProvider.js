@@ -11,7 +11,6 @@ export const AI_PROVIDERS_WITH_API = [
   'openai',
   'openai-codex',
   'openai-codex-cli',
-  'kimi-code',
   'openrouter',
   'togetherai',
 ];
@@ -28,7 +27,6 @@ export const PROVIDER_FETCH_ACTIONS = {
   OpenAI: 'aiProvider/fetchOpenAIModels',
   'OpenAI-Codex': 'aiProvider/fetchOpenAICodexModels',
   'OpenAI-Codex-CLI': 'aiProvider/fetchOpenAICodexCliModels',
-  'Kimi-Code': 'aiProvider/fetchKimiCodeModels',
   OpenRouter: 'aiProvider/fetchOpenRouterModels',
   TogetherAI: 'aiProvider/fetchTogetherAIModels',
 };
@@ -47,7 +45,6 @@ export default {
       'OpenAI',
       'OpenAI-Codex',
       'OpenAI-Codex-CLI',
-      'Kimi-Code',
       'OpenRouter',
       'TogetherAI',
     ],
@@ -59,7 +56,6 @@ export default {
       OpenAI: [], // Will be populated dynamically from API
       'OpenAI-Codex': [], // Will be populated dynamically from API
       'OpenAI-Codex-CLI': [], // Will be populated dynamically from API
-      'Kimi-Code': [], // Will be populated dynamically from API
       Gemini: [], // Will be populated dynamically from API
       GrokAI: [], // Will be populated dynamically from API
       Groq: [], // Will be populated dynamically from API
@@ -334,9 +330,8 @@ export default {
       try {
         const providerLower = provider.toLowerCase();
         const token = localStorage.getItem('token');
-        const isLocalProvider =
-          providerLower === 'openai-codex' || providerLower === 'openai-codex-cli' || providerLower === 'kimi-code';
-        if (!token && !isLocalProvider) {
+        const isLocalCodexProvider = providerLower === 'openai-codex' || providerLower === 'openai-codex-cli';
+        if (!token && !isLocalCodexProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }
 
@@ -418,9 +413,6 @@ export default {
 
     async fetchOpenAICodexCliModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'OpenAI-Codex-CLI', forceRefresh });
-    },
-    async fetchKimiCodeModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Kimi-Code', forceRefresh });
     },
 
     async fetchGeminiModels({ dispatch }, { forceRefresh = false } = {}) {

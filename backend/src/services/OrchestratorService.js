@@ -314,13 +314,13 @@ async function universalChatHandler(req, res, context = {}) {
   const normalizedProvider = provider.toLowerCase();
   let model = inputModel;
 
-  // Guardrail: Some local providers only support a fixed model list.
-  if (normalizedProvider === 'openai-codex-cli' || normalizedProvider === 'kimi-code') {
+  // Guardrail: Codex CLI accounts do not support every OpenAI model name.
+  if (normalizedProvider === 'openai-codex-cli') {
     const supportedModels = ProviderRegistry.getTextModels(normalizedProvider);
     if (Array.isArray(supportedModels) && supportedModels.length > 0 && !supportedModels.includes(model)) {
-      const fallbackModel = supportedModels[0] || (normalizedProvider === 'kimi-code' ? 'kimi-for-coding' : 'gpt-5-codex');
+      const fallbackModel = supportedModels[0] || 'gpt-5-codex';
       console.warn(
-        `[${normalizedProvider}] Model '${model}' is not supported. Falling back to '${fallbackModel}'.`
+        `[Codex CLI] Model '${model}' is not supported for Codex CLI. Falling back to '${fallbackModel}'.`
       );
       model = fallbackModel;
     }
@@ -463,12 +463,7 @@ async function universalChatHandler(req, res, context = {}) {
 
     // Store client in context
     conversationContext.llmClient = client;
-    if (
-      normalizedProvider === 'openai' ||
-      normalizedProvider === 'openai-codex' ||
-      normalizedProvider === 'openai-codex-cli' ||
-      normalizedProvider === 'kimi-code'
-    ) {
+    if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex' || normalizedProvider === 'openai-codex-cli') {
       conversationContext.openai = client;
     }
 
