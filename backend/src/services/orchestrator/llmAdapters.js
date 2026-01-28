@@ -370,6 +370,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
+      let accumulatedReasoningContent = '';
       let accumulatedToolCalls = [];
       let role = 'assistant';
       let streamError = null;
@@ -413,6 +414,11 @@ Please carefully check the tool schema and ensure all parameters match the expec
                   accumulated: accumulatedContent,
                 });
               }
+            }
+
+            // Handle reasoning_content for providers like Kimi Code that use thinking mode
+            if (delta.reasoning_content) {
+              accumulatedReasoningContent += delta.reasoning_content;
             }
 
             // Handle tool calls streaming
@@ -557,6 +563,8 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
           role: role,
           content: accumulatedContent || null,
           tool_calls: validToolCalls.length > 0 ? validToolCalls : undefined,
+          // Include reasoning_content for providers like Kimi Code that require it for tool calls
+          reasoning_content: accumulatedReasoningContent || undefined,
         };
 
         return {
