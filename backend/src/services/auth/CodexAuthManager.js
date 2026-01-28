@@ -36,27 +36,110 @@ function resolveCodexBin() {
   const envBin = typeof process.env.CODEX_BIN === 'string' ? process.env.CODEX_BIN.trim() : '';
   if (envBin) return envBin;
 
-  // Try to discover Codex installed via nvm, even in non-login shells.
-  try {
-    const nvmNodeDir = path.join(os.homedir(), '.nvm', 'versions', 'node');
-    if (fs.existsSync(nvmNodeDir)) {
+  const isWindows = process.platform === 'win32';
+  const home = os.homedir();
+
+  // Helper to check multiple candidates and return first existing one
+  const findFirst = (candidates) => {
+    for (const candidate of candidates) {
+      if (candidate && fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
+  // Helper to find latest version in a node versions directory
+  const findInNodeVersions = (baseDir, binSubpath) => {
+    try {
+      if (!fs.existsSync(baseDir)) return null;
       const versions = fs
-        .readdirSync(nvmNodeDir, { withFileTypes: true })
+        .readdirSync(baseDir, { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
       for (let i = versions.length - 1; i >= 0; i -= 1) {
-        const candidate = path.join(nvmNodeDir, versions[i], 'bin', 'codex');
+        const candidate = path.join(baseDir, versions[i], binSubpath);
         if (fs.existsSync(candidate)) {
           return candidate;
         }
       }
+    } catch {
+      // Ignore errors
     }
-  } catch {
-    // Fall through to PATH lookup.
+    return null;
+  };
+
+  if (isWindows) {
+    const appData = process.env.APPDATA;
+    const localAppData = process.env.LOCALAPPDATA;
+
+    // Windows npm global install
+    if (appData) {
+      const npmGlobal = findFirst([
+        path.join(appData, 'npm', 'codex.cmd'),
+        path.join(appData, 'npm', 'codex'),
+      ]);
+      if (npmGlobal) return npmGlobal;
+    }
+
+    // Windows nvm (nvm-windows)
+    const nvmHome = process.env.NVM_HOME;
+    if (nvmHome) {
+      const nvmBin = findInNodeVersions(nvmHome, 'codex.cmd') || findInNodeVersions(nvmHome, 'codex');
+      if (nvmBin) return nvmBin;
+    }
+
+    // Windows fnm
+    if (localAppData) {
+      const fnmDir = path.join(localAppData, 'fnm_multishells');
+      if (fs.existsSync(fnmDir)) {
+        const fnmBin = findInNodeVersions(fnmDir, 'codex.cmd') || findInNodeVersions(fnmDir, 'codex');
+        if (fnmBin) return fnmBin;
+      }
+    }
+  } else {
+    // macOS / Linux
+
+    // Common global npm locations
+    const globalPaths = findFirst([
+      '/usr/local/bin/codex',
+      path.join(home, '.npm-global', 'bin', 'codex'),
+      path.join(home, '.local', 'bin', 'codex'),
+    ]);
+    if (globalPaths) return globalPaths;
+
+    // Homebrew (macOS)
+    if (process.platform === 'darwin') {
+      const brewPaths = findFirst([
+        '/opt/homebrew/bin/codex', // Apple Silicon
+        '/usr/local/bin/codex',    // Intel
+      ]);
+      if (brewPaths) return brewPaths;
+    }
+
+    // nvm (Linux/macOS)
+    const nvmNodeDir = path.join(home, '.nvm', 'versions', 'node');
+    const nvmBin = findInNodeVersions(nvmNodeDir, path.join('bin', 'codex'));
+    if (nvmBin) return nvmBin;
+
+    // fnm (Linux/macOS)
+    const fnmNodeDir = path.join(home, '.fnm', 'node-versions');
+    const fnmBin = findInNodeVersions(fnmNodeDir, path.join('installation', 'bin', 'codex'));
+    if (fnmBin) return fnmBin;
+
+    // volta
+    const voltaBin = path.join(home, '.volta', 'bin', 'codex');
+    if (fs.existsSync(voltaBin)) return voltaBin;
+
+    // asdf
+    const asdfNodeDir = path.join(home, '.asdf', 'installs', 'nodejs');
+    const asdfBin = findInNodeVersions(asdfNodeDir, path.join('bin', 'codex'));
+    if (asdfBin) return asdfBin;
   }
 
+  // Fallback to PATH lookup
   return 'codex';
 }
 
@@ -237,12 +320,22 @@ class CodexAuthManager {
     const sessionId = generateUUID();
     const startedAtMs = Date.now();
 
-    // Use `script` to allocate a pseudo-terminal; Codex CLI may not print device instructions without a TTY.
-    const command = `${this.codexBin} login --device-auth`;
-    const child = spawn('script', ['-eqfc', command, '/dev/null'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
-    });
+    let child;
+    if (process.platform === 'win32') {
+      // On Windows, run codex directly with shell: true
+      child = spawn(this.codexBin, ['login', '--device-auth'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: process.env,
+        shell: true,
+      });
+    } else {
+      // Use `script` to allocate a pseudo-terminal; Codex CLI may not print device instructions without a TTY.
+      const command = `${this.codexBin} login --device-auth`;
+      child = spawn('script', ['-eqfc', command, '/dev/null'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: process.env,
+      });
+    }
 
     const session = {
       id: sessionId,
@@ -425,10 +518,15 @@ class CodexAuthManager {
   async logout() {
     try {
       await new Promise((resolve, reject) => {
-        const child = spawn(this.codexBin, ['logout'], {
+        const spawnOptions = {
           stdio: ['ignore', 'pipe', 'pipe'],
           env: process.env,
-        });
+        };
+        // On Windows, .cmd files need shell: true to execute properly
+        if (process.platform === 'win32') {
+          spawnOptions.shell = true;
+        }
+        const child = spawn(this.codexBin, ['logout'], spawnOptions);
         let stderr = '';
         child.stderr.on('data', (chunk) => {
           stderr += stripAnsi(chunk.toString());
