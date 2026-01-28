@@ -1,4 +1,4 @@
-import { API_CONFIG } from '@/tt.config.js';
+import { API_CONFIG, AI_PROVIDERS_CONFIG } from '@/tt.config.js';
 import axios from 'axios';
 
 const state = {
@@ -75,6 +75,101 @@ const mutations = {
 };
 
 const actions = {
+  _buildAiProviderFallbacks() {
+    const defaults = {
+      Anthropic: {
+        id: 'anthropic',
+        icon: 'anthropic',
+        connectionType: 'apikey',
+        instructions: 'Enter your Anthropic API key.',
+      },
+      Cerebras: {
+        id: 'cerebras',
+        icon: 'cerebras',
+        connectionType: 'apikey',
+        instructions: 'Enter your Cerebras API key.',
+      },
+      DeepSeek: {
+        id: 'deepseek',
+        icon: 'deepseek',
+        connectionType: 'apikey',
+        instructions: 'Enter your DeepSeek API key.',
+      },
+      Gemini: {
+        id: 'gemini',
+        icon: 'api',
+        connectionType: 'apikey',
+        instructions: 'Enter your Gemini API key.',
+      },
+      GrokAI: {
+        id: 'grokai',
+        icon: 'grok-ai',
+        connectionType: 'apikey',
+        instructions: 'Enter your Grok API key.',
+      },
+      Groq: {
+        id: 'groq',
+        icon: 'groq',
+        connectionType: 'apikey',
+        instructions: 'Enter your Groq API key.',
+      },
+      Local: {
+        id: 'local',
+        icon: 'code',
+        connectionType: 'local',
+        instructions: 'Local provider does not require a connection. Select it in Default AI Provider.',
+      },
+      OpenAI: {
+        id: 'openai',
+        icon: 'openai',
+        connectionType: 'apikey',
+        instructions: 'Enter your OpenAI API key.',
+      },
+      'OpenAI-Codex-CLI': {
+        id: 'openai-codex-cli',
+        icon: 'openai',
+        connectionType: 'oauth',
+        instructions:
+          'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+        localOnly: true,
+      },
+      'Kimi-Code': {
+        id: 'kimi-code',
+        icon: 'code',
+        connectionType: 'apikey',
+        instructions:
+          'Enter your Kimi Code API key. This uses the OpenAI-compatible Kimi Code endpoint and the kimi-for-coding model.',
+        localOnly: true,
+      },
+      OpenRouter: {
+        id: 'openrouter',
+        icon: 'api',
+        connectionType: 'apikey',
+        instructions: 'Enter your OpenRouter API key.',
+      },
+      TogetherAI: {
+        id: 'togetherai',
+        icon: 'together-ai',
+        connectionType: 'apikey',
+        instructions: 'Enter your TogetherAI API key.',
+      },
+    };
+
+    const providerNames = Array.isArray(AI_PROVIDERS_CONFIG?.providers) ? AI_PROVIDERS_CONFIG.providers : [];
+    return providerNames.map((name) => {
+      const def = defaults[name] || {};
+      const fallbackId = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      return {
+        id: def.id || fallbackId,
+        name,
+        icon: def.icon || 'api',
+        categories: ['AI'],
+        connectionType: def.connectionType || 'apikey',
+        instructions: def.instructions || `Enter API key for ${name}.`,
+        localOnly: def.localOnly || false,
+      };
+    });
+  },
   async fetchConnectedApps({ commit }) {
     const token = localStorage.getItem('token');
     let connectedApps = [];
@@ -142,7 +237,7 @@ const actions = {
     const deduped = Array.from(new Set(connectedApps));
     commit('SET_CONNECTED_APPS', deduped);
   },
-  async fetchAllProviders({ commit }) {
+  async fetchAllProviders({ commit, state, dispatch }) {
     try {
       const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
         headers: {
@@ -151,34 +246,11 @@ const actions = {
       });
       const remoteProviders = Array.isArray(response.data) ? response.data : [];
 
-      // Inject local Codex providers so they can be configured without the remote auth service.
-      const localCodexProviders = [
-        {
-          id: 'openai-codex-cli',
-          name: 'OpenAI Codex CLI',
-          icon: 'openai',
-          categories: ['AI'],
-          connectionType: 'oauth',
-          instructions:
-            'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
-          localOnly: true,
-        },
-        {
-          id: 'kimi-code',
-          name: 'Kimi Code',
-          icon: 'code',
-          categories: ['AI'],
-          connectionType: 'apikey',
-          instructions:
-            'Enter your Kimi Code API key. This uses the OpenAI-compatible Kimi Code endpoint and the kimi-for-coding model.',
-          localOnly: true,
-        },
-      ];
-
-      const existingIds = new Set(remoteProviders.map((p) => p.id));
+      const fallbackProviders = actions._buildAiProviderFallbacks();
+      const existingIds = new Set(remoteProviders.map((p) => String(p.id).toLowerCase()));
       const mergedProviders = [...remoteProviders];
-      for (const provider of localCodexProviders) {
-        if (!existingIds.has(provider.id)) {
+      for (const provider of fallbackProviders) {
+        if (!existingIds.has(String(provider.id).toLowerCase())) {
           mergedProviders.push(provider);
         }
       }
@@ -186,29 +258,8 @@ const actions = {
       commit('SET_ALL_PROVIDERS', mergedProviders);
     } catch (error) {
       console.error('Error fetching all providers:', error);
-      // Still expose the local Codex providers even if the remote fetch fails.
-      commit('SET_ALL_PROVIDERS', [
-        {
-          id: 'openai-codex-cli',
-          name: 'OpenAI Codex CLI',
-          icon: 'openai',
-          categories: ['AI'],
-          connectionType: 'oauth',
-          instructions:
-            'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
-          localOnly: true,
-        },
-        {
-          id: 'kimi-code',
-          name: 'Kimi Code',
-          icon: 'code',
-          categories: ['AI'],
-          connectionType: 'apikey',
-          instructions:
-            'Enter your Kimi Code API key. This uses the OpenAI-compatible Kimi Code endpoint and the kimi-for-coding model.',
-          localOnly: true,
-        },
-      ]);
+      // Fall back to local AI provider list if remote fetch fails.
+      commit('SET_ALL_PROVIDERS', actions._buildAiProviderFallbacks());
     }
   },
   async fetchCodexStatus({ commit }) {
