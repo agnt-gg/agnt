@@ -104,6 +104,7 @@ export default {
         openai: 'OpenAI',
         'openai-codex': 'OpenAI-Codex',
         'openai-codex-cli': 'OpenAI-Codex-CLI',
+        'kimi-code': 'Kimi-Code',
         gemini: 'Gemini',
         grokai: 'GrokAI',
         groq: 'Groq',
@@ -137,6 +138,10 @@ export default {
       const providerLower = provider.id.toLowerCase();
       if (providerLower === 'openai-codex' || providerLower === 'openai-codex-cli') {
         await connectCodexProvider(provider);
+        return;
+      }
+      if (providerLower === 'kimi-code') {
+        await promptApiKey(provider);
         return;
       }
 
@@ -294,6 +299,38 @@ export default {
       try {
         const token = localStorage.getItem('token');
         const encryptedApiKey = encrypt(apiKey);
+
+        const providerLower = provider.id.toLowerCase();
+        const isLocalKimi = providerLower === 'kimi-code';
+
+        if (isLocalKimi) {
+          const response = await fetch(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ apiKey }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            await showAlert('Success', `API key for ${provider.name} saved successfully!`);
+
+            await store.dispatch('appAuth/fetchConnectedApps');
+            const correctCase = getProviderCase(provider.id);
+            await store.dispatch('aiProvider/setProvider', correctCase);
+
+            emit('provider-connected', provider);
+            return;
+          }
+
+          throw new Error(result.message || 'Failed to save API key');
+        }
 
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${provider.id}`, {
           method: 'POST',

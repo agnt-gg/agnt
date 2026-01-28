@@ -18,6 +18,13 @@ const state = {
     codexWorkdir: null,
     toolRunner: null,
   },
+  kimiStatus: {
+    connected: false,
+    checkedAt: null,
+    baseUrl: null,
+    defaultModel: null,
+    hint: null,
+  },
   codexDeviceSession: null,
 };
 
@@ -55,6 +62,15 @@ const mutations = {
   },
   CLEAR_CODEX_DEVICE_SESSION(state) {
     state.codexDeviceSession = null;
+  },
+  SET_KIMI_STATUS(state, status) {
+    state.kimiStatus = {
+      connected: status?.connected === true,
+      checkedAt: status?.checkedAt || new Date().toISOString(),
+      baseUrl: status?.baseUrl || null,
+      defaultModel: status?.defaultModel || null,
+      hint: status?.message || status?.hint || null,
+    };
   },
 };
 
@@ -105,6 +121,23 @@ const actions = {
       commit('SET_CODEX_STATUS', { available: false, apiUsable: false, hint: 'Codex status unavailable' });
     }
 
+    // Local Kimi Code auth (API key stored locally).
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const kimiStatusResponse = await axios.get(`${API_CONFIG.BASE_URL}/kimi-code/status`, { headers });
+      const kimiStatus = kimiStatusResponse?.data || {};
+      commit('SET_KIMI_STATUS', kimiStatus);
+
+      if (kimiStatus.connected === true) {
+        if (!connectedApps.includes('kimi-code')) {
+          connectedApps = [...connectedApps, 'kimi-code'];
+        }
+      }
+    } catch (error) {
+      console.warn('Error checking Kimi Code status:', error?.message || error);
+      commit('SET_KIMI_STATUS', { connected: false, hint: 'Kimi Code status unavailable' });
+    }
+
     // De-duplicate while preserving order.
     const deduped = Array.from(new Set(connectedApps));
     commit('SET_CONNECTED_APPS', deduped);
@@ -130,6 +163,16 @@ const actions = {
             'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
           localOnly: true,
         },
+        {
+          id: 'kimi-code',
+          name: 'Kimi Code',
+          icon: 'code',
+          categories: ['AI'],
+          connectionType: 'apikey',
+          instructions:
+            'Enter your Kimi Code API key. This uses the OpenAI-compatible Kimi Code endpoint and the kimi-for-coding model.',
+          localOnly: true,
+        },
       ];
 
       const existingIds = new Set(remoteProviders.map((p) => p.id));
@@ -153,6 +196,16 @@ const actions = {
           connectionType: 'oauth',
           instructions:
             'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          localOnly: true,
+        },
+        {
+          id: 'kimi-code',
+          name: 'Kimi Code',
+          icon: 'code',
+          categories: ['AI'],
+          connectionType: 'apikey',
+          instructions:
+            'Enter your Kimi Code API key. This uses the OpenAI-compatible Kimi Code endpoint and the kimi-for-coding model.',
           localOnly: true,
         },
       ]);
@@ -228,6 +281,36 @@ const actions = {
       console.error('Error logging out of Codex:', error);
       throw error;
     }
+  },
+  async fetchKimiStatus({ commit }) {
+    try {
+      const token = localStorage.getItem('token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/kimi-code/status`, { headers });
+      commit('SET_KIMI_STATUS', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching Kimi Code status:', error);
+      const fallback = { connected: false, hint: 'Kimi Code status unavailable' };
+      commit('SET_KIMI_STATUS', fallback);
+      return fallback;
+    }
+  },
+  async saveKimiApiKey({ dispatch }, apiKey) {
+    const token = localStorage.getItem('token');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const response = await axios.post(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, { apiKey }, { headers });
+    await dispatch('fetchKimiStatus');
+    await dispatch('fetchConnectedApps');
+    return response.data;
+  },
+  async deleteKimiApiKey({ dispatch }) {
+    const token = localStorage.getItem('token');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const response = await axios.delete(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, { headers });
+    await dispatch('fetchKimiStatus');
+    await dispatch('fetchConnectedApps');
+    return response.data;
   },
   async checkConnectionHealth({ commit }) {
     try {
@@ -418,6 +501,7 @@ const getters = {
   connectedApps: (state) => state.connectedApps,
   codexStatus: (state) => state.codexStatus,
   codexDeviceSession: (state) => state.codexDeviceSession,
+  kimiStatus: (state) => state.kimiStatus,
   connectionHealthStatus: (state) => {
     if (!state.connectionHealth) return 'unknown';
     return state.connectionHealth.overall;

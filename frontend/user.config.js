@@ -23,6 +23,7 @@ export const AI_PROVIDERS_CONFIG = {
     'Local',
     'OpenAI',
     'OpenAI-Codex-CLI',
+    'Kimi-Code',
     'OpenRouter',
     'TogetherAI',
   ],
@@ -37,6 +38,7 @@ export const AI_PROVIDERS_CONFIG = {
     Local: [], // Fetched from LM Studio at http://127.0.0.1:1234/v1/models
     OpenAI: [], // Fetched from /api/models/openai/models
     'OpenAI-Codex-CLI': [], // Fetched from /api/models/openai-codex-cli/models
+    'Kimi-Code': [], // Fetched from /api/models/kimi-code/models
     OpenRouter: [], // Fetched from /api/models/openrouter/models
     TogetherAI: [], // Fetched from /api/models/togetherai/models
   },

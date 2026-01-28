@@ -2,6 +2,7 @@ import UserModel from '../models/UserModel.js';
 import { getUserTokenFromSession } from '../routes/Middleware.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from './auth/CodexAuthManager.js';
+import LocalApiKeyManager from './auth/LocalApiKeyManager.js';
 
 class UserService {
   healthCheck(req, res) {
@@ -94,6 +95,18 @@ class UserService {
             lastChecked: new Date().toISOString(),
             details: {
               source: codexStatus.source || 'codex-auth-access-token',
+            },
+          });
+        }
+
+        const hasKimiKey = await LocalApiKeyManager.hasApiKey(userId, 'kimi-code');
+        if (hasKimiKey) {
+          providers.push({
+            status: 'healthy',
+            provider: 'kimi-code',
+            lastChecked: new Date().toISOString(),
+            details: {
+              source: 'local-api-key',
             },
           });
         }

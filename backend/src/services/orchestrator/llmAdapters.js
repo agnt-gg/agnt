@@ -2887,6 +2887,9 @@ export async function createLlmAdapter(provider, client, model) {
       // Codex CLI does not implement the Responses API; always use chat-completions-style adapter.
       return new OpenAiLikeAdapter(client, model);
 
+    case 'kimi-code':
+      return new OpenAiLikeAdapter(client, model);
+
     case 'deepseek':
     case 'grokai':
     case 'groq':

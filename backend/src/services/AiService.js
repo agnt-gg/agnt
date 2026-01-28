@@ -11,7 +11,7 @@ class AiService {
       return new StreamEngine(req.user.id);
     };
     this.authManager = AuthManager;
-    this.localAuthProviders = new Set(['local', 'openai-codex', 'openai-codex-cli']);
+    this.localAuthProviders = new Set(['local', 'openai-codex', 'openai-codex-cli', 'kimi-code']);
   }
 
   // Break typical controller pattern and use arrow functions to automatically bind 'this'

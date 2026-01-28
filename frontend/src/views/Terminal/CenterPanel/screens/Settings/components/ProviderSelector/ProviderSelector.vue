@@ -255,6 +255,8 @@ export default {
           selectedProvider.value = 'Anthropic';
         } else if (connectedAIProviders.includes('openai-codex-cli')) {
           selectedProvider.value = 'OpenAI-Codex-CLI';
+        } else if (connectedAIProviders.includes('kimi-code')) {
+          selectedProvider.value = 'Kimi-Code';
         } else if (connectedAIProviders.includes('openai-codex')) {
           selectedProvider.value = 'OpenAI-Codex';
         } else if (connectedAIProviders.includes('openai')) {

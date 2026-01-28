@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import Cerebras from '@cerebras/cerebras_cloud_sdk';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
+import LocalApiKeyManager from '../auth/LocalApiKeyManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { createCodexCliClient } from './CodexCliClient.js';
 import CodexCliSessionManager from './CodexCliSessionManager.js';
@@ -18,6 +19,7 @@ const baseURLs = {
   openai: 'https://api.openai.com/v1',
   'openai-codex': 'https://api.openai.com/v1',
   'openai-codex-cli': 'codex-cli://local',
+  'kimi-code': 'https://api.kimi.com/coding/v1',
   openrouter: 'https://openrouter.ai/api/v1',
   togetherai: 'https://api.together.xyz/v1',
 };
@@ -124,6 +126,21 @@ export async function createLlmClient(provider, userId, options = {}) {
       provider: lowerCaseProvider,
       fullAuto: codexFullAuto,
       authToken,
+    });
+  }
+
+  if (lowerCaseProvider === 'kimi-code') {
+    if (!userId) {
+      throw new Error('Kimi Code requires an authenticated user to access the local API key.');
+    }
+    const apiKey = await LocalApiKeyManager.getApiKey(userId, 'kimi-code');
+    if (!apiKey) {
+      throw new Error('Kimi Code is not connected. Add your Kimi Code API key in provider setup.');
+    }
+
+    return new OpenAI({
+      apiKey,
+      baseURL: baseURLs['kimi-code'],
     });
   }
 

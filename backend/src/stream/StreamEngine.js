@@ -18,6 +18,7 @@ class StreamEngine {
       gemini: 'https://generativelanguage.googleapis.com/v1beta/',
       grokai: 'https://api.x.ai/v1/',
       groq: 'https://api.groq.com/openai/v1',
+      'kimi-code': 'https://api.kimi.com/coding/v1',
       local: 'http://127.0.0.1:1234/v1',
       openai: 'https://api.openai.com/v1',
       togetherai: 'https://api.together.xyz/v1',
@@ -172,6 +173,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'openai':
         case 'openai-codex':
         case 'openai-codex-cli':
+        case 'kimi-code':
         case 'openrouter':
         case 'togetherai':
           await this.startOpenAiLikeStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client, provider);
@@ -320,7 +322,11 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
     try {
       const providerKey = provider.toLowerCase();
-      const isOpenAIProvider = providerKey === 'openai' || providerKey === 'openai-codex' || providerKey === 'openai-codex-cli';
+      const isOpenAIProvider =
+        providerKey === 'openai' ||
+        providerKey === 'openai-codex' ||
+        providerKey === 'openai-codex-cli' ||
+        providerKey === 'kimi-code';
 
       // For o1-preview model, include system instructions in the first user message
       if (modelName === 'o1-mini' && isOpenAIProvider) {
@@ -621,6 +627,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         openai: 'gpt-4o',
         'openai-codex': 'gpt-4o',
         'openai-codex-cli': 'gpt-5-codex',
+        'kimi-code': 'kimi-for-coding',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -731,6 +738,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'openai-codex':
         case 'openai-codex-cli':
+        case 'kimi-code':
         case 'openai':
           response = await client.chat.completions.create({
             model: selectedModel,
@@ -1037,6 +1045,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         openai: 'o1-preview',
         'openai-codex': 'o1-preview',
         'openai-codex-cli': 'gpt-5-codex',
+        'kimi-code': 'kimi-for-coding',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1168,6 +1177,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'openai-codex':
         case 'openai-codex-cli':
+        case 'kimi-code':
         case 'openai':
           completion = await client.chat.completions.create({
             model: selectedModel,
@@ -1306,6 +1316,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         openai: 'gpt-4o',
         'openai-codex': 'gpt-4o',
         'openai-codex-cli': 'gpt-5-codex',
+        'kimi-code': 'kimi-for-coding',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1416,6 +1427,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'openai-codex':
         case 'openai-codex-cli':
+        case 'kimi-code':
         case 'openai':
           response = await client.chat.completions.create({
             model: selectedModel,
@@ -1495,6 +1507,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         openai: 'o1-preview',
         'openai-codex': 'o1-preview',
         'openai-codex-cli': 'gpt-5-codex',
+        'kimi-code': 'kimi-for-coding',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1644,6 +1657,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'openai-codex':
         case 'openai-codex-cli':
+        case 'kimi-code':
         case 'openai':
           completion = await client.chat.completions.create({
             model: selectedModel,
