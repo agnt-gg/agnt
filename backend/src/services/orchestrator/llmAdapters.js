@@ -187,6 +187,12 @@ class OpenAiLikeAdapter extends BaseAdapter {
     let lastError;
     let currentMessages = messages;
 
+    if (this.client?.__agntCompat?.mapDeveloperRole) {
+      currentMessages = currentMessages.map((msg) =>
+        msg?.role === 'developer' ? { ...msg, role: 'system' } : msg
+      );
+    }
+
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
         const response = await this.client.chat.completions.create({
@@ -308,6 +314,12 @@ Please carefully check the tool schema and ensure all parameters match the expec
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
     let currentMessages = messages;
+
+    if (this.client?.__agntCompat?.mapDeveloperRole) {
+      currentMessages = currentMessages.map((msg) =>
+        msg?.role === 'developer' ? { ...msg, role: 'system' } : msg
+      );
+    }
 
     // Handle vision images - inject into the last user message ONLY if model supports vision
     if (context.imageData && context.imageData.length > 0) {
