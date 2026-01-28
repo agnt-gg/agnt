@@ -1,4 +1,5 @@
 name: Build Electron Apps
+run-name: ${{ github.ref_name }}
 
 on:
   push:
