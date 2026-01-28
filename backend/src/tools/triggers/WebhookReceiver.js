@@ -209,11 +209,22 @@ class LocalWebhookReceiver extends EventEmitter {
   // }
   async pollForTriggers() {
     try {
-      const response = await axios.get(`${this.remoteUrl}/webhooks/poll`);
+      // Security: Only request triggers for workflows we own
+      const workflowIds = Array.from(this.webhooks.keys());
+
+      // Don't poll if no webhooks registered locally
+      if (workflowIds.length === 0) {
+        return;
+      }
+
+      // POST with workflowIds for security filtering - server only returns our triggers
+      const response = await axios.post(`${this.remoteUrl}/webhooks/poll`, {
+        workflowIds: workflowIds,
+      });
       const { triggers } = response.data;
 
       // Only log if there are triggers to process
-      if (triggers.length === 0) return;
+      if (!triggers || triggers.length === 0) return;
 
       console.log(`LocalWebhookReceiver: Received ${triggers.length} webhook triggers`);
 
