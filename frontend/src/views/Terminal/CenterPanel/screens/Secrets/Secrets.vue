@@ -857,26 +857,14 @@ export default {
     // --- OAuth Providers State ---
     const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
-    const safeParseCategories = (input) => {
-      if (!input) return [];
-      if (Array.isArray(input)) return input;
-      try {
-        const parsed = JSON.parse(input);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    };
-
-    const oauthProviders = computed(() => {
-      const connectedSet = new Set(connectedApps.value.map((id) => String(id).toLowerCase()));
-      return allProviders.value.map((p) => ({
+    const oauthProviders = computed(() =>
+      allProviders.value.map((p) => ({
         ...p,
-        categories: safeParseCategories(p.categories),
-        connected: connectedSet.has(String(p.id).toLowerCase()),
+        categories: Array.isArray(p.categories) ? p.categories : p.categories ? JSON.parse(p.categories) : [],
+        connected: connectedApps.value.includes(p.id),
         connectionType: p.connectionType || p.connection_type,
-      }));
-    });
+      }))
+    );
     const oauthSearch = ref('');
     const modalRef = ref(null);
     const isLoadingProviders = ref(false);
@@ -1096,65 +1084,6 @@ export default {
       }
     }
 
-    async function connectCodexProvider(app) {
-      try {
-        const providerLower = String(app.id).toLowerCase();
-        const isCliProvider = providerLower === 'openai-codex-cli';
-        const status = await store.dispatch('appAuth/fetchCodexStatus');
-        if (status?.available && (isCliProvider || status?.apiUsable)) {
-          await showAlert('Provider Ready', `${app.name} is already connected on this machine.`);
-          await store.dispatch('appAuth/fetchConnectedApps');
-          await store.dispatch('appAuth/fetchAllProviders');
-          return;
-        }
-
-        const session = await store.dispatch('appAuth/startCodexDeviceAuth');
-        if (!session?.success) {
-          throw new Error(session?.error || 'Failed to start Codex device login');
-        }
-
-        if (session.state === 'error') {
-          await showAlert('Codex Device Login', session.message || 'Codex device login failed to start.');
-          return;
-        }
-
-        const deviceUrl = session.deviceUrl || 'https://auth.openai.com/codex/device';
-        const deviceCode = session.deviceCode || '(code unavailable)';
-        const instructions = `
-1. Open this URL in your browser:<br/><br/>
-<strong>${deviceUrl}</strong><br/><br/>
-2. Enter this one-time code:<br/><br/>
-<strong>${deviceCode}</strong><br/><br/>
-Then return here and click <strong>Continue</strong>.
-        `;
-
-        const confirmed = await modalRef.value?.showModal({
-          title: 'OpenAI Codex Device Login',
-          message: instructions,
-          confirmText: 'Continue',
-          cancelText: 'Cancel',
-          confirmClass: 'btn-primary',
-          showCancel: true,
-        });
-
-        if (!confirmed) return;
-
-        const result = await store.dispatch('appAuth/pollCodexDeviceAuth', { sessionId: session.sessionId });
-        if (result?.state === 'success') {
-          await showAlert('Success', `${app.name} connected successfully.`);
-          await store.dispatch('appAuth/fetchConnectedApps');
-          await store.dispatch('appAuth/fetchAllProviders');
-          return;
-        }
-
-        const latestStatus = await store.dispatch('appAuth/fetchCodexStatus');
-        const hint = latestStatus?.hint ? `\n\n${latestStatus.hint}` : '';
-        await showAlert('Codex Not Ready', `${result?.message || 'Device login not completed yet.'}${hint}`);
-      } catch (error) {
-        await showAlert('Connection Error', `Failed to connect OpenAI Codex: ${error.message}`);
-      }
-    }
-
     async function disconnectApp(app) {
       const confirmDisconnect = await modalRef.value?.showModal({
         title: 'Confirm Disconnection',
@@ -1166,47 +1095,6 @@ Then return here and click <strong>Continue</strong>.
       if (!confirmDisconnect) return;
       try {
         const token = localStorage.getItem('token');
-        const appLower = String(app.id).toLowerCase();
-
-        if (appLower === 'openai-codex' || appLower === 'openai-codex-cli') {
-          const response = await fetch(`${API_CONFIG.BASE_URL}/codex/logout`, { method: 'POST' });
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const data = await response.json();
-          if (data.success) {
-            await store.dispatch('appAuth/fetchConnectedApps');
-            await store.dispatch('appAuth/fetchAllProviders');
-            await showAlert('Success', `Successfully disconnected from ${app.name}`);
-            terminalLines.value.push(`[Disconnect] Successfully disconnected from ${app.name}`);
-            nextTick(() => baseScreenRef.value?.scrollToBottom());
-            return;
-          }
-          throw new Error(data.message || 'Disconnection failed');
-        }
-
-        if (appLower === 'kimi-code') {
-          const response = await fetch(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, {
-            method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const data = await response.json();
-          if (data.success) {
-            await store.dispatch('appAuth/fetchConnectedApps');
-            await store.dispatch('appAuth/fetchAllProviders');
-            await showAlert('Success', `Successfully disconnected from ${app.name}`);
-            terminalLines.value.push(`[Disconnect] Successfully disconnected from ${app.name}`);
-            nextTick(() => baseScreenRef.value?.scrollToBottom());
-            return;
-          }
-          throw new Error(data.message || 'Disconnection failed');
-        }
-
         // Use local backend which will disconnect both locally and remotely
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${app.id}`, {
           method: 'POST',
@@ -1276,31 +1164,6 @@ Then return here and click <strong>Continue</strong>.
       try {
         const token = localStorage.getItem('token');
         const encryptedApiKey = encrypt(apiKey);
-        const appLower = String(app.id).toLowerCase();
-
-        if (appLower === 'kimi-code') {
-          const response = await fetch(`${API_CONFIG.BASE_URL}/kimi-code/apikey`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ apiKey }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const result = await response.json();
-          if (result.success) {
-            app.connected = true;
-            await store.dispatch('appAuth/fetchConnectedApps');
-            await showAlert('Success', `API key for ${app.name} saved successfully!`);
-            return;
-          }
-          throw new Error(result.message || 'Failed to save API key');
-        }
-
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${app.id}`, {
           method: 'POST',
           headers: {
@@ -1326,21 +1189,6 @@ Then return here and click <strong>Continue</strong>.
     }
 
     function handleOAuthAppClick(app) {
-      const appLower = String(app.id).toLowerCase();
-
-      if (appLower === 'openai-codex' || appLower === 'openai-codex-cli') {
-        connectCodexProvider(app);
-        return;
-      }
-      if (appLower === 'kimi-code') {
-        promptApiKey(app);
-        return;
-      }
-      if (appLower === 'local' || app.connectionType === 'local') {
-        showAlert('Local Provider', 'Local models do not require a connection. Select Local in Default AI Provider.');
-        return;
-      }
-
       if (app.connected) {
         disconnectApp(app);
       } else if (app.connectionType === 'oauth') {
