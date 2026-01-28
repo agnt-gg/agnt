@@ -159,6 +159,13 @@ export default {
             });
             console.log('✅ Subscription fetched after Google login. PlanType:', store.state.userAuth.planType);
 
+            // CRITICAL: Validate license after Google login
+            console.log('🔐 Validating license after Google login...');
+            await store.dispatch('userAuth/validateLicense').catch((error) => {
+              console.error('Failed to validate license after Google login:', error);
+            });
+            console.log('✅ License validated after Google login.');
+
             router.push('/settings');
           }
         } else if (event.data?.type === 'google-auth-error') {
@@ -287,11 +294,18 @@ export default {
         await syncTokenWithBackend();
 
         // CRITICAL: Fetch subscription immediately after Google login
-        console.log('🔄 Fetching subscription after Google login...');
+        console.log('🔄 Fetching subscription after Google login (URL token)...');
         await store.dispatch('userAuth/fetchSubscription').catch((error) => {
           console.error('Failed to fetch subscription after Google login:', error);
         });
         console.log('✅ Subscription fetched after Google login. PlanType:', store.state.userAuth.planType);
+
+        // CRITICAL: Validate license after Google login
+        console.log('🔐 Validating license after Google login (URL token)...');
+        await store.dispatch('userAuth/validateLicense').catch((error) => {
+          console.error('Failed to validate license after Google login:', error);
+        });
+        console.log('✅ License validated after Google login.');
 
         const newURL = window.location.pathname;
         window.history.replaceState({}, document.title, newURL);

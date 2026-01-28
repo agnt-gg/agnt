@@ -99,4 +99,6 @@ test-results/
 # MCP config (contains sensitive data)
 *mcp.json
 
-dup.jsPR_BODY.md
+dup.js
+
+PR_BODY.md

@@ -164,7 +164,7 @@ export default {
         return { success: false, error: errorMessage };
       }
     },
-    async verifyMagicLink({ commit }, { email, code }) {
+    async verifyMagicLink({ commit, dispatch }, { email, code }) {
       try {
         const response = await axios.post(`${API_CONFIG.REMOTE_URL}/users/auth/magic-link/verify`, { email, code }, { withCredentials: true });
 
@@ -182,6 +182,13 @@ export default {
             commit('RESET_ONBOARDING');
           }
 
+          // CRITICAL: Fetch subscription and validate license immediately after login
+          // This ensures users see their correct plan status on day 1
+          console.log('🔄 Fetching subscription after login...');
+          await dispatch('fetchSubscription');
+          console.log('🔐 Validating license after login...');
+          await dispatch('validateLicense');
+
           // Fetch initial data in background after successful login
           // using root: true to access root action
           this.dispatch('initializeStore', null, { root: true });
@@ -194,7 +201,7 @@ export default {
         return { success: false, error: errorMessage };
       }
     },
-    devLogin({ commit, dispatch }) {
+    async devLogin({ commit, dispatch }) {
       if (process.env.NODE_ENV === 'development') {
         const mockToken = 'dev-' + Math.random().toString(36).substring(2);
         const mockUser = {
@@ -203,6 +210,10 @@ export default {
         };
         commit('SET_TOKEN', mockToken);
         commit('SET_USER', mockUser);
+
+        // Fetch subscription and validate license after dev login
+        await dispatch('fetchSubscription');
+        await dispatch('validateLicense');
 
         // Initialize data for dev login too
         dispatch('initializeStore', null, { root: true });
@@ -493,11 +504,14 @@ export default {
     },
 
     /**
-     * Check if user has premium access (verified license + non-free plan)
+     * Check if user has premium access (non-free plan)
      * Use this for gating premium features
+     *
+     * Note: Previously required hasValidLicense, but this caused users to be
+     * locked out of paid features when license validation failed due to network
+     * issues. Now we trust planType from the subscription API as the source of truth.
      */
-    isPremium: (state, getters) => {
-      if (!getters.hasValidLicense) return false;
+    isPremium: (state) => {
       return state.planType !== 'free';
     },
 
