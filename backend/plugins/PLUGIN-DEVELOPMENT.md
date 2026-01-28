@@ -5,20 +5,21 @@ This comprehensive guide covers everything you need to know to create, test, and
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Plugin Architecture](#plugin-architecture)
-3. [Quick Start](#quick-start)
-4. [Plugin Structure](#plugin-structure)
-5. [Manifest File](#manifest-file)
-6. [Creating Tools](#creating-tools)
-7. [Schema Definition](#schema-definition)
-8. [Authentication](#authentication)
-9. [Dependencies](#dependencies)
-10. [Building & Packaging](#building--packaging)
-11. [Installation Methods](#installation-methods)
-12. [API Reference](#api-reference)
-13. [Best Practices](#best-practices)
-14. [Troubleshooting](#troubleshooting)
-15. [Examples](#examples)
+2. [Application Architecture](#application-architecture)
+3. [Plugin Architecture](#plugin-architecture)
+4. [Quick Start](#quick-start)
+5. [Plugin Structure](#plugin-structure)
+6. [Manifest File](#manifest-file)
+7. [Creating Tools](#creating-tools)
+8. [Schema Definition](#schema-definition)
+9. [Authentication](#authentication)
+10. [Dependencies](#dependencies)
+11. [Building & Packaging](#building--packaging)
+12. [Installation Methods](#installation-methods)
+13. [API Reference](#api-reference)
+14. [Best Practices](#best-practices)
+15. [Troubleshooting](#troubleshooting)
+16. [Examples](#examples)
 
 ---
 
@@ -40,6 +41,86 @@ AGNT's plugin system allows you to extend the platform with custom tools, trigge
 
 ---
 
+## Application Architecture
+
+AGNT is an **Electron + Node.js desktop application** with a dual-process architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Electron Main Process                         │
+│  (main.js - Window management, IPC, process orchestration)          │
+├─────────────────────────────────────────────────────────────────────┤
+│         │                                                            │
+│         │ spawns (utilityProcess.fork / child_process.fork)         │
+│         ▼                                                            │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │              Node.js Backend (server.js)                     │    │
+│  │  Express.js on localhost:3333                                │    │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌──────────────────┐    │    │
+│  │  │ API Routes  │  │  Services   │  │ Workflow Engine  │    │    │
+│  │  └─────────────┘  └─────────────┘  └──────────────────┘    │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │              Vue 3 Frontend (Vite)                           │    │
+│  │  Served from backend or dev server (localhost:5173)          │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### ASAR Packaging & User Data
+
+In production, the app code is bundled into an **ASAR archive** (read-only). Plugins and user data live **outside the ASAR** in the user data directory:
+
+| Platform | User Data Path                               |
+| -------- | -------------------------------------------- |
+| Windows  | `%APPDATA%\AGNT\`                            |
+| macOS    | `~/Library/Application Support/AGNT/`        |
+| Linux    | `~/.config/AGNT/`                            |
+
+**User Data Structure:**
+```
+AGNT/
+├── Data/
+│   └── agnt.db              # SQLite database
+├── plugins/
+│   ├── installed/           # Installed plugins (writable)
+│   │   ├── discord-plugin/
+│   │   ├── notion-plugin/
+│   │   └── ...
+│   └── registry.json        # Plugin registry
+├── .env                     # Environment config
+└── mcp.json                 # MCP server config
+```
+
+### Environment Variables
+
+Electron sets these environment variables for the backend process:
+
+| Variable         | Description                                               |
+| ---------------- | --------------------------------------------------------- |
+| `APP_PATH`       | Path to the app bundle (ASAR root in production)          |
+| `USER_DATA_PATH` | Path to user data directory (platform-specific)           |
+| `UNPACKED_PATH`  | Path to unpacked native modules                           |
+| `NODE_ENV`       | `production` or `development`                             |
+
+**Important for plugins:** Use `APP_PATH` to access core app modules (like AuthManager) since plugins are in a separate directory.
+
+### Technology Stack
+
+| Component        | Technology                                              |
+| ---------------- | ------------------------------------------------------- |
+| Desktop Shell    | Electron 33.x                                           |
+| Backend          | Node.js + Express.js                                    |
+| Frontend         | Vue 3 + Vite                                            |
+| Database         | SQLite (WAL mode)                                       |
+| Web Automation   | Puppeteer + Playwright (uses system Chrome/Edge)        |
+| Package Format   | ASAR archive                                            |
+
+**Note:** The desktop app does **not** use Docker. It runs as a native Electron application with a Node.js backend process. Web scraping/automation uses the system's installed Chrome or Edge browser via Puppeteer.
+
+---
+
 ## Plugin Architecture
 
 ```
@@ -58,7 +139,7 @@ AGNT's plugin system allows you to extend the platform with custom tools, trigge
 │         │                   │                    │          │
 │         │                   ▼                    │          │
 │  ┌──────┴───────────────────────────────────────┴──────┐   │
-│  │                   plugins/installed/                 │   │
+│  │         User Data: plugins/installed/                │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │   │
 │  │  │discord-plugin│  │github-plugin│  │custom-plugin│  │   │
 │  │  └─────────────┘  └─────────────┘  └─────────────┘  │   │
@@ -69,12 +150,12 @@ AGNT's plugin system allows you to extend the platform with custom tools, trigge
 
 ### Key Components
 
-| Component           | Description                                         |
-| ------------------- | --------------------------------------------------- |
-| **PluginManager**   | Loads and registers plugins at startup              |
-| **PluginInstaller** | Handles installation from registry, NPM, or files   |
-| **ToolRegistry**    | Central registry for all tools (built-in + plugins) |
-| **NodeExecutor**    | Executes workflow nodes, including plugin tools     |
+| Component           | Location                                            | Description                                         |
+| ------------------- | --------------------------------------------------- | --------------------------------------------------- |
+| **PluginManager**   | `backend/src/plugins/PluginManager.js`              | Loads and registers plugins at startup              |
+| **PluginInstaller** | `backend/src/plugins/PluginInstaller.js`            | Handles installation from registry, NPM, or files   |
+| **ToolRegistry**    | `backend/src/tools/ToolRegistry.js`                 | Central registry for all tools (built-in + plugins) |
+| **NodeExecutor**    | `backend/src/workflow/NodeExecutor.js`              | Executes workflow nodes, including plugin tools     |
 
 ---
 
@@ -129,6 +210,16 @@ cd my-plugin
 
 ```javascript
 // my-tool.js
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Get app path for importing core modules (required for AuthManager access)
+// APP_PATH is set by Electron, fallback for dev mode
+const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
+
 class MyCustomTool {
   static schema = null; // Will be set from manifest
 
@@ -152,10 +243,10 @@ export default new MyCustomTool();
 ### 4. Build & Install
 
 ```bash
-# From the plugins directory
-node build-plugin.js ../path/to/my-plugin
+# From the plugins directory (desktop/backend/plugins/)
+node build-plugin.js ./dev/my-plugin
 
-# Or install manually via UI
+# Or install manually via UI (Settings → Integrations → Plugins → Marketplace)
 ```
 
 ---
@@ -497,6 +588,26 @@ Multiple values:
 
 ## Authentication
 
+### Understanding Plugin Paths
+
+**Important:** Plugins run from the user data directory (`%APPDATA%/AGNT/plugins/installed/`), not from the app bundle. To access core app modules like AuthManager, you must use the `APP_PATH` environment variable.
+
+### Setting Up Path Resolution
+
+Every plugin that needs authentication should include this boilerplate at the top:
+
+```javascript
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Get app path for importing core modules
+// APP_PATH is set by Electron main process, fallback for dev mode
+const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
+```
+
 ### API Key Authentication
 
 For services that use API keys:
@@ -512,10 +623,16 @@ Access in your tool:
 
 ```javascript
 async execute(params, inputData, workflowEngine) {
-  const AuthManagerModule = await import('../../../src/services/auth/AuthManager.js');
+  // Import AuthManager using APP_PATH for correct resolution
+  const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
+  const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
   const AuthManager = AuthManagerModule.default;
 
   const apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, 'discord');
+
+  if (!apiKey) {
+    throw new Error('No valid access token found. Please reconnect to Discord in Settings.');
+  }
 
   // Use apiKey for API calls
 }
@@ -536,7 +653,9 @@ Access in your tool:
 
 ```javascript
 async execute(params, inputData, workflowEngine) {
-  const AuthManagerModule = await import('../../../src/services/auth/AuthManager.js');
+  // Import AuthManager using APP_PATH for correct resolution
+  const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
+  const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
   const AuthManager = AuthManagerModule.default;
 
   const accessToken = await AuthManager.getValidAccessToken(
@@ -544,9 +663,17 @@ async execute(params, inputData, workflowEngine) {
     'google'
   );
 
+  if (!accessToken) {
+    throw new Error('No valid access token found. Please connect to Google in Settings.');
+  }
+
   // Use accessToken for API calls
 }
 ```
+
+### Why `file://` Protocol?
+
+The `file://` protocol with forward slashes is required for dynamic imports on Windows. The `.replace(/\\/g, '/')` converts Windows backslashes to forward slashes for URL compatibility.
 
 ### Supported Auth Providers
 
@@ -668,13 +795,25 @@ Dependencies are automatically installed when:
 
 ## Building & Packaging
 
+### Development vs Production Paths
+
+| Environment | Plugin Source Location                      | Installed Plugin Location                    |
+| ----------- | ------------------------------------------- | -------------------------------------------- |
+| Development | `desktop/backend/plugins/dev/`              | Same as source (loaded directly)             |
+| Production  | N/A (distributed as .agnt files)            | `%APPDATA%/AGNT/plugins/installed/` (Win)    |
+|             |                                             | `~/Library/Application Support/AGNT/plugins/installed/` (Mac) |
+|             |                                             | `~/.config/AGNT/plugins/installed/` (Linux)  |
+
 ### Using the Build Script
 
 ```bash
-# Navigate to the plugins directory
-cd repos/community-core/desktop/backend/plugins
+# Navigate to the plugins directory (from project root)
+cd desktop/backend/plugins
 
-# Build a plugin
+# Build a plugin from the dev folder
+node build-plugin.js ./dev/my-plugin
+
+# Or build from an absolute path
 node build-plugin.js /path/to/my-plugin
 
 # Output: plugin-builds/my-plugin.agnt
@@ -754,13 +893,21 @@ curl -X POST http://localhost:3333/api/plugins/install-file \
   -d '{"name": "my-plugin", "fileData": "base64...", "fileName": "my-plugin.agnt"}'
 ```
 
-### 4. Direct Installation
+### 4. Direct Installation (Development)
 
-Copy plugin folder to:
+For **development**, copy your plugin folder to the dev directory:
 
 ```
-repos/community-core/desktop/backend/plugins/installed/my-plugin/
+desktop/backend/plugins/dev/my-plugin/
 ```
+
+For **production**, copy to the user data plugins directory:
+
+| Platform | Path                                                      |
+| -------- | --------------------------------------------------------- |
+| Windows  | `%APPDATA%\AGNT\plugins\installed\my-plugin\`             |
+| macOS    | `~/Library/Application Support/AGNT/plugins/installed/my-plugin/` |
+| Linux    | `~/.config/AGNT/plugins/installed/my-plugin/`             |
 
 Then restart the server or call:
 
@@ -908,6 +1055,32 @@ async execute(params, inputData, workflowEngine) {
 3. Test with minimal parameters first
 4. Add console.log statements for debugging
 
+### AuthManager Import Errors
+
+If you see `Cannot find module` or `ERR_MODULE_NOT_FOUND` for AuthManager:
+
+1. **Wrong path pattern** - Don't use relative paths like `../../../src/services/auth/AuthManager.js`
+2. **Missing APP_PATH** - Ensure you're using `process.env.APP_PATH` with a fallback
+3. **Windows path issues** - Use `file://` protocol and replace backslashes:
+   ```javascript
+   const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
+   await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
+   ```
+
+### Path Resolution Issues
+
+| Environment | APP_PATH Value | Plugin Location |
+| ----------- | -------------- | --------------- |
+| Development | Project root (e.g., `C:\...\desktop`) | `backend/plugins/dev/` |
+| Production  | ASAR root (inside app bundle) | User data directory |
+
+**Debug tip:** Add this to your plugin to see actual paths:
+```javascript
+console.log('[Plugin] APP_PATH:', APP_PATH);
+console.log('[Plugin] __dirname:', __dirname);
+console.log('[Plugin] Resolved auth path:', authManagerPath);
+```
+
 ### Common Errors
 
 | Error               | Cause                    | Solution                                 |
@@ -916,6 +1089,8 @@ async execute(params, inputData, workflowEngine) {
 | `Invalid schema`    | Schema validation failed | Check required schema fields             |
 | `Module not found`  | Missing dependency       | Add to dependencies in manifest          |
 | `Permission denied` | Auth issue               | Check authRequired/authProvider          |
+| `ERR_MODULE_NOT_FOUND` | Wrong AuthManager path | Use APP_PATH + file:// protocol (see above) |
+| `ENOENT` for plugin | Plugin not in user data  | Install via UI or copy to correct directory |
 
 ---
 
@@ -974,6 +1149,15 @@ export default new WeatherAPI();
 ```javascript
 // notion-api.js
 import { Client } from '@notionhq/client';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Get app path for importing core modules
+// APP_PATH is set by Electron, fallback for dev mode
+const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 class NotionAPI {
   constructor() {
@@ -984,7 +1168,9 @@ class NotionAPI {
     console.log('[NotionPlugin] Executing Notion API with params:', JSON.stringify(params, null, 2));
 
     try {
-      const AuthManagerModule = await import('../../../src/services/auth/AuthManager.js');
+      // Import AuthManager using APP_PATH for correct resolution
+      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
+      const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
       const AuthManager = AuthManagerModule.default;
 
       const accessToken = await AuthManager.getValidAccessToken(workflowEngine.userId, 'notion');
@@ -1074,6 +1260,14 @@ export default new NotionAPI();
 // discord-receiver.js
 import { Client, GatewayIntentBits } from 'discord.js';
 import EventEmitter from 'events';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Get app path for importing core modules
+const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 class DiscordReceiver extends EventEmitter {
   constructor() {
@@ -1094,7 +1288,9 @@ class DiscordReceiver extends EventEmitter {
     }
 
     try {
-      const AuthManagerModule = await import('../../../src/services/auth/AuthManager.js');
+      // Import AuthManager using APP_PATH for correct resolution
+      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
+      const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
       const AuthManager = AuthManagerModule.default;
 
       const accessToken = await AuthManager.getValidAccessToken(engine.userId, 'discord');
@@ -1191,6 +1387,14 @@ export default new DiscordReceiver();
 // google-sheets-new-row.js
 import EventEmitter from 'events';
 import { google } from 'googleapis';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Get app path for importing core modules
+const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 class GoogleSheetsNewRow extends EventEmitter {
   constructor() {
@@ -1249,7 +1453,9 @@ class GoogleSheetsNewRow extends EventEmitter {
    */
   async getGoogleAuth() {
     try {
-      const AuthManagerModule = await import('../../../src/services/auth/AuthManager.js');
+      // Import AuthManager using APP_PATH for correct resolution
+      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
+      const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
       const AuthManager = AuthManagerModule.default;
 
       const userId = this.workflowEngine.userId;
