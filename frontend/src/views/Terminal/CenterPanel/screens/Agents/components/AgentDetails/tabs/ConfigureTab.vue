@@ -244,7 +244,7 @@ const agentConfig = ref(initializeAgentConfig(props.selectedAgent));
 const saveStatus = ref('idle'); // 'idle', 'saving', 'success', 'error'
 
 // AI Provider and Model options - use exact same data as store
-const aiProviders = computed(() => store.state.aiProvider.providers);
+const aiProviders = computed(() => store.getters['aiProvider/filteredProviders']);
 const availableModels = computed(() => {
   const provider = agentConfig.value.provider;
   return provider ? store.state.aiProvider.allModels[provider] || [] : [];

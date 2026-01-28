@@ -1249,7 +1249,7 @@ export default {
 
       // Fall back to AI provider logic for standard AI tools
       if (key === 'provider') {
-        return this.$store.state.aiProvider.providers;
+        return this.$store.getters['aiProvider/filteredProviders'];
       } else if (key === 'model') {
         const provider = this.getCustomParameterValue('provider');
         const models = this.$store.state.aiProvider.allModels[provider] || [];

@@ -3,7 +3,10 @@ import { OpenAI } from 'openai/index.mjs';
 import { GoogleGenAI } from '@google/genai';
 import Cerebras from '@cerebras/cerebras_cloud_sdk';
 import AuthManager from '../auth/AuthManager.js';
+import CodexAuthManager from '../auth/CodexAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
+import { createCodexCliClient } from './CodexCliClient.js';
+import CodexCliSessionManager from './CodexCliSessionManager.js';
 
 const baseURLs = {
   cerebras: 'https://api.cerebras.ai/v1',
@@ -13,6 +16,8 @@ const baseURLs = {
   groq: 'https://api.groq.com/openai/v1',
   local: 'http://127.0.0.1:1234/v1',
   openai: 'https://api.openai.com/v1',
+  'openai-codex': 'https://api.openai.com/v1',
+  'openai-codex-cli': 'codex-cli://local',
   openrouter: 'https://openrouter.ai/api/v1',
   togetherai: 'https://api.together.xyz/v1',
 };
@@ -24,8 +29,9 @@ const baseURLs = {
  * @returns {Promise<OpenAI|Anthropic>} An initialized SDK client instance.
  * @throws {Error} If the provider is unsupported or the access token is missing.
  */
-export async function createLlmClient(provider, userId) {
+export async function createLlmClient(provider, userId, options = {}) {
   const lowerCaseProvider = provider.toLowerCase();
+  const { conversationId = null, cwd = process.cwd(), codexFullAuto = true, authToken = null } = options;
 
   // Check if this is a custom provider by querying the database
   const isCustom = await CustomOpenAIProviderService.isCustomProvider(provider);
@@ -72,6 +78,52 @@ export async function createLlmClient(provider, userId) {
       dangerouslyAllowBrowser: false,
       maxRetries: 0, // Disable retries for local server
       timeout: 60000, // 60 second timeout for local models
+    });
+  }
+
+  // OpenAI Codex provider uses Codex CLI auth locally instead of the remote auth service.
+  if (lowerCaseProvider === 'openai-codex') {
+    const codexStatus = await CodexAuthManager.checkApiUsable();
+    if (!codexStatus.available) {
+      throw new Error('OpenAI Codex is not connected. Use device login to connect.');
+    }
+    if (!codexStatus.apiUsable) {
+      const detail = codexStatus.apiStatus ? ` (API status: ${codexStatus.apiStatus})` : '';
+      throw new Error(`OpenAI Codex is connected but the OpenAI API is not usable${detail}.`);
+    }
+    const codexToken = CodexAuthManager.getAccessToken();
+    if (!codexToken) {
+      throw new Error('OpenAI Codex token not found after login.');
+    }
+    return new OpenAI({
+      apiKey: codexToken,
+      baseURL: baseURLs['openai-codex'],
+    });
+  }
+
+  // Codex CLI-backed provider: no OpenAI Platform API call, runs `codex exec` locally.
+  if (lowerCaseProvider === 'openai-codex-cli') {
+    const codexToken = CodexAuthManager.getAccessToken();
+    if (!codexToken) {
+      throw new Error('OpenAI Codex CLI is not connected. Use device login to connect.');
+    }
+
+    const sessionKey = CodexCliSessionManager.getSessionKey({
+      userId,
+      conversationId,
+      provider: lowerCaseProvider,
+      scope: conversationId ? 'conversation' : 'user',
+    });
+
+    return createCodexCliClient({
+      defaultModel: 'gpt-5-codex',
+      cwd,
+      sessionKey,
+      userId,
+      conversationId,
+      provider: lowerCaseProvider,
+      fullAuto: codexFullAuto,
+      authToken,
     });
   }
 

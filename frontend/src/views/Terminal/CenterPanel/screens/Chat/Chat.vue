@@ -225,7 +225,7 @@ export default {
       // Check if any non-Local AI provider is connected
       const connectedAIProviders = connectedApps.filter((app) => {
         const appLower = app.toLowerCase();
-        return ['anthropic', 'openai', 'gemini', 'grokai', 'groq', 'openrouter', 'togetherai'].includes(appLower);
+        return ['anthropic', 'openai', 'openai-codex', 'openai-codex-cli', 'gemini', 'grokai', 'groq', 'openrouter', 'togetherai'].includes(appLower);
       });
 
       // ONLY auto-switch to Local if:

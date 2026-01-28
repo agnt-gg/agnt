@@ -169,6 +169,9 @@ function _buildFormData(templateData) {
   if (model) {
     formData.append('model', model);
   }
+  if (store.state.chat?.currentConversationId) {
+    formData.append('conversationId', store.state.chat.currentConversationId);
+  }
 
   if (store.state.chat.page === 'chat') {
     formData.append('isChat', true);

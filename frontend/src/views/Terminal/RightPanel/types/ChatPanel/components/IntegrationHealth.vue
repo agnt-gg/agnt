@@ -179,8 +179,34 @@ export default {
     };
 
     const fetchProviderDetails = async (providerId) => {
+      const normalizedId = String(providerId || '').toLowerCase();
+
+      // Prefer locally cached provider definitions (these include local Codex providers).
+      const cachedProviders = Array.isArray(allProviders.value) ? allProviders.value : [];
+      const cachedMatch = cachedProviders.find((p) => String(p?.id || '').toLowerCase() === normalizedId);
+      if (cachedMatch) {
+        return cachedMatch;
+      }
+
+      // Fallback: provide local Codex provider details even if the remote auth service is unavailable.
+      if (normalizedId === 'openai-codex-cli') {
+        return {
+          id: 'openai-codex-cli',
+          name: 'OpenAI Codex CLI',
+          icon: 'openai',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions:
+            'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          localOnly: true,
+        };
+      }
+
       try {
         const token = localStorage.getItem('token');
+        if (!token) {
+          return null;
+        }
         const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -190,7 +216,7 @@ export default {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const providers = await response.json();
-        return providers.find((p) => p.id === providerId);
+        return providers.find((p) => String(p?.id || '').toLowerCase() === normalizedId);
       } catch (error) {
         console.error('Error fetching provider details:', error);
         return null;

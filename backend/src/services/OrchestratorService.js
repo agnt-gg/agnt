@@ -16,6 +16,7 @@ import StreamEngine from '../stream/StreamEngine.js';
 import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
+import * as ProviderRegistry from './ai/ProviderRegistry.js';
 
 /**
  * Extract images from tool results and replace with references
@@ -247,6 +248,20 @@ async function processUploadedFiles(files) {
   return { fileContext, imageData };
 }
 
+function getCodexCliSystemInstructions() {
+  return `Codex CLI Mode (no function calling tools):
+- You cannot call tools via function-calling in this session.
+- You CAN run shell commands.
+- You may change directories (for example: cd /path/to/other/project).
+- To run AGNT tools/flows from ANY directory, use the tool runner path in $AGNT_TOOL_RUNNER:
+  node "$AGNT_TOOL_RUNNER" --tool <tool_name> --args '{"key":"value"}'
+- To discover tools, run:
+  node "$AGNT_TOOL_RUNNER" --list
+- Environment variables are already set for you when needed:
+  AGNT_USER_ID, AGNT_CONVERSATION_ID, AGNT_AUTH_TOKEN, AGNT_TOOL_RUNNER, AGNT_REPO_ROOT
+- Tool results are JSON. Parse them, decide next steps, and continue.`;
+}
+
 /**
  * Universal chat handler that replaces all the duplicate chat handlers
  * Supports: orchestrator, agent, workflow, tool, goal, and suggestions
@@ -274,7 +289,7 @@ async function universalChatHandler(req, res, context = {}) {
     history = [],
     conversationId: inputConversationId = null,
     provider,
-    model,
+    model: inputModel,
     // Context-specific parameters
     agentId,
     agentContext,
@@ -290,13 +305,26 @@ async function universalChatHandler(req, res, context = {}) {
   } = req.body;
 
   // Validate required parameters
-  if (!provider || !model) {
+  if (!provider || !inputModel) {
     res.setHeader('Content-Type', 'application/json');
     return res.status(400).json({ error: 'Provider and model are required in the request body.' });
   }
 
   // CRITICAL: Normalize provider to lowercase to ensure consistent handling
   const normalizedProvider = provider.toLowerCase();
+  let model = inputModel;
+
+  // Guardrail: Codex CLI accounts do not support every OpenAI model name.
+  if (normalizedProvider === 'openai-codex-cli') {
+    const supportedModels = ProviderRegistry.getTextModels(normalizedProvider);
+    if (Array.isArray(supportedModels) && supportedModels.length > 0 && !supportedModels.includes(model)) {
+      const fallbackModel = supportedModels[0] || 'gpt-5-codex';
+      console.warn(
+        `[Codex CLI] Model '${model}' is not supported for Codex CLI. Falling back to '${fallbackModel}'.`
+      );
+      model = fallbackModel;
+    }
+  }
 
   // Validate message input (different formats for different handlers)
   const messageInput = originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
@@ -304,21 +332,6 @@ async function universalChatHandler(req, res, context = {}) {
     res.setHeader('Content-Type', 'application/json');
     return res.status(400).json({ error: 'Messages or message with history are required in the request body.' });
   }
-
-  // DEBUG: Log what we received from frontend
-  console.log('[Input Debug] Received messageInput:');
-  console.log(`  Total messages: ${messageInput.length}`);
-  console.log(`  First 3 messages:`);
-  messageInput.slice(0, 3).forEach((msg, idx) => {
-    console.log(`    [${idx}] role: ${msg?.role}, content: ${typeof msg?.content}, keys: ${msg ? Object.keys(msg).join(', ') : 'null'}`);
-  });
-  console.log(`  Last message:`);
-  const lastMsg = messageInput[messageInput.length - 1];
-  console.log(
-    `    [${messageInput.length - 1}] role: ${lastMsg?.role}, content: ${typeof lastMsg?.content}, keys: ${
-      lastMsg ? Object.keys(lastMsg).join(', ') : 'null'
-    }`
-  );
 
   // Set up streaming response
   res.setHeader('Content-Type', 'text/event-stream');
@@ -392,9 +405,11 @@ async function universalChatHandler(req, res, context = {}) {
     goalId,
     goalContext,
     userId,
+    conversationId,
     // AI provider settings
     provider,
     model,
+    normalizedProvider,
   };
 
   try {
@@ -443,12 +458,12 @@ async function universalChatHandler(req, res, context = {}) {
       }
     }
 
-    const client = await createLlmClient(normalizedProvider, userId);
+    const client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
     const adapter = await createLlmAdapter(normalizedProvider, client, model);
 
     // Store client in context
     conversationContext.llmClient = client;
-    if (normalizedProvider === 'openai') {
+    if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex' || normalizedProvider === 'openai-codex-cli') {
       conversationContext.openai = client;
     }
 
@@ -475,10 +490,14 @@ async function universalChatHandler(req, res, context = {}) {
 
     // Build system prompt
     const currentDate = new Date().toString();
-    const systemPrompt = config.buildSystemPrompt(currentDate, {
+    let systemPrompt = config.buildSystemPrompt(currentDate, {
       ...conversationContext,
       toolSchemas,
     });
+
+    if (normalizedProvider === 'openai-codex-cli') {
+      systemPrompt = `${systemPrompt}\n\n${getCodexCliSystemInstructions()}`;
+    }
 
     // Prepare messages - filter out any corrupted messages first, then clone
     messages = messageInput
@@ -565,7 +584,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
         uniqueToolMap.set(tool.function.name, tool);
       }
     }
-    const finalToolSchemas = Array.from(uniqueToolMap.values());
+    let finalToolSchemas = Array.from(uniqueToolMap.values());
+
+    // Codex CLI backend does not support function-calling tools reliably.
+    if (normalizedProvider === 'openai-codex-cli' && finalToolSchemas.length > 0) {
+      finalToolSchemas = [];
+    }
 
     // Generate assistant message ID early (needed for image extraction events)
     const assistantMessageId = `msg-asst-${Date.now()}`;
@@ -588,20 +612,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
       });
     }
 
-    // DEBUG: Log messages BEFORE context management
-    console.log('[Pre-Context Debug] Messages before context management:');
-    messages.forEach((msg, idx) => {
-      console.log(`  [${idx}] role: ${msg?.role}, content type: ${typeof msg?.content}, has content: ${!!msg?.content}`);
-    });
-
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas);
-
-    // DEBUG: Log messages AFTER context management
-    console.log('[Post-Context Debug] Messages after context management:');
-    contextResult.messages.forEach((msg, idx) => {
-      console.log(`  [${idx}] role: ${msg?.role}, content type: ${typeof msg?.content}, has content: ${!!msg?.content}`);
-    });
 
     // Send context status
     sendEvent('context_status', {

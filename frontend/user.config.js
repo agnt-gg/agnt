@@ -13,7 +13,19 @@ export const IMAP_EMAIL_DOMAIN = {
 // NOTE: Models are now fetched dynamically from the backend API endpoints
 // This config only defines the available providers
 export const AI_PROVIDERS_CONFIG = {
-  providers: ['Anthropic', 'Cerebras', 'DeepSeek', 'Gemini', 'GrokAI', 'Groq', 'Local', 'OpenAI', 'OpenRouter', 'TogetherAI'],
+  providers: [
+    'Anthropic',
+    'Cerebras',
+    'DeepSeek',
+    'Gemini',
+    'GrokAI',
+    'Groq',
+    'Local',
+    'OpenAI',
+    'OpenAI-Codex-CLI',
+    'OpenRouter',
+    'TogetherAI',
+  ],
   // Models are fetched dynamically from API - no hardcoded models!
   modelsByProvider: {
     Anthropic: [], // Fetched from /api/models/anthropic/models
@@ -24,6 +36,7 @@ export const AI_PROVIDERS_CONFIG = {
     Groq: [], // Fetched from /api/models/groq/models
     Local: [], // Fetched from LM Studio at http://127.0.0.1:1234/v1/models
     OpenAI: [], // Fetched from /api/models/openai/models
+    'OpenAI-Codex-CLI': [], // Fetched from /api/models/openai-codex-cli/models
     OpenRouter: [], // Fetched from /api/models/openrouter/models
     TogetherAI: [], // Fetched from /api/models/togetherai/models
   },

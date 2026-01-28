@@ -7,6 +7,9 @@ import AGNT from '../../libs/agnt2.js';
 import scrapeUtil from '../../utils/webScrape.js';
 import toolRegistry from './toolRegistry.js';
 import AuthManager from '../auth/AuthManager.js';
+import CodexAuthManager from '../auth/CodexAuthManager.js';
+import CodexCliService from '../ai/CodexCliService.js';
+import CodexCliSessionManager from '../ai/CodexCliSessionManager.js';
 import jwt from 'jsonwebtoken';
 import ParameterResolver from '../../workflow/ParameterResolver.js';
 
@@ -216,6 +219,163 @@ export const TOOLS = {
           }
         });
       });
+    },
+  },
+  codex_exec: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'codex_exec',
+        description:
+          'Runs a prompt using the local Codex CLI backend. This does not require an OpenAI API key, but does require Codex device login to be completed on this machine.',
+        parameters: {
+          type: 'object',
+          properties: {
+            prompt: {
+              type: 'string',
+              description: 'The prompt to run with Codex CLI.',
+            },
+            model: {
+              type: 'string',
+              default: 'gpt-5-codex',
+              description: "Codex CLI model to use (for example: 'gpt-5-codex').",
+            },
+            cwd: {
+              type: 'string',
+              description: 'Working directory for the Codex CLI command. Defaults to the server process directory.',
+            },
+            resume: {
+              type: 'boolean',
+              default: true,
+              description:
+                'If true, resume the most recent Codex thread for this conversation (or user) when available.',
+            },
+            sessionScope: {
+              type: 'string',
+              enum: ['conversation', 'user'],
+              default: 'conversation',
+              description:
+                "Session scope for Codex threads. 'conversation' keeps a thread per conversation; 'user' shares one thread per user.",
+            },
+            sessionThreadId: {
+              type: 'string',
+              description:
+                'Optional explicit Codex thread ID to resume. If provided, it overrides the session-based resume behavior.',
+            },
+            fullAuto: {
+              type: 'boolean',
+              default: false,
+              description:
+                'If true, runs Codex with --full-auto. This may allow Codex to take actions without additional confirmation.',
+            },
+            extraArgs: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Optional extra CLI arguments to pass to codex exec. Use with caution and only when you know the Codex CLI flags.',
+            },
+          },
+          required: ['prompt'],
+        },
+      },
+    },
+    execute: async (
+      {
+        prompt,
+        model = 'gpt-5-codex',
+        cwd,
+        resume = true,
+        sessionScope = 'conversation',
+        sessionThreadId = null,
+        fullAuto = false,
+        extraArgs = [],
+      },
+      _authToken,
+      context
+    ) => {
+      try {
+        const codexToken = CodexAuthManager.getAccessToken();
+        if (!codexToken) {
+          return JSON.stringify({
+            success: false,
+            error: 'Codex CLI is not connected on this machine. Complete device login first.',
+          });
+        }
+
+        const resolvedCwd = cwd ? path.resolve(cwd) : process.cwd();
+        try {
+          const stat = await fs.stat(resolvedCwd);
+          if (!stat.isDirectory()) {
+            return JSON.stringify({
+              success: false,
+              error: `cwd is not a directory: ${resolvedCwd}`,
+            });
+          }
+        } catch (err) {
+          return JSON.stringify({
+            success: false,
+            error: `cwd does not exist or is not accessible: ${resolvedCwd}`,
+          });
+        }
+
+        const userId = context?.userId || null;
+        const conversationId = context?.conversationId || null;
+
+        const sessionKey = CodexCliSessionManager.getSessionKey({
+          userId,
+          conversationId,
+          provider: 'openai-codex-cli',
+          scope: sessionScope === 'user' ? 'user' : 'conversation',
+        });
+
+        const existingThreadId = resume && !sessionThreadId ? await CodexCliSessionManager.getThreadId(sessionKey) : null;
+        const resumeThreadId = sessionThreadId || existingThreadId;
+
+        const handleEvent = (event) => {
+          if (event?.type === 'thread.started' && event.thread_id) {
+            CodexCliSessionManager.setThreadId(sessionKey, event.thread_id);
+          }
+        };
+
+        const result = await CodexCliService.runExecStream(
+          {
+            prompt,
+            model,
+            cwd: resolvedCwd,
+            resumeThreadId,
+            fullAuto,
+            extraArgs: Array.isArray(extraArgs) ? extraArgs : [],
+            userId,
+            conversationId,
+            authToken: _authToken,
+            provider: 'openai-codex-cli',
+          },
+          { onEvent: handleEvent }
+        );
+
+        if (result?.threadId) {
+          CodexCliSessionManager.setThreadId(sessionKey, result.threadId);
+        }
+
+        return JSON.stringify({
+          success: true,
+          provider: 'openai-codex-cli',
+          model,
+          cwd: resolvedCwd,
+          sessionKey,
+          resumedFromThreadId: resumeThreadId || null,
+          threadId: result?.threadId || resumeThreadId || null,
+          text: result?.text || '',
+          usage: result?.usage || null,
+          exitCode: result?.exitCode ?? 0,
+        });
+      } catch (error) {
+        console.error('codex_exec tool failed:', error);
+        return JSON.stringify({
+          success: false,
+          error: error.message || 'codex_exec failed',
+        });
+      }
     },
   },
   web_search: {
@@ -2306,9 +2466,9 @@ export const TOOLS = {
             },
             provider: {
               type: 'string',
-              enum: ['openai', 'gemini', 'grokai'],
+              enum: ['openai', 'openai-codex', 'gemini', 'grokai'],
               description:
-                "AI provider to use for vision analysis. Options: 'openai' (GPT-4 Vision), 'gemini' (Google), 'grokai' (Grok). If not specified, defaults to 'openai'.",
+                "AI provider to use for vision analysis. Options: 'openai' or 'openai-codex' (OpenAI), 'gemini' (Google), 'grokai' (Grok). If not specified, defaults to 'openai'.",
             },
             model: {
               type: 'string',
@@ -2340,7 +2500,7 @@ export const TOOLS = {
       try {
         // Validate provider
         const normalizedProvider = provider.toLowerCase();
-        const supportedProviders = ['openai', 'gemini', 'grokai'];
+        const supportedProviders = ['openai', 'openai-codex', 'gemini', 'grokai'];
         if (!supportedProviders.includes(normalizedProvider)) {
           return JSON.stringify({
             success: false,
@@ -2498,9 +2658,9 @@ export const TOOLS = {
             },
             provider: {
               type: 'string',
-              enum: ['gemini', 'grokai', 'openai'],
+              enum: ['gemini', 'grokai', 'openai', 'openai-codex'],
               description:
-                "AI provider to use for image generation. Options: 'gemini' (Google), 'grokai' (Grok), 'openai' (DALL-E). If not specified, defaults to 'openai'.",
+                "AI provider to use for image generation. Options: 'gemini' (Google), 'grokai' (Grok), 'openai' or 'openai-codex' (DALL-E). If not specified, defaults to 'openai'.",
             },
             model: {
               type: 'string',

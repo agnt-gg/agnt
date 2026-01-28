@@ -8,6 +8,17 @@ const state = {
   lastHealthCheck: null,
   isHealthCheckLoading: false,
   pollingIntervalId: null,
+  codexStatus: {
+    available: false,
+    apiUsable: false,
+    apiStatus: null,
+    source: null,
+    hint: null,
+    checkedAt: null,
+    codexWorkdir: null,
+    toolRunner: null,
+  },
+  codexDeviceSession: null,
 };
 
 const mutations = {
@@ -27,20 +38,76 @@ const mutations = {
   SET_POLLING_INTERVAL_ID(state, intervalId) {
     state.pollingIntervalId = intervalId;
   },
+  SET_CODEX_STATUS(state, status) {
+    state.codexStatus = {
+      available: status?.available === true,
+      apiUsable: status?.apiUsable === true,
+      apiStatus: typeof status?.apiStatus === 'number' ? status.apiStatus : null,
+      source: status?.source || null,
+      hint: status?.hint || null,
+      checkedAt: status?.checkedAt || new Date().toISOString(),
+      codexWorkdir: status?.codexWorkdir || null,
+      toolRunner: status?.toolRunner || null,
+    };
+  },
+  SET_CODEX_DEVICE_SESSION(state, session) {
+    state.codexDeviceSession = session || null;
+  },
+  CLEAR_CODEX_DEVICE_SESSION(state) {
+    state.codexDeviceSession = null;
+  },
 };
 
 const actions = {
   async fetchConnectedApps({ commit }) {
+    const token = localStorage.getItem('token');
+    let connectedApps = [];
+
     try {
+      const headers = token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {};
+
       const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/connected`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
+        headers,
       });
-      commit('SET_CONNECTED_APPS', response.data);
+
+      if (Array.isArray(response.data)) {
+        const normalizeProviderId = (app) => {
+          if (typeof app === 'string') return app.toLowerCase();
+          if (app?.provider_id) return String(app.provider_id).toLowerCase();
+          if (app?.id) return String(app.id).toLowerCase();
+          return null;
+        };
+
+        connectedApps = response.data.map(normalizeProviderId).filter(Boolean);
+      }
     } catch (error) {
       console.error('Error fetching connected apps:', error);
     }
+
+    // Local Codex auth:
+    // - openai-codex-cli: connected when Codex login exists locally.
+    try {
+      const codexStatusResponse = await axios.get(`${API_CONFIG.BASE_URL}/codex/status`);
+      const codexStatus = codexStatusResponse?.data || {};
+      commit('SET_CODEX_STATUS', codexStatus);
+
+      if (codexStatus.available === true) {
+        if (!connectedApps.includes('openai-codex-cli')) {
+          connectedApps = [...connectedApps, 'openai-codex-cli'];
+        }
+      }
+    } catch (error) {
+      console.warn('Error checking Codex status:', error?.message || error);
+      commit('SET_CODEX_STATUS', { available: false, apiUsable: false, hint: 'Codex status unavailable' });
+    }
+
+    // De-duplicate while preserving order.
+    const deduped = Array.from(new Set(connectedApps));
+    commit('SET_CONNECTED_APPS', deduped);
   },
   async fetchAllProviders({ commit }) {
     try {
@@ -49,9 +116,117 @@ const actions = {
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       });
-      commit('SET_ALL_PROVIDERS', response.data);
+      const remoteProviders = Array.isArray(response.data) ? response.data : [];
+
+      // Inject local Codex providers so they can be configured without the remote auth service.
+      const localCodexProviders = [
+        {
+          id: 'openai-codex-cli',
+          name: 'OpenAI Codex CLI',
+          icon: 'openai',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions:
+            'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          localOnly: true,
+        },
+      ];
+
+      const existingIds = new Set(remoteProviders.map((p) => p.id));
+      const mergedProviders = [...remoteProviders];
+      for (const provider of localCodexProviders) {
+        if (!existingIds.has(provider.id)) {
+          mergedProviders.push(provider);
+        }
+      }
+
+      commit('SET_ALL_PROVIDERS', mergedProviders);
     } catch (error) {
       console.error('Error fetching all providers:', error);
+      // Still expose the local Codex providers even if the remote fetch fails.
+      commit('SET_ALL_PROVIDERS', [
+        {
+          id: 'openai-codex-cli',
+          name: 'OpenAI Codex CLI',
+          icon: 'openai',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions:
+            'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          localOnly: true,
+        },
+      ]);
+    }
+  },
+  async fetchCodexStatus({ commit }) {
+    try {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/codex/status`);
+      commit('SET_CODEX_STATUS', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching Codex status:', error);
+      const fallback = { available: false, apiUsable: false, hint: 'Codex status unavailable' };
+      commit('SET_CODEX_STATUS', fallback);
+      return fallback;
+    }
+  },
+  async startCodexDeviceAuth({ commit }) {
+    const response = await axios.post(`${API_CONFIG.BASE_URL}/codex/device/start`);
+    if (response.data?.success) {
+      commit('SET_CODEX_DEVICE_SESSION', {
+        sessionId: response.data.sessionId,
+        deviceUrl: response.data.deviceUrl,
+        deviceCode: response.data.deviceCode,
+        state: response.data.state,
+        startedAt: response.data.startedAt,
+        expiresAt: response.data.expiresAt,
+      });
+    }
+    return response.data;
+  },
+  async pollCodexDeviceAuth({ commit, dispatch, state }, { sessionId, timeoutMs = 2 * 60 * 1000, intervalMs = 3000 } = {}) {
+    const activeSessionId = sessionId || state.codexDeviceSession?.sessionId;
+    if (!activeSessionId) {
+      throw new Error('No Codex device session to poll.');
+    }
+
+    const start = Date.now();
+    let lastStatus = null;
+
+    while (Date.now() - start < timeoutMs) {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/codex/device/status`, {
+        params: { sessionId: activeSessionId },
+      });
+      lastStatus = response.data;
+
+      if (lastStatus?.state === 'success') {
+        // Refresh Codex status and connected apps after successful login.
+        await dispatch('fetchCodexStatus');
+        await dispatch('fetchConnectedApps');
+        commit('CLEAR_CODEX_DEVICE_SESSION');
+        return lastStatus;
+      }
+
+      if (lastStatus?.state === 'error') {
+        await dispatch('fetchCodexStatus');
+        return lastStatus;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    return lastStatus || { success: false, state: 'error', message: 'Timed out waiting for device login.' };
+  },
+  async logoutCodex({ commit, dispatch }) {
+    try {
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/codex/logout`);
+      await dispatch('fetchCodexStatus');
+      await dispatch('fetchConnectedApps');
+      commit('CLEAR_CODEX_DEVICE_SESSION');
+      return response.data;
+    } catch (error) {
+      console.error('Error logging out of Codex:', error);
+      throw error;
     }
   },
   async checkConnectionHealth({ commit }) {
@@ -241,6 +416,8 @@ const HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 const getters = {
   connectedApps: (state) => state.connectedApps,
+  codexStatus: (state) => state.codexStatus,
+  codexDeviceSession: (state) => state.codexDeviceSession,
   connectionHealthStatus: (state) => {
     if (!state.connectionHealth) return 'unknown';
     return state.connectionHealth.overall;

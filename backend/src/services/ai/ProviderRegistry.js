@@ -38,6 +38,41 @@ export const PROVIDER_CAPABILITIES = {
     },
   },
 
+  // OpenAI Codex uses the same OpenAI API surface but is authenticated via Codex CLI.
+  'openai-codex': {
+    text: {
+      models: ['gpt-4.1'],
+      supportsStreaming: true,
+      supportsTools: true,
+    },
+    vision: {
+      models: ['gpt-4.1'],
+      supportsStreaming: true,
+    },
+    imageGen: {
+      models: ['dall-e-3'],
+      operations: ['generate', 'edit', 'variation'],
+      defaultModel: 'dall-e-3',
+      supportedSizes: {
+        'dall-e-2': ['256x256', '512x512', '1024x1024'],
+        'dall-e-3': ['1024x1024', '1792x1024', '1024x1792'],
+      },
+      supportedFormats: ['url', 'b64_json'],
+      maxImages: 10,
+      supportsQuality: true,
+      supportsStyle: true,
+    },
+  },
+
+  // OpenAI Codex CLI runs locally via `codex exec` and does not use the OpenAI Platform API.
+  'openai-codex-cli': {
+    text: {
+      models: ['gpt-5-codex', 'gpt-5'],
+      supportsStreaming: true,
+      supportsTools: false,
+    },
+  },
+
   anthropic: {
     text: {
       models: ['claude-haiku-4-5-20251001', 'claude-opus-4-5-20251101', 'claude-sonnet-4-5-20250929'],

@@ -11,6 +11,7 @@ class AiService {
       return new StreamEngine(req.user.id);
     };
     this.authManager = AuthManager;
+    this.localAuthProviders = new Set(['local', 'openai-codex', 'openai-codex-cli']);
   }
 
   // Break typical controller pattern and use arrow functions to automatically bind 'this'
@@ -22,7 +23,7 @@ class AiService {
   };
   startToolForgeStream = async (req, res) => {
     try {
-      const { query, provider, model } = req.body;
+      const { query, provider, model, conversationId = null } = req.body;
       const files = req.files;
       const userId = req.user.id;
 
@@ -80,9 +81,10 @@ class AiService {
       let accessTokenOrApiKey = null;
 
       // Only attempt to get an access token or API key if it's not the local provider
-      if (provider.toLowerCase() !== 'local') {
+      const providerLower = provider.toLowerCase();
+      if (!this.localAuthProviders.has(providerLower)) {
         try {
-          accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, provider.toLowerCase());
+          accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, providerLower);
         } catch (authError) {
           console.error('Authentication error:', authError);
           return res.status(401).json({
@@ -102,7 +104,8 @@ class AiService {
         model,
         'false', // isChat
         null, // messages
-        accessTokenOrApiKey
+        accessTokenOrApiKey,
+        conversationId
       );
     } catch (error) {
       console.error('Error starting Tool Forge stream:', error);
@@ -128,7 +131,7 @@ class AiService {
   startChatStream = async (req, res) => {
     try {
       console.log(req.body);
-      const { query, provider, model, isChat, messages } = req.body;
+      const { query, provider, model, isChat, messages, conversationId = null } = req.body;
       const userId = req.user.id;
 
       console.log('Provider:', provider);
@@ -143,21 +146,24 @@ class AiService {
 
       // Get the access token or API key for the provider
       let accessToken;
-      try {
-        accessToken = await this.authManager.getValidAccessToken(userId, provider.toLowerCase());
-      } catch (authError) {
-        if (authError.message === 'No valid access token. User needs to authenticate.') {
-          return res.status(401).json({
-            error: 'Authentication required',
-            message: 'Please authenticate with the provider before starting a chat.',
-            provider: provider,
-          });
+      const providerLower = provider.toLowerCase();
+      if (!this.localAuthProviders.has(providerLower)) {
+        try {
+          accessToken = await this.authManager.getValidAccessToken(userId, providerLower);
+        } catch (authError) {
+          if (authError.message === 'No valid access token. User needs to authenticate.') {
+            return res.status(401).json({
+              error: 'Authentication required',
+              message: 'Please authenticate with the provider before starting a chat.',
+              provider: provider,
+            });
+          }
+          throw authError; // Re-throw if it's a different error
         }
-        throw authError; // Re-throw if it's a different error
       }
 
       // Call the AI's startStream method with the correct parameters
-      this.ai(req).startStream(req, res, userMessage, null, provider, model, isChat === 'true', parsedMessages, accessToken);
+      this.ai(req).startStream(req, res, userMessage, null, provider, model, isChat === 'true', parsedMessages, accessToken, conversationId);
     } catch (error) {
       console.error('Error starting chat stream:', error);
       res.status(500).json({

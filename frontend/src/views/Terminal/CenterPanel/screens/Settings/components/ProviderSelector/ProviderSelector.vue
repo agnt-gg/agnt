@@ -77,7 +77,7 @@ export default {
     const isDialogOpen = ref(false);
     const editingProvider = ref(null);
 
-    const providers = computed(() => store.state.aiProvider.providers);
+    const providers = computed(() => store.getters['aiProvider/filteredProviders']);
     const customProviders = computed(() => store.state.aiProvider.customProviders || []);
     const connectedProviders = computed(() => store.state.appAuth.connectedApps);
 
@@ -253,6 +253,10 @@ export default {
       if (connectedAIProviders.length > 0) {
         if (connectedAIProviders.includes('anthropic')) {
           selectedProvider.value = 'Anthropic';
+        } else if (connectedAIProviders.includes('openai-codex-cli')) {
+          selectedProvider.value = 'OpenAI-Codex-CLI';
+        } else if (connectedAIProviders.includes('openai-codex')) {
+          selectedProvider.value = 'OpenAI-Codex';
         } else if (connectedAIProviders.includes('openai')) {
           selectedProvider.value = 'OpenAI';
         } else if (connectedAIProviders.includes('gemini')) {

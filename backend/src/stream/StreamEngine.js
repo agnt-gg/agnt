@@ -73,9 +73,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     this.rag = null;
     this.agnt = null;
   }
-  async startStream(req, res, userQuery, files, provider, modelName, isChat, messages, accessToken) {
+  async startStream(req, res, userQuery, files, provider, modelName, isChat, messages, accessToken, conversationId = null) {
     // Client is now initialized with the factory based on provider
-    const client = await createLlmClient(provider, this.userId);
+    const client = await createLlmClient(provider, this.userId, { conversationId, authToken: accessToken });
 
     // Add these headers at the start of the method
     res.setHeader('Content-Type', 'text/event-stream');
@@ -170,6 +170,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'groq':
         case 'local':
         case 'openai':
+        case 'openai-codex':
+        case 'openai-codex-cli':
         case 'openrouter':
         case 'togetherai':
           await this.startOpenAiLikeStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client, provider);
@@ -317,8 +319,11 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     console.log(finalMessages);
 
     try {
+      const providerKey = provider.toLowerCase();
+      const isOpenAIProvider = providerKey === 'openai' || providerKey === 'openai-codex' || providerKey === 'openai-codex-cli';
+
       // For o1-preview model, include system instructions in the first user message
-      if (modelName === 'o1-mini' && provider.toLowerCase() === 'openai') {
+      if (modelName === 'o1-mini' && isOpenAIProvider) {
         const systemInstructions = `
           [SYSTEM INSTRUCTIONS]:
           ${systemPrompt}
@@ -359,21 +364,21 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       };
 
       // Add the appropriate token limit parameter based on the model and provider
-      if ((modelName === 'o1-mini' || modelName === 'o3-mini' || modelName === 'o1') && provider.toLowerCase() === 'openai') {
+      if ((modelName === 'o1-mini' || modelName === 'o3-mini' || modelName === 'o1') && isOpenAIProvider) {
         streamOptions.max_completion_tokens = 8192;
-      } else if (provider.toLowerCase() !== 'groq') {
+      } else if (providerKey !== 'groq') {
         // Don't set max_tokens for Groq
         streamOptions.max_tokens = 8192;
       }
 
       // Don't set temperature for Groq as it has special handling
-      if (modelName !== 'deepseek-reasoner' && provider.toLowerCase() !== 'groq') {
+      if (modelName !== 'deepseek-reasoner' && providerKey !== 'groq') {
         streamOptions.temperature = 1;
         streamOptions.top_p = 1;
       }
 
       // Check if streaming is supported for the provider and model
-      const supportsStreaming = !(provider.toLowerCase() === 'groq' || modelName === 'o1' || modelName === 'o1-mini' || modelName === 'o3-mini');
+      const supportsStreaming = !(providerKey === 'groq' || modelName === 'o1' || modelName === 'o1-mini' || modelName === 'o3-mini');
       streamOptions.stream = supportsStreaming;
 
       let response;
@@ -614,6 +619,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         grokai: 'grok-4',
         groq: 'llama-3.3-70b-versatile',
         openai: 'gpt-4o',
+        'openai-codex': 'gpt-4o',
+        'openai-codex-cli': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -722,6 +729,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
+        case 'openai-codex':
+        case 'openai-codex-cli':
         case 'openai':
           response = await client.chat.completions.create({
             model: selectedModel,
@@ -1026,6 +1035,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
+        'openai-codex': 'o1-preview',
+        'openai-codex-cli': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1155,6 +1166,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
+        case 'openai-codex':
+        case 'openai-codex-cli':
         case 'openai':
           completion = await client.chat.completions.create({
             model: selectedModel,
@@ -1291,6 +1304,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         grokai: 'grok-4',
         groq: 'llama-3.3-70b-versatile',
         openai: 'gpt-4o',
+        'openai-codex': 'gpt-4o',
+        'openai-codex-cli': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1399,6 +1414,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
+        case 'openai-codex':
+        case 'openai-codex-cli':
         case 'openai':
           response = await client.chat.completions.create({
             model: selectedModel,
@@ -1476,6 +1493,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
+        'openai-codex': 'o1-preview',
+        'openai-codex-cli': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1623,6 +1642,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return completion.choices[0].message.content;
 
+        case 'openai-codex':
+        case 'openai-codex-cli':
         case 'openai':
           completion = await client.chat.completions.create({
             model: selectedModel,

@@ -14,6 +14,7 @@ import PluginManager from './src/plugins/PluginManager.js';
 
 // Import your API routes
 import UserRoutes from './src/routes/UserRoutes.js';
+import CodexAuthRoutes from './src/routes/CodexAuthRoutes.js';
 import StreamRoutes from './src/routes/StreamRoutes.js';
 import WorkflowRoutes from './src/routes/WorkflowRoutes.js';
 import ExecutionRoutes from './src/routes/ExecutionRoutes.js';
@@ -32,6 +33,7 @@ import SpeechRoutes from './src/routes/SpeechRoutes.js';
 import PluginRoutes from './src/routes/PluginRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
+import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,6 +99,7 @@ if (frontendExists) {
 // Define API routes
 app.use('/lite', express.static(path.join(__dirname, '..', 'lite')));
 app.use('/api/users', UserRoutes);
+app.use('/api/codex', CodexAuthRoutes);
 app.use('/api/stream', StreamRoutes);
 app.use('/api/agents', AgentRoutes);
 app.use('/api/workflows', WorkflowRoutes);
@@ -218,6 +221,13 @@ function startServer() {
   let retries = 0;
 
   const tryStarting = async () => {
+    // Warm Codex thread cache so conversations can resume after restarts
+    try {
+      await CodexCliSessionManager.init();
+    } catch (error) {
+      console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
+    }
+
     // Create HTTP server from Express app
     const httpServer = createServer(app);
 
