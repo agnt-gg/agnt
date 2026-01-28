@@ -15,6 +15,7 @@ class HTTPTransport {
     this.messageHandlers = new Map();
     this.notificationHandlers = [];
     this.connected = false;
+    this.requestCounter = 0;
   }
 
   async connect() {
@@ -180,7 +181,7 @@ class HTTPTransport {
       throw new Error('Transport not connected');
     }
 
-    const requestId = message.id || `req-${Date.now()}`;
+    const requestId = message.id || `req-${Date.now()}-${++this.requestCounter}`;
     message.id = requestId;
 
     const responsePromise = new Promise((resolve, reject) => {
