@@ -63,7 +63,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useStore, mapActions } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
-import { API_CONFIG, AI_PROVIDERS_CONFIG } from '@/tt.config.js';
+import { API_CONFIG } from '@/tt.config.js';
 import { useRoute, useRouter } from 'vue-router';
 import { encrypt, decrypt } from '@/views/_utils/encryption.js';
 import ProviderForm from './components/ProviderForm/ProviderForm.vue';
@@ -138,117 +138,6 @@ const safeParseCategories = (input) => {
   }
 };
 
-const buildAiProviderFallbacks = () => {
-  const defaults = {
-    Anthropic: {
-      id: 'anthropic',
-      icon: 'anthropic',
-      connectionType: 'apikey',
-      instructions: 'Enter your Anthropic API key.',
-    },
-    Cerebras: {
-      id: 'cerebras',
-      icon: 'cerebras',
-      connectionType: 'apikey',
-      instructions: 'Enter your Cerebras API key.',
-    },
-    DeepSeek: {
-      id: 'deepseek',
-      icon: 'deepseek',
-      connectionType: 'apikey',
-      instructions: 'Enter your DeepSeek API key.',
-    },
-    Gemini: {
-      id: 'gemini',
-      icon: 'api',
-      connectionType: 'apikey',
-      instructions: 'Enter your Gemini API key.',
-    },
-    GrokAI: {
-      id: 'grokai',
-      icon: 'grok-ai',
-      connectionType: 'apikey',
-      instructions: 'Enter your Grok API key.',
-    },
-    Groq: {
-      id: 'groq',
-      icon: 'groq',
-      connectionType: 'apikey',
-      instructions: 'Enter your Groq API key.',
-    },
-    Local: {
-      id: 'local',
-      icon: 'code',
-      connectionType: 'local',
-      instructions: 'Local provider does not require a connection. Select it in Default AI Provider.',
-    },
-    OpenAI: {
-      id: 'openai',
-      icon: 'openai',
-      connectionType: 'apikey',
-      instructions: 'Enter your OpenAI API key.',
-    },
-    'OpenAI-Codex-CLI': {
-      id: 'openai-codex-cli',
-      icon: 'openai',
-      connectionType: 'oauth',
-      instructions:
-        'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
-      localOnly: true,
-    },
-    'Kimi-Code': {
-      id: 'kimi-code',
-      icon: 'code',
-      connectionType: 'apikey',
-      instructions:
-        'Enter your Kimi Code API key. This uses the OpenAI-compatible Kimi Code endpoint and the kimi-for-coding model.',
-      localOnly: true,
-    },
-    OpenRouter: {
-      id: 'openrouter',
-      icon: 'api',
-      connectionType: 'apikey',
-      instructions: 'Enter your OpenRouter API key.',
-    },
-    TogetherAI: {
-      id: 'togetherai',
-      icon: 'together-ai',
-      connectionType: 'apikey',
-      instructions: 'Enter your TogetherAI API key.',
-    },
-  };
-
-  const providerNames = Array.isArray(AI_PROVIDERS_CONFIG?.providers) ? AI_PROVIDERS_CONFIG.providers : [];
-  return providerNames.map((name) => {
-    const def = defaults[name] || {};
-    const fallbackId = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    return {
-      id: def.id || fallbackId,
-      name,
-      icon: def.icon || 'api',
-      categories: ['AI'],
-      connectionType: def.connectionType || 'apikey',
-      instructions: def.instructions || `Enter API key for ${name}.`,
-      localOnly: def.localOnly || false,
-    };
-  });
-};
-
-const ensureLocalProviders = () => {
-  const fallbacks = buildAiProviderFallbacks();
-  if (!allApps.value.length) {
-    allApps.value = fallbacks;
-    return;
-  }
-
-  const existing = new Set(allApps.value.map((app) => String(app.id).toLowerCase()));
-  for (const provider of fallbacks) {
-    if (!existing.has(String(provider.id).toLowerCase())) {
-      allApps.value.push(provider);
-    }
-  }
-};
-
 const syncProvidersFromStore = () => {
   const providers = Array.isArray(store.state.appAuth.allProviders) ? store.state.appAuth.allProviders : [];
   const connected = Array.isArray(store.state.appAuth.connectedApps) ? store.state.appAuth.connectedApps : [];
@@ -266,8 +155,6 @@ const syncProvidersFromStore = () => {
       custom_prompt: provider.custom_prompt,
     };
   });
-
-  ensureLocalProviders();
 };
 
 const fetchAuthProviders = async () => {
@@ -321,10 +208,6 @@ const handleAppClick = (app) => {
   }
   if (appLower === 'kimi-code') {
     promptApiKey(app);
-    return;
-  }
-  if (appLower === 'local' || app.connectionType === 'local') {
-    showAlert('Local Provider', 'Local models do not require a connection. Select Local in Default AI Provider.');
     return;
   }
 
