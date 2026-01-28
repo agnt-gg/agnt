@@ -63,11 +63,26 @@ export async function createLlmClient(provider, userId, options = {}) {
 
     console.log(`[LlmService] Custom provider found: ${customProvider.provider_name} -> ${customProvider.base_url}`);
 
-    // Use the base_url as-is (it's already normalized when saved)
-    return new OpenAI({
+    const baseUrl = customProvider.base_url;
+    const defaultHeaders = {};
+    const compat = {};
+
+    if (typeof baseUrl === 'string' && baseUrl.includes('api.kimi.com/coding')) {
+      defaultHeaders['User-Agent'] = 'KimiCLI/0.77';
+      compat.mapDeveloperRole = true;
+    }
+
+    const client = new OpenAI({
       apiKey: customProvider.api_key || 'not-needed', // Use dummy key if no API key
-      baseURL: customProvider.base_url,
+      baseURL: baseUrl,
+      defaultHeaders: Object.keys(defaultHeaders).length > 0 ? defaultHeaders : undefined,
     });
+
+    if (Object.keys(compat).length > 0) {
+      client.__agntCompat = compat;
+    }
+
+    return client;
   }
 
   // For 'local' provider, no API key is needed.

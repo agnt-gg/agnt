@@ -652,6 +652,21 @@ See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md) for more details.
 | Together AI | Open source models          | ✅ Supported |
 | Custom      | Any OpenAI-compatible API   | ✅ Supported |
 
+### Custom Provider Example: Kimi Code
+
+If you have a **Kimi Code API key** (not a Moonshot API key), you can use it via the **Custom OpenAI-compatible provider**:
+
+1. Go to **Settings → Default AI Provider → Add Custom Provider**.
+2. Fill in:
+   - **Name**: `Kimi Code`
+   - **Base URL**: `https://api.kimi.com/coding/v1`
+   - **API Key**: your Kimi Code key
+3. Save, then select model **`kimi-for-coding`**.
+
+Notes:
+- AGNT automatically sends the compatibility header expected by Kimi Code when the base URL matches `api.kimi.com/coding`.
+- If you see a **403** saying the model is only available for coding agents, the key is restricted to Kimi CLI–style integrations.
+
 ---
 
 ## 🤝 Contributing

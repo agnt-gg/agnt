@@ -187,6 +187,12 @@ class OpenAiLikeAdapter extends BaseAdapter {
     let lastError;
     let currentMessages = messages;
 
+    if (this.client?.__agntCompat?.mapDeveloperRole) {
+      currentMessages = currentMessages.map((msg) =>
+        msg?.role === 'developer' ? { ...msg, role: 'system' } : msg
+      );
+    }
+
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
         const response = await this.client.chat.completions.create({
@@ -309,6 +315,12 @@ Please carefully check the tool schema and ensure all parameters match the expec
     let lastError;
     let currentMessages = messages;
 
+    if (this.client?.__agntCompat?.mapDeveloperRole) {
+      currentMessages = currentMessages.map((msg) =>
+        msg?.role === 'developer' ? { ...msg, role: 'system' } : msg
+      );
+    }
+
     // Handle vision images - inject into the last user message ONLY if model supports vision
     if (context.imageData && context.imageData.length > 0) {
       // Extract provider from context or determine from adapter
@@ -358,6 +370,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
+      let accumulatedReasoningContent = '';
       let accumulatedToolCalls = [];
       let role = 'assistant';
       let streamError = null;
@@ -401,6 +414,11 @@ Please carefully check the tool schema and ensure all parameters match the expec
                   accumulated: accumulatedContent,
                 });
               }
+            }
+
+            // Handle reasoning_content for providers like Kimi Code that use thinking mode
+            if (delta.reasoning_content) {
+              accumulatedReasoningContent += delta.reasoning_content;
             }
 
             // Handle tool calls streaming
@@ -545,6 +563,8 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
           role: role,
           content: accumulatedContent || null,
           tool_calls: validToolCalls.length > 0 ? validToolCalls : undefined,
+          // Include reasoning_content for providers like Kimi Code that require it for tool calls
+          reasoning_content: accumulatedReasoningContent || undefined,
         };
 
         return {
