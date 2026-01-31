@@ -9,11 +9,14 @@ export const AI_PROVIDERS_WITH_API = [
   'gemini',
   'grokai',
   'groq',
+  'kimi',
+  'minimax',
   'openai',
   'openai-codex',
   'openai-codex-cli',
   'openrouter',
   'togetherai',
+  'zai',
 ];
 
 // Mapping of provider names to their fetch action names
@@ -25,12 +28,15 @@ export const PROVIDER_FETCH_ACTIONS = {
   Gemini: 'aiProvider/fetchGeminiModels',
   GrokAI: 'aiProvider/fetchGrokAIModels',
   Groq: 'aiProvider/fetchGroqModels',
+  Kimi: 'aiProvider/fetchKimiModels',
   Local: 'aiProvider/fetchLocalModels',
+  Minimax: 'aiProvider/fetchMinimaxModels',
   OpenAI: 'aiProvider/fetchOpenAIModels',
   'OpenAI-Codex': 'aiProvider/fetchOpenAICodexModels',
   'OpenAI-Codex-CLI': 'aiProvider/fetchOpenAICodexCliModels',
   OpenRouter: 'aiProvider/fetchOpenRouterModels',
   TogetherAI: 'aiProvider/fetchTogetherAIModels',
+  ZAI: 'aiProvider/fetchZAIModels',
 };
 
 export default {
@@ -44,12 +50,15 @@ export default {
       'Gemini',
       'GrokAI',
       'Groq',
+      'Kimi',
       'Local',
+      'Minimax',
       'OpenAI',
       'OpenAI-Codex',
       'OpenAI-Codex-CLI',
       'OpenRouter',
       'TogetherAI',
+      'ZAI',
     ],
     customProviders: [], // Custom OpenAI-compatible providers
     allModels: {
@@ -57,15 +66,18 @@ export default {
       Cerebras: [], // Will be populated dynamically from API
       'Claude-Code': [], // Will be populated dynamically from API
       DeepSeek: [], // Will be populated dynamically from API
-      OpenAI: [], // Will be populated dynamically from API
-      'OpenAI-Codex': [], // Will be populated dynamically from API
-      'OpenAI-Codex-CLI': [], // Will be populated dynamically from API
       Gemini: [], // Will be populated dynamically from API
       GrokAI: [], // Will be populated dynamically from API
       Groq: [], // Will be populated dynamically from API
+      Kimi: [], // Will be populated dynamically from API
+      Local: [], // Will be populated dynamically from LM Studio
+      Minimax: [], // Will be populated dynamically from API
+      OpenAI: [], // Will be populated dynamically from API
+      'OpenAI-Codex': [], // Will be populated dynamically from API
+      'OpenAI-Codex-CLI': [], // Will be populated dynamically from API
       OpenRouter: [], // Will be populated dynamically from API
       TogetherAI: [], // Will be populated dynamically from API
-      Local: [], // Will be populated dynamically from LM Studio
+      ZAI: [], // Will be populated dynamically from API
     },
     selectedProvider: localStorage.getItem('selectedProvider') || null, // Load from local storage, no default yet
     selectedModel: localStorage.getItem('selectedModel') || null, // Load from local storage, no default yet

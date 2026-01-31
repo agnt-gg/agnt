@@ -57,9 +57,31 @@ const PROVIDER_CONFIG = {
     supportsImageEdit: true,
     imageModels: ['dall-e-2', 'dall-e-3', 'gpt-image-1'],
   },
+  'openai-codex': {
+    baseURL: 'https://api.openai.com/v1',
+    defaultModel: 'gpt-4.1',
+    supportsVision: true,
+    supportsImageGen: true,
+    supportsImageEdit: true,
+    imageModels: ['dall-e-3'],
+  },
+  'openai-codex-cli': {
+    baseURL: 'codex-cli://local',
+    defaultModel: 'gpt-5-codex',
+    supportsVision: true,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
   anthropic: {
     baseURL: undefined,
     defaultModel: 'claude-3-5-sonnet-20240620',
+    supportsVision: true,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
+  'claude-code': {
+    baseURL: undefined,
+    defaultModel: 'claude-sonnet-4-5-20250929',
     supportsVision: true,
     supportsImageGen: false,
     supportsImageEdit: false,
@@ -429,6 +451,7 @@ class GenerateWithAiLlm extends BaseAction {
 
     switch (provider) {
       case 'anthropic':
+      case 'claude-code':
         response = await this.generateWithAnthropic({ ...params, prompt: fullPrompt });
         break;
       case 'cerebras':
@@ -440,6 +463,8 @@ class GenerateWithAiLlm extends BaseAction {
       case 'local':
       case 'minimax':
       case 'openai':
+      case 'openai-codex':
+      case 'openai-codex-cli':
       case 'openrouter':
       case 'togetherai':
       case 'zai':
@@ -472,6 +497,7 @@ class GenerateWithAiLlm extends BaseAction {
 
     switch (provider) {
       case 'anthropic':
+      case 'claude-code':
         response = await this.generateWithAnthropic({ ...params, prompt, image });
         break;
       case 'deepseek':
@@ -481,6 +507,8 @@ class GenerateWithAiLlm extends BaseAction {
       case 'kimi':
       case 'local':
       case 'openai':
+      case 'openai-codex':
+      case 'openai-codex-cli':
       case 'openrouter':
       case 'togetherai':
       case 'zai':
