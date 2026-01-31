@@ -71,6 +71,13 @@ const PROVIDER_CONFIG = {
     supportsImageGen: false,
     supportsImageEdit: false,
   },
+  openrouter: {
+    baseURL: 'https://openrouter.ai/api/v1',
+    defaultModel: 'openai/gpt-3.5-turbo',
+    supportsVision: true,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
   // Fallback if provider is missing or doesn't match any key above
   default: {
     baseURL: undefined,
@@ -410,6 +417,7 @@ class GenerateWithAiLlm extends BaseAction {
       case 'groq':
       case 'local':
       case 'openai':
+      case 'openrouter':
       case 'togetherai':
         response = await this.generateWithOpenAiLike({ ...params, prompt: fullPrompt });
         break;
@@ -448,6 +456,7 @@ class GenerateWithAiLlm extends BaseAction {
       case 'groq':
       case 'local':
       case 'openai':
+      case 'openrouter':
       case 'togetherai':
         response = await this.generateWithOpenAiLike({ ...params, prompt, image });
         break;

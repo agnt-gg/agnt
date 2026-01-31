@@ -147,6 +147,33 @@ export const PROVIDER_CAPABILITIES = {
       supportsRevisedPrompt: true, // Auto-enhanced prompts
     },
   },
+
+  openrouter: {
+    text: {
+      models: [
+        'openai/gpt-4-turbo',
+        'openai/gpt-4',
+        'openai/gpt-3.5-turbo',
+        'anthropic/claude-3.5-sonnet',
+        'anthropic/claude-3-opus',
+        'google/gemini-pro-1.5',
+        'meta-llama/llama-3.1-70b-instruct',
+        'mistralai/mixtral-8x7b-instruct',
+      ],
+      supportsStreaming: true,
+      supportsTools: true,
+    },
+    vision: {
+      models: [
+        'openai/gpt-4-turbo',
+        'openai/gpt-4o',
+        'anthropic/claude-3.5-sonnet',
+        'google/gemini-pro-1.5-vision',
+      ],
+      supportsStreaming: true,
+    },
+    imageGen: null,
+  },
 };
 
 /**
