@@ -9,14 +9,14 @@ export const AI_PROVIDERS_WITH_API = [
   'gemini',
   'grokai',
   'groq',
-  'kimi',
-  'minimax',
+  // 'kimi', // Hidden - not ready for release
+  // 'minimax', // Hidden - not ready for release
   'openai',
   'openai-codex',
   'openai-codex-cli',
   'openrouter',
   'togetherai',
-  'zai',
+  // 'zai', // Hidden - not ready for release
 ];
 
 // Mapping of provider names to their fetch action names
@@ -28,15 +28,15 @@ export const PROVIDER_FETCH_ACTIONS = {
   Gemini: 'aiProvider/fetchGeminiModels',
   GrokAI: 'aiProvider/fetchGrokAIModels',
   Groq: 'aiProvider/fetchGroqModels',
-  Kimi: 'aiProvider/fetchKimiModels',
+  // Kimi: 'aiProvider/fetchKimiModels', // Hidden - not ready for release
   Local: 'aiProvider/fetchLocalModels',
-  Minimax: 'aiProvider/fetchMinimaxModels',
+  // Minimax: 'aiProvider/fetchMinimaxModels', // Hidden - not ready for release
   OpenAI: 'aiProvider/fetchOpenAIModels',
   'OpenAI-Codex': 'aiProvider/fetchOpenAICodexModels',
   'OpenAI-Codex-CLI': 'aiProvider/fetchOpenAICodexCliModels',
   OpenRouter: 'aiProvider/fetchOpenRouterModels',
   TogetherAI: 'aiProvider/fetchTogetherAIModels',
-  ZAI: 'aiProvider/fetchZAIModels',
+  // ZAI: 'aiProvider/fetchZAIModels', // Hidden - not ready for release
 };
 
 export default {
@@ -50,15 +50,15 @@ export default {
       'Gemini',
       'GrokAI',
       'Groq',
-      'Kimi',
+      // 'Kimi', // Hidden - not ready for release
       'Local',
-      'Minimax',
+      // 'Minimax', // Hidden - not ready for release
       'OpenAI',
       'OpenAI-Codex',
       'OpenAI-Codex-CLI',
       'OpenRouter',
       'TogetherAI',
-      'ZAI',
+      // 'ZAI', // Hidden - not ready for release
     ],
     customProviders: [], // Custom OpenAI-compatible providers
     allModels: {
@@ -69,15 +69,15 @@ export default {
       Gemini: [], // Will be populated dynamically from API
       GrokAI: [], // Will be populated dynamically from API
       Groq: [], // Will be populated dynamically from API
-      Kimi: [], // Will be populated dynamically from API
+      // Kimi: [], // Hidden - not ready for release
       Local: [], // Will be populated dynamically from LM Studio
-      Minimax: [], // Will be populated dynamically from API
+      // Minimax: [], // Hidden - not ready for release
       OpenAI: [], // Will be populated dynamically from API
       'OpenAI-Codex': [], // Will be populated dynamically from API
       'OpenAI-Codex-CLI': [], // Will be populated dynamically from API
       OpenRouter: [], // Will be populated dynamically from API
       TogetherAI: [], // Will be populated dynamically from API
-      ZAI: [], // Will be populated dynamically from API
+      // ZAI: [], // Hidden - not ready for release
     },
     selectedProvider: localStorage.getItem('selectedProvider') || null, // Load from local storage, no default yet
     selectedModel: localStorage.getItem('selectedModel') || null, // Load from local storage, no default yet
@@ -379,7 +379,7 @@ export default {
           JSON.stringify({
             models,
             timestamp: Date.now(),
-          })
+          }),
         );
 
         console.log(`Fetched ${models.length} ${provider} models`);
@@ -516,7 +516,7 @@ export default {
           JSON.stringify({
             models,
             timestamp: Date.now(),
-          })
+          }),
         );
 
         console.log(`Fetched ${models.length} Local models from LM Studio`);
