@@ -11,6 +11,8 @@ import cerebrasService from '../services/ai/providers/Cerebras.js';
 import deepSeekService from '../services/ai/providers/DeepSeek.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
+import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
+import claudeCodeService from '../services/ai/providers/ClaudeCode.js';
 import jwt from 'jsonwebtoken';
 
 const router = express.Router();
@@ -26,6 +28,7 @@ const providerServices = {
   groq: groqService,
   'openai-codex': openAIService,
   'openai-codex-cli': openAICodexCliService,
+  'claude-code': claudeCodeService,
   togetherai: togetherAIService,
   cerebras: cerebrasService,
   deepseek: deepSeekService,
@@ -68,8 +71,25 @@ router.get('/:provider/models', async (req, res) => {
 
     // Only require authentication and API key for providers that need it
     if (!hasHardcodedModels) {
+      // Claude Code: use local Claude Code OAuth auth.
+      if (providerLower === 'claude-code') {
+        const ccStatus = await ClaudeCodeAuthManager.checkApiUsable();
+        if (!ccStatus.available) {
+          return res.status(400).json({
+            success: false,
+            error: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
+          });
+        }
+        apiKey = ClaudeCodeAuthManager.getAccessToken();
+        if (!apiKey) {
+          return res.status(400).json({
+            success: false,
+            error: 'Claude Code token not found.',
+          });
+        }
+      }
       // OpenAI Codex: use local Codex CLI auth and allow unauthenticated access to this local route.
-      if (providerLower === 'openai-codex') {
+      else if (providerLower === 'openai-codex') {
         const codexStatus = await CodexAuthManager.checkApiUsable();
         if (!codexStatus.available) {
           return res.status(400).json({
@@ -181,7 +201,16 @@ router.post('/:provider/models/refresh', async (req, res) => {
     let apiKey = null;
     const hasHardcodedModels = providersWithHardcodedModels.includes(providerLower);
 
-    if (providerLower === 'openai-codex') {
+    if (providerLower === 'claude-code') {
+      const ccStatus = await ClaudeCodeAuthManager.checkApiUsable({ forceRefresh: true });
+      if (!ccStatus.available) {
+        return res.status(400).json({
+          success: false,
+          error: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
+        });
+      }
+      apiKey = ClaudeCodeAuthManager.getAccessToken();
+    } else if (providerLower === 'openai-codex') {
       const codexStatus = await CodexAuthManager.checkApiUsable({ forceRefresh: true });
       if (!codexStatus.available) {
         return res.status(400).json({

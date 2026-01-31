@@ -19,6 +19,15 @@ const state = {
     toolRunner: null,
   },
   codexDeviceSession: null,
+  claudeCodeStatus: {
+    available: false,
+    apiUsable: false,
+    apiStatus: null,
+    source: null,
+    hint: null,
+    checkedAt: null,
+  },
+  claudeCodeSetupSession: null,
 };
 
 const mutations = {
@@ -55,6 +64,22 @@ const mutations = {
   },
   CLEAR_CODEX_DEVICE_SESSION(state) {
     state.codexDeviceSession = null;
+  },
+  SET_CLAUDE_CODE_STATUS(state, status) {
+    state.claudeCodeStatus = {
+      available: status?.available === true,
+      apiUsable: status?.apiUsable === true,
+      apiStatus: typeof status?.apiStatus === 'number' ? status.apiStatus : null,
+      source: status?.source || null,
+      hint: status?.hint || null,
+      checkedAt: status?.checkedAt || new Date().toISOString(),
+    };
+  },
+  SET_CLAUDE_CODE_SETUP_SESSION(state, session) {
+    state.claudeCodeSetupSession = session || null;
+  },
+  CLEAR_CLAUDE_CODE_SETUP_SESSION(state) {
+    state.claudeCodeSetupSession = null;
   },
 };
 
@@ -105,6 +130,23 @@ const actions = {
       commit('SET_CODEX_STATUS', { available: false, apiUsable: false, hint: 'Codex status unavailable' });
     }
 
+    // Local Claude Code auth:
+    // - claude-code: connected when Claude CLI credentials exist locally.
+    try {
+      const ccStatusResponse = await axios.get(`${API_CONFIG.BASE_URL}/claude-code/status`);
+      const ccStatus = ccStatusResponse?.data || {};
+      commit('SET_CLAUDE_CODE_STATUS', ccStatus);
+
+      if (ccStatus.available === true) {
+        if (!connectedApps.includes('claude-code')) {
+          connectedApps = [...connectedApps, 'claude-code'];
+        }
+      }
+    } catch (error) {
+      console.warn('Error checking Claude Code status:', error?.message || error);
+      commit('SET_CLAUDE_CODE_STATUS', { available: false, apiUsable: false, hint: 'Claude Code status unavailable' });
+    }
+
     // De-duplicate while preserving order.
     const deduped = Array.from(new Set(connectedApps));
     commit('SET_CONNECTED_APPS', deduped);
@@ -118,7 +160,7 @@ const actions = {
       });
       const remoteProviders = Array.isArray(response.data) ? response.data : [];
 
-      // Inject local Codex providers so they can be configured without the remote auth service.
+      // Inject local providers so they can be configured without the remote auth service.
       const localCodexProviders = [
         {
           id: 'openai-codex-cli',
@@ -128,6 +170,16 @@ const actions = {
           connectionType: 'oauth',
           instructions:
             'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          localOnly: true,
+        },
+        {
+          id: 'claude-code',
+          name: 'Claude Code',
+          icon: 'anthropic',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions:
+            'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
           localOnly: true,
         },
       ];
@@ -143,7 +195,7 @@ const actions = {
       commit('SET_ALL_PROVIDERS', mergedProviders);
     } catch (error) {
       console.error('Error fetching all providers:', error);
-      // Still expose the local Codex providers even if the remote fetch fails.
+      // Still expose the local providers even if the remote fetch fails.
       commit('SET_ALL_PROVIDERS', [
         {
           id: 'openai-codex-cli',
@@ -153,6 +205,16 @@ const actions = {
           connectionType: 'oauth',
           instructions:
             'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          localOnly: true,
+        },
+        {
+          id: 'claude-code',
+          name: 'Claude Code',
+          icon: 'anthropic',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions:
+            'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
           localOnly: true,
         },
       ]);
@@ -226,6 +288,86 @@ const actions = {
       return response.data;
     } catch (error) {
       console.error('Error logging out of Codex:', error);
+      throw error;
+    }
+  },
+  async fetchClaudeCodeStatus({ commit }) {
+    try {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/claude-code/status`);
+      commit('SET_CLAUDE_CODE_STATUS', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching Claude Code status:', error);
+      const fallback = { available: false, apiUsable: false, hint: 'Claude Code status unavailable' };
+      commit('SET_CLAUDE_CODE_STATUS', fallback);
+      return fallback;
+    }
+  },
+  async startClaudeCodeSetup({ commit }) {
+    const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/setup/start`);
+    if (response.data?.success) {
+      commit('SET_CLAUDE_CODE_SETUP_SESSION', {
+        sessionId: response.data.sessionId,
+        state: response.data.state,
+        startedAt: response.data.startedAt,
+        expiresAt: response.data.expiresAt,
+      });
+    }
+    return response.data;
+  },
+  async pollClaudeCodeSetup({ commit, dispatch, state }, { sessionId, timeoutMs = 2 * 60 * 1000, intervalMs = 3000 } = {}) {
+    const activeSessionId = sessionId || state.claudeCodeSetupSession?.sessionId;
+    if (!activeSessionId) {
+      throw new Error('No Claude Code setup session to poll.');
+    }
+
+    const start = Date.now();
+    let lastStatus = null;
+
+    while (Date.now() - start < timeoutMs) {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/claude-code/setup/status`, {
+        params: { sessionId: activeSessionId },
+      });
+      lastStatus = response.data;
+
+      if (lastStatus?.state === 'success') {
+        // Clear stale model cache so fresh models are fetched
+        localStorage.removeItem('Claude-Code_models');
+        await dispatch('fetchClaudeCodeStatus');
+        await dispatch('fetchConnectedApps');
+        commit('CLEAR_CLAUDE_CODE_SETUP_SESSION');
+        return lastStatus;
+      }
+
+      if (lastStatus?.state === 'error') {
+        await dispatch('fetchClaudeCodeStatus');
+        return lastStatus;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    return lastStatus || { success: false, state: 'error', message: 'Timed out waiting for setup.' };
+  },
+  async connectClaudeCodeManual({ commit, dispatch }, token) {
+    const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/connect`, { token });
+    if (response.data?.success) {
+      // Clear stale model cache so fresh models are fetched
+      localStorage.removeItem('Claude-Code_models');
+      await dispatch('fetchClaudeCodeStatus');
+      await dispatch('fetchConnectedApps');
+    }
+    return response.data;
+  },
+  async disconnectClaudeCode({ commit, dispatch }) {
+    try {
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/disconnect`);
+      await dispatch('fetchClaudeCodeStatus');
+      await dispatch('fetchConnectedApps');
+      commit('CLEAR_CLAUDE_CODE_SETUP_SESSION');
+      return response.data;
+    } catch (error) {
+      console.error('Error disconnecting Claude Code:', error);
       throw error;
     }
   },
@@ -418,6 +560,8 @@ const getters = {
   connectedApps: (state) => state.connectedApps,
   codexStatus: (state) => state.codexStatus,
   codexDeviceSession: (state) => state.codexDeviceSession,
+  claudeCodeStatus: (state) => state.claudeCodeStatus,
+  claudeCodeSetupSession: (state) => state.claudeCodeSetupSession,
   connectionHealthStatus: (state) => {
     if (!state.connectionHealth) return 'unknown';
     return state.connectionHealth.overall;

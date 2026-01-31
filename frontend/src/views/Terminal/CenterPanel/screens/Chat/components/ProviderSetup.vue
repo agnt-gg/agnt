@@ -42,6 +42,7 @@ export default {
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
     const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
     const codexStatus = computed(() => store.state.appAuth.codexStatus || {});
+    const claudeCodeStatus = computed(() => store.state.appAuth.claudeCodeStatus || {});
 
     // Filter to only show AI providers
     const aiProviders = computed(() => {
@@ -101,6 +102,7 @@ export default {
     const getProviderCase = (providerId) => {
       const providerMap = {
         anthropic: 'Anthropic',
+        'claude-code': 'Claude-Code',
         openai: 'OpenAI',
         'openai-codex': 'OpenAI-Codex',
         'openai-codex-cli': 'OpenAI-Codex-CLI',
@@ -137,6 +139,12 @@ export default {
       const providerLower = provider.id.toLowerCase();
       if (providerLower === 'openai-codex' || providerLower === 'openai-codex-cli') {
         await connectCodexProvider(provider);
+        return;
+      }
+
+      // Claude Code provider uses local OAuth via the Claude CLI.
+      if (providerLower === 'claude-code') {
+        await connectClaudeCodeProvider(provider);
         return;
       }
 
@@ -281,6 +289,87 @@ export default {
       }
     };
 
+    const connectClaudeCodeProvider = async (provider) => {
+      const status = await store.dispatch('appAuth/fetchClaudeCodeStatus');
+      if (status?.available && status?.apiUsable) {
+        await selectProvider(provider);
+        await showAlert('Provider Ready', 'Claude Code is already connected on this machine.');
+        return;
+      }
+
+      try {
+        // Get Anthropic OAuth URL from local backend
+        const response = await fetch(`${API_CONFIG.BASE_URL}/claude-code/oauth/start`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        if (!data.authUrl) throw new Error('No authUrl returned');
+
+        // Open in the system browser
+        if (window.electron?.openExternalUrl) {
+          window.electron.openExternalUrl(data.authUrl);
+        } else {
+          window.open(data.authUrl, '_blank');
+        }
+
+        // Prompt the user to paste the code from Anthropic's callback page
+        const codeState = await showPrompt(
+          'Claude Code Authentication',
+          `<div style="text-align:left">
+            <p>A browser window has opened for Anthropic authentication.</p>
+            <p><strong>1.</strong> Sign in to your Anthropic account</p>
+            <p><strong>2.</strong> Click <strong>Authorize</strong></p>
+            <p><strong>3.</strong> Copy the code shown on the resulting page</p>
+            <p><strong>4.</strong> Paste it below</p>
+          </div>`,
+          ''
+        );
+
+        if (!codeState) return;
+
+        // Exchange the code for tokens via the backend
+        const exchangeResponse = await fetch(`${API_CONFIG.BASE_URL}/claude-code/oauth/exchange`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: data.sessionId, codeState }),
+        });
+        const exchangeResult = await exchangeResponse.json();
+
+        if (exchangeResult.success) {
+          localStorage.removeItem('Claude-Code_models');
+          await store.dispatch('appAuth/fetchConnectedApps');
+          await selectProvider(provider);
+          await showAlert('Success', 'Claude Code connected successfully.');
+        } else {
+          await showAlert('Connection Failed', exchangeResult.error || 'Failed to exchange authorization code.');
+        }
+      } catch (error) {
+        // Fall back to paste-token prompt
+        console.warn('Claude Code OAuth failed, falling back to paste-token:', error.message);
+
+        const token = await showPrompt(
+          'Connect Claude Code',
+          'Could not complete Anthropic OAuth. Paste your Claude Code OAuth token (starts with sk-ant-):',
+          ''
+        );
+
+        if (!token) return;
+
+        try {
+          const result = await store.dispatch('appAuth/connectClaudeCodeManual', token);
+          if (result?.success) {
+            await selectProvider(provider);
+            await showAlert('Success', result.message || 'Claude Code connected successfully.');
+          } else {
+            await showAlert('Connection Failed', result?.error || 'Failed to connect Claude Code.');
+          }
+        } catch (manualError) {
+          console.error('Error connecting Claude Code:', manualError);
+          await showAlert('Connection Error', `Failed to connect Claude Code: ${manualError.message}`);
+        }
+      }
+    };
+
     const promptApiKey = async (provider) => {
       const promptMessage = provider.instructions || provider.custom_prompt || `Enter API Key for ${provider.name}:`;
       const apiKey = await showPrompt(`Connect to ${provider.name}`, promptMessage, '');
@@ -335,6 +424,7 @@ export default {
         await store.dispatch('appAuth/fetchAllProviders');
       }
       await store.dispatch('appAuth/fetchConnectedApps');
+
     });
 
     return {

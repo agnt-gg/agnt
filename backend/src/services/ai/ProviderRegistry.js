@@ -85,6 +85,19 @@ export const PROVIDER_CAPABILITIES = {
     },
   },
 
+  // Claude Code uses the same Anthropic API surface but is authenticated via Claude CLI OAuth.
+  'claude-code': {
+    text: {
+      models: ['claude-haiku-4-5-20251001', 'claude-opus-4-5-20251101', 'claude-sonnet-4-5-20250929'],
+      supportsStreaming: true,
+      supportsTools: true,
+    },
+    vision: {
+      models: ['claude-sonnet-4-5-20250929'],
+      supportsStreaming: true,
+    },
+  },
+
   cerebras: {
     text: {
       models: ['llama3.1-8b', 'llama-3.3-70b', 'gpt-oss-120b', 'qwen-3-32b', 'qwen-3-235b-a22b-instruct-2507', 'zai-glm-4.6'],

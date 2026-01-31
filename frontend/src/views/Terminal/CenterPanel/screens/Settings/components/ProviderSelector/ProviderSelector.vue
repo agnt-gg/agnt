@@ -253,6 +253,8 @@ export default {
       if (connectedAIProviders.length > 0) {
         if (connectedAIProviders.includes('anthropic')) {
           selectedProvider.value = 'Anthropic';
+        } else if (connectedAIProviders.includes('claude-code')) {
+          selectedProvider.value = 'Claude-Code';
         } else if (connectedAIProviders.includes('openai-codex-cli')) {
           selectedProvider.value = 'OpenAI-Codex-CLI';
         } else if (connectedAIProviders.includes('openai-codex')) {

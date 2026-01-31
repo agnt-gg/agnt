@@ -495,10 +495,9 @@ function createWindow() {
       childWindow.webContents.on('will-redirect', (event, url) => {
         console.log('Popup will redirect to:', url);
 
-        // If redirecting to localhost oauth-callback, we need to handle it specially
-        if (url.includes('localhost') && url.includes('/oauth-callback')) {
+        // If redirecting to localhost OAuth callback, log for debugging
+        if (url.includes('localhost') && (url.includes('/oauth-callback') || url.includes('/oauth/callback'))) {
           console.log('OAuth callback redirect to localhost detected');
-          // The redirect should work, but log for debugging
         }
       });
 
@@ -507,14 +506,12 @@ function createWindow() {
         console.log('Popup navigating to:', navigationUrl);
 
         // Check if this is an OAuth callback URL to localhost
-        if (navigationUrl.includes('localhost') && navigationUrl.includes('/oauth-callback')) {
+        if (navigationUrl.includes('localhost') && (navigationUrl.includes('/oauth-callback') || navigationUrl.includes('/oauth/callback'))) {
           console.log('OAuth callback to localhost detected in popup, allowing navigation');
-          // Let it navigate - don't prevent default
         }
         // Check if this is an OAuth callback URL (might be on api.agnt.gg due to redirect issues)
-        else if (navigationUrl.includes('/oauth-callback')) {
+        else if (navigationUrl.includes('/oauth-callback') || navigationUrl.includes('/oauth/callback')) {
           console.log('OAuth callback detected in popup');
-          // Let it navigate normally
         }
       });
 
@@ -522,7 +519,7 @@ function createWindow() {
         console.error('Popup failed to load:', { errorCode, errorDescription, validatedURL });
 
         // If the load failed because of a redirect to localhost, try to handle it
-        if (validatedURL && validatedURL.includes('localhost') && validatedURL.includes('/oauth-callback')) {
+        if (validatedURL && validatedURL.includes('localhost') && (validatedURL.includes('/oauth-callback') || validatedURL.includes('/oauth/callback'))) {
           console.log('Failed to load localhost OAuth callback, attempting to load directly');
           childWindow.loadURL(validatedURL);
         }

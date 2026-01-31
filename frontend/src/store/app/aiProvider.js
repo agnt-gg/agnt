@@ -4,6 +4,7 @@ import { API_CONFIG } from '@/tt.config.js';
 export const AI_PROVIDERS_WITH_API = [
   'anthropic',
   'cerebras',
+  'claude-code',
   'deepseek',
   'gemini',
   'grokai',
@@ -19,6 +20,7 @@ export const AI_PROVIDERS_WITH_API = [
 export const PROVIDER_FETCH_ACTIONS = {
   Anthropic: 'aiProvider/fetchAnthropicModels',
   Cerebras: 'aiProvider/fetchCerebrasModels',
+  'Claude-Code': 'aiProvider/fetchClaudeCodeModels',
   DeepSeek: 'aiProvider/fetchDeepSeekModels',
   Gemini: 'aiProvider/fetchGeminiModels',
   GrokAI: 'aiProvider/fetchGrokAIModels',
@@ -37,6 +39,7 @@ export default {
     providers: [
       'Anthropic',
       'Cerebras',
+      'Claude-Code',
       'DeepSeek',
       'Gemini',
       'GrokAI',
@@ -52,6 +55,7 @@ export default {
     allModels: {
       Anthropic: [], // Will be populated dynamically from API
       Cerebras: [], // Will be populated dynamically from API
+      'Claude-Code': [], // Will be populated dynamically from API
       DeepSeek: [], // Will be populated dynamically from API
       OpenAI: [], // Will be populated dynamically from API
       'OpenAI-Codex': [], // Will be populated dynamically from API
@@ -330,8 +334,8 @@ export default {
       try {
         const providerLower = provider.toLowerCase();
         const token = localStorage.getItem('token');
-        const isLocalCodexProvider = providerLower === 'openai-codex' || providerLower === 'openai-codex-cli';
-        if (!token && !isLocalCodexProvider) {
+        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'openai-codex-cli' || providerLower === 'claude-code';
+        if (!token && !isLocalProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }
 
@@ -433,6 +437,10 @@ export default {
 
     async fetchCerebrasModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Cerebras', forceRefresh });
+    },
+
+    async fetchClaudeCodeModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Claude-Code', forceRefresh });
     },
 
     async fetchDeepSeekModels({ dispatch }, { forceRefresh = false } = {}) {

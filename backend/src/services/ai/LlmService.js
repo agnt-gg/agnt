@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import Cerebras from '@cerebras/cerebras_cloud_sdk';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
+import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { createCodexCliClient } from './CodexCliClient.js';
 import CodexCliSessionManager from './CodexCliSessionManager.js';
@@ -113,6 +114,25 @@ export async function createLlmClient(provider, userId, options = {}) {
     return new OpenAI({
       apiKey: codexToken,
       baseURL: baseURLs['openai-codex'],
+    });
+  }
+
+  // Claude Code provider: uses Anthropic API with OAuth Bearer auth (not x-api-key).
+  // Requires specific beta flags and user-agent to enable OAuth on the API.
+  if (lowerCaseProvider === 'claude-code') {
+    const oauthToken = ClaudeCodeAuthManager.getAccessToken();
+    if (!oauthToken) {
+      throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
+    }
+    return new Anthropic({
+      apiKey: null,
+      authToken: oauthToken,
+      defaultHeaders: {
+        'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31',
+        'user-agent': 'claude-cli/2.1.2 (external, cli)',
+        'x-app': 'cli',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
     });
   }
 

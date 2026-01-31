@@ -1228,7 +1228,11 @@ Generate 3 smart, contextual suggestions that would be helpful next steps. Retur
     }
 
     // Ensure content is a string
-    if (!content) {
+    if (Array.isArray(content)) {
+      const textBlock = content.find((c) => c.type === 'text');
+      content = textBlock ? textBlock.text : JSON.stringify(content);
+    }
+    if (!content || typeof content !== 'string') {
       throw new Error('No content received from LLM');
     }
 

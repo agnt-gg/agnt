@@ -659,8 +659,9 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
  * Adapter for Anthropic's API.
  */
 class AnthropicAdapter extends BaseAdapter {
-  constructor(client, model) {
+  constructor(client, model, provider = 'anthropic') {
     super(client, model);
+    this.provider = provider.toLowerCase();
     this.maxRetries = 3;
     this.baseDelay = 1000; // 1 second
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
@@ -802,9 +803,30 @@ class AnthropicAdapter extends BaseAdapter {
         const systemPrompt = messages.find((m) => m.role === 'system')?.content || '';
         const conversationMessages = messages.filter((m) => m.role !== 'system');
 
+        // Build system parameter: Claude Code OAuth requires identity prompt as first block
+        let systemParam;
+        if (this.provider === 'claude-code') {
+          const systemBlocks = [
+            {
+              type: 'text',
+              text: "You are Claude Code, Anthropic's official CLI for Claude.",
+              cache_control: { type: 'ephemeral' },
+            },
+          ];
+          if (systemPrompt) {
+            systemBlocks.push({
+              type: 'text',
+              text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
+            });
+          }
+          systemParam = systemBlocks;
+        } else {
+          systemParam = systemPrompt;
+        }
+
         const response = await this.client.messages.create({
           model: this.model,
-          system: systemPrompt,
+          system: systemParam,
           messages: conversationMessages,
           tools: this._transformToolsToAnthropic(tools),
           max_tokens: this._getMaxTokensForModel(), // Model-specific max tokens
@@ -987,9 +1009,30 @@ Please carefully check the tool schema and ensure all parameters match the expec
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
         const conversationMessages = currentMessages.filter((m) => m.role !== 'system');
 
+        // Build system parameter: Claude Code OAuth requires identity prompt as first block
+        let systemParam;
+        if (this.provider === 'claude-code') {
+          const systemBlocks = [
+            {
+              type: 'text',
+              text: "You are Claude Code, Anthropic's official CLI for Claude.",
+              cache_control: { type: 'ephemeral' },
+            },
+          ];
+          if (systemPrompt) {
+            systemBlocks.push({
+              type: 'text',
+              text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
+            });
+          }
+          systemParam = systemBlocks;
+        } else {
+          systemParam = systemPrompt;
+        }
+
         const stream = await this.client.messages.stream({
           model: this.model,
-          system: systemPrompt,
+          system: systemParam,
           messages: conversationMessages,
           tools: this._transformToolsToAnthropic(tools),
           max_tokens: this._getMaxTokensForModel(), // Model-specific max tokens
@@ -2884,8 +2927,9 @@ export async function createLlmAdapter(provider, client, model) {
   }
 
   switch (lowerCaseProvider) {
+    case 'claude-code':
     case 'anthropic':
-      return new AnthropicAdapter(client, model);
+      return new AnthropicAdapter(client, model, lowerCaseProvider);
 
     case 'gemini':
       return new GeminiAdapter(client, model);

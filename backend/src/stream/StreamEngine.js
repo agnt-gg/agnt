@@ -160,8 +160,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       }
 
       switch (provider.toLowerCase()) {
+        case 'claude-code':
         case 'anthropic':
-          await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client);
+          await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, provider.toLowerCase());
           break;
         case 'cerebras':
         case 'deepseek':
@@ -185,7 +186,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       res.status(500).send('An error occurred while processing the file(s) or generating the text stream.');
     }
   }
-  async startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client) {
+  async startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, provider = 'anthropic') {
     let finalMessages = [];
 
     if (messages && messages.length > 0) {
@@ -223,24 +224,37 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     console.log(finalMessages);
 
     try {
-      const stream = await client.messages.stream(
-        {
-          model: modelName,
-          messages: finalMessages,
-          system: [
-            {
-              type: 'text',
-              text: `
+      // Build system prompt blocks
+      const isClaudeCode = provider === 'claude-code';
+      const systemBlocks = [];
+
+      // Claude Code OAuth requires the identity system prompt as the FIRST block
+      if (isClaudeCode) {
+        systemBlocks.push({
+          type: 'text',
+          text: "You are Claude Code, Anthropic's official CLI for Claude.",
+          cache_control: { type: 'ephemeral' },
+        });
+      }
+
+      systemBlocks.push({
+        type: 'text',
+        text: `
               [SYSTEM INSTRUCTIONS]:
               ${systemPrompt}
               [END SYSTEM INSTRUCTIONS]
-    
+
               [START RELEVANT DOCUMENT TEXT (OPTIONAL)]:
               ${combinedDocumentText}
               [END RELEVANT DOCUMENT TEXT]:
             `,
-            },
-          ],
+      });
+
+      const stream = await client.messages.stream(
+        {
+          model: modelName,
+          messages: finalMessages,
+          system: systemBlocks,
           max_tokens: modelName === 'claude-3-7-sonnet-20250219' ? 64000 : modelName === 'claude-3-5-sonnet-20240620' ? 8192 : 4096,
           temperature: modelName === 'claude-3-7-sonnet-20250219' ? 1 : 0.5,
           thinking:
@@ -253,12 +267,10 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         },
         {
           headers: {
-            'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
+            'anthropic-beta': isClaudeCode
+              ? 'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15'
+              : 'max-tokens-3-5-sonnet-2024-07-15',
           },
-          // If using cache
-          // headers: {
-          //   "anthropic-beta": "prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15"
-          // }
         }
       );
 
@@ -613,6 +625,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
       const defaultModel = {
         anthropic: 'claude-3-5-sonnet-20240620',
+        'claude-code': 'claude-sonnet-4-5-20250929',
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         gemini: 'gemini-2.5-pro-exp-03-25',
@@ -632,17 +645,25 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       let response;
 
       switch (lowerCaseProvider) {
-        case 'anthropic':
+        case 'claude-code':
+        case 'anthropic': {
+          const toolGenSystemBlocks = [];
+          if (lowerCaseProvider === 'claude-code') {
+            toolGenSystemBlocks.push({
+              type: 'text',
+              text: "You are Claude Code, Anthropic's official CLI for Claude.",
+              cache_control: { type: 'ephemeral' },
+            });
+          }
+          toolGenSystemBlocks.push({
+            type: 'text',
+            text: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
+          });
           response = await client.messages.create({
             model: selectedModel,
             max_tokens: 8192,
             temperature: 0,
-            system: [
-              {
-                type: 'text',
-                text: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-            ],
+            system: toolGenSystemBlocks,
             messages: [
               {
                 role: 'user',
@@ -651,6 +672,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
           });
           return { template: this._removeMarkdownJson(response.content[0].text) };
+        }
 
         case 'cerebras':
           response = await client.chat.completions.create({
@@ -1032,6 +1054,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
       const defaultModel = {
         anthropic: 'claude-3-5-sonnet-20240620',
+        'claude-code': 'claude-sonnet-4-5-20250929',
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
@@ -1051,12 +1074,22 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       let completion;
 
       switch (lowerCaseProvider) {
-        case 'anthropic':
+        case 'claude-code':
+        case 'anthropic': {
+          const wfSystemBlocks = [];
+          if (lowerCaseProvider === 'claude-code') {
+            wfSystemBlocks.push({
+              type: 'text',
+              text: "You are Claude Code, Anthropic's official CLI for Claude.",
+              cache_control: { type: 'ephemeral' },
+            });
+          }
+          wfSystemBlocks.push({ type: 'text', text: workflowGenSystemPrompt });
           completion = await client.messages.create({
             model: selectedModel,
             max_tokens: selectedModel === 'claude-3-7-sonnet-20250219' ? 64000 : 8192,
             temperature: selectedModel === 'claude-3-7-sonnet-20250219' ? 1 : 0,
-            system: [{ type: 'text', text: workflowGenSystemPrompt }],
+            system: wfSystemBlocks,
             messages: [
               {
                 role: 'user',
@@ -1094,6 +1127,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             workflow: this._removeMarkdownJson(workflowText),
             thinking: thinkingText,
           };
+        }
 
         case 'cerebras':
           completion = await client.chat.completions.create({
@@ -1298,6 +1332,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
       const defaultModel = {
         anthropic: 'claude-3-5-sonnet-20240620',
+        'claude-code': 'claude-sonnet-4-5-20250929',
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         gemini: 'gemini-2.5-pro-exp-03-25',
@@ -1317,17 +1352,25 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       let response;
 
       switch (lowerCaseProvider) {
-        case 'anthropic':
+        case 'claude-code':
+        case 'anthropic': {
+          const agentGenSystemBlocks = [];
+          if (lowerCaseProvider === 'claude-code') {
+            agentGenSystemBlocks.push({
+              type: 'text',
+              text: "You are Claude Code, Anthropic's official CLI for Claude.",
+              cache_control: { type: 'ephemeral' },
+            });
+          }
+          agentGenSystemBlocks.push({
+            type: 'text',
+            text: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
+          });
           response = await client.messages.create({
             model: selectedModel,
             max_tokens: 8192,
             temperature: 0,
-            system: [
-              {
-                type: 'text',
-                text: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
-              },
-            ],
+            system: agentGenSystemBlocks,
             messages: [
               {
                 role: 'user',
@@ -1336,6 +1379,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
           });
           return { agent: this._removeMarkdownJson(response.content[0].text) };
+        }
 
         case 'cerebras':
           response = await client.chat.completions.create({
@@ -1490,6 +1534,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
       const defaultModel = {
         anthropic: 'claude-3-5-sonnet-20240620',
+        'claude-code': 'claude-sonnet-4-5-20250929',
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
@@ -1509,17 +1554,25 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       let completion;
 
       switch (lowerCaseProvider) {
-        case 'anthropic':
+        case 'claude-code':
+        case 'anthropic': {
+          const completionSystemBlocks = [];
+          if (lowerCaseProvider === 'claude-code') {
+            completionSystemBlocks.push({
+              type: 'text',
+              text: "You are Claude Code, Anthropic's official CLI for Claude.",
+              cache_control: { type: 'ephemeral' },
+            });
+          }
+          completionSystemBlocks.push({
+            type: 'text',
+            text: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
+          });
           completion = await client.messages.create({
             model: selectedModel,
             max_tokens: selectedModel === 'claude-3-7-sonnet-20250219' ? 64000 : 8192,
             temperature: selectedModel === 'claude-3-7-sonnet-20250219' ? 1 : 0,
-            system: [
-              {
-                type: 'text',
-                text: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
-              },
-            ],
+            system: completionSystemBlocks,
             messages: [
               {
                 role: 'user',
@@ -1561,6 +1614,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
                 thinking: thinkingText,
               }
             : completionText;
+        }
 
         case 'cerebras':
           completion = await client.chat.completions.create({

@@ -151,6 +151,9 @@ class AuthManager {
             case 'anthropic':
               healthStatus = await checkAnthropicHealth(token);
               break;
+            case 'claude-code':
+              healthStatus = await checkClaudeCodeHealth(token);
+              break;
             case 'stripe':
               healthStatus = await checkStripeHealth(token);
               break;
@@ -299,6 +302,9 @@ class AuthManager {
                 break;
               case 'anthropic':
                 healthStatus = await checkAnthropicHealth(token);
+                break;
+              case 'claude-code':
+                healthStatus = await checkClaudeCodeHealth(token);
                 break;
               case 'stripe':
                 healthStatus = await checkStripeHealth(token);
@@ -681,6 +687,42 @@ async function checkAnthropicHealth(token) {
     return {
       status: 'healthy',
       provider: 'anthropic',
+      lastChecked: new Date().toISOString(),
+      details: { hasValidToken: true, note: 'Token valid but API returned error' },
+    };
+  }
+}
+
+async function checkClaudeCodeHealth(token) {
+  try {
+    const response = await axios.post(
+      'https://api.anthropic.com/v1/messages',
+      {
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'test' }],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+      }
+    );
+    return {
+      status: 'healthy',
+      provider: 'claude-code',
+      lastChecked: new Date().toISOString(),
+      details: { hasValidToken: true },
+    };
+  } catch (error) {
+    if (error.response?.status === 401) {
+      throw new Error('Claude Code token validation failed');
+    }
+    return {
+      status: 'healthy',
+      provider: 'claude-code',
       lastChecked: new Date().toISOString(),
       details: { hasValidToken: true, note: 'Token valid but API returned error' },
     };
