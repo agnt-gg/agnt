@@ -3,6 +3,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai/index.mjs';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import AuthManager from '../../../services/auth/AuthManager.js';
+import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
+import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
 
 const PROVIDER_CONFIG = {
   deepseek: {
@@ -398,7 +400,25 @@ class GenerateWithAiLlm extends BaseAction {
       // Get API key/token for non-local providers
       if (normalizedProvider !== 'local') {
         try {
-          accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, normalizedProvider);
+          // Special providers use local auth managers instead of remote service
+          if (normalizedProvider === 'claude-code') {
+            accessTokenOrApiKey = ClaudeCodeAuthManager.getAccessToken();
+            if (!accessTokenOrApiKey) {
+              throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
+            }
+          } else if (normalizedProvider === 'openai-codex' || normalizedProvider === 'openai-codex-cli') {
+            const codexStatus = await CodexAuthManager.checkApiUsable();
+            if (!codexStatus.available) {
+              throw new Error('OpenAI Codex is not connected. Use device login to connect.');
+            }
+            accessTokenOrApiKey = CodexAuthManager.getAccessToken();
+            if (!accessTokenOrApiKey) {
+              throw new Error('OpenAI Codex token not found after login.');
+            }
+          } else {
+            // All other providers use the remote auth service
+            accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, normalizedProvider);
+          }
         } catch (authError) {
           console.error('Authentication error:', authError);
           throw new Error(`Authentication required for ${params.provider}. Please set up API key or authenticate.`);
