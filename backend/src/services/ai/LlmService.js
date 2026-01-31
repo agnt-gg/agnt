@@ -15,12 +15,15 @@ const baseURLs = {
   gemini: 'https://generativelanguage.googleapis.com/v1beta/',
   grokai: 'https://api.x.ai/v1/',
   groq: 'https://api.groq.com/openai/v1',
+  kimi: 'https://api.moonshot.ai/v1',
   local: 'http://127.0.0.1:1234/v1',
+  minimax: 'https://api.minimax.io/v1',
   openai: 'https://api.openai.com/v1',
   'openai-codex': 'https://api.openai.com/v1',
   'openai-codex-cli': 'codex-cli://local',
   openrouter: 'https://openrouter.ai/api/v1',
   togetherai: 'https://api.together.xyz/v1',
+  zai: 'https://api.z.ai/api/paas/v4',
 };
 
 /**
@@ -217,6 +220,24 @@ export async function createLlmClient(provider, userId, options = {}) {
       return new Cerebras({
         apiKey: accessToken,
         warmTCPConnection: false, // Disable TCP warming to avoid extra requests on construction
+      });
+
+    case 'kimi':
+      return new OpenAI({
+        apiKey: accessToken,
+        baseURL: baseURLs.kimi,
+      });
+
+    case 'minimax':
+      return new OpenAI({
+        apiKey: accessToken,
+        baseURL: baseURLs.minimax,
+      });
+
+    case 'zai':
+      return new OpenAI({
+        apiKey: accessToken,
+        baseURL: baseURLs.zai,
       });
 
     default:

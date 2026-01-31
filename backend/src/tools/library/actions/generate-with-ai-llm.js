@@ -78,6 +78,27 @@ const PROVIDER_CONFIG = {
     supportsImageGen: false,
     supportsImageEdit: false,
   },
+  kimi: {
+    baseURL: 'https://api.moonshot.ai/v1',
+    defaultModel: 'moonshot-v1-128k',
+    supportsVision: true,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
+  minimax: {
+    baseURL: 'https://api.minimax.io/v1',
+    defaultModel: 'abab6.5s-chat',
+    supportsVision: false,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
+  zai: {
+    baseURL: 'https://api.z.ai/api/paas/v4',
+    defaultModel: 'glm-4.7',
+    supportsVision: true,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
   // Fallback if provider is missing or doesn't match any key above
   default: {
     baseURL: undefined,
@@ -415,10 +436,13 @@ class GenerateWithAiLlm extends BaseAction {
       case 'gemini':
       case 'grokai':
       case 'groq':
+      case 'kimi':
       case 'local':
+      case 'minimax':
       case 'openai':
       case 'openrouter':
       case 'togetherai':
+      case 'zai':
         response = await this.generateWithOpenAiLike({ ...params, prompt: fullPrompt });
         break;
       default:
@@ -454,10 +478,12 @@ class GenerateWithAiLlm extends BaseAction {
       case 'gemini':
       case 'grokai':
       case 'groq':
+      case 'kimi':
       case 'local':
       case 'openai':
       case 'openrouter':
       case 'togetherai':
+      case 'zai':
         response = await this.generateWithOpenAiLike({ ...params, prompt, image });
         break;
       default:

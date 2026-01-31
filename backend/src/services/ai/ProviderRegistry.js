@@ -174,6 +174,42 @@ export const PROVIDER_CAPABILITIES = {
     },
     imageGen: null,
   },
+
+  kimi: {
+    text: {
+      models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+      supportsStreaming: true,
+      supportsTools: true,
+    },
+    vision: {
+      models: ['moonshot-v1-128k'],
+      supportsStreaming: true,
+    },
+    imageGen: null,
+  },
+
+  minimax: {
+    text: {
+      models: ['abab6.5s-chat', 'abab6.5-chat', 'abab6.5g-chat', 'abab5.5s-chat'],
+      supportsStreaming: true,
+      supportsTools: true,
+    },
+    vision: null,
+    imageGen: null,
+  },
+
+  zai: {
+    text: {
+      models: ['glm-4.7', 'glm-4-plus', 'glm-4', 'glm-4-air', 'glm-4-flash'],
+      supportsStreaming: true,
+      supportsTools: true,
+    },
+    vision: {
+      models: ['glm-4.7', 'glm-4-plus', 'glm-4'],
+      supportsStreaming: true,
+    },
+    imageGen: null,
+  },
 };
 
 /**
