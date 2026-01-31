@@ -587,7 +587,26 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async generateWithAnthropic(params) {
-    const anthropic = new Anthropic({ apiKey: params.apiKey });
+    // Claude Code uses OAuth Bearer token, regular Anthropic uses x-api-key
+    const provider = params.provider.toLowerCase();
+    let anthropic;
+
+    if (provider === 'claude-code') {
+      // Claude Code: OAuth with special headers
+      anthropic = new Anthropic({
+        apiKey: null,
+        authToken: params.apiKey, // This is actually the OAuth token
+        defaultHeaders: {
+          'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31',
+          'user-agent': 'claude-cli/2.1.2 (external, cli)',
+          'x-app': 'cli',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+      });
+    } else {
+      // Regular Anthropic: standard API key
+      anthropic = new Anthropic({ apiKey: params.apiKey });
+    }
     const messages = [
       {
         role: 'user',
