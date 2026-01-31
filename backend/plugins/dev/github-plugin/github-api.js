@@ -1,3 +1,13 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Get app path for importing core modules
+// APP_PATH is set by Electron, fallback for dev mode
+const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
+
 /**
  * GitHub API Plugin Tool
  *
@@ -194,8 +204,14 @@ class GitHubAPI {
   }
 
   async listPullRequests(params) {
+    const queryParams = new URLSearchParams({
+      state: params.state || 'open',
+      sort: params.sort || 'created',
+      direction: params.direction || 'desc',
+    });
+
     const response = await this.makeRequest(
-      `/repos/${params.owner}/${params.repo}/pulls?state=${params.state || 'open'}`,
+      `/repos/${params.owner}/${params.repo}/pulls?${queryParams.toString()}`,
       { method: 'GET' },
       params.accessToken
     );
@@ -275,8 +291,9 @@ class GitHubAPI {
   }
 
   async getFileContent(params) {
+    const queryParams = params.ref ? `?ref=${params.ref}` : '';
     const response = await this.makeRequest(
-      `/repos/${params.owner}/${params.repo}/contents/${params.filePath}`,
+      `/repos/${params.owner}/${params.repo}/contents/${params.filePath}${queryParams}`,
       { method: 'GET' },
       params.accessToken
     );
@@ -299,12 +316,13 @@ class GitHubAPI {
   }
 
   async getRepoContents(params) {
-    const path = params.path || '';
+    const path = params.filePath || '';
     const recursive = params.recursive || false;
 
     const listContents = async (path) => {
+      const queryParams = params.ref ? `?ref=${params.ref}` : '';
       const response = await this.makeRequest(
-        `/repos/${params.owner}/${params.repo}/contents/${path}`,
+        `/repos/${params.owner}/${params.repo}/contents/${path}${queryParams}`,
         { method: 'GET' },
         params.accessToken
       );
@@ -386,8 +404,12 @@ class GitHubAPI {
   }
 
   async listCommits(params) {
+    const queryParams = new URLSearchParams();
+    if (params.branch) queryParams.set('sha', params.branch);
+    queryParams.set('per_page', params.perPage || '30');
+
     const response = await this.makeRequest(
-      `/repos/${params.owner}/${params.repo}/commits?sha=${params.branch || ''}&per_page=${params.perPage || 30}`,
+      `/repos/${params.owner}/${params.repo}/commits?${queryParams.toString()}`,
       { method: 'GET' },
       params.accessToken
     );

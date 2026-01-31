@@ -672,6 +672,15 @@ export default {
           }
         }
 
+        // Preserve extra non-schema parameters (e.g., customWidth, customHeight from widget resize)
+        if (node.parameters) {
+          for (const [key, value] of Object.entries(node.parameters)) {
+            if (!(key in initializedParameters)) {
+              initializedParameters[key] = value;
+            }
+          }
+        }
+
         return {
           ...node,
           icon: nodeDetails.icon,

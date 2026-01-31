@@ -466,7 +466,7 @@ class GitHubAPI extends BaseAction {
   }
   async createFile(params) {
     const response = await this.makeRequest(
-      `/repos/${params.owner}/${params.repo}/contents/${params.path}`,
+      `/repos/${params.owner}/${params.repo}/contents/${params.filePath}`,
       {
         method: 'PUT',
         body: JSON.stringify({
@@ -513,7 +513,7 @@ class GitHubAPI extends BaseAction {
     };
   }
   async getRepoContents(params) {
-    const path = params.path || '';
+    const path = params.filePath || '';
     const recursive = params.recursive || false;
 
     const listContents = async (path) => {
@@ -556,13 +556,13 @@ class GitHubAPI extends BaseAction {
   }
   async updateFile(params) {
     const currentFile = await this.makeRequest(
-      `/repos/${params.owner}/${params.repo}/contents/${params.path}`,
+      `/repos/${params.owner}/${params.repo}/contents/${params.filePath}`,
       { method: 'GET' },
       params.accessToken
     );
 
     const response = await this.makeRequest(
-      `/repos/${params.owner}/${params.repo}/contents/${params.path}`,
+      `/repos/${params.owner}/${params.repo}/contents/${params.filePath}`,
       {
         method: 'PUT',
         body: JSON.stringify({

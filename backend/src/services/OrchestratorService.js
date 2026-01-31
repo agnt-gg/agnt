@@ -1210,7 +1210,24 @@ Generate 3 smart, contextual suggestions that would be helpful next steps. Retur
     ];
 
     // Use the adapter to call the LLM (non-streaming for suggestions)
-    const { responseMessage } = await adapter.call(messages, []);
+    const { responseMessage, recoveredFromError, recoveredError } = await adapter.call(messages, []);
+
+    // If the adapter recovered from an error, return fallback suggestions with error info
+    if (recoveredFromError) {
+      console.error('API error occurred while generating suggestions:', recoveredError);
+
+      // Return fallback suggestions since the API call failed
+      const fallbackSuggestions = [
+        { id: 'fallback_1', text: 'Tell me more about this', icon: '💭' },
+        { id: 'fallback_2', text: 'Show me an example', icon: '📝' },
+        { id: 'fallback_3', text: 'What else can you do?', icon: '🔍' },
+      ];
+
+      return res.json({
+        suggestions: fallbackSuggestions,
+        error: recoveredError || 'API error occurred'
+      });
+    }
 
     // Extract content based on provider
     let content;

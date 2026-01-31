@@ -63,7 +63,8 @@ export default {
   actions: {
     async fetchOutputs({ commit, getters, state }, { force = false, limit = 20, offset = 0, loadAll = false } = {}) {
       // If cache is valid and not forcing, return cached data
-      if (!force && getters.isCacheValid && state.outputs.length > 0 && offset === 0) {
+      // Skip cache when loadAll is requested or when fetching additional pages (offset > 0)
+      if (!force && !loadAll && getters.isCacheValid && state.outputs.length > 0 && offset === 0) {
         return state.outputs;
       }
 
@@ -123,7 +124,7 @@ export default {
       }
 
       const offset = state.outputs.length;
-      await dispatch('fetchOutputs', { limit: 20, offset, force: false });
+      await dispatch('fetchOutputs', { limit: 20, offset, force: true });
     },
 
     async loadAll({ commit, state, dispatch }) {
@@ -131,7 +132,7 @@ export default {
         return;
       }
 
-      await dispatch('fetchOutputs', { loadAll: true, force: false });
+      await dispatch('fetchOutputs', { loadAll: true, force: true });
     },
 
     async deleteOutput({ commit }, outputId) {
