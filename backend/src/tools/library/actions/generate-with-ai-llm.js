@@ -392,10 +392,13 @@ class GenerateWithAiLlm extends BaseAction {
       const userId = workflowEngine.userId;
       let accessTokenOrApiKey = null;
 
+      // Normalize provider name to lowercase for auth lookups
+      const normalizedProvider = params.provider.toLowerCase();
+
       // Get API key/token for non-local providers
-      if (params.provider.toLowerCase() !== 'local') {
+      if (normalizedProvider !== 'local') {
         try {
-          accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, params.provider);
+          accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, normalizedProvider);
         } catch (authError) {
           console.error('Authentication error:', authError);
           throw new Error(`Authentication required for ${params.provider}. Please set up API key or authenticate.`);
