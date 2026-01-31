@@ -164,12 +164,11 @@ const actions = {
       const localCodexProviders = [
         {
           id: 'openai-codex-cli',
-          name: 'OpenAI Codex CLI',
+          name: 'OpenAI Codex',
           icon: 'openai',
           categories: ['AI'],
           connectionType: 'oauth',
-          instructions:
-            'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          instructions: 'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
           localOnly: true,
         },
         {
@@ -178,8 +177,7 @@ const actions = {
           icon: 'anthropic',
           categories: ['AI'],
           connectionType: 'oauth',
-          instructions:
-            'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
+          instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
           localOnly: true,
         },
       ];
@@ -199,12 +197,11 @@ const actions = {
       commit('SET_ALL_PROVIDERS', [
         {
           id: 'openai-codex-cli',
-          name: 'OpenAI Codex CLI',
+          name: 'OpenAI Codex',
           icon: 'openai',
           categories: ['AI'],
           connectionType: 'oauth',
-          instructions:
-            'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          instructions: 'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
           localOnly: true,
         },
         {
@@ -213,8 +210,7 @@ const actions = {
           icon: 'anthropic',
           categories: ['AI'],
           connectionType: 'oauth',
-          instructions:
-            'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
+          instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
           localOnly: true,
         },
       ]);
