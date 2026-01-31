@@ -1,13 +1,22 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import axios from 'axios';
 import { spawn } from 'child_process';
 import generateUUID from '../../utils/generateUUID.js';
+import { keychainManager } from '../../utils/keychain.js';
+import { createAuthLogger } from '../../utils/auth-logger.js';
+
+const logger = createAuthLogger('codex');
 
 const CODEX_AUTH_FILENAME = 'auth.json';
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const DEVICE_SESSION_TTL_MS = 20 * 60 * 1000; // 20 minutes
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
+
+// Keychain service name (must match Codex CLI)
+const KEYCHAIN_SERVICE = 'Codex Auth';
 
 function expandUserPath(inputPath) {
   if (!inputPath) return inputPath;
@@ -30,6 +39,63 @@ function resolveCodexHome() {
 
 function resolveCodexAuthPath() {
   return path.join(resolveCodexHome(), CODEX_AUTH_FILENAME);
+}
+
+/**
+ * Compute the Keychain account hash for Codex
+ * Format: cli|{sha256(codexHome).slice(0, 16)}
+ * @returns {string}
+ */
+function computeCodexKeychainAccount() {
+  const codexHome = resolveCodexHome();
+  const hash = crypto.createHash('sha256').update(codexHome).digest('hex');
+  return `cli|${hash.slice(0, 16)}`;
+}
+
+/**
+ * Read credentials from macOS Keychain
+ * @returns {Promise<object|null>}
+ */
+async function readCodexKeychainCredentials() {
+  if (!keychainManager.isAvailable()) {
+    return null;
+  }
+
+  try {
+    const account = computeCodexKeychainAccount();
+    const raw = await keychainManager.read(KEYCHAIN_SERVICE, account);
+    if (!raw) {
+      logger.keychainRead(false, { reason: 'not_found' });
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    logger.keychainRead(true, { hasTokens: !!parsed.tokens });
+    return parsed;
+  } catch (error) {
+    logger.keychainRead(false, { error: error.message });
+    return null;
+  }
+}
+
+/**
+ * Get Codex credentials using fallback chain: Keychain → JSON
+ * @returns {Promise<{ source: string, data: object } | null>}
+ */
+async function getCodexCredentials() {
+  // Try Keychain first (macOS only)
+  const keychainData = await readCodexKeychainCredentials();
+  if (keychainData?.tokens) {
+    return { source: 'keychain', data: keychainData };
+  }
+
+  // Fallback to JSON file
+  const { data: jsonData } = readCodexAuthFile();
+  if (jsonData?.tokens) {
+    return { source: 'json', data: jsonData };
+  }
+
+  return null;
 }
 
 function resolveCodexBin() {

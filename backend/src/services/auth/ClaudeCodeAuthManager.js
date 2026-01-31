@@ -4,13 +4,22 @@ import path from 'path';
 import crypto from 'crypto';
 import axios from 'axios';
 import generateUUID from '../../utils/generateUUID.js';
+import { keychainManager } from '../../utils/keychain.js';
+import { createAuthLogger } from '../../utils/auth-logger.js';
+
+const logger = createAuthLogger('claude');
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
+
+// Keychain service name (must match Claude CLI)
+const KEYCHAIN_SERVICE = 'Claude Code-credentials';
 
 // Anthropic OAuth configuration (matching OpenClaw's working implementation)
 const OAUTH_CONFIG = {
   CLIENT_ID: process.env.CLAUDE_CODE_OAUTH_CLIENT_ID || '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+  CLIENT_SECRET: process.env.CLAUDE_OAUTH_CLIENT_SECRET || '',
   AUTHORIZE_URL: 'https://claude.ai/oauth/authorize',
   TOKEN_URL: 'https://console.anthropic.com/v1/oauth/token',
   REDIRECT_URI: 'https://console.anthropic.com/oauth/code/callback',
@@ -21,6 +30,35 @@ function resolveClaudeCredentialsPath() {
   return path.join(os.homedir(), '.claude', '.credentials.json');
 }
 
+/**
+ * Read credentials from macOS Keychain
+ * @returns {Promise<object|null>}
+ */
+async function readClaudeKeychainCredentials() {
+  if (!keychainManager.isAvailable()) {
+    return null;
+  }
+
+  try {
+    const raw = await keychainManager.read(KEYCHAIN_SERVICE);
+    if (!raw) {
+      logger.keychainRead(false, { reason: 'not_found' });
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+    logger.keychainRead(true, { hasOauth: !!parsed.claudeAiOauth });
+    return parsed;
+  } catch (error) {
+    logger.keychainRead(false, { error: error.message });
+    return null;
+  }
+}
+
+/**
+ * Read credentials from JSON file (fallback)
+ * @returns {{ credPath: string, data: object|null }}
+ */
 function readClaudeCredentialsFile() {
   const credPath = resolveClaudeCredentialsPath();
   try {
@@ -32,7 +70,31 @@ function readClaudeCredentialsFile() {
   }
 }
 
-function writeClaudeCredentials(oauthData) {
+/**
+ * Get Claude credentials using fallback chain: Keychain → JSON
+ * @returns {Promise<object|null>}
+ */
+async function getClaudeCredentials() {
+  // Try Keychain first (macOS only)
+  const keychainData = await readClaudeKeychainCredentials();
+  if (keychainData?.claudeAiOauth) {
+    return { source: 'keychain', data: keychainData };
+  }
+
+  // Fallback to JSON file
+  const { data: jsonData } = readClaudeCredentialsFile();
+  if (jsonData?.claudeAiOauth) {
+    return { source: 'json', data: jsonData };
+  }
+
+  return null;
+}
+
+/**
+ * Write credentials to both Keychain and JSON file
+ * @param {object} oauthData
+ */
+async function writeClaudeCredentials(oauthData) {
   const credDir = path.join(os.homedir(), '.claude');
   const credPath = resolveClaudeCredentialsPath();
 
@@ -50,7 +112,19 @@ function writeClaudeCredentials(oauthData) {
   }
 
   existing.claudeAiOauth = oauthData;
+
+  // Write to JSON file
   fs.writeFileSync(credPath, JSON.stringify(existing, null, 2), 'utf8');
+
+  // Also write to Keychain if available
+  if (keychainManager.isAvailable()) {
+    try {
+      await keychainManager.write(KEYCHAIN_SERVICE, existing);
+      logger.keychainWrite(true);
+    } catch (error) {
+      logger.keychainWrite(false, { error: error.message });
+    }
+  }
 }
 
 // PKCE helpers
@@ -72,7 +146,16 @@ class ClaudeCodeAuthManager {
     return resolveClaudeCredentialsPath();
   }
 
+  /**
+   * Get access token (synchronous, uses cached credentials or JSON fallback)
+   */
   getAccessToken() {
+    // First try to get from cache
+    if (this._cachedCredentials?.claudeAiOauth?.accessToken) {
+      return this._cachedCredentials.claudeAiOauth.accessToken;
+    }
+
+    // Fallback to JSON file for synchronous access
     const { data } = readClaudeCredentialsFile();
     if (!data || typeof data !== 'object') return null;
 
@@ -89,6 +172,50 @@ class ClaudeCodeAuthManager {
     }
 
     return null;
+  }
+
+  /**
+   * Get full credentials using Keychain → JSON fallback chain
+   * @returns {Promise<{ accessToken: string, refreshToken: string, expiresAt: number, source: string } | null>}
+   */
+  async getCredentials() {
+    const result = await getClaudeCredentials();
+    if (!result?.data?.claudeAiOauth) {
+      return null;
+    }
+
+    const oauth = result.data.claudeAiOauth;
+    this._cachedCredentials = result.data;
+
+    return {
+      accessToken: oauth.accessToken,
+      refreshToken: oauth.refreshToken,
+      expiresAt: oauth.expiresAt,
+      scopes: oauth.scopes || [],
+      subscriptionType: oauth.subscriptionType,
+      rateLimitTier: oauth.rateLimitTier,
+      source: result.source,
+    };
+  }
+
+  /**
+   * Check if token is expired (with buffer)
+   * @param {number} expiresAt - Expiry timestamp in milliseconds
+   * @returns {boolean}
+   */
+  isTokenExpired(expiresAt) {
+    if (!expiresAt) return true;
+    return Date.now() >= (expiresAt - TOKEN_REFRESH_BUFFER_MS);
+  }
+
+  /**
+   * Write credentials to both Keychain and JSON
+   * @param {object} oauthData
+   */
+  async writeCredentials(oauthData) {
+    await writeClaudeCredentials(oauthData);
+    this._cachedCredentials = { claudeAiOauth: oauthData };
+    this.apiCheckCache = null; // Invalidate cache
   }
 
   async checkApiUsable({ forceRefresh = false } = {}) {

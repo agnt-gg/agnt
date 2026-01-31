@@ -5,6 +5,7 @@ import Cerebras from '@cerebras/cerebras_cloud_sdk';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
+import { tokenRefreshManager, TokenRefreshError } from '../auth/TokenRefreshManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { createCodexCliClient } from './CodexCliClient.js';
 import CodexCliSessionManager from './CodexCliSessionManager.js';
@@ -122,11 +123,37 @@ export async function createLlmClient(provider, userId, options = {}) {
 
   // Claude Code provider: uses Anthropic API with OAuth Bearer auth (not x-api-key).
   // Requires specific beta flags and user-agent to enable OAuth on the API.
+  // Uses automatic token refresh when credentials are expiring.
   if (lowerCaseProvider === 'claude-code') {
-    const oauthToken = ClaudeCodeAuthManager.getAccessToken();
-    if (!oauthToken) {
+    // Get credentials with potential token refresh
+    const credentials = await ClaudeCodeAuthManager.getCredentials();
+    if (!credentials?.accessToken) {
       throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
     }
+
+    // Check if token needs refresh
+    let oauthToken = credentials.accessToken;
+    try {
+      const result = await tokenRefreshManager.getValidAccessToken('claude-code', credentials);
+      oauthToken = result.accessToken;
+      if (result.refreshed) {
+        console.log('[LlmService] Claude Code token refreshed successfully');
+      }
+    } catch (refreshError) {
+      if (refreshError instanceof TokenRefreshError) {
+        console.error('[LlmService] Token refresh failed:', refreshError.code, refreshError.message);
+        // If refresh fails but we have a token, try using it anyway
+        // It might still be valid (race condition with refresh buffer)
+        if (refreshError.code !== 'NO_CREDENTIALS' && oauthToken) {
+          console.log('[LlmService] Attempting to use existing token despite refresh failure');
+        } else {
+          throw new Error(`Claude Code authentication error: ${refreshError.message}. Recovery: ${refreshError.recovery}`);
+        }
+      } else {
+        throw refreshError;
+      }
+    }
+
     return new Anthropic({
       apiKey: null,
       authToken: oauthToken,
