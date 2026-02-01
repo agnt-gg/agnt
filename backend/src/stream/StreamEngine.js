@@ -173,6 +173,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'openai':
         case 'openai-codex':
         case 'openai-codex-cli':
+          await this.startCodexResponsesStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client);
+          break;
         case 'openrouter':
         case 'togetherai':
           await this.startOpenAiLikeStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client, provider);
@@ -429,6 +431,69 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       res.end();
     }
   }
+  async startCodexResponsesStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client) {
+    let finalMessages = [];
+
+    if (messages && messages.length > 0) {
+      try {
+        finalMessages = Array.isArray(messages) ? messages : JSON.parse(messages);
+        finalMessages = finalMessages.filter((msg) => msg.content !== null && msg.content !== undefined);
+      } catch (error) {
+        console.error('Error parsing messages JSON:', error);
+        finalMessages = [];
+      }
+    }
+
+    if (userQuery) {
+      finalMessages.push({ role: 'user', content: userQuery });
+    }
+
+    try {
+      const instructions = `${systemPrompt}\n\n${combinedDocumentText || ''}`.trim();
+
+      const input = finalMessages.map((msg) => ({
+        type: 'message',
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: [{ type: msg.role === 'assistant' ? 'output_text' : 'input_text', text: msg.content || '' }],
+      }));
+
+      const stream = await client.responses.create({
+        model: modelName,
+        instructions,
+        input,
+        store: false,
+        stream: true,
+        include: ['reasoning.encrypted_content'],
+        text: { verbosity: 'medium' },
+      });
+
+      this.streamMap.set(streamId, stream);
+      res.write(`{ streamId: ${streamId} }\n\n`);
+
+      for await (const event of stream) {
+        if (event.type === 'response.output_text.delta') {
+          const content = event.delta || '';
+          if (content) {
+            res.write(content);
+          }
+        }
+      }
+
+      this.streamMap.delete(streamId);
+      console.log(`Stream ${streamId} complete.`);
+      res.end();
+    } catch (error) {
+      console.error('Codex Responses stream error:', error);
+      res.status(500).write(
+        `data: ${JSON.stringify({
+          error: 'Stream error: ' + error.message,
+        })}\n\n`
+      );
+      this.streamMap.delete(streamId);
+      res.end();
+    }
+  }
+
   cancelStream(streamId) {
     const stream = this.streamMap.get(streamId);
     if (stream) {
@@ -751,8 +816,17 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
+        case 'openai-codex-cli': {
+          const toolText = await this._codexResponsesGenerate(
+            client,
+            selectedModel,
+            'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
+            toolGenerationPrompt,
+          );
+          return { template: this._removeMarkdownJson(toolText) };
+        }
+
         case 'openai-codex':
-        case 'openai-codex-cli':
         case 'openai':
           response = await client.chat.completions.create({
             model: selectedModel,
@@ -810,6 +884,30 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       throw error;
     }
   }
+  /**
+   * Helper for Codex Responses API generation calls.
+   * The ChatGPT backend requires streaming, so we collect chunks internally.
+   */
+  async _codexResponsesGenerate(client, model, systemPrompt, userPrompt) {
+    const stream = await client.responses.create({
+      model,
+      instructions: systemPrompt,
+      input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: userPrompt }] }],
+      store: false,
+      stream: true,
+      include: ['reasoning.encrypted_content'],
+      text: { verbosity: 'medium' },
+    });
+
+    let content = '';
+    for await (const event of stream) {
+      if (event.type === 'response.output_text.delta') {
+        content += event.delta || '';
+      }
+    }
+    return content;
+  }
+
   _removeMarkdownJson(text) {
     // Remove <think>...</think> blocks from the response
     text = text.replace(/<think>[\s\S]*?<\/think>/gs, '');
@@ -1200,8 +1298,17 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
+        case 'openai-codex-cli': {
+          const wfText = await this._codexResponsesGenerate(
+            client,
+            selectedModel,
+            workflowGenSystemPrompt,
+            workflowElements.overview,
+          );
+          return { workflow: this._removeMarkdownJson(wfText) };
+        }
+
         case 'openai-codex':
-        case 'openai-codex-cli':
         case 'openai':
           completion = await client.chat.completions.create({
             model: selectedModel,
@@ -1458,8 +1565,17 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
+        case 'openai-codex-cli': {
+          const agentText = await this._codexResponsesGenerate(
+            client,
+            selectedModel,
+            'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
+            agentGenerationPrompt,
+          );
+          return { agent: this._removeMarkdownJson(agentText) };
+        }
+
         case 'openai-codex':
-        case 'openai-codex-cli':
         case 'openai':
           response = await client.chat.completions.create({
             model: selectedModel,
@@ -1696,8 +1812,17 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return completion.choices[0].message.content;
 
+        case 'openai-codex-cli': {
+          const completionText = await this._codexResponsesGenerate(
+            client,
+            selectedModel,
+            'You are a helpful assistant. Generate valid responses based on the user instructions.',
+            prompt,
+          );
+          return completionText;
+        }
+
         case 'openai-codex':
-        case 'openai-codex-cli':
         case 'openai':
           completion = await client.chat.completions.create({
             model: selectedModel,
