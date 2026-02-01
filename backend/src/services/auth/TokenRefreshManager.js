@@ -56,19 +56,20 @@ class TokenRefreshManager {
    * Get a valid access token, refreshing if needed
    * @param {string} provider - Provider name ('anthropic' or 'openai-codex')
    * @param {object} credentials - Current credentials
+   * @param {boolean} [forceRefresh=false] - Force refresh even if token appears valid
    * @returns {Promise<{ accessToken: string, refreshed: boolean }>}
    */
-  async getValidAccessToken(provider, credentials) {
+  async getValidAccessToken(provider, credentials, forceRefresh = false) {
     if (!credentials?.accessToken) {
       throw new TokenRefreshError('NO_CREDENTIALS', 'No credentials available', 'setup');
     }
 
-    // Check if token is still valid
-    if (!this.isTokenExpired(credentials)) {
+    // Check if token is still valid (unless force refresh is requested)
+    if (!forceRefresh && !this.isTokenExpired(credentials)) {
       return { accessToken: credentials.accessToken, refreshed: false };
     }
 
-    // Token is expired or expiring soon - refresh it
+    // Token is expired, expiring soon, or force refresh requested - refresh it
     const refreshedCreds = await this._refreshWithLock(provider, credentials);
     return { accessToken: refreshedCreds.accessToken, refreshed: true };
   }

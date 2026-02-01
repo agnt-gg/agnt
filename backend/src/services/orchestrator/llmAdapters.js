@@ -1,10 +1,15 @@
 // ALL OF THIS SHOULD BE IN THIS AI.SERVICE
 
 import axios from 'axios';
+import { Anthropic } from '@anthropic-ai/sdk';
 import { manageContext } from '../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
+import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
+import CodexAuthManager from '../auth/CodexAuthManager.js';
+import { tokenRefreshManager } from '../auth/TokenRefreshManager.js';
+import { OpenAI } from 'openai/index.mjs';
 
 /**
  * Parse API error messages to extract user-friendly error details
@@ -114,11 +119,62 @@ class BaseAdapter {
  * Adapter for OpenAI and compatible APIs (Groq, TogetherAI, etc.).
  */
 class OpenAiLikeAdapter extends BaseAdapter {
-  constructor(client, model) {
+  constructor(client, model, provider = 'openai') {
     super(client, model);
+    this.provider = provider.toLowerCase();
     this.maxRetries = 3;
     this.baseDelay = 1000; // 1 second
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
+    this._tokenRefreshAttempted = false;
+  }
+
+  /**
+   * Check if an error is an OAuth authentication error
+   */
+  isAuthError(error) {
+    if (error.status !== 401) return false;
+    const message = error.message || '';
+    return message.includes('token') || message.includes('authentication') || message.includes('unauthorized');
+  }
+
+  /**
+   * Attempt to refresh the Codex OAuth token and recreate the client
+   */
+  async refreshTokenAndRecreateClient() {
+    if (this.provider !== 'openai-codex') return false;
+    if (this._tokenRefreshAttempted) {
+      console.log('[OpenAiLikeAdapter] Token refresh already attempted, skipping');
+      return false;
+    }
+
+    this._tokenRefreshAttempted = true;
+    console.log('[OpenAiLikeAdapter] Attempting to refresh expired Codex token...');
+
+    try {
+      const credentials = await CodexAuthManager.getCodexCredentials();
+      if (!credentials?.refreshToken) {
+        console.error('[OpenAiLikeAdapter] No refresh token available');
+        return false;
+      }
+
+      const result = await tokenRefreshManager.getValidAccessToken('openai-codex', credentials, true);
+      if (!result?.accessToken) {
+        console.error('[OpenAiLikeAdapter] Token refresh returned no access token');
+        return false;
+      }
+
+      console.log('[OpenAiLikeAdapter] Token refreshed successfully, recreating client');
+
+      this.client = new OpenAI({
+        apiKey: result.accessToken,
+        baseURL: 'https://api.openai.com/v1',
+      });
+
+      return true;
+    } catch (refreshError) {
+      console.error('[OpenAiLikeAdapter] Token refresh failed:', refreshError.message);
+      return false;
+    }
   }
 
   /**
@@ -232,6 +288,28 @@ class OpenAiLikeAdapter extends BaseAdapter {
             console.warn('Context could not be reduced further, treating as non-retryable error');
             // Fall through to recovery response
           }
+        }
+
+        // Handle OAuth token expiry for openai-codex provider
+        if (this.isAuthError(error) && this.provider === 'openai-codex') {
+          console.log('[OpenAiLikeAdapter] Detected OAuth token expiry, attempting refresh...');
+          const refreshed = await this.refreshTokenAndRecreateClient();
+          if (refreshed) {
+            console.log('[OpenAiLikeAdapter] Token refreshed, retrying request...');
+            attempt--;
+            continue;
+          }
+          console.error('[OpenAiLikeAdapter] Token refresh failed, returning auth error to user');
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: `⚠️ **Authentication Error:** Your Codex session has expired and could not be refreshed.\n\nPlease re-authenticate with Codex.`,
+              tool_calls: [],
+            },
+            toolCalls: [],
+            recoveredFromError: true,
+            recoveredError: 'OAuth token expired and refresh failed',
+          };
         }
 
         // Check if this is the last attempt or if the error is not retryable
@@ -588,6 +666,28 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
           }
         }
 
+        // Handle OAuth token expiry for openai-codex provider
+        if (this.isAuthError(error) && this.provider === 'openai-codex') {
+          console.log('[OpenAiLikeAdapter] Detected OAuth token expiry in streaming, attempting refresh...');
+          const refreshed = await this.refreshTokenAndRecreateClient();
+          if (refreshed) {
+            console.log('[OpenAiLikeAdapter] Token refreshed, retrying streaming request...');
+            attempt--;
+            continue;
+          }
+          console.error('[OpenAiLikeAdapter] Token refresh failed, returning auth error to user');
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: `⚠️ **Authentication Error:** Your Codex session has expired and could not be refreshed.\n\nPlease re-authenticate with Codex.`,
+              tool_calls: [],
+            },
+            toolCalls: [],
+            recoveredFromError: true,
+            recoveredError: 'OAuth token expired and refresh failed',
+          };
+        }
+
         // Check if this is the last attempt or if the error is not retryable
         if (attempt === this.maxRetries || (!this.isRetryableError(error) && !this.isTokenLimitError(error))) {
           console.error(`LLM streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
@@ -692,6 +792,72 @@ class AnthropicAdapter extends BaseAdapter {
       'claude-opus-4-5-20251101': 64000,
       'claude-opus-4-5': 64000,
     };
+
+    // Track if we've already attempted token refresh for this adapter instance
+    this._tokenRefreshAttempted = false;
+  }
+
+  /**
+   * Check if an error is an OAuth authentication error that can be resolved by token refresh
+   * @param {Error} error - The error to check
+   * @returns {boolean} True if this is a refreshable auth error
+   */
+  isAuthError(error) {
+    if (error.status !== 401) return false;
+    const message = error.message || '';
+    return message.includes('OAuth token has expired') ||
+           message.includes('authentication_error') ||
+           message.includes('invalid_token');
+  }
+
+  /**
+   * Attempt to refresh the Claude Code OAuth token and recreate the client
+   * @returns {Promise<boolean>} True if refresh was successful
+   */
+  async refreshTokenAndRecreateClient() {
+    if (this.provider !== 'claude-code') return false;
+    if (this._tokenRefreshAttempted) {
+      console.log('[AnthropicAdapter] Token refresh already attempted, skipping');
+      return false;
+    }
+
+    this._tokenRefreshAttempted = true;
+    console.log('[AnthropicAdapter] Attempting to refresh expired Claude Code token...');
+
+    try {
+      // Get current credentials
+      const credentials = await ClaudeCodeAuthManager.getCredentials();
+      if (!credentials?.refreshToken) {
+        console.error('[AnthropicAdapter] No refresh token available');
+        return false;
+      }
+
+      // Force token refresh
+      const result = await tokenRefreshManager.getValidAccessToken('claude-code', credentials, true);
+      if (!result?.accessToken) {
+        console.error('[AnthropicAdapter] Token refresh returned no access token');
+        return false;
+      }
+
+      console.log('[AnthropicAdapter] Token refreshed successfully, recreating client');
+
+      // Recreate the client with the new token
+      this.client = new Anthropic({
+        apiKey: null,
+        authToken: result.accessToken,
+        defaultHeaders: {
+          'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31',
+          'user-agent': 'claude-cli/2.1.2 (external, cli)',
+          'x-app': 'cli',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+      });
+
+      return true;
+    } catch (refreshError) {
+      console.error('[AnthropicAdapter] Token refresh failed:', refreshError.message);
+      return false;
+    }
   }
 
   /**
@@ -860,6 +1026,34 @@ class AnthropicAdapter extends BaseAdapter {
         };
       } catch (error) {
         lastError = error;
+
+        // Handle OAuth token expiry for claude-code provider
+        if (this.isAuthError(error) && this.provider === 'claude-code') {
+          console.log('[AnthropicAdapter] Detected OAuth token expiry, attempting refresh...');
+          const refreshed = await this.refreshTokenAndRecreateClient();
+          if (refreshed) {
+            // Token was refreshed, retry this attempt
+            console.log('[AnthropicAdapter] Token refreshed, retrying request...');
+            attempt--; // Don't count this as a failed attempt
+            continue;
+          }
+          // If refresh failed, fall through to error handling
+          console.error('[AnthropicAdapter] Token refresh failed, returning auth error to user');
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'text',
+                  text: `⚠️ **Authentication Error:** Your Claude Code session has expired and could not be refreshed.\n\nPlease re-authenticate by running \`claude login\` in your terminal.`,
+                },
+              ],
+            },
+            toolCalls: [],
+            recoveredFromError: true,
+            recoveredError: 'OAuth token expired and refresh failed',
+          };
+        }
 
         // Check if this is the last attempt or if the error is not retryable
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
@@ -1186,6 +1380,32 @@ Please carefully check the tool schema and ensure all parameters match the expec
         };
       } catch (error) {
         lastError = error;
+
+        // Handle OAuth token expiry for claude-code provider
+        if (this.isAuthError(error) && this.provider === 'claude-code') {
+          console.log('[AnthropicAdapter] Detected OAuth token expiry in streaming, attempting refresh...');
+          const refreshed = await this.refreshTokenAndRecreateClient();
+          if (refreshed) {
+            console.log('[AnthropicAdapter] Token refreshed, retrying streaming request...');
+            attempt--;
+            continue;
+          }
+          console.error('[AnthropicAdapter] Token refresh failed, returning auth error to user');
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'text',
+                  text: `⚠️ **Authentication Error:** Your Claude Code session has expired and could not be refreshed.\n\nPlease re-authenticate by running \`claude login\` in your terminal.`,
+                },
+              ],
+            },
+            toolCalls: [],
+            recoveredFromError: true,
+            recoveredError: 'OAuth token expired and refresh failed',
+          };
+        }
 
         // Check if this is the last attempt or if the error is not retryable
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
@@ -2446,14 +2666,65 @@ class GeminiAdapter extends BaseAdapter {
  * - Any model with reasoning capabilities
  */
 class OpenAIResponsesAdapter extends BaseAdapter {
-  constructor(client, model) {
+  constructor(client, model, provider = 'openai') {
     super(client, model);
+    this.provider = provider.toLowerCase();
     this.maxRetries = 3;
     this.baseDelay = 1000;
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
+    this._tokenRefreshAttempted = false;
 
     // Models that support reasoning (o-series)
     this.reasoningModels = new Set(['o1', 'o1-mini', 'o1-preview', 'o3', 'o3-mini', 'o3-preview', 'gpt-5', 'gpt-5.1-codex-max']);
+  }
+
+  /**
+   * Check if an error is an OAuth authentication error
+   */
+  isAuthError(error) {
+    if (error.status !== 401) return false;
+    const message = error.message || '';
+    return message.includes('token') || message.includes('authentication') || message.includes('unauthorized');
+  }
+
+  /**
+   * Attempt to refresh the Codex OAuth token and recreate the client
+   */
+  async refreshTokenAndRecreateClient() {
+    if (this.provider !== 'openai-codex') return false;
+    if (this._tokenRefreshAttempted) {
+      console.log('[OpenAIResponsesAdapter] Token refresh already attempted, skipping');
+      return false;
+    }
+
+    this._tokenRefreshAttempted = true;
+    console.log('[OpenAIResponsesAdapter] Attempting to refresh expired Codex token...');
+
+    try {
+      const credentials = await CodexAuthManager.getCodexCredentials();
+      if (!credentials?.refreshToken) {
+        console.error('[OpenAIResponsesAdapter] No refresh token available');
+        return false;
+      }
+
+      const result = await tokenRefreshManager.getValidAccessToken('openai-codex', credentials, true);
+      if (!result?.accessToken) {
+        console.error('[OpenAIResponsesAdapter] Token refresh returned no access token');
+        return false;
+      }
+
+      console.log('[OpenAIResponsesAdapter] Token refreshed successfully, recreating client');
+
+      this.client = new OpenAI({
+        apiKey: result.accessToken,
+        baseURL: 'https://api.openai.com/v1',
+      });
+
+      return true;
+    } catch (refreshError) {
+      console.error('[OpenAIResponsesAdapter] Token refresh failed:', refreshError.message);
+      return false;
+    }
   }
 
   /**
@@ -2676,6 +2947,28 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       } catch (error) {
         lastError = error;
 
+        // Handle OAuth token expiry for openai-codex provider
+        if (this.isAuthError(error) && this.provider === 'openai-codex') {
+          console.log('[OpenAIResponsesAdapter] Detected OAuth token expiry, attempting refresh...');
+          const refreshed = await this.refreshTokenAndRecreateClient();
+          if (refreshed) {
+            console.log('[OpenAIResponsesAdapter] Token refreshed, retrying request...');
+            attempt--;
+            continue;
+          }
+          console.error('[OpenAIResponsesAdapter] Token refresh failed, returning auth error to user');
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: `⚠️ **Authentication Error:** Your Codex session has expired and could not be refreshed.\n\nPlease re-authenticate with Codex.`,
+              tool_calls: [],
+            },
+            toolCalls: [],
+            recoveredFromError: true,
+            recoveredError: 'OAuth token expired and refresh failed',
+          };
+        }
+
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           console.error(`OpenAI Responses call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
             status: error.status,
@@ -2837,6 +3130,28 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       } catch (error) {
         lastError = error;
 
+        // Handle OAuth token expiry for openai-codex provider
+        if (this.isAuthError(error) && this.provider === 'openai-codex') {
+          console.log('[OpenAIResponsesAdapter] Detected OAuth token expiry in streaming, attempting refresh...');
+          const refreshed = await this.refreshTokenAndRecreateClient();
+          if (refreshed) {
+            console.log('[OpenAIResponsesAdapter] Token refreshed, retrying streaming request...');
+            attempt--;
+            continue;
+          }
+          console.error('[OpenAIResponsesAdapter] Token refresh failed, returning auth error to user');
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: `⚠️ **Authentication Error:** Your Codex session has expired and could not be refreshed.\n\nPlease re-authenticate with Codex.`,
+              tool_calls: [],
+            },
+            toolCalls: [],
+            recoveredFromError: true,
+            recoveredError: 'OAuth token expired and refresh failed',
+          };
+        }
+
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           console.error(`OpenAI Responses streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
             status: error.status,
@@ -2943,13 +3258,13 @@ export async function createLlmAdapter(provider, client, model) {
       // Check if this model requires the new Responses API (GPT-5, o-series)
       if (requiresResponsesApi(model)) {
         console.log(`[LLM Adapter] Using OpenAIResponsesAdapter for model: ${model} (Responses API)`);
-        return new OpenAIResponsesAdapter(client, model);
+        return new OpenAIResponsesAdapter(client, model, lowerCaseProvider);
       }
-      return new OpenAiLikeAdapter(client, model);
+      return new OpenAiLikeAdapter(client, model, lowerCaseProvider);
 
     case 'openai-codex-cli':
       // Codex CLI does not implement the Responses API; always use chat-completions-style adapter.
-      return new OpenAiLikeAdapter(client, model);
+      return new OpenAiLikeAdapter(client, model, lowerCaseProvider);
 
     case 'deepseek':
     case 'grokai':
@@ -2957,7 +3272,7 @@ export async function createLlmAdapter(provider, client, model) {
     case 'local':
     case 'openrouter':
     case 'togetherai':
-      return new OpenAiLikeAdapter(client, model);
+      return new OpenAiLikeAdapter(client, model, lowerCaseProvider);
 
     default:
       throw new Error(`Unsupported provider for LLM adapter: ${provider}`);
