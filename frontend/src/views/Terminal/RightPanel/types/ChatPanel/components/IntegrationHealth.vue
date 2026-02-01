@@ -271,7 +271,7 @@ export default {
 
       if (normalizedProviderId === 'openai-codex-cli') {
         if (integration.statusClass === 'healthy') {
-          await disconnectApp(providerDetails);
+          await disconnectCodex(providerDetails);
         } else {
           await connectCodexFromHealth(providerDetails);
         }
@@ -585,6 +585,30 @@ export default {
 
       try {
         const result = await store.dispatch('appAuth/disconnectClaudeCode');
+        if (result?.success) {
+          await showAlert('Success', `Successfully disconnected from ${providerDetails.name}`);
+          await refreshHealth();
+        } else {
+          await showAlert('Error', result?.error || 'Failed to disconnect.');
+        }
+      } catch (error) {
+        await showAlert('Error', `Failed to disconnect: ${error.message}`);
+      }
+    };
+
+    const disconnectCodex = async (providerDetails) => {
+      const confirmDisconnect = await modal.value.showModal({
+        title: 'Confirm Disconnection',
+        message: `Are you sure you want to disconnect from ${providerDetails.name}?`,
+        confirmText: 'Disconnect',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-danger',
+      });
+
+      if (!confirmDisconnect) return;
+
+      try {
+        const result = await store.dispatch('appAuth/logoutCodex');
         if (result?.success) {
           await showAlert('Success', `Successfully disconnected from ${providerDetails.name}`);
           await refreshHealth();
