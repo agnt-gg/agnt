@@ -196,6 +196,34 @@ class CodexAuthManager {
     return accessToken || null;
   }
 
+  /**
+   * Returns the OAuth access token from the Codex auth file (ignoring API keys).
+   * The OAuth token is required for the ChatGPT backend Codex Responses API.
+   */
+  getOAuthToken() {
+    const { data } = readCodexAuthFile();
+    if (!data || typeof data !== 'object') return null;
+    const accessToken = typeof data.tokens?.access_token === 'string' ? data.tokens.access_token.trim() : '';
+    return accessToken || null;
+  }
+
+  /**
+   * Extracts the chatgpt-account-id from the OAuth JWT access token.
+   * Required as a header for the ChatGPT backend Codex Responses API.
+   */
+  getChatGptAccountId() {
+    const token = this.getOAuthToken();
+    if (!token) return null;
+    try {
+      const parts = token.split('.');
+      if (parts.length < 2) return null;
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+      return payload?.['https://api.openai.com/auth']?.chatgpt_account_id || null;
+    } catch {
+      return null;
+    }
+  }
+
   getRefreshToken() {
     const { data } = readCodexAuthFile();
     if (!data || typeof data !== 'object') return null;

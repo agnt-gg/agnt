@@ -248,20 +248,6 @@ async function processUploadedFiles(files) {
   return { fileContext, imageData };
 }
 
-function getCodexCliSystemInstructions() {
-  return `Codex CLI Mode (no function calling tools):
-- You cannot call tools via function-calling in this session.
-- You CAN run shell commands.
-- You may change directories (for example: cd /path/to/other/project).
-- To run AGNT tools/flows from ANY directory, use the tool runner path in $AGNT_TOOL_RUNNER:
-  node "$AGNT_TOOL_RUNNER" --tool <tool_name> --args '{"key":"value"}'
-- To discover tools, run:
-  node "$AGNT_TOOL_RUNNER" --list
-- Environment variables are already set for you when needed:
-  AGNT_USER_ID, AGNT_CONVERSATION_ID, AGNT_AUTH_TOKEN, AGNT_TOOL_RUNNER, AGNT_REPO_ROOT
-- Tool results are JSON. Parse them, decide next steps, and continue.`;
-}
-
 /**
  * Universal chat handler that replaces all the duplicate chat handlers
  * Supports: orchestrator, agent, workflow, tool, goal, and suggestions
@@ -495,10 +481,6 @@ async function universalChatHandler(req, res, context = {}) {
       toolSchemas,
     });
 
-    if (normalizedProvider === 'openai-codex-cli') {
-      systemPrompt = `${systemPrompt}\n\n${getCodexCliSystemInstructions()}`;
-    }
-
     // Prepare messages - filter out any corrupted messages first, then clone
     messages = messageInput
       .filter((msg) => msg && msg.role && msg.content !== undefined)
@@ -585,11 +567,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     }
     let finalToolSchemas = Array.from(uniqueToolMap.values());
-
-    // Codex CLI backend does not support function-calling tools reliably.
-    if (normalizedProvider === 'openai-codex-cli' && finalToolSchemas.length > 0) {
-      finalToolSchemas = [];
-    }
 
     // Generate assistant message ID early (needed for image extraction events)
     const assistantMessageId = `msg-asst-${Date.now()}`;

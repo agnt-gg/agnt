@@ -6,8 +6,6 @@ import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
-import { createCodexCliClient } from './CodexCliClient.js';
-import CodexCliSessionManager from './CodexCliSessionManager.js';
 
 const baseURLs = {
   cerebras: 'https://api.cerebras.ai/v1',
@@ -20,7 +18,6 @@ const baseURLs = {
   minimax: 'https://api.minimax.io/v1',
   openai: 'https://api.openai.com/v1',
   'openai-codex': 'https://api.openai.com/v1',
-  'openai-codex-cli': 'codex-cli://local',
   openrouter: 'https://openrouter.ai/api/v1',
   togetherai: 'https://api.together.xyz/v1',
   zai: 'https://api.z.ai/api/paas/v4',
@@ -139,29 +136,28 @@ export async function createLlmClient(provider, userId, options = {}) {
     });
   }
 
-  // Codex CLI-backed provider: no OpenAI Platform API call, runs `codex exec` locally.
+  // Codex CLI-backed provider: uses Codex OAuth token with the ChatGPT backend
+  // Responses API for full tool calling support (instead of spawning the CLI binary).
+  // The OAuth token authorizes against chatgpt.com/backend-api/codex, not api.openai.com.
   if (lowerCaseProvider === 'openai-codex-cli') {
-    const codexToken = CodexAuthManager.getAccessToken();
-    if (!codexToken) {
-      throw new Error('OpenAI Codex CLI is not connected. Use device login to connect.');
+    const oauthToken = CodexAuthManager.getOAuthToken();
+    if (!oauthToken) {
+      throw new Error(
+        'OpenAI Codex CLI requires OAuth authentication for the Responses API. ' +
+        'Use device login to connect. (API keys are not supported — use the openai-codex provider instead.)'
+      );
     }
-
-    const sessionKey = CodexCliSessionManager.getSessionKey({
-      userId,
-      conversationId,
-      provider: lowerCaseProvider,
-      scope: conversationId ? 'conversation' : 'user',
-    });
-
-    return createCodexCliClient({
-      defaultModel: 'gpt-5-codex',
-      cwd,
-      sessionKey,
-      userId,
-      conversationId,
-      provider: lowerCaseProvider,
-      fullAuto: codexFullAuto,
-      authToken,
+    const accountId = CodexAuthManager.getChatGptAccountId();
+    const headers = {
+      'OpenAI-Beta': 'responses=experimental',
+    };
+    if (accountId) {
+      headers['chatgpt-account-id'] = accountId;
+    }
+    return new OpenAI({
+      apiKey: oauthToken,
+      baseURL: 'https://chatgpt.com/backend-api/codex',
+      defaultHeaders: headers,
     });
   }
 

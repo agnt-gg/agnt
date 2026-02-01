@@ -64,12 +64,12 @@ export const PROVIDER_CAPABILITIES = {
     },
   },
 
-  // OpenAI Codex CLI runs locally via `codex exec` and does not use the OpenAI Platform API.
+  // OpenAI Codex CLI uses the Codex auth token with the OpenAI Responses API.
   'openai-codex-cli': {
     text: {
       models: ['gpt-5-codex', 'gpt-5'],
       supportsStreaming: true,
-      supportsTools: false,
+      supportsTools: true,
     },
   },
 

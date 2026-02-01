@@ -95,6 +95,7 @@ package-lock.json
 *.claude/
 
 test-results/
+backend/tests/providers/results/*.json
 
 # MCP config (contains sensitive data)
 *mcp.json

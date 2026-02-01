@@ -2558,6 +2558,47 @@ class OpenAIResponsesAdapter extends BaseAdapter {
   }
 
   /**
+   * Recursively sanitize a JSON Schema so the Responses API accepts it.
+   * - Ensures every "type": "array" has an "items" field.
+   * - Strips non-standard keys the Responses API rejects.
+   */
+  _sanitizeSchema(schema) {
+    if (!schema || typeof schema !== 'object') return schema;
+
+    if (Array.isArray(schema)) {
+      return schema.map((item) => this._sanitizeSchema(item));
+    }
+
+    const result = { ...schema };
+
+    // Array type must have items
+    if (result.type === 'array' && !result.items) {
+      result.items = { type: 'string' };
+    }
+
+    // Recurse into items
+    if (result.items) {
+      result.items = this._sanitizeSchema(result.items);
+    }
+
+    // Recurse into properties
+    if (result.properties) {
+      const sanitized = {};
+      for (const [key, value] of Object.entries(result.properties)) {
+        sanitized[key] = this._sanitizeSchema(value);
+      }
+      result.properties = sanitized;
+    }
+
+    // Recurse into additionalProperties if it's a schema
+    if (result.additionalProperties && typeof result.additionalProperties === 'object') {
+      result.additionalProperties = this._sanitizeSchema(result.additionalProperties);
+    }
+
+    return result;
+  }
+
+  /**
    * Transform OpenAI tools format to Responses API format
    */
   _transformToolsToResponses(tools) {
@@ -2567,7 +2608,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       type: 'function',
       name: tool.function.name,
       description: tool.function.description || '',
-      parameters: tool.function.parameters,
+      parameters: this._sanitizeSchema(tool.function.parameters),
     }));
   }
 
@@ -2887,6 +2928,266 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 }
 
 /**
+ * CodexResponsesAdapter — Specialized adapter for the ChatGPT backend Codex Responses API.
+ *
+ * The Codex OAuth token authorizes against chatgpt.com/backend-api/codex/responses,
+ * which has a slightly different request format from the standard OpenAI Responses API:
+ * - Always includes `include: ["reasoning.encrypted_content"]`
+ * - Uses `reasoning.summary` in addition to `reasoning.effort`
+ * - Adds `text.verbosity` for output control
+ * - Uses `tool_choice: "auto"` and `parallel_tool_calls: true` when tools are present
+ * - Always sends `instructions` (even empty string) and `store: false`
+ * - ALWAYS streams (endpoint requires `stream: true`); non-streaming call() collects internally
+ */
+class CodexResponsesAdapter extends OpenAIResponsesAdapter {
+  constructor(client, model) {
+    super(client, model);
+    // Codex models all support reasoning
+    this.reasoningModels = new Set(['gpt-5-codex', 'gpt-5', 'gpt-5.1-codex-max', 'o1', 'o3']);
+  }
+
+  /**
+   * Build Codex-specific request parameters.
+   * Always includes `stream: true` because the ChatGPT backend rejects non-streaming requests.
+   */
+  _buildCodexParams(messages, tools) {
+    const { instructions, input } = this._transformMessagesToInput(messages);
+    const responsesTools = this._transformToolsToResponses(tools);
+
+    const params = {
+      model: this.model,
+      input: input,
+      instructions: instructions || '', // Codex always expects instructions field
+      store: false,
+      stream: true, // ChatGPT backend REQUIRES streaming
+      include: ['reasoning.encrypted_content'],
+    };
+
+    // Add reasoning config for Codex models
+    if (this.supportsReasoning()) {
+      params.reasoning = {
+        effort: 'medium',
+        summary: 'auto',
+      };
+    }
+
+    // Add text verbosity control
+    params.text = {
+      verbosity: 'medium',
+    };
+
+    // Add tools if present
+    if (responsesTools && responsesTools.length > 0) {
+      params.tools = responsesTools.map((tool) => ({
+        ...tool,
+        strict: null, // Codex uses null instead of false
+      }));
+      params.tool_choice = 'auto';
+      params.parallel_tool_calls = true;
+    }
+
+    return params;
+  }
+
+  /**
+   * Consume a streaming response and return accumulated results.
+   * Used by both call() and callStream() to process SSE events.
+   */
+  async _consumeStream(stream, onChunk = null) {
+    let accumulatedContent = '';
+    let accumulatedToolCalls = [];
+    let responseId = null;
+
+    for await (const event of stream) {
+      if (event.type === 'response.output_item.added') {
+        const item = event.item;
+        if (item.type === 'function_call') {
+          accumulatedToolCalls.push({
+            id: item.call_id || `codex-tool-${Date.now()}-${accumulatedToolCalls.length}`,
+            type: 'function',
+            function: {
+              name: item.name || '',
+              arguments: '',
+            },
+          });
+        }
+      } else if (event.type === 'response.output_text.delta') {
+        const delta = event.delta || '';
+        accumulatedContent += delta;
+        if (onChunk) {
+          onChunk({ type: 'content', delta, accumulated: accumulatedContent });
+        }
+      } else if (event.type === 'response.function_call_arguments.delta') {
+        const delta = event.delta || '';
+        const lastToolCall = accumulatedToolCalls[accumulatedToolCalls.length - 1];
+        if (lastToolCall) {
+          lastToolCall.function.arguments += delta;
+          if (onChunk) {
+            onChunk({ type: 'tool_call_delta', index: accumulatedToolCalls.length - 1, toolCall: lastToolCall });
+          }
+        }
+      } else if (event.type === 'response.function_call_arguments.done') {
+        const lastToolCall = accumulatedToolCalls[accumulatedToolCalls.length - 1];
+        if (lastToolCall && onChunk) {
+          onChunk({ type: 'tool_call_delta', index: accumulatedToolCalls.length - 1, toolCall: lastToolCall });
+        }
+      } else if (event.type === 'response.completed') {
+        responseId = event.response?.id || null;
+        if (event.response && event.response.output) {
+          const finalToolCalls = this._extractToolCalls(event.response.output);
+          if (finalToolCalls.length > accumulatedToolCalls.length) {
+            accumulatedToolCalls = finalToolCalls;
+          }
+        }
+      }
+    }
+
+    return { accumulatedContent, accumulatedToolCalls, responseId };
+  }
+
+  /**
+   * Non-streaming call — uses streaming internally since the Codex endpoint requires it,
+   * then returns the assembled response.
+   */
+  async call(messages, tools) {
+    let lastError;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        const params = this._buildCodexParams(messages, tools);
+
+        console.log(`[Codex Responses] Calling model '${this.model}' via ChatGPT backend (streaming internally)`);
+        console.log(`[Codex Responses] Input items: ${params.input.length}, Tools: ${params.tools?.length || 0}`);
+
+        const stream = await this.client.responses.create(params);
+        const { accumulatedContent, accumulatedToolCalls, responseId } = await this._consumeStream(stream);
+
+        if (attempt > 0) {
+          console.log(`Codex Responses call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
+        }
+
+        return {
+          responseMessage: {
+            role: 'assistant',
+            content: accumulatedContent || null,
+            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+          },
+          toolCalls: accumulatedToolCalls,
+          _responsesApiId: responseId,
+        };
+      } catch (error) {
+        lastError = error;
+
+        if (attempt === this.maxRetries || !this.isRetryableError(error)) {
+          console.error(`Codex Responses call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
+            status: error.status,
+            message: error.message,
+          });
+
+          const userFriendlyError = parseApiErrorMessage(error);
+
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\nThis model (${this.model}) uses the Codex Responses API. Please check your OAuth connection or try a different model.`,
+              tool_calls: [],
+            },
+            toolCalls: [],
+            recoveredFromError: true,
+            recoveredError: error.message || 'Unknown error',
+          };
+        }
+
+        const delay = this.calculateDelay(attempt);
+        console.warn(`Codex Responses call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms:`, {
+          status: error.status,
+          message: error.message,
+        });
+
+        await this.sleep(delay);
+      }
+    }
+
+    return {
+      responseMessage: {
+        role: 'assistant',
+        content: "I encountered an unexpected error with the Codex Responses API, but I'm still here to help. Please try your request again.",
+        tool_calls: [],
+      },
+      toolCalls: [],
+      recoveredFromError: true,
+    };
+  }
+
+  /**
+   * Streaming call — passes chunks to onChunk callback as they arrive.
+   */
+  async callStream(messages, tools, onChunk, context = {}) {
+    let lastError;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        const params = this._buildCodexParams(messages, tools);
+
+        console.log(`[Codex Responses] Streaming call to model '${this.model}' via ChatGPT backend`);
+
+        const stream = await this.client.responses.create(params);
+        const { accumulatedContent, accumulatedToolCalls } = await this._consumeStream(stream, onChunk);
+
+        if (attempt > 0) {
+          console.log(`Codex Responses streaming call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
+        }
+
+        return {
+          responseMessage: {
+            role: 'assistant',
+            content: accumulatedContent || null,
+            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+          },
+          toolCalls: accumulatedToolCalls,
+        };
+      } catch (error) {
+        lastError = error;
+
+        if (attempt === this.maxRetries || !this.isRetryableError(error)) {
+          console.error(`Codex Responses streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
+            status: error.status,
+            message: error.message,
+          });
+
+          const userFriendlyError = parseApiErrorMessage(error);
+
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\nThis model (${this.model}) uses the Codex Responses API. Please check your OAuth connection or try a different model.`,
+              tool_calls: [],
+            },
+            toolCalls: [],
+            recoveredFromError: true,
+            recoveredError: error.message || 'Unknown error',
+          };
+        }
+
+        const delay = this.calculateDelay(attempt);
+        console.warn(`Codex Responses streaming call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms`);
+        await this.sleep(delay);
+      }
+    }
+
+    return {
+      responseMessage: {
+        role: 'assistant',
+        content: "I encountered an unexpected error with the Codex Responses API, but I'm still here to help. Please try your request again.",
+        tool_calls: [],
+      },
+      toolCalls: [],
+      recoveredFromError: true,
+    };
+  }
+}
+
+/**
  * Check if a model requires the OpenAI Responses API instead of Chat Completions
  * @param {string} model The model name
  * @returns {boolean} True if the model uses the Responses API
@@ -2948,7 +3249,11 @@ export async function createLlmAdapter(provider, client, model) {
       return new OpenAiLikeAdapter(client, model);
 
     case 'openai-codex-cli':
-      // Codex CLI does not implement the Responses API; always use chat-completions-style adapter.
+      // Codex CLI models use the ChatGPT backend Responses API (different from standard OpenAI).
+      if (requiresResponsesApi(model)) {
+        console.log(`[LLM Adapter] Using CodexResponsesAdapter for codex-cli model: ${model} (ChatGPT backend)`);
+        return new CodexResponsesAdapter(client, model);
+      }
       return new OpenAiLikeAdapter(client, model);
 
     case 'deepseek':

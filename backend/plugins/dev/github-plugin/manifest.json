@@ -140,6 +140,7 @@
           },
           "labels": {
             "type": "array",
+            "items": { "type": "string" },
             "inputType": "text",
             "description": "The labels to add or remove (comma-separated)",
             "conditional": {
