@@ -87,6 +87,9 @@ export default {
         }
       }
     },
+    PERSIST_CONVERSATIONS(state) {
+      saveConversations(state.conversations);
+    },
     ADD_TOOL_CALL(state, { workflowId, messageId, toolCall }) {
       const conversation = state.conversations[workflowId];
       if (conversation) {

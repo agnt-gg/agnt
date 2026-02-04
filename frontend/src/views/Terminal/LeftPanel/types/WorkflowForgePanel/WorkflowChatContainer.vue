@@ -401,11 +401,9 @@ export default {
           break;
 
         case 'final_content':
-          store.dispatch('workflowChat/updateMessageContent', {
-            workflowId: props.workflowId,
-            messageId: data.assistantMessageId,
-            content: data.content,
-          });
+          // Don't replace content — it was already populated by content_delta events.
+          // Just persist the conversations and clear the status.
+          store.commit('workflowChat/PERSIST_CONVERSATIONS');
           store.dispatch('workflowChat/clearMessageStatus', {
             workflowId: props.workflowId,
             messageId: data.assistantMessageId,
