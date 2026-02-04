@@ -74,14 +74,14 @@ class KimiService {
    */
   transformModels(rawModels) {
     return rawModels
-      .filter((model) => model.id && model.id.startsWith('moonshot-'))
+      .filter((model) => model.id)
       .map((model) => ({
         id: model.id,
         name: model.id,
-        description: `Moonshot AI ${model.id} - Long context support (256K)`,
-        contextLength: 256000,
-        maxOutput: 8192,
-        features: ['long_context', 'tool_calls', 'chat'],
+        description: model.description || `Moonshot AI ${model.id}`,
+        contextLength: model.context_length || 256000,
+        maxOutput: model.max_output_tokens || 8192,
+        features: ['chat', 'tool_calls'],
         type: 'production',
         ownedBy: 'moonshot-ai',
       }))
@@ -117,11 +117,31 @@ class KimiService {
 
   /**
    * Returns fallback models if API is unavailable
-   * Based on: https://platform.moonshot.ai/docs/introduction
+   * Based on: https://platform.moonshot.ai/docs
    * @returns {Array} Array of fallback model objects
    */
   getFallbackModels() {
     return [
+      {
+        id: 'kimi-k2.5',
+        name: 'Kimi K2.5',
+        description: 'Kimi K2.5 - Latest flagship model with 256K context',
+        contextLength: 256000,
+        maxOutput: 8192,
+        features: ['chat', 'tool_calls', 'reasoning'],
+        type: 'production',
+        ownedBy: 'moonshot-ai',
+      },
+      {
+        id: 'kimi-k2-thinking',
+        name: 'Kimi K2 Thinking',
+        description: 'Kimi K2 Thinking - Advanced reasoning model',
+        contextLength: 256000,
+        maxOutput: 8192,
+        features: ['chat', 'tool_calls', 'reasoning'],
+        type: 'production',
+        ownedBy: 'moonshot-ai',
+      },
       {
         id: 'moonshot-v1-8k',
         name: 'moonshot-v1-8k',

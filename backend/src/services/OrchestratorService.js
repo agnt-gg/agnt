@@ -623,7 +623,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       timestamp: Date.now(),
     });
 
-    let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason } = await adapter.callStream(
+    let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError } = await adapter.callStream(
       contextResult.messages,
       finalToolSchemas,
       (chunk) => {
@@ -641,6 +641,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
       },
       conversationContext // Pass context for vision image handling
     );
+
+    // Handle API errors that the adapter recovered from (401, 429, etc.)
+    if (recoveredFromError) {
+      console.warn(`[OrchestratorService] LLM adapter recovered from error: ${recoveredError}`);
+      const errorContent = responseMessage?.content || `API Error: ${recoveredError}`;
+      // Send as content_delta to fill the existing empty assistant message bubble
+      sendEvent('content_delta', {
+        assistantMessageId,
+        delta: errorContent,
+        accumulated: errorContent,
+      });
+    }
 
     // Handle tools being skipped (model doesn't support function calling)
     if (toolsSkipped) {

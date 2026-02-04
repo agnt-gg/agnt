@@ -1,5 +1,13 @@
 import { API_CONFIG } from '@/tt.config.js';
 
+// Map internal provider keys to user-facing display names where they differ
+export const PROVIDER_DISPLAY_NAMES = {
+  Minimax: 'MiniMax',
+  ZAI: 'Z-AI',
+  minimax: 'MiniMax',
+  zai: 'Z-AI',
+};
+
 // Single source of truth for AI providers that require API keys (excludes 'Local')
 export const AI_PROVIDERS_WITH_API = [
   'anthropic',
@@ -9,14 +17,14 @@ export const AI_PROVIDERS_WITH_API = [
   'gemini',
   'grokai',
   'groq',
-  // 'kimi', // Hidden - not ready for release
-  // 'minimax', // Hidden - not ready for release
+  'kimi',
+  'minimax',
   'openai',
   'openai-codex',
   'openai-codex-cli',
   'openrouter',
   'togetherai',
-  // 'zai', // Hidden - not ready for release
+  'zai',
 ];
 
 // Mapping of provider names to their fetch action names
@@ -28,15 +36,15 @@ export const PROVIDER_FETCH_ACTIONS = {
   Gemini: 'aiProvider/fetchGeminiModels',
   GrokAI: 'aiProvider/fetchGrokAIModels',
   Groq: 'aiProvider/fetchGroqModels',
-  // Kimi: 'aiProvider/fetchKimiModels', // Hidden - not ready for release
+  Kimi: 'aiProvider/fetchKimiModels',
   Local: 'aiProvider/fetchLocalModels',
-  // Minimax: 'aiProvider/fetchMinimaxModels', // Hidden - not ready for release
+  Minimax: 'aiProvider/fetchMinimaxModels',
   OpenAI: 'aiProvider/fetchOpenAIModels',
   'OpenAI-Codex': 'aiProvider/fetchOpenAICodexModels',
   'OpenAI-Codex-CLI': 'aiProvider/fetchOpenAICodexCliModels',
   OpenRouter: 'aiProvider/fetchOpenRouterModels',
   TogetherAI: 'aiProvider/fetchTogetherAIModels',
-  // ZAI: 'aiProvider/fetchZAIModels', // Hidden - not ready for release
+  ZAI: 'aiProvider/fetchZAIModels',
 };
 
 export default {
@@ -50,15 +58,15 @@ export default {
       'Gemini',
       'GrokAI',
       'Groq',
-      // 'Kimi', // Hidden - not ready for release
+      'Kimi',
       'Local',
-      // 'Minimax', // Hidden - not ready for release
+      'Minimax',
       'OpenAI',
       'OpenAI-Codex',
       'OpenAI-Codex-CLI',
       'OpenRouter',
       'TogetherAI',
-      // 'ZAI', // Hidden - not ready for release
+      'ZAI',
     ],
     customProviders: [], // Custom OpenAI-compatible providers
     allModels: {
@@ -69,15 +77,15 @@ export default {
       Gemini: [], // Will be populated dynamically from API
       GrokAI: [], // Will be populated dynamically from API
       Groq: [], // Will be populated dynamically from API
-      // Kimi: [], // Hidden - not ready for release
+      Kimi: [], // Will be populated dynamically from API
       Local: [], // Will be populated dynamically from LM Studio
-      // Minimax: [], // Hidden - not ready for release
+      Minimax: [], // Will be populated dynamically from API
       OpenAI: [], // Will be populated dynamically from API
       'OpenAI-Codex': [], // Will be populated dynamically from API
       'OpenAI-Codex-CLI': [], // Will be populated dynamically from API
       OpenRouter: [], // Will be populated dynamically from API
       TogetherAI: [], // Will be populated dynamically from API
-      // ZAI: [], // Hidden - not ready for release
+      ZAI: [], // Will be populated dynamically from API
     },
     selectedProvider: localStorage.getItem('selectedProvider') || null, // Load from local storage, no default yet
     selectedModel: localStorage.getItem('selectedModel') || null, // Load from local storage, no default yet
@@ -457,6 +465,18 @@ export default {
 
     async fetchDeepSeekModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'DeepSeek', forceRefresh });
+    },
+
+    async fetchKimiModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Kimi', forceRefresh });
+    },
+
+    async fetchMinimaxModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Minimax', forceRefresh });
+    },
+
+    async fetchZAIModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'ZAI', forceRefresh });
     },
 
     async fetchLocalModels({ commit, state }, { forceRefresh = false } = {}) {

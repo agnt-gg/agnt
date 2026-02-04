@@ -9,7 +9,7 @@
       <CustomSelect
         ref="providerSelect"
         :options="providerOptions"
-        :placeholder="selectedProvider || 'Select Provider'"
+        :placeholder="PROVIDER_DISPLAY_NAMES[selectedProvider] || selectedProvider || 'Select Provider'"
         @option-selected="handleProviderSelected"
       />
 
@@ -59,7 +59,7 @@ import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import CustomProviderDialog from './CustomProviderDialog.vue';
-import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS } from '@/store/app/aiProvider.js';
+import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
@@ -125,7 +125,7 @@ export default {
     const providerOptions = computed(() => {
       // Built-in providers
       const builtInOptions = providers.value.map((provider) => ({
-        label: provider,
+        label: PROVIDER_DISPLAY_NAMES[provider] || provider,
         value: provider,
         // Local provider is always enabled (user can select it anytime)
         // Other providers are enabled only if they're in the connected apps list
@@ -437,6 +437,7 @@ export default {
       editCurrentProvider,
       deleteCurrentProvider,
       toolSupportWarning,
+      PROVIDER_DISPLAY_NAMES,
     };
   },
 };

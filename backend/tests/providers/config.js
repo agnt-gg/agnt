@@ -18,9 +18,9 @@ export const PROVIDERS = {
   grokai:      { model: 'grok-4-1-fast-reasoning',     category: 'api', adapter: 'openai-like' },
   openrouter:  { model: 'openai/gpt-4-turbo',          category: 'api', adapter: 'openai-like' },
   togetherai:  { model: 'meta-llama/llama-3.1-70b-instruct', category: 'api', adapter: 'openai-like' },
-  kimi:        { model: 'moonshot-v1-8k',              category: 'api', adapter: 'openai-like' },
-  minimax:     { model: 'abab6.5s-chat',               category: 'api', adapter: 'openai-like' },
-  zai:         { model: 'glm-4-flash',                 category: 'api', adapter: 'openai-like' },
+  kimi:        { model: 'kimi-k2.5',                   category: 'api', adapter: 'openai-like' },
+  minimax:     { model: 'MiniMax-M2.1',                category: 'api', adapter: 'openai-like' },
+  zai:         { model: 'GLM-4.7',                     category: 'api', adapter: 'openai-like' },
 
   // ── CLI / hybrid providers (local auth) ──────────────────────────────
   'claude-code':       { model: 'claude-sonnet-4-5-20250929', category: 'cli', adapter: 'anthropic' },

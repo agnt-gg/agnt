@@ -177,12 +177,12 @@ export const PROVIDER_CAPABILITIES = {
 
   kimi: {
     text: {
-      models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+      models: ['kimi-k2.5', 'kimi-k2-thinking', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
       supportsStreaming: true,
       supportsTools: true,
     },
     vision: {
-      models: ['moonshot-v1-128k'],
+      models: ['kimi-k2.5'],
       supportsStreaming: true,
     },
     imageGen: null,
@@ -190,7 +190,7 @@ export const PROVIDER_CAPABILITIES = {
 
   minimax: {
     text: {
-      models: ['abab6.5s-chat', 'abab6.5-chat', 'abab6.5g-chat', 'abab5.5s-chat'],
+      models: ['MiniMax-M2.1', 'MiniMax-M2'],
       supportsStreaming: true,
       supportsTools: true,
     },
@@ -200,12 +200,12 @@ export const PROVIDER_CAPABILITIES = {
 
   zai: {
     text: {
-      models: ['glm-4.7', 'glm-4-plus', 'glm-4', 'glm-4-air', 'glm-4-flash'],
+      models: ['GLM-4.7', 'GLM-4.6', 'GLM-4.5'],
       supportsStreaming: true,
       supportsTools: true,
     },
     vision: {
-      models: ['glm-4.7', 'glm-4-plus', 'glm-4'],
+      models: ['GLM-4.7', 'GLM-4.6', 'GLM-4.5'],
       supportsStreaming: true,
     },
     imageGen: null,

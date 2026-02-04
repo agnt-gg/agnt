@@ -19,10 +19,12 @@ class StreamEngine {
       gemini: 'https://generativelanguage.googleapis.com/v1beta/',
       grokai: 'https://api.x.ai/v1/',
       groq: 'https://api.groq.com/openai/v1',
+      kimi: 'https://api.moonshot.ai/v1',
       local: 'http://127.0.0.1:1234/v1',
+      minimax: 'https://api.minimax.io/v1',
       openai: 'https://api.openai.com/v1',
       togetherai: 'https://api.together.xyz/v1',
-      // Add other provider base URLs as needed
+      zai: 'https://api.z.ai/api/paas/v4',
     };
     this.systemPrompt = `RESPONSE FORMAT:
 
@@ -172,10 +174,13 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'gemini':
         case 'grokai':
         case 'groq':
+        case 'kimi':
         case 'local':
+        case 'minimax':
         case 'openai':
         case 'openai-codex':
         case 'openai-codex-cli':
+        case 'zai':
           await this.startCodexResponsesStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client);
           break;
         case 'openrouter':
@@ -732,13 +737,15 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         gemini: 'gemini-2.5-pro-exp-03-25',
         grokai: 'grok-4',
         groq: 'llama-3.3-70b-versatile',
+        kimi: 'kimi-k2.5',
+        minimax: 'MiniMax-M2.1',
         openai: 'gpt-4o',
         'openai-codex': 'gpt-4o',
         'openai-codex-cli': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
-        // Add default models for other providers
+        zai: 'GLM-4.7',
       }[lowerCaseProvider];
 
       const selectedModel = model || defaultModel;
@@ -790,6 +797,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
         case 'deepseek':
+        case 'kimi':
+        case 'minimax':
+        case 'zai':
           response = await client.chat.completions.create({
             model: selectedModel,
             messages: [
@@ -1200,7 +1210,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         gemini: 'gemini-pro',
         grokai: 'grok-4',
         groq: 'mixtral-8x7b-32768',
-        // Add default models for other providers
+        kimi: 'kimi-k2.5',
+        minimax: 'MiniMax-M2.1',
+        zai: 'GLM-4.7',
       }[lowerCaseProvider];
 
       const selectedModel = model || defaultModel;
@@ -1275,6 +1287,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
         case 'deepseek':
+        case 'kimi':
+        case 'minimax':
+        case 'zai':
           completion = await client.chat.completions.create({
             model: selectedModel,
             messages: [
@@ -1481,13 +1496,15 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         gemini: 'gemini-2.5-pro-exp-03-25',
         grokai: 'grok-4',
         groq: 'llama-3.3-70b-versatile',
+        kimi: 'kimi-k2.5',
+        minimax: 'MiniMax-M2.1',
         openai: 'gpt-4o',
         'openai-codex': 'gpt-4o',
         'openai-codex-cli': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
-        // Add default models for other providers
+        zai: 'GLM-4.7',
       }[lowerCaseProvider];
 
       const selectedModel = model || defaultModel;
@@ -1539,6 +1556,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
         case 'deepseek':
+        case 'kimi':
+        case 'minimax':
+        case 'zai':
           response = await client.chat.completions.create({
             model: selectedModel,
             messages: [
@@ -1698,7 +1718,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         gemini: 'gemini-pro',
         grokai: 'grok-4',
         groq: 'mixtral-8x7b-32768',
-        // Add default models for other providers
+        kimi: 'kimi-k2.5',
+        minimax: 'MiniMax-M2.1',
+        zai: 'GLM-4.7',
       }[lowerCaseProvider];
 
       const selectedModel = model || defaultModel;
@@ -1783,6 +1805,9 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return completion.choices[0].message.content;
 
         case 'deepseek':
+        case 'kimi':
+        case 'minimax':
+        case 'zai':
           completion = await client.chat.completions.create({
             model: selectedModel,
             messages: [

@@ -26,7 +26,7 @@
           <CustomSelect
             ref="providerSelect"
             :options="providerOptions"
-            :placeholder="selectedProvider || 'Select Provider'"
+            :placeholder="PROVIDER_DISPLAY_NAMES[selectedProvider] || selectedProvider || 'Select Provider'"
             :zIndex="10001"
             maxHeight="156px"
             @option-selected="handleProviderSelected"
@@ -97,7 +97,7 @@ import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import CustomProviderDialog from '../../Settings/components/ProviderSelector/CustomProviderDialog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS } from '@/store/app/aiProvider.js';
+import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 
 export default {
@@ -141,8 +141,8 @@ export default {
         return customProvider.provider_name;
       }
 
-      // For built-in providers, the ID is the name
-      return selectedProvider.value;
+      // For built-in providers, apply display name mapping
+      return PROVIDER_DISPLAY_NAMES[selectedProvider.value] || selectedProvider.value;
     });
     const filteredModels = computed(() => store.getters['aiProvider/filteredModels']);
     const isLoadingModels = computed(() => store.state.aiProvider.loadingModels[store.state.aiProvider.selectedProvider] || false);
@@ -188,7 +188,7 @@ export default {
     const providerOptions = computed(() => {
       // Built-in providers
       const builtInOptions = providers.value.map((provider) => ({
-        label: provider,
+        label: PROVIDER_DISPLAY_NAMES[provider] || provider,
         value: provider,
         disabled: provider.toLowerCase() === 'local' ? false : !connectedProvidersLower.value.includes(provider.toLowerCase()),
       }));
@@ -434,6 +434,7 @@ export default {
       editCurrentProvider,
       deleteCurrentProvider,
       toolSupportWarning,
+      PROVIDER_DISPLAY_NAMES,
     };
   },
 };

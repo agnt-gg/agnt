@@ -75,7 +75,7 @@ class ZAIService {
    */
   transformModels(rawModels) {
     return rawModels
-      .filter((model) => model.id && model.id.startsWith('glm-'))
+      .filter((model) => model.id)
       .map((model) => ({
         id: model.id,
         name: model.id,
@@ -90,18 +90,20 @@ class ZAIService {
   }
 
   /**
-   * Returns the list of available Z.AI models
+   * Returns the list of available Z.AI models (fallback)
    * Based on documentation: https://docs.z.ai/api-reference/introduction
    *
-   * Primary Model:
-   * - glm-4.7: Latest GLM model with multimodal capabilities
+   * Models:
+   * - GLM-4.7: Latest multimodal model
+   * - GLM-4.6: Advanced multimodal model
+   * - GLM-4.5: Multimodal model
    *
    * @returns {Array} Array of model objects
    */
   getAvailableModels() {
     return [
       {
-        id: 'glm-4.7',
+        id: 'GLM-4.7',
         name: 'GLM-4.7',
         description: 'Z.AI GLM-4.7 - Latest multimodal model with vision and tool calling',
         contextLength: 128000,
@@ -111,9 +113,9 @@ class ZAIService {
         ownedBy: 'z.ai',
       },
       {
-        id: 'glm-4-plus',
-        name: 'GLM-4 Plus',
-        description: 'Z.AI GLM-4 Plus - Enhanced flagship model',
+        id: 'GLM-4.6',
+        name: 'GLM-4.6',
+        description: 'Z.AI GLM-4.6 - Advanced multimodal model',
         contextLength: 128000,
         maxOutput: 8192,
         features: ['chat', 'vision', 'tool_calls', 'multimodal'],
@@ -121,32 +123,12 @@ class ZAIService {
         ownedBy: 'z.ai',
       },
       {
-        id: 'glm-4',
-        name: 'GLM-4',
-        description: 'Z.AI GLM-4 - Flagship multimodal model',
+        id: 'GLM-4.5',
+        name: 'GLM-4.5',
+        description: 'Z.AI GLM-4.5 - Multimodal model',
         contextLength: 128000,
         maxOutput: 8192,
         features: ['chat', 'vision', 'tool_calls', 'multimodal'],
-        type: 'production',
-        ownedBy: 'z.ai',
-      },
-      {
-        id: 'glm-4-air',
-        name: 'GLM-4 Air',
-        description: 'Z.AI GLM-4 Air - Lightweight and efficient',
-        contextLength: 128000,
-        maxOutput: 4096,
-        features: ['chat', 'tool_calls'],
-        type: 'production',
-        ownedBy: 'z.ai',
-      },
-      {
-        id: 'glm-4-flash',
-        name: 'GLM-4 Flash',
-        description: 'Z.AI GLM-4 Flash - Ultra-fast inference',
-        contextLength: 128000,
-        maxOutput: 4096,
-        features: ['chat', 'tool_calls'],
         type: 'production',
         ownedBy: 'z.ai',
       },

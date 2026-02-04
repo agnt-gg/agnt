@@ -15,6 +15,7 @@
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import { useStore } from 'vuex';
 import { computed, onMounted, ref, watch } from 'vue';
+import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 
 export default {
   components: {
@@ -57,7 +58,7 @@ export default {
 
     const providerOptions = computed(() =>
       providers.value.map((p) => ({
-        label: `${p}${connectedProviders.value.includes(p.toLowerCase()) ? '' : ' (not connected)'}`,
+        label: `${PROVIDER_DISPLAY_NAMES[p] || p}${connectedProviders.value.includes(p.toLowerCase()) ? '' : ' (not connected)'}`,
         value: p,
         disabled: !connectedProviders.value.includes(p.toLowerCase()),
       }))

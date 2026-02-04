@@ -3259,9 +3259,12 @@ export async function createLlmAdapter(provider, client, model) {
     case 'deepseek':
     case 'grokai':
     case 'groq':
+    case 'kimi':
     case 'local':
+    case 'minimax':
     case 'openrouter':
     case 'togetherai':
+    case 'zai':
       return new OpenAiLikeAdapter(client, model);
 
     default:

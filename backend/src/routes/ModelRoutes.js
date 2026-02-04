@@ -9,6 +9,9 @@ import groqService from '../services/ai/providers/Groq.js';
 import togetherAIService from '../services/ai/providers/TogetherAI.js';
 import cerebrasService from '../services/ai/providers/Cerebras.js';
 import deepSeekService from '../services/ai/providers/DeepSeek.js';
+import kimiService from '../services/ai/providers/Kimi.js';
+import minimaxService from '../services/ai/providers/Minimax.js';
+import zaiService from '../services/ai/providers/ZAI.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
@@ -32,10 +35,13 @@ const providerServices = {
   togetherai: togetherAIService,
   cerebras: cerebrasService,
   deepseek: deepSeekService,
+  kimi: kimiService,
+  minimax: minimaxService,
+  zai: zaiService,
 };
 
 // Providers that have hardcoded models and don't require API key for model listing
-const providersWithHardcodedModels = ['cerebras', 'deepseek', 'openai-codex-cli'];
+const providersWithHardcodedModels = ['openai-codex-cli'];
 
 // Generic endpoint for fetching models from any provider
 router.get('/:provider/models', async (req, res) => {

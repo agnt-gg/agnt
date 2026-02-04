@@ -1,6 +1,6 @@
 <template>
   <div v-if="popupVisible" ref="popup" class="popup-tutorial" :style="popupStyle">
-    <button @click="closeTutorial" class="close-button">&times;</button>
+    <button @click="closeTutorial(true)" class="close-button">&times;</button>
     <h3>{{ currentStep.title }}</h3>
     <p>{{ currentStep.content }}</p>
     <div v-if="currentStep.media" class="media-container">
@@ -643,7 +643,15 @@ export default {
       }
     };
 
-    const closeTutorial = () => {
+    const closeTutorial = (markComplete = false) => {
+      // When the user explicitly dismisses (X button), mark all steps complete
+      // so the tour won't restart on next visit
+      if (markComplete && props.config.length > 0) {
+        const allSteps = props.config.map((_, i) => i);
+        localStorage.setItem(`tutorial_${props.tutorialId}`, JSON.stringify(allSteps));
+        completedSteps.value = allSteps;
+      }
+
       popupVisible.value = false;
       highlightStyle.value = null;
       stopAudio();

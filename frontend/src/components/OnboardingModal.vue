@@ -83,7 +83,7 @@
                   <div class="provider-icon">
                     <SvgIcon :name="provider.icon" />
                   </div>
-                  <span class="provider-name">{{ provider.name }}</span>
+                  <span class="provider-name">{{ PROVIDER_DISPLAY_NAMES[provider.id] || PROVIDER_DISPLAY_NAMES[provider.name] || provider.name }}</span>
                 </button>
               </div>
 
@@ -206,6 +206,7 @@ import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 
 export default {
@@ -760,6 +761,7 @@ export default {
       handleSkip,
       handleProviderClick,
       checkPseudonymAvailability,
+      PROVIDER_DISPLAY_NAMES,
     };
   },
 };

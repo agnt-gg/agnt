@@ -104,21 +104,21 @@ const PROVIDER_CONFIG = {
   },
   kimi: {
     baseURL: 'https://api.moonshot.ai/v1',
-    defaultModel: 'moonshot-v1-128k',
+    defaultModel: 'kimi-k2.5',
     supportsVision: true,
     supportsImageGen: false,
     supportsImageEdit: false,
   },
   minimax: {
     baseURL: 'https://api.minimax.io/v1',
-    defaultModel: 'abab6.5s-chat',
+    defaultModel: 'MiniMax-M2.1',
     supportsVision: false,
     supportsImageGen: false,
     supportsImageEdit: false,
   },
   zai: {
     baseURL: 'https://api.z.ai/api/paas/v4',
-    defaultModel: 'glm-4.7',
+    defaultModel: 'GLM-4.7',
     supportsVision: true,
     supportsImageGen: false,
     supportsImageEdit: false,
@@ -529,6 +529,7 @@ class GenerateWithAiLlm extends BaseAction {
       case 'groq':
       case 'kimi':
       case 'local':
+      case 'minimax':
       case 'openai':
       case 'openai-codex':
       case 'openai-codex-cli':

@@ -56,6 +56,7 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
+import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 
 export default {
@@ -142,7 +143,7 @@ export default {
           return {
             provider: provider.id,
             icon: provider.icon || 'custom',
-            name: provider.name || provider.id.charAt(0).toUpperCase() + provider.id.slice(1),
+            name: PROVIDER_DISPLAY_NAMES[provider.id] || PROVIDER_DISPLAY_NAMES[provider.name] || provider.name || provider.id.charAt(0).toUpperCase() + provider.id.slice(1),
             metric: metric || (status === 'healthy' ? 'Connected' : 'Not Connected'),
             statusClass: status || 'error',
             connectionType: provider.connectionType || provider.connection_type,

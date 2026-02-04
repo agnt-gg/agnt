@@ -1,46 +1,126 @@
 /**
  * DeepSeek Service
  *
- * Note: DeepSeek does NOT have a /models API endpoint like OpenAI-compatible APIs.
- * Models are documented at: https://api-docs.deepseek.com/quick_start/pricing
- * This service returns the hardcoded list of available models.
+ * DeepSeek AI models with reasoning capabilities
+ * OpenAI-compatible API at https://api.deepseek.com/v1
+ *
+ * Documentation: https://api-docs.deepseek.com/
  */
+
+import fetch from 'node-fetch';
 
 class DeepSeekService {
   constructor() {
     this.baseURL = 'https://api.deepseek.com';
-    // DeepSeek doesn't have a models endpoint, so we use hardcoded models
     this.modelsCache = null;
     this.cacheTimestamp = null;
     this.cacheTTL = 60 * 60 * 1000; // 1 hour in milliseconds
   }
 
   /**
-   * Returns available models from DeepSeek
-   * Note: DeepSeek doesn't have a /models endpoint, so we return hardcoded models
-   * based on their documentation: https://api-docs.deepseek.com/quick_start/pricing
-   *
-   * @param {string} apiKey - DeepSeek API key (not used for model listing)
+   * Fetches available models from DeepSeek API
+   * @param {string} apiKey - DeepSeek API key
    * @param {Object} options - Optional parameters
    * @returns {Promise<Array>} Array of model objects
    */
   async fetchModels(apiKey, options = {}) {
-    // DeepSeek doesn't have a models endpoint - return hardcoded models
-    console.log('Returning hardcoded DeepSeek models (no API endpoint available)');
-    return this.getAvailableModels();
+    const { useCache = true } = options;
+
+    // Check cache first
+    if (useCache && this.isCacheValid()) {
+      console.log('Returning cached DeepSeek models');
+      return this.modelsCache;
+    }
+
+    try {
+      const response = await fetch(`${this.baseURL}/models`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const models = this.transformModels(data.data || []);
+
+      // Cache the results
+      this.modelsCache = models;
+      this.cacheTimestamp = Date.now();
+
+      console.log(`Fetched ${models.length} models from DeepSeek API`);
+      return models;
+    } catch (error) {
+      console.error('Failed to fetch DeepSeek models:', error.message);
+
+      // Return cached models if available, even if expired
+      if (this.modelsCache) {
+        console.log('Returning expired cached models due to API error');
+        return this.modelsCache;
+      }
+
+      // Return fallback models if no cache available
+      return this.getFallbackModels();
+    }
   }
 
   /**
-   * Returns the list of available DeepSeek models
-   * Based on documentation: https://api-docs.deepseek.com/quick_start/pricing
-   *
-   * Models:
-   * - deepseek-chat: DeepSeek-V3.2 (Non-thinking Mode) - 128K context
-   * - deepseek-reasoner: DeepSeek-V3.2 (Thinking Mode) - 128K context
-   *
-   * @returns {Array} Array of model objects
+   * Transforms DeepSeek model data to internal format
+   * @param {Array} rawModels - Raw model data from DeepSeek API
+   * @returns {Array} Transformed model objects
    */
-  getAvailableModels() {
+  transformModels(rawModels) {
+    return rawModels
+      .filter((model) => model.id)
+      .map((model) => ({
+        id: model.id,
+        name: model.id,
+        description: model.description || `DeepSeek ${model.id}`,
+        contextLength: model.context_length || 128000,
+        maxOutput: model.max_output_tokens || 8192,
+        features: model.features || ['chat', 'tool_calls'],
+        type: 'production',
+        ownedBy: model.owned_by || 'deepseek',
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Gets model names only (for compatibility with existing system)
+   * @param {string} apiKey - DeepSeek API key
+   * @param {Object} options - Optional parameters
+   * @returns {Promise<Array<string>>} Array of model IDs
+   */
+  async getModelNames(apiKey, options = {}) {
+    const models = await this.fetchModels(apiKey, options);
+    return models.map((model) => model.id);
+  }
+
+  /**
+   * Checks if cached models are still valid
+   * @returns {boolean} True if cache is valid
+   */
+  isCacheValid() {
+    return this.modelsCache && this.cacheTimestamp && Date.now() - this.cacheTimestamp < this.cacheTTL;
+  }
+
+  /**
+   * Clears the models cache
+   */
+  clearCache() {
+    this.modelsCache = null;
+    this.cacheTimestamp = null;
+  }
+
+  /**
+   * Returns fallback models if API is unavailable
+   * Based on: https://api-docs.deepseek.com/quick_start/pricing
+   * @returns {Array} Array of fallback model objects
+   */
+  getFallbackModels() {
     return [
       {
         id: 'deepseek-chat',
@@ -63,45 +143,6 @@ class DeepSeekService {
         ownedBy: 'deepseek',
       },
     ];
-  }
-
-  /**
-   * Gets model names only (for compatibility with existing system)
-   * @param {string} apiKey - DeepSeek API key (not used)
-   * @param {Object} options - Optional parameters
-   * @returns {Promise<Array<string>>} Array of model IDs
-   */
-  async getModelNames(apiKey, options = {}) {
-    const models = await this.fetchModels(apiKey, options);
-    return models.map((model) => model.id);
-  }
-
-  /**
-   * Checks if cached models are still valid
-   * Note: For DeepSeek, we always return true since models are hardcoded
-   * @returns {boolean} True if cache is valid
-   */
-  isCacheValid() {
-    // Always return true since we use hardcoded models
-    return true;
-  }
-
-  /**
-   * Clears the models cache
-   * Note: No-op for DeepSeek since models are hardcoded
-   */
-  clearCache() {
-    // No-op - models are hardcoded
-    console.log('DeepSeek cache clear requested (no-op - models are hardcoded)');
-  }
-
-  /**
-   * Returns fallback models if needed
-   * Note: For DeepSeek, this returns the same as getAvailableModels
-   * @returns {Array} Array of fallback model objects
-   */
-  getFallbackModels() {
-    return this.getAvailableModels();
   }
 }
 
