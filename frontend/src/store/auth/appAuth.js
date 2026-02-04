@@ -355,6 +355,30 @@ const actions = {
     }
     return response.data;
   },
+  async refreshClaudeCodeToken({ commit, dispatch }) {
+    try {
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/refresh`);
+      if (response.data?.success) {
+        commit('SET_CLAUDE_CODE_STATUS', response.data);
+        return { success: true };
+      }
+      return { success: false, error: response.data?.error };
+    } catch (error) {
+      const data = error?.response?.data;
+      if (data?.code === 'REAUTH_REQUIRED') {
+        // Token revoked — mark as disconnected so UI can prompt reconnect
+        commit('SET_CLAUDE_CODE_STATUS', {
+          available: false,
+          apiUsable: false,
+          hint: 'Session expired. Please reconnect Claude Code.',
+        });
+        await dispatch('fetchConnectedApps');
+        return { success: false, reauthRequired: true, error: data.error };
+      }
+      console.error('Error refreshing Claude Code token:', error);
+      return { success: false, error: data?.error || error.message };
+    }
+  },
   async disconnectClaudeCode({ commit, dispatch }) {
     try {
       const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/disconnect`);
@@ -558,6 +582,10 @@ const getters = {
   codexDeviceSession: (state) => state.codexDeviceSession,
   claudeCodeStatus: (state) => state.claudeCodeStatus,
   claudeCodeSetupSession: (state) => state.claudeCodeSetupSession,
+  claudeCodeNeedsReauth: (state) => {
+    const s = state.claudeCodeStatus;
+    return s.available === false && s.hint && s.hint.includes('expired');
+  },
   connectionHealthStatus: (state) => {
     if (!state.connectionHealth) return 'unknown';
     return state.connectionHealth.overall;

@@ -80,7 +80,7 @@ router.get('/:provider/models', async (req, res) => {
             error: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
           });
         }
-        apiKey = ClaudeCodeAuthManager.getAccessToken();
+        apiKey = await ClaudeCodeAuthManager.getAccessToken();
         if (!apiKey) {
           return res.status(400).json({
             success: false,
@@ -209,7 +209,7 @@ router.post('/:provider/models/refresh', async (req, res) => {
           error: 'Claude Code is not connected. Use setup-token or paste a token to connect.',
         });
       }
-      apiKey = ClaudeCodeAuthManager.getAccessToken();
+      apiKey = await ClaudeCodeAuthManager.getAccessToken();
     } else if (providerLower === 'openai-codex') {
       const codexStatus = await CodexAuthManager.checkApiUsable({ forceRefresh: true });
       if (!codexStatus.available) {

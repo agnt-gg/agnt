@@ -111,6 +111,40 @@ router.post('/connect', async (req, res) => {
 });
 
 /**
+ * POST /api/claude-code/refresh
+ * Attempts to refresh the Claude Code access token using the stored refresh token.
+ * Returns the new status on success, or a reauth-required flag if the refresh token is revoked.
+ */
+router.post('/refresh', async (req, res) => {
+  try {
+    const result = await ClaudeCodeAuthManager.refreshAccessToken();
+
+    if (result.success) {
+      // Return fresh status after successful refresh
+      const status = await ClaudeCodeAuthManager.checkApiUsable({ forceRefresh: true });
+      return res.json({
+        success: true,
+        refreshed: true,
+        ...status,
+      });
+    }
+
+    // Refresh failed
+    const httpStatus = result.revoked ? 401 : 502;
+    res.status(httpStatus).json({
+      success: false,
+      code: result.revoked ? 'REAUTH_REQUIRED' : 'REFRESH_FAILED',
+      error: result.error,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to refresh token',
+    });
+  }
+});
+
+/**
  * POST /api/claude-code/disconnect
  * Removes Claude Code credentials.
  */

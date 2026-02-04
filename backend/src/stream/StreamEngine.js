@@ -6,6 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import PathManager from '../utils/PathManager.js';
 import AuthManager from '../services/auth/AuthManager.js';
+import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import { createLlmClient } from '../services/ai/LlmService.js';
 
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer, trimToWordLimit, generateUniqueId, computeFileHash } from './utils.js';
@@ -159,10 +160,12 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         modelName = 'claude-3-5-sonnet-20240620';
       }
 
-      switch (provider.toLowerCase()) {
+      const providerLower = provider.toLowerCase();
+
+      switch (providerLower) {
         case 'claude-code':
         case 'anthropic':
-          await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, provider.toLowerCase());
+          await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, providerLower);
           break;
         case 'cerebras':
         case 'deepseek':
@@ -184,8 +187,41 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           throw new Error(`Unsupported provider: ${provider}`);
       }
     } catch (error) {
+      // 401 retry for claude-code: attempt one token refresh then recreate the client
+      const isClaudeCode = provider.toLowerCase() === 'claude-code';
+      const is401 = error?.status === 401 || error?.error?.status === 401 || error?.response?.status === 401;
+
+      if (isClaudeCode && is401) {
+        console.log('[StreamEngine] Claude Code 401 — attempting token refresh and retry');
+        try {
+          const refreshResult = await ClaudeCodeAuthManager.refreshAccessToken();
+          if (refreshResult.success) {
+            const retryClient = await createLlmClient(provider, this.userId, { conversationId, authToken: accessToken });
+            const retryStreamId = generateUniqueId();
+            await this.startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, retryStreamId, modelName, imageData, retryClient, 'claude-code');
+            return; // retry succeeded
+          }
+          // Refresh failed — send structured error so frontend can prompt re-auth
+          const reAuthError = refreshResult.revoked
+            ? { error: 'Claude Code session expired. Please reconnect.', code: 'REAUTH_REQUIRED' }
+            : { error: 'Claude Code token refresh failed. Please try again.', code: 'REFRESH_FAILED' };
+          console.error('[StreamEngine] Token refresh failed:', reAuthError.error);
+          if (!res.headersSent) res.status(401);
+          res.write(`data: ${JSON.stringify(reAuthError)}\n\n`);
+          res.end();
+          return;
+        } catch (retryError) {
+          console.error('[StreamEngine] Retry after refresh failed:', retryError.message);
+        }
+      }
+
       console.error('Error processing the file(s) or generating the text stream:', error);
-      res.status(500).send('An error occurred while processing the file(s) or generating the text stream.');
+      if (!res.headersSent) {
+        res.status(500).send('An error occurred while processing the file(s) or generating the text stream.');
+      } else {
+        res.write(`data: ${JSON.stringify({ error: 'Stream error: ' + (error.message || 'Unknown error') })}\n\n`);
+        res.end();
+      }
     }
   }
   async startClaudeAIStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, imageData, client, provider = 'anthropic') {

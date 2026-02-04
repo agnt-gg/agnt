@@ -7,6 +7,7 @@ import generateUUID from '../../utils/generateUUID.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes before expiry, trigger refresh
 
 // Anthropic OAuth configuration (matching OpenClaw's working implementation)
 const OAUTH_CONFIG = {
@@ -66,23 +67,26 @@ class ClaudeCodeAuthManager {
   constructor() {
     this.apiCheckCache = null;
     this.oauthSessions = new Map();
+    this._refreshInFlight = null; // mutex: dedup concurrent refresh calls
   }
 
   getCredentialsPath() {
     return resolveClaudeCredentialsPath();
   }
 
-  getAccessToken() {
+  /**
+   * Reads the raw access token from disk without any refresh logic.
+   * Use this for synchronous callers that cannot await (e.g. health checks).
+   */
+  getAccessTokenSync() {
     const { data } = readClaudeCredentialsFile();
     if (!data || typeof data !== 'object') return null;
 
-    // Primary: claudeAiOauth.accessToken (current Claude CLI format)
     if (data.claudeAiOauth?.accessToken) {
       const value = String(data.claudeAiOauth.accessToken).trim();
       if (value) return value;
     }
 
-    // Legacy fallback fields
     for (const key of ['oauth_token', 'token', 'access_token']) {
       const value = typeof data[key] === 'string' ? data[key].trim() : '';
       if (value) return value;
@@ -91,8 +95,64 @@ class ClaudeCodeAuthManager {
     return null;
   }
 
+  /**
+   * Returns a valid access token, refreshing proactively if near expiry.
+   * Falls back to the current token if refresh fails transiently.
+   * Returns null only if no token exists at all or it has been revoked.
+   * @param {{ autoRefresh?: boolean }} options
+   */
+  async getAccessToken({ autoRefresh = true } = {}) {
+    const { data } = readClaudeCredentialsFile();
+    if (!data || typeof data !== 'object') return null;
+
+    const oauth = data.claudeAiOauth;
+    let token = null;
+
+    if (oauth?.accessToken) {
+      token = String(oauth.accessToken).trim() || null;
+    }
+
+    // Legacy fallback fields (these won't have refresh tokens)
+    if (!token) {
+      for (const key of ['oauth_token', 'token', 'access_token']) {
+        const value = typeof data[key] === 'string' ? data[key].trim() : '';
+        if (value) { token = value; break; }
+      }
+    }
+
+    if (!token) return null;
+
+    // If we have expiry info and a refresh token, check if we need to refresh
+    if (autoRefresh && oauth?.expiresAt && oauth?.refreshToken) {
+      const now = Date.now();
+      const timeUntilExpiry = oauth.expiresAt - now;
+
+      if (timeUntilExpiry < REFRESH_BUFFER_MS) {
+        console.log(`[ClaudeCodeAuth] Token expires in ${Math.round(timeUntilExpiry / 1000)}s, attempting refresh`);
+        try {
+          const result = await this.refreshAccessToken();
+          if (result.success) {
+            return result.accessToken;
+          }
+          // Transient failure — return the current token, it might still work
+          if (!result.revoked) {
+            console.log('[ClaudeCodeAuth] Refresh failed transiently, using current token');
+            return token;
+          }
+          // Token revoked — credentials cleared by refreshAccessToken
+          return null;
+        } catch {
+          // Unexpected error — return current token as fallback
+          return token;
+        }
+      }
+    }
+
+    return token;
+  }
+
   async checkApiUsable({ forceRefresh = false } = {}) {
-    const token = this.getAccessToken();
+    const token = await this.getAccessToken({ autoRefresh: true });
     const credPath = this.getCredentialsPath();
 
     if (!token) {
@@ -160,6 +220,92 @@ class ClaudeCodeAuthManager {
 
     this.apiCheckCache = { checkedAtMs: now, value };
     return value;
+  }
+
+  // ── Token refresh ───────────────────────────────────────────────
+
+  /**
+   * Refreshes the access token using the stored refresh token.
+   * Uses a mutex to deduplicate concurrent refresh attempts.
+   * Public client flow: sends client_id only, no client_secret.
+   *
+   * @returns {{ success: boolean, accessToken?: string, revoked?: boolean, error?: string }}
+   */
+  async refreshAccessToken() {
+    // Dedup: if a refresh is already in-flight, wait for it
+    if (this._refreshInFlight) {
+      return this._refreshInFlight;
+    }
+
+    this._refreshInFlight = this._doRefresh();
+    try {
+      return await this._refreshInFlight;
+    } finally {
+      this._refreshInFlight = null;
+    }
+  }
+
+  async _doRefresh() {
+    const { data } = readClaudeCredentialsFile();
+    const refreshToken = data?.claudeAiOauth?.refreshToken;
+
+    if (!refreshToken) {
+      return { success: false, error: 'No refresh token available', revoked: false };
+    }
+
+    console.log('[ClaudeCodeAuth] Refreshing access token');
+
+    try {
+      const response = await axios.post(
+        OAUTH_CONFIG.TOKEN_URL,
+        JSON.stringify({
+          grant_type: 'refresh_token',
+          client_id: OAUTH_CONFIG.CLIENT_ID,
+          refresh_token: refreshToken,
+        }),
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 15000,
+        }
+      );
+
+      const tokenData = response.data;
+      const expiresAt = tokenData.expires_in
+        ? Date.now() + (tokenData.expires_in * 1000) - REFRESH_BUFFER_MS
+        : null;
+
+      const oauthCreds = {
+        accessToken: tokenData.access_token,
+        // Anthropic may rotate the refresh token — always save the latest
+        refreshToken: tokenData.refresh_token || refreshToken,
+        expiresAt,
+        scopes: tokenData.scope
+          ? tokenData.scope.split(' ')
+          : data.claudeAiOauth?.scopes || OAUTH_CONFIG.SCOPES.split(' '),
+      };
+
+      writeClaudeCredentials(oauthCreds);
+      this.apiCheckCache = null;
+
+      console.log('[ClaudeCodeAuth] Token refreshed successfully');
+      return { success: true, accessToken: oauthCreds.accessToken };
+    } catch (error) {
+      const status = error?.response?.status;
+      const errorBody = error?.response?.data;
+      const errorCode = errorBody?.error;
+
+      console.error('[ClaudeCodeAuth] Token refresh failed:', status, errorCode || error.message);
+
+      // Revocation / invalid grant — the refresh token is no longer usable
+      if (status === 401 || status === 403 || errorCode === 'invalid_grant') {
+        console.log('[ClaudeCodeAuth] Refresh token revoked or invalid, clearing credentials');
+        await this.logout();
+        return { success: false, revoked: true, error: 'Refresh token revoked. Please reconnect.' };
+      }
+
+      // Transient error (network, 5xx, timeout) — don't clear creds
+      return { success: false, revoked: false, error: `Refresh failed: ${error.message}` };
+    }
   }
 
   // ── OAuth PKCE flow ──────────────────────────────────────────────

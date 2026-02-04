@@ -120,7 +120,7 @@ export async function createLlmClient(provider, userId, options = {}) {
   // Claude Code provider: uses Anthropic API with OAuth Bearer auth (not x-api-key).
   // Requires specific beta flags and user-agent to enable OAuth on the API.
   if (lowerCaseProvider === 'claude-code') {
-    const oauthToken = ClaudeCodeAuthManager.getAccessToken();
+    const oauthToken = await ClaudeCodeAuthManager.getAccessToken();
     if (!oauthToken) {
       throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
     }

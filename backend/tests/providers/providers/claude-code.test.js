@@ -25,7 +25,7 @@ export default {
 
     // ── Test: OAuth token is available ─────────────────────────────────
     await harness.runTest(result, 'OAuth token available', async () => {
-      const token = ClaudeCodeAuthManager.getAccessToken();
+      const token = await ClaudeCodeAuthManager.getAccessToken();
       return [
         assert.nonEmptyString(token, 'access token is non-empty'),
       ];

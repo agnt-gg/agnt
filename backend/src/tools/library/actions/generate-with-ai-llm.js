@@ -402,7 +402,7 @@ class GenerateWithAiLlm extends BaseAction {
         try {
           // Special providers use local auth managers instead of remote service
           if (normalizedProvider === 'claude-code') {
-            accessTokenOrApiKey = ClaudeCodeAuthManager.getAccessToken();
+            accessTokenOrApiKey = await ClaudeCodeAuthManager.getAccessToken();
             if (!accessTokenOrApiKey) {
               throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
             }
