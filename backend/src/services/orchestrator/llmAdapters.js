@@ -1007,7 +1007,49 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
       try {
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
-        const conversationMessages = currentMessages.filter((m) => m.role !== 'system');
+
+        // CRITICAL: Clean up any _inputJsonString fields from message history before sending to Anthropic
+        // This can happen if messages are reused across retries or if deletion failed
+        const conversationMessages = currentMessages
+          .filter((m) => m.role !== 'system')
+          .map((msg) => {
+            if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+              return {
+                ...msg,
+                content: msg.content.map((block) => {
+                  // CRITICAL: Always create new block objects to prevent reference leaks
+                  if (block.type === 'tool_use') {
+                    // Remove _inputJsonString if it exists
+                    const { _inputJsonString, ...cleanBlock } = block;
+                    if (_inputJsonString) {
+                      console.warn(`[Anthropic] Cleaned _inputJsonString from tool_use block in message history (tool: ${block.name})`);
+                    }
+                    return cleanBlock;
+                  }
+                  // For non-tool_use blocks, create a shallow copy to prevent mutations
+                  return { ...block };
+                }),
+              };
+            }
+            // For non-assistant messages, create a shallow copy to prevent reference issues
+            return { ...msg, content: Array.isArray(msg.content) ? [...msg.content] : msg.content };
+          });
+
+        // Defensive check: Verify no _inputJsonString fields remain
+        for (let i = 0; i < conversationMessages.length; i++) {
+          const msg = conversationMessages[i];
+          if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+            for (let j = 0; j < msg.content.length; j++) {
+              const block = msg.content[j];
+              if (block.type === 'tool_use' && '_inputJsonString' in block) {
+                console.error(`[Anthropic] ERROR: _inputJsonString still present in messages.${i}.content.${j} after cleanup!`);
+                console.error(`[Anthropic] Block:`, JSON.stringify(block, null, 2));
+                // Force delete it
+                delete block._inputJsonString;
+              }
+            }
+          }
+        }
 
         // Build system parameter: Claude Code OAuth requires identity prompt as first block
         let systemParam;
@@ -1174,10 +1216,23 @@ Please carefully check the tool schema and ensure all parameters match the expec
           console.log(`Anthropic streaming call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
         }
 
+        // CRITICAL: Final cleanup of _inputJsonString from all contentBlocks before returning
+        // This ensures no _inputJsonString fields make it into the conversation history
+        const cleanedContentBlocks = contentBlocks.map((block) => {
+          // CRITICAL: Always create new block objects to prevent _inputJsonString from leaking
+          if (block.type === 'tool_use') {
+            // Remove _inputJsonString if it exists (it shouldn't at this point, but be defensive)
+            const { _inputJsonString, ...cleanBlock } = block;
+            return cleanBlock;
+          }
+          // For non-tool_use blocks, create a shallow copy
+          return { ...block };
+        });
+
         // Construct response message in Anthropic format
         const responseMessage = {
           role: 'assistant',
-          content: contentBlocks.length > 0 ? contentBlocks : [{ type: 'text', text: accumulatedContent }],
+          content: cleanedContentBlocks.length > 0 ? cleanedContentBlocks : [{ type: 'text', text: accumulatedContent }],
         };
 
         return {

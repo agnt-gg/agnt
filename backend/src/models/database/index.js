@@ -206,6 +206,7 @@ function createTables() {
         user_id TEXT NOT NULL,
         status TEXT DEFAULT 'stopped',
         is_shareable INTEGER DEFAULT 0,
+        current_version_id INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
@@ -213,6 +214,29 @@ function createTables() {
 
       // Index for faster workflow queries by user_id
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflows_user_id ON workflows(user_id)`);
+
+      // Workflow version history table
+      db.run(`CREATE TABLE IF NOT EXISTS workflow_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workflow_id TEXT NOT NULL,
+        version_number INTEGER NOT NULL,
+        workflow_state TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_by TEXT DEFAULT 'system',
+        change_type TEXT DEFAULT 'auto',
+        change_summary TEXT,
+        tool_calls TEXT,
+        parent_version_id INTEGER,
+        is_checkpoint INTEGER DEFAULT 0,
+        is_compressed INTEGER DEFAULT 0,
+        FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_version_id) REFERENCES workflow_versions(id) ON DELETE SET NULL
+      )`);
+
+      // Indexes for workflow versions
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_workflow_id ON workflow_versions(workflow_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_created_at ON workflow_versions(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_checkpoint ON workflow_versions(is_checkpoint)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS content_outputs (
         id TEXT PRIMARY KEY,
@@ -555,68 +579,17 @@ function createTables() {
 // Function to run migrations
 function runMigrations() {
   return new Promise((resolve, reject) => {
-    // Add provider and model columns to agents table if they don't exist
-    // db.run(`ALTER TABLE agents ADD COLUMN provider TEXT`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding provider column:', err);
-    //   }
-    // });
-    // db.run(`ALTER TABLE agents ADD COLUMN model TEXT`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding model column:', err);
-    //   }
-    // });
-    // // Add default_provider and default_model columns to users table if they don't exist
-    // db.run(`ALTER TABLE users ADD COLUMN default_provider TEXT DEFAULT 'Anthropic'`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding default_provider column:', err);
-    //   }
-    // });
-    // db.run(`ALTER TABLE users ADD COLUMN default_model TEXT DEFAULT 'claude-3-5-sonnet-20240620'`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding default_model column:', err);
-    //   }
-    // });
-    // // Add updated_at column to users table if it doesn't exist
-    // db.run(`ALTER TABLE users ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding updated_at column:', err);
-    //   }
-    // });
-    // // Add input, output, and error columns to tasks table if they don't exist
-    // db.run(`ALTER TABLE tasks ADD COLUMN input JSON`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding input column to tasks:', err);
-    //   }
-    // });
-    // db.run(`ALTER TABLE tasks ADD COLUMN output JSON`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding output column to tasks:', err);
-    //   }
-    // });
-    // db.run(`ALTER TABLE tasks ADD COLUMN error TEXT`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding error column to tasks:', err);
-    //   }
-    // });
-    // // Add content_type and conversation_id columns to content_outputs table if they don't exist
-    // db.run(`ALTER TABLE content_outputs ADD COLUMN content_type TEXT DEFAULT 'html'`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding content_type column:', err);
-    //   }
-    // });
-    // db.run(`ALTER TABLE content_outputs ADD COLUMN conversation_id TEXT`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding conversation_id column:', err);
-    //   }
-    // });
-    // db.run(`ALTER TABLE content_outputs ADD COLUMN title TEXT`, (err) => {
-    //   if (err && !err.message.includes('duplicate column name')) {
-    //     console.error('Error adding title column:', err);
-    //   } else {
-    //     resolve();
-    //   }
-    // });
+    // Migration: Add current_version_id to workflows table for version control (2026-02-04)
+    db.run(`ALTER TABLE workflows ADD COLUMN current_version_id INTEGER`, (err) => {
+      if (err && !err.message.includes('duplicate column name')) {
+        console.error('Error adding current_version_id column to workflows:', err);
+        // Don't reject - continue with other migrations
+      } else if (!err) {
+        console.log('✓ Added current_version_id column to workflows table');
+      }
+      // Resolve after this migration completes
+      resolve();
+    });
   });
 }
 

@@ -476,7 +476,7 @@ async function universalChatHandler(req, res, context = {}) {
 
     // Build system prompt
     const currentDate = new Date().toString();
-    let systemPrompt = config.buildSystemPrompt(currentDate, {
+    let systemPrompt = await config.buildSystemPrompt(currentDate, {
       ...conversationContext,
       toolSchemas,
     });
@@ -1184,7 +1184,7 @@ async function handleSuggestions(req, res, config, userId, authToken) {
 
   try {
     const currentDate = new Date().toString();
-    const systemPrompt = config.buildSystemPrompt(currentDate, { agentContext });
+    const systemPrompt = await config.buildSystemPrompt(currentDate, { agentContext });
 
     const messages = [
       { role: 'system', content: systemPrompt },

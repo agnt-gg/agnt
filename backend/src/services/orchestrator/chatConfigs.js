@@ -118,11 +118,11 @@ Use your assigned tools effectively to help the user accomplish their goals.`;
     async getToolSchemas(context) {
       return await getWorkflowToolSchemas();
     },
-    buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(currentDate, context) {
       const { workflowId, workflowContext, workflowState } = context;
-      return getWorkflowSystemContent(currentDate, workflowId, workflowContext, workflowState);
+      return await getWorkflowSystemContent(currentDate, workflowId, workflowContext, workflowState);
     },
-    maxToolRounds: 10,
+    maxToolRounds: 25,
     responseType: 'stream',
     contextKey: 'workflowContext',
   },

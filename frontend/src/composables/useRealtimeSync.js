@@ -148,9 +148,31 @@ export function useRealtimeSync() {
 
     socket.on('workflow:updated', (data) => {
       console.log('[Realtime] Workflow updated:', data);
+
+      // Update Vuex store if we have a workflow object
       if (data.workflow) {
         store.commit('workflows/UPDATE_WORKFLOW', data.workflow);
       }
+
+      // CRITICAL: If workflowState is included, dispatch window event for real-time canvas update
+      if (data.workflowState && data.id) {
+        console.log('[Realtime] Dispatching workflow-updated window event with full state');
+        window.dispatchEvent(new CustomEvent('workflow-updated', {
+          detail: data.workflowState
+        }));
+
+        // Also update canvas store if this is the active workflow
+        try {
+          const currentCanvasId = store.state?.canvas?.canvasState?.id;
+          if (currentCanvasId && currentCanvasId === data.id) {
+            console.log('[Realtime] Updating canvas store for active workflow');
+            store.commit('canvas/SET_CANVAS_STATE', data.workflowState);
+          }
+        } catch (err) {
+          console.warn('[Realtime] Could not update canvas store:', err);
+        }
+      }
+
       debouncedWorkflowFetch();
     });
 

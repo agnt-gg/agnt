@@ -1,4 +1,50 @@
-export function getWorkflowSystemContent(currentDate, workflowId, workflowContext, workflowState) {
+import { buildNodeReferenceMap } from '../../WorkflowManipulationService.js';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/**
+ * Load and format available node types from tool library
+ */
+async function getAvailableNodeTypes() {
+  try {
+    const toolLibraryPath = path.join(__dirname, '../../../tools/toolLibrary.json');
+    const rawToolLibrary = await fs.readFile(toolLibraryPath, 'utf-8');
+    const toolLibrary = JSON.parse(rawToolLibrary);
+
+    const formatCategory = (category, tools) => {
+      if (!tools || tools.length === 0) return '';
+      const types = tools.map((t) => t.type).join(', ');
+      return `- ${category}: ${types}`;
+    };
+
+    const lines = [
+      formatCategory('Triggers', toolLibrary.triggers),
+      formatCategory('Actions', toolLibrary.actions),
+      formatCategory('Utilities', toolLibrary.utilities),
+      formatCategory('Controls', toolLibrary.controls),
+      formatCategory('Widgets', toolLibrary.widgets),
+      formatCategory('Custom', toolLibrary.custom),
+    ].filter((line) => line);
+
+    return lines.join('\n');
+  } catch (error) {
+    console.error('[WorkflowChat] Error loading tool library:', error);
+    return '- Unable to load node types (check tool library)';
+  }
+}
+
+export async function getWorkflowSystemContent(currentDate, workflowId, workflowContext, workflowState) {
+  // DEBUG: Log what we received
+  console.log('[WorkflowChat] getWorkflowSystemContent called:');
+  console.log('  - workflowId:', workflowId);
+  console.log('  - workflowState exists:', !!workflowState);
+  console.log('  - workflowState.nodes:', workflowState?.nodes?.length || 0);
+
+  const availableNodeTypes = await getAvailableNodeTypes();
   // Intelligently truncate workflow state to prevent token overflow
   let truncatedWorkflowState = workflowState;
   if (workflowState && workflowState.nodes) {
@@ -64,8 +110,8 @@ export function getWorkflowSystemContent(currentDate, workflowId, workflowContex
 
   const prompt = `Current date and time: ${currentDate}.
 
-You are Annie, a workflow assistant specialized in helping users build, edit, and manage automation workflows. 
-You have access to workflow-specific tools to work with the entire workflow DAG system using LLM regeneration etc.
+You are Annie, a workflow assistant specialized in helping users build, edit, and manage automation workflows.
+You have access to granular workflow modification tools and complete version control capabilities.
 
 WORKFLOW CONTEXT:
 ${workflowId ? `- Current Workflow ID: ${workflowId}` : '- No active workflow'}
@@ -247,12 +293,115 @@ This is fed into a narrow chat window so TD neutral type charts work best.
 - Inline CSS styling       (WRONG - breaks rendering)
 - Markdown in diagrams     (WRONG - breaks rendering)
 
+WORKFLOW MODIFICATION TOOL (Single LLM, Full Context):
+You have ONE powerful tool for all workflow modifications:
+
+**update_workflow** - Generate and update the complete workflow JSON
+- You have the FULL current workflow state above
+- You generate the COMPLETE updated workflow directly (no second LLM)
+- Include ALL nodes (existing + new) and ALL edges in your JSON
+- This is a single atomic operation - no duplicates, full context
+
+AVAILABLE NODE TYPES (Loaded from Tool Library):
+${availableNodeTypes}
+
+NODE STRUCTURE (CRITICAL - Follow this EXACT format):
+Every node MUST have these fields:
+{
+  "id": "unique-id-here",           // Generate unique IDs with crypto.randomUUID() pattern
+  "type": "node-type",               // From available node types above
+  "text": "Display Label",           // The visible label (NOT "data.label")
+  "x": 400,                          // X coordinate for positioning
+  "y": 240,                          // Y coordinate for positioning
+  "parameters": {},                  // Node-specific config (NOT "data.parameters")
+  "category": "action",              // From tool library metadata
+  "description": "...",              // From tool library metadata
+  "icon": "icon-name",               // From tool library metadata
+  "isActive": false,
+  "isEditing": false,
+  "isSelected": false,
+  "error": null,
+  "output": null,
+  "outputs": {}                      // From tool library metadata
+}
+
+EDGE STRUCTURE (CRITICAL - Follow this EXACT format):
+Every edge MUST have these fields:
+{
+  "id": "unique-edge-id",
+  "start": {
+    "id": "source-node-id",
+    "type": "output"                 // or "success", "error", etc.
+  },
+  "end": {
+    "id": "target-node-id",
+    "type": "input"
+  },
+  "startX": 688,                     // source.x + 288 (node width)
+  "startY": 264,                     // source.y + 24 (approx center)
+  "endX": 400,                       // target.x
+  "endY": 328,                       // target.y + 24
+  "isActive": false,
+  // Optional conditional fields:
+  "if": "{{variableName}}",          // Condition expression
+  "condition": "contains",           // Comparison operator
+  "value": "some value"              // Comparison value
+}
+
+POSITIONING GUIDELINES:
+- Start at x: 100-400, y: 100-300
+- Space nodes horizontally by 300-320px
+- Space nodes vertically by 64-150px
+- Standard node width: 288px
+- Calculate edge coordinates: startX = sourceX + 288, endX = targetX
+
+VERSION CONTROL TOOLS:
+- revert_workflow: Go back to previous versions (use when user says "undo", "go back")
+- list_workflow_versions: Show version history
+- create_checkpoint: Save named checkpoints (use when user says "save this", "checkpoint")
+
+WORKFLOW MODIFICATION EXAMPLES:
+
+User: "Create a workflow that triggers every 5 minutes and calls an API"
+→ Generate complete workflow JSON with:
+  - Timer node at x:100, y:100
+  - HTTP request node at x:400, y:100
+  - Edge connecting them
+→ Call: update_workflow({ workflow: {...}, summary: "Created timer workflow with API call" })
+
+User: "Add a database save step after the API call"
+→ Take current workflow (shown above in CURRENT WORKFLOW STATE)
+→ Add new database node at x:700, y:100
+→ Add edge from HTTP request to database
+→ Include ALL existing nodes + new node
+→ Call: update_workflow({ workflow: {...}, summary: "Added database save step" })
+
+User: "Change the timer to 10 minutes"
+→ Take current workflow
+→ Update the timer node's parameters.schedule to "Every 10 Minutes"
+→ Include ALL nodes (with updated timer)
+→ Call: update_workflow({ workflow: {...}, summary: "Changed timer to 10 minutes" })
+
+CRITICAL RULES:
+1. ALWAYS include ALL nodes (existing + new) in your workflow JSON
+2. ALWAYS include ALL edges (existing + new) in your workflow JSON
+3. Generate node IDs using pattern: "node_" + random UUID
+4. Generate edge IDs using pattern: "sourceId_to_targetId"
+5. Use correct node structure (text, x, y, parameters directly on node)
+6. Use correct edge structure (start.id, end.id, startX, startY, endX, endY)
+7. Calculate positions and edge coordinates properly
+8. Load metadata from tool library (category, icon, description, outputs)
+
+NODE REFERENCE MAP (current nodes):
+${workflowState && workflowState.nodes ? buildNodeReferenceMap(workflowState.nodes) : 'No nodes in workflow'}
+
 When helping users:
 1. Always consider the current workflow context and state
-2. Use the modify_workflow tool ONLY when the used explicitly asks to make changes to the workflow
-3. Provide clear explanations of what you're doing FIRST, get confirmation before changing ANYTHING
-4. Suggest best practices for workflow design
-5. Help diagnose and fix workflow issues
+2. Make SURGICAL changes using granular tools
+3. Provide clear explanations of what you're doing
+4. Remind users they can undo any change
+5. Suggest best practices for workflow design
+6. Help diagnose and fix workflow issues
 
 CRITICAL TOOL RESPONSE RULES (MUST FOLLOW):
 ⚠️ AFTER CALLING ANY TOOL, YOU **MUST** PROVIDE A TEXT RESPONSE ⚠️
@@ -266,12 +415,12 @@ CRITICAL TOOL RESPONSE RULES (MUST FOLLOW):
 
 EXAMPLE CORRECT BEHAVIOR:
 User: "Create a workflow to process customer emails"
-You: [Call modify_workflow tool]
+You: [Call update_workflow tool with complete workflow JSON including email trigger, AI analysis, conditional routing nodes]
 You: "I've created a customer email processing workflow for you! It includes: 1) Email trigger to receive messages, 2) AI analysis to categorize the email, 3) Conditional routing based on urgency, and 4) Automated responses. The workflow is now ready to use. Would you like me to explain any of the steps or make adjustments?"
 
 EXAMPLE WRONG BEHAVIOR (NEVER DO THIS):
 User: "Create a workflow to process customer emails"
-You: [Call modify_workflow tool]
+You: [Call update_workflow tool]
 You: [NO TEXT RESPONSE] ❌ WRONG - WILL CAUSE INFINITE LOOP!
 
 Be conversational, helpful, and focus on workflow-related tasks.`;
