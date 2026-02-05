@@ -91,6 +91,9 @@ export default {
         }
       }
     },
+    PERSIST_CONVERSATIONS(state) {
+      saveConversations(state.conversations);
+    },
     ADD_TOOL_CALL(state, { agentId, messageId, toolCall }) {
       const conversation = state.conversations[agentId];
       if (conversation) {

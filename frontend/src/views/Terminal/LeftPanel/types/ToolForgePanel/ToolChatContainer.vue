@@ -363,11 +363,9 @@ export default {
           break;
 
         case 'final_content':
-          store.dispatch('toolChat/updateMessageContent', {
-            toolId: props.toolId,
-            messageId: data.assistantMessageId,
-            content: data.content,
-          });
+          // Don't replace content — it was already populated by content_delta events.
+          // Just persist the conversations and clear the status.
+          store.commit('toolChat/PERSIST_CONVERSATIONS');
           store.dispatch('toolChat/clearMessageStatus', {
             toolId: props.toolId,
             messageId: data.assistantMessageId,

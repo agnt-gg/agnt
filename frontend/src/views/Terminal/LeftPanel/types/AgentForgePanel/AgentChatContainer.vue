@@ -424,11 +424,9 @@ export default {
           break;
 
         case 'final_content':
-          store.dispatch('agentChat/updateMessageContent', {
-            agentId: props.agentId,
-            messageId: data.assistantMessageId,
-            content: data.content,
-          });
+          // Don't replace content — it was already populated by content_delta events.
+          // Just persist the conversations and clear the status.
+          store.commit('agentChat/PERSIST_CONVERSATIONS');
           store.dispatch('agentChat/clearMessageStatus', {
             agentId: props.agentId,
             messageId: data.assistantMessageId,
