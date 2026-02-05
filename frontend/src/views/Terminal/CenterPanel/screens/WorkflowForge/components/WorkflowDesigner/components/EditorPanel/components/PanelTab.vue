@@ -1266,13 +1266,21 @@ export default {
     async fetchModelsForProvider(provider) {
       const fetchActions = {
         Anthropic: 'aiProvider/fetchAnthropicModels',
-        OpenAI: 'aiProvider/fetchOpenAIModels',
+        Cerebras: 'aiProvider/fetchCerebrasModels',
+        'Claude-Code': 'aiProvider/fetchClaudeCodeModels',
+        DeepSeek: 'aiProvider/fetchDeepSeekModels',
         Gemini: 'aiProvider/fetchGeminiModels',
         GrokAI: 'aiProvider/fetchGrokAIModels',
         Groq: 'aiProvider/fetchGroqModels',
+        Kimi: 'aiProvider/fetchKimiModels',
+        Local: 'aiProvider/fetchLocalModels',
+        Minimax: 'aiProvider/fetchMinimaxModels',
+        OpenAI: 'aiProvider/fetchOpenAIModels',
+        'OpenAI-Codex': 'aiProvider/fetchOpenAICodexModels',
+        'OpenAI-Codex-CLI': 'aiProvider/fetchOpenAICodexCliModels',
         OpenRouter: 'aiProvider/fetchOpenRouterModels',
         TogetherAI: 'aiProvider/fetchTogetherAIModels',
-        Local: 'aiProvider/fetchLocalModels',
+        ZAI: 'aiProvider/fetchZAIModels',
       };
 
       const action = fetchActions[provider];
