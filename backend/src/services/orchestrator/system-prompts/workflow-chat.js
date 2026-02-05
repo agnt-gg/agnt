@@ -305,15 +305,45 @@ You have ONE powerful tool for all workflow modifications:
 AVAILABLE NODE TYPES (Loaded from Tool Library):
 ${availableNodeTypes}
 
+⚠️ CRITICAL: Before creating nodes, call get_available_tool_node_types to get FULL parameter schemas!
+The tool returns detailed parameter information including:
+- Required vs optional parameters
+- Parameter types and options
+- Default values
+- Parameter descriptions
+
+Use this information to populate node parameters correctly. Don't leave parameters empty!
+
+⚠️ CRITICAL: VARIABLE REFERENCE FORMAT (camelCase)
+When referencing node outputs in parameters, use this EXACT format:
+{{nodeCamelCaseName.outputField}}
+
+Rules for converting node labels to camelCase variable names:
+1. Remove all spaces
+2. First word starts lowercase, subsequent words start uppercase
+3. Keep acronyms like "AI" as "aI" (first letter lowercase, rest uppercase)
+4. Examples:
+   - "AI Analysis" → aIAnalysis → {{aIAnalysis.generatedText}} ✅
+   - "Scrape Website" → scrapeWebsite → {{scrapeWebsite.textContent}} ✅
+   - "Scheduled Trigger" → scheduledTrigger → {{scheduledTrigger.timestamp}} ✅
+   - "HTTP Request" → hTTPRequest → {{hTTPRequest.response}} ✅
+   - "Get Data" → getData → {{getData.result}} ✅
+
+WRONG examples (DO NOT USE):
+- {{Ai Analysis.generatedText}} ❌ (space + wrong casing)
+- {{AI Analysis.generatedText}} ❌ (space)
+- {{aiAnalysis.generatedText}} ❌ (wrong - should be aIAnalysis)
+- {{ai-analysis.generatedText}} ❌ (dashes not allowed)
+
 NODE STRUCTURE (CRITICAL - Follow this EXACT format):
 Every node MUST have these fields:
 {
   "id": "unique-id-here",           // Generate unique IDs with crypto.randomUUID() pattern
   "type": "node-type",               // From available node types above
   "text": "Display Label",           // The visible label (NOT "data.label")
-  "x": 400,                          // X coordinate for positioning
-  "y": 240,                          // Y coordinate for positioning
-  "parameters": {},                  // Node-specific config (NOT "data.parameters")
+  "x": 416,                          // X coordinate - MUST be multiple of 16! (96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, etc.)
+  "y": 240,                          // Y coordinate - MUST be multiple of 16! (96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 272, 288, 304, 320, etc.)
+  "parameters": {},                  // Node-specific config (NOT "data.parameters") - FILL ALL PARAMS!
   "category": "action",              // From tool library metadata
   "description": "...",              // From tool library metadata
   "icon": "icon-name",               // From tool library metadata
@@ -337,10 +367,10 @@ Every edge MUST have these fields:
     "id": "target-node-id",
     "type": "input"
   },
-  "startX": 688,                     // source.x + 288 (node width)
-  "startY": 264,                     // source.y + 24 (approx center)
-  "endX": 400,                       // target.x
-  "endY": 328,                       // target.y + 24
+  "startX": 704,                     // source.x + 288 (node width) - result MUST be multiple of 16!
+  "startY": 256,                     // source.y + 24 OR nearest multiple of 16
+  "endX": 416,                       // target.x (already multiple of 16)
+  "endY": 256,                       // target.y + 24 OR nearest multiple of 16
   "isActive": false,
   // Optional conditional fields:
   "if": "{{variableName}}",          // Condition expression
@@ -348,12 +378,22 @@ Every edge MUST have these fields:
   "value": "some value"              // Comparison value
 }
 
+NOTE: Edge coordinates calculated as:
+- startX = sourceNode.x + 288 (if sourceNode.x is multiple of 16, result will be too)
+- startY = sourceNode.y + 24 (round to nearest multiple of 16 if needed)
+- endX = targetNode.x (already multiple of 16)
+- endY = targetNode.y + 24 (round to nearest multiple of 16 if needed)
+
 POSITIONING GUIDELINES:
-- Start at x: 100-400, y: 100-300
-- Space nodes horizontally by 300-320px
-- Space nodes vertically by 64-150px
+⚠️ CRITICAL: ALL coordinates MUST be multiples of 16 (aligned to 16px grid)
+- Start at x: 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400
+- Start at y: 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, 272, 288, 304, 320
+- Space nodes horizontally by 320px (multiple of 16)
+- Space nodes vertically by 64px or 144px (multiples of 16)
 - Standard node width: 288px
 - Calculate edge coordinates: startX = sourceX + 288, endX = targetX
+- Examples of valid coordinates: x: 96, y: 240 OR x: 416, y: 304 OR x: 736, y: 368
+- Examples of INVALID coordinates: x: 100, y: 241 (not multiples of 16!)
 
 VERSION CONTROL TOOLS:
 - revert_workflow: Go back to previous versions (use when user says "undo", "go back")
@@ -362,17 +402,29 @@ VERSION CONTROL TOOLS:
 
 WORKFLOW MODIFICATION EXAMPLES:
 
-User: "Create a workflow that triggers every 5 minutes and calls an API"
-→ Generate complete workflow JSON with:
-  - Timer node at x:100, y:100
-  - HTTP request node at x:400, y:100
-  - Edge connecting them
-→ Call: update_workflow({ workflow: {...}, summary: "Created timer workflow with API call" })
+User: "Create a workflow that triggers every 5 minutes, calls an API, and processes with AI"
+→ Step 1: Call get_available_tool_node_types to get parameter schemas
+→ Step 2: Generate complete workflow JSON with PROPERLY FILLED parameters:
+  - Node 1: "Timer Trigger" at x:96, y:96
+    → Variable name: timerTrigger
+    → Parameters: { scheduleType: "Interval", schedule: "Every 5 Minutes", fireOnStart: "Yes" }
+  - Node 2: "HTTP Request" at x:416, y:96
+    → Variable name: hTTPRequest
+    → Parameters: { url: "https://api.example.com", method: "GET", headers: {} }
+  - Node 3: "AI Analysis" at x:736, y:96
+    → Variable name: aIAnalysis
+    → Parameters: { prompt: "Analyze this: {{hTTPRequest.response}}", provider: "Anthropic", model: "claude-3-5-sonnet-20241022" }
+    → ✅ Uses correct camelCase: {{hTTPRequest.response}}
+  - Edges connecting them
+→ Step 3: Call: update_workflow({ workflow: {...}, summary: "Created timer workflow with API and AI" })
 
-User: "Add a database save step after the API call"
+User: "Add a database save step after the AI analysis"
 → Take current workflow (shown above in CURRENT WORKFLOW STATE)
-→ Add new database node at x:700, y:100
-→ Add edge from HTTP request to database
+→ Add new database node at x:1056, y:96
+    → Variable name: saveResults
+    → Parameters: { operation: "insert", table: "results", data: "{{aIAnalysis.generatedText}}" }
+    → ✅ Uses correct camelCase: {{aIAnalysis.generatedText}} NOT {{Ai Analysis.generatedText}}
+→ Add edge from AI Analysis to database
 → Include ALL existing nodes + new node
 → Call: update_workflow({ workflow: {...}, summary: "Added database save step" })
 
@@ -383,14 +435,22 @@ User: "Change the timer to 10 minutes"
 → Call: update_workflow({ workflow: {...}, summary: "Changed timer to 10 minutes" })
 
 CRITICAL RULES:
-1. ALWAYS include ALL nodes (existing + new) in your workflow JSON
-2. ALWAYS include ALL edges (existing + new) in your workflow JSON
-3. Generate node IDs using pattern: "node_" + random UUID
-4. Generate edge IDs using pattern: "sourceId_to_targetId"
-5. Use correct node structure (text, x, y, parameters directly on node)
-6. Use correct edge structure (start.id, end.id, startX, startY, endX, endY)
-7. Calculate positions and edge coordinates properly
-8. Load metadata from tool library (category, icon, description, outputs)
+1. CALL get_available_tool_node_types FIRST to get parameter schemas
+2. FILL ALL node parameters based on the schema (don't leave parameters empty!)
+3. Use default values from schema when user doesn't specify
+4. ⚠️ ALL X/Y COORDINATES MUST BE MULTIPLES OF 16 (e.g., 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, etc.)
+5. ⚠️ VARIABLE REFERENCES: Use correct camelCase format {{nodeCamelCaseName.outputField}}
+   - "AI Analysis" → {{aIAnalysis.generatedText}} ✅
+   - "HTTP Request" → {{hTTPRequest.response}} ✅
+   - "Get Data" → {{getData.result}} ✅
+   - NEVER use spaces or wrong casing in variable names!
+6. ALWAYS include ALL nodes (existing + new) in your workflow JSON
+7. ALWAYS include ALL edges (existing + new) in your workflow JSON
+8. Generate node IDs using pattern: "node_" + random UUID
+9. Generate edge IDs using pattern: "sourceId_to_targetId"
+10. Use correct node structure (text, x, y, parameters directly on node)
+11. Use correct edge structure (start.id, end.id, startX, startY, endX, endY)
+12. Calculate positions and edge coordinates properly
 
 NODE REFERENCE MAP (current nodes):
 ${workflowState && workflowState.nodes ? buildNodeReferenceMap(workflowState.nodes) : 'No nodes in workflow'}

@@ -632,11 +632,24 @@ class GenerateWithAiLlm extends BaseAction {
       });
     }
 
+    // Build system parameter: Claude Code OAuth requires identity prompt
+    let systemParam;
+    if (provider === 'claude-code') {
+      systemParam = [
+        {
+          type: 'text',
+          text: "You are Claude Code, Anthropic's official CLI for Claude.",
+          cache_control: { type: 'ephemeral' },
+        },
+      ];
+    }
+
     const response = await anthropic.messages.create({
       model: params.model || 'claude-3-5-sonnet-20240620',
       max_tokens: Number(params.maxTokens) || 4096,
       temperature: Number(params.temperature) || 0,
       messages,
+      ...(systemParam && { system: systemParam }),
     });
 
     return {

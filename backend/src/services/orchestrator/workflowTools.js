@@ -363,7 +363,7 @@ export const TOOLS = {
       type: 'function',
       function: {
         name: 'get_available_tool_node_types',
-        description: 'Get a list of all available node types that can be added to workflows',
+        description: 'Get a list of all available node types that can be added to workflows (includes both built-in and plugin tools)',
         parameters: {
           type: 'object',
           properties: {},
@@ -395,6 +395,8 @@ export const TOOLS = {
             description: tool.description,
             icon: tool.icon,
             category: 'trigger',
+            parameters: tool.parameters || {},  // Include full parameter schema
+            outputs: tool.outputs || {},        // Include output schema
           }));
         }
 
@@ -406,6 +408,8 @@ export const TOOLS = {
             description: tool.description,
             icon: tool.icon,
             category: 'action',
+            parameters: tool.parameters || {},  // Include full parameter schema
+            outputs: tool.outputs || {},        // Include output schema
           }));
         }
 
@@ -417,6 +421,8 @@ export const TOOLS = {
             description: tool.description,
             icon: tool.icon,
             category: 'utility',
+            parameters: tool.parameters || {},  // Include full parameter schema
+            outputs: tool.outputs || {},        // Include output schema
           }));
         }
 
@@ -428,6 +434,8 @@ export const TOOLS = {
             description: tool.description,
             icon: tool.icon,
             category: 'widgets',
+            parameters: tool.parameters || {},  // Include full parameter schema
+            outputs: tool.outputs || {},        // Include output schema
           }));
         }
 
@@ -439,6 +447,8 @@ export const TOOLS = {
             description: tool.description,
             icon: tool.icon,
             category: 'control',
+            parameters: tool.parameters || {},  // Include full parameter schema
+            outputs: tool.outputs || {},        // Include output schema
           }));
         }
 
@@ -450,19 +460,64 @@ export const TOOLS = {
             description: tool.description,
             icon: tool.icon,
             category: 'custom',
+            parameters: tool.parameters || {},  // Include full parameter schema
+            outputs: tool.outputs || {},        // Include output schema
           }));
+        }
+
+        // Load plugin tools from PluginManager
+        try {
+          const PluginManager = (await import('../../plugins/PluginManager.js')).default;
+
+          // Ensure PluginManager is initialized
+          if (!PluginManager.initialized) {
+            await PluginManager.initialize();
+          }
+
+          const pluginSchemas = PluginManager.getAllPluginSchemas();
+          console.log(`[WorkflowTools] Found ${pluginSchemas.length} plugin tools`);
+
+          // Add plugin tools to appropriate categories
+          for (const schema of pluginSchemas) {
+            const category = schema.category || 'action'; // Default to action if no category
+            const categoryKey = category.charAt(0).toUpperCase() + category.slice(1) + 's'; // e.g., "action" -> "Actions"
+
+            const pluginTool = {
+              type: schema.type,
+              title: schema.title || schema.type,
+              description: schema.description || '',
+              icon: schema.icon || 'puzzle',
+              category: category,
+              parameters: schema.parameters || {},  // Include plugin parameter schema
+              outputs: schema.outputs || {},        // Include plugin output schema
+              isPlugin: true,
+              pluginName: schema._plugin,
+            };
+
+            // Initialize category array if it doesn't exist
+            if (!nodeTypes[categoryKey]) {
+              nodeTypes[categoryKey] = [];
+            }
+
+            nodeTypes[categoryKey].push(pluginTool);
+          }
+
+          console.log(`[WorkflowTools] Total node types after plugins:`, Object.keys(nodeTypes).map(k => `${k}: ${nodeTypes[k].length}`).join(', '));
+        } catch (pluginError) {
+          console.error('[WorkflowTools] Error loading plugin tools:', pluginError);
+          // Continue without plugin tools if there's an error
         }
 
         return JSON.stringify({
           success: true,
           nodeTypes,
-          message: 'Retrieved all available node types from toolLibrary.json',
+          message: `Retrieved all available node types (${Object.values(nodeTypes).flat().length} total)`,
         });
       } catch (error) {
         return JSON.stringify({
           success: false,
           error: error.message,
-          message: 'Failed to get available node types from toolLibrary.json',
+          message: 'Failed to get available node types',
         });
       }
     },
