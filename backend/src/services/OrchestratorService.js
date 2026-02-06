@@ -20,7 +20,6 @@ import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
 import conversationManager from './ConversationManager.js';
 import autonomousMessageService from './AutonomousMessageService.js';
-import { ASYNC_TOOLS } from './orchestrator/asyncTools.js';
 
 /**
  * Extract images from tool results and replace with references
@@ -191,13 +190,10 @@ function offloadLargeData(toolResult, toolCallId, conversationContext, threshold
 }
 
 /**
- * Check if a tool is an async tool that should run in the background
- * @param {string} functionName - Tool function name
- * @returns {boolean} - True if tool is async
+ * REMOVED: isAsyncTool() function
+ * Async execution is now determined by the _executeAsync parameter in tool arguments
+ * ANY tool can be run async by the LLM adding: _executeAsync: true, _estimatedMinutes: N
  */
-function isAsyncTool(functionName) {
-  return ASYNC_TOOLS.hasOwnProperty(functionName) && ASYNC_TOOLS[functionName].executionMode === 'async';
-}
 
 /**
  * Process uploaded files and extract text content
@@ -771,9 +767,19 @@ IMPORTANT: The image data is already available in the system context. You don't 
           }
         }
 
-        // CHECK IF THIS IS AN ASYNC TOOL
-        if (isAsyncTool(functionName)) {
-          console.log(`[AsyncTool] Detected async tool: ${functionName}, queueing for background execution`);
+        // CHECK IF LLM REQUESTED ASYNC EXECUTION via _executeAsync parameter
+        const shouldExecuteAsync = functionArgs._executeAsync === true;
+        const estimatedMinutes = functionArgs._estimatedMinutes || null;
+
+        // Remove special params before passing to tool
+        const cleanArgs = { ...functionArgs };
+        delete cleanArgs._executeAsync;
+        delete cleanArgs._estimatedMinutes;
+
+        if (shouldExecuteAsync) {
+          console.log(`[AsyncTool] ${chatType === 'agent' ? 'Agent' : 'Orchestrator'} requested async execution for: ${functionName}`);
+
+          const estimatedDuration = estimatedMinutes ? estimatedMinutes * 60 * 1000 : null;
 
           // Queue the async tool for background execution
           const executionId = asyncToolQueue.enqueue(
@@ -781,7 +787,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
             conversationId,
             userId,
             functionName,
-            functionArgs,
+            cleanArgs, // Use cleaned args without special params
             {
               onProgress: async (progressData, execution) => {
                 // Trigger autonomous message for progress update
@@ -812,10 +818,28 @@ IMPORTANT: The image data is already available in the system context. You don't 
                 });
               },
             },
-            // Execute function wrapper
+            // Execute function wrapper - routes to correct executor based on chatType
             async (args, onProgress) => {
-              const asyncTool = ASYNC_TOOLS[functionName];
-              return await asyncTool.execute(args, onProgress);
+              console.log(`[AsyncTool] Executing ${functionName} for ${chatType} chat`);
+
+              // Route to correct tool executor based on chat type
+              if (chatType === 'agent') {
+                const isAgentManagement = conversationContext.agentId === 'agent-chat';
+                if (isAgentManagement) {
+                  return await executeAgentTool(functionName, args, authToken, conversationContext);
+                } else {
+                  return await executeTool(functionName, args, authToken, conversationContext);
+                }
+              } else if (chatType === 'workflow') {
+                return await executeWorkflowTool(functionName, args, authToken, conversationContext);
+              } else if (chatType === 'goal') {
+                return await executeGoalTool(functionName, args, authToken, conversationContext);
+              } else if (chatType === 'tool') {
+                return await executeToolFunction(functionName, args, authToken, conversationContext);
+              } else {
+                // Default to orchestrator tools
+                return await executeTool(functionName, args, authToken, conversationContext);
+              }
             }
           );
 
@@ -825,15 +849,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
             status: 'queued',
             executionId,
             message: `${functionName} started in the background. You'll receive updates as it progresses.`,
-            estimatedDuration: ASYNC_TOOLS[functionName].estimatedDuration
-              ? ASYNC_TOOLS[functionName].estimatedDuration(functionArgs)
-              : null,
+            estimatedDuration,
           };
 
           functionResponseContent = JSON.stringify(asyncResult);
           toolCallResult = asyncResult; // Set the parsed result for tool_end event
 
-          console.log(`[AsyncTool] Queued ${functionName} with execution ID ${executionId}`);
+          console.log(`[AsyncTool] Queued ${functionName} with execution ID ${executionId} (${chatType} chat)`);
         } else {
           // SYNCHRONOUS TOOL EXECUTION (existing behavior)
           try {

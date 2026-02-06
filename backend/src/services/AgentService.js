@@ -16,6 +16,7 @@ import {
   MERMAID_CHART_CHEATSHEET,
   MCP_TOOL_USE_RULES,
   CRITICAL_TOOL_RESPONSE_RULES,
+  ASYNC_EXECUTION_GUIDANCE,
 } from './orchestrator/system-prompts/orchestrator-chat.js';
 
 class AgentService {
@@ -250,6 +251,8 @@ ${CRITICAL_TOOL_CALL_REQUIREMENTS}
 
 AVAILABLE TOOLS:
 ${availableToolsList}
+
+${ASYNC_EXECUTION_GUIDANCE}
 
 ${IMAGE_ANALYSIS_CAPABILITIES}
 

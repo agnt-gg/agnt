@@ -1,3 +1,7 @@
+import { ASYNC_EXECUTION_GUIDANCE } from './async-execution.js';
+
+export { ASYNC_EXECUTION_GUIDANCE };
+
 export const CRITICAL_IMAGE_HANDLING = `CRITICAL IMAGE HANDLING INSTRUCTIONS:
 - When users upload images, they are AUTOMATICALLY available for your vision analysis
 - DO NOT try to read image files using the file_operations tool - this will fail
@@ -351,6 +355,8 @@ ${IMPORTANT_GUIDELINES}
 ${MERMAID_CHART_CHEATSHEET}
 
 ${MCP_TOOL_USE_RULES}
+
+${ASYNC_EXECUTION_GUIDANCE}
 
 ${CRITICAL_TOOL_RESPONSE_RULES}
 `;
