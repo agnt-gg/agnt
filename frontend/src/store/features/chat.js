@@ -111,13 +111,16 @@ export default {
         }
       }
     },
-    UPDATE_TOOL_CALL_RESULT(state, { messageId, toolCallId, result, error }) {
+    UPDATE_TOOL_CALL_RESULT(state, { messageId, toolCallId, result, error, status }) {
       const message = state.messages.find((m) => m.id === messageId);
       if (message && message.toolCalls) {
         const toolCall = message.toolCalls.find((tc) => tc.id === toolCallId);
         if (toolCall) {
           toolCall.result = result;
           toolCall.error = error;
+          if (status) {
+            toolCall.status = status;
+          }
         }
       }
     },
@@ -964,14 +967,18 @@ export default {
 
       // Skip if this tab is actively streaming - it already receives SSE events directly
       // Socket.IO events are only for OTHER tabs that need to sync
-      if (state.isStreaming) {
+      // EXCEPTION: Autonomous messages should ALWAYS be processed (they come from background async tools)
+      const isAutonomousEvent = type && type.startsWith('autonomous_');
+      const isAsyncToolEvent = type && type.startsWith('async_tool_');
+
+      if (state.isStreaming && !isAutonomousEvent && !isAsyncToolEvent) {
         console.log('[Realtime Chat] Ignoring Socket.IO event - this tab is streaming via SSE');
         return;
       }
 
-      // Always adopt conversation ID on message_start or user_message from another tab
+      // Always adopt conversation ID on message_start, user_message, or autonomous_message_start
       // This ensures tabs stay synced even when switching who is the "sender"
-      if (conversationId && (type === 'message_start' || type === 'user_message')) {
+      if (conversationId && (type === 'message_start' || type === 'user_message' || type === 'autonomous_message_start')) {
         if (state.currentConversationId !== conversationId) {
           console.log('[Realtime Chat] Syncing to conversation from other tab:', conversationId);
           commit('SET_CONVERSATION_ID', conversationId);
@@ -1039,7 +1046,7 @@ export default {
         case 'tool_end':
           // Tool execution completed in another tab
           if (eventData.toolCall) {
-            commit('UPDATE_TOOL_CALL', {
+            commit('UPDATE_TOOL_CALL_RESULT', {
               messageId: assistantMessageId,
               toolCallId: eventData.toolCall.id,
               result: eventData.toolCall.result,
@@ -1053,6 +1060,104 @@ export default {
           // Message completed in another tab - hide "thinking" indicator
           commit('SET_REMOTE_STREAMING', false);
           console.log('[Realtime Chat] Message completed');
+          break;
+
+        case 'autonomous_message_start':
+          // AI started an autonomous message (no user trigger)
+          console.log('[Realtime Chat] Autonomous message started');
+          if (!state.messages.find((m) => m.id === assistantMessageId)) {
+            commit('ADD_MESSAGE', {
+              id: assistantMessageId,
+              role: 'assistant',
+              content: '', // Empty - content will stream in
+              timestamp: eventData.timestamp || Date.now(),
+              autonomous: true, // Flag as AI-initiated
+            });
+            // Set remote streaming to show thinking indicator
+            commit('SET_REMOTE_STREAMING', true);
+          }
+          break;
+
+        case 'autonomous_content_delta':
+          // Autonomous message text chunk
+          commit('APPEND_MESSAGE_CONTENT', {
+            messageId: assistantMessageId,
+            delta: eventData.delta,
+          });
+          break;
+
+        case 'autonomous_message_end':
+          // Autonomous message completed - hide thinking indicator
+          commit('SET_REMOTE_STREAMING', false);
+          console.log('[Realtime Chat] Autonomous message completed');
+          break;
+
+        case 'async_tool_queued':
+          // Async tool was queued for background execution
+          console.log('[Realtime Chat] Async tool queued:', eventData.functionName);
+          // Optionally show a notification in UI
+          break;
+
+        case 'async_tool_started':
+          // Async tool execution started - update status to "running"
+          console.log('[Realtime Chat] Async tool started:', eventData.functionName);
+          if (eventData.toolCallId) {
+            commit('UPDATE_TOOL_CALL_RESULT', {
+              messageId: assistantMessageId,
+              toolCallId: eventData.toolCallId,
+              result: {
+                success: true,
+                status: 'running',
+                executionId: eventData.executionId,
+                message: `${eventData.functionName} is now executing...`,
+              },
+              status: 'running',
+            });
+          }
+          break;
+
+        case 'async_tool_progress':
+          // Async tool reported progress
+          console.log('[Realtime Chat] Async tool progress:', eventData.progress);
+          // This will be reported via autonomous messages, so no UI action needed here
+          break;
+
+        case 'async_tool_completed':
+          // Async tool completed - update status to "completed"
+          console.log('[Realtime Chat] Async tool completed:', eventData.functionName);
+          if (eventData.toolCallId) {
+            commit('UPDATE_TOOL_CALL_RESULT', {
+              messageId: assistantMessageId,
+              toolCallId: eventData.toolCallId,
+              result: {
+                success: true,
+                status: 'completed',
+                executionId: eventData.executionId,
+                result: eventData.result,
+                duration: eventData.duration,
+              },
+              status: 'completed',
+            });
+          }
+          break;
+
+        case 'async_tool_failed':
+          // Async tool failed - update status to "failed"
+          console.log('[Realtime Chat] Async tool failed:', eventData.functionName, eventData.error);
+          if (eventData.toolCallId) {
+            commit('UPDATE_TOOL_CALL_RESULT', {
+              messageId: assistantMessageId,
+              toolCallId: eventData.toolCallId,
+              result: {
+                success: false,
+                status: 'failed',
+                executionId: eventData.executionId,
+                error: eventData.error,
+              },
+              error: eventData.error,
+              status: 'failed',
+            });
+          }
           break;
 
         default:

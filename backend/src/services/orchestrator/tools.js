@@ -2826,12 +2826,16 @@ export const TOOLS = {
 export async function getAvailableToolSchemas() {
   await toolRegistry.ensureInitialized();
 
+  // Import async tools
+  const { ASYNC_TOOLS } = await import('./asyncTools.js');
+
   const nativeToolSchemas = Object.values(TOOLS).map((tool) => tool.schema);
+  const asyncToolSchemas = Object.values(ASYNC_TOOLS).map((tool) => tool.schema);
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
 
   // Combine and deduplicate by function name to ensure unique tool names
-  const allSchemas = [...nativeToolSchemas, ...registryToolSchemas, ...pluginToolSchemas];
+  const allSchemas = [...nativeToolSchemas, ...asyncToolSchemas, ...registryToolSchemas, ...pluginToolSchemas];
   const uniqueSchemas = [];
   const seenNames = new Set();
 

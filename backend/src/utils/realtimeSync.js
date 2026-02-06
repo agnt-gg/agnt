@@ -75,6 +75,18 @@ export const RealtimeEvents = {
   CHAT_TOOL_END: 'chat:tool_end',
   CHAT_MESSAGE_END: 'chat:message_end',
   CHAT_USER_MESSAGE: 'chat:user_message',
+
+  // Autonomous AI Messages (AI-initiated without user trigger)
+  AUTONOMOUS_MESSAGE_START: 'chat:autonomous_message_start',
+  AUTONOMOUS_CONTENT_DELTA: 'chat:autonomous_content_delta',
+  AUTONOMOUS_MESSAGE_END: 'chat:autonomous_message_end',
+
+  // Async Tool Execution
+  ASYNC_TOOL_QUEUED: 'chat:async_tool_queued',
+  ASYNC_TOOL_STARTED: 'chat:async_tool_started',
+  ASYNC_TOOL_PROGRESS: 'chat:async_tool_progress',
+  ASYNC_TOOL_COMPLETED: 'chat:async_tool_completed',
+  ASYNC_TOOL_FAILED: 'chat:async_tool_failed',
 };
 
 export default {

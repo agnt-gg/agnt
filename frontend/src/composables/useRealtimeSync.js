@@ -271,6 +271,72 @@ export function useRealtimeSync() {
         ...data,
       });
     });
+
+    // Autonomous AI message events (AI-initiated without user trigger)
+    socket.on('chat:autonomous_message_start', (data) => {
+      console.log('[Realtime] Autonomous message started:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'autonomous_message_start',
+        ...data,
+      });
+    });
+
+    socket.on('chat:autonomous_content_delta', (data) => {
+      console.log('[Realtime] Autonomous content delta:', data.delta);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'autonomous_content_delta',
+        ...data,
+      });
+    });
+
+    socket.on('chat:autonomous_message_end', (data) => {
+      console.log('[Realtime] Autonomous message ended:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'autonomous_message_end',
+        ...data,
+      });
+    });
+
+    // Async tool execution events
+    socket.on('chat:async_tool_queued', (data) => {
+      console.log('[Realtime] Async tool queued:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'async_tool_queued',
+        ...data,
+      });
+    });
+
+    socket.on('chat:async_tool_started', (data) => {
+      console.log('[Realtime] Async tool started:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'async_tool_started',
+        ...data,
+      });
+    });
+
+    socket.on('chat:async_tool_progress', (data) => {
+      console.log('[Realtime] Async tool progress:', data.progress);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'async_tool_progress',
+        ...data,
+      });
+    });
+
+    socket.on('chat:async_tool_completed', (data) => {
+      console.log('[Realtime] Async tool completed:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'async_tool_completed',
+        ...data,
+      });
+    });
+
+    socket.on('chat:async_tool_failed', (data) => {
+      console.log('[Realtime] Async tool failed:', data);
+      store.dispatch('chat/handleRealtimeChatEvent', {
+        type: 'async_tool_failed',
+        ...data,
+      });
+    });
   };
 
   /**

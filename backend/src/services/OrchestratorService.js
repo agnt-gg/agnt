@@ -17,6 +17,10 @@ import db from '../models/database/index.js';
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/utils.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
+import asyncToolQueue from './AsyncToolQueue.js';
+import conversationManager from './ConversationManager.js';
+import autonomousMessageService from './AutonomousMessageService.js';
+import { ASYNC_TOOLS } from './orchestrator/asyncTools.js';
 
 /**
  * Extract images from tool results and replace with references
@@ -184,6 +188,15 @@ function offloadLargeData(toolResult, toolCallId, conversationContext, threshold
       offloadedData: [],
     };
   }
+}
+
+/**
+ * Check if a tool is an async tool that should run in the background
+ * @param {string} functionName - Tool function name
+ * @returns {boolean} - True if tool is async
+ */
+function isAsyncTool(functionName) {
+  return ASYNC_TOOLS.hasOwnProperty(functionName) && ASYNC_TOOLS[functionName].executionMode === 'async';
 }
 
 /**
@@ -758,11 +771,73 @@ IMPORTANT: The image data is already available in the system context. You don't 
           }
         }
 
-        try {
-          // Execute tool based on chat type
-          let rawFunctionResponse;
+        // CHECK IF THIS IS AN ASYNC TOOL
+        if (isAsyncTool(functionName)) {
+          console.log(`[AsyncTool] Detected async tool: ${functionName}, queueing for background execution`);
 
-          if (chatType === 'agent') {
+          // Queue the async tool for background execution
+          const executionId = asyncToolQueue.enqueue(
+            toolCall.id,
+            conversationId,
+            userId,
+            functionName,
+            functionArgs,
+            {
+              onProgress: async (progressData, execution) => {
+                // Trigger autonomous message for progress update
+                await autonomousMessageService.triggerToolProgress(conversationId, {
+                  toolCallId: toolCall.id,
+                  functionName,
+                  progress: progressData,
+                  executionId: execution.executionId,
+                });
+              },
+              onComplete: async (result, execution) => {
+                // Trigger autonomous message for completion
+                await autonomousMessageService.triggerToolCompletion(conversationId, {
+                  toolCallId: toolCall.id,
+                  functionName,
+                  result,
+                  executionId: execution.executionId,
+                  duration: execution.completedAt - execution.startedAt,
+                });
+              },
+              onError: async (error, execution) => {
+                // Trigger autonomous message for error
+                await autonomousMessageService.triggerToolFailure(conversationId, {
+                  toolCallId: toolCall.id,
+                  functionName,
+                  error: error.message || String(error),
+                  executionId: execution.executionId,
+                });
+              },
+            },
+            // Execute function wrapper
+            async (args, onProgress) => {
+              const asyncTool = ASYNC_TOOLS[functionName];
+              return await asyncTool.execute(args, onProgress);
+            }
+          );
+
+          // Return immediate response indicating tool was queued
+          functionResponseContent = JSON.stringify({
+            success: true,
+            status: 'queued',
+            executionId,
+            message: `${functionName} started in the background. You'll receive updates as it progresses.`,
+            estimatedDuration: ASYNC_TOOLS[functionName].estimatedDuration
+              ? ASYNC_TOOLS[functionName].estimatedDuration(functionArgs)
+              : null,
+          });
+
+          console.log(`[AsyncTool] Queued ${functionName} with execution ID ${executionId}`);
+        } else {
+          // SYNCHRONOUS TOOL EXECUTION (existing behavior)
+          try {
+            // Execute tool based on chat type
+            let rawFunctionResponse;
+
+            if (chatType === 'agent') {
             // Check if this is agent management chat (AgentForge) or chatting WITH an agent
             const isAgentManagement = conversationContext.agentId === 'agent-chat';
 
@@ -939,18 +1014,19 @@ IMPORTANT: The image data is already available in the system context. You don't 
               console.log(`Tool ${functionName} response wrapped safely after failed recovery attempts`);
             }
           }
-        } catch (executionError) {
-          toolCallError = `Tool execution failed: ${executionError.message}`;
-          console.error(`Tool execution error for ${functionName}:`, executionError);
+          } catch (executionError) {
+            toolCallError = `Tool execution failed: ${executionError.message}`;
+            console.error(`Tool execution error for ${functionName}:`, executionError);
 
-          toolCallResult = {
-            success: false,
-            error: toolCallError,
-            recoverable: true,
-            suggestion: `The ${functionName} tool encountered an error. You may want to try a different approach or check the parameters.`,
-          };
-          functionResponseContent = JSON.stringify(toolCallResult);
-        }
+            toolCallResult = {
+              success: false,
+              error: toolCallError,
+              recoverable: true,
+              suggestion: `The ${functionName} tool encountered an error. You may want to try a different approach or check the parameters.`,
+            };
+            functionResponseContent = JSON.stringify(toolCallResult);
+          }
+        } // End of async/sync tool execution if-else
 
         // Store execution details
         toolExecutionDetails.push({
@@ -1151,6 +1227,17 @@ IMPORTANT: The image data is already available in the system context. You don't 
         console.error('[Agent Execution] Failed to finalize execution record:', execError);
       }
     }
+
+    // Store conversation context for autonomous messages
+    // This allows async tools to trigger AI responses later
+    conversationManager.store(conversationId, {
+      ...conversationContext,
+      messages,
+      authToken,
+      agentExecutionId, // Link autonomous messages to the execution
+    });
+
+    console.log(`[ConversationManager] Stored conversation ${conversationId} for autonomous messages`);
 
     sendEvent('done', { message: 'Stream ended' });
     res.end();
