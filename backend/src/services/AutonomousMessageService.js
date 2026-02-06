@@ -61,6 +61,22 @@ Keep your response brief (1-2 sentences) since this is a progress update.`,
 
     log(`[AutonomousMessage] Triggering autonomous message for tool completion: ${functionName}`);
 
+    // Get conversation context to find user ID
+    const context = conversationManager.get(conversationId);
+
+    // Broadcast tool result update to mark as completed
+    if (context && context.userId && toolCallId) {
+      log(`[AutonomousMessage] Broadcasting tool completion status update for ${toolCallId}`);
+      broadcastToUser(context.userId, 'async_tool_completed', {
+        conversationId,
+        toolCallId,
+        executionId,
+        result, // The actual tool result data
+        duration, // Duration in milliseconds
+        functionName, // Include function name for logging
+      });
+    }
+
     const systemMessage = {
       role: 'system',
       content: `✅ ASYNC TOOL COMPLETED
@@ -92,6 +108,21 @@ Be conversational and enthusiastic about the completion.`,
 
     log(`[AutonomousMessage] Triggering autonomous message for tool failure: ${functionName}`);
 
+    // Get conversation context to find user ID
+    const context = conversationManager.get(conversationId);
+
+    // Broadcast tool result update to mark as failed
+    if (context && context.userId && toolCallId) {
+      log(`[AutonomousMessage] Broadcasting tool failure status update for ${toolCallId}`);
+      broadcastToUser(context.userId, 'async_tool_failed', {
+        conversationId,
+        toolCallId,
+        executionId,
+        error, // The error message/object
+        functionName, // Include function name for logging
+      });
+    }
+
     const systemMessage = {
       role: 'system',
       content: `❌ ASYNC TOOL FAILED
@@ -121,14 +152,16 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
     let context = conversationManager.get(conversationId);
 
     // Retry if conversation not found yet (might still be storing)
-    if (!context && retryCount < 3) {
-      console.warn(`[AutonomousMessage] Conversation ${conversationId} not found, retrying in 1s... (attempt ${retryCount + 1}/3)`);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    // New conversations take 3-10 seconds to be stored after tool execution
+    if (!context && retryCount < 10) {
+      log(`[AutonomousMessage] Conversation ${conversationId} not found yet, waiting... (attempt ${retryCount + 1}/10)`);
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // 1.5 seconds between retries
       return this.triggerAutonomousMessage(conversationId, systemMessage, retryCount + 1);
     }
 
     if (!context) {
-      console.error(`[AutonomousMessage] Cannot trigger - conversation ${conversationId} not found after ${retryCount} retries`);
+      // Conversation may have been closed or cleaned up - this is normal for long-running async tools
+      log(`[AutonomousMessage] Skipping autonomous message - conversation ${conversationId} no longer active after 15 seconds`);
       return;
     }
 

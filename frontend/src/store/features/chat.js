@@ -113,7 +113,22 @@ export default {
     },
     UPDATE_TOOL_CALL_RESULT(state, { messageId, toolCallId, result, error, status }) {
       console.log('🔧 UPDATE_TOOL_CALL_RESULT called:', { messageId, toolCallId, result, error, status });
-      const message = state.messages.find((m) => m.id === messageId);
+
+      // If messageId is provided, search that specific message
+      let message = messageId ? state.messages.find((m) => m.id === messageId) : null;
+
+      // If no messageId or message not found, search all messages for the toolCallId
+      if (!message) {
+        console.log('🔧 No messageId or message not found, searching all messages for toolCallId:', toolCallId);
+        for (const msg of state.messages) {
+          if (msg.toolCalls && msg.toolCalls.some(tc => tc.id === toolCallId)) {
+            message = msg;
+            console.log('🔧 Found message with toolCallId:', msg.id);
+            break;
+          }
+        }
+      }
+
       console.log('🔧 Found message:', message ? message.id : 'NOT FOUND');
       if (message && message.toolCalls) {
         console.log('🔧 Message has', message.toolCalls.length, 'tool calls');
@@ -967,7 +982,7 @@ export default {
     /**
      * Handle real-time chat events from Socket.IO (messages from other tabs)
      */
-    handleRealtimeChatEvent({ commit, state }, eventData) {
+    handleRealtimeChatEvent({ commit, state, dispatch }, eventData) {
       const { type, conversationId, assistantMessageId } = eventData;
 
       // Skip if this tab is actively streaming - it already receives SSE events directly
@@ -1095,6 +1110,10 @@ export default {
           // Autonomous message completed - hide thinking indicator
           commit('SET_REMOTE_STREAMING', false);
           console.log('[Realtime Chat] Autonomous message completed');
+          // Trigger autosave after autonomous message completes
+          if (dispatch) {
+            dispatch('autosaveConversation', { debounce: true });
+          }
           break;
 
         case 'async_tool_queued':
