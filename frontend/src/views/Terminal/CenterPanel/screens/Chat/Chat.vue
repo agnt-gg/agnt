@@ -599,6 +599,14 @@ export default {
     };
 
     const scrollToTop = () => {
+      // Scroll the base screen to top
+      if (baseScreenRef.value && baseScreenRef.value.$el) {
+        const scrollContainer = baseScreenRef.value.$el.querySelector('.screen-content');
+        if (scrollContainer) {
+          scrollContainer.scrollTop = 0;
+        }
+      }
+      // Also scroll conversation space to top
       if (conversationSpace.value) {
         conversationSpace.value.scrollTop = 0;
       }
@@ -746,7 +754,8 @@ export default {
           terminalLines.value.push(`Loaded saved output from ${createdAt.toLocaleDateString()}`);
         }
 
-        // Scroll to top when loading saved outputs so user sees from the beginning
+        // Scroll to top immediately and after render to prevent scroll position carry-over
+        scrollToTop();
         await nextTick();
         scrollToTop();
       } catch (error) {
@@ -990,6 +999,9 @@ export default {
         }
         scrollToBottom();
       });
+
+      // Notify OutputList to deselect the current conversation
+      window.dispatchEvent(new CustomEvent('chat-cleared'));
     };
 
     onUnmounted(() => {
@@ -1024,10 +1036,15 @@ export default {
       () => route.query['content-id'],
       async (newContentId, oldContentId) => {
         if (newContentId && newContentId !== oldContentId) {
+          // Force scroll to top FIRST
+          scrollToTop();
           // Clear existing chat and load the saved output
           store.commit('chat/RESET_CHAT');
           terminalLines.value = ['Loading saved output...'];
           await loadSavedOutput(newContentId);
+          // Scroll to top again after loading
+          await nextTick();
+          scrollToTop();
         }
       }
     );

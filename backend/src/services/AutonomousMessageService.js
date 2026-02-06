@@ -32,8 +32,10 @@ class AutonomousMessageService {
     log(`[AutonomousMessage] Triggering autonomous message for tool progress: ${functionName}`);
 
     const systemMessage = {
-      role: 'system',
-      content: `🔄 ASYNC TOOL PROGRESS UPDATE
+      role: 'user',
+      content: `[System: Async tool progress update]
+
+🔄 ASYNC TOOL PROGRESS UPDATE
 
 Tool: ${functionName}
 Execution ID: ${executionId}
@@ -79,8 +81,10 @@ Keep your response brief (1-2 sentences) since this is a progress update.`,
     }
 
     const systemMessage = {
-      role: 'system',
-      content: `✅ ASYNC TOOL COMPLETED
+      role: 'user',
+      content: `[System: Async tool completed]
+
+✅ ASYNC TOOL COMPLETED
 
 Tool: ${functionName}
 Execution ID: ${executionId}
@@ -126,8 +130,10 @@ Be conversational and enthusiastic about the completion.`,
     }
 
     const systemMessage = {
-      role: 'system',
-      content: `❌ ASYNC TOOL FAILED
+      role: 'user',
+      content: `[System: Async tool failed]
+
+❌ ASYNC TOOL FAILED
 
 Tool: ${functionName}
 Execution ID: ${executionId}

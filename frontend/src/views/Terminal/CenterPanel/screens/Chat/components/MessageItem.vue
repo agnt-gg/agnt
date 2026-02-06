@@ -45,23 +45,25 @@
         <!-- Tool Execution Details -->
         <div v-if="message.toolCalls && message.toolCalls.length > 0" class="tool-execution-details">
           <div v-for="(toolCall, index) in message.toolCalls" :key="`${message.id}-${index}`" class="tool-call-item">
-            <div class="tool-header" @click="toggleToolCall(index)">
-              <span class="tool-expansion-icon">
-                {{ isExpanded(index) ? '▾' : '▸' }}
-              </span>
-              <span class="tool-icon">⚙️</span>
-              <span class="tool-label">{{ toolCall.name }}</span>
-            </div>
+            <div class="top-tool-bar">
+              <div class="tool-header" @click="toggleToolCall(index)">
+                <span class="tool-expansion-icon">
+                  {{ isExpanded(index) ? '▾' : '▸' }}
+                </span>
+                <span class="tool-icon">⚙️</span>
+                <span class="tool-label">{{ toolCall.name }}</span>
+              </div>
 
-            <div v-if="isRunning(toolCall.id)" class="tool-running">
-              <div class="spinner"></div>
-              <span>Executing...</span>
-            </div>
+              <div v-if="isRunning(toolCall.id)" class="tool-running">
+                <div class="spinner"></div>
+                <span>Executing...</span>
+              </div>
 
-            <!-- Stop button for async tools -->
-            <button v-if="isAsyncToolRunning(toolCall)" @click="stopAsyncTool(toolCall)" class="stop-async-tool-btn" title="Stop async tool">
-              <i class="fas fa-stop"></i>
-            </button>
+              <!-- Stop button for async tools -->
+              <button v-if="isAsyncToolRunning(toolCall)" @click="stopAsyncTool(toolCall)" class="stop-async-tool-btn" title="Stop async tool">
+                <i class="fas fa-stop"></i>
+              </button>
+            </div>
 
             <div v-if="isExpanded(index)" class="tool-call-content">
               <div class="tool-params">
@@ -96,10 +98,10 @@
                       <img :src="img" :alt="`Generated Image ${idx + 1}`" class="grid-image" @click="openImageInNewTab(img)" />
                       <div class="grid-item-actions">
                         <Tooltip text="Download" width="auto">
-                        <button @click="downloadImage(img, `generated-image-${idx + 1}.png`)" class="grid-action-btn">📥</button>
+                          <button @click="downloadImage(img, `generated-image-${idx + 1}.png`)" class="grid-action-btn">📥</button>
                         </Tooltip>
                         <Tooltip text="Copy" width="auto">
-                        <button @click="copyImageToClipboard(img)" class="grid-action-btn">📋</button>
+                          <button @click="copyImageToClipboard(img)" class="grid-action-btn">📋</button>
                         </Tooltip>
                       </div>
                     </div>
@@ -1327,14 +1329,14 @@ export default {
                   // Try to extract only the actual diagram code by finding common Mermaid patterns
                   // First try to match the specific diagram type with its content
                   const diagramMatch = mermaidCode.match(
-                    /(graph|sequenceDiagram|gantt|classDiagram|stateDiagram|pie|flowchart|erDiagram|requirementDiagram|gitGraph|journey|quadrantChart|sankey|xychart|mindmap|timeline|quadrantChart|sankey).*?(\n\s*\n|$)/s
+                    /(graph|sequenceDiagram|gantt|classDiagram|stateDiagram|pie|flowchart|erDiagram|requirementDiagram|gitGraph|journey|quadrantChart|sankey|xychart|mindmap|timeline|quadrantChart|sankey).*?(\n\s*\n|$)/s,
                   );
                   if (diagramMatch) {
                     mermaidCode = diagramMatch[0];
                   } else {
                     // If no specific pattern matched, try to find any content that looks like a diagram
                     const generalMatch = mermaidCode.match(
-                      /(graph|flowchart|sequenceDiagram|gantt|classDiagram|stateDiagram|pie|erDiagram|requirementDiagram|gitGraph|journey|quadrantChart|sankey|xychart|mindmap|timeline).*?(%%.*?\n)*.*?(?=\n\s*\n|$)/s
+                      /(graph|flowchart|sequenceDiagram|gantt|classDiagram|stateDiagram|pie|erDiagram|requirementDiagram|gitGraph|journey|quadrantChart|sankey|xychart|mindmap|timeline).*?(%%.*?\n)*.*?(?=\n\s*\n|$)/s,
                     );
                     if (generalMatch) {
                       mermaidCode = generalMatch[0];
@@ -1580,9 +1582,7 @@ export default {
       if (!toolCall.result) return false;
 
       try {
-        const result = typeof toolCall.result === 'string'
-          ? JSON.parse(toolCall.result)
-          : toolCall.result;
+        const result = typeof toolCall.result === 'string' ? JSON.parse(toolCall.result) : toolCall.result;
 
         return Boolean(result.executionId) && (result.status === 'queued' || result.status === 'running');
       } catch {
@@ -1592,9 +1592,7 @@ export default {
 
     const stopAsyncTool = async (toolCall) => {
       try {
-        const result = typeof toolCall.result === 'string'
-          ? JSON.parse(toolCall.result)
-          : toolCall.result;
+        const result = typeof toolCall.result === 'string' ? JSON.parse(toolCall.result) : toolCall.result;
 
         const executionId = result.executionId;
         if (!executionId) return;
@@ -1603,7 +1601,7 @@ export default {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
         });
 
@@ -2808,9 +2806,24 @@ span.nodeLabel p {
 }
 
 .tool-call-item {
-  background: rgb(0 0 0 / 10%);
+  display: flex;
+  background: #0000001a;
   border-radius: 8px;
   border: 1px solid rgba(127, 129, 147, 0.1);
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.top-tool-bar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: flex-start;
 }
 
 .tool-call-item:last-child {
@@ -2991,17 +3004,17 @@ span.nodeLabel p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
+  width: 18px;
+  height: 18px;
+  margin: 4px;
   background: #ef4444;
-  color: white;
+  color: #fff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 11px;
   transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 1px 3px #ef44444d;
   margin-left: 8px;
 }
 

@@ -34,6 +34,24 @@
       </div>
 
       <div v-else class="list-container">
+        <!-- Selection bar -->
+        <div v-if="isSelectionMode" class="selection-bar">
+          <div class="selection-info">
+            <i class="fas fa-check-circle"></i>
+            <span>{{ selectedCount }} selected</span>
+          </div>
+          <div class="selection-actions">
+            <button @click="clearSelection" class="selection-btn clear-btn">
+              <i class="fas fa-times"></i>
+              <span>Clear</span>
+            </button>
+            <button @click="deleteSelectedOutputs" class="selection-btn delete-btn">
+              <i class="fas fa-trash"></i>
+              <span>Delete ({{ selectedCount }})</span>
+            </button>
+          </div>
+        </div>
+
         <div class="list-header">
           <input v-model="searchQuery" type="text" placeholder="Search outputs..." class="search-input" />
         </div>
@@ -55,8 +73,13 @@
             </Tooltip>
           </div>
           <div class="output-list-items">
-            <div v-for="output in sortedOutputs" :key="output.id" class="output-item">
-              <div class="output-content" @click="navigateToOutput(output.id)">
+            <div
+              v-for="output in sortedOutputs"
+              :key="output.id"
+              class="output-item"
+              :class="{ selected: isSelected(output.id), active: isActive(output.id) }"
+            >
+              <div class="output-content" @click="handleOutputClick(output.id, $event)">
                 <div class="output-date">
                   {{ formatDate(output.created_at) }}
                 </div>
@@ -143,12 +166,23 @@ export default {
     const menuPosition = ref({});
     const menuButtonRefs = ref({});
 
+    // Multi-select state
+    const selectedOutputIds = ref(new Set());
+    const lastSelectedId = ref(null);
+
+    // Active/current conversation (the one being viewed)
+    const activeOutputId = ref(null);
+
     // Get outputs from store
     const outputs = computed(() => store.getters['contentOutputs/outputs']);
     const totalCount = computed(() => store.getters['contentOutputs/totalCount']);
     const hasMore = computed(() => store.getters['contentOutputs/hasMore']);
     const hasLoadedAll = computed(() => store.getters['contentOutputs/hasLoadedAll']);
     const isFetchingMore = computed(() => store.getters['contentOutputs/isFetching']);
+
+    // Multi-select computed
+    const isSelectionMode = computed(() => selectedOutputIds.value.size > 0);
+    const selectedCount = computed(() => selectedOutputIds.value.size);
 
     const sortedOutputs = computed(() => {
       return outputs.value
@@ -283,11 +317,137 @@ export default {
 
     function navigateToOutput(outputId) {
       playSound('buttonClick');
+      activeOutputId.value = outputId; // Highlight the current conversation
       try {
         router.push(`/chat?content-id=${outputId}`);
       } catch (error) {
         console.error('Navigation failed:', error);
         window.location.href = `/chat?content-id=${outputId}`;
+      }
+    }
+
+    // Handle output click with shift detection
+    function handleOutputClick(outputId, event) {
+      if (event.shiftKey) {
+        event.preventDefault();
+        playSound('buttonClick');
+
+        // If there's an active item that's not selected, add it to selection first
+        if (activeOutputId.value && !selectedOutputIds.value.has(activeOutputId.value)) {
+          const newSelection = new Set(selectedOutputIds.value);
+          newSelection.add(activeOutputId.value);
+          selectedOutputIds.value = new Set(newSelection);
+          lastSelectedId.value = activeOutputId.value;
+        }
+
+        toggleSelection(outputId, event);
+      } else {
+        // Clear selection when navigating normally
+        if (isSelectionMode.value) {
+          clearSelection();
+        }
+        navigateToOutput(outputId);
+      }
+    }
+
+    // Toggle selection
+    function toggleSelection(outputId, event) {
+      const newSelection = new Set(selectedOutputIds.value);
+
+      if (newSelection.has(outputId)) {
+        // Deselect if already selected
+        newSelection.delete(outputId);
+      } else {
+        // Just add the clicked item (no range selection)
+        newSelection.add(outputId);
+      }
+
+      // Force reactivity by creating a new Set instance
+      selectedOutputIds.value = new Set(newSelection);
+    }
+
+    // Get range of outputs between two IDs
+    function getOutputRange(startId, endId) {
+      const ids = sortedOutputs.value.map((o) => o.id);
+      const startIndex = ids.indexOf(startId);
+      const endIndex = ids.indexOf(endId);
+
+      const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+      return ids.slice(from, to + 1);
+    }
+
+    // Clear selection
+    function clearSelection() {
+      selectedOutputIds.value = new Set();
+      lastSelectedId.value = null;
+    }
+
+    // Check if output is selected
+    function isSelected(outputId) {
+      return selectedOutputIds.value.has(outputId);
+    }
+
+    // Check if output is active/current
+    function isActive(outputId) {
+      return activeOutputId.value === outputId;
+    }
+
+    // Batch delete selected outputs
+    async function deleteSelectedOutputs() {
+      playSound('buttonClick');
+
+      // Collect ALL highlighted items (selected + active)
+      const itemsToDelete = new Set(selectedOutputIds.value);
+      if (activeOutputId.value && !itemsToDelete.has(activeOutputId.value)) {
+        itemsToDelete.add(activeOutputId.value);
+      }
+
+      const count = itemsToDelete.size;
+      const confirmed = await simpleModal.value.showModal({
+        title: `Delete ${count} Conversation${count > 1 ? 's' : ''}`,
+        message: `Are you sure you want to delete ${count} selected conversation${count > 1 ? 's' : ''}?`,
+        confirmText: 'Delete All',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-danger',
+      });
+
+      if (!confirmed) return;
+
+      try {
+        // Delete all highlighted outputs in parallel
+        await Promise.all(Array.from(itemsToDelete).map((id) => store.dispatch('contentOutputs/deleteOutput', id)));
+
+        clearSelection();
+        activeOutputId.value = null;
+
+        await simpleModal.value.showModal({
+          title: 'Success',
+          message: `${count} conversation${count > 1 ? 's' : ''} deleted successfully`,
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      } catch (error) {
+        console.error('Error deleting outputs:', error);
+        await simpleModal.value.showModal({
+          title: 'Error',
+          message: 'Failed to delete some conversations',
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      }
+    }
+
+    // Keyboard shortcuts
+    function handleKeyDown(event) {
+      if (!isSelectionMode.value) return;
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        deleteSelectedOutputs();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        clearSelection();
       }
     }
 
@@ -466,18 +626,28 @@ export default {
       store.dispatch('contentOutputs/refreshOutputs');
     }
 
+    // Handle chat cleared event
+    function handleChatCleared() {
+      // Clear the active output when chat is cleared
+      activeOutputId.value = null;
+    }
+
     // Setup lifecycle hooks
     onMounted(() => {
       fetchSavedOutputs();
       document.addEventListener('click', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('conversation-saved', handleConversationSaved);
       window.addEventListener('conversation-renamed', handleConversationRenamed);
+      window.addEventListener('chat-cleared', handleChatCleared);
     });
 
     onBeforeUnmount(() => {
       document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('conversation-saved', handleConversationSaved);
       window.removeEventListener('conversation-renamed', handleConversationRenamed);
+      window.removeEventListener('chat-cleared', handleChatCleared);
     });
 
     return {
@@ -510,6 +680,17 @@ export default {
       startRename,
       handleClickOutside,
       handleNewChat,
+      // Multi-select
+      selectedOutputIds,
+      isSelectionMode,
+      selectedCount,
+      handleOutputClick,
+      isSelected,
+      clearSelection,
+      deleteSelectedOutputs,
+      // Active/current
+      activeOutputId,
+      isActive,
     };
   },
 };
@@ -963,5 +1144,101 @@ body.dark .create-output-btn {
 .create-link i {
   margin-right: 4px;
   font-size: 0.9em;
+}
+
+/* Multi-select styles */
+.selection-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--color-darker-1);
+  border: 1px solid var(--color-green);
+  border-radius: 8px;
+  margin-bottom: 0;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.selection-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-green);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.selection-info i {
+  font-size: 16px;
+}
+
+.selection-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.selection-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-med-navy);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.selection-btn:hover {
+  background: var(--color-black-navy);
+}
+
+.selection-btn.delete-btn {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.selection-btn.delete-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.selection-btn i {
+  font-size: 12px;
+}
+
+/* Active/current item styling (when viewing) */
+.output-item.active {
+  border-color: var(--color-green);
+  background: rgba(34, 197, 94, 0.08);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+.output-item.active:hover {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+/* Selected item styling (for batch operations) */
+.output-item.selected {
+  border-color: var(--color-green);
+  background: rgba(34, 197, 94, 0.08);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+.output-item.selected:hover {
+  background: rgba(34, 197, 94, 0.12);
 }
 </style>
