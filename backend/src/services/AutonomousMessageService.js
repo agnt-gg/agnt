@@ -233,6 +233,11 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         finalContent = responseMessage.content || '';
       }
 
+      // Ensure finalContent is a string
+      if (typeof finalContent !== 'string') {
+        finalContent = JSON.stringify(finalContent);
+      }
+
       // Skip empty autonomous messages (LLM returned no content)
       if (!finalContent || finalContent.trim() === '') {
         log(`[AutonomousMessage] Skipping empty autonomous message for conversation ${conversationId}`);
