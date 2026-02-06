@@ -74,6 +74,21 @@ router.post('/cancel/:executionId', authenticateToken, (req, res) => {
 });
 
 /**
+ * POST /api/async-tools/cancel-all/:conversationId
+ * Cancel ALL running async tools for a conversation (global stop)
+ */
+router.post('/cancel-all/:conversationId', authenticateToken, (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const result = asyncToolQueue.cancelAllForConversation(conversationId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[AsyncToolRoutes] Error cancelling all executions:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/async-tools/execution/:executionId
  * Get details of a specific execution
  */

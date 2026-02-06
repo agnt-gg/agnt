@@ -2823,6 +2823,55 @@ export const TOOLS = {
   },
 };
 
+/**
+ * Async execution parameters injected into every tool schema.
+ * This ensures LLMs see these as valid parameters and will actually use them.
+ */
+const ASYNC_TOOL_PARAMS = {
+  _executeAsync: {
+    type: 'boolean',
+    description: 'Set to true to run this tool in the background (async). Returns immediately with an execution ID. Results arrive via autonomous message when complete. User can stop via UI.',
+  },
+  _estimatedMinutes: {
+    type: 'number',
+    description: 'Optional estimated duration in minutes for async execution.',
+  },
+  _interval: {
+    type: 'number',
+    description: 'For periodic/recurring execution: interval in seconds between runs. Requires _executeAsync: true.',
+  },
+  _stopAfter: {
+    type: 'integer',
+    description: 'For periodic execution: stop after this many iterations. Requires _interval.',
+  },
+  _duration: {
+    type: 'number',
+    description: 'For periodic execution: stop after this many minutes total. Requires _interval.',
+  },
+};
+
+/**
+ * Inject async execution parameters into a tool schema
+ */
+function injectAsyncParams(schema) {
+  if (!schema?.function?.parameters?.properties) return schema;
+
+  return {
+    ...schema,
+    function: {
+      ...schema.function,
+      parameters: {
+        ...schema.function.parameters,
+        properties: {
+          ...schema.function.parameters.properties,
+          ...ASYNC_TOOL_PARAMS,
+        },
+        // Don't add async params to required - they're always optional
+      },
+    },
+  };
+}
+
 export async function getAvailableToolSchemas() {
   await toolRegistry.ensureInitialized();
 
@@ -2838,7 +2887,8 @@ export async function getAvailableToolSchemas() {
   for (const schema of allSchemas) {
     if (schema.function && schema.function.name && !seenNames.has(schema.function.name)) {
       seenNames.add(schema.function.name);
-      uniqueSchemas.push(schema);
+      // Inject async execution params into every tool
+      uniqueSchemas.push(injectAsyncParams(schema));
     }
   }
 

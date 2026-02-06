@@ -59,12 +59,9 @@
             </div>
 
             <!-- Stop button for async tools -->
-            <div v-if="isAsyncToolRunning(toolCall)" class="async-tool-running">
-              <button @click="stopAsyncTool(toolCall)" class="stop-async-tool-btn">
-                <span class="stop-icon">⏹</span>
-                <span class="stop-text">Stop Async Tool</span>
-              </button>
-            </div>
+            <button v-if="isAsyncToolRunning(toolCall)" @click="stopAsyncTool(toolCall)" class="stop-async-tool-btn" title="Stop async tool">
+              <i class="fas fa-stop"></i>
+            </button>
 
             <div v-if="isExpanded(index)" class="tool-call-content">
               <div class="tool-params">
@@ -1580,50 +1577,15 @@ export default {
     };
 
     const isAsyncToolRunning = (toolCall) => {
-      console.log('🔍 ==== ASYNC TOOL CHECK START ====');
-      console.log('🔍 Tool name:', toolCall.name);
-      console.log('🔍 Full toolCall:', toolCall);
-
-      if (!toolCall.result) {
-        console.log('❌ NO RESULT! toolCall.result is:', toolCall.result);
-        return false;
-      }
-
-      console.log('✅ Result exists! Type:', typeof toolCall.result);
-      console.log('✅ Result value:', toolCall.result);
+      if (!toolCall.result) return false;
 
       try {
         const result = typeof toolCall.result === 'string'
           ? JSON.parse(toolCall.result)
           : toolCall.result;
 
-        console.log('✅ Parsed result:', result);
-        console.log('🔍 result.executionId =', result.executionId, '(type:', typeof result.executionId, ')');
-        console.log('🔍 result.status =', result.status, '(type:', typeof result.status, ')');
-
-        const hasExecId = Boolean(result.executionId);
-        const isQueued = result.status === 'queued';
-        const isRunning = result.status === 'running';
-
-        console.log('🔍 hasExecId:', hasExecId);
-        console.log('🔍 isQueued:', isQueued);
-        console.log('🔍 isRunning:', isRunning);
-
-        const isAsync = hasExecId && (isQueued || isRunning);
-
-        if (isAsync) {
-          console.log('✅✅✅ STOP BUTTON SHOULD SHOW!');
-        } else {
-          console.log('❌❌❌ STOP BUTTON WILL NOT SHOW!');
-          if (!hasExecId) console.log('❌ Missing: executionId');
-          if (!isQueued && !isRunning) console.log('❌ Wrong status:', result.status);
-        }
-
-        console.log('🔍 ==== ASYNC TOOL CHECK END ==== Result:', isAsync);
-        return isAsync;
-      } catch (e) {
-        console.error('❌ PARSE ERROR:', e);
-        console.error('❌ Failed value:', toolCall.result);
+        return Boolean(result.executionId) && (result.status === 'queued' || result.status === 'running');
+      } catch {
         return false;
       }
     };
@@ -1635,14 +1597,8 @@ export default {
           : toolCall.result;
 
         const executionId = result.executionId;
-        if (!executionId) {
-          console.error('No executionId found for async tool');
-          return;
-        }
+        if (!executionId) return;
 
-        console.log(`Stopping async tool execution: ${executionId}`);
-
-        // Call the cancel API
         const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3333'}/api/async-tools/cancel/${executionId}`, {
           method: 'POST',
           headers: {
@@ -1654,20 +1610,14 @@ export default {
         const data = await response.json();
 
         if (data.success) {
-          console.log('Async tool cancelled successfully');
-          // Update the tool result to show it was cancelled
           toolCall.result = JSON.stringify({
             ...result,
             status: 'cancelled',
             message: 'Execution cancelled by user',
           });
-        } else {
-          console.error('Failed to cancel async tool:', data.error);
-          alert(`Failed to stop: ${data.error}`);
         }
       } catch (error) {
         console.error('Error stopping async tool:', error);
-        alert(`Error stopping tool: ${error.message}`);
       }
     };
 
@@ -3032,39 +2982,32 @@ span.nodeLabel p {
 }
 
 .stop-async-tool-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: #ef4444;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 11px;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.3);
+  margin-left: 8px;
 }
 
 .stop-async-tool-btn:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
-  transform: translateY(-1px);
+  background: #dc2626;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.4);
+  transform: scale(1.1);
 }
 
 .stop-async-tool-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
-}
-
-.stop-async-tool-btn .stop-icon {
-  font-size: 14px;
-}
-
-.stop-async-tool-btn .stop-text {
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  transform: scale(0.95);
+  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.3);
 }
 
 .status-indicator {

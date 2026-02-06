@@ -23,6 +23,8 @@ export default {
     currentConversationId: null,
     // Event callbacks for stream events
     streamEventCallbacks: [],
+    // Active async tool executions (for stopping them)
+    activeAsyncTools: new Map(), // Map<executionId, { toolName, messageId, toolCallId }>
     // Image cache for generated images
     imageCache: new Map(),
     // Data cache for offloaded large content (DATA_REF resolution)
@@ -93,6 +95,15 @@ export default {
         state.messages.splice(index, 1);
       }
     },
+    ADD_ACTIVE_ASYNC_TOOL(state, { executionId, toolName, messageId, toolCallId }) {
+      state.activeAsyncTools.set(executionId, { toolName, messageId, toolCallId });
+    },
+    REMOVE_ACTIVE_ASYNC_TOOL(state, executionId) {
+      state.activeAsyncTools.delete(executionId);
+    },
+    CLEAR_ACTIVE_ASYNC_TOOLS(state) {
+      state.activeAsyncTools.clear();
+    },
     UPDATE_MESSAGE_CONTENT(state, { messageId, content }) {
       const message = state.messages.find((m) => m.id === messageId);
       if (message) {
@@ -118,35 +129,30 @@ export default {
       }
     },
     UPDATE_TOOL_CALL_RESULT(state, { messageId, toolCallId, result, error, status }) {
-      console.log('🔧 UPDATE_TOOL_CALL_RESULT called:', { messageId, toolCallId, result, error, status });
-
-      // If messageId is provided, search that specific message
+      // Search by messageId first, then fall back to scanning all messages
       let message = messageId ? state.messages.find((m) => m.id === messageId) : null;
 
-      // If no messageId or message not found, search all messages for the toolCallId
       if (!message) {
-        console.log('🔧 No messageId or message not found, searching all messages for toolCallId:', toolCallId);
         for (const msg of state.messages) {
           if (msg.toolCalls && msg.toolCalls.some(tc => tc.id === toolCallId)) {
             message = msg;
-            console.log('🔧 Found message with toolCallId:', msg.id);
             break;
           }
         }
       }
 
-      console.log('🔧 Found message:', message ? message.id : 'NOT FOUND');
       if (message && message.toolCalls) {
-        console.log('🔧 Message has', message.toolCalls.length, 'tool calls');
-        const toolCall = message.toolCalls.find((tc) => tc.id === toolCallId);
-        console.log('🔧 Found toolCall:', toolCall ? toolCall.name : 'NOT FOUND');
-        if (toolCall) {
-          toolCall.result = result;
-          toolCall.error = error;
-          if (status) {
-            toolCall.status = status;
-          }
-          console.log('✅ Updated toolCall.result to:', toolCall.result);
+        const toolCallIndex = message.toolCalls.findIndex((tc) => tc.id === toolCallId);
+        if (toolCallIndex !== -1) {
+          // Use array splice to ensure Vue reactivity triggers
+          const toolCall = message.toolCalls[toolCallIndex];
+          const updatedToolCall = {
+            ...toolCall,
+            result: result,
+            error: error,
+            ...(status && { status: status }),
+          };
+          message.toolCalls.splice(toolCallIndex, 1, updatedToolCall);
         }
       }
     },
@@ -156,6 +162,7 @@ export default {
       state.isRemoteStreaming = false;
       state.messages = [];
       state.currentConversationId = null;
+      state.activeAsyncTools.clear(); // Clear async tool tracking
       state.imageCache.clear();
 
       // Clear current agent context to prevent stale agent names in outputs
@@ -362,10 +369,9 @@ export default {
     async startStreamingConversation({ commit, state, dispatch, rootState }, { userInput, files = [], provider, model }) {
       // If already streaming, don't start another
       if (state.isStreaming) {
-        console.warn('Already streaming, ignoring new request');
+        console.warn('[Chat] Already streaming, ignoring new request');
         return;
       }
-
       commit('SET_STREAMING', true);
 
       const token = localStorage.getItem('token');
@@ -522,9 +528,10 @@ export default {
     },
 
     /**
-     * Stop the current streaming conversation
+     * Stop the current streaming conversation AND all active async tools
      */
-    stopStreamingConversation({ commit, state }) {
+    async stopStreamingConversation({ commit, state }) {
+      // Stop the HTTP stream
       if (state.streamAbortController) {
         state.streamAbortController.abort();
         commit('SET_STREAM_ABORT_CONTROLLER', null);
@@ -532,6 +539,37 @@ export default {
       if (state.streamReader) {
         state.streamReader.cancel();
         commit('SET_STREAM_READER', null);
+      }
+
+      // Stop ALL active async tools
+      const asyncToolsToStop = Array.from(state.activeAsyncTools.keys());
+      if (asyncToolsToStop.length > 0) {
+        console.log(`[Chat] Stopping ${asyncToolsToStop.length} active async tool(s):`, asyncToolsToStop);
+
+        const token = localStorage.getItem('token');
+        const stopPromises = asyncToolsToStop.map(async (executionId) => {
+          try {
+            const response = await fetch(`${API_CONFIG.BASE_URL}/api/async-tools/cancel/${executionId}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+            });
+
+            if (response.ok) {
+              console.log(`[Chat] Cancelled async tool: ${executionId}`);
+              commit('REMOVE_ACTIVE_ASYNC_TOOL', executionId);
+            } else {
+              console.error(`[Chat] Failed to cancel async tool ${executionId}:`, await response.text());
+            }
+          } catch (error) {
+            console.error(`[Chat] Error cancelling async tool ${executionId}:`, error);
+          }
+        });
+
+        // Wait for all stop requests to complete
+        await Promise.all(stopPromises);
       }
 
       // Emit 'done' event to all callbacks to trigger cleanup
@@ -546,10 +584,15 @@ export default {
       commit('SET_STREAMING', false);
 
       // Add a system message indicating the stream was stopped
+      const stoppedCount = asyncToolsToStop.length;
+      const message = stoppedCount > 0
+        ? `Generation stopped by user. ${stoppedCount} async tool(s) cancelled.`
+        : 'Generation stopped by user.';
+
       commit('ADD_MESSAGE', {
         id: `msg-${Date.now()}-stopped`,
         role: 'system',
-        content: 'Generation stopped by user.',
+        content: message,
         timestamp: Date.now(),
         metadata: ['User Action'],
       });
@@ -1131,8 +1174,16 @@ export default {
 
         case 'async_tool_queued':
           // Async tool was queued for background execution
-          console.log('[Realtime Chat] Async tool queued:', eventData.functionName);
-          // Optionally show a notification in UI
+          console.log('[Realtime Chat] Async tool queued:', eventData.functionName, 'execution:', eventData.executionId);
+          // Track this async tool so we can stop it later
+          if (eventData.executionId) {
+            commit('ADD_ACTIVE_ASYNC_TOOL', {
+              executionId: eventData.executionId,
+              toolName: eventData.functionName,
+              messageId: assistantMessageId,
+              toolCallId: eventData.toolCallId,
+            });
+          }
           break;
 
         case 'async_tool_started':
@@ -1162,6 +1213,10 @@ export default {
         case 'async_tool_completed':
           // Async tool completed - update status to "completed"
           console.log('[Realtime Chat] Async tool completed:', eventData.functionName);
+          // Remove from active async tools tracking
+          if (eventData.executionId) {
+            commit('REMOVE_ACTIVE_ASYNC_TOOL', eventData.executionId);
+          }
           if (eventData.toolCallId) {
             commit('UPDATE_TOOL_CALL_RESULT', {
               messageId: assistantMessageId,
@@ -1181,6 +1236,10 @@ export default {
         case 'async_tool_failed':
           // Async tool failed - update status to "failed"
           console.log('[Realtime Chat] Async tool failed:', eventData.functionName, eventData.error);
+          // Remove from active async tools tracking
+          if (eventData.executionId) {
+            commit('REMOVE_ACTIVE_ASYNC_TOOL', eventData.executionId);
+          }
           if (eventData.toolCallId) {
             commit('UPDATE_TOOL_CALL_RESULT', {
               messageId: assistantMessageId,
@@ -1293,6 +1352,7 @@ function handleStreamEventInStore({ commit, state, dispatch }, eventName, data) 
       });
       break;
     case 'done':
+      // Stream completed
       commit('SET_STREAMING', false);
       // Trigger autosave after stream completes
       if (dispatch) {

@@ -334,6 +334,8 @@ ${CRITICAL_IMAGE_GENERATION}
 
 IMPORTANT: Provider names are automatically normalized to lowercase by the backend (e.g., "OpenAI" becomes "openai", "Anthropic" becomes "anthropic"). You don't need to worry about casing when working with provider names.
 
+${ASYNC_EXECUTION_GUIDANCE}
+
 ${CRITICAL_TOOL_CALL_REQUIREMENTS}
 
 AVAILABLE TOOLS:
@@ -355,8 +357,6 @@ ${IMPORTANT_GUIDELINES}
 ${MERMAID_CHART_CHEATSHEET}
 
 ${MCP_TOOL_USE_RULES}
-
-${ASYNC_EXECUTION_GUIDANCE}
 
 ${CRITICAL_TOOL_RESPONSE_RULES}
 `;

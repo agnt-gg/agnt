@@ -67,13 +67,14 @@ Keep your response brief (1-2 sentences) since this is a progress update.`,
     // Broadcast tool result update to mark as completed
     if (context && context.userId && toolCallId) {
       log(`[AutonomousMessage] Broadcasting tool completion status update for ${toolCallId}`);
-      broadcastToUser(context.userId, 'async_tool_completed', {
+      broadcastToUser(context.userId, RealtimeEvents.ASYNC_TOOL_COMPLETED, {
         conversationId,
         toolCallId,
         executionId,
-        result, // The actual tool result data
-        duration, // Duration in milliseconds
-        functionName, // Include function name for logging
+        assistantMessageId: context.assistantMessageId,
+        result,
+        duration,
+        functionName,
       });
     }
 
@@ -114,12 +115,13 @@ Be conversational and enthusiastic about the completion.`,
     // Broadcast tool result update to mark as failed
     if (context && context.userId && toolCallId) {
       log(`[AutonomousMessage] Broadcasting tool failure status update for ${toolCallId}`);
-      broadcastToUser(context.userId, 'async_tool_failed', {
+      broadcastToUser(context.userId, RealtimeEvents.ASYNC_TOOL_FAILED, {
         conversationId,
         toolCallId,
         executionId,
-        error, // The error message/object
-        functionName, // Include function name for logging
+        assistantMessageId: context.assistantMessageId,
+        error,
+        functionName,
       });
     }
 
@@ -189,6 +191,10 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       });
 
       log(`[AutonomousMessage] Generating autonomous response for conversation ${conversationId}`);
+      log(`[AutonomousMessage] Context keys:`, Object.keys(context));
+      log(`[AutonomousMessage] Context provider: ${context.normalizedProvider}, model: ${context.model}, userId: ${context.userId}`);
+      log(`[AutonomousMessage] Message count: ${updatedMessages.length}`);
+      log(`[AutonomousMessage] System message (last):`, JSON.stringify(systemMessage, null, 2));
 
       // Create LLM client and adapter
       const client = await createLlmClient(context.normalizedProvider, context.userId, {
@@ -197,11 +203,14 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       });
       const adapter = await createLlmAdapter(context.normalizedProvider, client, context.model);
 
+      log(`[AutonomousMessage] Created adapter for ${context.normalizedProvider}/${context.model}`);
+
       // Call LLM to generate autonomous response
       const { responseMessage } = await adapter.callStream(
         updatedMessages,
         [], // No tools for autonomous messages (for now)
         (chunk) => {
+          log(`[AutonomousMessage] Chunk received:`, JSON.stringify(chunk, null, 2));
           if (chunk.type === 'content') {
             // Broadcast content delta
             broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_CONTENT_DELTA, {
@@ -211,10 +220,14 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
               accumulated: chunk.accumulated,
               timestamp: Date.now(),
             });
+          } else {
+            log(`[AutonomousMessage] WARN: Chunk type is '${chunk.type}', not 'content'`);
           }
         },
         context
       );
+
+      log(`[AutonomousMessage] Stream complete. Response message:`, JSON.stringify(responseMessage, null, 2));
 
       // Extract content to check if message is empty
       let finalContent = '';

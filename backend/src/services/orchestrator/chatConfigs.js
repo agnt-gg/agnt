@@ -5,6 +5,7 @@ import { getGoalToolSchemas } from './goalTools.js';
 import { getOrchestratorSystemContent } from './system-prompts/orchestrator-chat.js';
 import { getAgentSystemContent } from './system-prompts/agent-chat.js';
 import { getWorkflowSystemContent } from './system-prompts/workflow-chat.js';
+import { ASYNC_EXECUTION_GUIDANCE } from './system-prompts/async-execution.js';
 
 /**
  * Configuration for different chat types in the universal handler
@@ -90,7 +91,8 @@ export const CHAT_CONFIGS = {
 
       // If we have agent context from AgentService, use it
       if (agentContext && agentContext.systemPrompt) {
-        return agentContext.systemPrompt;
+        // Append async execution guidance so agents can use async tools
+        return `${agentContext.systemPrompt}\n\n${ASYNC_EXECUTION_GUIDANCE}`;
       }
 
       // Otherwise build a basic system prompt with the agent's assigned tools
@@ -105,6 +107,8 @@ You are an AI agent with specific assigned tools. Use only the tools assigned to
 
 AVAILABLE TOOLS:
 ${toolsList}
+
+${ASYNC_EXECUTION_GUIDANCE}
 
 Use your assigned tools effectively to help the user accomplish their goals.`;
     },

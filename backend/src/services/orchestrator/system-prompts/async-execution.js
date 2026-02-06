@@ -4,116 +4,43 @@
  */
 
 export const ASYNC_EXECUTION_GUIDANCE = `
-# Background Tool Execution (Async Mode)
+# Async & Periodic Tool Execution
 
-**ANY tool can run in the background** for long-running tasks by adding special parameters.
+Every tool supports async/background execution via built-in parameters:
 
-## When to Use Async Mode:
-- Task will take >30 seconds (web scraping, file processing, monitoring)
-- User wants to continue chatting while tool runs
-- Periodic/scheduled tasks (e.g., "check every 5 minutes for an hour")
-- Multiple parallel long-running operations
-- User explicitly asks for background execution
+## Parameters (available on ALL tools):
+- \`_executeAsync\`: true → Run tool in background, return immediately
+- \`_interval\`: seconds → Re-run tool every N seconds (requires _executeAsync)
+- \`_stopAfter\`: integer → Stop after N iterations (requires _interval)
+- \`_duration\`: minutes → Stop after N minutes total (requires _interval)
+- \`_estimatedMinutes\`: number → Optional duration estimate for UI
 
-## How to Use Async Mode:
-Add these special parameters to ANY tool call:
-
-\`\`\`json
-{
-  "name": "any_tool_name",
-  "arguments": {
-    // ... normal tool parameters ...
-    "_executeAsync": true,           // Makes tool run in background
-    "_estimatedMinutes": 5           // Optional: duration estimate
-  }
-}
-\`\`\`
+## When to use async:
+- User asks for background/async execution → add _executeAsync: true
+- User wants periodic/recurring tasks → add _executeAsync + _interval + _stopAfter or _duration
+- Long-running operations (scraping, processing) → use _executeAsync: true
 
 ## Examples:
 
-**Web Scraping (Async):**
-\`\`\`json
-{
-  "name": "web_scrape",
-  "arguments": {
-    "url": "https://large-site.com/data",
-    "_executeAsync": true,
-    "_estimatedMinutes": 3
-  }
-}
-\`\`\`
+**Run tool once in background:**
+{ "_executeAsync": true }
 
-**Periodic Task (Async):**
-\`\`\`json
-{
-  "name": "web_scrape",
-  "arguments": {
-    "url": "https://api.example.com/status",
-    "interval_seconds": 300,
-    "duration_minutes": 60,
-    "_executeAsync": true,
-    "_estimatedMinutes": 60
-  }
-}
-\`\`\`
+**Roll dice every 60 seconds, 5 times:**
+{ "dieType": "d6", "_executeAsync": true, "_interval": 60, "_stopAfter": 5 }
 
-**Same Tool Synchronously:**
-\`\`\`json
-{
-  "name": "web_scrape",
-  "arguments": {
-    "url": "https://quick-page.com"
-    // No _executeAsync - runs immediately
-  }
-}
-\`\`\`
+**Scrape a site every 5 minutes for 1 hour:**
+{ "url": "https://example.com", "_executeAsync": true, "_interval": 300, "_duration": 60 }
 
-## What Happens (Async Execution):
+## What happens:
+1. Tool returns immediately with an execution ID
+2. User can keep chatting while it runs
+3. Results arrive via autonomous message when complete
+4. User can stop via Stop button in UI
 
-1. **Immediate Response**: Tool returns instantly with execution ID
-   \`\`\`json
-   {
-     "success": true,
-     "status": "queued",
-     "executionId": "exec-abc123",
-     "message": "Task started in background",
-     "estimatedDuration": 180000
-   }
-   \`\`\`
-
-2. **Your Response**: Tell user task is running in background
-   - Example: "I've started scraping that site in the background. It should take about 3 minutes. You can keep chatting with me while it runs!"
-
-3. **Background Execution**: Task runs independently
-   - Reports progress updates periodically
-   - Sends completion notification when done
-   - User can stop via Stop button in UI
-
-4. **Autonomous Updates**: You'll receive notifications
-   - Progress updates: You'll get periodic status
-   - Completion: You'll get final results autonomously
-   - Errors: You'll be notified if task fails
-
-## Important Rules:
-
-- **Without _executeAsync**: Tool runs synchronously (normal behavior)
-- **Always explain**: Tell user when starting background task
-- **Provide context**: Mention estimated duration if available
-- **Stay responsive**: User can chat while task runs
-- **Handle results**: When you get autonomous completion, summarize results conversationally
-
-## When NOT to Use Async:
-- Quick operations (<30 seconds)
-- User expects immediate result
-- Tool output needed for next step
-- Simple, fast queries
-
-## Stop Button:
-- User can stop async tools anytime via UI
-- If stopped, you'll receive cancellation notification
-- Acknowledge if user stops a task
-
-Remember: Use async mode strategically for better user experience with long-running tasks!
+## Important:
+- Without _executeAsync, tools run synchronously (normal behavior)
+- Tell the user when you start a background task
+- These parameters work with EVERY tool - they are universal
 `;
 
 export default ASYNC_EXECUTION_GUIDANCE;

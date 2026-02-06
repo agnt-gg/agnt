@@ -771,10 +771,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
         const shouldExecuteAsync = functionArgs._executeAsync === true;
         const estimatedMinutes = functionArgs._estimatedMinutes || null;
 
-        // Remove special params before passing to tool
+        // Pass raw args to AsyncToolQueue - it strips control params internally
+        // For sync execution, strip them here
         const cleanArgs = { ...functionArgs };
         delete cleanArgs._executeAsync;
         delete cleanArgs._estimatedMinutes;
+        delete cleanArgs._interval;
+        delete cleanArgs._stopAfter;
+        delete cleanArgs._duration;
 
         if (shouldExecuteAsync) {
           console.log(`[AsyncTool] ${chatType === 'agent' ? 'Agent' : 'Orchestrator'} requested async execution for: ${functionName}`);
@@ -787,7 +791,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
             conversationId,
             userId,
             functionName,
-            cleanArgs, // Use cleaned args without special params
+            functionArgs, // Pass raw args - AsyncToolQueue strips control params internally
             assistantMessageId, // Pass message ID for frontend status updates
             {
               onProgress: async (progressData, execution) => {
