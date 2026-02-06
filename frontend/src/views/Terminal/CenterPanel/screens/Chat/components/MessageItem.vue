@@ -1580,28 +1580,50 @@ export default {
     };
 
     const isAsyncToolRunning = (toolCall) => {
-      // Check if this tool is an async tool that's still running
-      console.log('[AsyncTool Check] Checking tool:', toolCall.name);
+      console.log('🔍 ==== ASYNC TOOL CHECK START ====');
+      console.log('🔍 Tool name:', toolCall.name);
+      console.log('🔍 Full toolCall:', toolCall);
 
       if (!toolCall.result) {
-        console.log('[AsyncTool Check] No result yet');
+        console.log('❌ NO RESULT! toolCall.result is:', toolCall.result);
         return false;
       }
+
+      console.log('✅ Result exists! Type:', typeof toolCall.result);
+      console.log('✅ Result value:', toolCall.result);
 
       try {
         const result = typeof toolCall.result === 'string'
           ? JSON.parse(toolCall.result)
           : toolCall.result;
 
-        console.log('[AsyncTool Check]', toolCall.name, 'result:', result);
-        console.log('[AsyncTool Check] executionId:', result.executionId, 'status:', result.status);
+        console.log('✅ Parsed result:', result);
+        console.log('🔍 result.executionId =', result.executionId, '(type:', typeof result.executionId, ')');
+        console.log('🔍 result.status =', result.status, '(type:', typeof result.status, ')');
 
-        // Async tools have status: "queued" or "running" and an executionId
-        const isAsync = result.executionId && (result.status === 'queued' || result.status === 'running');
-        console.log('[AsyncTool Check] IS ASYNC RUNNING?', isAsync);
+        const hasExecId = Boolean(result.executionId);
+        const isQueued = result.status === 'queued';
+        const isRunning = result.status === 'running';
+
+        console.log('🔍 hasExecId:', hasExecId);
+        console.log('🔍 isQueued:', isQueued);
+        console.log('🔍 isRunning:', isRunning);
+
+        const isAsync = hasExecId && (isQueued || isRunning);
+
+        if (isAsync) {
+          console.log('✅✅✅ STOP BUTTON SHOULD SHOW!');
+        } else {
+          console.log('❌❌❌ STOP BUTTON WILL NOT SHOW!');
+          if (!hasExecId) console.log('❌ Missing: executionId');
+          if (!isQueued && !isRunning) console.log('❌ Wrong status:', result.status);
+        }
+
+        console.log('🔍 ==== ASYNC TOOL CHECK END ==== Result:', isAsync);
         return isAsync;
       } catch (e) {
-        console.error('[AsyncTool Check] Parse error:', e);
+        console.error('❌ PARSE ERROR:', e);
+        console.error('❌ Failed value:', toolCall.result);
         return false;
       }
     };

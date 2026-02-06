@@ -820,7 +820,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           );
 
           // Return immediate response indicating tool was queued
-          functionResponseContent = JSON.stringify({
+          const asyncResult = {
             success: true,
             status: 'queued',
             executionId,
@@ -828,7 +828,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
             estimatedDuration: ASYNC_TOOLS[functionName].estimatedDuration
               ? ASYNC_TOOLS[functionName].estimatedDuration(functionArgs)
               : null,
-          });
+          };
+
+          functionResponseContent = JSON.stringify(asyncResult);
+          toolCallResult = asyncResult; // Set the parsed result for tool_end event
 
           console.log(`[AsyncTool] Queued ${functionName} with execution ID ${executionId}`);
         } else {

@@ -112,15 +112,20 @@ export default {
       }
     },
     UPDATE_TOOL_CALL_RESULT(state, { messageId, toolCallId, result, error, status }) {
+      console.log('🔧 UPDATE_TOOL_CALL_RESULT called:', { messageId, toolCallId, result, error, status });
       const message = state.messages.find((m) => m.id === messageId);
+      console.log('🔧 Found message:', message ? message.id : 'NOT FOUND');
       if (message && message.toolCalls) {
+        console.log('🔧 Message has', message.toolCalls.length, 'tool calls');
         const toolCall = message.toolCalls.find((tc) => tc.id === toolCallId);
+        console.log('🔧 Found toolCall:', toolCall ? toolCall.name : 'NOT FOUND');
         if (toolCall) {
           toolCall.result = result;
           toolCall.error = error;
           if (status) {
             toolCall.status = status;
           }
+          console.log('✅ Updated toolCall.result to:', toolCall.result);
         }
       }
     },
