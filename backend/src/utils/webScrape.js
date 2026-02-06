@@ -53,7 +53,7 @@ async function scrape(url) {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36');
 
     // 3. Navigate to the URL. 'networkidle2' is a robust waiting strategy.
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 180000 }); // 3 minutes for slow sites
 
     // 4. Get the fully rendered HTML from the page.
     const html = await page.content();
