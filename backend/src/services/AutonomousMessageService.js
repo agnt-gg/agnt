@@ -252,8 +252,9 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         return; // Don't save empty message
       }
 
-      // Add AI response to conversation history
-      conversationManager.appendMessages(conversationId, [systemMessage, responseMessage]);
+      // Add ONLY AI response to conversation history (not the system message)
+      // This prevents cluttering context with system prompts
+      conversationManager.appendMessages(conversationId, [responseMessage]);
 
       // Broadcast autonomous message end
       broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_MESSAGE_END, {
