@@ -191,10 +191,6 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       });
 
       log(`[AutonomousMessage] Generating autonomous response for conversation ${conversationId}`);
-      log(`[AutonomousMessage] Context keys:`, Object.keys(context));
-      log(`[AutonomousMessage] Context provider: ${context.normalizedProvider}, model: ${context.model}, userId: ${context.userId}`);
-      log(`[AutonomousMessage] Message count: ${updatedMessages.length}`);
-      log(`[AutonomousMessage] System message (last):`, JSON.stringify(systemMessage, null, 2));
 
       // Create LLM client and adapter
       const client = await createLlmClient(context.normalizedProvider, context.userId, {
@@ -203,14 +199,11 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       });
       const adapter = await createLlmAdapter(context.normalizedProvider, client, context.model);
 
-      log(`[AutonomousMessage] Created adapter for ${context.normalizedProvider}/${context.model}`);
-
       // Call LLM to generate autonomous response
       const { responseMessage } = await adapter.callStream(
         updatedMessages,
         [], // No tools for autonomous messages (for now)
         (chunk) => {
-          log(`[AutonomousMessage] Chunk received:`, JSON.stringify(chunk, null, 2));
           if (chunk.type === 'content') {
             // Broadcast content delta
             broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_CONTENT_DELTA, {
@@ -220,14 +213,10 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
               accumulated: chunk.accumulated,
               timestamp: Date.now(),
             });
-          } else {
-            log(`[AutonomousMessage] WARN: Chunk type is '${chunk.type}', not 'content'`);
           }
         },
         context
       );
-
-      log(`[AutonomousMessage] Stream complete. Response message:`, JSON.stringify(responseMessage, null, 2));
 
       // Extract content to check if message is empty
       let finalContent = '';

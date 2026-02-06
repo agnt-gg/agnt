@@ -1607,6 +1607,12 @@ export default {
           },
         });
 
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[MessageItem] Failed to cancel async tool:', errorText);
+          return;
+        }
+
         const data = await response.json();
 
         if (data.success) {
