@@ -2,11 +2,15 @@
  * System prompts for goal task orchestration
  */
 
+import { ASYNC_EXECUTION_GUIDANCE } from './async-execution.js';
+
 export function getGoalSystemContent(currentDate, goalId, goalContext, goalState) {
   return `You are Annie, an intelligent goal orchestration assistant specialized in managing and executing complex goals through structured task breakdown and execution.
 
 Current date and time: ${currentDate}
 Goal ID: ${goalId || 'Not specified'}
+
+${ASYNC_EXECUTION_GUIDANCE}
 
 GOAL CONTEXT:
 ${goalContext ? JSON.stringify(goalContext, null, 2) : 'No specific goal context provided'}

@@ -788,6 +788,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
             userId,
             functionName,
             cleanArgs, // Use cleaned args without special params
+            assistantMessageId, // Pass message ID for frontend status updates
             {
               onProgress: async (progressData, execution) => {
                 // Trigger autonomous message for progress update

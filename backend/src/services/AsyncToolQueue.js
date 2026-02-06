@@ -28,11 +28,12 @@ class AsyncToolQueue {
    * @param {string} userId - User ID for broadcasting updates
    * @param {string} functionName - Tool function name
    * @param {object} functionArgs - Tool arguments
+   * @param {string} assistantMessageId - Assistant message ID containing this tool call
    * @param {object} callbacks - { onProgress, onComplete, onError }
    * @param {function} executeFunction - Function to execute the tool
    * @returns {string} - Execution ID
    */
-  enqueue(toolCallId, conversationId, userId, functionName, functionArgs, callbacks, executeFunction) {
+  enqueue(toolCallId, conversationId, userId, functionName, functionArgs, assistantMessageId, callbacks, executeFunction) {
     const executionId = randomUUID();
 
     const execution = {
@@ -42,6 +43,7 @@ class AsyncToolQueue {
       userId,
       functionName,
       functionArgs,
+      assistantMessageId, // Store message ID for frontend updates
       status: 'queued',
       queuedAt: Date.now(),
       startedAt: null,
@@ -117,6 +119,7 @@ class AsyncToolQueue {
         executionId,
         toolCallId: execution.toolCallId,
         conversationId: execution.conversationId,
+        assistantMessageId: execution.assistantMessageId, // Include message ID for frontend
         functionName: execution.functionName,
         result,
         duration: execution.completedAt - execution.startedAt,
@@ -144,6 +147,7 @@ class AsyncToolQueue {
         executionId,
         toolCallId: execution.toolCallId,
         conversationId: execution.conversationId,
+        assistantMessageId: execution.assistantMessageId, // Include message ID for frontend
         functionName: execution.functionName,
         error: execution.error,
         timestamp: Date.now(),

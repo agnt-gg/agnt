@@ -2,6 +2,7 @@ import { buildNodeReferenceMap } from '../../WorkflowManipulationService.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { ASYNC_EXECUTION_GUIDANCE } from './async-execution.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,6 +122,8 @@ ${
     ? `- Current Workflow State (Complete JSON): ${JSON.stringify(truncatedWorkflowState, null, 2)}`
     : '- No workflow state available'
 }
+
+${ASYNC_EXECUTION_GUIDANCE}
 
 WORKFLOW NOTES:
 - Label Nodes do not need to be connected to anything. They are just UI visual indicators for the user.

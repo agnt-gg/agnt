@@ -216,6 +216,29 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         context
       );
 
+      // Extract content to check if message is empty
+      let finalContent = '';
+      if (context.normalizedProvider === 'anthropic') {
+        const textBlock = responseMessage.content?.find((c) => c.type === 'text');
+        finalContent = textBlock ? textBlock.text : '';
+      } else {
+        finalContent = responseMessage.content || '';
+      }
+
+      // Skip empty autonomous messages (LLM returned no content)
+      if (!finalContent || finalContent.trim() === '') {
+        log(`[AutonomousMessage] Skipping empty autonomous message for conversation ${conversationId}`);
+        // Still broadcast end so frontend clears "thinking" indicator
+        broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_MESSAGE_END, {
+          conversationId,
+          assistantMessageId,
+          content: '',
+          isEmpty: true, // Flag for frontend to not display
+          timestamp: Date.now(),
+        });
+        return; // Don't save empty message
+      }
+
       // Add AI response to conversation history
       conversationManager.appendMessages(conversationId, [systemMessage, responseMessage]);
 
@@ -233,15 +256,6 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       try {
         const updatedContext = conversationManager.get(conversationId);
         if (updatedContext && context.userId) {
-          // Extract content from response message
-          let finalContent = '';
-          if (context.normalizedProvider === 'anthropic') {
-            const textBlock = responseMessage.content?.find((c) => c.type === 'text');
-            finalContent = textBlock ? textBlock.text : '';
-          } else {
-            finalContent = responseMessage.content || '';
-          }
-
           // Update conversation log with autonomous messages
           const logData = {
             conversationId,

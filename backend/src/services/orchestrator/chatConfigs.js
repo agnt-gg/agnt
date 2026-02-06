@@ -108,7 +108,7 @@ ${toolsList}
 
 Use your assigned tools effectively to help the user accomplish their goals.`;
     },
-    maxToolRounds: 10,
+    maxToolRounds: 100, // Same as orchestrator
     responseType: 'stream',
     contextKey: 'agentContext',
   },
@@ -250,7 +250,7 @@ AVAILABLE FUNCTIONS:
 
 Always be helpful, creative, and guide users through the tool creation process step by step.`;
     },
-    maxToolRounds: 10,
+    maxToolRounds: 100, // Same as orchestrator
     responseType: 'stream',
     contextKey: 'toolContext',
   },
@@ -272,7 +272,7 @@ You have access to comprehensive goal management functions that allow you to:
 
 Always be proactive in helping users achieve their goals through structured task management.`;
     },
-    maxToolRounds: 10,
+    maxToolRounds: 100, // Same as orchestrator
     responseType: 'stream',
     contextKey: 'goalContext',
   },

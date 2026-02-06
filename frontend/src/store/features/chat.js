@@ -87,6 +87,12 @@ export default {
         console.error('Invalid message format pushed to store:', message);
       }
     },
+    REMOVE_MESSAGE(state, messageId) {
+      const index = state.messages.findIndex(m => m.id === messageId);
+      if (index !== -1) {
+        state.messages.splice(index, 1);
+      }
+    },
     UPDATE_MESSAGE_CONTENT(state, { messageId, content }) {
       const message = state.messages.find((m) => m.id === messageId);
       if (message) {
@@ -1110,6 +1116,13 @@ export default {
           // Autonomous message completed - hide thinking indicator
           commit('SET_REMOTE_STREAMING', false);
           console.log('[Realtime Chat] Autonomous message completed');
+
+          // Remove empty autonomous messages (LLM returned no content)
+          if (eventData.isEmpty && assistantMessageId) {
+            console.log('[Realtime Chat] Removing empty autonomous message:', assistantMessageId);
+            commit('REMOVE_MESSAGE', assistantMessageId);
+          }
+
           // Trigger autosave after autonomous message completes
           if (dispatch) {
             dispatch('autosaveConversation', { debounce: true });
