@@ -2819,7 +2819,7 @@ span.nodeLabel p {
 
 .top-tool-bar {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   flex-wrap: nowrap;
   align-content: flex-start;
   justify-content: flex-start;
