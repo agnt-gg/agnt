@@ -82,7 +82,7 @@
 <script>
 import { ref, onMounted, onUnmounted, nextTick, computed, watch, inject } from 'vue';
 import { useStore } from 'vuex';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
 import BaseScreen from '../../BaseScreen.vue';
 import EngineHeader from './components/EngineHeader.vue';
@@ -116,6 +116,7 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const route = useRoute();
+    const router = useRouter();
     const cleanup = useCleanup();
     const baseScreenRef = ref(null);
     const conversationSpace = ref(null);
@@ -395,6 +396,12 @@ export default {
           currentConversationId.value = data.conversationId;
           break;
         case 'assistant_message':
+          // Clear thinking state from previous messages — only one can be "thinking"
+          for (const msgId of Object.keys(messageStates.value)) {
+            if (messageStates.value[msgId]?.type === 'thinking') {
+              delete messageStates.value[msgId];
+            }
+          }
           messageStates.value[data.id] = {
             type: 'thinking',
             text: 'Annie is thinking...',
@@ -934,6 +941,11 @@ export default {
       clearInput();
       focusInput();
       suggestions.value = [...initialSuggestions];
+
+      // Remove content-id query param to allow reloading the same conversation
+      if (route.query['content-id']) {
+        router.replace('/chat');
+      }
 
       // Re-add the initial welcome message
       nextTick(() => {

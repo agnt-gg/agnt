@@ -709,9 +709,18 @@ export default {
       });
     };
 
-    // HTML Sanitization Configuration
-    const sanitizeHTML = (html) => {
-      return DOMPurify.sanitize(html, {
+    // Helper function to add target="_blank" to all links
+    const addTargetBlankToLinks = (html) => {
+      // Use DOMPurify hook to add target="_blank" and rel="noopener noreferrer" to all anchor tags
+      DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+        // Set all elements owning target to target=_blank
+        if ('target' in node) {
+          node.setAttribute('target', '_blank');
+          node.setAttribute('rel', 'noopener noreferrer');
+        }
+      });
+
+      const sanitized = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
           'div',
           'span',
@@ -824,7 +833,15 @@ export default {
         SANITIZE_DOM: true,
         KEEP_CONTENT: true,
       });
+
+      // Remove the hook after sanitization to avoid affecting other uses
+      DOMPurify.removeHook('afterSanitizeAttributes');
+
+      return sanitized;
     };
+
+    // Legacy alias for backward compatibility
+    const sanitizeHTML = addTargetBlankToLinks;
 
     // Detect if content is HTML
     const isHTMLContent = (content) => {
@@ -1480,6 +1497,8 @@ export default {
           if (completedContent.trim()) {
             let processedCompleted = completedContent.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
             renderedCompleted = markdownConverter.makeHtml(processedCompleted);
+            // Add target="_blank" to links in the completed content
+            renderedCompleted = addTargetBlankToLinks(renderedCompleted);
           }
 
           // Return completed markdown + raw incomplete block in a pre tag
@@ -1513,7 +1532,8 @@ export default {
           return ''; // Remove unresolved references
         });
 
-        return renderedHtml;
+        // Add target="_blank" to all links in markdown-generated HTML
+        return addTargetBlankToLinks(renderedHtml);
       }
       return '';
     });
@@ -2819,11 +2839,11 @@ span.nodeLabel p {
 
 .top-tool-bar {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex-wrap: nowrap;
-  align-content: flex-start;
+  align-content: center;
   justify-content: flex-start;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .tool-call-item:last-child {
@@ -2951,13 +2971,16 @@ span.nodeLabel p {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px;
+  float: left;
+  padding: 4px;
+  align-self: self-start;
   color: var(--color-med-navy);
+  justify-content: flex-start;
 }
 
 .tool-running .spinner {
-  width: 16px;
-  height: 16px;
+  width: 10px;
+  height: 10px;
   border: 2px solid var(--color-blue);
   border-top-color: transparent;
   border-radius: 50%;
