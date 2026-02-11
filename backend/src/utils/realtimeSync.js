@@ -87,6 +87,10 @@ export const RealtimeEvents = {
   ASYNC_TOOL_PROGRESS: 'chat:async_tool_progress',
   ASYNC_TOOL_COMPLETED: 'chat:async_tool_completed',
   ASYNC_TOOL_FAILED: 'chat:async_tool_failed',
+
+  // Plugins
+  PLUGIN_INSTALLED: 'plugin:installed',
+  PLUGIN_UNINSTALLED: 'plugin:uninstalled',
 };
 
 export default {

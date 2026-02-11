@@ -638,12 +638,29 @@ class PluginInstaller {
     try {
       let registry = { plugins: [] };
 
+      // Try to read existing registry
       try {
         const content = await fs.readFile(this.registryPath, 'utf-8');
-        registry = JSON.parse(content);
-      } catch {
-        // Registry doesn't exist, use default
+        const parsed = JSON.parse(content);
+        // Validate it has plugins array
+        if (parsed && Array.isArray(parsed.plugins)) {
+          registry = parsed;
+        } else {
+          console.warn('[PluginInstaller] Registry file corrupted, rebuilding from installed plugins');
+          registry = await this.rebuildRegistry();
+        }
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          // File doesn't exist - that's fine, use default empty registry
+          console.log('[PluginInstaller] Registry file not found, creating new one');
+        } else {
+          // Other error (parse error, etc.) - try to rebuild from filesystem
+          console.warn('[PluginInstaller] Error reading registry, rebuilding:', error.message);
+          registry = await this.rebuildRegistry();
+        }
       }
+
+      console.log(`[PluginInstaller] Updating registry: ${action} ${pluginName}, current plugins: ${registry.plugins.map(p => p.name).join(', ')}`);
 
       if (action === 'installed') {
         // Remove existing entry if present
@@ -659,10 +676,42 @@ class PluginInstaller {
         registry.plugins = registry.plugins.filter((p) => p.name !== pluginName);
       }
 
+      console.log(`[PluginInstaller] Writing registry with plugins: ${registry.plugins.map(p => p.name).join(', ')}`);
       await fs.writeFile(this.registryPath, JSON.stringify(registry, null, 2));
     } catch (error) {
       console.error('[PluginInstaller] Failed to update registry:', error);
+      throw error; // Re-throw so caller knows something went wrong
     }
+  }
+
+  /**
+   * Rebuild registry from installed plugin directories
+   */
+  async rebuildRegistry() {
+    const registry = { plugins: [] };
+    try {
+      const entries = await fs.readdir(this.pluginsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const manifestPath = path.join(this.pluginsDir, entry.name, 'manifest.json');
+          try {
+            await fs.access(manifestPath);
+            registry.plugins.push({
+              name: entry.name,
+              version: 'unknown',
+              installedAt: new Date().toISOString(),
+              enabled: true,
+            });
+          } catch {
+            // No manifest, not a valid plugin
+          }
+        }
+      }
+      console.log(`[PluginInstaller] Rebuilt registry with ${registry.plugins.length} plugins`);
+    } catch (error) {
+      console.error('[PluginInstaller] Error rebuilding registry:', error);
+    }
+    return registry;
   }
 
   /**

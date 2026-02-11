@@ -304,7 +304,7 @@ export default {
       }
     },
 
-    async installWorkflow({ commit, dispatch, state }, { workflowId, version, auto_update }) {
+    async installWorkflow({ commit, dispatch, state }, { workflowId, version, auto_update, skipDependencyCheck = false }) {
       commit('SET_LOADING', true);
       commit('CLEAR_ERROR');
       try {
@@ -338,6 +338,44 @@ export default {
 
         // Step 2: Save asset to LOCAL backend based on type
         const { assetType, assetData, assetId } = data;
+
+        // Step 2.5: Check for missing plugin dependencies (for workflows and agents)
+        if (!skipDependencyCheck && (assetType === 'workflow' || assetType === 'agent')) {
+          const nodes = assetData.nodes || assetData.workflow?.nodes || [];
+          if (nodes.length > 0) {
+            try {
+              const depResponse = await fetch(`${API_CONFIG.BASE_URL}/workflows/analyze-dependencies`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ nodes }),
+              });
+
+              if (depResponse.ok) {
+                const depData = await depResponse.json();
+                if (!depData.allInstalled && depData.missingPlugins.length > 0) {
+                  // Return dependency info for UI to handle
+                  commit('SET_LOADING', false);
+                  return {
+                    needsPlugins: true,
+                    missingPlugins: depData.missingPlugins,
+                    assetType,
+                    assetData,
+                    assetId,
+                    workflowId,
+                    version,
+                    auto_update,
+                  };
+                }
+              }
+            } catch (depError) {
+              // If dependency check fails, continue with installation anyway
+              console.warn('Failed to check dependencies, continuing with installation:', depError);
+            }
+          }
+        }
 
         switch (assetType) {
           case 'workflow':
@@ -415,6 +453,107 @@ export default {
       } finally {
         commit('SET_LOADING', false);
       }
+    },
+
+    /**
+     * Save an already-fetched asset to local backend
+     * Used after installing required plugins
+     */
+    async saveInstalledAsset({ commit, dispatch }, { assetType, assetData }) {
+      commit('SET_LOADING', true);
+      commit('CLEAR_ERROR');
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('No authentication token found');
+        }
+
+        switch (assetType) {
+          case 'workflow':
+            await fetch(`${API_CONFIG.BASE_URL}/workflows/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ workflow: assetData }),
+            });
+            await dispatch('workflows/fetchWorkflows', {}, { root: true });
+            break;
+
+          case 'agent':
+            await fetch(`${API_CONFIG.BASE_URL}/agents/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ agent: assetData }),
+            });
+            await dispatch('agents/fetchAgents', { force: true }, { root: true });
+            break;
+
+          case 'tool':
+            await fetch(`${API_CONFIG.BASE_URL}/custom-tools/save`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ tool: assetData }),
+            });
+            await dispatch('tools/fetchTools', { force: true }, { root: true });
+            break;
+
+          default:
+            throw new Error(`Unsupported asset type: ${assetType}`);
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Error saving installed asset:', error);
+        commit('SET_ERROR', error.message);
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
+
+    /**
+     * Install a plugin by name from the marketplace
+     * @param {string} pluginName - Name of the plugin to install
+     * @param {boolean} skipRefresh - Skip tool refresh (for batch installs)
+     */
+    async installPlugin({ commit, dispatch }, { pluginName, skipRefresh = false }) {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      console.log(`[Marketplace] Installing plugin: ${pluginName}`);
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/install`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: pluginName }),
+      });
+
+      const data = await response.json();
+      console.log(`[Marketplace] Plugin install response for ${pluginName}:`, data);
+
+      if (!data.success) {
+        throw new Error(data.error || `Failed to install plugin: ${pluginName}`);
+      }
+
+      // Only refresh tools if not doing a batch install
+      if (!skipRefresh) {
+        await dispatch('tools/refreshAllTools', null, { root: true });
+      }
+
+      return data;
     },
 
     async publishWorkflow({ commit }, workflowData) {

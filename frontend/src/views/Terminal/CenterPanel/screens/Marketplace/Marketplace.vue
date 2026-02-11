@@ -989,10 +989,87 @@ export default {
         // If free or already purchased, proceed with installation
         addLine(`[Marketplace] Installing "${workflow.title}"...`, 'info');
 
-        const result = await store.dispatch('marketplace/installWorkflow', {
+        let result = await store.dispatch('marketplace/installWorkflow', {
           workflowId: workflow.id,
           auto_update: false,
         });
+
+        // Check if missing plugins need to be installed
+        if (result && result.needsPlugins && result.missingPlugins?.length > 0) {
+          const pluginList = result.missingPlugins.map((p) => `• ${p.displayName || p.name}`).join('\n');
+
+          const confirmed = await simpleModal.value.showModal({
+            title: 'Plugins Required',
+            message: `This ${assetType} requires plugins that aren't installed:\n\n${pluginList}\n\nInstall them now?`,
+            confirmText: 'Install Plugins',
+            cancelText: 'Cancel',
+            showCancel: true,
+            confirmClass: 'btn-primary',
+          });
+
+          if (!confirmed) {
+            addLine(`[Marketplace] Installation cancelled - missing required plugins`, 'warning');
+            return;
+          }
+
+          // Install each missing plugin with progress feedback
+          const totalPlugins = result.missingPlugins.length;
+          const installedPlugins = [];
+
+          for (let i = 0; i < result.missingPlugins.length; i++) {
+            const plugin = result.missingPlugins[i];
+            const pluginName = plugin.displayName || plugin.name;
+
+            addLine(`[Marketplace] Installing plugin ${i + 1}/${totalPlugins}: ${pluginName}...`, 'info');
+
+            try {
+              // Skip refresh during batch install - we'll refresh once at the end
+              await store.dispatch('marketplace/installPlugin', {
+                pluginName: plugin.name,
+                skipRefresh: true
+              });
+              installedPlugins.push(pluginName);
+              addLine(`[Marketplace] ✓ ${pluginName} installed`, 'success');
+            } catch (pluginError) {
+              addLine(`[Marketplace] ✗ Failed to install ${pluginName}: ${pluginError.message}`, 'error');
+              await simpleModal.value.showModal({
+                title: '✗ Plugin Installation Failed',
+                message: `Failed to install required plugin "${pluginName}":\n\n${pluginError.message}\n\nThe ${assetType} was not installed.`,
+                confirmText: 'OK',
+                showCancel: false,
+                confirmClass: 'btn-danger',
+              });
+              return;
+            }
+          }
+
+          // Refresh tools once after all plugins are installed
+          addLine(`[Marketplace] Refreshing tools...`, 'info');
+          await store.dispatch('tools/refreshAllTools');
+
+          // Notify all components that plugins were installed (for ToolSidebar, etc.)
+          window.dispatchEvent(new CustomEvent('plugin-installed', { detail: { count: installedPlugins.length } }));
+
+          // Show summary of installed plugins
+          const pluginSummary = installedPlugins.map((p) => `• ${p}`).join('\n');
+          await simpleModal.value.showModal({
+            title: '✓ Plugins Installed',
+            message: `Successfully installed ${installedPlugins.length} plugin(s):\n\n${pluginSummary}\n\nNow installing the ${assetType}...`,
+            confirmText: 'Continue',
+            showCancel: false,
+            confirmClass: 'btn-primary',
+          });
+
+          // Now save the asset
+          addLine(`[Marketplace] Saving ${assetType}...`, 'info');
+          await store.dispatch('marketplace/saveInstalledAsset', {
+            assetType: result.assetType,
+            assetData: result.assetData,
+          });
+
+          // Update result to have assetId for the success message
+          result = { assetId: result.assetData?.id || result.assetId };
+        }
 
         addLine(`✓ ${assetTypeLabel} installed successfully!`, 'success');
         addLine(`  New ${assetType} ID: ${result.assetId}`, 'info');

@@ -112,6 +112,17 @@ export default {
       await store.dispatch('tools/fetchWorkflowTools', { force: true });
     };
 
+    // Handler for plugin install events - refresh tools immediately
+    const handlePluginInstalled = async () => {
+      console.log('[ToolSidebar] Plugin installed, refreshing tools...');
+      try {
+        await refreshPluginTools();
+        console.log('[ToolSidebar] Tools refreshed successfully');
+      } catch (error) {
+        console.error('[ToolSidebar] Error refreshing tools:', error);
+      }
+    };
+
     onMounted(() => {
       // Fetch workflow tools from Vuex store (centralized)
       fetchWorkflowTools();
@@ -119,6 +130,9 @@ export default {
       // Set up periodic refresh for plugin updates (every 5 minutes instead of 30 seconds)
       // This reduces unnecessary API calls while still catching plugin updates
       pluginUpdateInterval = setInterval(refreshPluginTools, 300000);
+
+      // Listen for plugin install events to refresh immediately
+      window.addEventListener('plugin-installed', handlePluginInstalled);
     });
 
     onUnmounted(() => {
@@ -126,6 +140,8 @@ export default {
       if (pluginUpdateInterval) {
         clearInterval(pluginUpdateInterval);
       }
+      // Clean up event listener
+      window.removeEventListener('plugin-installed', handlePluginInstalled);
     });
 
     watch(

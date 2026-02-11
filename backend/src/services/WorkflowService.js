@@ -3,6 +3,8 @@ import WebhookModel from '../models/WebhookModel.js';
 import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
 import generateUUID from '../utils/generateUUID.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
+import PluginManager from '../plugins/PluginManager.js';
+import PluginInstaller from '../plugins/PluginInstaller.js';
 
 class WorkflowService {
   healthCheck(req, res) {
@@ -222,6 +224,81 @@ class WorkflowService {
     } catch (error) {
       console.error('Error stopping workflow:', error);
       res.status(500).json({ error: 'Failed to stop workflow', details: error.message });
+    }
+  }
+
+  /**
+   * Analyze workflow nodes to find required plugins and check if they're installed
+   * @param {Array} nodes - Array of workflow nodes
+   * @returns {Object} - { requiredPlugins, missingPlugins, allInstalled }
+   */
+  async analyzeWorkflowDependencies(nodes) {
+    const requiredPlugins = new Map(); // pluginName -> { name, displayName, installed }
+
+    // Get all available plugins from marketplace (includes tools they provide)
+    const marketplaceRegistry = await PluginInstaller.getMarketplaceRegistry();
+    const availablePlugins = marketplaceRegistry.plugins || [];
+
+    // Build a map of toolType -> plugin info from marketplace
+    const toolToMarketplacePlugin = new Map();
+    for (const plugin of availablePlugins) {
+      const tools = plugin.tools || [];
+      for (const tool of tools) {
+        const toolType = tool.type || tool.name;
+        if (toolType) {
+          toolToMarketplacePlugin.set(toolType, {
+            name: plugin.name,
+            displayName: plugin.displayName || plugin.name,
+          });
+        }
+      }
+    }
+
+    // Check each node to see if it requires a plugin
+    for (const node of nodes) {
+      if (!node.type) continue;
+
+      // Check if this tool type is provided by a marketplace plugin
+      const marketplacePlugin = toolToMarketplacePlugin.get(node.type);
+      if (marketplacePlugin && !requiredPlugins.has(marketplacePlugin.name)) {
+        // Check if plugin is already installed
+        const installedPlugin = PluginManager.getPlugin(marketplacePlugin.name);
+        requiredPlugins.set(marketplacePlugin.name, {
+          name: marketplacePlugin.name,
+          displayName: marketplacePlugin.displayName,
+          installed: !!installedPlugin,
+        });
+      }
+    }
+
+    const requiredArray = Array.from(requiredPlugins.values());
+    const missingPlugins = requiredArray.filter((p) => !p.installed);
+
+    console.log(`[WorkflowService] Analyzed ${nodes.length} nodes: ${requiredArray.length} plugins required, ${missingPlugins.length} missing`);
+
+    return {
+      requiredPlugins: requiredArray,
+      missingPlugins,
+      allInstalled: missingPlugins.length === 0,
+    };
+  }
+
+  /**
+   * API handler for analyzing workflow dependencies
+   */
+  async analyzeDependencies(req, res) {
+    try {
+      const { nodes } = req.body;
+
+      if (!nodes || !Array.isArray(nodes)) {
+        return res.status(400).json({ error: 'nodes array is required' });
+      }
+
+      const result = await this.analyzeWorkflowDependencies(nodes);
+      res.json(result);
+    } catch (error) {
+      console.error('Error analyzing workflow dependencies:', error);
+      res.status(500).json({ error: 'Failed to analyze dependencies', details: error.message });
     }
   }
 }

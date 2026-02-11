@@ -331,7 +331,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch, inject } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { useStore } from 'vuex';
 import BaseInput from '@/views/Terminal/_components/BaseInput.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
@@ -508,14 +508,20 @@ export default {
 
     async function fetchInstalledPlugins() {
       try {
+        console.log('[Plugins] Fetching installed plugins...');
         const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/installed`);
         const data = await response.json();
+        console.log('[Plugins] API response:', data.success, 'plugins:', data.plugins?.length);
         if (data.success) {
           // Sanitize plugin data to remove large base64 strings
-          installedPlugins.value = (data.plugins || []).map(sanitizePluginData);
+          const sanitized = (data.plugins || []).map(sanitizePluginData);
+          console.log('[Plugins] Setting installed plugins:', sanitized.map(p => p.name));
+          installedPlugins.value = sanitized;
+        } else {
+          console.error('[Plugins] API returned success=false:', data.error);
         }
       } catch (error) {
-        console.error('Error fetching installed plugins:', error);
+        console.error('[Plugins] Error fetching installed plugins:', error);
       }
     }
 
@@ -969,6 +975,29 @@ export default {
       }, 250);
     };
 
+    // Handler for realtime plugin install events
+    const handlePluginInstalled = async () => {
+      console.log('[Plugins] Received plugin-installed event, refreshing...');
+      try {
+        await fetchInstalledPlugins();
+        await store.dispatch('tools/refreshAllTools');
+        console.log('[Plugins] Refresh complete, installed plugins:', installedPlugins.value.map(p => p.name));
+      } catch (error) {
+        console.error('[Plugins] Error refreshing after plugin install:', error);
+      }
+    };
+
+    const handlePluginUninstalled = async () => {
+      console.log('[Plugins] Received plugin-uninstalled event, refreshing...');
+      try {
+        await fetchInstalledPlugins();
+        await store.dispatch('tools/refreshAllTools');
+        console.log('[Plugins] Refresh complete after uninstall');
+      } catch (error) {
+        console.error('[Plugins] Error refreshing after plugin uninstall:', error);
+      }
+    };
+
     onMounted(() => {
       // Load confetti library if not already loaded
       if (!window.confetti) {
@@ -980,6 +1009,16 @@ export default {
       if (isPro.value) {
         refreshPlugins();
       }
+
+      // Listen for realtime plugin events
+      window.addEventListener('plugin-installed', handlePluginInstalled);
+      window.addEventListener('plugin-uninstalled', handlePluginUninstalled);
+    });
+
+    onUnmounted(() => {
+      // Clean up event listeners
+      window.removeEventListener('plugin-installed', handlePluginInstalled);
+      window.removeEventListener('plugin-uninstalled', handlePluginUninstalled);
     });
 
     return {

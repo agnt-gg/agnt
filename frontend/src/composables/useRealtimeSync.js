@@ -337,6 +337,21 @@ export function useRealtimeSync() {
         ...data,
       });
     });
+
+    // Plugin events - notify components when plugins change
+    // Note: We don't call refreshAllTools here to avoid race conditions during batch installs
+    // The calling code (marketplace install flow) handles the refresh after all plugins are installed
+    socket.on('plugin:installed', (data) => {
+      console.log('[Realtime] Plugin installed:', data);
+      // Dispatch window event for components to refresh their local state
+      window.dispatchEvent(new CustomEvent('plugin-installed', { detail: data }));
+    });
+
+    socket.on('plugin:uninstalled', (data) => {
+      console.log('[Realtime] Plugin uninstalled:', data);
+      // Dispatch window event for components to refresh their local state
+      window.dispatchEvent(new CustomEvent('plugin-uninstalled', { detail: data }));
+    });
   };
 
   /**

@@ -9,6 +9,7 @@ import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
 import { reloadPluginTools as reloadOrchestratorPluginTools } from '../services/orchestrator/tools.js';
 import PluginGenerator from '../services/PluginGenerator.js';
 import { authenticateToken } from './Middleware.js';
+import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -320,6 +321,13 @@ router.post('/install', async (req, res) => {
       // Reload all plugin processes and wait for completion
       const reloadResults = await reloadAllPlugins();
       result.reloadStatus = reloadResults;
+
+      // Broadcast plugin installed event to all connected clients
+      broadcast(RealtimeEvents.PLUGIN_INSTALLED, {
+        name,
+        version,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     res.json(result);

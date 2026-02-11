@@ -10,6 +10,7 @@ const WorkflowRoutes = express.Router();
 WorkflowRoutes.get('/health', WorkflowService.healthCheck);
 WorkflowRoutes.get('/', authenticateToken, WorkflowService.getAllWorkflows);
 WorkflowRoutes.post('/save', authenticateToken, WorkflowService.saveWorkflow);
+WorkflowRoutes.post('/analyze-dependencies', authenticateToken, (req, res) => WorkflowService.analyzeDependencies(req, res));
 WorkflowRoutes.get('/:id', authenticateToken, WorkflowService.getWorkflowById);
 WorkflowRoutes.put('/:id', authenticateToken, WorkflowService.updateWorkflow);
 WorkflowRoutes.delete('/:id', authenticateToken, WorkflowService.deleteWorkflow);
