@@ -1,0 +1,237 @@
+{
+  "releases": [
+    {
+      "version": "0.4.5",
+      "date": "February 10, 2026",
+      "title": "Marketplace Plugin Auto-Install - AGNT v0.4.5",
+      "type": "patch",
+      "features": [
+        { "name": "Auto-Install Required Plugins from Marketplace Workflows", "status": "new" },
+        { "name": "Plugin Dependency Detection for Workflows", "status": "new" },
+        { "name": "Real-time Plugin Install Notifications", "status": "new" },
+        { "name": "Plugin Registry Corruption Recovery", "status": "bug" },
+        { "name": "Batch Plugin Install Race Conditions", "status": "bug" },
+        { "name": "Immediate Tool Refresh After Plugin Install", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.4.4",
+      "date": "February 10, 2026",
+      "title": "Async Tool Calls & Parallel Task Execution - AGNT v0.4.4",
+      "type": "patch",
+      "features": [
+        { "name": "Async Tool Execution Engine", "status": "new" },
+        { "name": "Parallel Task Processing in Chat", "status": "new" },
+        { "name": "Autonomous Background Messages", "status": "new" },
+        { "name": "Async Tools for Agent, Workflow & Goal Chats", "status": "new" },
+        { "name": "Conversation Manager for Async State", "status": "new" },
+        { "name": "Real-time Async Progress Sync", "status": "new" },
+        { "name": "Async Tool Status Indicators", "status": "updated" },
+        { "name": "Stop Button & Error Handling for Async Tasks", "status": "bug" },
+        { "name": "Chat Message Thinking State Tracking", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.4.3",
+      "date": "February 5, 2026",
+      "title": "🔧 Workflow Designer Provider Fix - AGNT v0.4.3",
+      "type": "patch",
+      "features": [
+        { "name": "Workflow Designer Model Fetching for New Providers", "status": "bug" },
+        { "name": "Granular Workflow Tools & Version Control System", "status": "new" },
+        { "name": "Kimi AI Provider with Dynamic Models", "status": "new" },
+        { "name": "MiniMax AI Provider with Dynamic Models", "status": "new" },
+        { "name": "Z-AI Provider with Dynamic Models", "status": "new" },
+        { "name": "OAuth Token Refresh for Claude Code", "status": "new" },
+        { "name": "Agent & Tool Chat Tool Calls", "status": "bug" },
+        { "name": "Workflow Parameter Handling", "status": "bug" },
+        { "name": "Workflow Chat Functionality", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.4.2",
+      "date": "February 5, 2026",
+      "title": "🔄 Workflow Version Control & New AI Providers - AGNT v0.4.2",
+      "type": "patch",
+      "features": [
+        { "name": "Granular Workflow Tools & Version Control System", "status": "new" },
+        { "name": "Kimi AI Provider with Dynamic Models", "status": "new" },
+        { "name": "MiniMax AI Provider with Dynamic Models", "status": "new" },
+        { "name": "Z-AI Provider with Dynamic Models", "status": "new" },
+        { "name": "OAuth Token Refresh for Claude Code", "status": "new" },
+        { "name": "Agent & Tool Chat Tool Calls", "status": "bug" },
+        { "name": "Workflow Parameter Handling", "status": "bug" },
+        { "name": "Workflow Chat Functionality", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.4.1",
+      "date": "February 1, 2026",
+      "title": "🔧 Codex Responses API & Tool Support - AGNT v0.4.1",
+      "type": "patch",
+      "features": [
+        { "name": "Codex CLI Full Tool Calling Support", "status": "new" },
+        { "name": "ChatGPT Responses API Integration", "status": "new" },
+        { "name": "Codex Agent/Workflow/Tool Generation", "status": "bug" },
+        { "name": "Responses API Schema Sanitization", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.4.0",
+      "date": "January 31, 2026",
+      "title": "🚀 Enhanced Provider Support & Workflow Improvements - AGNT v0.4.0",
+      "type": "minor",
+      "features": [
+        { "name": "Claude Code Provider with OAuth Auth", "status": "new" },
+        { "name": "OpenAI Codex Provider Support", "status": "new" },
+        { "name": "OpenAI Codex CLI Provider Support", "status": "new" },
+        { "name": "OpenRouter Workflow Support", "status": "new" },
+        { "name": "Cerebras Workflow Support", "status": "new" },
+        { "name": "Provider Auth Normalization", "status": "updated" },
+        { "name": "GitHub Plugin Sync & API Error Handling Fixes", "status": "bug" },
+        { "name": "Workflow Error Recovery & Fallback Suggestions", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.10",
+      "date": "January 28, 2026",
+      "title": "🤖 Codex CLI & Kimi Code - AGNT v0.3.10",
+      "type": "patch",
+      "features": [
+        { "name": "Codex CLI Integration", "status": "new" },
+        { "name": "Kimi Code Provider", "status": "new" },
+        { "name": "Webhook Improvements", "status": "updated" },
+        { "name": "MCP & License Fixes", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.8",
+      "date": "January 25, 2026",
+      "title": "🔧 Platform Update - AGNT v0.3.8",
+      "type": "patch",
+      "features": [
+        { "name": "Add Docker Support", "status": "new" },
+        { "name": "Real-time Chat Sync", "status": "new" },
+        { "name": "Performance Enhancements", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.7",
+      "date": "January 19, 2026",
+      "title": "🔧 Platform Update - AGNT v0.3.7",
+      "type": "patch",
+      "features": [
+        { "name": "Open Plugin Ecosystem", "status": "new" },
+        { "name": "Plugin Marketplace", "status": "new" },
+        { "name": "One Click Publishing", "status": "new" },
+        { "name": "General Fixes", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.6",
+      "date": "December 4, 2025",
+      "title": "🔧 Platform Update - AGNT v0.3.6",
+      "type": "patch",
+      "features": [
+        { "name": "Add Cerebras to LLM Tools & Annie Functions", "status": "new" },
+        { "name": "Enhance Marketplace Stripe Connect Flow", "status": "updated" },
+        { "name": "General Fixes", "status": "updated" },
+        { "name": "Fix Agent Actions State Issue (create/save/delete)", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.5",
+      "date": "December 3, 2025",
+      "title": "🔧 Platform Update - AGNT v0.3.5",
+      "type": "patch",
+      "features": [
+        { "name": "Stripe Connect Referral Payments Now Live", "status": "new" },
+        { "name": "Billing Modal Open in New Window", "status": "updated" },
+        { "name": "ASAR Binding Fix Windows", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.4",
+      "date": "December 3, 2025",
+      "title": "🔧 Platform Update - AGNT v0.3.4",
+      "type": "patch",
+      "features": [{ "name": "ASAR Issue Fix Windows", "status": "bug" }],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.3",
+      "date": "December 3, 2025",
+      "title": "🔧 Platform Update - AGNT v0.3.3",
+      "type": "patch",
+      "features": [
+        { "name": "Auto-Update System", "status": "new" },
+        { "name": "Version Check API", "status": "new" },
+        { "name": "News Panel Updates", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.2",
+      "date": "December 2, 2025",
+      "title": "🔧 Platform Update - AGNT v0.3.2",
+      "type": "patch",
+      "features": [
+        { "name": "Custom Providers", "status": "new" },
+        { "name": "Add Cerebras Provider", "status": "new" },
+        { "name": "General Fixes", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.1",
+      "date": "December 1, 2025",
+      "title": "🚀 Major Platform Update - AGNT v0.3.1",
+      "type": "minor",
+      "features": [
+        { "name": "AI Assistant Annie", "status": "new" },
+        { "name": "Asset Marketplace", "status": "new" },
+        { "name": "Canvas Automation System", "status": "updated" },
+        { "name": "Custom Tools System", "status": "updated" },
+        { "name": "MCP / NPM Library", "status": "new" },
+        { "name": "Multi Agent Goals", "status": "new" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
+      "version": "0.3.0",
+      "date": "October 2025",
+      "title": "🎯 Foundation Release - AGNT v0.3.0",
+      "type": "minor",
+      "features": [
+        { "name": "Workflow Canvas", "status": "new" },
+        { "name": "Agent Management", "status": "new" },
+        { "name": "Chat Interface", "status": "new" },
+        { "name": "Model-Agnostic Routing", "status": "new" },
+        { "name": "Local-First Architecture", "status": "new" }
+      ],
+      "tags": ["Initial Release"]
+    }
+  ],
+  "roadmap": [
+    { "name": "RL / Goal Eval Workstation", "status": "in-progress" },
+    { "name": "Orchestrator Memory System", "status": "in-progress" },
+    { "name": "Knowledge Base / Resource Manager", "status": "planned" },
+    { "name": "Agent Skill Trees", "status": "planned" },
+    { "name": "Customizable Dashboard", "status": "planned" },
+    { "name": "Job Board (Agent Missions)", "status": "planned" }
+  ],
+  "metadata": {
+    "lastUpdated": "2026-02-10T12:00:00Z"
+  }
+}
