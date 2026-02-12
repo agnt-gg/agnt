@@ -1233,28 +1233,25 @@ export default {
       }, 250);
     };
 
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       document.body.setAttribute('data-page', 'terminal-marketplace');
       terminalLines.value = [];
       addLine('Loading marketplace...', 'info');
 
-      try {
-        // Check for payment status in URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const paymentStatus = urlParams.get('payment');
-        const itemId = urlParams.get('itemId');
+      // Check for payment status in URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentStatus = urlParams.get('payment');
+      const itemId = urlParams.get('itemId');
 
-        // Set filter to fetch ALL asset types
-        await store.dispatch('marketplace/updateFilters', { assetType: 'all' });
-
-        // Fetch all items, featured items, installs, and purchases
-        await Promise.all([
+      // Non-blocking: fetch all data in parallel, then handle payment redirects
+      store.dispatch('marketplace/updateFilters', { assetType: 'all' }).then(() => {
+        return Promise.all([
           store.dispatch('marketplace/fetchMarketplaceWorkflows'),
           store.dispatch('marketplace/fetchFeaturedWorkflows'),
           store.dispatch('marketplace/fetchMyInstalls'),
           store.dispatch('marketplace/fetchMyPurchases'),
         ]);
-
+      }).then(async () => {
         const workflowCount = marketplaceWorkflows.value.length;
         const agentCount = marketplaceAgents.value.length;
         const toolCount = marketplaceTools.value.length;
@@ -1274,14 +1271,12 @@ export default {
           addLine(`${featuredCount} featured items available`, 'success');
         }
 
-        // Handle payment status from URL
+        // Handle payment status from URL (needs data to be loaded first)
         if (paymentStatus === 'success' && itemId) {
           addLine(`✓ Payment successful! You can now install the item.`, 'success');
 
-          // Find the item
           const item = filteredWorkflows.value.find((w) => w.id === itemId);
           if (item) {
-            // Show success modal and offer to install
             const shouldInstall = await simpleModal.value.showModal({
               title: '✓ Payment Successful',
               message: `Your purchase of "${item.title}" was successful!\n\nWould you like to install it now?`,
@@ -1296,7 +1291,6 @@ export default {
             }
           }
 
-          // Clean up URL
           window.history.replaceState({}, document.title, window.location.pathname);
         } else if (paymentStatus === 'cancelled') {
           addLine(`Payment was cancelled.`, 'info');
@@ -1308,12 +1302,11 @@ export default {
             confirmClass: 'btn-secondary',
           });
 
-          // Clean up URL
           window.history.replaceState({}, document.title, window.location.pathname);
         }
-      } catch (error) {
+      }).catch((error) => {
         addLine(`Error loading marketplace: ${error.message}`, 'error');
-      }
+      });
 
       // Show tutorial after a short delay
       setTimeout(() => {

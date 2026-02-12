@@ -48,7 +48,20 @@
 
         <!-- Main Content -->
         <div class="agents-content">
-          <main class="agents-main-content">
+          <!-- Loading skeleton -->
+          <div v-if="agents.length === 0 && !criticalDataReady" class="agents-loading" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+            <div class="skeleton-block" style="height: 40px; width: 100%; border-radius: 6px;"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="skeleton-block" style="height: 160px; border-radius: 8px;"></div>
+              <div class="skeleton-block" style="height: 160px; border-radius: 8px;"></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="skeleton-block" style="height: 160px; border-radius: 8px;"></div>
+              <div class="skeleton-block" style="height: 160px; border-radius: 8px;"></div>
+            </div>
+          </div>
+
+          <main v-else class="agents-main-content fade-in">
             <!-- Table View -->
             <AgentList
               v-if="currentLayout === 'table'"
@@ -311,6 +324,7 @@ export default {
     const baseScreenRef = ref(null);
     const terminalLines = ref([]);
     const agents = ref([]);
+    const criticalDataReady = computed(() => store.getters.criticalDataReady);
     const selectedAgent = ref(null);
     const searchQuery = ref('');
     const currentLayout = ref('grid');
@@ -643,7 +657,7 @@ export default {
     };
 
     // --- Initialization (Update) ---
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       selectedAgent.value = null;
       terminalLines.value = ['Welcome to the Agents Terminal!', '-----------------------------------', 'Initializing agent and goal data...'];
 
@@ -1635,6 +1649,7 @@ export default {
       baseScreenRef,
       terminalLines,
       agents,
+      criticalDataReady,
       selectedAgent,
       handlePanelAction,
       selectAgent,

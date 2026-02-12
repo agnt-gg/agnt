@@ -70,7 +70,7 @@
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
         <div class="workflows-content">
-          <main class="workflows-main-content">
+          <main class="workflows-main-content fade-in">
             <!-- Workflows Table -->
             <BaseTable
               v-if="currentLayout === 'table'"
@@ -846,23 +846,29 @@ export default {
       }
     };
 
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       terminalLines.value = [];
       addLine('Loading workflows...', 'info');
 
-      try {
-        await store.dispatch('workflows/fetchWorkflows');
-        const workflows = store.getters['workflows/allWorkflows'];
-        console.log('[DEBUG] Workflows after fetching:', workflows);
-
-        if (workflows.length === 0) {
-          addLine('No workflows found. Create a workflow in the Workflow Designer.', 'info');
-        } else {
-          addLine(`Found ${workflows.length} workflows.`, 'success');
-        }
-      } catch (error) {
-        addLine(`Error loading workflows: ${error.message}`, 'error');
+      // Show cached data immediately if available
+      const cachedWorkflows = store.getters['workflows/allWorkflows'];
+      if (cachedWorkflows && cachedWorkflows.length > 0) {
+        addLine(`Loaded ${cachedWorkflows.length} workflows from cache.`, 'success');
       }
+
+      // Non-blocking background refresh
+      store.dispatch('workflows/fetchWorkflows').then(() => {
+        const workflows = store.getters['workflows/allWorkflows'];
+        if (cachedWorkflows.length === 0) {
+          if (workflows.length === 0) {
+            addLine('No workflows found. Create a workflow in the Workflow Designer.', 'info');
+          } else {
+            addLine(`Found ${workflows.length} workflows.`, 'success');
+          }
+        }
+      }).catch((error) => {
+        addLine(`Error loading workflows: ${error.message}`, 'error');
+      });
 
       // Set up visibility-aware polling
       const startPolling = () => {

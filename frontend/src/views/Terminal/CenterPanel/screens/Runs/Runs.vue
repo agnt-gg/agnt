@@ -1079,25 +1079,33 @@ ${execution.log}
 
     const { tutorialConfig, startTutorial, onTutorialClose, initializeRunsTutorial } = useRunsTutorial();
 
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       terminalLines.value = [];
       addLine('Loading execution history...', 'info');
 
       document.body.setAttribute('data-page', 'terminal-runs');
 
-      try {
-        await refreshExecutions();
-        const executions = store.getters['executionHistory/getExecutions'];
-
-        if (executions.length === 0) {
-          addLine('No executions found. Run some workflows to see execution history.', 'info');
-        } else {
-          const runningCount = executions.filter((e) => e.status === 'running' || e.status === 'started').length;
-          addLine(`Found ${executions.length} executions${runningCount > 0 ? ` (${runningCount} running)` : ''}.`, 'success');
-        }
-      } catch (error) {
-        addLine(`Error loading executions: ${error.message}`, 'error');
+      // Show cached data immediately if available
+      const cachedExecutions = store.getters['executionHistory/getExecutions'];
+      if (cachedExecutions && cachedExecutions.length > 0) {
+        const runningCount = cachedExecutions.filter((e) => e.status === 'running' || e.status === 'started').length;
+        addLine(`Loaded ${cachedExecutions.length} executions from cache${runningCount > 0 ? ` (${runningCount} running)` : ''}.`, 'success');
       }
+
+      // Non-blocking background refresh
+      refreshExecutions().then(() => {
+        const executions = store.getters['executionHistory/getExecutions'];
+        if (!cachedExecutions || cachedExecutions.length === 0) {
+          if (executions.length === 0) {
+            addLine('No executions found. Run some workflows to see execution history.', 'info');
+          } else {
+            const runningCount = executions.filter((e) => e.status === 'running' || e.status === 'started').length;
+            addLine(`Found ${executions.length} executions${runningCount > 0 ? ` (${runningCount} running)` : ''}.`, 'success');
+          }
+        }
+      }).catch((error) => {
+        addLine(`Error loading executions: ${error.message}`, 'error');
+      });
 
       // Set up polling for running executions
       const startPolling = () => {

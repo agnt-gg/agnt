@@ -285,7 +285,7 @@ export default {
     // Tutorial setup
     const { tutorialConfig, startTutorial, currentStep, onTutorialClose, nextStep, initializeSettingsTutorial } = useSettingsTutorial();
 
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       // Check if there's a requested section to navigate to
       const requestedSection = localStorage.getItem('settings-initial-section');
       if (requestedSection) {
@@ -293,34 +293,25 @@ export default {
         localStorage.removeItem('settings-initial-section'); // Clean up
       }
 
-      // Refresh data when visiting Settings page
+      // Non-blocking: refresh all data in parallel in background
       if (isLoggedIn.value) {
-        try {
-          console.log('🔄 REFRESHING SETTINGS DATA...');
-
-          // Fetch referral data first
-          await store.dispatch('userStats/fetchReferralBalance');
-          await store.dispatch('userStats/fetchReferralTree');
-
-          // Fetch all other data in parallel
-          await Promise.all([
-            store.dispatch('userStats/fetchStats'),
-            store.dispatch('userStats/fetchCreditsActivity', { activityDays: 90 }),
-            store.dispatch('goals/fetchGoals'),
-            store.dispatch('agents/fetchAgents'),
-            store.dispatch('workflows/fetchWorkflows'),
-            store.dispatch('tools/fetchTools'),
-            store.dispatch('executionHistory/fetchExecutions'),
-            store.dispatch('appAuth/fetchConnectedApps'),
-          ]);
-
+        Promise.allSettled([
+          store.dispatch('userStats/fetchReferralBalance'),
+          store.dispatch('userStats/fetchReferralTree'),
+          store.dispatch('userStats/fetchStats'),
+          store.dispatch('userStats/fetchCreditsActivity', { activityDays: 90 }),
+          store.dispatch('goals/fetchGoals'),
+          store.dispatch('agents/fetchAgents'),
+          store.dispatch('workflows/fetchWorkflows'),
+          store.dispatch('tools/fetchTools'),
+          store.dispatch('executionHistory/fetchExecutions'),
+          store.dispatch('appAuth/fetchConnectedApps'),
+        ]).then(() => {
           // Recalculate AGNT score with fresh data
           store.dispatch('userStats/calculateAndStoreAgntScore');
-
-          console.log('✅ SETTINGS DATA REFRESHED');
-        } catch (error) {
+        }).catch((error) => {
           console.error('Failed to refresh settings data:', error);
-        }
+        });
 
         // Start tutorial after 2 seconds
         setTimeout(() => {

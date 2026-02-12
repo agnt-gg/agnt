@@ -63,21 +63,21 @@ export default {
       emit('panel-action', 'review-item', data);
     };
 
-    onMounted(async () => {
-      // Fetch initial data needed for the panel
-      await store.dispatch('userStats/fetchStats');
-      await store.dispatch('workflows/fetchWorkflows', { activeOnly: true });
-      await store.dispatch('goals/fetchGoals');
-      await store.dispatch('appAuth/fetchConnectedApps');
-
-      // Only check health if we need to
-      if (store.getters['appAuth/needsHealthCheck']) {
-        try {
-          await store.dispatch('appAuth/checkConnectionHealthStream');
-        } catch (error) {
-          console.error('Error with initial health check stream:', error);
+    onMounted(() => {
+      // Data is pre-loaded by initializeStore in main.js
+      // Fire background refresh in parallel (non-blocking, uses store caching)
+      Promise.allSettled([
+        store.dispatch('userStats/fetchStats'),
+        store.dispatch('workflows/fetchWorkflows', { activeOnly: true }),
+        store.dispatch('goals/fetchGoals'),
+        store.dispatch('appAuth/fetchConnectedApps'),
+      ]).then(() => {
+        if (store.getters['appAuth/needsHealthCheck']) {
+          store.dispatch('appAuth/checkConnectionHealthStream').catch((error) => {
+            console.error('Error with initial health check stream:', error);
+          });
         }
-      }
+      });
     });
 
     return {

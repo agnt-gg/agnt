@@ -18,13 +18,34 @@
     <template #default>
       <div class="dashboard-content">
         <div class="dashboard-inner-content">
+          <!-- Loading skeleton while critical data loads -->
+          <template v-if="!dataReady">
+            <div class="dashboard-loading">
+              <div class="skeleton-block" style="height: 120px; width: 100%; border-radius: 8px;"></div>
+              <div class="skeleton-block" style="height: 36px; width: 100%; border-radius: 6px;"></div>
+              <div class="dashboard-grid">
+                <div class="grid-row top-row">
+                  <div class="skeleton-block" style="height: 250px; border-radius: 8px;"></div>
+                  <div class="skeleton-block" style="height: 250px; border-radius: 8px;"></div>
+                  <div class="skeleton-block" style="height: 250px; border-radius: 8px;"></div>
+                </div>
+                <div class="grid-row middle-row">
+                  <div class="skeleton-block" style="height: 200px; border-radius: 8px;"></div>
+                  <div class="skeleton-block" style="height: 200px; border-radius: 8px;"></div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template v-else>
           <!-- <TerminalHeader title="AGNT BIRDS-EYE TERMINAL" subtitle="Time: 17:04 CDT | Mode: LIVE | License: ACTIVE | Uptime: 3d 14h 22m" /> -->
 
           <!-- Cumulative Credits Usage Chart - Full Width -->
-          <CumulativeCreditsChart />
+          <CumulativeCreditsChart class="fade-in" />
 
           <!-- Global Pulse Ribbon -->
           <GlobalPulseRibbon
+            class="fade-in"
             :agntScoreData="agntScoreData"
             :goalsData="goalsData"
             :agentsData="agentsData"
@@ -36,16 +57,16 @@
           />
 
           <!-- Main Dashboard Grid -->
-          <div class="dashboard-grid">
+          <div class="dashboard-grid fade-in" style="animation-delay: 0.05s;">
             <!-- Top Row -->
-            <div class="grid-row top-row">
+            <div class="grid-row top-row fade-in-stagger">
               <GoalsMap :goalsData="goalsMapData" @navigate="handleScreenChange" />
               <AgentsSwarm :agentsData="agentsSwarmData" @navigate="handleScreenChange" />
               <WorkflowPipelines :pipelineData="pipelineData" @navigate="handleScreenChange" />
             </div>
 
             <!-- Middle Row -->
-            <div class="grid-row middle-row">
+            <div class="grid-row middle-row fade-in-stagger">
               <ToolsInventory :toolsData="toolsInventoryData" />
               <RunsQueue :runsData="runsQueueData" />
             </div>
@@ -72,6 +93,7 @@
           />
 
           <!-- <div ref="scrollAnchorRef" class="scroll-anchor"></div> -->
+          </template>
         </div>
       </div>
     </template>
@@ -150,6 +172,12 @@ export default {
         callback(...args);
       };
     };
+
+    // Data readiness - show skeleton until critical data has arrived
+    const dataReady = computed(() => {
+      const hasAgents = store.getters['agents/allAgents']?.length > 0 || store.getters.criticalDataReady;
+      return hasAgents;
+    });
 
     // --- Computed properties for dashboard data ---
     const tokenActivity = computed(() => store.getters['userStats/tokenActivity']);
@@ -548,22 +576,17 @@ export default {
     const { tutorialConfig, startTutorial, onTutorialClose, initializeDashboardTutorial } = useDashboardTutorial();
 
     // --- Initialization ---
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       terminalLines.value.push('Initializing Dashboard...');
-
-      // Data is already loaded by main.js on app startup
-      // Just check connection health if needed
-      try {
-        if (store.getters['appAuth/needsHealthCheck']) {
-          await store.dispatch('appAuth/checkConnectionHealthStream');
-        }
-      } catch (error) {
-        console.error('Error checking connection health:', error);
-        terminalLines.value.push(`Error: ${error.message}`);
-      }
-
       terminalLines.value.push('Dashboard Ready.');
       baseScreenRef.value?.scrollToBottom();
+
+      // Non-blocking: health check runs in background
+      if (store.getters['appAuth/needsHealthCheck']) {
+        store.dispatch('appAuth/checkConnectionHealthStream').catch((error) => {
+          console.error('Error checking connection health:', error);
+        });
+      }
     };
 
     // Set up periodic refresh for real-time data
@@ -587,6 +610,7 @@ export default {
       terminalLines,
       selectedMissionId,
       selectedMission,
+      dataReady,
       tokenActivity,
       isLoading,
       performanceData,
@@ -625,6 +649,14 @@ export default {
 </script>
 
 <style scoped>
+/* Dashboard loading skeleton */
+.dashboard-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
 /* Add dashboard-specific styles here */
 .dashboard-content {
   width: 100%;

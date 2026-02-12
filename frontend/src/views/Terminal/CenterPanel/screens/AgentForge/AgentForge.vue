@@ -546,12 +546,13 @@ export default {
     };
 
     // Initialization
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       terminalLines.value = ['Welcome to the Agent Forge!', 'Fill out the form below to create a new agent.'];
       document.body.setAttribute('data-page', 'terminal-agent-forge');
-      await fetchData();
-      await nextTick();
-      baseScreenRef.value?.scrollToBottom();
+      // Non-blocking: render form immediately, data fills in reactively
+      fetchData().then(() => {
+        nextTick(() => baseScreenRef.value?.scrollToBottom());
+      });
 
       setTimeout(() => {
         initializeAgentForgeTutorial();

@@ -55,7 +55,7 @@
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
         <div class="tools-content">
-          <main class="tools-main-content">
+          <main class="tools-main-content fade-in">
             <!-- Category Cards View -->
             <div class="category-cards-container">
               <!-- Empty State - Only show for custom tab when no custom tools exist -->
@@ -606,7 +606,7 @@ export default {
       }
     };
 
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       selectedTool.value = null;
       activeTab.value = 'all';
       currentLayout.value = 'grid'; // Set to grid since table button is hidden
@@ -628,7 +628,7 @@ export default {
           console.error('Error loading tools:', error);
         });
 
-      await nextTick();
+      nextTick();
     };
 
     // Watch for changes in allTools

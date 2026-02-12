@@ -16,13 +16,27 @@
   >
     <template #default>
       <div class="goals-screen">
-        <div class="kanban-board">
+        <!-- Loading skeleton while goals load -->
+        <div v-if="isLoading && (!allGoals || allGoals.length === 0)" class="kanban-board">
+          <div v-for="i in 3" :key="'skeleton-' + i" class="kanban-column">
+            <div class="column-header">
+              <div class="skeleton-block" style="height: 16px; width: 60px;"></div>
+              <div class="skeleton-block" style="height: 16px; width: 24px; border-radius: 12px;"></div>
+            </div>
+            <div class="column-content">
+              <div v-for="j in 2" :key="'skel-card-' + j" class="skeleton-block" style="height: 80px; border-radius: 8px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Real content with staggered fade -->
+        <div v-else class="kanban-board fade-in">
           <div v-for="column in columns" :key="column.id" class="kanban-column">
             <div class="column-header">
               <h3>{{ column.title }}</h3>
               <span class="count">{{ column.goals.length }}</span>
             </div>
-            <div class="column-content">
+            <div class="column-content fade-in-stagger">
               <GoalCard
                 v-for="goal in column.goals"
                 :key="goal.id"
@@ -63,6 +77,7 @@ export default {
     document.body.setAttribute('data-page', 'goals-page');
 
     const allGoals = computed(() => store.getters['goals/allGoals']);
+    const isLoading = computed(() => store.getters['goals/isLoading']);
 
     const columns = computed(() => {
       const goals = allGoals.value || [];
@@ -90,11 +105,16 @@ export default {
       ];
     });
 
-    const initializeScreen = async () => {
+    const initializeScreen = () => {
       terminalLines.value.push('Loading goals...');
-      await store.dispatch('goals/fetchGoals');
-      terminalLines.value.push(`Loaded ${allGoals.value.length} goals.`);
-      baseScreenRef.value?.scrollToBottom();
+      // Non-blocking: render kanban immediately, data fills in reactively
+      store.dispatch('goals/fetchGoals').then(() => {
+        terminalLines.value.push(`Loaded ${allGoals.value.length} goals.`);
+        baseScreenRef.value?.scrollToBottom();
+      }).catch((error) => {
+        terminalLines.value.push(`Error loading goals: ${error.message}`);
+        baseScreenRef.value?.scrollToBottom();
+      });
     };
 
     const handleGoalClick = async (goal) => {
@@ -173,6 +193,7 @@ export default {
       emit,
       selectedGoalId,
       allGoals,
+      isLoading,
     };
   },
 };

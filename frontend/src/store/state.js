@@ -29,12 +29,29 @@ import goalTemplates from './features/goalTemplates';
 import contentOutputs from './features/contentOutputs';
 
 const store = createStore({
+  state: {
+    // Global initialization tracking
+    criticalDataReady: false,
+    allDataReady: false,
+  },
+  mutations: {
+    SET_CRITICAL_DATA_READY(state) {
+      state.criticalDataReady = true;
+    },
+    SET_ALL_DATA_READY(state) {
+      state.allDataReady = true;
+    },
+  },
+  getters: {
+    criticalDataReady: (state) => state.criticalDataReady,
+    allDataReady: (state) => state.allDataReady,
+  },
   actions: {
     /**
      * Initialize store data in background after app mount
      * Optimized to fetch data in parallel without blocking UI
      */
-    async initializeStore({ dispatch }) {
+    async initializeStore({ commit, dispatch }) {
       console.log('Initializing app data in background...');
 
       try {
@@ -53,8 +70,10 @@ const store = createStore({
           }
         });
 
+        // Signal that critical data is ready (agents, workflows, stats)
+        commit('SET_CRITICAL_DATA_READY');
+
         // PHASE 2: Fetch secondary data (less urgent, can load after)
-        // Don't await - let it run in background
         Promise.allSettled([
           dispatch('userStats/fetchReferralBalance'),
           dispatch('userStats/fetchReferralTree'),
@@ -73,6 +92,9 @@ const store = createStore({
               console.warn(`Secondary fetch ${index} failed:`, result.reason);
             }
           });
+
+          // Signal all data is ready
+          commit('SET_ALL_DATA_READY');
 
           // Calculate AGNT score after all data is loaded
           dispatch('userStats/calculateAndStoreAgntScore').catch(console.error);
