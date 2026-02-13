@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.4.6",
+      "date": "February 13, 2026",
+      "title": "AI Plugin Regeneration Chat - AGNT v0.4.6",
+      "type": "patch",
+      "features": [
+        { "name": "Full Plugin Regeneration via Chat Input", "status": "new" },
+        { "name": "Conversation History for Iterative Plugin Edits", "status": "new" },
+        { "name": "Automatic Semver Version Bumping on Regeneration", "status": "new" },
+        { "name": "SSE Streaming for Plugin Regeneration Progress", "status": "new" },
+        { "name": "Plugin Regeneration UI Stability", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.4.5",
       "date": "February 10, 2026",
       "title": "Marketplace Plugin Auto-Install - AGNT v0.4.5",
@@ -232,6 +246,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-02-10T12:00:00Z"
+    "lastUpdated": "2026-02-13T12:00:00Z"
   }
 }
