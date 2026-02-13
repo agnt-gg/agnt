@@ -7,7 +7,7 @@ import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';
 import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
 import { reloadPluginTools as reloadOrchestratorPluginTools } from '../services/orchestrator/tools.js';
-import PluginGenerator from '../services/PluginGenerator.js';
+import PluginGenerator, { bumpVersion, determineVersionBump } from '../services/PluginGenerator.js';
 import { authenticateToken } from './Middleware.js';
 import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
 
@@ -564,6 +564,98 @@ router.post('/regenerate-file', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('[PluginRoutes] Error regenerating file:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/plugins/regenerate
+ * Regenerate an entire plugin using AI based on instructions + current state
+ * Streams progress events (same format as /generate)
+ *
+ * Body: { instructions: string, currentManifest: object, currentCode: object, currentPackageJson: object, provider: string, model: string }
+ */
+router.post('/regenerate', authenticateToken, async (req, res) => {
+  try {
+    const { instructions, currentManifest, currentCode, currentPackageJson, provider, model, conversationHistory = [] } = req.body;
+    const userId = req.user.id;
+
+    if (!instructions) {
+      return res.status(400).json({
+        success: false,
+        error: 'Instructions are required',
+      });
+    }
+
+    if (!currentManifest || !currentCode) {
+      return res.status(400).json({
+        success: false,
+        error: 'Current manifest and code are required',
+      });
+    }
+
+    if (!provider || !model) {
+      return res.status(400).json({
+        success: false,
+        error: 'AI provider and model are required',
+      });
+    }
+
+    console.log(`[PluginRoutes] Regenerating plugin for user ${userId}`);
+    console.log(`[PluginRoutes] Provider: ${provider}, Model: ${model}`);
+
+    // Set up streaming response
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const sendEvent = (event, data) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      const generator = new PluginGenerator(userId);
+      await generator.loadContext();
+
+      // Step 1: Regenerate manifest
+      sendEvent('progress', { step: 'manifest', status: 'generating' });
+      const manifest = await generator.regenerateManifest(instructions, currentManifest, provider, model, conversationHistory);
+
+      // Auto-bump version based on what changed
+      const bumpType = determineVersionBump(currentManifest, manifest);
+      manifest.version = bumpVersion(currentManifest.version, bumpType);
+      console.log(`[PluginRoutes] Version bump: ${currentManifest.version} → ${manifest.version} (${bumpType})`);
+
+      sendEvent('manifest', manifest);
+
+      // Step 2: Regenerate code for each tool
+      const toolCode = {};
+      for (const tool of manifest.tools) {
+        const fileName = tool.entryPoint.replace('./', '');
+        const existingCode = currentCode[fileName] || '';
+        sendEvent('progress', { step: 'code', tool: tool.type, status: 'generating' });
+        toolCode[fileName] = await generator.regenerateToolCode(tool, manifest, instructions, existingCode, provider, model, conversationHistory);
+        sendEvent('code', { file: fileName, code: toolCode[fileName] });
+      }
+
+      // Step 3: Regenerate package.json
+      sendEvent('progress', { step: 'package', status: 'generating' });
+      const packageJson = await generator.regeneratePackageJson(manifest, toolCode, instructions, currentPackageJson, provider, model);
+      sendEvent('package', packageJson);
+
+      // Complete
+      sendEvent('complete', { success: true });
+      res.end();
+    } catch (genError) {
+      console.error('[PluginRoutes] Regeneration error:', genError);
+      sendEvent('error', { error: genError.message });
+      res.end();
+    }
+  } catch (error) {
+    console.error('[PluginRoutes] Error in regenerate route:', error);
     res.status(500).json({
       success: false,
       error: error.message,

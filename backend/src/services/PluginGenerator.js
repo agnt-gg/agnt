@@ -179,6 +179,62 @@ IMPORTANT:
 OUTPUT ONLY VALID JSON - NO MARKDOWN CODE BLOCKS, NO EXPLANATION, JUST THE JSON OBJECT.`,
 };
 
+/**
+ * Bump a semver version string by the given type
+ */
+function bumpVersion(version, type) {
+  const parts = (version || '1.0.0').split('.').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return version;
+
+  switch (type) {
+    case 'major':
+      return `${parts[0] + 1}.0.0`;
+    case 'minor':
+      return `${parts[0]}.${parts[1] + 1}.0`;
+    case 'patch':
+    default:
+      return `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+  }
+}
+
+/**
+ * Compare old and new manifests to determine the appropriate version bump type
+ * - Tools removed → major (breaking change)
+ * - Tools added or tool schemas changed → minor (new feature / changed behavior)
+ * - Everything else (descriptions, code-only) → patch
+ */
+function determineVersionBump(oldManifest, newManifest) {
+  const oldTools = oldManifest.tools || [];
+  const newTools = newManifest.tools || [];
+
+  const oldTypes = new Set(oldTools.map((t) => t.type));
+  const newTypes = new Set(newTools.map((t) => t.type));
+
+  // Tools removed → major
+  const removed = [...oldTypes].filter((t) => !newTypes.has(t));
+  if (removed.length > 0) return 'major';
+
+  // Tools added → minor
+  const added = [...newTypes].filter((t) => !oldTypes.has(t));
+  if (added.length > 0) return 'minor';
+
+  // Check if tool schemas changed (parameters or outputs)
+  for (const newTool of newTools) {
+    const oldTool = oldTools.find((t) => t.type === newTool.type);
+    if (!oldTool) continue;
+
+    const oldParams = JSON.stringify(oldTool.schema?.parameters || {});
+    const newParams = JSON.stringify(newTool.schema?.parameters || {});
+    const oldOutputs = JSON.stringify(oldTool.schema?.outputs || {});
+    const newOutputs = JSON.stringify(newTool.schema?.outputs || {});
+
+    if (oldParams !== newParams || oldOutputs !== newOutputs) return 'minor';
+  }
+
+  // Default: patch
+  return 'patch';
+}
+
 class PluginGenerator {
   constructor(userId) {
     this.userId = userId;
@@ -346,6 +402,166 @@ Remember: Output ONLY valid JSON, no markdown, no explanation.`,
     packageJson.type = 'module';
 
     console.log('[PluginGenerator] Package.json generated');
+    return packageJson;
+  }
+
+  /**
+   * Regenerate an entire plugin from instructions + current state
+   * Returns { manifest, toolCode, packageJson } same shape as generatePlugin
+   */
+  async regeneratePlugin(instructions, currentManifest, currentCode, currentPackageJson, provider, model) {
+    console.log(`[PluginGenerator] Regenerating plugin for user ${this.userId}`);
+    console.log(`[PluginGenerator] Provider: ${provider}, Model: ${model}`);
+    console.log(`[PluginGenerator] Instructions: ${instructions.substring(0, 100)}...`);
+
+    await this.loadContext();
+
+    // Step 1: Regenerate manifest
+    const manifest = await this.regenerateManifest(instructions, currentManifest, provider, model);
+
+    // Step 2: Regenerate tool code for each tool in the new manifest
+    const toolCode = {};
+    for (const tool of manifest.tools) {
+      const fileName = tool.entryPoint.replace('./', '');
+      const existingCode = currentCode[fileName] || '';
+      toolCode[fileName] = await this.regenerateToolCode(tool, manifest, instructions, existingCode, provider, model);
+    }
+
+    // Step 3: Regenerate package.json
+    const packageJson = await this.regeneratePackageJson(manifest, toolCode, instructions, currentPackageJson, provider, model);
+
+    return { manifest, toolCode, packageJson };
+  }
+
+  /**
+   * Regenerate manifest.json from current manifest + instructions
+   */
+  async regenerateManifest(instructions, currentManifest, provider, model, conversationHistory = []) {
+    console.log('[PluginGenerator] Regenerating manifest...');
+
+    const client = await createLlmClient(provider, this.userId);
+
+    // Build conversation context from previous regeneration instructions
+    const historyContext = conversationHistory.length > 0
+      ? `\n\nPrevious modification requests (for context of what has already been changed):\n${conversationHistory.map((h) => `- ${h}`).join('\n')}\n`
+      : '';
+
+    const messages = [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPTS.manifest,
+      },
+      {
+        role: 'user',
+        content: `Here is the current manifest.json for this plugin:
+
+${JSON.stringify(currentManifest, null, 2)}
+${historyContext}
+CRITICAL: Return this manifest EXACTLY as-is, with ONLY the minimal changes needed to fulfill these instructions:
+${instructions}
+
+Do NOT rename the plugin. Do NOT rewrite descriptions. Do NOT change tool types, parameters, or outputs unless the instructions EXPLICITLY ask for it. Copy everything else verbatim. Only touch what the instructions specifically ask to change.
+
+Output ONLY valid JSON, no markdown, no explanation.`,
+      },
+    ];
+
+    const response = await this.callLLM(client, model, messages, provider);
+    const manifestJson = this.extractJSON(response);
+
+    console.log('[PluginGenerator] Manifest regenerated:', manifestJson.name);
+    return manifestJson;
+  }
+
+  /**
+   * Regenerate tool code from current code + instructions
+   */
+  async regenerateToolCode(tool, manifest, instructions, existingCode, provider, model, conversationHistory = []) {
+    console.log(`[PluginGenerator] Regenerating code for tool: ${tool.type}`);
+
+    const client = await createLlmClient(provider, this.userId);
+
+    let contextInfo = '';
+    if (this.examplePluginCode) {
+      contextInfo = `\n\nHere's an example of a working AGNT plugin tool for reference:\n\n${this.examplePluginCode}`;
+    }
+
+    // Build conversation context from previous regeneration instructions
+    const historyContext = conversationHistory.length > 0
+      ? `\n\nPrevious modification requests (for context of what has already been changed):\n${conversationHistory.map((h) => `- ${h}`).join('\n')}\n`
+      : '';
+
+    const messages = [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPTS.code + contextInfo,
+      },
+      {
+        role: 'user',
+        content: `Here is the CURRENT code for tool "${tool.type}" that you MUST preserve:
+
+${existingCode || '(No existing code - generate from scratch)'}
+
+PLUGIN NAME: ${manifest.name}
+TOOL TYPE: ${tool.type}
+TOOL SCHEMA:
+${JSON.stringify(tool.schema, null, 2)}
+${historyContext}
+CRITICAL: Return the code above EXACTLY as-is, with ONLY the minimal changes needed to fulfill these instructions:
+${instructions}
+
+Do NOT refactor, reformat, rename variables, rewrite logic, or "improve" anything. Keep ALL existing code, structure, comments, and style identical. Only add/modify the specific lines the instructions ask for. If the instructions don't mention a particular function or section, leave it COMPLETELY untouched.
+
+Output ONLY valid JavaScript code, no markdown code blocks, no explanation.`,
+      },
+    ];
+
+    const response = await this.callLLM(client, model, messages, provider);
+    const code = this.extractCode(response);
+
+    console.log(`[PluginGenerator] Code regenerated for: ${tool.type}`);
+    return code;
+  }
+
+  /**
+   * Regenerate package.json from new code + instructions
+   */
+  async regeneratePackageJson(manifest, toolCode, instructions, currentPackageJson, provider, model) {
+    console.log('[PluginGenerator] Regenerating package.json...');
+
+    const client = await createLlmClient(provider, this.userId);
+
+    const allCode = Object.values(toolCode).join('\n\n---\n\n');
+
+    const messages = [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPTS.packageJson,
+      },
+      {
+        role: 'user',
+        content: `Here is the current package.json:
+
+${JSON.stringify(currentPackageJson, null, 2)}
+
+And here is the updated tool code:
+
+${allCode}
+
+CRITICAL: Return this package.json EXACTLY as-is. Only add new dependencies if the updated code imports new packages, or remove dependencies if their imports were removed. Do NOT change versions of existing dependencies. Do NOT add, remove, or modify anything else.
+
+Output ONLY valid JSON, no markdown, no explanation.`,
+      },
+    ];
+
+    const response = await this.callLLM(client, model, messages, provider);
+    const packageJson = this.extractJSON(response);
+
+    packageJson.name = manifest.name;
+    packageJson.version = manifest.version;
+    packageJson.type = 'module';
+
+    console.log('[PluginGenerator] Package.json regenerated');
     return packageJson;
   }
 
@@ -518,3 +734,4 @@ Remember: Output ONLY valid JavaScript code, no markdown code blocks, no explana
 }
 
 export default PluginGenerator;
+export { bumpVersion, determineVersionBump };

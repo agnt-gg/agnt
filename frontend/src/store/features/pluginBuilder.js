@@ -525,6 +525,160 @@ export default {
     },
 
     /**
+     * Regenerate the entire plugin with AI based on instructions
+     * Gathers current effective files and calls the /regenerate SSE endpoint
+     */
+    async regeneratePlugin({ commit, state, getters, rootState }, { instructions }) {
+      if (!instructions) {
+        commit('SET_GENERATION_ERROR', 'Please provide instructions');
+        return { success: false, error: 'No instructions provided' };
+      }
+
+      // Add user message to conversation history immediately so it's visible
+      commit('ADD_CONVERSATION_MESSAGE', {
+        id: `msg-${Date.now()}`,
+        role: 'user',
+        content: instructions,
+        timestamp: new Date().toISOString(),
+      });
+
+      commit('SET_GENERATING', true);
+      commit('SET_GENERATION_PROGRESS', null);
+      commit('SET_GENERATION_ERROR', null);
+
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('Authentication required');
+        }
+
+        const provider = rootState.aiProvider.selectedProvider;
+        const model = rootState.aiProvider.selectedModel;
+
+        // Gather current effective files (edited versions take priority)
+        let currentManifest = state.generatedManifest;
+        if (state.editedFiles['manifest.json']) {
+          currentManifest = JSON.parse(state.editedFiles['manifest.json']);
+        }
+
+        const currentCode = {};
+        for (const fileName of Object.keys(state.generatedCode)) {
+          currentCode[fileName] = getters.getFileContent(fileName);
+        }
+
+        let currentPackageJson = state.generatedPackageJson;
+        if (state.editedFiles['package.json']) {
+          currentPackageJson = JSON.parse(state.editedFiles['package.json']);
+        }
+
+        // Build conversation history (just the instruction strings) for LLM context
+        const conversationHistory = state.conversation
+          .filter((m) => m.role === 'user')
+          .slice(0, -1) // Exclude current message (already in `instructions`)
+          .map((m) => m.content);
+
+        const { API_CONFIG } = await import('@/tt.config.js');
+
+        const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/regenerate`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            instructions,
+            currentManifest,
+            currentCode,
+            currentPackageJson,
+            conversationHistory,
+            provider: provider?.toLowerCase(),
+            model,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Regeneration failed: ${response.statusText}`);
+        }
+
+        // Handle streaming response (same SSE format as generatePlugin)
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        // Don't clear generated code here — it would make isGenerationComplete false
+        // and flip the UI back to the description screen. Each SET_GENERATED_CODE
+        // call below will overwrite files as they stream in.
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('event:')) continue;
+
+            const eventMatch = line.match(/event: (\w+)\ndata: (.+)/s);
+            if (!eventMatch) continue;
+
+            const [, eventType, eventData] = eventMatch;
+            const data = JSON.parse(eventData);
+
+            switch (eventType) {
+              case 'progress':
+                commit('SET_GENERATION_PROGRESS', data.step);
+                break;
+              case 'manifest':
+                commit('SET_GENERATED_MANIFEST', data);
+                break;
+              case 'code':
+                commit('SET_GENERATED_CODE', { fileName: data.file, code: data.code });
+                break;
+              case 'package':
+                commit('SET_GENERATED_PACKAGE_JSON', data);
+                break;
+              case 'error':
+                throw new Error(data.error || 'Regeneration failed');
+              case 'complete':
+                commit('SET_GENERATION_PROGRESS', 'complete');
+                break;
+            }
+          }
+        }
+
+        // Clear user edits since regeneration replaces everything
+        commit('CLEAR_EDITED_FILES');
+        commit('SET_GENERATING', false);
+
+        // Add success message to conversation
+        commit('ADD_CONVERSATION_MESSAGE', {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: 'Plugin regenerated successfully.',
+          timestamp: new Date().toISOString(),
+        });
+
+        return { success: true };
+      } catch (error) {
+        console.error('Plugin regeneration error:', error);
+        commit('SET_GENERATION_ERROR', error.message);
+
+        // Add error message to conversation
+        commit('ADD_CONVERSATION_MESSAGE', {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `Regeneration failed: ${error.message}`,
+          timestamp: new Date().toISOString(),
+        });
+
+        return { success: false, error: error.message };
+      }
+    },
+
+    /**
      * Regenerate a specific file with AI
      */
     async regenerateFile({ commit, state, rootState }, { fileName, instructions }) {

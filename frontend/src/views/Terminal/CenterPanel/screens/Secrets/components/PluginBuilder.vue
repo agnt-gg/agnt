@@ -127,6 +127,55 @@
           </div>
         </div>
       </div>
+
+      <!-- Regeneration Chat -->
+      <div class="regenerate-section">
+        <!-- Conversation History -->
+        <div v-if="conversation.length > 0" class="regenerate-history">
+          <div v-for="msg in conversation" :key="msg.id" class="regenerate-message" :class="msg.role">
+            <i class="fas" :class="msg.role === 'user' ? 'fa-user' : 'fa-robot'"></i>
+            <span>{{ msg.content }}</span>
+          </div>
+        </div>
+
+        <div class="regenerate-input-row">
+          <input
+            v-model="regenerateInstructions"
+            type="text"
+            class="regenerate-input"
+            placeholder="Describe changes to your plugin..."
+            :disabled="isRegenerating"
+            @keydown.enter="regeneratePlugin"
+          />
+          <BaseButton variant="primary" size="small" @click="regeneratePlugin" :disabled="!regenerateInstructions || isRegenerating">
+            <i class="fas" :class="isRegenerating ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
+          </BaseButton>
+        </div>
+
+        <!-- Regeneration Progress -->
+        <div v-if="isRegenerating" class="generation-progress">
+          <div class="progress-steps">
+            <div class="progress-step" :class="{ active: generationProgress === 'manifest', complete: manifestGenerated && generationProgress !== 'manifest' }">
+              <i class="fas" :class="generationProgress === 'manifest' ? 'fa-spinner fa-spin' : (manifestGenerated ? 'fa-check-circle' : 'fa-file-code')"></i>
+              <span>Regenerating manifest.json</span>
+            </div>
+            <div class="progress-step" :class="{ active: generationProgress === 'code', complete: codeGenerated && generationProgress !== 'code' }">
+              <i class="fas" :class="generationProgress === 'code' ? 'fa-spinner fa-spin' : (codeGenerated ? 'fa-check-circle' : 'fa-code')"></i>
+              <span>Regenerating tool code</span>
+            </div>
+            <div class="progress-step" :class="{ active: generationProgress === 'package', complete: packageGenerated && generationProgress !== 'package' }">
+              <i class="fas" :class="generationProgress === 'package' ? 'fa-spinner fa-spin' : (packageGenerated ? 'fa-check-circle' : 'fa-box')"></i>
+              <span>Regenerating package.json</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Regeneration Error -->
+        <div v-if="regenerateError" class="error-message">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span>{{ regenerateError }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- Step 3: Build & Install -->
@@ -184,6 +233,9 @@ export default {
 
     // Local state
     const pluginDescription = ref('');
+    const regenerateInstructions = ref('');
+    const isRegenerating = ref(false);
+    const regenerateError = ref(null);
 
     // Computed from store
     const isGenerating = computed(() => store.state.pluginBuilder.isGenerating);
@@ -197,6 +249,7 @@ export default {
     const buildError = computed(() => store.state.pluginBuilder.buildError);
     const buildResult = computed(() => store.state.pluginBuilder.buildResult);
     const activePreviewFile = computed(() => store.state.pluginBuilder.activePreviewFile);
+    const conversation = computed(() => store.state.pluginBuilder.conversation);
     const playSound = inject('playSound', () => {});
 
     // AI Provider
@@ -301,6 +354,31 @@ export default {
       }
     }
 
+    async function regeneratePlugin() {
+      if (!regenerateInstructions.value || isRegenerating.value) return;
+
+      if (!store.state.aiProvider.selectedProvider || !store.state.aiProvider.selectedModel) {
+        emit('show-alert', 'Error', 'Please select an AI provider and model in Settings');
+        return;
+      }
+
+      isRegenerating.value = true;
+      regenerateError.value = null;
+
+      const result = await store.dispatch('pluginBuilder/regeneratePlugin', {
+        instructions: regenerateInstructions.value,
+      });
+
+      isRegenerating.value = false;
+
+      if (result.success) {
+        regenerateInstructions.value = '';
+        emit('show-alert', 'Success', 'Plugin regenerated successfully');
+      } else {
+        regenerateError.value = result.error || 'Regeneration failed';
+      }
+    }
+
     function resetBuilder() {
       pluginDescription.value = '';
       store.dispatch('pluginBuilder/resetAll');
@@ -354,6 +432,11 @@ export default {
       selectFile,
       copyFileContent,
       buildAndInstall,
+      regeneratePlugin,
+      regenerateInstructions,
+      isRegenerating,
+      regenerateError,
+      conversation,
       resetBuilder,
     };
   },
@@ -707,5 +790,80 @@ body.dark .builder-section {
   gap: 8px;
   color: var(--color-green);
   font-size: 0.9em;
+}
+
+.regenerate-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+.regenerate-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.regenerate-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+
+.regenerate-message.user {
+  background: rgba(25, 239, 131, 0.08);
+  color: var(--color-text);
+}
+
+.regenerate-message.assistant {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text-muted);
+}
+
+.regenerate-message i {
+  margin-top: 2px;
+  font-size: 0.85em;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.regenerate-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.regenerate-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 2px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: var(--color-popup);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9em;
+  transition: border-color 0.2s ease;
+}
+
+.regenerate-input:focus {
+  outline: none;
+  border-color: var(--color-green);
+}
+
+.regenerate-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.regenerate-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>
