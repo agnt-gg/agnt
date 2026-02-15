@@ -66,6 +66,8 @@ class DiscordReceiver extends EventEmitter {
           const messageData = {
             content: message.content,
             author: message.author.username,
+            username: message.member?.displayName || message.author.username,
+            avatarUrl: typeof message.author.displayAvatarURL === 'function' ? message.author.displayAvatarURL({ size: 256 }) : null,
             authorId: message.author.id,
             channelId: message.channel.id,
             guildId: message.guild?.id,
@@ -104,6 +106,8 @@ class DiscordReceiver extends EventEmitter {
     return {
       content: inputData.content,
       author: inputData.author,
+      username: inputData.username,
+      avatarUrl: inputData.avatarUrl,
       authorId: inputData.authorId,
       channelId: inputData.channelId,
       guildId: inputData.guildId,
@@ -111,6 +115,39 @@ class DiscordReceiver extends EventEmitter {
       attachments: inputData.attachments || [],
       response: inputData,
     };
+  }
+
+  async banUser(guildId, userId, reason = 'Banned via workflow') {
+    console.log('[DiscordPlugin] Attempting to ban user:', userId, 'from guild:', guildId);
+    if (!this.client) {
+      throw new Error('Discord client is not initialized');
+    }
+    try {
+      const guild = await this.client.guilds.fetch(guildId);
+      const member = await guild.members.fetch(userId);
+      await member.ban({ reason });
+      console.log('[DiscordPlugin] User banned successfully:', userId);
+      return true;
+    } catch (error) {
+      console.error('[DiscordPlugin] Error banning user:', error);
+      throw error;
+    }
+  }
+
+  async unbanUser(guildId, userId, reason = 'Unbanned via workflow') {
+    console.log('[DiscordPlugin] Attempting to unban user:', userId, 'from guild:', guildId);
+    if (!this.client) {
+      throw new Error('Discord client is not initialized');
+    }
+    try {
+      const guild = await this.client.guilds.fetch(guildId);
+      await guild.members.unban(userId, reason);
+      console.log('[DiscordPlugin] User unbanned successfully:', userId);
+      return true;
+    } catch (error) {
+      console.error('[DiscordPlugin] Error unbanning user:', error);
+      throw error;
+    }
   }
 
   /**

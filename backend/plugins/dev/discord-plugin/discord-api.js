@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -55,6 +56,9 @@ class DiscordAPI {
         case 'UPLOAD_FILE':
           result = await this.uploadFile(client, params);
           break;
+        case 'BAN_MEMBER':
+          result = await this.banMember(client, params);
+          break;
         default:
           throw new Error(`Unsupported action: ${params.action}`);
       }
@@ -79,12 +83,15 @@ class DiscordAPI {
   async sendMessage(client, params) {
     const channel = await client.channels.fetch(params.channelId);
     const message = await channel.send(params.message);
+    const messageAuthor = message.author;
 
     return {
       success: true,
       result: {
         messageId: message.id,
         timestamp: message.createdTimestamp,
+        username: messageAuthor?.username || null,
+        avatarUrl: messageAuthor ? messageAuthor.displayAvatarURL({ extension: 'png', size: 256 }) : null,
       },
     };
   }
@@ -103,7 +110,7 @@ class DiscordAPI {
         } catch (error) {
           return { memberId, success: false, error: error.message };
         }
-      })
+      }),
     );
 
     return {
@@ -115,24 +122,75 @@ class DiscordAPI {
   }
 
   async getMembers(client, params) {
-    const guild = await client.guilds.fetch(params.guildId);
+    const { guildId, includeAvatarMeta, includeGlobalProfile, trackRoles = [], hashFields = [] } = params;
+    const normalizedTrackRoles = Array.isArray(trackRoles)
+      ? trackRoles
+      : typeof trackRoles === 'string' && trackRoles.length
+        ? trackRoles
+            .split(',')
+            .map((id) => id.trim())
+            .filter(Boolean)
+        : [];
+    const normalizedHashFields = Array.isArray(hashFields)
+      ? hashFields
+      : typeof hashFields === 'string' && hashFields.length
+        ? hashFields
+            .split(',')
+            .map((field) => field.trim())
+            .filter(Boolean)
+        : [];
+    const trackSet = new Set(normalizedTrackRoles);
+
+    const guild = await client.guilds.fetch(guildId);
     await guild.members.fetch();
 
-    const members = guild.members.cache.map((member) => ({
-      id: member.id,
-      username: member.user.username,
-      displayName: member.displayName,
-      joinedAt: member.joinedAt.toISOString(),
-      roles: member.roles.cache.map((role) => ({
-        id: role.id,
-        name: role.name,
-      })),
-    }));
+    const members = guild.members.cache.map((member) => {
+      const base = {
+        id: member.id,
+        username: member.user.username,
+        displayName: member.displayName,
+        joinedAt: member.joinedAt ? member.joinedAt.toISOString() : null,
+        roles: member.roles.cache.map((role) => ({
+          id: role.id,
+          name: role.name,
+        })),
+      };
+
+      if (includeGlobalProfile) {
+        base.discriminator = member.user.discriminator;
+        base.globalName = member.user.globalName;
+        base.bannerHash = member.user.banner;
+      }
+
+      if (includeAvatarMeta) {
+        base.avatarHash = member.user.avatar;
+        base.avatarUrl = member.displayAvatarURL({ extension: 'png', size: 256 });
+      }
+
+      if (normalizedTrackRoles.length) {
+        base.isTracked = member.roles.cache.some((role) => trackSet.has(role.id));
+      }
+
+      if (normalizedHashFields.length) {
+        const hashes = {};
+        normalizedHashFields.forEach((field) => {
+          if (base[field] !== undefined && base[field] !== null) {
+            hashes[field] = crypto.createHash('sha256').update(String(base[field])).digest('hex');
+          }
+        });
+        if (Object.keys(hashes).length) {
+          base.hashes = hashes;
+        }
+      }
+
+      return base;
+    });
 
     return {
       success: true,
       result: {
         members: members,
+        fetchedAt: new Date().toISOString(),
       },
     };
   }
@@ -157,6 +215,35 @@ class DiscordAPI {
       result: {
         messageId: sentMessage.id,
         timestamp: sentMessage.createdTimestamp,
+      },
+    };
+  }
+
+  async banMember(client, params) {
+    const { guildId, targetUserId, banReason, deleteMessageDays } = params;
+    const guild = await client.guilds.fetch(guildId);
+    const numericDays =
+      typeof deleteMessageDays === 'number' ? deleteMessageDays : deleteMessageDays !== undefined ? parseInt(deleteMessageDays, 10) : 0;
+    const clampedDays = Number.isNaN(numericDays) ? 0 : Math.min(Math.max(numericDays, 0), 7);
+    const deleteMessageSeconds = clampedDays * 24 * 60 * 60;
+    const banOptions = {};
+    if (banReason) {
+      banOptions.reason = banReason;
+    }
+    if (deleteMessageSeconds > 0) {
+      banOptions.deleteMessageSeconds = deleteMessageSeconds;
+    }
+    await guild.members.ban(targetUserId, banOptions);
+
+    return {
+      success: true,
+      result: {
+        guildId,
+        userId: targetUserId,
+        bannedAt: new Date().toISOString(),
+        deleteMessageDays: clampedDays,
+        deleteMessageSeconds: deleteMessageSeconds || 0,
+        reason: banReason || null,
       },
     };
   }

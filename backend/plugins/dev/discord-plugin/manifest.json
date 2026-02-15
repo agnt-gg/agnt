@@ -1,6 +1,6 @@
 {
   "name": "discord-plugin",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "Discord integration plugin for AGNT - Send messages, manage roles, receive messages, and interact with Discord servers",
   "author": "AGNT",
   "icon": "discord",
@@ -20,7 +20,7 @@
           "action": {
             "type": "string",
             "inputType": "select",
-            "options": ["SEND_MESSAGE", "ASSIGN_ROLE", "GET_MEMBERS", "UPLOAD_FILE"],
+            "options": ["SEND_MESSAGE", "ASSIGN_ROLE", "GET_MEMBERS", "UPLOAD_FILE", "BAN_MEMBER"],
             "description": "The action to perform on Discord"
           },
           "channelId": {
@@ -47,7 +47,7 @@
             "description": "The ID of the Discord guild (server) (for ASSIGN_ROLE and GET_MEMBERS actions)",
             "conditional": {
               "field": "action",
-              "value": ["ASSIGN_ROLE", "GET_MEMBERS"]
+              "value": ["ASSIGN_ROLE", "GET_MEMBERS", "BAN_MEMBER"]
             }
           },
           "roleId": {
@@ -84,6 +84,69 @@
             "conditional": {
               "field": "action",
               "value": "UPLOAD_FILE"
+            }
+          },
+          "includeAvatarMeta": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "When true, include the raw Discord avatar hash and a resolved CDN URL for each member (for GET_MEMBERS action)",
+            "conditional": {
+              "field": "action",
+              "value": "GET_MEMBERS"
+            }
+          },
+          "includeGlobalProfile": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "When true, include discriminator, global name, banner hash, and other global profile metadata (for GET_MEMBERS action)",
+            "conditional": {
+              "field": "action",
+              "value": "GET_MEMBERS"
+            }
+          },
+          "trackRoles": {
+            "type": "array",
+            "inputType": "textarea",
+            "description": "Optional list of role IDs to flag members with an isTracked indicator (comma-separated for GET_MEMBERS action)",
+            "conditional": {
+              "field": "action",
+              "value": "GET_MEMBERS"
+            }
+          },
+          "hashFields": {
+            "type": "array",
+            "inputType": "textarea",
+            "description": "Optional list of member field names to hash (comma-separated) for audit comparisons (for GET_MEMBERS action)",
+            "conditional": {
+              "field": "action",
+              "value": "GET_MEMBERS"
+            }
+          },
+          "targetUserId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the user to ban (for BAN_MEMBER action)",
+            "conditional": {
+              "field": "action",
+              "value": "BAN_MEMBER"
+            }
+          },
+          "banReason": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Optional audit log reason for the ban (for BAN_MEMBER action)",
+            "conditional": {
+              "field": "action",
+              "value": "BAN_MEMBER"
+            }
+          },
+          "deleteMessageDays": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Number of days of messages to delete (0-7) when banning the user (for BAN_MEMBER action)",
+            "conditional": {
+              "field": "action",
+              "value": "BAN_MEMBER"
             }
           }
         },
@@ -129,6 +192,14 @@
           "author": {
             "type": "string",
             "description": "The username of the message author"
+          },
+          "username": {
+            "type": "string",
+            "description": "The display username of the author"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "The avatar URL of the message author"
           },
           "authorId": {
             "type": "string",
