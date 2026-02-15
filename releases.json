@@ -1,6 +1,22 @@
 {
   "releases": [
     {
+      "version": "0.4.7",
+      "date": "February 15, 2026",
+      "title": "Compound Edge Conditions & Discord Plugin Update - AGNT v0.4.7",
+      "type": "patch",
+      "features": [
+        { "name": "Compound Edge Conditions with AND/OR Logic", "status": "new" },
+        { "name": "Dynamic Condition Builder UI for Edge Editor", "status": "new" },
+        { "name": "Discord Plugin Ban Member Action", "status": "new" },
+        { "name": "Discord Plugin Avatar & Profile Metadata", "status": "new" },
+        { "name": "Discord Plugin Member Role Tracking", "status": "new" },
+        { "name": "Edge Config Data Preserved on Reconnect", "status": "bug" },
+        { "name": "Legacy Single-Condition Edge Backward Compatibility", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.4.6",
       "date": "February 13, 2026",
       "title": "AI Plugin Regeneration Chat - AGNT v0.4.6",
@@ -246,6 +262,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-02-13T12:00:00Z"
+    "lastUpdated": "2026-02-15T12:00:00Z"
   }
 }
