@@ -64,14 +64,19 @@ import { useStore } from 'vuex';
 import Header from '../LeftPanel/header/Header.vue';
 import Navigation from '../LeftPanel/header/Navigation.vue';
 
-// Dynamic panel loader function
+// Cache async component wrappers so Suspense doesn't re-enter fallback on every screen change
+const panelCache = new Map();
 const loadPanel = (panelName) => {
-  return defineAsyncComponent(() =>
+  if (panelCache.has(panelName)) {
+    return panelCache.get(panelName);
+  }
+  const component = defineAsyncComponent(() =>
     import(`./types/${panelName}/${panelName}.vue`).catch(() => {
-      // console.warn(`Panel ${panelName} not found, falling back to ChatPanel`);
       return import('./types/ChatPanel/ChatPanel.vue');
     })
   );
+  panelCache.set(panelName, component);
+  return component;
 };
 
 // Known panels for fallback (can be expanded as needed)

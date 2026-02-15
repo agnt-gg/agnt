@@ -15,7 +15,7 @@
     <div class="panel-content">
       <SidebarCategories
         :categories="categories"
-        :items="workflowsFilteredByTab"
+        :items="allWorkflows"
         :selected-category="selectedCategory"
         :selected-main-category="selectedMainCategory"
         title="Categories"
@@ -88,7 +88,9 @@ export default {
         });
     });
 
-    const totalWorkflows = computed(() => props.workflowsFilteredByTab.length);
+    // Read directly from Vuex so data is available immediately (not dependent on center screen props)
+    const allWorkflows = computed(() => store.getters['workflows/allWorkflows'] || []);
+    const totalWorkflows = computed(() => allWorkflows.value.length);
 
     // Category selection handlers
     const onAllSelected = () => {
@@ -135,6 +137,7 @@ export default {
       selectedMainCategory,
       categories,
       mainWorkflowCategories,
+      allWorkflows,
       totalWorkflows,
       onAllSelected,
       onCategorySelected,

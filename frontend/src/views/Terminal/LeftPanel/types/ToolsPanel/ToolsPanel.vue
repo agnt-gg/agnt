@@ -15,7 +15,7 @@
     <div class="panel-content">
       <SidebarCategories
         :categories="toolCategories"
-        :items="allAvailableTools"
+        :items="allTools"
         :selected-category="selectedCategory"
         :selected-main-category="selectedMainCategory"
         title="Categories"
@@ -64,12 +64,15 @@ export default {
     const selectedCategory = ref(null);
     const selectedMainCategory = ref(null);
 
+    // Read directly from Vuex so data is available immediately (not dependent on center screen props)
+    const allAvailableTools = computed(() => store.getters['tools/allTools'] || []);
+
     // Define main tool categories based on actual tool categories from store and tools
     const mainToolCategories = computed(() => {
       // Get unique categories from all available tools
       const categories = new Set();
 
-      props.allAvailableTools.forEach((tool) => {
+      allAvailableTools.value.forEach((tool) => {
         if (tool.category) {
           categories.add(tool.category);
         }
@@ -90,7 +93,7 @@ export default {
       return mainToolCategories.value.map((cat) => cat.code);
     });
 
-    const totalTools = computed(() => props.allAvailableTools.length);
+    const totalTools = computed(() => allAvailableTools.value.length);
 
     // Category selection handlers
     const onAllSelected = () => {
@@ -128,6 +131,7 @@ export default {
       selectedMainCategory,
       toolCategories,
       mainToolCategories,
+      allTools: allAvailableTools,
       totalTools,
       onAllSelected,
       onCategorySelected,

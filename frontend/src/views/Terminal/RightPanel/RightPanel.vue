@@ -31,14 +31,19 @@
 import { computed, onMounted, onUnmounted, defineAsyncComponent, ref, watch, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 
-// Dynamic panel loader function (same pattern as LeftPanel)
+// Cache async component wrappers so Suspense doesn't re-enter fallback on every screen change
+const panelCache = new Map();
 const loadPanel = (panelName) => {
-  return defineAsyncComponent(() =>
+  if (panelCache.has(panelName)) {
+    return panelCache.get(panelName);
+  }
+  const component = defineAsyncComponent(() =>
     import(`./types/${panelName}/${panelName}.vue`).catch(() => {
-      // Silently fall back to ChatPanel without warning
       return import('./types/ChatPanel/ChatPanel.vue');
     })
   );
+  panelCache.set(panelName, component);
+  return component;
 };
 
 // Known panels for fallback (can be expanded as needed)

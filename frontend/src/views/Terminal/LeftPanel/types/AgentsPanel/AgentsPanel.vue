@@ -84,8 +84,9 @@ export default {
         });
     });
 
-    const allAgents = computed(() => props.allAvailableAgents);
-    const totalAgents = computed(() => props.allAvailableAgents.length);
+    // Read directly from Vuex so data is available immediately (not dependent on center screen props)
+    const allAgents = computed(() => store.getters['agents/allAgents'] || []);
+    const totalAgents = computed(() => allAgents.value.length);
 
     // Category selection handlers
     const onAllSelected = () => {

@@ -108,6 +108,7 @@
 
 <script>
 import { computed, inject } from 'vue';
+import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 export default {
@@ -139,7 +140,12 @@ export default {
   },
   emits: ['panel-action'],
   setup(props, { emit }) {
+    const store = useStore();
     const playSound = inject('playSound', () => {});
+
+    // Read directly from Vuex so data is available immediately
+    const marketplaceWorkflows = computed(() => store.state.marketplace?.marketplaceItems || props.marketplaceWorkflows || []);
+    const featuredWorkflows = computed(() => store.state.marketplace?.featuredItems || []);
 
     const priceOptions = [
       { value: 'all', label: 'All' },
@@ -158,8 +164,7 @@ export default {
 
     // Get the current dataset based on active tab
     const currentDataset = computed(() => {
-      // This will be the filtered items from the center panel
-      return props.marketplaceWorkflows || [];
+      return marketplaceWorkflows.value;
     });
 
     const freeCount = computed(() => {
@@ -205,6 +210,8 @@ export default {
     };
 
     return {
+      marketplaceWorkflows,
+      featuredWorkflows,
       priceOptions,
       sortOptions,
       freeCount,

@@ -137,44 +137,47 @@ export default {
     const store = useStore();
     const playSound = inject('playSound', () => {});
 
+    // Read directly from Vuex so data is available immediately (not dependent on center screen props)
+    const executions = computed(() => store.getters['executionHistory/getExecutions'] || []);
+
     // Computed statistics
-    const totalExecutions = computed(() => props.executions.length);
+    const totalExecutions = computed(() => executions.value.length);
 
     const activeExecutions = computed(() => {
-      return props.executions.filter((exec) => exec.status === 'running' || exec.status === 'started').length;
+      return executions.value.filter((exec) => exec.status === 'running' || exec.status === 'started').length;
     });
 
     const runningCount = computed(() => {
-      return props.executions.filter((exec) => exec.status === 'running' || exec.status === 'started').length;
+      return executions.value.filter((exec) => exec.status === 'running' || exec.status === 'started').length;
     });
 
     const completedCount = computed(() => {
-      return props.executions.filter((exec) => exec.status === 'completed').length;
+      return executions.value.filter((exec) => exec.status === 'completed').length;
     });
 
     const failedCount = computed(() => {
-      return props.executions.filter((exec) => exec.status === 'failed' || exec.status === 'error').length;
+      return executions.value.filter((exec) => exec.status === 'failed' || exec.status === 'error').length;
     });
 
     const stoppedCount = computed(() => {
-      return props.executions.filter((exec) => exec.status === 'stopped').length;
+      return executions.value.filter((exec) => exec.status === 'stopped').length;
     });
 
     const pendingCount = computed(() => {
-      return props.executions.filter((exec) => exec.status === 'pending').length;
+      return executions.value.filter((exec) => exec.status === 'pending').length;
     });
 
     // Type breakdown counts
     const agentCount = computed(() => {
-      return props.executions.filter((exec) => exec.isAgentExecution || exec.type === 'agent' || exec.id?.startsWith('agent-')).length;
+      return executions.value.filter((exec) => exec.isAgentExecution || exec.type === 'agent' || exec.id?.startsWith('agent-')).length;
     });
 
     const goalCount = computed(() => {
-      return props.executions.filter((exec) => exec.isGoalExecution || exec.type === 'goal' || exec.id?.startsWith('goal-')).length;
+      return executions.value.filter((exec) => exec.isGoalExecution || exec.type === 'goal' || exec.id?.startsWith('goal-')).length;
     });
 
     const workflowCount = computed(() => {
-      return props.executions.filter((exec) => {
+      return executions.value.filter((exec) => {
         const isAgent = exec.isAgentExecution || exec.type === 'agent' || exec.id?.startsWith('agent-');
         const isGoal = exec.isGoalExecution || exec.type === 'goal' || exec.id?.startsWith('goal-');
         return !isAgent && !isGoal;
@@ -183,7 +186,7 @@ export default {
 
     // Recent executions (last 5)
     const recentExecutionsList = computed(() => {
-      return [...props.executions]
+      return [...executions.value]
         .sort((a, b) => {
           const dateA = new Date(a.startTime || a.created_at || 0);
           const dateB = new Date(b.startTime || b.created_at || 0);
@@ -215,7 +218,7 @@ export default {
 
     const exportRuns = () => {
       playSound('typewriterKeyPress');
-      const runsData = props.executions;
+      const runsData = executions.value;
       const dataStr = JSON.stringify(runsData, null, 2);
       const dataBlob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(dataBlob);
