@@ -475,6 +475,13 @@ export default {
           this.startConnector = {
             nodeId: existingEdge.start.id,
             type: 'output',
+            preservedEdgeData: {
+              ...(existingEdge.if && { if: existingEdge.if }),
+              ...(existingEdge.condition && { condition: existingEdge.condition }),
+              ...(existingEdge.value && { value: existingEdge.value }),
+              ...(existingEdge.conditions && { conditions: existingEdge.conditions }),
+              ...(existingEdge.maxIterations && { maxIterations: existingEdge.maxIterations }),
+            },
           };
           this.tempEdge = {
             start: { ...existingEdge.start },

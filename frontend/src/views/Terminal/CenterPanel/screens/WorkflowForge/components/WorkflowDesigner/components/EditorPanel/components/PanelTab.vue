@@ -304,42 +304,82 @@
 
       <!-- Edge content -->
       <template v-if="edgeContent">
-        <div class="form-group">
-          <label>If:</label>
-          <input type="text" v-model="localEdgeContent.if" @input="updateEdgeContent" spellcheck="false" />
-        </div>
-        <div class="form-group">
-          <label>Condition:</label>
-          <select v-model="localEdgeContent.condition" @change="updateEdgeContent">
-            <option value="true">True</option>
-            <option value="false">False</option>
-            <option value="contains">Contains</option>
-            <option value="not_contains">Does Not Contain</option>
-            <option value="equals">Equals</option>
-            <option value="not_equals">Not Equals</option>
-            <option value="greater_than">Greater Than</option>
-            <option value="less_than">Less Than</option>
-            <option value="greater_than_or_equal">Greater Than or Equal</option>
-            <option value="less_than_or_equal">Less Than or Equal</option>
-            <option value="is_empty">Is Empty</option>
-            <option value="is_not_empty">Is Not Empty</option>
-          </select>
-        </div>
-        <div
-          v-if="
-            localEdgeContent.condition === 'greater_than' ||
-            localEdgeContent.condition === 'less_than' ||
-            localEdgeContent.condition === 'greater_than_or_equal' ||
-            localEdgeContent.condition === 'less_than_or_equal'
-          "
-          class="form-group"
-        >
-          <label>Value:</label>
-          <input type="text" v-model="localEdgeContent.value" @input="updateEdgeContent" spellcheck="false" />
-        </div>
-        <div v-if="['equals', 'not_equals', 'contains', 'not_contains'].includes(localEdgeContent.condition)" class="form-group">
-          <label>Value:</label>
-          <input type="text" v-model="localEdgeContent.value" @input="updateEdgeContent" spellcheck="false" />
+        <div class="edge-conditions-wrapper">
+          <div
+            v-for="(cond, index) in localEdgeContent.conditions"
+            :key="index"
+            class="condition-row"
+          >
+            <!-- Logic toggle (AND/OR) for 2nd+ conditions -->
+            <div v-if="index > 0" class="logic-toggle-row">
+              <select
+                :value="cond.logic"
+                @change="updateConditionField(index, 'logic', $event.target.value)"
+                class="logic-select"
+              >
+                <option value="and">AND</option>
+                <option value="or">OR</option>
+              </select>
+              <div class="logic-line"></div>
+            </div>
+            <div class="condition-fields">
+              <div class="condition-header">
+                <span class="condition-label">Condition {{ index + 1 }}</span>
+                <button
+                  v-if="localEdgeContent.conditions.length > 1"
+                  class="remove-condition-btn"
+                  @click="removeCondition(index)"
+                  title="Remove condition"
+                >
+                  <i class="fas fa-trash-alt"></i>
+                </button>
+              </div>
+              <div class="form-group">
+                <label>If:</label>
+                <input
+                  type="text"
+                  :value="cond.if"
+                  @input="updateConditionField(index, 'if', $event.target.value)"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="form-group">
+                <label>Condition:</label>
+                <select
+                  :value="cond.condition"
+                  @change="updateConditionField(index, 'condition', $event.target.value)"
+                >
+                  <option value="true">True</option>
+                  <option value="false">False</option>
+                  <option value="contains">Contains</option>
+                  <option value="not_contains">Does Not Contain</option>
+                  <option value="equals">Equals</option>
+                  <option value="not_equals">Not Equals</option>
+                  <option value="greater_than">Greater Than</option>
+                  <option value="less_than">Less Than</option>
+                  <option value="greater_than_or_equal">Greater Than or Equal</option>
+                  <option value="less_than_or_equal">Less Than or Equal</option>
+                  <option value="is_empty">Is Empty</option>
+                  <option value="is_not_empty">Is Not Empty</option>
+                </select>
+              </div>
+              <div
+                v-if="conditionNeedsValue(cond.condition)"
+                class="form-group"
+              >
+                <label>Value:</label>
+                <input
+                  type="text"
+                  :value="cond.value"
+                  @input="updateConditionField(index, 'value', $event.target.value)"
+                  spellcheck="false"
+                />
+              </div>
+            </div>
+          </div>
+          <button class="add-condition-btn" @click="addCondition">
+            <i class="fas fa-plus"></i> Add Condition
+          </button>
         </div>
         <div class="form-group">
           <label>Max Iterations:</label>
@@ -439,9 +479,7 @@ export default {
   data() {
     return {
       localEdgeContent: {
-        if: '',
-        condition: 'true',
-        value: '',
+        conditions: [{ if: '', condition: 'true', value: '' }],
         maxIterations: 1,
       },
       showTooltip: false,
@@ -1115,6 +1153,25 @@ export default {
     updateEdgeContent() {
       this.$emit('update:edgeContent', { ...this.localEdgeContent });
     },
+    conditionNeedsValue(condition) {
+      return ['equals', 'not_equals', 'contains', 'not_contains', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'].includes(condition);
+    },
+    updateConditionField(index, field, value) {
+      this.localEdgeContent.conditions[index][field] = value;
+      this.updateEdgeContent();
+    },
+    addCondition() {
+      this.localEdgeContent.conditions.push({ logic: 'and', if: '', condition: 'true', value: '' });
+      this.updateEdgeContent();
+    },
+    removeCondition(index) {
+      this.localEdgeContent.conditions.splice(index, 1);
+      // If we removed the first item, strip the logic field from the new first item
+      if (index === 0 && this.localEdgeContent.conditions.length > 0) {
+        delete this.localEdgeContent.conditions[0].logic;
+      }
+      this.updateEdgeContent();
+    },
     formatCamelCase(str) {
       const formattedStr = str.replace(/([A-Z])/g, ' $1').trim();
       return formattedStr.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -1385,7 +1442,17 @@ export default {
   watch: {
     edgeContent: {
       handler(newEdgeContent) {
-        this.localEdgeContent = { ...newEdgeContent };
+        if (!newEdgeContent) return;
+        const local = { ...newEdgeContent };
+        // Migrate legacy format: if edge has if/condition/value but no conditions array
+        if (!local.conditions || !Array.isArray(local.conditions) || local.conditions.length === 0) {
+          if (local.if || (local.condition && local.condition !== 'true')) {
+            local.conditions = [{ if: local.if || '', condition: local.condition || 'true', value: local.value || '' }];
+          } else {
+            local.conditions = [{ if: '', condition: 'true', value: '' }];
+          }
+        }
+        this.localEdgeContent = local;
       },
       immediate: true,
       deep: true,
@@ -1827,6 +1894,126 @@ body.dark .file-text-display span {
 
 .conditional-indicator i {
   font-size: 1em;
+}
+
+/* Compound Edge Conditions */
+.edge-conditions-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+}
+
+.condition-row {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.condition-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: var(--color-darker-0);
+}
+
+.condition-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.condition-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.remove-condition-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.remove-condition-btn:hover {
+  color: #fe4e4e;
+  background: rgba(254, 78, 78, 0.1);
+}
+
+.logic-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.logic-select {
+  width: auto !important;
+  min-width: 70px;
+  height: 28px !important;
+  padding: 2px 4px 0 !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 6px !important;
+  background-color: var(--color-green) !important;
+  color: var(--color-ultra-dark-navy) !important;
+  border: none !important;
+  cursor: pointer;
+}
+
+.logic-line {
+  flex: 1;
+  height: 1px;
+  background: var(--terminal-border-color);
+}
+
+.add-condition-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px 6px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px dashed var(--terminal-border-color);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-family: 'League Spartan', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-condition-btn:hover {
+  border-color: var(--color-green);
+  color: var(--color-green);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.add-condition-btn i {
+  font-size: 11px;
+}
+
+body.dark .condition-fields {
+  background: var(--color-darker-1);
+  border-color: var(--color-lighter-0);
+}
+
+body.dark .logic-select {
+  background-color: var(--color-green) !important;
+  color: var(--color-ultra-dark-navy) !important;
 }
 
 .tooltip {

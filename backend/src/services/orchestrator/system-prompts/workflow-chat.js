@@ -375,10 +375,18 @@ Every edge MUST have these fields:
   "endX": 416,                       // target.x (already multiple of 16)
   "endY": 256,                       // target.y + 24 OR nearest multiple of 16
   "isActive": false,
-  // Optional conditional fields:
+  // Optional conditional fields (legacy single condition):
   "if": "{{variableName}}",          // Condition expression
   "condition": "contains",           // Comparison operator
-  "value": "some value"              // Comparison value
+  "value": "some value",             // Comparison value
+  // Compound conditions (preferred for multiple conditions):
+  "conditions": [
+    { "if": "{{node.output}}", "condition": "equals", "value": "success" },
+    { "logic": "and", "if": "{{node2.status}}", "condition": "is_not_empty", "value": "" },
+    { "logic": "or", "if": "{{node3.score}}", "condition": "greater_than", "value": "50" }
+  ]
+  // First condition has no "logic" field. Subsequent conditions use "logic": "and" or "logic": "or".
+  // Evaluated left-to-right (no operator precedence).
 }
 
 NOTE: Edge coordinates calculated as:

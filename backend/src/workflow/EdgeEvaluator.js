@@ -5,21 +5,50 @@ class EdgeEvaluator {
     this.workflowEngine = workflowEngine;
     this.parameterResolver = new ParameterResolver(workflowEngine);
   }
+
   evaluateEdgeCondition(edge, nodeData) {
-    if (!edge.if || !edge.condition) {
+    // New: compound conditions
+    if (edge.conditions && edge.conditions.length > 0) {
+      return this.evaluateCompoundConditions(edge.conditions);
+    }
+
+    // Legacy: single condition (backward compat)
+    return this.evaluateSingleCondition(edge);
+  }
+
+  evaluateCompoundConditions(conditions) {
+    let result = this.evaluateSingleCondition(conditions[0]);
+
+    for (let i = 1; i < conditions.length; i++) {
+      const cond = conditions[i];
+      const condResult = this.evaluateSingleCondition(cond);
+
+      if (cond.logic === 'or') {
+        result = result || condResult;
+      } else {
+        // 'and' is the default
+        result = result && condResult;
+      }
+    }
+
+    return result;
+  }
+
+  evaluateSingleCondition(cond) {
+    if (!cond.if || !cond.condition) {
       return true;
     }
 
-    let actualValue = this.parameterResolver.resolveTemplate(edge.if);
-    const expectedValue = this.parameterResolver.resolveTemplate(edge.value);
+    let actualValue = this.parameterResolver.resolveTemplate(cond.if);
+    const expectedValue = this.parameterResolver.resolveTemplate(cond.value || '');
 
-    console.log(`Evaluating condition: ${actualValue} ${edge.condition} ${expectedValue}`);
+    console.log(`Evaluating condition: ${actualValue} ${cond.condition} ${expectedValue}`);
 
     if (actualValue === "null" || actualValue === "undefined") {
       actualValue = null;
     }
 
-    switch (edge.condition) {
+    switch (cond.condition) {
       case "is_empty":
         return actualValue === "" || actualValue === null || actualValue === undefined;
       case "is_not_empty":
@@ -41,7 +70,7 @@ class EdgeEvaluator {
       case "not_contains":
         return !String(actualValue).includes(String(expectedValue));
       default:
-        console.warn(`Unknown condition: ${edge.condition}`);
+        console.warn(`Unknown condition: ${cond.condition}`);
         return false;
     }
   }

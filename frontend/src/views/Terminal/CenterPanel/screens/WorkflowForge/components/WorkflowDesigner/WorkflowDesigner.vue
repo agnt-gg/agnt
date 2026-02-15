@@ -504,6 +504,8 @@ export default {
         endX: 0,
         endY: 0,
         isActive: false,
+        // Restore preserved config data from re-dragged edges
+        ...(start.preservedEdgeData || {}),
       };
       this.updateEdgeCoordinates(newEdge);
       this.edges.push(newEdge);
