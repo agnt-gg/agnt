@@ -213,7 +213,7 @@ Native desktop app with full system access. No browser limitations. Your data st
 ```bash
 # Clone the repository
 git clone https://github.com/agnt-gg/agnt.git
-cd agnt/desktop
+cd agnt
 
 # Install dependencies
 npm install
