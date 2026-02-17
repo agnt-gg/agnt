@@ -68,6 +68,11 @@ if (isLiteBuild) {
   console.log('[Lite Mode] Browser automation features disabled');
 }
 
+// Disable GPU hardware acceleration on macOS to prevent black screen issues
+if (process.platform === 'darwin') {
+  app.disableHardwareAcceleration();
+}
+
 let mainWindow;
 let backendProcess;
 
