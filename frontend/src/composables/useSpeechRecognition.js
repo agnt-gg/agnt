@@ -1,5 +1,5 @@
 import { ref, onUnmounted } from 'vue';
-import { API_CONFIG } from '@/user.config.js';
+import { API_CONFIG } from '../../user.config.js';
 
 export function useSpeechRecognition() {
   const isListening = ref(false);

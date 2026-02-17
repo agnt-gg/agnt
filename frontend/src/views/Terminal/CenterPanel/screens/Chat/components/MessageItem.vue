@@ -241,7 +241,7 @@ import 'highlight.js/styles/atom-one-dark.css';
 import defaultAvatar from '@/assets/images/annie-avatar.png';
 import ProviderSetup from './ProviderSetup.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-import { API_CONFIG } from '@/user.config.js';
+import { API_CONFIG } from '@/../user.config.js';
 
 // Simple showdown converter like in response.js
 const markdownConverter = new showdown.Converter({
