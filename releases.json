@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.4.9",
+      "date": "February 17, 2026",
+      "title": "macOS Activate Crash Fix - AGNT v0.4.9",
+      "type": "patch",
+      "features": [
+        { "name": "macOS Crash on Dock Icon Click Before App Ready", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.4.8",
       "date": "February 17, 2026",
       "title": "Tunnel Support & Stability Fixes - AGNT v0.4.8",
@@ -275,6 +285,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-02-17T12:00:00Z"
+    "lastUpdated": "2026-02-17T13:00:00Z"
   }
 }
