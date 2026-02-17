@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue';
+import { API_CONFIG } from '@/user.config.js';
 
 export function useSpeechRecognition() {
   const isListening = ref(false);
@@ -44,7 +45,7 @@ export function useSpeechRecognition() {
 
           console.log('Sending audio to Whisper for transcription...');
 
-          const response = await fetch('http://localhost:3333/api/speech/transcribe', {
+          const response = await fetch(`${API_CONFIG.BASE_URL}/speech/transcribe`, {
             method: 'POST',
             body: formData,
           });

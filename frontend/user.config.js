@@ -55,10 +55,11 @@ export const AI_PROVIDERS_CONFIG = {
 // };
 
 // Semi Local Configuration
-// Dynamically detect port and use corresponding backend
-const currentPort = typeof window !== 'undefined' ? window.location.port : '3333';
-const backendPort = currentPort === '33333' ? '33333' : '3333';
-const backendBaseUrl = `http://localhost:${backendPort}/api`;
+// Dynamically detect backend URL based on how the frontend is served
+const isDevServer = typeof window !== 'undefined' && window.location.port === '5173';
+const backendBaseUrl = isDevServer
+  ? 'http://localhost:3333/api'
+  : `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3333'}/api`;
 
 export const API_CONFIG = {
   BASE_URL: backendBaseUrl, // dynamically set based on frontend port

@@ -241,6 +241,7 @@ import 'highlight.js/styles/atom-one-dark.css';
 import defaultAvatar from '@/assets/images/annie-avatar.png';
 import ProviderSetup from './ProviderSetup.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { API_CONFIG } from '@/user.config.js';
 
 // Simple showdown converter like in response.js
 const markdownConverter = new showdown.Converter({
@@ -1617,7 +1618,7 @@ export default {
         const executionId = result.executionId;
         if (!executionId) return;
 
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3333'}/api/async-tools/cancel/${executionId}`, {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/async-tools/cancel/${executionId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
