@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.4.5-blue.svg?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.4.9-blue.svg?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/electron-33.0.2-47848F.svg?style=flat-square&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg?style=flat-square&logo=node.js" alt="Node">
@@ -257,8 +257,8 @@ docker run -d \
 
 - `latest` / `full` - Latest Full variant with browser automation
 - `lite` - Latest Lite variant without browser automation
-- `v0.4.5` / `v0.4.5-full` - Specific version (Full)
-- `v0.4.5-lite` - Specific version (Lite)
+- `v0.4.9` / `v0.4.9-full` - Specific version (Full)
+- `v0.4.9-lite` - Specific version (Lite)
 
 #### Option B: Build from Source (Advanced)
 
@@ -480,8 +480,8 @@ Build outputs are saved to the `dist/` directory:
 
 | Platform  | Full                            | Lite                                 | Size Reduction |
 | --------- | ------------------------------- | ------------------------------------ | -------------- |
-| Windows   | AGNT-0.4.5-win-x64.exe (~150MB) | AGNT-Lite-0.4.5-win-x64.exe (~80MB)  | ~47%           |
-| macOS     | AGNT-0.4.5-mac-x64.dmg (~200MB) | AGNT-Lite-0.4.5-mac-x64.dmg (~120MB) | ~40%           |
+| Windows   | AGNT-0.4.9-win-x64.exe (~150MB) | AGNT-Lite-0.4.9-win-x64.exe (~80MB)  | ~47%           |
+| macOS     | AGNT-0.4.9-mac-x64.dmg (~200MB) | AGNT-Lite-0.4.9-mac-x64.dmg (~120MB) | ~40%           |
 | GNU/Linux | AppImage (~180MB), DEB, RPM     | AppImage (~100MB), DEB, RPM          | ~44%           |
 
 ---
