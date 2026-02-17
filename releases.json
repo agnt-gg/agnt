@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.4.8",
+      "date": "February 17, 2026",
+      "title": "Tunnel Support & Stability Fixes - AGNT v0.4.8",
+      "type": "patch",
+      "features": [
+        { "name": "Dynamic BASE_URL for Tunnel & Proxy Support", "status": "new" },
+        { "name": "LLMs.txt for AI-Friendly Documentation", "status": "new" },
+        { "name": "macOS GPU Hardware Acceleration Black Screen Fix", "status": "bug" },
+        { "name": "Panel Vuex Direct Read & Async Component Caching", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.4.7",
       "date": "February 15, 2026",
       "title": "Compound Edge Conditions & Discord Plugin Update - AGNT v0.4.7",
@@ -262,6 +275,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-02-15T12:00:00Z"
+    "lastUpdated": "2026-02-17T12:00:00Z"
   }
 }

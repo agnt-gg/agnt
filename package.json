@@ -1,7 +1,7 @@
 {
   "name": "agnt",
   "productName": "AGNT",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "description": "AGNT AI Agent Framework",
   "main": "main.js",
   "author": "Nathan Wilbanks <nathan@agnt.gg>",
