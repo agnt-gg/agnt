@@ -149,12 +149,8 @@ export default {
           throw new Error('No authentication token found');
         }
 
-        // Determine if we need a full fetch
-        const now = new Date();
-        const needsFullFetch = !state.lastFullFetch || now - state.lastFullFetch > 5 * 60 * 1000; // 5 minutes
-
         let url = `${API_CONFIG.BASE_URL}/workflows/`;
-        if (activeOnly && !needsFullFetch) {
+        if (activeOnly) {
           url += '?status=running,listening,error';
         }
 
@@ -176,17 +172,14 @@ export default {
           updated_at: new Date(workflow.updated_at),
         }));
 
-        if (!activeOnly || needsFullFetch) {
-          commit('SET_WORKFLOWS', processedWorkflows);
-          commit('SET_LAST_FULL_FETCH', now);
-        } else {
-          // Update only active workflows
+        if (activeOnly) {
+          // Merge active workflow updates into existing state
           processedWorkflows.forEach((workflow) => {
             commit('UPDATE_WORKFLOW', workflow);
           });
+        } else {
+          commit('SET_WORKFLOWS', processedWorkflows);
         }
-
-        console.log(`[DEBUG] Fetched workflows (${activeOnly ? 'active only' : 'all'}):`, processedWorkflows);
       } catch (error) {
         console.error('Error fetching workflows:', error);
         commit('SET_ERROR', error.message);

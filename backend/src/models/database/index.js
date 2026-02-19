@@ -546,6 +546,19 @@ function createTables() {
       // Index for faster agent tool execution lookups (CRITICAL for run details)
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tool_executions_execution_id ON agent_tool_executions(execution_id)`);
 
+      // Widget layouts for dynamic canvas system
+      db.run(`CREATE TABLE IF NOT EXISTS widget_layouts (
+        id TEXT PRIMARY KEY,
+        page_id TEXT NOT NULL,
+        page_name TEXT NOT NULL,
+        page_icon TEXT DEFAULT 'fas fa-th',
+        page_order INTEGER DEFAULT 0,
+        route TEXT,
+        layout_data TEXT NOT NULL DEFAULT '[]',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
       // ==================== PERFORMANCE INDEXES ====================
       // Agents - faster lookup by user
       db.run(`CREATE INDEX IF NOT EXISTS idx_agents_created_by ON agents(created_by)`);

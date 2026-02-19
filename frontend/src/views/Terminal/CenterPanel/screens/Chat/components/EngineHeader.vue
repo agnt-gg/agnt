@@ -119,26 +119,24 @@ export default {
 <style scoped>
 .engine-header {
   border-bottom: 1px solid var(--terminal-border-color);
-  border-radius: 8px 0 0 0;
-  padding: 0 16px 8px 16px;
+  padding: 0 12px 4px 12px;
 }
 
 .engine-grid {
   display: flex;
-  grid-template-columns: auto 1fr;
-  gap: 24px;
+  gap: 12px;
   align-items: center;
 }
 
 .status-node {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .node-core {
-  width: 36px;
-  height: 36px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: linear-gradient(135deg, rgba(25, 239, 131, 0.2) 0%, rgba(18, 224, 255, 0.2) 100%);
   position: relative;
@@ -150,8 +148,8 @@ export default {
 .node-core::before {
   content: '';
   position: absolute;
-  width: 16px;
-  height: 16px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: rgba(25, 239, 131, 0.8);
   animation: system-pulse 2s ease-in-out infinite;
@@ -170,16 +168,15 @@ export default {
 }
 
 .node-label {
-  font-size: 0.6em;
+  font-size: 0.55em;
   font-weight: 500;
   color: var(--color-duller-navy);
-  letter-spacing: 0.15em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  font-family: system-ui, -apple-system, sans-serif;
 }
 
 .node-value {
-  font-size: 1.2em;
+  font-size: 0.85em;
   font-weight: 200;
   color: var(--color-white);
   font-variant-numeric: tabular-nums;
@@ -188,17 +185,18 @@ export default {
 .status-metrics {
   display: flex;
   width: 100%;
-  gap: 16px;
+  gap: 8px;
   justify-content: space-between;
+  align-items: center;
 }
 
 .metric-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 3px 8px;
   background: rgba(127, 129, 147, 0.03);
-  border-radius: 8px;
+  border-radius: 4px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -207,7 +205,7 @@ export default {
 }
 
 .metric-icon {
-  font-size: 1em;
+  font-size: 0.7em;
   color: var(--color-blue);
 }
 
@@ -215,18 +213,18 @@ export default {
   display: flex;
   flex-direction: row;
   align-items: baseline;
-  gap: 6px;
+  gap: 4px;
 }
 
 .metric-value {
-  font-size: 0.9em;
+  font-size: 0.75em;
   font-weight: 400;
   color: var(--color-white);
   font-variant-numeric: tabular-nums;
 }
 
 .metric-label {
-  font-size: 0.65em;
+  font-size: 0.55em;
   color: var(--color-med-navy);
   text-transform: uppercase;
   letter-spacing: 0.05em;

@@ -4,8 +4,16 @@
     <!-- Update Notification Banner -->
     <UpdateNotification />
 
-    <!-- Dynamically render active screen -->
+    <!-- Canvas-based dynamic screen system -->
+    <CanvasScreen
+      v-if="useCanvasMode"
+      :screenName="activeScreen"
+      @screen-change="changeScreen"
+    />
+
+    <!-- Legacy: direct screen component (for screens not yet in canvas, e.g. BallJumper) -->
     <component
+      v-else
       :is="activeScreenComponent"
       @screen-change="changeScreen"
       v-on="activeScreen === 'BallJumperScreen' ? { exit: () => changeScreen('SettingsScreen') } : {}"
@@ -21,43 +29,26 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
-// All components loaded eagerly for instant screen navigation
+// Layout and common
 import TerminalLayout from '@/views/_components/layout/TerminalLayout.vue';
 import UpdateNotification from '@/views/_components/common/UpdateNotification.vue';
-import ChatScreen from './CenterPanel/screens/Chat/Chat.vue';
-import AgentsScreen from './CenterPanel/screens/Agents/Agents.vue';
-import ToolsScreen from './CenterPanel/screens/Tools/Tools.vue';
-import WorkflowsScreen from './CenterPanel/screens/Workflows/Workflows.vue';
-import DashboardScreen from './CenterPanel/screens/Dashboard/Dashboard.vue';
-import SettingsScreen from './CenterPanel/screens/Settings/Settings.vue';
-import WorkflowForgeScreen from './CenterPanel/screens/WorkflowForge/WorkflowForge.vue';
-import ToolForgeScreen from './CenterPanel/screens/ToolForge/ToolForge.vue';
-import AgentForgeScreen from './CenterPanel/screens/AgentForge/AgentForge.vue';
-import BallJumperScreen from './CenterPanel/screens/Minigames/BallJumper/BallJumper.vue';
-import SecretsScreen from './CenterPanel/screens/Secrets/Secrets.vue';
-import GoalsScreen from './CenterPanel/screens/Goals/Goals.vue';
-import RunsScreen from './CenterPanel/screens/Runs/Runs.vue';
-import MarketplaceScreen from './CenterPanel/screens/Marketplace/Marketplace.vue';
 import OnboardingModal from '@/components/OnboardingModal.vue';
+
+// Canvas system
+import CanvasScreen from '@/canvas/CanvasScreen.vue';
+
+// Legacy screen imports (only for non-canvas screens like BallJumper)
+import BallJumperScreen from './CenterPanel/screens/Minigames/BallJumper/BallJumper.vue';
+
+// Screen names that still use legacy rendering (not in canvas system)
+const LEGACY_SCREENS = new Set(['BallJumperScreen']);
 
 export default {
   name: 'Terminal',
   components: {
     TerminalLayout,
-    ChatScreen,
-    AgentsScreen,
-    ToolsScreen,
-    WorkflowsScreen,
-    DashboardScreen,
-    SettingsScreen,
-    WorkflowForgeScreen,
-    ToolForgeScreen,
-    AgentForgeScreen,
+    CanvasScreen,
     BallJumperScreen,
-    SecretsScreen,
-    GoalsScreen,
-    RunsScreen,
-    MarketplaceScreen,
     OnboardingModal,
     UpdateNotification,
   },
@@ -66,41 +57,21 @@ export default {
     const router = useRouter();
     const store = useStore();
 
-    const userLevel = computed(() => store.getters['userStats/level']);
     const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
 
-    const getDefaultScreen = () => {
-      return 'ChatScreen';
-    };
-
+    const getDefaultScreen = () => 'ChatScreen';
     const activeScreen = ref(getDefaultScreen());
 
+    // Whether to use the canvas system or legacy direct rendering
+    const useCanvasMode = computed(() => !LEGACY_SCREENS.has(activeScreen.value));
+
+    // Legacy component resolution (only for non-canvas screens)
     const activeScreenComponent = computed(() => {
-      const screens = {
-        ChatScreen,
-        AgentsScreen,
-        ToolsScreen,
-        WorkflowsScreen,
-        DashboardScreen,
-        SettingsScreen,
-        WorkflowForgeScreen,
-        ToolForgeScreen,
-        AgentForgeScreen,
-        BallJumperScreen,
-        SecretsScreen,
-        GoalsScreen,
-        RunsScreen,
-        MarketplaceScreen,
-      };
-      if (!screens[activeScreen.value]) {
-        console.warn(`Default screen ${activeScreen.value} not found, defaulting to ChatScreen.`);
-        activeScreen.value = 'ChatScreen';
-      }
-      return screens[activeScreen.value];
+      const screens = { BallJumperScreen };
+      return screens[activeScreen.value] || null;
     });
 
     const changeScreen = (screenName, options = {}) => {
-      // Map screen names to their routes
       const screenRoutes = {
         ChatScreen: '/chat',
         AgentsScreen: '/agents',
@@ -120,18 +91,11 @@ export default {
 
       if (screenName in screenRoutes) {
         activeScreen.value = screenName;
-
-        // Get the target route for this screen
         const targetPath = screenRoutes[screenName];
 
-        // Handle special cases with query parameters
         if (screenName === 'WorkflowForgeScreen' && options.workflowId) {
-          router.push({
-            path: targetPath,
-            query: { id: options.workflowId },
-          });
+          router.push({ path: targetPath, query: { id: options.workflowId } });
         } else if (route.path !== targetPath) {
-          // Only navigate if we're not already on the target path
           router.push(targetPath);
         }
       } else {
@@ -140,19 +104,15 @@ export default {
     };
 
     const handleOnboardingComplete = (selectedScreen) => {
-      console.log('Onboarding completed, navigating to:', selectedScreen);
       store.commit('userAuth/COMPLETE_ONBOARDING');
       changeScreen(selectedScreen);
     };
 
     const handleOnboardingSkip = () => {
-      console.log('Onboarding skipped');
       store.commit('userAuth/COMPLETE_ONBOARDING');
     };
 
-    // Initialize screen based on URL parameters or default
     onMounted(async () => {
-      // Check if route specifies a terminal screen
       if (route.meta?.terminalScreen) {
         activeScreen.value = route.meta.terminalScreen;
       } else if (route.query.id) {
@@ -160,16 +120,11 @@ export default {
       } else {
         activeScreen.value = getDefaultScreen();
       }
-
-      // Note: Custom providers and user settings are loaded in main.js
-      // during app initialization. No need to reload them here.
     });
 
-    // Watch for route changes and update active screen
     watch(
       () => route.path,
       () => {
-        // Check if route specifies a terminal screen
         if (route.meta?.terminalScreen) {
           activeScreen.value = route.meta.terminalScreen;
         } else if (route.query.id) {
@@ -177,11 +132,12 @@ export default {
         } else if (route.path === '/') {
           activeScreen.value = getDefaultScreen();
         }
-      }
+      },
     );
 
     return {
       activeScreen,
+      useCanvasMode,
       activeScreenComponent,
       changeScreen,
       shouldShowOnboarding,

@@ -1059,6 +1059,7 @@ export default {
   position: relative;
   width: 100%;
   height: 100%;
+  border-bottom-right-radius: var(--terminal-screen-border-radius, 0);
 }
 
 .main-panel {
@@ -1832,4 +1833,5 @@ body[data-page='goals-page'] .scrollable-content {
   overflow-y: hidden !important;
   padding: 0;
 }
+
 </style>

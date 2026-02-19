@@ -7,6 +7,7 @@ import router from '@/router';
 import axios from 'axios';
 import store from '@/store/state';
 import { initializeAxiosInterceptor } from '@/utils/axiosInterceptor';
+import { registerAllWidgets } from '@/canvas/widgets/index.js';
 
 // Import test utilities in development mode
 if (process.env.NODE_ENV === 'development') {
@@ -20,6 +21,9 @@ app.use(store);
 
 // Initialize the new unified theme system (synchronous, fast)
 store.dispatch('theme/initTheme');
+
+// Register all canvas widgets
+registerAllWidgets();
 
 // Initialize axios rate limit interceptor
 initializeAxiosInterceptor(store);

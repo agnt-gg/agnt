@@ -23,6 +23,7 @@ import CustomToolRoutes from './src/routes/CustomToolRoutes.js';
 import ContentOutputRoutes from './src/routes/ContentOutputRoutes.js';
 import AgentRoutes from './src/routes/AgentRoutes.js';
 import GoalRoutes from './src/routes/GoalRoutes.js';
+import LayoutRoutes from './src/routes/LayoutRoutes.js';
 import OrchestratorRoutes from './src/routes/OrchestratorRoutes.js';
 import ToolsRoutes from './src/routes/ToolsRoutes.js';
 import ModelRoutes from './src/routes/ModelRoutes.js';
@@ -110,6 +111,7 @@ app.use('/api/executions', ExecutionRoutes);
 app.use('/api/custom-tools', CustomToolRoutes);
 app.use('/api/content-outputs', ContentOutputRoutes);
 app.use('/api/goals', GoalRoutes);
+app.use('/api/layouts', LayoutRoutes);
 app.use('/api/orchestrator', OrchestratorRoutes);
 app.use('/api/tools', ToolsRoutes);
 app.use('/api/models', ModelRoutes); // Generic models endpoint for all providers

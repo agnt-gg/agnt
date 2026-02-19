@@ -200,6 +200,7 @@ export default {
   position: relative;
   z-index: 3;
   scrollbar-width: none;
+  border-bottom-right-radius: 12px;
 }
 
 .mobile-close-button {

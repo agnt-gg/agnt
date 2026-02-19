@@ -2,89 +2,85 @@
   <div class="left-panel">
     <button v-if="isMobile" @click="closePanel" class="mobile-close-button">Back ></button>
 
-    <!-- Use the Header component and pass props -->
-    <Header :stats="stats" :formattedTokens="formattedTokens">
-      <template #nav-links>
-        <Navigation :activeScreen="activeScreen" @navigate="handleNavigation" />
-      </template>
-    </Header>
-
     <!-- Dynamic panel content -->
-    <Suspense>
-      <template #default>
-        <div class="panel-content-wrapper">
-          <component
-            v-if="activePanelComponent"
-            :is="activePanelComponent"
-            ref="activePanelComponentRef"
-            v-bind="props.panelProps"
-            @panel-action="handlePanelAction"
-          />
-          <div v-else class="default-left-panel">
-            <!-- Default left panel content -->
-            <div class="nav-section">
-              <h4>Quick Actions</h4>
-              <div class="quick-actions">
-                <button class="action-btn" @click="handleQuickAction('new-chat')"><i class="fas fa-plus"></i> New Chat</button>
-                <button class="action-btn" @click="handleQuickAction('new-workflow')"><i class="fas fa-cogs"></i> New Workflow</button>
-                <button class="action-btn" @click="handleQuickAction('new-agent')"><i class="fas fa-robot"></i> New Agent</button>
-              </div>
-            </div>
+    <div class="panel-content-wrapper">
+      <component
+        v-if="activePanelComponent"
+        :is="activePanelComponent"
+        ref="activePanelComponentRef"
+        v-bind="props.panelProps"
+        @panel-action="handlePanelAction"
+      />
+      <div v-else class="default-left-panel">
+        <!-- Default left panel content -->
+        <div class="nav-section">
+          <h4>Quick Actions</h4>
+          <div class="quick-actions">
+            <button class="action-btn" @click="handleQuickAction('new-chat')"><i class="fas fa-plus"></i> New Chat</button>
+            <button class="action-btn" @click="handleQuickAction('new-workflow')"><i class="fas fa-cogs"></i> New Workflow</button>
+            <button class="action-btn" @click="handleQuickAction('new-agent')"><i class="fas fa-robot"></i> New Agent</button>
+          </div>
+        </div>
 
-            <div class="nav-section">
-              <h4>Recent</h4>
-              <div class="recent-items">
-                <div class="recent-item">
-                  <i class="fas fa-comment"></i>
-                  <span>Chat Session #1</span>
-                </div>
-                <div class="recent-item">
-                  <i class="fas fa-cog"></i>
-                  <span>Data Workflow</span>
-                </div>
-                <div class="recent-item">
-                  <i class="fas fa-robot"></i>
-                  <span>Assistant Agent</span>
-                </div>
-              </div>
+        <div class="nav-section">
+          <h4>Recent</h4>
+          <div class="recent-items">
+            <div class="recent-item">
+              <i class="fas fa-comment"></i>
+              <span>Chat Session #1</span>
+            </div>
+            <div class="recent-item">
+              <i class="fas fa-cog"></i>
+              <span>Data Workflow</span>
+            </div>
+            <div class="recent-item">
+              <i class="fas fa-robot"></i>
+              <span>Assistant Agent</span>
             </div>
           </div>
         </div>
-      </template>
-      <template #fallback>
-        <div class="loading-panel"></div>
-      </template>
-    </Suspense>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import { computed, defineAsyncComponent, ref, inject } from 'vue';
-import { useStore } from 'vuex';
-import Header from '../LeftPanel/header/Header.vue';
-import Navigation from '../LeftPanel/header/Navigation.vue';
+import { computed, ref, inject } from 'vue';
 
-// Cache async component wrappers so Suspense doesn't re-enter fallback on every screen change
-const panelCache = new Map();
-const loadPanel = (panelName) => {
-  if (panelCache.has(panelName)) {
-    return panelCache.get(panelName);
-  }
-  const component = defineAsyncComponent(() =>
-    import(`./types/${panelName}/${panelName}.vue`).catch(() => {
-      return import('./types/ChatPanel/ChatPanel.vue');
-    })
-  );
-  panelCache.set(panelName, component);
-  return component;
+// Eagerly import all panel components so they're available instantly
+import AgentForgePanel from './types/AgentForgePanel/AgentForgePanel.vue';
+import AgentsPanel from './types/AgentsPanel/AgentsPanel.vue';
+import ChatPanel from './types/ChatPanel/ChatPanel.vue';
+import GoalsPanel from './types/GoalsPanel/GoalsPanel.vue';
+import MarketplacePanel from './types/MarketplacePanel/MarketplacePanel.vue';
+import RunsPanel from './types/RunsPanel/RunsPanel.vue';
+import SecretsPanel from './types/SecretsPanel/SecretsPanel.vue';
+import SettingsPanel from './types/SettingsPanel/SettingsPanel.vue';
+import ToolForgePanel from './types/ToolForgePanel/ToolForgePanel.vue';
+import ToolsPanel from './types/ToolsPanel/ToolsPanel.vue';
+import WorkflowForgePanel from './types/WorkflowForgePanel/WorkflowForgePanel.vue';
+import WorkflowsPanel from './types/WorkflowsPanel/WorkflowsPanel.vue';
+
+const panelMap = {
+  AgentForgePanel,
+  AgentsPanel,
+  ChatPanel,
+  GoalsPanel,
+  MarketplacePanel,
+  RunsPanel,
+  SecretsPanel,
+  SettingsPanel,
+  ToolForgePanel,
+  ToolsPanel,
+  WorkflowForgePanel,
+  WorkflowsPanel,
 };
 
-// Known panels for fallback (can be expanded as needed)
-const knownPanels = ['AgentPanel', 'ChatPanel', 'RunsPanel', 'SettingsPanel', 'ToolForgePanel', 'ToolsPanel', 'WorkflowForgePanel', 'WorkflowsPanel'];
+const getPanel = (panelName) => panelMap[panelName] || ChatPanel;
 
 export default {
   name: 'LeftPanel',
-  components: { Header, Navigation },
+  components: {},
   props: {
     activeScreen: {
       type: String,
@@ -104,43 +100,22 @@ export default {
   setup(props, { emit }) {
     const activePanelComponentRef = ref(null);
     const isMobile = inject('isMobile', ref(false));
-    const store = useStore();
 
     const activePanelComponent = computed(() => {
-      // If we have an activePanel prop, try to load it dynamically
+      // If we have an activePanel prop, use it directly
       if (props.activePanel) {
-        return loadPanel(props.activePanel);
+        return getPanel(props.activePanel);
       }
 
       // Try to derive panel name from activeScreen
       if (props.activeScreen) {
-        // Convert screen names to panel names (e.g., 'chat' -> 'ChatPanel')
         const panelName = props.activeScreen.charAt(0).toUpperCase() + props.activeScreen.slice(1).toLowerCase() + 'Panel';
-
-        // Check if this is a known panel, otherwise try to load it dynamically
-        if (knownPanels.includes(panelName)) {
-          return loadPanel(panelName);
-        } else {
-          // Try to load it anyway, will fall back to ChatPanel if not found
-          return loadPanel(panelName);
-        }
+        return getPanel(panelName);
       }
 
       // Default fallback to ChatPanel
-      return loadPanel('ChatPanel');
+      return ChatPanel;
     });
-
-    const stats = computed(
-      () =>
-        store.getters['userStats/stats'] || {
-          tokens: 0,
-          totalWorkflows: 0,
-          totalCustomTools: 0,
-          tokensPerDay: 0,
-        }
-    );
-
-    const formattedTokens = computed(() => store.getters['userStats/formattedTokens'] || '0');
 
     const closePanel = () => {
       emit('panel-action', 'close-left-panel');
@@ -154,20 +129,13 @@ export default {
       emit('panel-action', 'quick-action', action);
     };
 
-    const handleNavigation = (targetScreenId) => {
-      emit('panel-action', 'navigate', targetScreenId);
-    };
-
     return {
-      stats,
-      formattedTokens,
       activePanelComponent,
       activePanelComponentRef,
       isMobile,
       closePanel,
       handlePanelAction,
       handleQuickAction,
-      handleNavigation,
       props,
     };
   },
@@ -205,19 +173,6 @@ export default {
     padding: 6px;
     gap: 6px;
   }
-}
-
-.left-panel-header {
-  border-bottom: 1px solid rgba(127, 129, 147, 0.08);
-  padding-bottom: 12px;
-}
-
-.panel-title {
-  color: var(--color-green);
-  font-size: 1.1em;
-  font-weight: 600;
-  margin: 0;
-  text-shadow: 0 0 5px rgba(25, 239, 131, 0.3);
 }
 
 .mobile-close-button {
@@ -328,17 +283,6 @@ export default {
   width: 12px;
   text-align: center;
   opacity: 0.7;
-}
-
-.loading-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 200px;
-  color: var(--color-green);
-  font-family: 'Courier New', monospace;
-  text-shadow: 0 0 5px rgba(25, 239, 131, 0.4);
-  flex: 1;
 }
 
 /* Scrollbar styling */

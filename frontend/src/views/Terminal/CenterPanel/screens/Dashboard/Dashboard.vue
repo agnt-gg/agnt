@@ -21,58 +21,58 @@
           <!-- Loading skeleton while critical data loads -->
           <template v-if="!dataReady">
             <div class="dashboard-loading">
-              <div class="skeleton-block" style="height: 120px; width: 100%; border-radius: 8px;"></div>
-              <div class="skeleton-block" style="height: 36px; width: 100%; border-radius: 6px;"></div>
+              <div class="skeleton-block" style="height: 120px; width: 100%; border-radius: 8px"></div>
+              <div class="skeleton-block" style="height: 36px; width: 100%; border-radius: 6px"></div>
               <div class="dashboard-grid">
                 <div class="grid-row top-row">
-                  <div class="skeleton-block" style="height: 250px; border-radius: 8px;"></div>
-                  <div class="skeleton-block" style="height: 250px; border-radius: 8px;"></div>
-                  <div class="skeleton-block" style="height: 250px; border-radius: 8px;"></div>
+                  <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
+                  <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
+                  <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
                 </div>
                 <div class="grid-row middle-row">
-                  <div class="skeleton-block" style="height: 200px; border-radius: 8px;"></div>
-                  <div class="skeleton-block" style="height: 200px; border-radius: 8px;"></div>
+                  <div class="skeleton-block" style="height: 200px; border-radius: 8px"></div>
+                  <div class="skeleton-block" style="height: 200px; border-radius: 8px"></div>
                 </div>
               </div>
             </div>
           </template>
 
           <template v-else>
-          <!-- <TerminalHeader title="AGNT BIRDS-EYE TERMINAL" subtitle="Time: 17:04 CDT | Mode: LIVE | License: ACTIVE | Uptime: 3d 14h 22m" /> -->
+            <!-- <TerminalHeader title="AGNT BIRDS-EYE TERMINAL" subtitle="Time: 17:04 CDT | Mode: LIVE | License: ACTIVE | Uptime: 3d 14h 22m" /> -->
 
-          <!-- Cumulative Credits Usage Chart - Full Width -->
-          <CumulativeCreditsChart class="fade-in" />
+            <!-- Cumulative Credits Usage Chart - Full Width -->
+            <CumulativeCreditsChart class="fade-in" />
 
-          <!-- Global Pulse Ribbon -->
-          <GlobalPulseRibbon
-            class="fade-in"
-            :agntScoreData="agntScoreData"
-            :goalsData="goalsData"
-            :agentsData="agentsData"
-            :workflowsData="workflowsData"
-            :toolsData="toolsData"
-            :runsData="runsData"
-            :integrationsData="integrationsData"
-            :statusData="statusData"
-          />
+            <!-- Global Pulse Ribbon -->
+            <GlobalPulseRibbon
+              class="fade-in"
+              :agntScoreData="agntScoreData"
+              :goalsData="goalsData"
+              :agentsData="agentsData"
+              :workflowsData="workflowsData"
+              :toolsData="toolsData"
+              :runsData="runsData"
+              :integrationsData="integrationsData"
+              :statusData="statusData"
+            />
 
-          <!-- Main Dashboard Grid -->
-          <div class="dashboard-grid fade-in" style="animation-delay: 0.05s;">
-            <!-- Top Row -->
-            <div class="grid-row top-row fade-in-stagger">
-              <GoalsMap :goalsData="goalsMapData" @navigate="handleScreenChange" />
-              <AgentsSwarm :agentsData="agentsSwarmData" @navigate="handleScreenChange" />
-              <WorkflowPipelines :pipelineData="pipelineData" @navigate="handleScreenChange" />
-            </div>
+            <!-- Main Dashboard Grid -->
+            <div class="dashboard-grid fade-in" style="animation-delay: 0.05s">
+              <!-- Top Row -->
+              <div class="grid-row top-row fade-in-stagger">
+                <GoalsMap :goalsData="goalsMapData" @navigate="handleScreenChange" />
+                <AgentsSwarm :agentsData="agentsSwarmData" @navigate="handleScreenChange" />
+                <WorkflowPipelines :pipelineData="pipelineData" @navigate="handleScreenChange" />
+              </div>
 
-            <!-- Middle Row -->
-            <div class="grid-row middle-row fade-in-stagger">
-              <ToolsInventory :toolsData="toolsInventoryData" />
-              <RunsQueue :runsData="runsQueueData" />
-            </div>
+              <!-- Middle Row -->
+              <div class="grid-row middle-row fade-in-stagger">
+                <ToolsInventory :toolsData="toolsInventoryData" />
+                <RunsQueue :runsData="runsQueueData" />
+              </div>
 
-            <!-- Bottom Row -->
-            <!-- <div class="grid-row bottom-row">
+              <!-- Bottom Row -->
+              <!-- <div class="grid-row bottom-row">
               <StatusIncidents :incidentsData="incidentsData" />
               <BaseDashboardCard title="CAPACITY & COST">
                 <div class="capacity-metrics">
@@ -81,18 +81,18 @@
                 </div>
               </BaseDashboardCard>
             </div> -->
-          </div>
+            </div>
 
-          <!-- Mission Details Component -->
-          <MissionDetails
-            v-if="selectedMissionId && selectedMission"
-            :mission="selectedMission"
-            @close="selectedMissionId = null"
-            @log-message="handleLogMessage"
-            ref="missionDetailsRef"
-          />
+            <!-- Mission Details Component -->
+            <MissionDetails
+              v-if="selectedMissionId && selectedMission"
+              :mission="selectedMission"
+              @close="selectedMissionId = null"
+              @log-message="handleLogMessage"
+              ref="missionDetailsRef"
+            />
 
-          <!-- <div ref="scrollAnchorRef" class="scroll-anchor"></div> -->
+            <!-- <div ref="scrollAnchorRef" class="scroll-anchor"></div> -->
           </template>
         </div>
       </div>
@@ -661,22 +661,20 @@ export default {
 .dashboard-content {
   width: 100%;
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   box-sizing: border-box;
   position: relative;
-  overflow-x: hidden;
-  scrollbar-width: thin;
+  min-height: 0;
 }
 
 /* New style for the inner padded container */
 .dashboard-inner-content {
   display: flex;
   flex-direction: column;
-  /* padding: 16px; */
-  /* padding-right: 8px; */
   height: calc(100% - 2px);
   box-sizing: border-box;
   gap: 16px;
+  min-height: 0;
 }
 
 /* Remove margin from the last child */
@@ -748,21 +746,25 @@ export default {
   flex-direction: column;
   gap: 16px;
   flex: 1;
+  min-height: 0;
 }
 
 .grid-row {
   display: grid;
   gap: 16px;
+  min-height: 0;
 }
 
 .top-row {
   grid-template-columns: 1fr 1fr 1fr;
   flex: 1;
-  max-height: 326px;
+  min-height: 0;
 }
 
 .middle-row {
   grid-template-columns: 1fr 1fr;
+  flex: 1;
+  min-height: 0;
 }
 
 .bottom-row {

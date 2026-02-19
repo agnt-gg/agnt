@@ -27,6 +27,7 @@ import mcpServers from './features/mcpServers';
 import goals from './features/goals';
 import goalTemplates from './features/goalTemplates';
 import contentOutputs from './features/contentOutputs';
+import widgetLayout from './features/widgetLayout';
 
 const store = createStore({
   state: {
@@ -86,6 +87,7 @@ const store = createStore({
           dispatch('contentOutputs/fetchOutputs'),
           dispatch('marketplace/fetchMyPurchases'),
           dispatch('marketplace/fetchMyInstalls'),
+          dispatch('widgetLayout/fetchLayouts'),
         ]).then((results) => {
           results.forEach((result, index) => {
             if (result.status === 'rejected') {
@@ -135,6 +137,7 @@ const store = createStore({
     goals,
     goalTemplates,
     contentOutputs,
+    widgetLayout,
   },
 });
 

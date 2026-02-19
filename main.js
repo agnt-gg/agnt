@@ -420,10 +420,6 @@ function createWindow() {
     },
     autoHideMenuBar: true,
     backgroundColor: '#070710',
-    titleBarOverlay: {
-      color: '#333',
-      symbolColor: '#fff',
-    },
   });
 
   if (process.platform === 'darwin') {
