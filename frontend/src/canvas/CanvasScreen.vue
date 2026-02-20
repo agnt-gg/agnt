@@ -676,6 +676,7 @@ export default {
   display: flex;
   flex: 1;
   min-height: 0;
+  padding-right: 4px;
 }
 
 /* ═══════════════════ SIDEBAR ═══════════════════ */

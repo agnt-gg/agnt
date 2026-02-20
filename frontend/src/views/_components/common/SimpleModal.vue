@@ -1,23 +1,25 @@
 <template>
-  <div v-if="isOpen" class="modal-overlay">
-    <div class="modal-content">
-      <h3>{{ title }}</h3>
-      <p v-if="message" v-html="formattedMessage" class="modal-message"></p>
-      <template v-if="isPrompt">
-        <textarea v-if="isTextArea" ref="promptInput" v-model="inputValue" :placeholder="placeholder" @keyup.enter="confirm"></textarea>
-        <input v-else :type="inputType" ref="promptInput" v-model="inputValue" :placeholder="placeholder" @keyup.enter="confirm" />
-      </template>
-      <div class="modal-actions">
-        <button type="button" :class="confirmClass" @click="confirm">
-          {{ confirmText }}
-        </button>
-        <!-- Cancel button is always shown by default -->
-        <button type="button" v-if="isPrompt || showCancel" :class="cancelClass" @click="cancel">
-          {{ cancelText }}
-        </button>
+  <Teleport to="body">
+    <div v-if="isOpen" class="modal-overlay">
+      <div class="modal-content">
+        <h3>{{ title }}</h3>
+        <p v-if="message" v-html="formattedMessage" class="modal-message"></p>
+        <template v-if="isPrompt">
+          <textarea v-if="isTextArea" ref="promptInput" v-model="inputValue" :placeholder="placeholder" @keyup.enter="confirm"></textarea>
+          <input v-else :type="inputType" ref="promptInput" v-model="inputValue" :placeholder="placeholder" @keyup.enter="confirm" />
+        </template>
+        <div class="modal-actions">
+          <button type="button" :class="confirmClass" @click="confirm">
+            {{ confirmText }}
+          </button>
+          <!-- Cancel button is always shown by default -->
+          <button type="button" v-if="isPrompt || showCancel" :class="cancelClass" @click="cancel">
+            {{ cancelText }}
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script>
@@ -128,7 +130,7 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 99999;
 }
 
 .modal-content {

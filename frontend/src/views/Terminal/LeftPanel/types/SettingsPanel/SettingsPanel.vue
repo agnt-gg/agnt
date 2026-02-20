@@ -198,7 +198,7 @@ export default {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: var(--color-text-dull);
+  color: var(--color-light-primary);
   font-size: 0.9em;
   /* Button reset styles */
   background: none;
