@@ -3,6 +3,7 @@ body.dark.cyberpunk {
   --color-primary: var(--color-green);
   --color-secondary: var(--color-blue);
   --color-background: #0b0b30;
+  --color-background-rgb: 11, 11, 48;
   --color-text-secondary: var(--color-med-navy);
   --color-text-dull: var(--color-dull-navy);
   --terminal-width: calc(100vw - 16px);

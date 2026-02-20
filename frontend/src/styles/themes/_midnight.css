@@ -1,6 +1,7 @@
 /* MIDNIGHT THEME - Deep indigo luxe */
 body.dark.midnight {
   --color-background: #080818;
+  --color-background-rgb: 8, 8, 24;
   /* Background hierarchy */
   --color-black-navy: #080818;
   --color-ultra-dark-navy: #0c0c24;

@@ -1,6 +1,7 @@
 /* EMBER THEME - Warm dark, amber/copper accents */
 body.dark.ember {
   --color-background: #120c08;
+  --color-background-rgb: 18, 12, 8;
   /* Background hierarchy */
   --color-black-navy: #120c08;
   --color-ultra-dark-navy: #1a1210;

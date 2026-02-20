@@ -132,6 +132,7 @@ export default {
   height: 100%;
   padding: 12px;
   box-sizing: border-box;
+  background: var(--color-background);
   border-right: 1px solid var(--terminal-border-color);
   display: flex;
   flex-direction: column;

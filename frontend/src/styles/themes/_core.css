@@ -60,14 +60,14 @@ body {
 /* ═══════════════════ CUSTOM BACKGROUND MODE ═══════════════════ */
 /* Background image is behind everything at z-index:-1 on #bg-layer.
    --bg-opacity (0.9-1) from the slider. 1.0 = fully solid, 0.9 = image peeks through.
-   At 100% all panels are fully opaque black. At 90% they are 90% opaque. */
+   At 100% all panels are fully opaque with theme BG. At 90% they are 90% opaque. */
 body.custom-bg .main-panel,
 body.custom-bg .left-panel,
 body.custom-bg .controls-panel,
 body.custom-bg .cv-toolbar,
 body.custom-bg .cv-sidebar,
 body.custom-bg #left-sidebar {
-  background: rgba(0, 0, 0, var(--bg-opacity, 0.9)) !important;
+  background: rgba(var(--color-background-rgb, 0, 0, 0), var(--bg-opacity, 0.9)) !important;
   backdrop-filter: blur(var(--bg-blur, 0px));
   -webkit-backdrop-filter: blur(var(--bg-blur, 0px));
 }

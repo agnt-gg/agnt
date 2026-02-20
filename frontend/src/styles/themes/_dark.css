@@ -3,6 +3,7 @@ body.dark {
   --color-primary: var(--color-pink);
   --color-secondary: var(--color-blue);
   --color-background: var(--color-dark-navy);
+  --color-background-rgb: 16, 16, 31;
   --color-text: var(--color-dull-white);
   --color-text-muted: var(--color-med-navy);
   --color-text-secondary: var(--color-med-navy);

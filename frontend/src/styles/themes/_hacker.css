@@ -1,6 +1,7 @@
 /* HACKER THEME - Green-on-black terminal */
 body.dark.hacker {
   --color-background: #000000;
+  --color-background-rgb: 0, 0, 0;
   /* Background hierarchy — pure black */
   --color-black-navy: #000000;
   --color-ultra-dark-navy: #0a0a0a;

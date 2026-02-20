@@ -6,6 +6,7 @@
 body:not(.dark) {
   /* Light theme is the default - uses base styles from main.css */
   --color-background: #f1f0f5;
+  --color-background-rgb: 241, 240, 245;
   --color-light-green: var(--color-dark-navy);
   --color-primary: var(--color-pink);
   --color-secondary: var(--color-blue);

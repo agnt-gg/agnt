@@ -1,6 +1,7 @@
 /* ROSE THEME - Soft light pink/rose */
 body.rose {
   --color-background: #faf4f4;
+  --color-background-rgb: 250, 244, 244;
   /* Background hierarchy — light warm pinks */
   --color-black-navy: #faf4f4;
   --color-ultra-dark-navy: #ffffff;

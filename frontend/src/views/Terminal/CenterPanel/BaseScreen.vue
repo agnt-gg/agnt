@@ -1072,15 +1072,11 @@ export default {
   overflow: hidden;
   min-width: 320px;
   padding: 16px;
-  background: var(--color-darker-0);
+  background: var(--color-background);
   justify-content: flex-start;
   flex-wrap: nowrap;
   align-content: flex-start;
   align-items: center;
-}
-
-body:not(.dark) .main-panel {
-  background: var(--color-darker-0);
 }
 
 body[data-page='terminal-workflow-designer'] .main-panel {
