@@ -181,7 +181,7 @@ export default {
 }
 
 .wc-modal {
-  background: var(--color-darker-0, #0a0a14);
+  background: var(--color-background);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   width: 480px;

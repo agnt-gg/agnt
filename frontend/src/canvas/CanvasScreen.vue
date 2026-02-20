@@ -25,8 +25,8 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
-        <button class="cv-btn" @click="showCatalog = true" title="Add widget">+</button>
-        <button class="cv-btn" @click="resetCurrentPage" title="Reset layout">&#8635;</button>
+        <button v-if="onCustomPage" class="cv-btn" @click="showCatalog = true" title="Add widget">+</button>
+        <button v-if="onCustomPage" class="cv-btn" @click="resetCurrentPage" title="Reset layout">&#8635;</button>
 
         <!-- macOS traffic lights (right side) -->
         <template v-if="isElectron && isMac">

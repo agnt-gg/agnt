@@ -236,9 +236,9 @@ export default {
 <style scoped>
 .widget-frame {
   position: absolute;
-  background: var(--color-ultra-dark-navy);
+  background: var(--color-background);
   border: 1px solid var(--terminal-border-color, var(--color-dull-navy));
-  border-radius: 4px;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -263,7 +263,7 @@ export default {
 
 .widget-frame.is-maximized {
   z-index: 998 !important;
-  border-radius: 6px;
+  border-radius: 0;
 }
 
 .widget-frame.is-screen-widget {
@@ -374,9 +374,9 @@ export default {
 </style>
 
 <style>
-/* Custom background mode - dark translucent glass for widget frames */
+/* Custom background mode - translucent glass for widget frames */
 body.custom-bg .widget-frame:not(.is-screen-widget) {
-  background: rgba(0, 0, 0, var(--bg-opacity, 0.9)) !important;
+  background: rgba(var(--color-background-rgb, 0, 0, 0), var(--bg-opacity, 0.9)) !important;
   backdrop-filter: blur(var(--bg-blur, 0px));
   -webkit-backdrop-filter: blur(var(--bg-blur, 0px));
   border-color: rgba(255, 255, 255, 0.06);
