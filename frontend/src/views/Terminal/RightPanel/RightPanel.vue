@@ -3,27 +3,19 @@
     <button v-if="isMobile" @click="closePanel" class="mobile-close-button">< Back</button>
 
     <!-- Dynamic panel content -->
-    <Suspense>
-      <template #default>
-        <!-- Wrap the dynamic component in a single root element -->
-        <div class="panel-content-wrapper">
-          <component
-            v-if="activePanelComponent"
-            :is="activePanelComponent"
-            ref="activePanelComponentRef"
-            v-bind="props.panelProps"
-            @panel-action="handlePanelAction"
-            @close-details="handleCloseDetails"
-          />
-          <div v-else class="no-panel-placeholder">
-            <!-- Panel area available. Select an item for details. -->
-          </div>
-        </div>
-      </template>
-      <template #fallback>
-        <div class="loading-panel"></div>
-      </template>
-    </Suspense>
+    <div class="panel-content-wrapper">
+      <component
+        v-if="activePanelComponent"
+        :is="activePanelComponent"
+        ref="activePanelComponentRef"
+        v-bind="props.panelProps"
+        @panel-action="handlePanelAction"
+        @close-details="handleCloseDetails"
+      />
+      <div v-else class="no-panel-placeholder">
+        <!-- Panel area available. Select an item for details. -->
+      </div>
+    </div>
   </div>
 </template>
 
@@ -31,7 +23,7 @@
 import { computed, onMounted, onUnmounted, defineAsyncComponent, ref, watch, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 
-// Cache async component wrappers so Suspense doesn't re-enter fallback on every screen change
+// Lazy-load panel components on demand (cached so re-navigation is instant)
 const panelCache = new Map();
 const loadPanel = (panelName) => {
   if (panelCache.has(panelName)) {
@@ -45,24 +37,6 @@ const loadPanel = (panelName) => {
   panelCache.set(panelName, component);
   return component;
 };
-
-// Known panels for fallback (can be expanded as needed)
-const knownPanels = [
-  'AgentsPanel',
-  'ToolsPanel',
-  'WorkflowsPanel',
-  'DashboardPanel',
-  'SettingsPanel',
-  'WorkflowForgePanel',
-  'ToolForgePanel',
-  'ToolForgeResponsePanel',
-  'AgentForgePanel',
-  'SecretsPanel',
-  'GoalsPanel',
-  'ChatPanel',
-  'RunsPanel',
-  'NewsPanel',
-];
 
 export default {
   name: 'RightPanel',
@@ -85,15 +59,8 @@ export default {
     const isMobile = inject('isMobile', ref(false));
 
     const activePanelComponent = computed(() => {
-      // If we have an activePanel prop, try to load it dynamically
       if (props.activePanel) {
-        // Check if this is a known panel, otherwise try to load it dynamically
-        if (knownPanels.includes(props.activePanel)) {
-          return loadPanel(props.activePanel);
-        } else {
-          // Try to load it anyway, will fall back to ChatPanel if not found
-          return loadPanel(props.activePanel);
-        }
+        return loadPanel(props.activePanel);
       }
 
       // Show nothing when explicitly null
@@ -112,7 +79,7 @@ export default {
           totalWorkflows: 0,
           totalCustomTools: 0,
           tokensPerDay: 0,
-        }
+        },
     );
 
     const formattedTokens = computed(() => store.getters['userStats/formattedTokens'] || '0');
@@ -168,7 +135,7 @@ export default {
         nextTick(() => {
           console.log('RightPanel: Active panel component ref after change:', activePanelComponentRef.value);
         });
-      }
+      },
     );
 
     return {
@@ -200,7 +167,7 @@ export default {
   position: relative;
   z-index: 3;
   scrollbar-width: none;
-  border-bottom-right-radius: 12px;
+  /* border-bottom-right-radius: 10px; */
 }
 
 .mobile-close-button {
@@ -225,9 +192,8 @@ export default {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: var(--color-green);
-  font-family: 'Courier New', monospace;
-  text-shadow: 0 0 5px rgba(25, 239, 131, 0.4);
+  color: var(--color-med-navy);
+  font-family: var(--font-family-mono);
   flex: 1;
 }
 
@@ -245,12 +211,12 @@ export default {
 .controls-panel::-webkit-scrollbar-thumb {
   background-color: transparent;
   border-radius: 0px 16px 16px 0px;
-  border: 1px solid rgba(25, 239, 131, 0.6);
+  border: 1px solid var(--color-duller-navy);
   cursor: default;
 }
 
 .controls-panel::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(25, 239, 131, 0.6);
+  background-color: var(--color-duller-navy);
 }
 
 .panel-content-wrapper {

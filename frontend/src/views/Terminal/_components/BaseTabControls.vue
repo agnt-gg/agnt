@@ -111,17 +111,17 @@ export default {
 }
 
 .toggle-button:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .toggle-button:hover:not(.active) {
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   opacity: 1;
 }
 
 .toggle-button.active {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-white);
 }
 
@@ -160,18 +160,18 @@ button.tab-button:last-child {
 }
 
 .tab-button:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   cursor: pointer;
 }
 
 .tab-button:hover:not(.active) {
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   opacity: 1;
 }
 
 .tab-button.active {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-bottom: 1px solid var(--color-green); /* This creates the active tab underline that sits on top of the .tab-controls border */
   color: var(--color-white);
   opacity: 1;

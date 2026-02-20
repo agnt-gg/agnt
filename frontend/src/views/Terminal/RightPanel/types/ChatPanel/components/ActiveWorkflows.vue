@@ -68,7 +68,7 @@ export default {
   color: var(--color-duller-navy);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 .workflow-list {
@@ -96,7 +96,7 @@ export default {
 
 .workflow-row.running {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .workflow-row.listening {

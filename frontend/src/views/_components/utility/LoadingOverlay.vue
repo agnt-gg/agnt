@@ -33,7 +33,7 @@ body.dark .loading-overlay {
   width: 40px;
   height: 40px;
   border: 4px solid var(--color-light-navy);
-  border-top: 4px solid var(--color-pink);
+  border-top: 4px solid var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }

@@ -118,7 +118,7 @@ h4.section-title {
   gap: 8px;
   padding-bottom: 16px;
   margin-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .section-title i {
@@ -144,8 +144,8 @@ h4.section-title {
 }
 
 .mission-card {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   padding: 12px;
   display: flex;
@@ -201,7 +201,7 @@ h4.section-title {
 .progress-bar {
   flex: 1;
   height: 4px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -227,7 +227,7 @@ h4.section-title {
   padding: 32px;
   color: var(--color-grey);
   gap: 8px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 4px;
 }
 

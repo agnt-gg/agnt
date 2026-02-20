@@ -784,7 +784,7 @@ export default {
 }
 
 .onboarding-modal {
-  background: radial-gradient(circle at top, rgba(0, 255, 153, 0.06), transparent 55%),
+  background: radial-gradient(circle at top, rgba(var(--green-rgb), 0.06), transparent 55%),
     linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
@@ -798,7 +798,7 @@ export default {
 }
 
 body.dark .onboarding-modal {
-  background: radial-gradient(circle at top, rgba(0, 255, 153, 0.05), transparent 55%),
+  background: radial-gradient(circle at top, rgba(var(--green-rgb), 0.05), transparent 55%),
     linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
   border: 1px solid var(--terminal-border-color);
 }
@@ -822,7 +822,7 @@ body.dark .onboarding-modal {
 .dot.active {
   background: var(--color-green);
   transform: scale(1.3);
-  box-shadow: 0 0 12px rgba(0, 255, 153, 0.5);
+  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.5);
 }
 
 .dot.completed {
@@ -876,7 +876,7 @@ body.dark .onboarding-modal {
 .logo-large {
   width: 120px;
   height: 120px;
-  filter: drop-shadow(0 10px 30px rgba(0, 255, 153, 0.3));
+  filter: drop-shadow(0 10px 30px rgba(var(--green-rgb), 0.3));
   animation: float 3s ease-in-out infinite;
 }
 
@@ -924,7 +924,7 @@ body.dark .onboarding-modal {
   width: 100%;
   padding: 12px 16px;
   font-size: 1.1em;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   background: rgba(5, 8, 18, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
@@ -935,7 +935,7 @@ body.dark .onboarding-modal {
 .input-group input:focus {
   outline: none;
   border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(0, 255, 153, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
 }
 
 .input-with-status {
@@ -966,7 +966,7 @@ body.dark .onboarding-modal {
 
 .status-indicator.available,
 .status-indicator.current {
-  background: rgba(0, 255, 153, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
@@ -1036,7 +1036,7 @@ body.dark .onboarding-modal {
 .provider-tile:hover {
   background: rgba(127, 129, 147, 0.1);
   transform: translateY(-2px);
-  border-color: rgba(25, 239, 131, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .provider-icon :deep(svg) {
@@ -1116,11 +1116,11 @@ body.dark .onboarding-modal {
 
 .quickstart-option:hover {
   background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(0, 255, 153, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .quickstart-option.selected {
-  background: rgba(0, 255, 153, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-color: var(--color-green);
 }
 
@@ -1169,7 +1169,7 @@ body.dark .onboarding-modal {
 }
 
 .bonus-display {
-  background: linear-gradient(135deg, rgba(0, 255, 153, 0.2) 0%, rgba(0, 208, 132, 0.1) 100%);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.2) 0%, rgba(0, 208, 132, 0.1) 100%);
   border: 2px solid var(--color-green);
   border-radius: 16px;
   padding: 32px;
@@ -1258,7 +1258,7 @@ body.dark .onboarding-modal {
 .btn-text {
   padding: 12px 24px;
   border-radius: 999px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 1em;
   font-weight: 600;
   cursor: pointer;
@@ -1273,7 +1273,7 @@ body.dark .onboarding-modal {
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 255, 153, 0.3);
+  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.3);
 }
 
 .btn-primary.btn-large {

@@ -219,7 +219,7 @@ export default {
 
 /* PDF-specific drag & drop styles */
 .pdf-preview-container.drag-hover {
-  border: 2px dashed var(--color-pink) !important;
+  border: 2px dashed var(--color-primary) !important;
   background: rgba(233, 61, 143, 0.05);
   transform: scale(1.02);
   transition: all 0.2s ease;
@@ -250,7 +250,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
   gap: 12px;
   font-size: 16px;
@@ -302,7 +302,7 @@ export default {
 }
 
 .pdf-preview-container.drag-hover .pdf-placeholder span {
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
 }
 

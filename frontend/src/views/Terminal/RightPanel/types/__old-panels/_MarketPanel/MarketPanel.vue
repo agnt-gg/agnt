@@ -382,7 +382,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 5px 10px; /* Reduced padding */
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
   margin-bottom: 5px; /* Reduced margin */
 }
 
@@ -420,18 +420,18 @@ export default {
 
 /* Common Section Styling */
 .market-section {
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   /* border-radius: 8px; */
   padding: 15px;
   /* background-color: rgba(10, 25, 47, 0.3); */
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
 }
 
 .market-section h2 {
   color: var(--color-green);
   font-size: 1.1em;
   margin: 0 0 15px 0;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -462,7 +462,7 @@ export default {
 /* Selected Item Section */
 .selected-item-section {
   /* border-color: var(--color-green); */
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
 }
 
 .selected-item-content {
@@ -522,7 +522,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -551,8 +551,8 @@ export default {
 }
 
 .input {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3); /* Slightly stronger border */
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3); /* Slightly stronger border */
   color: var(--color-light-green);
   padding: 10px 12px; /* More padding */
   border-radius: 4px;
@@ -563,7 +563,7 @@ export default {
 .input:focus {
   outline: none;
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
 }
 
 /* Style number input appearance */

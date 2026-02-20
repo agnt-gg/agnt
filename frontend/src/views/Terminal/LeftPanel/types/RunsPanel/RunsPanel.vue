@@ -312,7 +312,7 @@ export default {
 
 .panel-header .title {
   color: var(--color-green);
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
   letter-spacing: 0.48px;
@@ -348,7 +348,7 @@ export default {
   padding-right: 4px;
   z-index: 3;
   overflow-y: auto;
-  scrollbar-color: #19ef831f transparent;
+  scrollbar-color: var(--color-duller-navy) transparent;
   scrollbar-width: thin;
 }
 
@@ -459,13 +459,13 @@ export default {
 }
 
 .filter-item:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-text);
 }
 
 .filter-item.active {
-  background: rgba(25, 239, 131, 0.15);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: rgba(var(--green-rgb), 0.3);
   color: var(--color-green);
 }
 
@@ -507,7 +507,7 @@ export default {
   max-height: 200px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.3) transparent;
+  scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
 }
 
 .recent-run-item {
@@ -523,12 +523,12 @@ export default {
 }
 
 .recent-run-item:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.2);
 }
 
 .recent-run-item.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
 }
 
@@ -653,8 +653,8 @@ export default {
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .action-button i {

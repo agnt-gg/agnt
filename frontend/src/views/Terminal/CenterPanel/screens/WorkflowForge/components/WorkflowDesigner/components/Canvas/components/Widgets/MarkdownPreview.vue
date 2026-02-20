@@ -215,7 +215,7 @@ export default {
   /* background: #f5f5f5; */
   padding: 2px 6px;
   border-radius: 3px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   /* font-size: 0.9em; */
 }
 

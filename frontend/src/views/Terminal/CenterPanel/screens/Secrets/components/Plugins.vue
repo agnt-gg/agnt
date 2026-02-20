@@ -1092,7 +1092,7 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 0.5em;
-  color: #ffd700;
+  color: var(--color-yellow);
   background: rgba(255, 215, 0, 0.15);
   padding: 4px 12px;
   border-radius: 4px;
@@ -1134,14 +1134,14 @@ export default {
   background: rgba(0, 0, 0, 0.8);
   padding: 24px 32px;
   border-radius: 12px;
-  border: 2px solid #ffd700;
+  border: 2px solid var(--color-yellow);
   pointer-events: all;
   z-index: 10;
 }
 
 .locked-overlay i {
   font-size: 2.5em;
-  color: #ffd700;
+  color: var(--color-yellow);
   margin-bottom: 12px;
   display: block;
 }
@@ -1212,7 +1212,7 @@ export default {
 
 .tab:hover {
   color: var(--color-text);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .tab.active {
@@ -1266,14 +1266,14 @@ body.dark .plugin-card {
 
 .plugin-card:hover {
   border-color: var(--color-green);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.1);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.1);
   transform: translateY(-2px);
 }
 
 .plugin-card.selected {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.05);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
 }
 
 button.base-button.primary.refresh {
@@ -1283,7 +1283,7 @@ button.base-button.primary.refresh {
 
 .plugin-card.installed {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.03);
+  background: rgba(var(--green-rgb), 0.03);
 }
 
 .plugin-header {
@@ -1296,7 +1296,7 @@ button.base-button.primary.refresh {
 .plugin-icon {
   width: 48px;
   height: 48px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -1346,7 +1346,7 @@ button.base-button.primary.refresh {
 }
 
 .status-badge.installed {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
@@ -1389,8 +1389,8 @@ button.base-button.primary.refresh {
 .tool-badge {
   font-size: 0.8em;
   padding: 3px 8px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-green);
 }
@@ -1458,7 +1458,7 @@ body.dark .manual-install-section {
 
 .upload-area:hover {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   color: var(--color-green);
 }
 
@@ -1586,18 +1586,18 @@ body.dark .publish-step {
 
 .plugin-select-card:hover {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .plugin-select-card.selected {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .plugin-select-icon {
   width: 40px;
   height: 40px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -1708,8 +1708,8 @@ body.dark .publish-step {
   gap: 8px;
   margin: 0;
   padding: 12px 16px;
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   color: var(--color-text-muted);
   font-size: 0.9em;
@@ -1738,7 +1738,7 @@ body.dark .publish-step {
 .revenue-info {
   margin-top: 8px;
   padding: 10px 12px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 6px;
   display: flex;
   flex-direction: column;

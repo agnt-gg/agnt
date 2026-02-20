@@ -1180,8 +1180,6 @@ export default {
   top: 0;
   z-index: 1;
   background: transparent;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   /* padding-bottom: 16px; */
   display: flex;
   flex-direction: column;
@@ -1206,7 +1204,7 @@ export default {
 }
 .workflow-table {
   width: calc(100% - 2px);
-  border: 1px solid rgba(25, 239, 131, 0.4);
+  border: 1px solid rgba(var(--green-rgb), 0.4);
   border-radius: 4px;
   overflow: hidden;
   flex-shrink: 0;
@@ -1216,11 +1214,11 @@ export default {
 .table-header {
   display: grid;
   grid-template-columns: 1fr 1.5fr 2fr;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 10px 8px;
   font-weight: 400;
   color: var(--color-green);
-  border-bottom: 1px solid rgba(25, 239, 131, 0.4);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.4);
 }
 
 .table-body {
@@ -1236,7 +1234,7 @@ export default {
 }
 
 .table-body::-webkit-scrollbar-track {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .table-body::-webkit-scrollbar-thumb {
@@ -1248,7 +1246,7 @@ export default {
   display: grid;
   grid-template-columns: 1fr 1.5fr 2fr;
   padding: 10px 8px;
-  border-top: 1px solid rgba(25, 239, 131, 0.2);
+  border-top: 1px solid rgba(var(--green-rgb), 0.2);
   cursor: pointer;
   transition: background-color 0.2s;
   color: var(--color-light-green);
@@ -1259,13 +1257,13 @@ export default {
 }
 
 .table-row.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-left: 3px solid var(--color-green);
   padding-left: 5px;
 }
 
 .table-row:not(.selected):hover {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
 }
 
 [class^='col-'] {
@@ -1280,7 +1278,7 @@ export default {
 .workflow-tabs {
   display: flex;
   gap: 2px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.4);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.4);
   padding-bottom: 1px;
 }
 
@@ -1290,7 +1288,7 @@ export default {
 
 .tab-button {
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.4);
+  border: 1px solid rgba(var(--green-rgb), 0.4);
   color: var(--color-light-green);
   padding: 8px 16px;
   cursor: pointer;
@@ -1306,11 +1304,11 @@ export default {
 }
 
 .tab-button:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .tab-button.active {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-bottom: 1px solid var(--color-green);
   color: var(--color-green);
 }
@@ -1322,7 +1320,7 @@ export default {
 
 .text-bright-green {
   color: var(--color-green);
-  text-shadow: 0 0 5px rgba(25, 239, 131, 0.4);
+  text-shadow: 0 0 5px rgba(var(--green-rgb), 0.4);
 }
 
 .font-bold {
@@ -1489,13 +1487,13 @@ export default {
 }
 
 .hide-empty-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
   opacity: 1;
 }
 
 .hide-empty-button.active {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
   color: var(--color-green);
   opacity: 1;
@@ -1517,13 +1515,13 @@ export default {
 }
 
 .collapse-all-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
   opacity: 1;
 }
 
 .collapse-all-button.active {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
   color: var(--color-green);
   opacity: 1;
@@ -1583,7 +1581,7 @@ export default {
 }
 
 .category-header:hover {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 6px;
   padding: 4px 6px;
   margin: -4px -6px 14px -6px;
@@ -1611,8 +1609,8 @@ export default {
 }
 
 .collapse-toggle:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .collapse-toggle.collapsed i {
@@ -1645,7 +1643,7 @@ export default {
   align-items: center;
   justify-content: center;
   /* border-radius: 6px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05); */
   display: none;
 }
@@ -1682,7 +1680,6 @@ export default {
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s ease;
-  backdrop-filter: blur(4px);
 }
 
 .table-row.listening .col-status {
@@ -1699,16 +1696,16 @@ export default {
 }
 
 .workflow-card:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.2);
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .workflow-card.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
-  /* box-shadow: 0 6px 20px rgba(25, 239, 131, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.06); */
+  /* box-shadow: 0 6px 20px rgba(var(--green-rgb), 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.06); */
 }
 
 .workflow-header {
@@ -1727,7 +1724,7 @@ export default {
   align-items: center;
   justify-content: center;
   /* border-radius: 6px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05); */
   font-size: 12px;
   flex-shrink: 0;
@@ -1748,7 +1745,7 @@ export default {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-green);
   text-transform: uppercase;
   flex-shrink: 0;
@@ -1801,7 +1798,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--color-green), rgba(25, 239, 131, 0.7));
+  background: linear-gradient(135deg, var(--color-green), rgba(var(--green-rgb), 0.7));
   border: 1px solid var(--terminal-border-color);
   display: none;
 }
@@ -1869,15 +1866,15 @@ export default {
   align-items: center;
   justify-content: center;
   border-radius: 100%;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   flex-shrink: 0;
   transition: all 0.2s ease;
 }
 
 .tool-icon-small:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.4);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.4);
   transform: scale(1.1);
 }
 
@@ -1890,8 +1887,8 @@ export default {
 .tools-overflow {
   font-size: 10px;
   color: var(--color-text-muted);
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
   border-radius: 3px;
   padding: 2px 4px;
   margin-left: 2px;
@@ -1919,8 +1916,8 @@ export default {
 
 .category-card.drag-over {
   border-color: var(--color-green);
-  background: linear-gradient(180deg, rgba(25, 239, 131, 0.08), rgba(25, 239, 131, 0.04));
-  /* box-shadow: 0 12px 32px rgba(25, 239, 131, 0.3), inset 0 0 0 2px rgba(25, 239, 131, 0.4); */
+  background: linear-gradient(180deg, rgba(var(--green-rgb), 0.08), rgba(var(--green-rgb), 0.04));
+  /* box-shadow: 0 12px 32px rgba(var(--green-rgb), 0.3), inset 0 0 0 2px rgba(var(--green-rgb), 0.4); */
   transform: scaleY(1.02);
 }
 
@@ -1931,7 +1928,7 @@ export default {
   min-height: 60px;
   border: 2px dashed var(--terminal-border-color);
   border-radius: 10px;
-  /* background: rgba(25, 239, 131, 0.05); */
+  /* background: rgba(var(--green-rgb), 0.05); */
   color: var(--color-text-muted);
   font-size: 13px;
   opacity: 0.7;
@@ -2006,7 +2003,7 @@ export default {
 .marketplace-avatar-placeholder {
   width: 60px;
   height: 60px;
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.1), rgba(25, 239, 131, 0.05));
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.1), rgba(var(--green-rgb), 0.05));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2170,7 +2167,7 @@ export default {
 .install-button {
   width: 100%;
   padding: 10px 16px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-green);
   border: 1px solid transparent;
   font-weight: 700;
@@ -2190,7 +2187,7 @@ export default {
 .install-button:hover {
   background: var(--color-green);
   color: var(--color-navy);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
   transform: translateY(-1px);
 }
 
@@ -2252,7 +2249,7 @@ export default {
 .create-button:hover {
   background: var(--color-primary-hover);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .create-button i {
@@ -2273,10 +2270,10 @@ export default {
 }
 
 .marketplace-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .marketplace-button i {

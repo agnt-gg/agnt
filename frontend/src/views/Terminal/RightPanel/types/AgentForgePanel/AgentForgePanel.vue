@@ -125,7 +125,7 @@ export default {
   border: 1px solid rgba(18, 224, 255, 0.1); */
   color: var(--color-text);
   border-radius: 0px;
-  /* box-shadow: 0 2px 16px rgba(25, 239, 131, 0.08); */
+  /* box-shadow: 0 2px 16px rgba(var(--green-rgb), 0.08); */
   /* padding: 18px 18px 0 18px; */
   min-height: 0;
 }
@@ -141,13 +141,13 @@ export default {
   margin-top: 4px;
 }
 .gen-error {
-  color: #ff4d4f;
+  color: var(--color-red);
   font-size: 1em;
   margin-top: 4px;
   background: rgba(255, 77, 79, 0.08);
   border-radius: 4px;
   padding: 6px 10px;
-  border: 1px solid #ff4d4f33;
+  border: 1px solid var(--color-red)33;
 }
 .panel-section.agent-form-section {
   border-radius: 10px;
@@ -220,8 +220,8 @@ span.button-inner-container {
 
 .validation-status.valid {
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.3);
-  background: rgba(25, 239, 131, 0.05);
+  border-color: rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .validation-status.invalid {
@@ -242,33 +242,33 @@ span.button-inner-container {
   border-radius: 10px;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  background-image: linear-gradient(45deg, #19ef83, #19efcb);
+  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
   color: var(--color-dark-navy);
   font-weight: 600;
 }
 
 .create-agent-button:focus {
-  background-image: linear-gradient(45deg, #19ef83, #19efcb);
+  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
   color: var(--color-dark-navy);
   font-weight: 600;
   outline: inherit;
-  border: 2px solid var(--color-pink);
+  border: 2px solid var(--color-primary);
 }
 
 .create-agent-button:hover:not(:disabled) {
   transform: translateY(-3px);
-  background-image: linear-gradient(45deg, #19ef83, #19efcb);
+  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
   color: var(--color-dark-navy);
   font-weight: 600;
   /* color: var(--color-green);
-  box-shadow: 0 8px 24px rgba(25, 239, 131, 0.4); */
+  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.4); */
 }
 
 .create-agent-button:disabled {
   opacity: 0.7 5;
   cursor: not-allowed;
   transform: none;
-  background-image: linear-gradient(45deg, #19ef83, #19efcb);
+  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
   color: var(--color-dark-navy);
   font-weight: 600;
   /* color: var(--color-green);

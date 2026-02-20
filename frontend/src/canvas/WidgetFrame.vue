@@ -6,12 +6,22 @@
       'is-collapsed': widget.collapsed,
       'is-maximized': isMaximized,
       'is-hidden': !widget.visible,
-      'is-screen-widget': isScreenWidget,
+      'is-screen-widget': isScreenWidget && !isCustomPage,
     }"
     :style="frameStyle"
     @mousedown="bringToFront"
     ref="frameRef"
   >
+    <!-- Drag header: always on custom pages, hidden for screen widgets on default pages -->
+    <div v-if="showControls" class="wf-hdr" @mousedown="onDragStart">
+      <span class="wf-icon"><i :class="widgetDef?.icon"></i></span>
+      <span class="wf-title">{{ widgetDef?.name }}</span>
+      <div class="wf-ctrl">
+        <button @mousedown.stop @click="$emit('collapse', widget.instanceId)">&#9472;</button>
+        <button @mousedown.stop @click="$emit('close', widget.instanceId)">&#10005;</button>
+      </div>
+    </div>
+
     <!-- Body / content -->
     <div class="wf-body">
       <slot></slot>
@@ -19,7 +29,7 @@
 
     <!-- Resize handle (hidden for full-screen widgets) -->
     <div
-      v-if="!widget.collapsed && !isMaximized && !isScreenWidget"
+      v-if="!widget.collapsed && !isMaximized && showControls"
       class="wf-resize"
       @mousedown.prevent.stop="onResizeStart"
     ></div>
@@ -37,8 +47,9 @@ export default {
     widget: { type: Object, required: true },
     cellWidth: { type: Number, required: true },
     cellHeight: { type: Number, required: true },
+    isCustomPage: { type: Boolean, default: false },
   },
-  emits: ['drag-start', 'drag-end', 'resize-start', 'resize-end', 'close', 'bring-to-front'],
+  emits: ['drag-start', 'drag-end', 'resize-start', 'resize-end', 'close', 'collapse', 'bring-to-front'],
   setup(props, { emit }) {
     const frameRef = ref(null);
     const isDragging = ref(false);
@@ -48,6 +59,8 @@ export default {
 
     const widgetDef = computed(() => getWidget(props.widget.widgetId));
     const isScreenWidget = computed(() => widgetDef.value?.isScreenWidget === true);
+    // On custom pages, all widgets get header + resize. On default pages, screen widgets are fixed.
+    const showControls = computed(() => props.isCustomPage || !isScreenWidget.value);
 
     const frameStyle = computed(() => {
       if (isMaximized.value) {
@@ -209,6 +222,8 @@ export default {
       isDragging,
       isMaximized,
       isScreenWidget,
+      showControls,
+      widgetDef,
       frameStyle,
       bringToFront,
       onDragStart,
@@ -221,22 +236,22 @@ export default {
 <style scoped>
 .widget-frame {
   position: absolute;
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
+  background: var(--color-ultra-dark-navy);
+  border: 1px solid var(--terminal-border-color, var(--color-dull-navy));
+  border-radius: 4px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
   transition: box-shadow 0.15s;
 }
 
 .widget-frame:hover {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
 .widget-frame.is-dragging {
-  box-shadow: 0 8px 40px rgba(100, 80, 220, 0.12);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
   z-index: 999 !important;
   opacity: 0.92;
   cursor: grabbing;
@@ -252,6 +267,7 @@ export default {
 }
 
 .widget-frame.is-screen-widget {
+  background: transparent;
   border: none;
   border-radius: 0;
   border-bottom-right-radius: var(--terminal-screen-border-radius, 0);
@@ -270,7 +286,7 @@ export default {
   min-height: 0;
 }
 
-/* ── Resize handle ── */
+/* ── Resize handle (diagonal grip lines) ── */
 .wf-resize {
   position: absolute;
   right: 0;
@@ -279,20 +295,90 @@ export default {
   height: 14px;
   cursor: nwse-resize;
   z-index: 2;
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    var(--color-text-muted, #556) 50%,
+    transparent 52%,
+    transparent 60%,
+    var(--color-text-muted, #556) 60%,
+    transparent 62%,
+    transparent 70%,
+    var(--color-text-muted, #556) 70%,
+    transparent 72%
+  );
+  opacity: 0.4;
 }
 
-.wf-resize::after {
-  content: '';
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 6px;
-  height: 6px;
-  border-right: 2px solid rgba(255, 255, 255, 0.08);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+.wf-resize:hover {
+  opacity: 0.7;
 }
 
-.wf-resize:hover::after {
-  border-color: rgba(25, 239, 131, 0.3);
+/* ── Header / drag handle ── */
+.wf-hdr {
+  height: 24px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  cursor: grab;
+  user-select: none;
+  border-bottom: 1px solid var(--color-text-muted, #556);
+}
+
+.wf-hdr:active {
+  cursor: grabbing;
+}
+
+.wf-icon {
+  font-size: var(--font-size-xs, 11px);
+  color: var(--color-text-muted, #556);
+}
+
+.wf-title {
+  flex: 1;
+  font-size: var(--font-size-xs, 11px);
+  letter-spacing: 2px;
+  color: var(--color-text-muted, #667);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-ctrl {
+  display: flex;
+  gap: 2px;
+}
+
+.wf-ctrl button {
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #556);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.wf-ctrl button:hover {
+  color: var(--color-text-primary, #eee);
+}
+
+/* ── Collapsed state ── */
+.widget-frame.is-collapsed .wf-body,
+.widget-frame.is-collapsed .wf-resize {
+  display: none;
+}
+</style>
+
+<style>
+/* Custom background mode - dark translucent glass for widget frames */
+body.custom-bg .widget-frame:not(.is-screen-widget) {
+  background: rgba(0, 0, 0, var(--bg-opacity, 0.9)) !important;
+  backdrop-filter: blur(var(--bg-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--bg-blur, 0px));
+  border-color: rgba(255, 255, 255, 0.06);
 }
 </style>

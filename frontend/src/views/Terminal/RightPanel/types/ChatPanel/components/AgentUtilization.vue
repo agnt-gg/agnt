@@ -185,7 +185,7 @@ export default {
   color: var(--color-duller-navy);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 .agents-card {
@@ -233,7 +233,7 @@ export default {
 
 .agent-status.active {
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .agent-status.processing {
@@ -271,7 +271,7 @@ export default {
 
 .utilization-bars {
   flex: 1;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   line-height: 1;
 }

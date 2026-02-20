@@ -1131,14 +1131,14 @@ ${this.contactForm.message}
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   gap: 20px;
 }
 
 body.dark .billing-header {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .header-content h2 {
@@ -1162,7 +1162,7 @@ body.dark .billing-header {
   align-items: flex-end;
   gap: 2px;
   padding: 10px 16px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border: 2px solid var(--color-green);
   border-radius: 8px;
   min-width: 140px;
@@ -1191,11 +1191,11 @@ body.dark .billing-header {
 }
 
 .current-plan-badge.pro-badge .badge-plan {
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 
 .badge-status {
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-size: 0.7em;
   font-weight: 600;
   margin-top: 2px;
@@ -1278,7 +1278,7 @@ body.dark .billing-toggle {
 .toggle-option.active {
   background: var(--color-green);
   color: var(--color-dark-navy);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3);
 }
 
 .save-badge {
@@ -1331,7 +1331,7 @@ body.dark .billing-toggle {
 }
 
 .info-value.past-due {
-  color: var(--color-pink);
+  color: var(--color-primary);
 }
 
 .info-value.canceling {
@@ -1388,9 +1388,9 @@ body.dark .billing-toggle {
   margin-top: 16px;
   padding: 12px;
   background: rgba(255, 107, 157, 0.1);
-  border: 1px solid var(--color-pink);
+  border: 1px solid var(--color-primary);
   border-radius: 6px;
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-size: 0.85em;
   text-align: center;
 }
@@ -1419,8 +1419,8 @@ body.dark .billing-toggle {
 }
 
 .cancel-button-bottom:hover:not(:disabled) {
-  background: var(--color-pink);
-  border-color: var(--color-pink);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(255, 107, 157, 0.4);
 }
@@ -1440,7 +1440,7 @@ body.dark .billing-toggle {
 }
 
 .comparison-table thead tr {
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.05), rgba(18, 224, 255, 0.05));
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.05), rgba(18, 224, 255, 0.05));
 }
 
 .comparison-table th {
@@ -1515,14 +1515,14 @@ body.dark .billing-toggle {
   font-size: 0.7em;
   text-decoration: line-through;
   opacity: 0.6;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 .current-price {
   color: var(--color-light-med-navy);
   font-size: 0.95em;
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 .plan-tagline {
@@ -1537,7 +1537,7 @@ body.dark .billing-toggle {
 }
 
 .feature-row:hover {
-  background: rgba(25, 239, 131, 0.03);
+  background: rgba(var(--green-rgb), 0.03);
 }
 
 .feature-name {
@@ -1624,7 +1624,7 @@ body.dark .billing-toggle {
 .plan-button.personal-pro,
 .plan-button.business-pro,
 .plan-button.enterprise {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   color: white;
   border-color: var(--color-green);
 }
@@ -1634,7 +1634,7 @@ body.dark .billing-toggle {
 .plan-button.business-pro:hover:not(:disabled),
 .plan-button.enterprise:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(25, 239, 131, 0.4);
+  box-shadow: 0 6px 16px rgba(var(--green-rgb), 0.4);
   filter: brightness(1.1);
 }
 
@@ -1880,7 +1880,7 @@ body.dark .upload-label {
 
 .upload-label:hover {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .upload-label i {
@@ -1947,12 +1947,12 @@ body.dark .scheduled-change-notice {
 
 /* Upgrade Notice Styling */
 .scheduled-change-notice.upgrade-notice {
-  background: rgba(25, 239, 131, 0.1);
-  border: 2px solid rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 2px solid rgba(var(--green-rgb), 0.5);
 }
 
 body.dark .scheduled-change-notice.upgrade-notice {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
 }
 
 .scheduled-change-notice.upgrade-notice .notice-content h3 {
@@ -2017,7 +2017,7 @@ body.dark .scheduled-change-notice.upgrade-notice {
   background: var(--color-light-green);
   border-color: var(--color-light-green);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.4);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.4);
 }
 
 .cancel-change-button:disabled {

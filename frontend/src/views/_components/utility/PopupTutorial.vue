@@ -803,7 +803,7 @@ export default {
   position: fixed;
   background-color: var(--color-navy);
   border-radius: 16px;
-  border: 3px solid var(--color-pink);
+  border: 3px solid var(--color-primary);
   padding: 16px;
   max-width: 360px;
   width: fit-content;
@@ -839,7 +839,7 @@ export default {
   background-color: var(--color-navy);
 }
 .next-button {
-  background-image: linear-gradient(45deg, #e53d8f, #e53de3);
+  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
   color: white;
   border: none;
   padding: 8px 15px;
@@ -851,7 +851,7 @@ export default {
   line-height: 100%;
 }
 .next-button:hover {
-  background-color: var(--color-pink);
+  background-color: var(--color-primary);
 }
 .close-button {
   position: absolute;
@@ -875,35 +875,35 @@ export default {
 }
 .popup-arrow-top {
   border-width: 0 10px 10px 10px;
-  border-color: transparent transparent var(--color-pink) transparent;
+  border-color: transparent transparent var(--color-primary) transparent;
   top: -10px;
   left: 50%;
   transform: translateX(-50%);
 }
 .popup-arrow-bottom {
   border-width: 10px 10px 0 10px;
-  border-color: var(--color-pink) transparent transparent transparent;
+  border-color: var(--color-primary) transparent transparent transparent;
   bottom: -10px;
   left: 50%;
   transform: translateX(-50%);
 }
 .popup-arrow-left {
   border-width: 10px 10px 10px 0;
-  border-color: transparent var(--color-pink) transparent transparent;
+  border-color: transparent var(--color-primary) transparent transparent;
   left: -10px;
   top: 50%;
   transform: translateY(-50%);
 }
 .popup-arrow-right {
   border-width: 10px 0 10px 10px;
-  border-color: transparent transparent transparent var(--color-pink);
+  border-color: transparent transparent transparent var(--color-primary);
   right: -10px;
   top: 50%;
   transform: translateY(-50%);
 }
 .highlight-border {
   position: fixed;
-  border: 4px solid var(--color-pink);
+  border: 4px solid var(--color-primary);
   pointer-events: none;
   transition: top 0.1s ease-out, left 0.1s ease-out, width 0.1s ease-out, height 0.1s ease-out, border-radius 0.3s ease-in-out;
 }
@@ -913,16 +913,16 @@ body.dark .popup-tutorial {
 }
 
 body.dark .popup-arrow-top {
-  border-color: transparent transparent var(--color-pink) transparent;
+  border-color: transparent transparent var(--color-primary) transparent;
 }
 body.dark .popup-arrow-bottom {
-  border-color: var(--color-pink) transparent transparent transparent;
+  border-color: var(--color-primary) transparent transparent transparent;
 }
 body.dark .popup-arrow-left {
-  border-color: transparent var(--color-pink) transparent transparent;
+  border-color: transparent var(--color-primary) transparent transparent;
 }
 body.dark .popup-arrow-right {
-  border-color: transparent transparent transparent var(--color-pink);
+  border-color: transparent transparent transparent var(--color-primary);
 }
 .progress-bar-container {
   width: 100%;
@@ -934,7 +934,7 @@ body.dark .popup-arrow-right {
 }
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #19ef83, #19efcb);
+  background: linear-gradient(90deg, var(--color-green), var(--color-blue));
   transition: width 0.3s ease-in-out;
 }
 .skip-button {
@@ -980,6 +980,6 @@ body.dark .popup-arrow-right {
 }
 
 .audio-button:hover {
-  color: var(--color-pink);
+  color: var(--color-primary);
 }
 </style>

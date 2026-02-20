@@ -332,7 +332,7 @@ export default {
 /* Mission Details Section Styles */
 .mission-details-section {
   background: rgba(0,0,0,0.1);
-  border: 1px solid rgba(25, 239, 131, 0.25);
+  border: 1px solid rgba(var(--green-rgb), 0.25);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
   padding: 20px;
@@ -345,7 +345,7 @@ export default {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.15);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.15);
 }
 
 .section-header h3 {
@@ -370,7 +370,7 @@ export default {
 
 .close-button:hover {
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
 }
 
@@ -387,10 +387,10 @@ export default {
 }
 
 .detail-block {
-  background-color: rgba(25, 239, 131, 0.03);
+  background-color: rgba(var(--green-rgb), 0.03);
   padding: 16px;
   border-radius: 6px;
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .detail-block-title {
@@ -401,7 +401,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 6px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
   padding-bottom: 6px;
 }
 
@@ -436,8 +436,8 @@ export default {
 }
 
 .objective-card {
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.15);
   border-radius: 6px;
   overflow: hidden;
   transition: all 0.2s ease;
@@ -448,13 +448,13 @@ export default {
 }
 
 .objective-card.expandable:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.25);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.25);
 }
 
 .objective-card.completed {
   opacity: 0.7;
-  background: rgba(25, 239, 131, 0.02);
+  background: rgba(var(--green-rgb), 0.02);
 }
 
 .objective-card.in-progress {
@@ -484,7 +484,7 @@ export default {
 }
 
 .objective-card.in-progress .objective-status i {
-  color: #fbbf24;
+  color: var(--color-yellow);
 }
 
 .objective-content {
@@ -527,12 +527,12 @@ export default {
 
 .priority-high {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .priority-medium {
   background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
+  color: var(--color-yellow);
 }
 
 .priority-low {
@@ -550,7 +550,7 @@ export default {
 .subtask-count {
   font-size: 0.8em;
   color: var(--color-grey);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 2px 6px;
   border-radius: 10px;
 }
@@ -566,7 +566,7 @@ export default {
 }
 
 .objective-details {
-  border-top: 1px solid rgba(25, 239, 131, 0.1);
+  border-top: 1px solid rgba(var(--green-rgb), 0.1);
   padding: 16px;
   background: rgba(0, 0, 0, 0.1);
 }
@@ -607,9 +607,9 @@ export default {
   align-items: flex-start;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(25, 239, 131, 0.03);
+  background: rgba(var(--green-rgb), 0.03);
   border-radius: 4px;
-  border: 1px solid rgba(25, 239, 131, 0.08);
+  border: 1px solid rgba(var(--green-rgb), 0.08);
 }
 
 .subtask-item.completed {
@@ -645,7 +645,7 @@ export default {
 .objective-progress-details {
   margin-top: 12px;
   padding: 8px 12px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 4px;
 }
 
@@ -669,7 +669,7 @@ export default {
 
 .mini-progress-bar {
   height: 4px;
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -698,19 +698,19 @@ export default {
 
 .status-badge.status-active, .status-badge.status-processing {
   background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
+  color: var(--color-yellow);
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 .status-badge.status-completed {
   background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  color: var(--color-green);
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 .status-badge.status-failed {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--color-red);
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
@@ -734,7 +734,7 @@ export default {
 .progress-bar-container-detail {
   width: 100%;
   height: 8px;
-  background-color: rgba(25, 239, 131, 0.15);
+  background-color: rgba(var(--green-rgb), 0.15);
   border-radius: 4px;
   overflow: hidden;
 }

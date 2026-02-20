@@ -1518,7 +1518,7 @@ export default {
 .form-group select {
   height: 32px;
   padding: 3px 3px 1px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--color-navy);
   border: 1px solid var(--color-light-navy);
@@ -1695,7 +1695,7 @@ p.static-value {
 }
 
 textarea.code-area {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 14px;
   overflow-x: scroll;
   white-space: nowrap;
@@ -1707,12 +1707,12 @@ body.dark p.static-value {
 }
 
 p.static-value:hover {
-  color: var(--color-pink) !important;
+  color: var(--color-primary) !important;
 }
 
 .form-group.output-value p {
   margin-top: 0;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   padding: 6px 8px;
   border: 1px solid var(--color-light-navy);
   /* border-color: limegreen; */
@@ -1749,7 +1749,7 @@ body.dark .form-group.output-value p {
 :deep(.cm-editor) {
   height: 100%;
   width: calc(100% - 2px);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 14px;
 }
 
@@ -1946,7 +1946,7 @@ body.dark .file-text-display span {
 }
 
 .remove-condition-btn:hover {
-  color: #fe4e4e;
+  color: var(--color-red);
   background: rgba(254, 78, 78, 0.1);
 }
 
@@ -1991,7 +1991,7 @@ body.dark .file-text-display span {
   border-radius: 8px;
   color: var(--color-text-muted);
   font-size: 13px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -2046,7 +2046,7 @@ body.dark .tooltip {
   align-content: flex-start;
   justify-content: flex-start;
   align-items: flex-start;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  font-family: var(--font-family-primary);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.6;
@@ -2087,20 +2087,20 @@ body.dark .tooltip {
 
 .tool-docs-content h3 {
   font-size: 1.2em;
-  color: var(--color-pink);
+  color: var(--color-primary);
   margin-top: 28px;
 }
 
 .tool-docs-content h4 {
   font-size: 1.1em;
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
 .tool-docs-content h5,
 .tool-docs-content h6 {
   font-size: 1em;
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -2127,13 +2127,13 @@ body.dark .tooltip {
 }
 
 .tool-docs-content code {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Monaco, 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.85em;
-  background: linear-gradient(135deg, rgba(231, 76, 134, 0.1), rgba(231, 76, 134, 0.05));
-  border: 1px solid rgba(231, 76, 134, 0.2);
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.1), rgba(var(--primary-rgb), 0.05));
+  border: 1px solid rgba(var(--primary-rgb), 0.2);
   border-radius: 4px;
   padding: 0.15em 0.4em;
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 500;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
@@ -2202,7 +2202,7 @@ body.dark .tooltip {
   font-size: 3em;
   color: var(--color-green);
   opacity: 0.3;
-  font-family: Georgia, serif;
+  font-family: var(--font-family-primary);
 }
 
 .tool-docs-content table {
@@ -2256,7 +2256,7 @@ body.dark .tooltip {
 
 .tool-docs-content strong {
   font-weight: 700;
-  color: var(--color-pink);
+  color: var(--color-primary);
 }
 
 .tool-docs-content em {
@@ -2279,8 +2279,8 @@ body.dark .tool-docs-content h6 {
 }
 
 body.dark .tool-docs-content code {
-  background: linear-gradient(135deg, rgba(231, 76, 134, 0.15), rgba(231, 76, 134, 0.08));
-  border-color: rgba(231, 76, 134, 0.3);
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.15), rgba(var(--primary-rgb), 0.08));
+  border-color: rgba(var(--primary-rgb), 0.3);
   color: #ffb3d9;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
@@ -2326,7 +2326,7 @@ body.dark .tool-docs-content tbody tr:hover {
 }
 
 body.dark .tool-docs-content strong {
-  color: var(--color-pink);
+  color: var(--color-primary);
 }
 
 body.dark .tool-docs-content em {
@@ -2381,24 +2381,24 @@ body.dark .right-side .node-icon svg rect[fill] {
 
 .ͼo .cm-cursor,
 .ͼo .cm-dropCursor {
-  border-left-color: var(--color-pink) !important;
+  border-left-color: var(--color-primary) !important;
 }
 
 .cm-activeLine .cm-line {
-  caret-color: var(--color-pink) !important;
+  caret-color: var(--color-primary) !important;
 }
 
 .cm-focused {
-  border: 2px solid var(--color-pink) !important;
+  border: 2px solid var(--color-primary) !important;
 }
 
 .cm-activeLine {
   background: transparent !important;
-  border-left-color: var(--color-pink) !important;
+  border-left-color: var(--color-primary) !important;
 }
 
 .cm-content {
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -2423,7 +2423,7 @@ body.dark .right-side .node-icon svg rect[fill] {
 }
 
 .ͼ13 {
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -2443,7 +2443,7 @@ body.dark .right-side .node-icon svg rect[fill] {
 }
 
 .cm-focused {
-  border: 1px solid var(--color-pink) !important;
+  border: 1px solid var(--color-primary) !important;
 }
 
 .ͼo .cm-gutters {
@@ -2486,7 +2486,7 @@ body.dark .ͼo.cm-focused .cm-nonmatchingBracket {
   padding: 4px 16px 2px;
   border-radius: 4px;
   font-weight: 500;
-  background-color: #fe4e4e;
+  background-color: var(--color-red);
   color: white;
   transition: background-color 0.5 ease-in-out;
   text-wrap-mode: nowrap;

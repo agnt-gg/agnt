@@ -162,7 +162,7 @@ export default {
   color: var(--color-duller-navy);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 .health-meter {
@@ -260,8 +260,8 @@ export default {
   gap: 8px;
   margin-top: 16px;
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.15);
   border-radius: 8px;
 }
 

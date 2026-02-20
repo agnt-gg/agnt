@@ -59,7 +59,7 @@ defineEmits(["update:modelValue"]);
 }
 
 input:checked + .slider {
-  background-color: var(--color-pink);
+  background-color: var(--color-primary);
 }
 
 input:focus + .slider {

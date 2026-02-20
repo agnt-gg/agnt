@@ -321,7 +321,7 @@ export default {
         action: 'var(--color-blue)',
         condition: 'var(--color-yellow)',
         output: 'var(--color-green)',
-        custom: 'var(--color-pink)',
+        custom: 'var(--color-primary)',
       };
 
       return colorMap[node.category] || colorMap[node.type] || 'var(--color-lighter-2)';
@@ -543,7 +543,7 @@ export default {
 
 .node-icon-text {
   fill: var(--color-dull-navy);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-weight: bold;
   pointer-events: none;
 }
@@ -566,7 +566,7 @@ export default {
 }
 
 .node-circle.custom {
-  fill: var(--color-pink);
+  fill: var(--color-primary);
 }
 
 /* Node icon styling for SvgIcon within foreignObject */

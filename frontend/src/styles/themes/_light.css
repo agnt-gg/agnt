@@ -5,18 +5,38 @@
 
 body:not(.dark) {
   /* Light theme is the default - uses base styles from main.css */
+  --color-background: #f1f0f5;
+  --color-light-green: var(--color-dark-navy);
   --color-primary: var(--color-pink);
   --color-secondary: var(--color-blue);
   --color-text: var(--color-dull-navy);
-  --font-weight: bold;
+  --color-text-muted: var(--color-med-navy);
+  --color-text-secondary: var(--color-med-navy);
+  --color-text-dull: var(--color-light-navy);
   font-size: var(--font-size-sm);
+  --terminal-width: 100%;
+  --terminal-height: 100%;
+  --terminal-border-radius: 0;
   --terminal-border-color: var(--color-light-navy);
+  --terminal-border-color-light: var(--color-bright-light-navy);
+  --terminal-screen-lines: 0.125;
+  --terminal-box-shadow: none;
   --terminal-muted-color: var(--color-med-navy);
 
   --color-darker-0: rgba(10, 0, 80, 0.1);
   --color-darker-1: rgba(10, 0, 80, 0.2);
   --color-darker-2: rgba(10, 0, 80, 0.4);
   --color-darker-3: rgba(10, 0, 80, 0.8);
+
+  /* RGB components */
+  --green-rgb: 25, 239, 131;
+  --blue-rgb: 18, 224, 255;
+  --pink-rgb: 229, 61, 143;
+  --red-rgb: 254, 78, 78;
+  --yellow-rgb: 255, 215, 0;
+  --indigo-rgb: 125, 61, 229;
+  --primary-rgb: 229, 61, 143;
+
   line-height: 1.25;
 }
 
@@ -26,7 +46,7 @@ body:not(.dark) h2,
 body:not(.dark) h3,
 body:not(.dark) h4,
 body:not(.dark) h5 {
-  color: var(--color-dark-navy);
+  color: var(--color-text);
   opacity: 1;
 }
 
@@ -34,18 +54,18 @@ body:not(.dark) p,
 body:not(.dark) li,
 body:not(.dark) th,
 body:not(.dark) td {
-  color: var(--color-dull-navy);
+  color: var(--color-text);
   opacity: 1;
 }
 
 body:not(.dark) button {
-  color: var(--color-dull-navy);
+  color: var(--color-text);
 }
 
 body:not(.dark) header {
-  border-bottom: 1px solid var(--color-light-navy);
-  background: var(--color-white);
-  color: var(--color-dark-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
+  background: var(--color-background);
+  color: var(--color-text);
 }
 
 body:not(.dark) .separator {
@@ -54,8 +74,8 @@ body:not(.dark) .separator {
 }
 
 body:not(.dark) #left-sidebar {
-  border-right: 1px solid var(--color-light-navy);
-  background: var(--color-ultra-light-navy);
+  border-right: 1px solid var(--terminal-border-color);
+  background: var(--color-background);
 }
 
 body:not(.dark) .left-sidebar-bottom-nav .svg-icon path {
@@ -63,21 +83,21 @@ body:not(.dark) .left-sidebar-bottom-nav .svg-icon path {
 }
 
 body:not(.dark) a.router-link-active .svg-icon path {
-  fill: var(--color-pink);
+  fill: var(--color-primary);
 }
 
 body:not(.dark) button.generate {
-  background-image: linear-gradient(45deg, #e53d8f, #e53de3);
+  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
   color: var(--color-white);
   font-weight: 600;
 }
 
 body:not(.dark) main-area {
-  background: var(--color-bright-light-navy);
+  background: var(--color-ultra-light-navy);
 }
 
 body:not(.dark) .card-inner {
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   background: var(--color-white);
 }
 
@@ -106,7 +126,7 @@ body:not(.dark) input[type='number']:focus,
 body:not(.dark) textarea:focus,
 body:not(.dark) select:focus {
   outline: none;
-  border: 1px solid var(--color-pink);
+  border: 1px solid var(--color-primary);
 }
 
 body:not(.dark) input::placeholder,
@@ -118,47 +138,32 @@ body:not(.dark) textarea::placeholder {
 /* Panels and containers */
 body:not(.dark) .panel-body {
   background: var(--color-white);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
 }
-
-/* body:not(.dark) editor-panel {
-  background: var(--color-white);
-  border-right: 1px solid var(--color-light-navy);
-} */
 
 body:not(.dark) inner-editor-area {
   background: var(--color-white);
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
 }
 
 body:not(.dark) bottom-menu {
-  /* background: var(--color-ultra-light-navy); */
   border-top: 1px solid var(--terminal-border-color);
 }
 
 /* Workflow Designer */
-/* body:not(.dark) #canvas-container {
-  background-color: var(--color-bright-light-navy);
-} */
-
 body:not(.dark) .grid-overlay {
   opacity: 0.125;
   background-image: radial-gradient(circle, var(--color-darker-3) 1px, transparent 1px);
 }
 
 body:not(.dark) .node {
-  color: var(--color-dark-navy);
+  color: var(--color-text);
   background: var(--color-lighter-2);
   border: 2px solid var(--terminal-border-color);
 }
 
 body:not(.dark) .node.starter {
   background-image: url("data:image/svg+xml,%3Csvg width='240' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='238' height='46' fill='none' stroke='rgba(125,125,175,0.3)' stroke-width='1' stroke-dasharray='5,8' rx='8' ry='8'/%3E%3C/svg%3E");
-  /* background-image: none !important;
-  background: rgba(230, 229, 237, 0.95);
-  border: 2px dashed var(--terminal-border-color) !important;
-  stroke-dasharray: 10, 5 !important;
-  stroke-width: 3px !important; */
 }
 
 body:not(.dark) .edges path {
@@ -167,7 +172,7 @@ body:not(.dark) .edges path {
 }
 
 body:not(.dark) .edges path.selected {
-  stroke: var(--color-pink);
+  stroke: var(--color-primary);
   opacity: 1;
 }
 
@@ -175,11 +180,11 @@ body:not(.dark) .edges path.selected {
 body:not(.dark) pre,
 body:not(.dark) mjx-container {
   background: var(--color-ultra-light-navy);
-  color: var(--color-dark-navy);
-  border: 1px solid var(--color-light-navy);
+  color: var(--color-text);
+  border: 1px solid var(--terminal-border-color);
 }
 
 body:not(.dark) .hljs {
   background: var(--color-ultra-light-navy);
-  color: var(--color-dark-navy);
+  color: var(--color-text);
 }

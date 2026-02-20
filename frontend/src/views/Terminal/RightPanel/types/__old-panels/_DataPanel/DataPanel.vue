@@ -45,8 +45,8 @@ export default {
           datasets: [{
             label: "Tokens Used",
             data: store.state.userStats.agentActivity.data,
-            backgroundColor: "rgba(25, 239, 131, 0.2)",
-            borderColor: "rgba(25, 239, 131, 1)",
+            backgroundColor: "rgba(var(--green-rgb), 0.2)",
+            borderColor: "rgba(var(--green-rgb), 1)",
             borderWidth: 1,
             tension: 0.4,
             pointBackgroundColor: "rgba(11,11,23,1)",
@@ -62,18 +62,18 @@ export default {
           scales: {
             y: {
               beginAtZero: true,
-              ticks: { color: "rgba(25, 239, 131, 0.7)" },
-              grid: { color: "rgba(25, 239, 131, 0.1)" },
+              ticks: { color: "rgba(var(--green-rgb), 0.7)" },
+              grid: { color: "rgba(var(--green-rgb), 0.1)" },
             },
             x: {
-              ticks: { color: "rgba(25, 239, 131, 0.7)" },
-              grid: { color: "rgba(25, 239, 131, 0.1)" },
+              ticks: { color: "rgba(var(--green-rgb), 0.7)" },
+              grid: { color: "rgba(var(--green-rgb), 0.1)" },
             },
           },
           plugins: {
             legend: {
               display: true,
-              labels: { color: "rgba(25, 239, 131, 0.9)" },
+              labels: { color: "rgba(var(--green-rgb), 0.9)" },
             },
           },
         },
@@ -137,25 +137,25 @@ export default {
   border: 2px solid var(--color-green);
   color: var(--color-green);
   padding: 8px 12px;
-  font-family: "Courier New", monospace;
+  font-family: var(--font-family-mono);
   cursor: pointer;
   transition: background 0.2s, box-shadow 0.2s;
-  text-shadow: 0 0 3px rgba(25, 239, 131, 0.4);
+  text-shadow: 0 0 3px rgba(var(--green-rgb), 0.4);
   text-align: center;
   position: relative;
   z-index: 3;
 }
 
 .retro-btn:hover {
-  background: rgba(25, 239, 131, 0.1);
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.5);
 }
 
 .chart-container {
   width: 100%;
   height: 250px;
   background: rgba(0, 10, 0, 0.3);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   padding: 10px;
   box-sizing: border-box;
   position: relative;

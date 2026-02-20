@@ -537,7 +537,7 @@ export default {
 
 /* Header Card */
 .header-card {
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.05) 0%, rgba(18, 224, 255, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.05) 0%, rgba(18, 224, 255, 0.05) 100%);
 }
 
 .card-header {
@@ -619,7 +619,7 @@ export default {
 .tab-button.active {
   background: var(--color-green);
   color: var(--color-darker-3);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3);
 }
 
 .sync-button {
@@ -638,7 +638,7 @@ export default {
 
 .sync-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .sync-button:disabled {
@@ -716,7 +716,7 @@ export default {
   align-items: center;
   gap: 24px;
   padding: 16px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border: 2px solid var(--color-green);
   border-radius: 8px;
 }
@@ -742,7 +742,7 @@ export default {
   font-size: 1.8em;
   font-weight: bold;
   color: var(--color-green);
-  text-shadow: 0 0 10px rgba(25, 239, 131, 0.3);
+  text-shadow: 0 0 10px rgba(var(--green-rgb), 0.3);
 }
 
 .rank-user-info {
@@ -837,13 +837,13 @@ export default {
 }
 
 .table-row.current-user {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
   border-left: 4px solid var(--color-green);
   padding-left: 20px;
 }
 
 .table-row.top-three {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .table-cell {
@@ -909,7 +909,7 @@ export default {
 .you-badge {
   font-size: 0.7em;
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   padding: 2px 8px;
   border-radius: 4px;
   font-weight: 600;
@@ -928,7 +928,7 @@ export default {
   font-size: 1.1em;
   font-weight: bold;
   color: var(--color-green);
-  text-shadow: 0 0 8px rgba(25, 239, 131, 0.3);
+  text-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
 }
 
 .level-value {

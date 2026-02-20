@@ -84,16 +84,16 @@ export default {
         chartInstance.data.datasets.forEach((dataset, index) => {
           const isEarnedDataset = index === 0;
           if (chartType.value === 'line') {
-            dataset.backgroundColor = isEarnedDataset ? 'rgba(25, 239, 131, 0.2)' : 'rgba(255, 99, 132, 0.2)';
-            dataset.borderColor = isEarnedDataset ? 'rgba(25, 239, 131, 1)' : 'rgba(255, 99, 132, 1)';
+            dataset.backgroundColor = isEarnedDataset ? 'rgba(var(--green-rgb), 0.2)' : 'rgba(255, 99, 132, 0.2)';
+            dataset.borderColor = isEarnedDataset ? 'rgba(var(--green-rgb), 1)' : 'rgba(255, 99, 132, 1)';
             dataset.borderWidth = 2;
             dataset.tension = 0.4;
             dataset.pointRadius = 1;
             dataset.pointHoverRadius = 3;
             dataset.fill = true;
           } else {
-            dataset.backgroundColor = isEarnedDataset ? 'rgba(25, 239, 131, 0.6)' : 'rgba(255, 99, 132, 0.6)';
-            dataset.borderColor = isEarnedDataset ? 'rgba(25, 239, 131, 1)' : 'rgba(255, 99, 132, 1)';
+            dataset.backgroundColor = isEarnedDataset ? 'rgba(var(--green-rgb), 0.6)' : 'rgba(255, 99, 132, 0.6)';
+            dataset.borderColor = isEarnedDataset ? 'rgba(var(--green-rgb), 1)' : 'rgba(255, 99, 132, 1)';
             dataset.borderWidth = 0;
           }
         });
@@ -110,8 +110,8 @@ export default {
               {
                 label: 'Tokens Earned/Sec',
                 data: data.earned,
-                borderColor: 'rgba(25, 239, 131, 1)',
-                backgroundColor: 'rgba(25, 239, 131, 0.2)',
+                borderColor: 'rgba(var(--green-rgb), 1)',
+                backgroundColor: 'rgba(var(--green-rgb), 0.2)',
                 tension: 0.4,
                 borderWidth: 2,
                 fill: true,
@@ -143,10 +143,10 @@ export default {
               y: {
                 beginAtZero: true,
                 grid: {
-                  color: 'rgba(25, 239, 131, 0.05)',
+                  color: 'rgba(var(--green-rgb), 0.05)',
                 },
                 ticks: {
-                  color: 'rgba(25, 239, 131, 0.5)',
+                  color: 'rgba(var(--green-rgb), 0.5)',
                   font: { size: 10 },
                   maxTicksLimit: 5,
                 },
@@ -156,7 +156,7 @@ export default {
                   display: false,
                 },
                 ticks: {
-                  color: 'rgba(25, 239, 131, 0.5)',
+                  color: 'rgba(var(--green-rgb), 0.5)',
                   font: { size: 10 },
                   maxRotation: 0,
                   minRotation: 0,
@@ -170,7 +170,7 @@ export default {
                 display: true,
                 position: 'bottom',
                 labels: {
-                  color: 'rgba(25, 239, 131, 0.7)',
+                  color: 'rgba(var(--green-rgb), 0.7)',
                   font: { size: 10 },
                   boxWidth: 10,
                   padding: 10,
@@ -259,7 +259,7 @@ export default {
 /* ROI Performance Chart */
 .chart-section {
   background: rgb(0 0 0 / 10%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   padding: 16px;
   border-radius: 4px;
   position: relative;
@@ -273,7 +273,7 @@ export default {
   min-height: 280px;
   flex-grow: 1;
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.15);
+  border: 1px solid rgba(var(--green-rgb), 0.15);
   padding: 8px;
   box-sizing: border-box;
   position: relative;
@@ -297,7 +297,7 @@ export default {
   justify-content: center;
   align-items: center;
   z-index: 10;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.9em;
 }
 
@@ -328,8 +328,8 @@ export default {
 }
 
 .insight-card.status-optimal {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
   color: var(--color-green-light);
 }
 .insight-card.status-optimal i {
@@ -339,10 +339,10 @@ export default {
 .insight-card.status-good {
   background: rgba(251, 191, 36, 0.1);
   border-color: rgba(251, 191, 36, 0.3);
-  color: #fbbf24;
+  color: var(--color-yellow);
 }
 .insight-card.status-good i {
-  color: #fbbf24;
+  color: var(--color-yellow);
 }
 
 .insight-card.status-warning {
@@ -377,8 +377,8 @@ export default {
 }
 
 .chart-type-toggle {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-grey-light);
   padding: 4px 8px;
   border-radius: 4px;
@@ -387,7 +387,7 @@ export default {
 }
 
 .chart-type-toggle:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 

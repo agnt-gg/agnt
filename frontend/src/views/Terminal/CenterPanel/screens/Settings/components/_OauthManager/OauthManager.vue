@@ -566,7 +566,7 @@ body.dark .app-item:hover {
 }
 
 .categories button.active {
-  outline: 2px solid var(--color-pink);
+  outline: 2px solid var(--color-primary);
 }
 
 body.dark .categories button {

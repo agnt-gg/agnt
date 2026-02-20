@@ -469,7 +469,7 @@ label {
   font-weight: 400;
 }
 .provider-message {
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-style: italic;
 }
 
@@ -477,7 +477,7 @@ label {
   padding: 6px 12px;
   background: transparent;
   color: var(--color-green);
-  border: 1px dashed rgba(25, 239, 131, 0.4);
+  border: 1px dashed rgba(var(--green-rgb), 0.4);
   border-radius: 5px;
   font-size: 0.8em;
   font-weight: 500;
@@ -490,7 +490,7 @@ label {
 }
 
 .btn-add-provider:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-color: var(--color-green);
   border-style: solid;
 }
@@ -561,7 +561,7 @@ label {
 }
 
 .tool-support-warning i {
-  color: #ffc107;
+  color: var(--color-yellow);
   font-size: 1em;
   flex-shrink: 0;
   margin-top: 2px;

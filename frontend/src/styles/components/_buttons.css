@@ -12,7 +12,7 @@ button:hover {
 }
 
 button:focus {
-  outline-color: var(--color-pink);
+  outline-color: var(--color-primary);
 }
 
 button.close {
@@ -49,11 +49,11 @@ button.generate {
   width: 100%;
   width: -webkit-fill-available;
   height: 48px;
-  /* background: var(--color-pink); */
-  background-image: linear-gradient(45deg, #e53d8f, #e53de3);
+  /* background: var(--color-primary); */
+  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
   border: none;
   color: var(--color-white);
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: var(--font-size-md);
   letter-spacing: 1px;
   cursor: pointer;

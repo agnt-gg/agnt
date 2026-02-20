@@ -513,8 +513,8 @@ export default {
   flex-direction: column;
   gap: 6px;
   padding: 12px;
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.15);
   border-radius: 6px;
 }
 
@@ -593,7 +593,7 @@ export default {
   padding: 6px 12px;
   background: transparent;
   color: var(--color-green);
-  border: 1px dashed rgba(25, 239, 131, 0.4);
+  border: 1px dashed rgba(var(--green-rgb), 0.4);
   border-radius: 5px;
   font-size: 0.8em;
   font-weight: 500;
@@ -605,7 +605,7 @@ export default {
 }
 
 .btn-add-custom:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-color: var(--color-green);
   border-style: solid;
 }
@@ -674,7 +674,7 @@ export default {
 }
 
 .tool-support-warning i {
-  color: #ffc107;
+  color: var(--color-yellow);
   font-size: 1em;
   flex-shrink: 0;
   margin-top: 2px;

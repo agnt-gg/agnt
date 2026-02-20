@@ -1,4 +1,5 @@
 <template>
+  <div class="runs-screen-root">
   <SimpleModal ref="simpleModal" />
   <BaseScreen
     ref="baseScreenRef"
@@ -233,6 +234,7 @@
   </BaseScreen>
 
   <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="runs" @close="onTutorialClose" />
+  </div>
 </template>
 
 <script>
@@ -1209,6 +1211,14 @@ ${execution.log}
 </script>
 
 <style scoped>
+.runs-screen-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .runs-panel {
   position: relative;
   top: 0;
@@ -1228,8 +1238,6 @@ ${execution.log}
   top: 0;
   z-index: 1;
   background: transparent;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1388,7 +1396,7 @@ ${execution.log}
 }
 
 .close-btn:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-green);
 }
 
@@ -1406,7 +1414,7 @@ ${execution.log}
   color: var(--color-green);
   margin: 0 0 12px 0;
   font-size: 1.1em;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
   padding-bottom: 4px;
 }
 
@@ -1553,14 +1561,14 @@ ${execution.log}
 }
 
 .copy-btn {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
 }
 
 .copy-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .close-modal-btn {
@@ -1605,7 +1613,7 @@ ${execution.log}
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border: 2px solid var(--color-green);
   display: flex;
   align-items: center;
@@ -1619,7 +1627,7 @@ ${execution.log}
 .step-connector {
   width: 2px;
   height: 40px;
-  background: linear-gradient(to bottom, var(--color-green), rgba(25, 239, 131, 0.3));
+  background: linear-gradient(to bottom, var(--color-green), rgba(var(--green-rgb), 0.3));
   margin-top: 8px;
   z-index: 1;
 }
@@ -1635,7 +1643,7 @@ ${execution.log}
 
 .node-card:hover {
   background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(25, 239, 131, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .node-header {
@@ -1712,7 +1720,7 @@ ${execution.log}
 
 .node-io-section {
   margin-top: 12px;
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1726,7 +1734,7 @@ ${execution.log}
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
@@ -1737,7 +1745,7 @@ ${execution.log}
 }
 
 .io-header:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .error-section .io-header:hover {
@@ -1746,7 +1754,7 @@ ${execution.log}
 
 .io-header i {
   font-size: 0.8em;
-  color: var(--color-pink);
+  color: var(--color-primary);
   transition: transform 0.2s ease;
 }
 
@@ -1775,7 +1783,7 @@ ${execution.log}
 
 .io-content {
   padding: 0;
-  border-top: 1px solid rgba(25, 239, 131, 0.1);
+  border-top: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .error-section .io-content {
@@ -1816,7 +1824,7 @@ ${execution.log}
 }
 
 .io-data::-webkit-scrollbar-thumb {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   border-radius: 2px;
 }
 
@@ -1861,7 +1869,7 @@ ${execution.log}
 
 .search-input:focus {
   outline: none;
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .table-view-container {
@@ -1885,18 +1893,17 @@ ${execution.log}
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-  backdrop-filter: blur(4px);
 }
 
 .execution-card:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.2);
   /* transform: translateY(-1px); */
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
 }
 
 .execution-card.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-blue);
 }
 
@@ -2061,7 +2068,7 @@ ${execution.log}
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 6px;
   font-size: 0.75em;
   color: var(--color-green);
@@ -2184,14 +2191,14 @@ ${execution.log}
 }
 
 .load-more-btn {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
 }
 
 .load-more-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateY(-1px);
 }
 
@@ -2236,13 +2243,13 @@ ${execution.log}
 }
 
 .type-filter-btn:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.3);
   color: var(--color-text);
 }
 
 .type-filter-btn.active {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
   color: var(--color-green);
 }

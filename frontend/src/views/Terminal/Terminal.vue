@@ -4,19 +4,25 @@
     <!-- Update Notification Banner -->
     <UpdateNotification />
 
-    <!-- Canvas-based dynamic screen system -->
+    <!-- Canvas navigation shell with direct screen rendering -->
     <CanvasScreen
-      v-if="useCanvasMode"
+      v-if="activeScreen !== 'BallJumperScreen'"
       :screenName="activeScreen"
       @screen-change="changeScreen"
-    />
+    >
+      <!-- Screen rendered directly (no widget/canvas overhead) -->
+      <component
+        :is="activeScreenComponent"
+        @screen-change="changeScreen"
+      />
+    </CanvasScreen>
 
-    <!-- Legacy: direct screen component (for screens not yet in canvas, e.g. BallJumper) -->
+    <!-- BallJumper uses legacy direct rendering (no nav shell) -->
     <component
       v-else
       :is="activeScreenComponent"
       @screen-change="changeScreen"
-      v-on="activeScreen === 'BallJumperScreen' ? { exit: () => changeScreen('SettingsScreen') } : {}"
+      @exit="changeScreen('SettingsScreen')"
     />
 
     <!-- Onboarding Modal -->
@@ -34,21 +40,48 @@ import TerminalLayout from '@/views/_components/layout/TerminalLayout.vue';
 import UpdateNotification from '@/views/_components/common/UpdateNotification.vue';
 import OnboardingModal from '@/components/OnboardingModal.vue';
 
-// Canvas system
+// Canvas system (provides navigation sidebar + toolbar)
 import CanvasScreen from '@/canvas/CanvasScreen.vue';
 
-// Legacy screen imports (only for non-canvas screens like BallJumper)
+// All screen components loaded eagerly for instant navigation
+import ChatScreen from './CenterPanel/screens/Chat/Chat.vue';
+import AgentsScreen from './CenterPanel/screens/Agents/Agents.vue';
+import ToolsScreen from './CenterPanel/screens/Tools/Tools.vue';
+import WorkflowsScreen from './CenterPanel/screens/Workflows/Workflows.vue';
+import DashboardScreen from './CenterPanel/screens/Dashboard/Dashboard.vue';
+import SettingsScreen from './CenterPanel/screens/Settings/Settings.vue';
+import WorkflowForgeScreen from './CenterPanel/screens/WorkflowForge/WorkflowForge.vue';
+import ToolForgeScreen from './CenterPanel/screens/ToolForge/ToolForge.vue';
+import AgentForgeScreen from './CenterPanel/screens/AgentForge/AgentForge.vue';
 import BallJumperScreen from './CenterPanel/screens/Minigames/BallJumper/BallJumper.vue';
+import SecretsScreen from './CenterPanel/screens/Secrets/Secrets.vue';
+import GoalsScreen from './CenterPanel/screens/Goals/Goals.vue';
+import RunsScreen from './CenterPanel/screens/Runs/Runs.vue';
+import MarketplaceScreen from './CenterPanel/screens/Marketplace/Marketplace.vue';
 
-// Screen names that still use legacy rendering (not in canvas system)
-const LEGACY_SCREENS = new Set(['BallJumperScreen']);
+const screenComponents = {
+  ChatScreen,
+  AgentsScreen,
+  ToolsScreen,
+  WorkflowsScreen,
+  DashboardScreen,
+  SettingsScreen,
+  WorkflowForgeScreen,
+  ToolForgeScreen,
+  AgentForgeScreen,
+  BallJumperScreen,
+  SecretsScreen,
+  GoalsScreen,
+  RunsScreen,
+  MarketplaceScreen,
+};
 
 export default {
   name: 'Terminal',
   components: {
     TerminalLayout,
     CanvasScreen,
-    BallJumperScreen,
+    ...screenComponents,
     OnboardingModal,
     UpdateNotification,
   },
@@ -60,15 +93,21 @@ export default {
     const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
 
     const getDefaultScreen = () => 'ChatScreen';
-    const activeScreen = ref(getDefaultScreen());
 
-    // Whether to use the canvas system or legacy direct rendering
-    const useCanvasMode = computed(() => !LEGACY_SCREENS.has(activeScreen.value));
+    // Initialize from route immediately to avoid flash on refresh
+    const getScreenFromRoute = () => {
+      if (route.meta?.terminalScreen) return route.meta.terminalScreen;
+      if (route.query.id) return 'WorkflowForgeScreen';
+      return getDefaultScreen();
+    };
+    const activeScreen = ref(getScreenFromRoute());
 
-    // Legacy component resolution (only for non-canvas screens)
     const activeScreenComponent = computed(() => {
-      const screens = { BallJumperScreen };
-      return screens[activeScreen.value] || null;
+      if (!screenComponents[activeScreen.value]) {
+        console.warn(`Screen ${activeScreen.value} not found, defaulting to ChatScreen.`);
+        activeScreen.value = 'ChatScreen';
+      }
+      return screenComponents[activeScreen.value];
     });
 
     const changeScreen = (screenName, options = {}) => {
@@ -112,14 +151,8 @@ export default {
       store.commit('userAuth/COMPLETE_ONBOARDING');
     };
 
-    onMounted(async () => {
-      if (route.meta?.terminalScreen) {
-        activeScreen.value = route.meta.terminalScreen;
-      } else if (route.query.id) {
-        activeScreen.value = 'WorkflowForgeScreen';
-      } else {
-        activeScreen.value = getDefaultScreen();
-      }
+    onMounted(() => {
+      // Screen is already initialized from route in getScreenFromRoute()
     });
 
     watch(
@@ -137,7 +170,6 @@ export default {
 
     return {
       activeScreen,
-      useCanvasMode,
       activeScreenComponent,
       changeScreen,
       shouldShowOnboarding,

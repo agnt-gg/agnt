@@ -182,7 +182,7 @@ export default {
 }
 
 .status-error {
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .slo-metrics {

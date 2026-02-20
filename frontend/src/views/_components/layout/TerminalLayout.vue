@@ -1,5 +1,22 @@
 <template>
   <div class="terminal-container" @click.self="handleContainerClick" tabindex="0" @keydown.self="handleContainerKeydown">
+    <!-- Background layer for custom images/videos -->
+    <div id="bg-layer" v-if="hasBgLayer">
+      <video
+        v-if="bgType === 'video'"
+        :src="bgSrc"
+        autoplay
+        loop
+        muted
+        playsinline
+      ></video>
+      <img
+        v-else
+        :src="bgSrc"
+        alt=""
+      />
+    </div>
+
     <div v-if="showInitialNarration && !showTerminal" class="narration">
       {{ narrationText }}
     </div>
@@ -19,7 +36,8 @@
 </template>
 
 <script>
-import { ref, onMounted, watch, nextTick, onUnmounted, provide } from 'vue';
+import { ref, computed, onMounted, watch, nextTick, onUnmounted, provide } from 'vue';
+import { useStore } from 'vuex';
 import SongPlayer from '@/views/Terminal/_components/SongPlayer.vue';
 
 export default {
@@ -49,12 +67,30 @@ export default {
   },
   emits: ['focus-request', 'terminal-ready'], // Declare emitted events
   setup(props, { emit }) {
+    const store = useStore();
     const showTerminal = ref(false);
     const isGlitching = ref(false);
     const glitchDuration = 1000;
     const terminalScreenRef = ref(null);
     const hasUserInteracted = ref(false); // To track user interaction
     const currentAudio = ref(null); // Track currently playing audio
+
+    // --- Background Layer ---
+    const useCustomBackground = computed(() => store.getters['theme/useCustomBackground']);
+    const currentThemeBackgroundImage = computed(() => store.getters['theme/currentThemeBackgroundImage']);
+    const defaultBackgroundImage = computed(() => store.state.theme.defaultBackgroundImage);
+
+    const bgSrc = computed(() => {
+      if (!useCustomBackground.value) return null;
+      return currentThemeBackgroundImage.value || defaultBackgroundImage.value;
+    });
+
+    const bgType = computed(() => {
+      if (!bgSrc.value) return 'image';
+      return bgSrc.value.startsWith('data:video/') ? 'video' : 'image';
+    });
+
+    const hasBgLayer = computed(() => useCustomBackground.value && !!bgSrc.value);
 
     // --- Mobile Detection ---
     const isMobile = ref(false);
@@ -267,7 +303,9 @@ export default {
       terminalScreenRef,
       handleContainerClick,
       handleContainerKeydown,
-      // No need to return sound functions unless used in template
+      hasBgLayer,
+      bgSrc,
+      bgType,
     };
   },
 };
@@ -313,7 +351,7 @@ export default {
   }
   90% {
     transform: translate(1px, -1px);
-    color: #aaffaa;
+    color: var(--color-dull-white);
   }
   100% {
     transform: translate(0);
@@ -328,7 +366,7 @@ export default {
   width: 100vw;
   height: 100vh;
   background-color: transparent; /* Base background */
-  color: var(--color-green); /* Default text color for children */
+  color: var(--color-text, var(--color-dull-white)); /* Default text color for children */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -349,6 +387,23 @@ export default {
   text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
+/* ── Background Layer ── */
+#bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+#bg-layer img,
+#bg-layer video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .terminal-screen {
   width: 100%;
   height: 100%;
@@ -359,8 +414,6 @@ export default {
   position: relative;
   user-select: text;
   overflow: hidden; /* Ensure no double scrollbars */
-  /* max-width: var(--terminal-width);
-  max-height: var(--terminal-height); */
   background-color: var(--color-background);
   border-radius: var(--terminal-screen-border-radius, 0);
   border: var(--terminal-screen-border, none);
@@ -405,24 +458,24 @@ export default {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(25, 239, 131, 0.05);
+  background: var(--color-darker-0);
   border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(25, 239, 131, 0.3);
+  background: var(--color-duller-navy);
   border-radius: 0;
-  border: 2px solid rgba(25, 239, 131, 0.05);
+  border: 2px solid var(--color-darker-0);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(25, 239, 131, 0.5);
+  background: var(--color-med-navy);
 }
 
 /* Remove default browser scrollbar styles */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.3) transparent;
+  scrollbar-color: var(--color-duller-navy) transparent;
 }
 
 .terminal-screen .cursor {
@@ -462,13 +515,13 @@ body.dark input[type='text'],
 body.dark input[type='number'],
 body.dark textarea {
   color: var(--color-dull-white);
-  background-color: rgba(0, 10, 0, 0.3);
-  border-color: rgba(18, 224, 255, 0.1);
+  background-color: var(--color-darker-0);
+  border-color: var(--terminal-border-color);
 }
 
 body.dark label,
 body.dark .label {
-  color: var(--color-green);
+  color: var(--color-med-navy);
 }
 </style>
 

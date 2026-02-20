@@ -190,7 +190,7 @@ export default {
 
 .modal-dashboard {
   background: var(--color-dark-navy, #10101f); /* Using CSS var from example if available */
-  border: 1px solid rgba(25, 239, 131, 0.2); /* Green border to match dashboard theme */
+  border: 1px solid rgba(var(--green-rgb), 0.2); /* Green border to match dashboard theme */
   border-radius: 8px;
   max-width: 700px; /* Increased max-width to accommodate 4 items per row comfortably */
   width: 90%;
@@ -210,7 +210,7 @@ export default {
 
 .modal-header-dashboard {
   padding: 20px 24px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.15);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.15);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -240,8 +240,8 @@ export default {
 }
 
 .modal-close-dashboard:hover {
-  border-color: var(--color-red, #fe4e4e);
-  color: var(--color-red, #fe4e4e);
+  border-color: var(--color-red, var(--color-red));
+  color: var(--color-red, var(--color-red));
   background-color: rgba(254, 78, 78, 0.1);
   transform: rotate(90deg);
 }
@@ -258,7 +258,7 @@ export default {
   line-height: 1.6;
 }
 .modal-body-dashboard .error-text {
-  color: var(--color-red, #fe4e4e);
+  color: var(--color-red, var(--color-red));
   font-weight: bold;
 }
 
@@ -288,7 +288,7 @@ export default {
   color: var(--color-light-green, #a0e0b0);
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
   font-weight: 500;
 }
 
@@ -340,8 +340,8 @@ export default {
 
 /* Style for nodes that are already purchased */
 .skill-node-dashboard.purchased-dashboard {
-  border-color: var(--color-green-medium, rgba(25, 239, 131, 0.4)); /* Using a themed green */
-  background: rgba(25, 239, 131, 0.05); /* Light green background */
+  border-color: var(--color-green-medium, rgba(var(--green-rgb), 0.4)); /* Using a themed green */
+  background: rgba(var(--green-rgb), 0.05); /* Light green background */
   cursor: default; /* Not clickable if purchased */
   opacity: 0.7; /* Slightly less prominent */
 }

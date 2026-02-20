@@ -659,7 +659,7 @@ export default {
 .chat-input:focus {
   outline: none;
   border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.1);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.1);
 }
 
 .chat-input:disabled {
@@ -682,12 +682,12 @@ export default {
 }
 
 .chat-send-button:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
   transform: scale(1.05);
 }
 
 .chat-send-button:disabled {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   cursor: not-allowed;
   transform: none;
 }

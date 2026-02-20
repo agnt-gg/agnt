@@ -138,7 +138,7 @@ export default {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.2) 0%, rgba(18, 224, 255, 0.2) 100%);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.2) 0%, rgba(18, 224, 255, 0.2) 100%);
   position: relative;
   display: flex;
   align-items: center;
@@ -151,7 +151,7 @@ export default {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
   animation: system-pulse 2s ease-in-out infinite;
 }
 
@@ -201,7 +201,7 @@ export default {
 }
 
 .metric-card:hover {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
 }
 
 .metric-icon {

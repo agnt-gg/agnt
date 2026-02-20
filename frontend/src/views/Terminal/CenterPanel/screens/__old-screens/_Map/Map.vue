@@ -286,11 +286,11 @@ export default {
 }
 
 .hex.guild {
-  background-color: rgba(25, 239, 131, 0.05);
+  background-color: rgba(var(--green-rgb), 0.05);
 }
 
 .hex.guild.own-guild {
-  background-color: rgba(25, 239, 131, 0.25);
+  background-color: rgba(var(--green-rgb), 0.25);
 }
 
 .hex.guild.enemy-guild {
@@ -327,11 +327,11 @@ export default {
 }
 
 .hex.selected:not(.locked) {
-  background-color: #19ef8394;
+  background-color: var(--color-green);
 }
 
 .hex.selected {
-  background-color: #19ef8394;
+  background-color: var(--color-green);
 }
 .hex.enemy-guild.selected {
   background-color: #fe4e4e8e;
@@ -380,7 +380,7 @@ i.fas.fa-flag.text-green {
 
 .text-bright-green {
   color: var(--color-green);
-  text-shadow: 0 0 5px rgba(25, 239, 131, 0.4);
+  text-shadow: 0 0 5px rgba(var(--green-rgb), 0.4);
 }
 .font-bold {
   font-weight: bold;

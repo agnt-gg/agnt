@@ -1,7 +1,7 @@
 <template>
   <div class="widget-canvas" ref="canvasRef" @dblclick="onDoubleClick">
     <!-- Grid overlay shown during drag/resize -->
-    <div class="grid-overlay" :class="{ visible: showGrid }">
+    <div v-if="isCustomPage" class="grid-overlay" :class="{ visible: showGrid }">
       <div
         v-for="c in gridCols - 1"
         :key="'col-' + c"
@@ -23,11 +23,13 @@
       :widget="instance"
       :cellWidth="cellWidth"
       :cellHeight="cellHeight"
+      :isCustomPage="isCustomPage"
       @drag-start="onDragStart"
       @drag-end="onDragEnd"
       @resize-start="onResizeStart"
       @resize-end="onResizeEnd"
       @close="onWidgetClose"
+      @collapse="onWidgetCollapse"
       @bring-to-front="onBringToFront"
     >
       <component
@@ -61,6 +63,7 @@ export default {
   components: { WidgetFrame },
   props: {
     pageId: { type: String, required: true },
+    isCustomPage: { type: Boolean, default: false },
   },
   emits: ['open-catalog', 'screen-change'],
   setup(props, { emit }) {
@@ -159,6 +162,13 @@ export default {
       });
     }
 
+    function onWidgetCollapse(instanceId) {
+      store.dispatch('widgetLayout/toggleWidgetCollapse', {
+        pageId: props.pageId,
+        instanceId,
+      });
+    }
+
     function onBringToFront(instanceId) {
       topZ++;
       store.dispatch('widgetLayout/updateWidgetZIndex', {
@@ -189,10 +199,13 @@ export default {
     provide('widgetBus', widgetBus);
     provide('isInsideWidgetCanvas', true);
 
+    const isCustomPage = computed(() => props.isCustomPage);
+
     return {
       canvasRef,
       cellWidth,
       cellHeight,
+      isCustomPage,
       showGrid,
       gridCols,
       gridRows,
@@ -205,6 +218,7 @@ export default {
       onResizeStart,
       onResizeEnd,
       onWidgetClose,
+      onWidgetCollapse,
       onBringToFront,
       onDoubleClick,
     };
@@ -226,7 +240,7 @@ export default {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 0;
+  z-index: -1;
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -239,14 +253,14 @@ export default {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-right: 1px solid rgba(25, 239, 131, 0.06);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .grid-line-h {
   position: absolute;
   left: 0;
   right: 0;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 /* ── Empty state ── */

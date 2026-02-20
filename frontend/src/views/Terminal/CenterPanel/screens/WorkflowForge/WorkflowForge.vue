@@ -593,7 +593,7 @@ export default {
 /* Keeping these for potential reuse in other components */
 .text-bright-green {
   color: var(--color-green);
-  text-shadow: 0 0 5px rgba(25, 239, 131, 0.4);
+  text-shadow: 0 0 5px rgba(var(--green-rgb), 0.4);
 }
 
 .font-bold {

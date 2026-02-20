@@ -96,7 +96,8 @@ export default {
 
     // detect if dark mode so we can change doc images
     const updateDarkMode = () => {
-      isDarkMode.value = localStorage.getItem('darkMode') === 'true';
+      const theme = localStorage.getItem('currentTheme') || 'dark';
+      isDarkMode.value = !['light', 'rose'].includes(theme);
     };
     // custom image rendering extension
     converter.addExtension(
@@ -236,9 +237,9 @@ export default {
         await fetchDoc(currentPage);
       }
 
-      // event listener for dark mode changes
+      // event listener for theme changes
       const storageHandler = (event) => {
-        if (event.key === 'darkMode') {
+        if (event.key === 'currentTheme') {
           updateDarkMode();
           fetchDoc(route.params.type + '/' + route.params.page);
         }
@@ -319,7 +320,7 @@ body[data-page='docs'].dark .sidebar {
 
 /* FORCE BLUE ON LINKS OR IT DOES WEIRD STUFF */
 body[data-page='docs'] a {
-  color: var(--color-pink);
+  color: var(--color-primary);
   cursor: pointer;
 }
 body[data-page='docs'] a:visited {
@@ -379,7 +380,7 @@ body[data-page='docs'] .mjx-container {
 }
 
 body[data-page='docs'] .content.markdown-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
   line-height: 1.5;
@@ -540,7 +541,7 @@ body[data-page='docs'].dark .sidebar ul {
 }
 
 body[data-page='docs'] .content.markdown-body a {
-  color: var(--color-pink) !important;
+  color: var(--color-primary) !important;
 }
 
 body[data-page='docs'].dark .content.markdown-body a {

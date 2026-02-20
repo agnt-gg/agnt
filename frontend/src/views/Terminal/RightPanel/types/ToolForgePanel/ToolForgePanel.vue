@@ -181,9 +181,9 @@ export default {
 }
 
 .generate:hover {
-  /* background: rgba(25, 239, 131, 0.8); */
+  /* background: rgba(var(--green-rgb), 0.8); */
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .generate:active {

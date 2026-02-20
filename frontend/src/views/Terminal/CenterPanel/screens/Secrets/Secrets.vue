@@ -561,7 +561,7 @@
                   placeholder="async function getAuthorizationUrl(params, credentials, config) { ... }"
                   rows="12"
                   class="form-textarea code-textarea"
-                  style="font-family: 'Courier New', monospace; font-size: 0.85em"
+                  style="font-family: var(--font-family-mono); font-size: 0.85em"
                   spellcheck="false"
                 ></textarea>
               </div>
@@ -2037,7 +2037,7 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 0.5em;
-  color: #ffd700;
+  color: var(--color-yellow);
   background: rgba(255, 215, 0, 0.15);
   padding: 4px 12px;
   border-radius: 4px;
@@ -2187,7 +2187,7 @@ body.dark .form-actions {
 }
 
 .edit-provider-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
   color: var(--color-green);
 }
@@ -2264,14 +2264,14 @@ body.dark .form-actions {
   background: rgba(0, 0, 0, 0.8);
   padding: 24px 32px;
   border-radius: 12px;
-  border: 2px solid #ffd700;
+  border: 2px solid var(--color-yellow);
   pointer-events: all;
   z-index: 10;
 }
 
 .locked-overlay i {
   font-size: 2.5em;
-  color: #ffd700;
+  color: var(--color-yellow);
   margin-bottom: 12px;
   display: block;
 }
@@ -2303,7 +2303,7 @@ body.dark .mcp-server-card {
 
 .mcp-server-card:hover {
   border-color: var(--color-green);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.1);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.1);
 }
 
 .server-header {
@@ -2336,12 +2336,12 @@ body.dark .mcp-server-card {
 
 .server-type-badge.http {
   background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
+  color: var(--color-blue);
 }
 
 .server-type-badge.stdio {
   background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
+  color: var(--color-indigo);
 }
 
 .server-actions {
@@ -2458,7 +2458,7 @@ body.dark .mcp-server-card {
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   color: var(--color-text);
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.9em;
   resize: vertical;
   min-height: 80px;
@@ -2505,7 +2505,7 @@ body.dark .npm-package-card {
 
 .npm-package-card:hover {
   border-color: var(--color-green);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.1);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.1);
   transform: translateY(-2px);
 }
 
@@ -2632,7 +2632,7 @@ body.dark .npm-package-card {
 }
 
 body.dark .capability-item {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .capability-item strong {
@@ -2752,7 +2752,7 @@ body.dark .view-btn:not(:last-child) {
   outline: 2px solid var(--color-green);
   color: var(--color-text);
   /* transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.3); */
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3); */
 }
 
 /* Category Pills */
@@ -2789,7 +2789,7 @@ body.dark .category-pill {
 
 .category-pill:hover {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   transform: translateY(-1px);
 }
 
@@ -2812,7 +2812,7 @@ body.dark .category-pill {
 }
 
 body.dark .results-info {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 /* List View Styles */
@@ -2841,13 +2841,13 @@ body.dark .oauth-list-item {
 
 .oauth-list-item:hover {
   border-color: var(--color-green);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.1);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.1);
   transform: translateX(4px);
 }
 
 .oauth-list-item.connected {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.03);
+  background: rgba(var(--green-rgb), 0.03);
 }
 
 .list-item-icon {
@@ -2928,7 +2928,7 @@ body.dark .action-btn {
 }
 
 .action-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
   color: var(--color-green);
 }
@@ -2969,7 +2969,7 @@ body.dark .page-btn {
 
 .page-btn:hover:not(:disabled) {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   transform: translateY(-1px);
 }
 

@@ -44,7 +44,7 @@
     color: var(--color-duller-navy);
     letter-spacing: 0.2em;
     margin-bottom: 16px;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family: var(--font-family-primary);
   }
   
   .resources-grid {

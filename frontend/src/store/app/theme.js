@@ -1,55 +1,12 @@
 import { mediaStorage } from '../../utils/mediaStorage.js';
 
-// Helper function to remove all background media
-function removeBackgroundMedia() {
-  // Remove any existing background video
+// Helper function to remove legacy body-level background media
+function removeLegacyBackgroundMedia() {
   const existingVideo = document.getElementById('background-video');
   if (existingVideo) {
     existingVideo.remove();
   }
-  // Remove background image
   document.body.style.backgroundImage = 'none';
-}
-
-// Helper function to apply background media (image or video)
-function applyBackgroundMedia(mediaDataUrl) {
-  const isVideo = mediaDataUrl && mediaDataUrl.startsWith('data:video/');
-
-  // Remove any existing background video
-  const existingVideo = document.getElementById('background-video');
-  if (existingVideo) {
-    existingVideo.remove();
-  }
-
-  if (isVideo) {
-    // Remove background image
-    document.body.style.backgroundImage = 'none';
-
-    // Create video element
-    const video = document.createElement('video');
-    video.id = 'background-video';
-    video.src = mediaDataUrl;
-    video.autoplay = true;
-    video.loop = true;
-    video.muted = true;
-    video.playsInline = true;
-    video.style.position = 'fixed';
-    video.style.top = '0';
-    video.style.left = '0';
-    video.style.width = '100%';
-    video.style.height = '100%';
-    video.style.objectFit = 'cover';
-    video.style.zIndex = '-1';
-    video.style.pointerEvents = 'none';
-
-    document.body.insertBefore(video, document.body.firstChild);
-  } else {
-    // Apply image background
-    document.body.style.backgroundImage = `url(${mediaDataUrl})`;
-    document.body.style.backgroundSize = 'cover';
-    document.body.style.backgroundRepeat = 'no-repeat';
-    document.body.style.backgroundPosition = 'center';
-  }
 }
 
 export default {
@@ -63,6 +20,18 @@ export default {
 
     // Use custom background toggle
     useCustomBackground: localStorage.getItem('useCustomBackground') !== null ? localStorage.getItem('useCustomBackground') === 'true' : false,
+
+    // Font setting
+    fontFamily: localStorage.getItem('fontFamily') || 'sans',
+
+    // UI scale (75-150, stored as integer percentage)
+    uiScale: localStorage.getItem('uiScale') !== null ? parseInt(localStorage.getItem('uiScale')) : 100,
+
+    // Background opacity (50-100, default 90)
+    bgOpacity: Math.max(50, Math.min(100, localStorage.getItem('bgOpacity') !== null ? parseInt(localStorage.getItem('bgOpacity')) : 90)),
+
+    // Background blur (0-20)
+    bgBlur: localStorage.getItem('bgBlur') !== null ? parseInt(localStorage.getItem('bgBlur')) : 0,
 
     // Keep existing asset panel setting
     isAssetPanelFullWidth: localStorage.getItem('assetPanelFullWidth') !== null ? localStorage.getItem('assetPanelFullWidth') === 'true' : false,
@@ -87,6 +56,11 @@ export default {
       light: null,
       dark: null,
       cyberpunk: null,
+      midnight: null,
+      ember: null,
+      nord: null,
+      hacker: null,
+      rose: null,
     },
 
     // Default background image for all themes
@@ -103,7 +77,7 @@ export default {
     rateLimitHitCount: 0,
 
     // Legacy support - computed from currentTheme
-    isDarkMode: localStorage.getItem('currentTheme') !== null ? localStorage.getItem('currentTheme') !== 'light' : true,
+    isDarkMode: localStorage.getItem('currentTheme') !== null ? !['light', 'rose'].includes(localStorage.getItem('currentTheme')) : true,
     isCyberpunkMode: localStorage.getItem('currentTheme') !== null ? localStorage.getItem('currentTheme') === 'cyberpunk' : true,
   },
   mutations: {
@@ -113,15 +87,19 @@ export default {
       localStorage.setItem('currentTheme', theme);
 
       // Update legacy state for backward compatibility
-      state.isDarkMode = theme !== 'light';
+      state.isDarkMode = !['light', 'rose'].includes(theme);
       state.isCyberpunkMode = theme === 'cyberpunk';
 
       // Apply theme classes to body
-      document.body.classList.remove('dark', 'cyberpunk');
-      if (theme === 'dark') {
+      document.body.classList.remove('dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose');
+      const darkVariants = ['dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker'];
+      if (darkVariants.includes(theme)) {
         document.body.classList.add('dark');
-      } else if (theme === 'cyberpunk') {
-        document.body.classList.add('dark', 'cyberpunk');
+        if (theme !== 'dark') {
+          document.body.classList.add(theme);
+        }
+      } else if (theme === 'rose') {
+        document.body.classList.add('rose');
       }
       // light theme has no classes (default)
     },
@@ -145,6 +123,22 @@ export default {
     SET_USE_CUSTOM_BACKGROUND(state, useCustomBackground) {
       state.useCustomBackground = useCustomBackground;
       localStorage.setItem('useCustomBackground', useCustomBackground);
+    },
+    SET_FONT_FAMILY(state, fontFamily) {
+      state.fontFamily = fontFamily;
+      localStorage.setItem('fontFamily', fontFamily);
+    },
+    SET_UI_SCALE(state, scale) {
+      state.uiScale = scale;
+      localStorage.setItem('uiScale', scale);
+    },
+    SET_BG_OPACITY(state, opacity) {
+      state.bgOpacity = opacity;
+      localStorage.setItem('bgOpacity', opacity);
+    },
+    SET_BG_BLUR(state, blur) {
+      state.bgBlur = blur;
+      localStorage.setItem('bgBlur', blur);
     },
     SET_ASSET_PANEL_FULL_WIDTH(state, isFullWidth) {
       state.isAssetPanelFullWidth = isFullWidth;
@@ -227,61 +221,6 @@ export default {
         localStorage.setItem(`customBackgroundImage_${theme}_exists`, 'true');
       } catch (error) {
         console.error('Error storing background media:', error);
-        return;
-      }
-
-      // Apply the background media immediately if it's the current theme
-      if (state.currentTheme === theme) {
-        if (imageDataUrl) {
-          applyBackgroundMedia(imageDataUrl);
-          // Set terminal-screen background with 90% opacity when custom image is present
-          if (theme === 'cyberpunk') {
-            document.documentElement.style.setProperty('--color-background', 'rgba(11, 11, 48, 0.90)');
-          } else if (theme === 'dark') {
-            document.documentElement.style.setProperty('--color-background', 'rgba(16, 16, 31, 0.90)');
-          } else if (theme === 'light') {
-            document.documentElement.style.setProperty('--color-background', 'rgba(241, 240, 245, 0.90)');
-          }
-          // Set terminal-container padding when custom image is present
-          document.documentElement.style.setProperty('--terminal-container-padding', '8px');
-          // Set terminal-screen border radius when custom image is present
-          document.documentElement.style.setProperty('--terminal-screen-border-radius', '16px');
-          // Set terminal-screen border when custom image is present with theme-specific colors
-          if (theme === 'cyberpunk') {
-            document.documentElement.style.setProperty('--terminal-screen-border', '1px solid rgba(18, 224, 255, 0.1)');
-          } else if (theme === 'dark') {
-            document.documentElement.style.setProperty('--terminal-screen-border', '1px solid var(--color-dull-navy)');
-          } else if (theme === 'light') {
-            document.documentElement.style.setProperty('--terminal-screen-border', '1px solid var(--color-light-navy)');
-          }
-          // Set terminal-screen box shadow when custom image is present
-          document.documentElement.style.setProperty('--terminal-screen-box-shadow', '0 8px 32px rgba(0, 0, 0, 0.3)');
-        } else {
-          // Use default background image when no custom media is set
-          applyBackgroundMedia(state.defaultBackgroundImage);
-          // Set terminal-screen background with 90% opacity when default image is present
-          if (theme === 'cyberpunk') {
-            document.documentElement.style.setProperty('--color-background', 'rgba(11, 11, 48, 0.90)');
-          } else if (theme === 'dark') {
-            document.documentElement.style.setProperty('--color-background', 'rgba(16, 16, 31, 0.90)');
-          } else if (theme === 'light') {
-            document.documentElement.style.setProperty('--color-background', 'rgba(241, 240, 245, 0.90)');
-          }
-          // Set terminal-container padding when default image is present
-          document.documentElement.style.setProperty('--terminal-container-padding', '8px');
-          // Set terminal-screen border radius when default image is present
-          document.documentElement.style.setProperty('--terminal-screen-border-radius', '16px');
-          // Set terminal-screen border when default image is present with theme-specific colors
-          if (theme === 'cyberpunk') {
-            document.documentElement.style.setProperty('--terminal-screen-border', '1px solid rgba(18, 224, 255, 0.1)');
-          } else if (theme === 'dark') {
-            document.documentElement.style.setProperty('--terminal-screen-border', '1px solid var(--color-dull-navy)');
-          } else if (theme === 'light') {
-            document.documentElement.style.setProperty('--terminal-screen-border', '1px solid var(--color-light-navy)');
-          }
-          // Set terminal-screen box shadow when default image is present
-          document.documentElement.style.setProperty('--terminal-screen-box-shadow', '0 8px 32px rgba(0, 0, 0, 0.3)');
-        }
       }
     },
     async REMOVE_CUSTOM_BACKGROUND_IMAGE(state, theme) {
@@ -293,33 +232,6 @@ export default {
         localStorage.removeItem(`customBackgroundImage_${theme}_exists`);
       } catch (error) {
         console.error('Error removing background media:', error);
-      }
-
-      // Apply default background media if it's the current theme
-      if (state.currentTheme === theme) {
-        applyBackgroundMedia(state.defaultBackgroundImage);
-        // Set terminal-screen background with 90% opacity when default image is present
-        if (theme === 'cyberpunk') {
-          document.documentElement.style.setProperty('--color-background', 'rgba(11, 11, 48, 0.90)');
-        } else if (theme === 'dark') {
-          document.documentElement.style.setProperty('--color-background', 'rgba(16, 16, 31, 0.90)');
-        } else if (theme === 'light') {
-          document.documentElement.style.setProperty('--color-background', 'rgba(241, 240, 245, 0.90)');
-        }
-        // Set terminal-container padding when default image is present
-        document.documentElement.style.setProperty('--terminal-container-padding', '8px');
-        // Set terminal-screen border radius when default image is present
-        document.documentElement.style.setProperty('--terminal-screen-border-radius', '16px');
-        // Set terminal-screen border when default image is present with theme-specific colors
-        if (theme === 'cyberpunk') {
-          document.documentElement.style.setProperty('--terminal-screen-border', '1px solid rgba(18, 224, 255, 0.1)');
-        } else if (theme === 'dark') {
-          document.documentElement.style.setProperty('--terminal-screen-border', '1px solid var(--color-dull-navy)');
-        } else if (theme === 'light') {
-          document.documentElement.style.setProperty('--terminal-screen-border', '1px solid var(--color-light-navy)');
-        }
-        // Set terminal-screen box shadow when default image is present
-        document.documentElement.style.setProperty('--terminal-screen-box-shadow', '0 8px 32px rgba(0, 0, 0, 0.3)');
       }
     },
   },
@@ -337,18 +249,24 @@ export default {
       await dispatch('loadBackgroundImages');
 
       // Apply the current theme classes
-      document.body.classList.remove('dark', 'cyberpunk');
-      if (state.currentTheme === 'dark') {
+      document.body.classList.remove('dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose');
+      const darkVariants = ['dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker'];
+      if (darkVariants.includes(state.currentTheme)) {
         document.body.classList.add('dark');
-      } else if (state.currentTheme === 'cyberpunk') {
-        document.body.classList.add('dark', 'cyberpunk');
+        if (state.currentTheme !== 'dark') {
+          document.body.classList.add(state.currentTheme);
+        }
+      } else if (state.currentTheme === 'rose') {
+        document.body.classList.add('rose');
       }
 
       // Initialize greyscale
       document.documentElement.classList.toggle('greyscale', state.isGreyscaleMode);
 
-      // Apply background based on useCustomBackground setting
+      // Apply all visual settings
       dispatch('applyCurrentThemeBackground');
+      dispatch('applyFont');
+      dispatch('applyScale');
     },
 
     // Legacy actions for backward compatibility
@@ -370,8 +288,36 @@ export default {
     toggleUseCustomBackground({ commit, state, dispatch }) {
       const newValue = !state.useCustomBackground;
       commit('SET_USE_CUSTOM_BACKGROUND', newValue);
-      // Re-apply theme to update background based on new setting
       dispatch('applyCurrentThemeBackground');
+    },
+    setFontFamily({ commit, dispatch }, fontFamily) {
+      commit('SET_FONT_FAMILY', fontFamily);
+      dispatch('applyFont');
+    },
+    setUiScale({ commit, dispatch }, scale) {
+      commit('SET_UI_SCALE', scale);
+      dispatch('applyScale');
+    },
+    setBgOpacity({ commit, dispatch }, opacity) {
+      commit('SET_BG_OPACITY', opacity);
+      dispatch('applyCurrentThemeBackground');
+    },
+    setBgBlur({ commit, dispatch }, blur) {
+      commit('SET_BG_BLUR', blur);
+      dispatch('applyCurrentThemeBackground');
+    },
+    applyFont({ state }) {
+      const fontMap = {
+        mono: "'Fira Code', monospace",
+        sans: "'League Spartan', sans-serif",
+      };
+      document.documentElement.style.setProperty('--font-family-primary', fontMap[state.fontFamily] || fontMap.sans);
+      document.documentElement.style.setProperty('--font-family-mono', fontMap.mono);
+    },
+    applyScale({ state }) {
+      const scale = state.uiScale / 100;
+      document.documentElement.style.setProperty('--scale', scale);
+      document.documentElement.style.setProperty('--base-font-size', `${16 * scale}px`);
     },
     initGreyscaleMode({ state }) {
       document.documentElement.classList.toggle('greyscale', state.isGreyscaleMode);
@@ -436,15 +382,17 @@ export default {
       commit('CLEAR_RATE_LIMIT');
     },
     // Custom background image actions
-    async setCustomBackgroundImage({ commit }, { theme, imageDataUrl }) {
+    async setCustomBackgroundImage({ commit, dispatch }, { theme, imageDataUrl }) {
       await commit('SET_CUSTOM_BACKGROUND_IMAGE', { theme, imageDataUrl });
+      dispatch('applyCurrentThemeBackground');
     },
-    async removeCustomBackgroundImage({ commit }, theme) {
+    async removeCustomBackgroundImage({ commit, dispatch }, theme) {
       await commit('REMOVE_CUSTOM_BACKGROUND_IMAGE', theme);
+      dispatch('applyCurrentThemeBackground');
     },
     // Load background images from IndexedDB on startup
     async loadBackgroundImages({ state }) {
-      const themes = ['light', 'dark', 'cyberpunk'];
+      const themes = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose'];
 
       for (const theme of themes) {
         const exists = localStorage.getItem(`customBackgroundImage_${theme}_exists`);
@@ -461,54 +409,33 @@ export default {
       }
     },
     // Apply background for current theme based on useCustomBackground setting
+    // Background rendering is handled by the #bg-layer in TerminalLayout.vue (reactive).
+    // This action only manages CSS custom properties.
     applyCurrentThemeBackground({ state }) {
-      const theme = state.currentTheme;
+      // Clean up any legacy body-level backgrounds
+      removeLegacyBackgroundMedia();
 
       if (state.useCustomBackground) {
-        // Apply custom background if available, otherwise use default
-        const customBgImage = state.customBackgroundImages[theme];
-        const backgroundMedia = customBgImage || state.defaultBackgroundImage;
-        applyBackgroundMedia(backgroundMedia);
-
-        // Set terminal-screen background with 90% opacity
-        if (theme === 'cyberpunk') {
-          document.documentElement.style.setProperty('--color-background', 'rgba(11, 11, 48, 0.90)');
-        } else if (theme === 'dark') {
-          document.documentElement.style.setProperty('--color-background', 'rgba(16, 16, 31, 0.90)');
-        } else if (theme === 'light') {
-          document.documentElement.style.setProperty('--color-background', 'rgba(241, 240, 245, 0.90)');
-        }
-
-        // Set terminal styling for background mode
-        document.documentElement.style.setProperty('--terminal-container-padding', '8px');
-        document.documentElement.style.setProperty('--terminal-screen-border-radius', '16px');
-        if (theme === 'cyberpunk') {
-          document.documentElement.style.setProperty('--terminal-screen-border', '1px solid rgba(18, 224, 255, 0.1)');
-        } else if (theme === 'dark') {
-          document.documentElement.style.setProperty('--terminal-screen-border', '1px solid var(--color-dull-navy)');
-        } else if (theme === 'light') {
-          document.documentElement.style.setProperty('--terminal-screen-border', '1px solid var(--color-light-navy)');
-        }
-        document.documentElement.style.setProperty('--terminal-screen-box-shadow', '0 8px 32px rgba(0, 0, 0, 0.3)');
+        // Set on body.style so it overrides theme CSS declarations on body selectors
+        document.body.style.setProperty('--color-background', 'transparent');
+        document.body.classList.add('custom-bg');
+        // Opacity slider controls how dark/opaque panels are over the background image
+        // 100% = fully opaque panels (darkest), 90% = slightly transparent (image peeks through)
+        document.documentElement.style.setProperty('--bg-opacity', state.bgOpacity / 100);
+        document.documentElement.style.setProperty('--bg-blur', `${state.bgBlur}px`);
       } else {
-        // Remove all background media
-        removeBackgroundMedia();
-
-        // Reset terminal-screen background to full opacity (no background)
-        if (theme === 'cyberpunk') {
-          document.documentElement.style.setProperty('--color-background', 'rgb(11, 11, 48)');
-        } else if (theme === 'dark') {
-          document.documentElement.style.setProperty('--color-background', 'rgb(16, 16, 31)');
-        } else if (theme === 'light') {
-          document.documentElement.style.setProperty('--color-background', 'rgb(241, 240, 245)');
-        }
-
-        // Reset terminal styling for no background mode
-        document.documentElement.style.setProperty('--terminal-container-padding', '0');
-        document.documentElement.style.setProperty('--terminal-screen-border-radius', '0');
-        document.documentElement.style.setProperty('--terminal-screen-border', 'none');
-        document.documentElement.style.setProperty('--terminal-screen-box-shadow', 'none');
+        // Let each theme's CSS --color-background take effect
+        document.body.style.removeProperty('--color-background');
+        document.body.classList.remove('custom-bg');
+        document.documentElement.style.removeProperty('--bg-opacity');
+        document.documentElement.style.removeProperty('--bg-blur');
       }
+
+      // Terminal styling (same for both modes)
+      document.documentElement.style.setProperty('--terminal-container-padding', '0');
+      document.documentElement.style.setProperty('--terminal-screen-border-radius', '0');
+      document.documentElement.style.setProperty('--terminal-screen-border', 'none');
+      document.documentElement.style.setProperty('--terminal-screen-box-shadow', 'none');
     },
   },
   getters: {
@@ -530,6 +457,11 @@ export default {
     showRightPanel: (state) => state.showRightPanel,
     leftPanelCollapsed: (state) => state.leftPanelCollapsed,
     rightPanelCollapsed: (state) => state.rightPanelCollapsed,
+    // Font/scale/opacity getters
+    fontFamily: (state) => state.fontFamily,
+    uiScale: (state) => state.uiScale,
+    bgOpacity: (state) => state.bgOpacity,
+    bgBlur: (state) => state.bgBlur,
     // Custom background image getters
     customBackgroundImages: (state) => state.customBackgroundImages,
     currentThemeBackgroundImage: (state) => state.customBackgroundImages[state.currentTheme],

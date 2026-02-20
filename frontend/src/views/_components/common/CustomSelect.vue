@@ -308,7 +308,7 @@ export default {
 select.custom-select {
   height: 32px;
   padding: 4px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   font-weight: 300;
   color: var(--color-text);
@@ -413,7 +413,7 @@ select.custom-select {
 }
 
 .option.highlight {
-  color: var(--color-pink);
+  color: var(--color-primary);
 }
 
 .option.disabled:hover {

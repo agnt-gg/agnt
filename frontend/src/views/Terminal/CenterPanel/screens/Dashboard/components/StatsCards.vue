@@ -190,8 +190,8 @@ export default {
 }
 
 .stat-card {
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   padding: 16px;
   border-radius: 4px;
   display: flex;
@@ -202,7 +202,7 @@ export default {
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(25, 239, 131, 0.1);
+  box-shadow: 0 4px 8px rgba(var(--green-rgb), 0.1);
 }
 
 .stat-card i.stat-icon {
@@ -299,13 +299,13 @@ export default {
 }
 
 :global(.particle-effect.positive) {
-  color: #19ef83;
-  text-shadow: 0 0 4px #19ef83;
+  color: var(--color-green);
+  text-shadow: 0 0 4px var(--color-green);
 }
 
 :global(.particle-effect.negative) {
-  color: #ef4444;
-  text-shadow: 0 0 4px #ef4444;
+  color: var(--color-red);
+  text-shadow: 0 0 4px var(--color-red);
 }
 
 /* Glowing animation for increasing values */
@@ -315,13 +315,13 @@ export default {
 
 @keyframes value-increase-glow {
   0% {
-    box-shadow: 0 0 5px rgba(25, 239, 131, 0.3);
+    box-shadow: 0 0 5px rgba(var(--green-rgb), 0.3);
   }
   50% {
-    box-shadow: 0 0 20px rgba(25, 239, 131, 0.6);
+    box-shadow: 0 0 20px rgba(var(--green-rgb), 0.6);
   }
   100% {
-    box-shadow: 0 0 5px rgba(25, 239, 131, 0.1);
+    box-shadow: 0 0 5px rgba(var(--green-rgb), 0.1);
   }
 }
 

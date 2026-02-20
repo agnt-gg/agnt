@@ -9,7 +9,7 @@ label,
 select {
   height: 32px;
   padding: 3px 3px 1px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--color-navy);
   border: 1px solid var(--color-light-navy);
@@ -55,7 +55,7 @@ input[type='color'] {
   width: -webkit-fill-available !important;
   height: 26px;
   padding: 3px 8px 1px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--color-navy);
   border: 1px solid var(--color-light-navy);
@@ -66,7 +66,7 @@ input[type='color'] {
 input[type='file'] {
   width: 100%;
   width: -webkit-fill-available;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: var(--font-size-sm);
   color: var(--color-navy);
   background-color: var(--color-ultra-light-navy);
@@ -86,7 +86,7 @@ input[type='textarea'],
   /* height: 82px; */
   /* min-height: 48px; */
   padding: 8px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: var(--base-font-size);
   color: var(--color-navy);
   border: 1px solid var(--color-light-navy);
@@ -97,7 +97,7 @@ input[type='textarea'],
 }
 
 /* *:focus {
-  outline-color: var(--color-pink);
+  outline-color: var(--color-primary);
 } */
 
 *::placeholder {
@@ -109,9 +109,9 @@ input[type='textarea'],
 *::spelling-error,
 *::grammar-error,
 *::marker {
-  text-decoration: underline wavy var(--color-pink);
-  text-decoration-color: var(--color-pink);
-  color: var(--color-pink);
+  text-decoration: underline wavy var(--color-primary);
+  text-decoration-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .form-group select {
@@ -126,8 +126,8 @@ input[type='number']:focus,
 textarea:focus,
 select:focus {
   outline: none !important;
-  border: 1px solid var(--color-pink) !important;
-  /* outline: 1px solid var(--color-pink) !important;
+  border: 1px solid var(--color-primary) !important;
+  /* outline: 1px solid var(--color-primary) !important;
   border: none !important; */
 }
 

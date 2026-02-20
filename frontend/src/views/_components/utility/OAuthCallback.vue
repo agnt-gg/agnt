@@ -141,7 +141,7 @@ export default {
   justify-content: center;
   min-height: 100vh;
   background: var(--color-navy);
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 .callback-content {
@@ -149,7 +149,7 @@ export default {
   flex-direction: column;
   align-items: center;
   padding: 48px;
-  background: radial-gradient(circle at top, rgba(0, 255, 153, 0.06), transparent 55%),
+  background: radial-gradient(circle at top, rgba(var(--green-rgb), 0.06), transparent 55%),
     linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
   border-radius: 16px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
@@ -213,7 +213,7 @@ export default {
 .spinner {
   width: 60px;
   height: 60px;
-  border: 4px solid rgba(0, 255, 153, 0.2);
+  border: 4px solid rgba(var(--green-rgb), 0.2);
   border-top-color: var(--color-green);
   border-radius: 50%;
   margin: 0 auto 24px;
@@ -229,7 +229,7 @@ export default {
 .success-icon {
   width: 80px;
   height: 80px;
-  background: linear-gradient(135deg, var(--color-green) 0%, #00d084 100%);
+  background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
   color: var(--color-ultra-dark-navy);
   border-radius: 50%;
   display: flex;
@@ -239,7 +239,7 @@ export default {
   font-weight: 700;
   margin: 0 auto 24px;
   animation: scaleIn 0.5s ease-out;
-  box-shadow: 0 8px 24px rgba(0, 255, 153, 0.3);
+  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.3);
 }
 
 .error-icon {
@@ -300,7 +300,7 @@ h2 {
   border: 1px solid rgba(255, 0, 0, 0.32);
   color: var(--color-red);
   border-radius: 999px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;

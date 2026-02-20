@@ -171,8 +171,8 @@ export default {
       return path;
     },
     getStrokeColor() {
-      if (this.isTemp) return '#e53d8f';
-      if (this.isSelected) return '#e53d8f';
+      if (this.isTemp) return 'var(--color-primary)';
+      if (this.isSelected) return 'var(--color-primary)';
       if (this.isHovered) return '#3b406dcc';
       return '#3b406d50';
     },
@@ -229,11 +229,11 @@ export default {
 }
 
 .edges path.active {
-  stroke: #19ef83 !important;
+  stroke: var(--color-green) !important;
 }
 
 .edges path.active.selected {
-  stroke: var(--color-pink) !important;
+  stroke: var(--color-primary) !important;
   stroke-width: 3;
 }
 

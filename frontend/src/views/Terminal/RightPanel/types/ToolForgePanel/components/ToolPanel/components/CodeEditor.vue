@@ -141,7 +141,7 @@ return {
 
 .editor-title i {
   font-size: 16px;
-  color: var(--color-pink, #e74c86);
+  color: var(--color-primary);
 }
 
 .editor-info {
@@ -185,7 +185,7 @@ return {
 :deep(.cm-editor) {
   height: 100%;
   width: 100%;
-  font-family: 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 14px;
 }
 
@@ -236,24 +236,24 @@ body.dark .editor-footer {
 
 .ͼo .cm-cursor,
 .ͼo .cm-dropCursor {
-  border-left-color: var(--color-pink) !important;
+  border-left-color: var(--color-primary) !important;
 }
 
 .cm-activeLine .cm-line {
-  caret-color: var(--color-pink) !important;
+  caret-color: var(--color-primary) !important;
 }
 
 .cm-focused {
-  border: 2px solid var(--color-pink) !important;
+  border: 2px solid var(--color-primary) !important;
 }
 
 .cm-activeLine {
   background: transparent !important;
-  border-left-color: var(--color-pink) !important;
+  border-left-color: var(--color-primary) !important;
 }
 
 .cm-content {
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -278,7 +278,7 @@ body.dark .editor-footer {
 }
 
 .ͼ13 {
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
 }
 

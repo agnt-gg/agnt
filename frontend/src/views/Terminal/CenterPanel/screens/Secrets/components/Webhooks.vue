@@ -245,7 +245,7 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 0.5em;
-  color: #ffd700;
+  color: var(--color-yellow);
   background: rgba(255, 215, 0, 0.15);
   padding: 4px 12px;
   border-radius: 4px;
@@ -277,7 +277,7 @@ export default {
 
 .pro-locked-message i {
   font-size: 3em;
-  color: #ffd700;
+  color: var(--color-yellow);
   margin-bottom: 16px;
 }
 
@@ -329,14 +329,14 @@ export default {
   background: rgba(0, 0, 0, 0.8);
   padding: 24px 32px;
   border-radius: 12px;
-  border: 2px solid #ffd700;
+  border: 2px solid var(--color-yellow);
   pointer-events: all;
   z-index: 10;
 }
 
 .locked-overlay i {
   font-size: 2.5em;
-  color: #ffd700;
+  color: var(--color-yellow);
   margin-bottom: 12px;
   display: block;
 }
@@ -371,7 +371,7 @@ body.dark .webhook-card {
 
 /* .webhook-card:hover {
   border-color: var(--color-green);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.1);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.1);
 } */
 
 .webhook-info {
@@ -427,7 +427,7 @@ body.dark .webhook-card {
   border: 1px solid var(--terminal-border-color);
   padding: 6px 10px;
   border-radius: 4px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.85em;
   color: var(--color-text);
   overflow: hidden;
@@ -470,7 +470,7 @@ body.dark .webhook-card {
 
 .copy-btn .lock-icon {
   font-size: 10px;
-  color: #ffd700;
+  color: var(--color-yellow);
   margin-left: 4px;
 }
 
@@ -518,17 +518,17 @@ body.dark .webhook-card {
 
 .status-running {
   background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
+  color: var(--color-green);
 }
 
 .status-listening {
   background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
+  color: var(--color-blue);
 }
 
 .status-queued {
   background: rgba(251, 191, 36, 0.2);
-  color: #fbbf24;
+  color: var(--color-yellow);
 }
 
 .status-stopped {
@@ -538,7 +538,7 @@ body.dark .webhook-card {
 
 .status-error {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .status-unknown {

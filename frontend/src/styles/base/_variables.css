@@ -62,8 +62,19 @@
 
   --color-popup: rgba(16, 16, 24, 0.95);
 
+  --color-light-green: var(--color-green);
+
   --color-primary: var(--color-pink);
   --color-secondary: var(--color-blue);
+
+  /* RGB components for rgba() usage */
+  --green-rgb: 25, 239, 131;
+  --blue-rgb: 18, 224, 255;
+  --pink-rgb: 229, 61, 143;
+  --red-rgb: 254, 78, 78;
+  --yellow-rgb: 255, 215, 0;
+  --indigo-rgb: 125, 61, 229;
+  --primary-rgb: 229, 61, 143;
 
   /* TYPOGRAPHY */
   --base-font-size: 16px;

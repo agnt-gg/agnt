@@ -1085,7 +1085,7 @@ export default {
 /* General Section Styling */
 .data-section {
   background: rgba(0, 0, 0, 0.15);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
 }
@@ -1095,7 +1095,7 @@ export default {
   font-size: 1.1em;
   margin: 0 0 12px 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.15);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.15);
   display: flex;
   align-items: center;
   gap: 8px;

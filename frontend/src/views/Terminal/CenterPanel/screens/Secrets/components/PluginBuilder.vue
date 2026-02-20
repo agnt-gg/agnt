@@ -566,7 +566,7 @@ body.dark .builder-section {
 .generation-progress {
   margin-top: 20px;
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 8px;
 }
 
@@ -619,7 +619,7 @@ body.dark .builder-section {
   background: rgba(255, 107, 107, 0.1);
   border: 1px solid rgba(255, 107, 107, 0.3);
   border-radius: 8px;
-  color: #ff6b6b;
+  color: var(--color-red);
   font-size: 0.9em;
 }
 
@@ -629,8 +629,8 @@ body.dark .builder-section {
   gap: 8px;
   margin-top: 16px;
   padding: 12px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
   color: var(--color-green);
   font-size: 0.9em;
@@ -664,12 +664,12 @@ body.dark .builder-section {
 }
 
 .file-item:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-text);
 }
 
 .file-item.active {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
@@ -697,7 +697,7 @@ body.dark .builder-section {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   overflow: auto;
-  font-family: 'Fira Code', 'Monaco', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.85em;
   line-height: 1.5;
   color: var(--color-text);
@@ -759,8 +759,8 @@ body.dark .builder-section {
 
 .tool-badge {
   padding: 4px 10px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-green);
   font-size: 0.85em;
@@ -780,7 +780,7 @@ body.dark .builder-section {
 
 .build-progress {
   padding: 12px 16px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 8px;
 }
 
@@ -818,7 +818,7 @@ body.dark .builder-section {
 }
 
 .regenerate-message.user {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
   color: var(--color-text);
 }
 

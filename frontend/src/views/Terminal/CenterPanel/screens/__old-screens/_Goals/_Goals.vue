@@ -1366,7 +1366,7 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 /* Grid View */
@@ -1388,14 +1388,14 @@ export default {
 }
 
 .goal-card:hover {
-  /* background: rgba(25, 239, 131, 0.08); */
+  /* background: rgba(var(--green-rgb), 0.08); */
   /* border-color: var(--color-pink); */
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
 }
 
 .goal-card.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-blue);
 }
 
@@ -1926,7 +1926,7 @@ export default {
   background: rgba(239, 68, 68, 0.1);
   padding: 2px 4px;
   border-radius: 3px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   cursor: help;
   max-width: 100%;
   overflow: hidden;
@@ -2024,8 +2024,8 @@ export default {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   font-size: 0.75em;
@@ -2035,8 +2035,8 @@ export default {
 }
 
 .task-io-button:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateX(2px);
 }
 
@@ -2191,8 +2191,8 @@ export default {
 }
 
 .modal-download-btn {
-  background: rgba(25, 239, 131, 0.2);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   width: 32px;
@@ -2205,8 +2205,8 @@ export default {
 }
 
 .modal-download-btn:hover {
-  background: rgba(25, 239, 131, 0.3);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.3);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateY(-1px);
 }
 
@@ -2282,7 +2282,7 @@ export default {
   padding: 20px;
   background: rgba(0, 0, 0, 0.3);
   color: var(--color-light-green);
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.85em;
   line-height: 1.4;
   overflow: auto;
@@ -2308,7 +2308,7 @@ export default {
   font-weight: 600;
   margin: 0 0 16px 0;
   padding-bottom: 8px;
-  border-bottom: 2px solid rgba(25, 239, 131, 0.3);
+  border-bottom: 2px solid rgba(var(--green-rgb), 0.3);
 }
 
 .artifact-markdown h2 {
@@ -2368,7 +2368,7 @@ export default {
 }
 
 .artifact-type {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
   padding: 2px 8px;
   border-radius: 12px;

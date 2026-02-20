@@ -217,15 +217,16 @@ export default {
 
     generateColors(count) {
       // System color palette from frontend/src/styles/base/_variables.css
+      const style = getComputedStyle(document.body);
       const colors = [
-        '#fe4e4e', // --color-red
-        '#12e0ff', // --color-blue
-        '#ffd700', // --color-yellow
-        '#19ef83', // --color-green
-        '#7d3de5', // --color-indigo
-        '#ff9500', // --color-orange
-        '#d13de5', // --color-violet
-        '#e53d8f', // --color-pink
+        style.getPropertyValue('--color-red').trim() || '#ff4444',
+        style.getPropertyValue('--color-blue').trim() || '#12e0ff',
+        style.getPropertyValue('--color-yellow').trim() || '#ffd700',
+        style.getPropertyValue('--color-green').trim() || '#19ef83',
+        style.getPropertyValue('--color-indigo').trim() || '#7d3de5',
+        style.getPropertyValue('--color-orange').trim() || '#ff9500',
+        style.getPropertyValue('--color-violet').trim() || '#d13de5',
+        style.getPropertyValue('--color-primary').trim() || '#e53d8f',
       ];
       return Array.from({ length: count }, (_, i) => colors[i % colors.length]);
     },

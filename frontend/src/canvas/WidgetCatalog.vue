@@ -218,7 +218,7 @@ export default {
 }
 
 .wc-close:hover {
-  color: #e05a5a;
+  color: var(--color-red);
 }
 
 /* ── Search ── */
@@ -279,8 +279,8 @@ export default {
 
 .wc-tab.active {
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.25);
-  background: rgba(25, 239, 131, 0.06);
+  border-color: rgba(var(--green-rgb), 0.25);
+  background: rgba(var(--green-rgb), 0.06);
 }
 
 /* ── Body ── */
@@ -308,13 +308,13 @@ export default {
 }
 
 .wc-card:hover {
-  border-color: rgba(25, 239, 131, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
   background: rgba(255, 255, 255, 0.04);
 }
 
 .wc-card.wc-active {
-  border-color: rgba(25, 239, 131, 0.25);
-  background: rgba(25, 239, 131, 0.04);
+  border-color: rgba(var(--green-rgb), 0.25);
+  background: rgba(var(--green-rgb), 0.04);
 }
 
 .wc-card-icon {
@@ -358,7 +358,7 @@ export default {
 }
 
 .wc-on {
-  background: rgba(25, 239, 131, 0.12);
+  background: rgba(var(--green-rgb), 0.12);
   color: var(--color-green);
 }
 

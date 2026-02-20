@@ -1911,7 +1911,6 @@ export default {
   /* overflow: scroll; */
   width: 100%;
   width: -webkit-fill-available;
-  backdrop-filter: blur(4px);
 }
 
 body[data-page='terminal-agent-forge'] .message-card,
@@ -1928,8 +1927,8 @@ body[data-page='terminal-tool-forge'] .message-wrapper.assistant .message-card {
   border: none;
 }
 -agent-forge .message-wrapper.user .message-card {
-  background: rgba(25, 239, 131, 0.05);
-  border-color: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.05);
+  border-color: rgba(var(--green-rgb), 0.15);
 }
 
 .message-wrapper.assistant .message-card {
@@ -2683,7 +2682,7 @@ rect.basic.label-container {
   border-radius: 4px;
   font-size: var(--font-size-xs);
   font-weight: bold;
-  color: var(--color-pink);
+  color: var(--color-primary);
   border: 1px solid rgba(127, 129, 147, 0.1);
 }
 
@@ -2916,8 +2915,8 @@ span.nodeLabel p {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   font-size: 0.85em;
@@ -2927,10 +2926,10 @@ span.nodeLabel p {
 }
 
 .ref-image-action-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .ref-image-action-btn .btn-icon {
@@ -2950,7 +2949,7 @@ span.nodeLabel p {
 }
 
 .error-content {
-  color: #ff6b6b;
+  color: var(--color-red);
 }
 
 .params-content code,
@@ -2965,7 +2964,7 @@ span.nodeLabel p {
 }
 
 .tool-error .error-label {
-  color: #ff6b6b;
+  color: var(--color-red);
 }
 
 .tool-running {
@@ -3112,8 +3111,8 @@ span.nodeLabel p {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   font-size: 0.85em;
@@ -3123,7 +3122,7 @@ span.nodeLabel p {
 }
 
 .message-text :deep(.html-action-btn:hover) {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
   transform: translateY(-1px);
 }
@@ -3305,7 +3304,7 @@ span.nodeLabel p {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .message-text :deep(.step-text) {
@@ -3441,8 +3440,8 @@ span.nodeLabel p {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   font-size: 0.85em;
@@ -3452,10 +3451,10 @@ span.nodeLabel p {
 }
 
 .image-action-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .image-action-btn .btn-icon {
@@ -3491,7 +3490,7 @@ span.nodeLabel p {
 .grid-item:hover {
   border-color: var(--color-green);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .grid-image {
@@ -3516,8 +3515,8 @@ span.nodeLabel p {
 
 .grid-action-btn {
   padding: 6px 10px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-green);
   font-size: 1.1em;
@@ -3536,7 +3535,7 @@ span.nodeLabel p {
 }
 
 .grid-action-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
   transform: scale(1.1);
 }
@@ -3569,8 +3568,8 @@ span.nodeLabel p {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   font-size: 0.85em;
@@ -3580,10 +3579,10 @@ span.nodeLabel p {
 }
 
 .message-text :deep(.assistant-image-action-btn:hover) {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .message-text :deep(.assistant-image-action-btn .btn-icon) {
@@ -3606,8 +3605,8 @@ span.nodeLabel p {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   font-size: 0.85em;
@@ -3617,10 +3616,10 @@ span.nodeLabel p {
 }
 
 .share-preview-btn:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .share-preview-btn:disabled {
@@ -3809,8 +3808,8 @@ span.nodeLabel p {
 
 .share-copy-btn {
   padding: 10px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   font-size: 0.85em;
@@ -3821,7 +3820,7 @@ span.nodeLabel p {
 }
 
 .share-copy-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
 }
 
@@ -3947,7 +3946,7 @@ span.nodeLabel p {
 .share-submit-btn:hover:not(:disabled) {
   background: #15d975;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .share-submit-btn:disabled {

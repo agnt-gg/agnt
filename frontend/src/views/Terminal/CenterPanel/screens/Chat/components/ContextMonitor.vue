@@ -100,11 +100,11 @@ export default {
 .model-badge {
   font-size: 0.7em;
   padding: 2px 8px;
-  background: rgba(18, 224, 255, 0.1);
-  border: 1px solid rgba(18, 224, 255, 0.2);
+  background: rgba(var(--blue-rgb), 0.1);
+  border: 1px solid rgba(var(--blue-rgb), 0.2);
   border-radius: 12px;
   color: var(--color-blue);
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-family-mono);
 }
 
 .context-bar {
@@ -127,19 +127,19 @@ export default {
 }
 
 .usage-fill.low {
-  background: linear-gradient(90deg, var(--color-green), rgba(25, 239, 131, 0.8));
+  background: linear-gradient(90deg, var(--color-green), rgba(var(--green-rgb), 0.8));
 }
 
 .usage-fill.moderate {
-  background: linear-gradient(90deg, var(--color-blue), rgba(18, 224, 255, 0.8));
+  background: linear-gradient(90deg, var(--color-blue), rgba(var(--blue-rgb), 0.8));
 }
 
 .usage-fill.warning {
-  background: linear-gradient(90deg, #ffa500, rgba(255, 165, 0, 0.8));
+  background: linear-gradient(90deg, var(--color-orange), rgba(var(--orange-rgb), 0.8));
 }
 
 .usage-fill.critical {
-  background: linear-gradient(90deg, #ff6b6b, rgba(255, 107, 107, 0.8));
+  background: linear-gradient(90deg, var(--color-red), rgba(var(--red-rgb), 0.8));
 }
 
 .context-info {
@@ -151,7 +151,7 @@ export default {
 .token-count {
   font-size: 0.8em;
   color: var(--color-bright-light-navy);
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-family-mono);
 }
 
 .percentage {
@@ -165,8 +165,8 @@ export default {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
   border-radius: 6px;
   margin-top: 8px;
 }

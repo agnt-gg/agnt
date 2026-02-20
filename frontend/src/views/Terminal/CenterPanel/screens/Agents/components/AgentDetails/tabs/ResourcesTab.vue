@@ -39,7 +39,7 @@ h3.section-title {
   align-items: center;
   gap: 8px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .section-title i {
@@ -54,7 +54,7 @@ h3.section-title {
 }
 
 .resource-item {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 12px;
   border-radius: 4px;
   display: flex;

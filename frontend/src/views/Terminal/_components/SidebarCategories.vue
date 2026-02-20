@@ -339,11 +339,11 @@ export default {
 }
 
 .category-item:hover {
-  background-color: rgba(25, 239, 131, 0.1);
+  background-color: rgba(var(--green-rgb), 0.1);
 }
 
 .category-item.active {
-  background-color: rgba(25, 239, 131, 0.15);
+  background-color: rgba(var(--green-rgb), 0.15);
   color: var(--color-text) !important;
 }
 
@@ -362,7 +362,7 @@ export default {
 }
 
 .main-active {
-  background: rgba(25, 239, 131, 0.18) !important;
+  background: rgba(var(--green-rgb), 0.18) !important;
   color: var(--color-text) !important;
 }
 
@@ -411,11 +411,11 @@ li.category-item.all-items i {
 }
 
 .sidebar-categories::-webkit-scrollbar-thumb {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   border-radius: 2px;
 }
 
 .sidebar-categories::-webkit-scrollbar-thumb:hover {
-  background: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.5);
 }
 </style>

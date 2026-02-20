@@ -124,9 +124,9 @@ const emit = defineEmits(['row-click', 'search']);
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   padding: 2px;
-  border: 2px solid rgba(25, 239, 131, 0.5);
+  border: 2px solid rgba(var(--green-rgb), 0.5);
   object-fit: cover;
 }
 
@@ -156,7 +156,7 @@ const emit = defineEmits(['row-click', 'search']);
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.3) transparent;
+  scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
   padding-right: 4px;
   justify-content: flex-start;
   align-items: flex-start;

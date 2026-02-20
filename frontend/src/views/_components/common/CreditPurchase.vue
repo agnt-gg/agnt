@@ -139,9 +139,9 @@ export default {
             },
           },
           invalid: {
-            color: 'var(--color-pink)',
+            color: 'var(--color-primary)',
             ':focus': {
-              color: 'var(--color-pink)',
+              color: 'var(--color-primary)',
             },
           },
         };
@@ -377,8 +377,8 @@ input[type='number'] {
 
 input[type='number']:focus {
   outline: none;
-  border-color: var(--color-pink);
-  box-shadow: 0 0 0 2px var(--color-pink);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 /* Hide spinner for webkit browsers */
@@ -412,7 +412,7 @@ button:disabled {
 }
 
 button.button-ready {
-  background-color: var(--color-pink);
+  background-color: var(--color-primary);
 }
 
 .stripe-element-container {
@@ -424,12 +424,12 @@ button.button-ready {
 }
 
 .stripe-element-container:focus-within {
-  border-color: var(--color-pink);
-  box-shadow: 0 0 0 2px var(--color-pink);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 #card-errors {
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-size: 14px;
   margin-top: 8px;
 }
@@ -445,14 +445,14 @@ button.button-ready {
 }
 
 ::v-deep .StripeElement--invalid {
-  border-color: var(--color-pink) !important;
+  border-color: var(--color-primary) !important;
 }
 
 .credits-text {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 24px;
   font-weight: bold;
-  color: var(--color-pink);
+  color: var(--color-primary);
 }
 
 body.dark .credits-text {

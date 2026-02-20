@@ -246,7 +246,7 @@ export default {
 
 /* Submit Review Form */
 .submit-review-form {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 12px;
@@ -336,7 +336,7 @@ export default {
 }
 
 .submit-review-btn:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.9);
+  background: rgba(var(--green-rgb), 0.9);
   transform: translateY(-1px);
 }
 
@@ -347,8 +347,8 @@ export default {
 
 /* User Review */
 .user-review {
-  background: rgba(25, 239, 131, 0.08);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.08);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
   padding: 12px;
 }
@@ -415,7 +415,7 @@ export default {
   gap: 4px;
   font-size: 10px;
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -473,7 +473,7 @@ export default {
 }
 
 .vote-btn:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-color: var(--color-green);
   color: var(--color-green);
 }

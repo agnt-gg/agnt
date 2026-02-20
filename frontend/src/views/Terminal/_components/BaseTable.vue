@@ -411,11 +411,11 @@ export default {
 
 .table-header {
   display: grid;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 10px 8px;
   font-weight: 400;
   color: var(--color-text);
-  border-bottom: 1px solid rgba(25, 239, 131, 0.4);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.4);
 }
 
 .table-body {
@@ -432,7 +432,7 @@ export default {
 }
 
 .table-body::-webkit-scrollbar-track {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .table-body::-webkit-scrollbar-thumb {
@@ -458,13 +458,13 @@ export default {
 }
 
 .table-row.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-left: 3px solid var(--color-green);
   padding-left: 5px;
 }
 
 .table-row:not(.selected):hover {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
 }
 
 [class^='col-'] {
@@ -501,7 +501,7 @@ export default {
   width: 100%;
   padding: 8px 12px;
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
   color: var(--color-light-green);
   font-size: 0.9em;
@@ -516,8 +516,8 @@ export default {
   width: 80px;
   padding: 7px 12px;
   border-radius: 4px;
-  border: 1px solid rgba(25, 239, 131, 0.25);
-  background: rgba(25, 239, 131, 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.25);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   font-size: 0.95em;
   transition: background 0.15s, color 0.15s, border 0.15s;
@@ -531,7 +531,7 @@ export default {
 }
 
 select option {
-  background-color: #080921;
+  background-color: var(--color-ultra-dark-navy);
 }
 
 /* Status Colors */
@@ -572,7 +572,7 @@ select option {
 }
 
 .table-header .sortable:hover {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
 }
 
 .sort-arrow {

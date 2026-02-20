@@ -1140,7 +1140,7 @@ ${execution.log}
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -1158,8 +1158,8 @@ ${execution.log}
 
 .copy-btn,
 .close-btn {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   padding: 6px 10px;
   border-radius: 4px;
@@ -1170,8 +1170,8 @@ ${execution.log}
 
 .copy-btn:hover,
 .close-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .close-btn {
@@ -1193,7 +1193,7 @@ ${execution.log}
   color: var(--color-green);
   margin: 0 0 12px 0;
   font-size: 1.1em;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
   padding-bottom: 4px;
 }
 
@@ -1280,7 +1280,7 @@ ${execution.log}
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border: 2px solid var(--color-green);
   display: flex;
   align-items: center;
@@ -1294,7 +1294,7 @@ ${execution.log}
 .step-connector {
   width: 2px;
   height: 40px;
-  background: linear-gradient(to bottom, var(--color-green), rgba(25, 239, 131, 0.3));
+  background: linear-gradient(to bottom, var(--color-green), rgba(var(--green-rgb), 0.3));
   margin-top: 8px;
   z-index: 1;
 }
@@ -1318,7 +1318,7 @@ ${execution.log}
 
 .node-card:hover {
   background: rgba(0, 0, 0, 0.1);
-  /* border-color: rgba(25, 239, 131, 0.3); */
+  /* border-color: rgba(var(--green-rgb), 0.3); */
 }
 
 /* Task Card Specific Styles */
@@ -1387,7 +1387,7 @@ ${execution.log}
   padding: 8px 12px;
   background: var(--color-darker-0);
   border-radius: 6px;
-  border-left: 2px solid rgba(25, 239, 131, 0.3);
+  border-left: 2px solid rgba(var(--green-rgb), 0.3);
 }
 
 .task-tools {
@@ -1543,7 +1543,7 @@ ${execution.log}
 
 .node-io-section {
   margin-top: 12px;
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1557,7 +1557,7 @@ ${execution.log}
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
@@ -1568,7 +1568,7 @@ ${execution.log}
 }
 
 .io-header:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .error-section .io-header:hover {
@@ -1577,7 +1577,7 @@ ${execution.log}
 
 .io-header i {
   font-size: 0.8em;
-  color: var(--color-pink);
+  color: var(--color-primary);
   transition: transform 0.2s ease;
 }
 
@@ -1606,7 +1606,7 @@ ${execution.log}
 
 .io-content {
   padding: 0;
-  border-top: 1px solid rgba(25, 239, 131, 0.1);
+  border-top: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .error-section .io-content {
@@ -1662,7 +1662,7 @@ ${execution.log}
 }
 
 .io-data::-webkit-scrollbar-thumb {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   border-radius: 2px;
 }
 
@@ -1672,7 +1672,7 @@ ${execution.log}
 }
 
 .execution-log::-webkit-scrollbar-thumb {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   border-radius: 2px;
 }
 
@@ -1680,7 +1680,7 @@ ${execution.log}
   text-align: center;
   color: var(--color-grey);
   padding: 30px 15px;
-  border: 1px dashed rgba(25, 239, 131, 0.2);
+  border: 1px dashed rgba(var(--green-rgb), 0.2);
   border-radius: 4px;
 }
 
@@ -1728,7 +1728,7 @@ ${execution.log}
   /* max-height: 200px; */
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.3) transparent;
+  scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
 }
 
 .recent-run-item {
@@ -1744,8 +1744,8 @@ ${execution.log}
 }
 
 .recent-run-item:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.2);
 }
 
 .run-info {
@@ -1869,8 +1869,8 @@ ${execution.log}
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .action-button i {
@@ -1902,8 +1902,8 @@ ${execution.log}
 
 .goal-input:focus {
   outline: none;
-  border-color: rgba(25, 239, 131, 0.5);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.1);
 }
 
 .goal-input::placeholder {
@@ -1928,8 +1928,8 @@ ${execution.log}
 }
 
 .create-goal-button:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateY(-1px);
 }
 
@@ -1959,7 +1959,7 @@ ${execution.log}
 
 /* Workflow Actions Section */
 .workflow-actions-section {
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -1971,7 +1971,7 @@ ${execution.log}
 
 .action-button {
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   padding: 10px;
   border-radius: 4px;
@@ -1984,17 +1984,17 @@ ${execution.log}
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-color: var(--color-green);
 }
 
 .action-button.edit {
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
   color: var(--color-green);
 }
 
 .action-button.edit:hover {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
 }
 

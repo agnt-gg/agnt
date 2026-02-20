@@ -1,9 +1,12 @@
 /* DARK THEME */
 body.dark {
   --color-primary: var(--color-pink);
-  /* --color-background is now set dynamically by JavaScript */
+  --color-secondary: var(--color-blue);
+  --color-background: var(--color-dark-navy);
   --color-text: var(--color-dull-white);
   --color-text-muted: var(--color-med-navy);
+  --color-text-secondary: var(--color-med-navy);
+  --color-text-dull: var(--color-dull-navy);
   --terminal-width: 100%;
   --terminal-height: 100%;
   --terminal-border-radius: 0;
@@ -13,22 +16,21 @@ body.dark {
   --terminal-box-shadow: none;
   --terminal-muted-color: var(--color-dull-navy);
 
-  /* --color-light-0: rgba(255, 255, 255, 0.1);
-  --color-light-1: rgba(255, 255, 255, 0.2);
-  --color-light-2: rgba(255, 255, 255, 0.4);
-  --color-light-3: rgba(255, 255, 255, 0.8); */
-
   --color-dark-0: rgba(0, 0, 0, 0.1);
   --color-dark-1: rgba(0, 0, 0, 0.2);
   --color-dark-2: rgba(0, 0, 0, 0.4);
   --color-dark-3: rgba(0, 0, 0, 0.8);
 
-  /* --color-darker-0: rgba(0, 0, 0, 0.1);
-  --color-darker-1: rgba(0, 0, 0, 0.2);
-  --color-darker-2: rgba(0, 0, 0, 0.4);
-  --color-darker-3: rgba(0, 0, 0, 0.8); */
-
   --color-popup: rgba(16, 16, 31, 0.95);
+
+  /* RGB components */
+  --green-rgb: 25, 239, 131;
+  --blue-rgb: 18, 224, 255;
+  --pink-rgb: 229, 61, 143;
+  --red-rgb: 254, 78, 78;
+  --yellow-rgb: 255, 215, 0;
+  --indigo-rgb: 125, 61, 229;
+  --primary-rgb: 229, 61, 143;
 
   font-size: var(--font-size-sm);
   line-height: 1.25;
@@ -67,7 +69,7 @@ body.dark button {
 
 body.dark header {
   border-bottom: 1px solid var(--color-dull-navy);
-  background: var(--color-dark-navy);
+  background: var(--color-background);
   color: var(--color-dull-white);
 }
 
@@ -79,7 +81,7 @@ body.dark .separator {
 
 body.dark #left-sidebar {
   border-right: 1px solid var(--color-dull-navy);
-  background: var(--color-ultra-dark-navy);
+  background: var(--color-background);
 }
 
 body.dark #left-sidebar svg {
@@ -96,7 +98,7 @@ body.dark a.router-link-active .svg-icon path {
 }
 
 body.dark button.generate {
-  background-image: linear-gradient(45deg, #19ef83, #19efcb);
+  background-image: linear-gradient(45deg, var(--color-green), var(--color-blue));
   color: var(--color-dark-navy);
   font-weight: 600;
 }
@@ -232,7 +234,7 @@ body.dark .node.no-select.label-node {
 }
 
 body.dark .node.no-select.label-node.selected {
-  border: 2px solid #e53d8f;
+  border: 2px solid var(--color-primary);
 }
 
 body.dark .connector {
@@ -283,7 +285,7 @@ body.dark .edges path.animated {
 }
 
 body.dark .edges path.selected {
-  stroke: var(--color-pink);
+  stroke: var(--color-primary);
   opacity: 1;
 }
 
@@ -345,7 +347,7 @@ body.dark input[type='time'] {
 body.dark .form-group input[type="text"]:focus,
 body.dark .form-group input[type="number"]:focus {
   outline: none;
-  border: 2px solid var(--color-pink);
+  border: 2px solid var(--color-primary);
 } */
 
 body.dark #workflow-engine-toggle {
@@ -419,7 +421,7 @@ body.dark input[type='number']:focus,
 body.dark textarea:focus,
 body.dark select:focus {
   outline: none;
-  border: 1px solid var(--color-pink);
+  border: 1px solid var(--color-primary);
 }
 
 body.dark input::placeholder,
@@ -517,7 +519,7 @@ body.dark inner-editor-area .placeholder-text {
 
 body.dark inner-editor-area:focus {
   outline: none;
-  border: 1px solid var(--color-pink);
+  border: 1px solid var(--color-primary);
 }
 
 body.dark input[type='file'] {
@@ -565,16 +567,16 @@ body.dark inner-editor-area#response-area p span {
 }
 
 body.dark .popup-arrow-top {
-  border-color: transparent transparent var(--color-pink) transparent;
+  border-color: transparent transparent var(--color-primary) transparent;
 }
 body.dark .popup-arrow-bottom {
-  border-color: var(--color-pink) transparent transparent transparent;
+  border-color: var(--color-primary) transparent transparent transparent;
 }
 body.dark .popup-arrow-left {
-  border-color: transparent var(--color-pink) transparent transparent;
+  border-color: transparent var(--color-primary) transparent transparent;
 }
 body.dark .popup-arrow-right {
-  border-color: transparent transparent transparent var(--color-pink);
+  border-color: transparent transparent transparent var(--color-primary);
 } */
 
 /* MODAL POPUP */

@@ -148,8 +148,8 @@ export default {
         top: `${minY}px`,
         width: `${width}px`,
         height: `${height}px`,
-        border: '2px dashed #e53d8f',
-        backgroundColor: 'rgba(229, 61, 143, 0.1)',
+        border: '2px dashed var(--color-primary)',
+        backgroundColor: 'rgba(var(--primary-rgb), 0.1)',
         pointerEvents: 'none',
         zIndex: 10,
       };
@@ -868,7 +868,7 @@ div#canvas:focus {
 /* Canvas drag and drop styling for media files */
 .canvas-drag-hover {
   background: rgba(233, 61, 143, 0.05) !important;
-  border: 2px dashed var(--color-pink) !important;
+  border: 2px dashed var(--color-primary) !important;
   border-radius: 8px;
 }
 
@@ -893,7 +893,7 @@ div#canvas:focus {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--color-pink);
+  color: var(--color-primary);
   font-weight: 600;
   gap: 16px;
   font-size: 18px;

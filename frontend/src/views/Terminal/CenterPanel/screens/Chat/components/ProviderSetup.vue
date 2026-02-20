@@ -480,7 +480,7 @@ export default {
 .provider-tile:hover {
   background: rgba(127, 129, 147, 0.1);
   transform: translateY(-2px);
-  border-color: rgba(25, 239, 131, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .provider-icon :deep(svg) {

@@ -110,8 +110,8 @@ export default {
 }
 
 .autosave-status.saved {
-  background: rgba(25, 239, 131, 0.15);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: rgba(var(--green-rgb), 0.3);
   animation: success-pop 0.3s ease-out;
 }
 
@@ -140,7 +140,7 @@ export default {
 }
 
 .autosave-status.error .status-text {
-  color: #ff6b6b;
+  color: var(--color-red);
 }
 
 .action-icon-button {
@@ -161,8 +161,8 @@ export default {
 }
 
 .save-button:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.4);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.4);
   color: var(--color-white);
 }
 

@@ -556,7 +556,7 @@ export default {
 
 .status-indicator.active {
   background: var(--color-green);
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.6);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.6);
 }
 
 .user-info {
@@ -597,7 +597,7 @@ export default {
 
 .edit-icon-button:hover {
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .save-button,
@@ -619,7 +619,7 @@ export default {
 .save-button:hover:not(:disabled),
 .cancel-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3);
 }
 
 .save-button:disabled {
@@ -670,7 +670,7 @@ export default {
 
 .plan-badge.pro-plan {
   background: rgba(255, 215, 0, 0.15);
-  color: #ffd700;
+  color: var(--color-yellow);
   border: 1px solid rgba(255, 215, 0, 0.4);
   box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
 }
@@ -683,7 +683,7 @@ export default {
 
 .tier-badge.pro-tier {
   background: rgba(255, 215, 0, 0.15);
-  color: #ffd700;
+  color: var(--color-yellow);
   border: 1px solid rgba(255, 215, 0, 0.4);
   box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
 }
@@ -712,7 +712,7 @@ export default {
   font-size: 1.5em;
   font-weight: bold;
   color: var(--color-green);
-  text-shadow: 0 0 10px rgba(25, 239, 131, 0.3);
+  text-shadow: 0 0 10px rgba(var(--green-rgb), 0.3);
 }
 
 .score-tier {
@@ -754,13 +754,13 @@ export default {
 }
 
 .stat-card.highlight {
-  background: rgba(25, 239, 131, 0.05);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.05);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .stat-card.highlight:hover {
   border-color: var(--color-green);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .stat-icon {

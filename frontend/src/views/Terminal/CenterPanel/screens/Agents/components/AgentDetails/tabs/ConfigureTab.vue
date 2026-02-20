@@ -441,7 +441,7 @@ h4.section-title {
   align-items: center;
   gap: 8px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 h3.section-title {
   font-size: 1em;
@@ -464,7 +464,7 @@ h4.section-title {
 
 .config-group {
   background: rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
 }
@@ -484,7 +484,7 @@ h4.section-title {
 }
 
 /* .input {
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   padding: 0 6px;
   border-radius: 4px;
@@ -504,8 +504,8 @@ textarea.input {
 }
 
 .adjust-button {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   width: 32px;
   height: 32px;
@@ -517,7 +517,7 @@ textarea.input {
   transition: all 0.2s;
 }
 .adjust-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 .number-input {
   text-align: center;
@@ -540,8 +540,8 @@ textarea.input {
 .checkbox-label input[type='checkbox'] {
   width: 16px;
   height: 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 3px;
   cursor: pointer;
   appearance: none;
@@ -564,13 +564,13 @@ textarea.input {
   display: flex;
   gap: 12px;
   padding-top: 16px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
 }
 
 .action-button {
   padding: 8px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-light-green);
   cursor: pointer;
@@ -580,7 +580,7 @@ textarea.input {
   transition: all 0.2s;
 }
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 .action-button.primary {
   background: var(--color-green);
@@ -588,27 +588,27 @@ textarea.input {
   border: none;
 }
 .action-button.primary:hover {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
 }
 .action-button.primary.error {
-  background: #ff4d4f;
+  background: var(--color-red);
   color: #fff;
-  border: 1px solid #ff4d4f;
+  border: 1px solid var(--color-red);
 }
 .action-button.primary.error:hover {
-  background: #ff7875;
-  border-color: #ff7875;
+  background: var(--color-red);
+  border-color: var(--color-red);
 }
 .action-button.danger {
-  background: #ff4d4f;
+  background: var(--color-red);
   color: #fff;
-  border: 1px solid #ff4d4f;
+  border: 1px solid var(--color-red);
   transition: background 0.2s, color 0.2s;
 }
 .action-button.danger:hover {
-  background: #ff7875;
+  background: var(--color-red);
   color: #fff;
-  border-color: #ff7875;
+  border-color: var(--color-red);
 }
 
 .config-actions.danger-actions {
@@ -631,8 +631,8 @@ textarea.input {
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  background: rgba(25, 239, 131, 0.1);
-  border: 3px solid rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 3px solid rgba(var(--green-rgb), 0.5);
   padding: 2px;
 }
 .avatar-controls {
@@ -641,8 +641,8 @@ textarea.input {
 }
 .upload-button {
   padding: 6px 12px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-light-green);
   cursor: pointer;
@@ -653,7 +653,7 @@ textarea.input {
   transition: all 0.2s;
 }
 .upload-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 .file-input {
   display: none;

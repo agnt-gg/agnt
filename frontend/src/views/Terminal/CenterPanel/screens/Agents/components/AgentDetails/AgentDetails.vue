@@ -327,7 +327,7 @@ const refreshGoalTasks = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-bottom: 1px solid var(--terminal-border-color);
 }
 
@@ -360,14 +360,14 @@ const refreshGoalTasks = async () => {
 
 .tab-button.active {
   color: var(--color-white);
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-bottom: 2px solid var(--color-green);
   opacity: 1;
 }
 
 .tab-button:hover:not(.active) {
   color: var(--color-light-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .table-container {
@@ -397,7 +397,7 @@ const refreshGoalTasks = async () => {
 }
 
 .stat-item {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 12px;
   border-radius: 4px;
   display: flex;
@@ -422,8 +422,8 @@ const refreshGoalTasks = async () => {
 
 .action-button {
   padding: 8px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-light-green);
   cursor: pointer;
@@ -434,7 +434,7 @@ const refreshGoalTasks = async () => {
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 
 /* Tools Tab Styles */
@@ -452,7 +452,7 @@ const refreshGoalTasks = async () => {
 }
 
 .tool-card {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 4px;
   padding: 12px;
 }
@@ -473,7 +473,7 @@ const refreshGoalTasks = async () => {
 .tool-button {
   flex: 1;
   padding: 6px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   background: none;
   color: var(--color-light-green);
@@ -486,7 +486,7 @@ const refreshGoalTasks = async () => {
 }
 
 .tool-button:hover {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
 }
 
 /* Resources Tab Styles */
@@ -498,7 +498,7 @@ const refreshGoalTasks = async () => {
 }
 
 .resource-item {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 12px;
   border-radius: 4px;
   display: flex;
@@ -536,7 +536,7 @@ const refreshGoalTasks = async () => {
   align-items: center;
   gap: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .missions-list {
@@ -546,8 +546,8 @@ const refreshGoalTasks = async () => {
 }
 
 .mission-card {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   padding: 12px;
   display: flex;
@@ -603,7 +603,7 @@ const refreshGoalTasks = async () => {
 .progress-bar {
   flex: 1;
   height: 4px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -630,7 +630,7 @@ const refreshGoalTasks = async () => {
   padding: 32px;
   color: var(--color-grey);
   gap: 8px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 4px;
 }
 
@@ -664,7 +664,7 @@ const refreshGoalTasks = async () => {
 
 .divider {
   border: none;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   margin: 15px 0;
 }
 
@@ -683,8 +683,8 @@ const refreshGoalTasks = async () => {
 
 .edit-button:hover {
   color: var(--color-green);
-  background-color: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background-color: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .overview-edit {
@@ -696,7 +696,7 @@ const refreshGoalTasks = async () => {
 .overview-edit h4 {
   color: var(--color-green);
   margin-bottom: 5px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
   padding-bottom: 5px;
 }
 
@@ -712,8 +712,8 @@ const refreshGoalTasks = async () => {
 }
 
 .input {
-  /* background: rgba(25, 239, 131, 0.1); */
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  /* background: rgba(var(--green-rgb), 0.1); */
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   padding: 10px 12px;
   border-radius: 4px;
@@ -740,7 +740,7 @@ select.input {
   display: flex;
   gap: 10px;
   margin-top: 10px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -764,7 +764,7 @@ h3.section-title {
   align-items: center;
   gap: 8px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 h4.section-title {
@@ -775,7 +775,7 @@ h4.section-title {
   gap: 8px;
   padding-bottom: 16px;
   margin-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .section-title i {
@@ -800,7 +800,7 @@ h4.section-title {
 
 .config-group {
   background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
 }
@@ -828,8 +828,8 @@ h4.section-title {
 }
 
 .adjust-button {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   width: 32px;
   height: 32px;
@@ -842,7 +842,7 @@ h4.section-title {
 }
 
 .adjust-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 
 .number-input {
@@ -867,8 +867,8 @@ h4.section-title {
 .checkbox-label input[type='checkbox'] {
   width: 16px;
   height: 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 3px;
   cursor: pointer;
   appearance: none;
@@ -894,7 +894,7 @@ h4.section-title {
   gap: 12px;
   /* margin-top: 16px; */
   padding-top: 16px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
 }
 
 .action-button.primary {
@@ -904,7 +904,7 @@ h4.section-title {
 }
 
 .action-button.primary:hover {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
 }
 
 .tab-pane {
@@ -926,8 +926,8 @@ h4.section-title {
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  background: rgba(25, 239, 131, 0.1);
-  border: 2px solid rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 2px solid rgba(var(--green-rgb), 0.5);
 }
 
 /* Avatar Upload Styles */
@@ -947,8 +947,8 @@ h4.section-title {
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  background: rgba(25, 239, 131, 0.1);
-  border: 2px solid rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 2px solid rgba(var(--green-rgb), 0.5);
 }
 
 .avatar-controls {
@@ -958,8 +958,8 @@ h4.section-title {
 
 .upload-button {
   padding: 6px 12px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-light-green);
   cursor: pointer;
@@ -971,7 +971,7 @@ h4.section-title {
 }
 
 .upload-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 
 .file-input {
@@ -994,16 +994,16 @@ h4.section-title {
 
 /* Danger (red) button for destructive actions */
 .action-button.danger {
-  background: #ff4d4f;
+  background: var(--color-red);
   color: #fff;
-  border: 1px solid #ff4d4f;
+  border: 1px solid var(--color-red);
   transition: background 0.2s, color 0.2s;
 }
 
 .action-button.danger:hover {
-  background: #ff7875;
+  background: var(--color-red);
   color: #fff;
-  border-color: #ff7875;
+  border-color: var(--color-red);
 }
 
 .config-actions.danger-actions {
@@ -1030,7 +1030,7 @@ h4.section-title {
   flex: 1;
   flex-direction: column;
   height: 400px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1041,7 +1041,7 @@ h4.section-title {
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.1);
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.3) transparent;
+  scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
 }
 
 .chat-message {
@@ -1098,9 +1098,9 @@ h4.section-title {
 }
 
 .chat-message.agent .message-content {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-bottom-left-radius: 4px;
 }
 
@@ -1139,9 +1139,9 @@ h4.section-title {
 }
 
 .chat-input-container {
-  border-top: 1px solid rgba(25, 239, 131, 0.3);
+  border-top: 1px solid rgba(var(--green-rgb), 0.3);
   padding: 12px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .chat-input-wrapper {
@@ -1153,7 +1153,7 @@ h4.section-title {
 .chat-input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 20px;
   background: rgba(0, 0, 0, 0.2);
   color: var(--color-light-green);
@@ -1163,7 +1163,7 @@ h4.section-title {
 .chat-input:focus {
   outline: none;
   border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
 }
 
 .chat-send-button {
@@ -1181,12 +1181,12 @@ h4.section-title {
 }
 
 .chat-send-button:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
   transform: scale(1.05);
 }
 
 .chat-send-button:disabled {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   cursor: not-allowed;
   transform: none;
 }
@@ -1210,12 +1210,12 @@ h4.section-title {
   display: flex;
   gap: 12px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .create-task-form {
   background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
   margin-bottom: 16px;
@@ -1239,7 +1239,7 @@ h4.section-title {
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
 }
 
 .tasks-section {
@@ -1263,8 +1263,8 @@ h4.section-title {
 }
 
 .task-card {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   padding: 16px;
   display: flex;
@@ -1274,8 +1274,8 @@ h4.section-title {
 }
 
 .task-card:hover {
-  background: rgba(25, 239, 131, 0.15);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .task-card.completed {
@@ -1314,22 +1314,22 @@ h4.section-title {
 
 .task-priority.low {
   background: rgba(108, 117, 125, 0.2);
-  color: #6c757d;
+  color: var(--color-med-navy);
 }
 
 .task-priority.medium {
   background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
+  color: var(--color-yellow);
 }
 
 .task-priority.high {
   background: rgba(255, 152, 0, 0.2);
-  color: #ff9800;
+  color: var(--color-orange);
 }
 
 .task-priority.urgent {
   background: rgba(244, 67, 54, 0.2);
-  color: #f44336;
+  color: var(--color-red);
 }
 
 .task-status {
@@ -1357,9 +1357,9 @@ h4.section-title {
 
 .task-button {
   padding: 6px 12px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   cursor: pointer;
   display: flex;
@@ -1370,14 +1370,14 @@ h4.section-title {
 }
 
 .task-button:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .task-button.danger {
   border-color: rgba(244, 67, 54, 0.3);
   background: rgba(244, 67, 54, 0.1);
-  color: #f44336;
+  color: var(--color-red);
 }
 
 .task-button.danger:hover {
@@ -1400,7 +1400,7 @@ h4.section-title {
 
 .goal-input-section {
   background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   padding: 16px;
 }
@@ -1415,7 +1415,7 @@ h4.section-title {
   width: 100%;
   min-height: 120px;
   padding: 16px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.3);
   color: var(--color-light-green);
@@ -1429,7 +1429,7 @@ h4.section-title {
 .goal-input:focus {
   outline: none;
   border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
 }
 
 .goal-input::placeholder {
@@ -1460,8 +1460,8 @@ h4.section-title {
 }
 
 .goal-card {
-  background: rgba(25, 239, 131, 0.08);
-  border: 1px solid rgba(25, 239, 131, 0.25);
+  background: rgba(var(--green-rgb), 0.08);
+  border: 1px solid rgba(var(--green-rgb), 0.25);
   border-radius: 8px;
   padding: 20px;
   display: flex;
@@ -1472,14 +1472,14 @@ h4.section-title {
 }
 
 .goal-card:hover {
-  background: rgba(25, 239, 131, 0.12);
-  border-color: rgba(25, 239, 131, 0.4);
+  background: rgba(var(--green-rgb), 0.12);
+  border-color: rgba(var(--green-rgb), 0.4);
   transform: translateY(-1px);
 }
 
 .goal-card.executing {
   border-color: var(--color-green);
-  box-shadow: 0 0 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.3);
 }
 
 .goal-card.executing::before {
@@ -1506,7 +1506,7 @@ h4.section-title {
 .goal-card.completed {
   opacity: 0.8;
   border-style: dashed;
-  border-color: rgba(25, 239, 131, 0.2);
+  border-color: rgba(var(--green-rgb), 0.2);
 }
 
 .goal-header {
@@ -1541,17 +1541,17 @@ h4.section-title {
 
 .goal-status.planning {
   background: rgba(108, 117, 125, 0.2);
-  color: #6c757d;
+  color: var(--color-med-navy);
 }
 
 .goal-status.executing {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
 .goal-status.paused {
   background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
+  color: var(--color-yellow);
 }
 
 .goal-status.completed {
@@ -1581,22 +1581,22 @@ h4.section-title {
 
 .goal-priority.low {
   background: rgba(108, 117, 125, 0.2);
-  color: #6c757d;
+  color: var(--color-med-navy);
 }
 
 .goal-priority.medium {
   background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
+  color: var(--color-yellow);
 }
 
 .goal-priority.high {
   background: rgba(255, 152, 0, 0.2);
-  color: #ff9800;
+  color: var(--color-orange);
 }
 
 .goal-priority.urgent {
   background: rgba(244, 67, 54, 0.2);
-  color: #f44336;
+  color: var(--color-red);
 }
 
 .goal-time {
@@ -1622,7 +1622,7 @@ h4.section-title {
 }
 
 .goal-current-tasks {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 4px;
   padding: 8px;
   margin: 4px 0;
@@ -1645,7 +1645,7 @@ h4.section-title {
 }
 
 .current-task {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   padding: 2px 8px;
   border-radius: 3px;
   font-size: 0.8em;
@@ -1661,9 +1661,9 @@ h4.section-title {
 
 .goal-button {
   padding: 6px 12px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   cursor: pointer;
   display: flex;
@@ -1674,14 +1674,14 @@ h4.section-title {
 }
 
 .goal-button:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .goal-button.danger {
   border-color: rgba(244, 67, 54, 0.3);
   background: rgba(244, 67, 54, 0.1);
-  color: #f44336;
+  color: var(--color-red);
 }
 
 .goal-button.danger:hover {
@@ -1703,8 +1703,8 @@ h4.section-title {
 
 /* Task-related styles in goals context */
 .info-card {
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
   display: flex;
@@ -1733,8 +1733,8 @@ h4.section-title {
   width: 120px;
   padding: 8px 12px;
   border-radius: 4px;
-  border: 1px solid rgba(25, 239, 131, 0.25);
-  background: rgba(25, 239, 131, 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.25);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   font-size: 0.95em;
   transition: background 0.15s, color 0.15s, border 0.15s;
@@ -1744,18 +1744,18 @@ h4.section-title {
 
 .goal-tasks-group {
   /* margin-bottom: 24px; */
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   overflow: hidden;
 }
 
 .goal-task-header {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .goal-task-title {
@@ -1773,22 +1773,22 @@ h4.section-title {
 }
 
 .task-card.pending {
-  border-left: 4px solid #6c757d;
+  border-left: 4px solid var(--color-med-navy);
   background: rgba(108, 117, 125, 0.1);
 }
 
 select option {
-  background-color: #080921;
+  background-color: var(--color-ultra-dark-navy);
 }
 
 .task-card.assigned {
-  border-left: 4px solid #ffc107;
+  border-left: 4px solid var(--color-yellow);
   background: rgba(255, 193, 7, 0.1);
 }
 
 .task-card.running {
   border-left: 4px solid var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .task-card.completed {
@@ -1818,16 +1818,16 @@ select option {
 
 .task-status-badge.pending {
   background: rgba(108, 117, 125, 0.2);
-  color: #6c757d;
+  color: var(--color-med-navy);
 }
 
 .task-status-badge.assigned {
   background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
+  color: var(--color-yellow);
 }
 
 .task-status-badge.running {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
@@ -1859,12 +1859,12 @@ select option {
 }
 
 .tool-tag {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   color: var(--color-light-green);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 0.75em;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
 }
 
 .task-times {
@@ -1884,7 +1884,7 @@ select option {
 
 .empty-state.small {
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   text-align: center;
   color: var(--color-grey);
   font-size: 0.9em;
@@ -1908,7 +1908,7 @@ select option {
 
 .expand-button:hover,
 .close-button:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .expand-button i,
@@ -1917,7 +1917,7 @@ select option {
 }
 
 .close-button:hover {
-  color: #ff4d4f;
+  color: var(--color-red);
   background: rgba(255, 77, 79, 0.1);
 }
 

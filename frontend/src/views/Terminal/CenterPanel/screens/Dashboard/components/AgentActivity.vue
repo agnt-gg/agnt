@@ -62,7 +62,7 @@ export default {
 /* Agent Activity Feed */
 .activity-feed {
   background: rgb(0 0 0 / 10%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 4px;
   padding: 16px;
   margin: 0;
@@ -91,7 +91,7 @@ export default {
   overflow: auto !important;
   gap: 8px;
   flex-direction: column;
-  scrollbar-color: #19ef831f transparent;
+  scrollbar-color: var(--color-duller-navy) transparent;
   scrollbar-width: thin;
 }
 
@@ -108,7 +108,7 @@ export default {
 }
 
 .activity-item:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .activity-icon {
@@ -117,7 +117,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 50%;
 }
 
@@ -155,7 +155,7 @@ export default {
 
 /* Activity Types */
 .activity-item.mining {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 .activity-item.mission {
   background: rgba(66, 135, 245, 0.05);
@@ -218,17 +218,17 @@ export default {
 }
 
 .feed-container::-webkit-scrollbar-track {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 0;
 }
 
 .feed-container::-webkit-scrollbar-thumb {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   border-radius: 0;
-  border: 2px solid rgba(25, 239, 131, 0.05);
+  border: 2px solid rgba(var(--green-rgb), 0.05);
 }
 
 .feed-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.5);
 }
 </style>

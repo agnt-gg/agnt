@@ -1267,7 +1267,7 @@ export default {
 
 .referral-input.editing {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .referral-input:disabled {
@@ -1298,7 +1298,7 @@ export default {
 .copy-button:hover {
   background: var(--color-green);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .copy-button.copied {
@@ -1427,7 +1427,7 @@ export default {
 }
 
 .referral-item.active {
-  border-color: rgba(25, 239, 131, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .referral-avatar {
@@ -1500,7 +1500,7 @@ export default {
 
 .referral-status.active {
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
 }
 
 .referral-rewards {
@@ -1660,13 +1660,13 @@ export default {
 
 .highlight-box .level-badge-small {
   background: rgba(255, 215, 0, 0.2);
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 
 .example-box {
   padding: 16px;
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   font-size: 0.9em;
   color: var(--color-text-muted);
@@ -1680,11 +1680,11 @@ export default {
 /* Dynamic Calculation Box */
 .calculation-box {
   /* padding: 20px; */
-  /* background: linear-gradient(135deg, rgba(25, 239, 131, 0.12) 0%, rgba(18, 224, 255, 0.12) 100%); */
+  /* background: linear-gradient(135deg, rgba(var(--green-rgb), 0.12) 0%, rgba(18, 224, 255, 0.12) 100%); */
   /* border: 2px solid var(--terminal-border-color); */
   border-radius: 12px;
   margin-top: 8px;
-  /* box-shadow: 0 4px 16px rgba(25, 239, 131, 0.15); */
+  /* box-shadow: 0 4px 16px rgba(var(--green-rgb), 0.15); */
 }
 
 .calculation-box strong {
@@ -1713,8 +1713,8 @@ export default {
 }
 
 .calc-row.network-section {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .calc-row.total-row {
@@ -1724,7 +1724,7 @@ export default {
 }
 
 .calc-row.agnt-row {
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.15) 0%, rgba(18, 224, 255, 0.15) 100%);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.15) 0%, rgba(18, 224, 255, 0.15) 100%);
   border: 2px solid var(--color-green);
 }
 
@@ -1743,7 +1743,7 @@ export default {
 .calc-value.agnt-boost {
   color: var(--color-green);
   font-size: 1.1em;
-  text-shadow: 0 0 8px rgba(25, 239, 131, 0.4);
+  text-shadow: 0 0 8px rgba(var(--green-rgb), 0.4);
 }
 
 .calc-detail {
@@ -1753,7 +1753,7 @@ export default {
   padding: 8px 14px 8px 28px;
   background: rgba(127, 129, 147, 0.05);
   border-radius: 6px;
-  border-left: 3px solid rgba(25, 239, 131, 0.3);
+  border-left: 3px solid rgba(var(--green-rgb), 0.3);
   font-size: 0.85em;
 }
 
@@ -1814,7 +1814,7 @@ export default {
 }
 
 .breakdown-referral:hover {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
   transform: translateX(4px);
 }
 
@@ -1835,15 +1835,15 @@ export default {
 /* Referral Code Entry Card */
 .referral-code-card {
   border: 2px solid var(--color-green);
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.05) 0%, rgba(18, 224, 255, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.05) 0%, rgba(18, 224, 255, 0.05) 100%);
 }
 
 .referral-code-card:hover {
-  box-shadow: 0 8px 24px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.2);
 }
 
 .bonus-icon {
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  background: linear-gradient(135deg, var(--color-yellow) 0%, #ffed4e 100%);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -1905,7 +1905,7 @@ export default {
 
 .submit-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .submit-button:disabled {
@@ -1929,11 +1929,11 @@ export default {
 /* Bonus Received Card */
 .bonus-received-card {
   border: 2px solid var(--color-green);
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
 }
 
 .bonus-received-card:hover {
-  box-shadow: 0 8px 24px rgba(25, 239, 131, 0.25);
+  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.25);
 }
 
 .success-icon {
@@ -1972,16 +1972,16 @@ export default {
 .bonus-amount {
   color: var(--color-green);
   font-size: 1.2em;
-  text-shadow: 0 0 8px rgba(25, 239, 131, 0.3);
+  text-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
 }
 
 /* Commission Card Styles */
 .commission-icon {
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  background: linear-gradient(135deg, var(--color-yellow) 0%, #ffed4e 100%);
 }
 
 .commission-value {
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 
 .commission-stats {
@@ -2041,7 +2041,7 @@ export default {
 
 .prompt-icon {
   font-size: 2em;
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 
 .prompt-content {
@@ -2063,7 +2063,7 @@ export default {
 
 .stripe-connect-button {
   padding: 10px 20px;
-  background: #635bff;
+  background: var(--color-violet);
   color: white;
   border: none;
   border-radius: 6px;
@@ -2154,7 +2154,7 @@ export default {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2176,7 +2176,7 @@ export default {
 
 .history-item-plan {
   padding: 2px 8px;
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   color: var(--color-green);
   border-radius: 4px;
   font-size: 0.85em;
@@ -2191,7 +2191,7 @@ export default {
 
 .history-item-eligible {
   font-size: 0.75em;
-  color: #ffc107;
+  color: var(--color-yellow);
   margin-top: 4px;
   display: flex;
   align-items: center;
@@ -2228,7 +2228,7 @@ export default {
 
 .history-item-stripe i {
   font-size: 0.9em;
-  color: #635bff;
+  color: var(--color-violet);
 }
 
 .referral-name {
@@ -2258,22 +2258,22 @@ export default {
 
 .history-item-status.status-pending {
   background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
+  color: var(--color-yellow);
 }
 
 .history-item-status.status-approved {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
 .history-item-status.status-paid {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
 .history-item-status.status-cancelled {
   background: rgba(244, 67, 54, 0.2);
-  color: #f44336;
+  color: var(--color-red);
 }
 
 .view-all-button {
@@ -2332,8 +2332,8 @@ export default {
   display: flex;
   gap: 16px;
   padding: 20px;
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
-  border: 2px solid rgba(25, 239, 131, 0.3);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
+  border: 2px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
   margin-top: 24px;
 }

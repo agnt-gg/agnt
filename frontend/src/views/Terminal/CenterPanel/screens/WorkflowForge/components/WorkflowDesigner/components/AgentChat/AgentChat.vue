@@ -202,7 +202,7 @@ export default {
   width: 24px; /* Adjust size as needed */
   height: 24px;
   border-radius: 50%;
-  border: 2px solid var(--color-pink); /* Match existing avatar style */
+  border: 2px solid var(--color-primary); /* Match existing avatar style */
   object-fit: cover;
 }
 

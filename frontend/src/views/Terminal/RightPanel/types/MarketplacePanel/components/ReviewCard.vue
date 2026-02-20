@@ -162,7 +162,7 @@ export default {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-green), rgba(25, 239, 131, 0.7));
+  background: linear-gradient(135deg, var(--color-green), rgba(var(--green-rgb), 0.7));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -217,7 +217,7 @@ export default {
   gap: 4px;
   font-size: 11px;
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 2px 8px;
   border-radius: 12px;
 }
@@ -247,15 +247,15 @@ export default {
 }
 
 .action-btn:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
   color: var(--color-text);
 }
 
 .action-btn.delete:hover {
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .action-btn i {
@@ -294,7 +294,7 @@ export default {
 
 .review-image:hover {
   transform: scale(1.05);
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .review-footer {
@@ -336,14 +336,14 @@ export default {
 }
 
 .vote-btn:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
   color: var(--color-text);
 }
 
 .vote-btn.active {
-  background: rgba(25, 239, 131, 0.15);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: rgba(var(--green-rgb), 0.5);
   color: var(--color-green);
 }
 

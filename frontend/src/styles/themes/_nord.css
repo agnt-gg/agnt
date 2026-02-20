@@ -1,0 +1,71 @@
+/* NORD THEME - Arctic cool blue-gray (based on Nord palette) */
+body.dark.nord {
+  --color-background: #2e3440;
+  /* Background hierarchy — Nord Polar Night */
+  --color-black-navy: #2e3440;
+  --color-ultra-dark-navy: #3b4252;
+  --color-dark-navy: #343a48;
+  --color-navy: #3b4252;
+  --color-dull-navy: #4c566a;
+  --color-duller-navy: #616e88;
+
+  /* Text hierarchy — Nord Snow Storm */
+  --color-med-navy: #8892a8;
+  --color-light-med-navy: #c0c8d8;
+  --color-light-navy: #a0aac0;
+  --color-bright-light-navy: #8892a8;
+  --color-ultra-light-navy: #3b4252;
+  --color-dull-white: #d8dee9;
+
+  /* Accent colors — Nord Frost & Aurora */
+  --color-green: #a3be8c;
+  --color-blue: #88c0d0;
+  --color-pink: #bf616a;
+  --color-red: #bf616a;
+  --color-yellow: #ebcb8b;
+  --color-orange: #d08770;
+  --color-indigo: #b48ead;
+  --color-violet: #b48ead;
+
+  /* Semantic colors */
+  --color-light-green: #d8dee9;
+  --color-primary: #88c0d0;
+  --color-secondary: #81a1c1;
+
+  /* Overlays */
+  --color-popup: rgba(59, 66, 82, 0.95);
+  --color-darker-0: rgba(46, 52, 64, 0.3);
+  --color-darker-1: rgba(46, 52, 64, 0.5);
+  --color-darker-2: rgba(46, 52, 64, 0.7);
+  --color-darker-3: rgba(46, 52, 64, 0.9);
+  --color-lighter-0: rgba(216, 222, 233, 0.05);
+  --color-lighter-1: rgba(216, 222, 233, 0.1);
+  --color-lighter-2: rgba(216, 222, 233, 0.2);
+  --color-lighter-3: rgba(216, 222, 233, 0.4);
+
+  /* Dark overlays */
+  --color-dark-0: rgba(46, 52, 64, 0.1);
+  --color-dark-1: rgba(46, 52, 64, 0.2);
+  --color-dark-2: rgba(46, 52, 64, 0.4);
+  --color-dark-3: rgba(46, 52, 64, 0.8);
+
+  /* Terminal */
+  --terminal-border-color: #4c566a;
+  --terminal-border-color-light: #616e88;
+  --terminal-muted-color: #4c566a;
+
+  /* Text */
+  --color-text: #d8dee9;
+  --color-text-muted: #8892a8;
+  --color-text-secondary: #8892a8;
+  --color-text-dull: #4c566a;
+
+  /* RGB components */
+  --green-rgb: 163, 190, 140;
+  --blue-rgb: 136, 192, 208;
+  --pink-rgb: 191, 97, 106;
+  --red-rgb: 191, 97, 106;
+  --yellow-rgb: 235, 203, 139;
+  --indigo-rgb: 180, 142, 173;
+  --primary-rgb: 136, 192, 208;
+}

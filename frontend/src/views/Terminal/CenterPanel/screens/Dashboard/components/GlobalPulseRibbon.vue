@@ -187,17 +187,17 @@ export default {
 }
 
 .agnt-score-section {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   padding: 4px 12px;
   border-radius: 4px;
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .agnt-score-value {
   color: var(--color-green);
   font-weight: bold;
   font-size: 1.1em;
-  text-shadow: 0 0 8px rgba(25, 239, 131, 0.3);
+  text-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
   letter-spacing: 0.5px;
   /* Prevent any layout shifts or animations */
   min-width: 60px;

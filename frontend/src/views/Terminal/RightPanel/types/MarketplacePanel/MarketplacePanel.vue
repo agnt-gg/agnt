@@ -1147,7 +1147,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -1220,7 +1220,7 @@ export default {
   display: flex;
   gap: 24px;
   padding: 12px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }
@@ -1276,8 +1276,8 @@ export default {
 .category-badge {
   display: inline-block;
   padding: 6px 12px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
@@ -1309,8 +1309,8 @@ export default {
 
 .version {
   padding: 4px 10px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   font-weight: 600;
   color: var(--color-green);
@@ -1363,9 +1363,9 @@ export default {
 }
 
 .install-button:hover {
-  background: rgba(25, 239, 131, 0.9);
+  background: rgba(var(--green-rgb), 0.9);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .install-button i {
@@ -1390,8 +1390,8 @@ export default {
 }
 
 .demo-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .demo-button i {
@@ -1404,8 +1404,8 @@ export default {
   justify-content: center;
   gap: 8px;
   padding: 10px 12px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   color: var(--color-green);
   font-size: 12px;
@@ -1422,8 +1422,8 @@ export default {
   justify-content: center;
   gap: 8px;
   padding: 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
   color: var(--color-green);
   font-size: 14px;
@@ -1436,7 +1436,7 @@ export default {
 
 .publisher-section {
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }
@@ -1467,7 +1467,7 @@ export default {
 
 .reviews-section {
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }
@@ -1497,9 +1497,9 @@ export default {
 
 .write-review-btn:hover,
 .write-first-review-btn:hover {
-  background: rgba(25, 239, 131, 0.9);
+  background: rgba(var(--green-rgb), 0.9);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3);
 }
 
 .write-review-btn i,
@@ -1591,8 +1591,8 @@ export default {
 }
 
 .back-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 /* Search Bar */
@@ -1655,10 +1655,10 @@ export default {
 }
 
 .item-type-card:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .item-type-card i {
@@ -1699,8 +1699,8 @@ export default {
 }
 
 .selectable-item-card:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.3);
   /* transform: translateY(-1px); */
 }
 
@@ -1731,7 +1731,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--color-green), rgba(25, 239, 131, 0.7));
+  background: linear-gradient(135deg, var(--color-green), rgba(var(--green-rgb), 0.7));
   color: var(--color-darker-0);
   font-weight: 700;
   font-size: 14px;
@@ -1761,7 +1761,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--color-green), rgba(25, 239, 131, 0.7));
+  background: linear-gradient(135deg, var(--color-green), rgba(var(--green-rgb), 0.7));
   color: var(--color-darker-0);
   font-weight: 700;
   font-size: 10px;
@@ -1786,7 +1786,7 @@ export default {
 .owner-actions-section {
   display: flex;
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   flex-direction: column;
@@ -1824,7 +1824,7 @@ export default {
 .owner-action-btn.edit {
   background: rgba(59, 130, 246, 0.1);
   border-color: rgba(59, 130, 246, 0.3);
-  color: #3b82f6;
+  color: var(--color-blue);
 }
 
 .owner-action-btn.edit:hover {
@@ -1848,17 +1848,17 @@ export default {
 }
 
 .owner-action-btn.install {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
   color: var(--color-green);
   grid-column: 1 / -1;
 }
 
 .owner-action-btn.install:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3);
 }
 
 .owner-action-btn.republish {
@@ -1877,7 +1877,7 @@ export default {
 .owner-action-btn.delete {
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  color: var(--color-red);
   grid-column: 1 / -1;
 }
 

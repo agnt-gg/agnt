@@ -185,7 +185,7 @@ export default {
   color: var(--color-duller-navy);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 /* Resource Links */
@@ -404,7 +404,7 @@ body.dark .upload-label {
 
 .upload-label:hover {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .upload-label i {

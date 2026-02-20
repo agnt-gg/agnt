@@ -726,7 +726,7 @@ export default {
   color: var(--color-duller-navy);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 .health-meter {
@@ -864,7 +864,7 @@ export default {
 }
 
 .integration-tile.healthy {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-color: var(--color-green);
 }
 

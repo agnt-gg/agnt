@@ -72,7 +72,7 @@ h3.section-title {
   gap: 8px;
   padding-bottom: 16px;
   margin: 0;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .section-title i {
@@ -97,9 +97,9 @@ h3.section-title {
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 2px;
-  border: 3px solid rgba(25, 239, 131, 0.5);
+  border: 3px solid rgba(var(--green-rgb), 0.5);
 }
 
 .agent-name-display {
@@ -116,7 +116,7 @@ h3.section-title {
 
 .divider {
   border: none;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   margin: 15px 0;
 }
 
@@ -129,7 +129,7 @@ h3.section-title {
 }
 
 .stat-item {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 12px;
   border-radius: 4px;
   display: flex;
@@ -154,8 +154,8 @@ h3.section-title {
 
 .action-button {
   padding: 8px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-light-green);
   cursor: pointer;
@@ -166,6 +166,6 @@ h3.section-title {
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 </style>

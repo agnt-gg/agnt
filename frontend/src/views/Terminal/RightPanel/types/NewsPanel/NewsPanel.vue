@@ -245,7 +245,7 @@ body.dark .version-card {
 
 .news-item.featured {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .news-date {
@@ -292,7 +292,7 @@ body.dark .version-card {
   font-size: 0.75em;
   padding: 4px 8px;
   border-radius: 4px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-green);
   font-weight: 500;
 }
@@ -326,7 +326,7 @@ body.dark .feature-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 8px;
   color: var(--color-green);
   font-size: 1.2em;
@@ -373,12 +373,12 @@ body.dark .roadmap-item {
 
 .roadmap-status.in-progress {
   background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
+  color: var(--color-blue);
 }
 
 .roadmap-status.planned {
   background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
+  color: var(--color-violet);
 }
 
 .roadmap-item h5 {
@@ -410,7 +410,7 @@ body.dark .roadmap-item {
 
 .version-card.has-update {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .version-info {
@@ -426,7 +426,7 @@ body.dark .roadmap-item {
 }
 
 .version-number {
-  font-family: 'Fira Code', monospace;
+  font-family: var(--font-family-mono);
   font-weight: 600;
   color: var(--color-text);
 }
@@ -480,7 +480,7 @@ body.dark .roadmap-item {
   gap: 6px;
   padding: 6px 12px;
   background: var(--color-green);
-  color: #070710;
+  color: var(--color-black-navy);
   border: none;
   border-radius: 6px;
   font-size: 0.8em;

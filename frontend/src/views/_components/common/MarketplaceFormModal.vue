@@ -572,7 +572,7 @@ export default {
 .revenue-info {
   margin-top: 8px;
   padding: 10px 12px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
@@ -693,8 +693,8 @@ export default {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: rgba(25, 239, 131, 0.15);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.15);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 12px;
   font-size: 11px;
   color: var(--color-green);
@@ -752,9 +752,9 @@ export default {
 }
 
 .publish-btn:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.9);
+  background: rgba(var(--green-rgb), 0.9);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .publish-btn:disabled {

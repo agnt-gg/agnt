@@ -455,8 +455,8 @@ body.dark #editor-panel .right-tabs button i {
 }
 
 .panel-header .title {
-  color: #e53d8f;
-  font-family: 'League Spartan';
+  color: var(--color-primary);
+  font-family: var(--font-family-primary);
   font-size: 16px;
   font-style: normal;
   font-weight: 400;
@@ -548,25 +548,25 @@ body.dark #editor-panel.full-screen .panel-body {
 }
 
 .error-message {
-  color: #fe4e4e;
+  color: var(--color-red);
 }
 
 .error-message p {
   margin-top: 8px;
-  color: #fe4e4e;
-  font-family: monospace;
+  color: var(--color-red);
+  font-family: var(--font-family-mono);
   padding: 3px 8px;
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   /* animation: error-breathe-inset 1s ease-in-out infinite; */
-  border-color: #fe4e4e;
+  border-color: var(--color-red);
   background: var(--color-bright-light-navy);
   overflow-wrap: anywhere;
 }
 
 .output-message p {
   margin-top: 8px;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   padding: 6px 8px;
   border: 1px solid var(--color-light-navy);
   /* border-color: limegreen; */

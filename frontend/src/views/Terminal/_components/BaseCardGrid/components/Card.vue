@@ -131,12 +131,12 @@ export default {
   overflow: hidden;
 }
 .card-item:hover {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 .card-item.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-left: 3px solid var(--color-primary);
   padding-left: 11px;
 }
@@ -171,7 +171,7 @@ export default {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.3) transparent;
+  scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
   padding-right: 4px;
   justify-content: flex-start;
   align-items: flex-start;
@@ -184,7 +184,7 @@ export default {
   background: transparent;
 }
 .card-content::-webkit-scrollbar-thumb {
-  background-color: rgba(25, 239, 131, 0.3);
+  background-color: rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
 }
 .card-field {

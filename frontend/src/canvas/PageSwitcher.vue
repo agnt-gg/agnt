@@ -186,7 +186,7 @@ export default {
 
 .ps-page.active {
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.06);
+  background: rgba(var(--green-rgb), 0.06);
   box-shadow: inset 2px 0 0 var(--color-green);
 }
 
@@ -220,7 +220,7 @@ export default {
 
 .ps-add:hover {
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 /* ── Context menu ── */
@@ -245,12 +245,12 @@ export default {
 }
 
 .ctx-item:hover {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
   color: var(--color-green);
 }
 
 .ctx-item.ctx-danger:hover {
-  background: rgba(224, 90, 90, 0.08);
-  color: #e05a5a;
+  background: rgba(var(--red-rgb), 0.08);
+  color: var(--color-red);
 }
 </style>

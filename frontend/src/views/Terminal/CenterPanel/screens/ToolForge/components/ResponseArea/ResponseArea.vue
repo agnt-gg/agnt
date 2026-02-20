@@ -109,7 +109,7 @@ export default {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   background: var(--color-darker-0);
 }
 
@@ -147,7 +147,7 @@ export default {
 
 .control-button:hover {
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .response-body {

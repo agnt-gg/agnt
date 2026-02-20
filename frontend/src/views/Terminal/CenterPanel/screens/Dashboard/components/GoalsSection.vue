@@ -622,7 +622,7 @@ export default {
 <style scoped>
 .goals-section {
   background: rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 0 0 0 8px;
   padding: 16px;
 }
@@ -630,7 +630,7 @@ export default {
 .section-header {
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .section-header h3 {
@@ -804,19 +804,19 @@ export default {
 
 .status-badge.status-working {
   background: rgba(251, 191, 36, 0.2);
-  color: #fbbf24;
+  color: var(--color-yellow);
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 .status-badge.status-complete {
   background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
+  color: var(--color-green);
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 .status-badge.status-failed {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: var(--color-red);
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
@@ -867,7 +867,7 @@ export default {
 
 .task-card-meta .goal-priority.urgent {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .task-card-description {
@@ -891,7 +891,7 @@ export default {
 .progress-bar {
   flex: 1;
   height: 4px;
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -911,8 +911,8 @@ export default {
 }
 
 .current-task-indicator {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   padding: 8px 12px;
   margin-bottom: 12px;
@@ -936,7 +936,7 @@ export default {
 
 .completion-summary p {
   margin: 0;
-  color: #22c55e;
+  color: var(--color-green);
   font-size: 0.85em;
   display: flex;
   align-items: center;
@@ -952,7 +952,7 @@ export default {
 
 .error-indicator p {
   margin: 0;
-  color: #ef4444;
+  color: var(--color-red);
   font-size: 0.85em;
   display: flex;
   align-items: center;
@@ -1009,7 +1009,7 @@ export default {
 
 .modal-header {
   padding: 20px 24px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1035,7 +1035,7 @@ export default {
 
 .modal-close:hover {
   color: var(--color-light-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .modal-body {
@@ -1078,8 +1078,8 @@ export default {
 }
 
 .info-card {
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.08) 0%, rgba(25, 239, 131, 0.04) 100%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.08) 0%, rgba(var(--green-rgb), 0.04) 100%);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 12px;
   padding: 20px;
   position: relative;
@@ -1093,7 +1093,7 @@ export default {
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, var(--color-green) 0%, rgba(25, 239, 131, 0.5) 100%);
+  background: linear-gradient(90deg, var(--color-green) 0%, rgba(var(--green-rgb), 0.5) 100%);
 }
 
 .info-header {
@@ -1113,7 +1113,7 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 1.1em;
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .info-title {
@@ -1146,7 +1146,7 @@ export default {
   margin-bottom: 24px;
   padding: 16px 20px;
   background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(25, 239, 131, 0.15);
+  border: 1px solid rgba(var(--green-rgb), 0.15);
   border-radius: 10px;
   backdrop-filter: blur(10px);
   gap: 20px;
@@ -1170,9 +1170,9 @@ export default {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   cursor: pointer;
   font-size: 0.9em;
@@ -1190,7 +1190,7 @@ export default {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(25, 239, 131, 0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--green-rgb), 0.2), transparent);
   transition: left 0.5s;
 }
 
@@ -1199,10 +1199,10 @@ export default {
 }
 
 .control-button:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.25);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.25);
 }
 
 .control-button.primary {
@@ -1213,8 +1213,8 @@ export default {
 }
 
 .control-button.primary:hover {
-  background: rgba(25, 239, 131, 0.9);
-  box-shadow: 0 6px 20px rgba(25, 239, 131, 0.4);
+  background: rgba(var(--green-rgb), 0.9);
+  box-shadow: 0 6px 20px rgba(var(--green-rgb), 0.4);
 }
 
 .filter-group {
@@ -1237,8 +1237,8 @@ export default {
 
 .task-filter-select {
   appearance: none;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
   color: var(--color-light-green);
   padding: 8px 32px 8px 12px;
@@ -1249,15 +1249,15 @@ export default {
 }
 
 .task-filter-select:hover {
-  background: rgba(25, 239, 131, 0.15);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .task-filter-select:focus {
   outline: none;
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
 }
 
 .select-arrow {
@@ -1277,8 +1277,8 @@ export default {
 
 /* Enhanced Goal Task Header */
 .goal-task-header {
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.08) 0%, rgba(25, 239, 131, 0.03) 100%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.08) 0%, rgba(var(--green-rgb), 0.03) 100%);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 16px;
@@ -1308,10 +1308,10 @@ export default {
 }
 
 .goal-task-header:hover {
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.12) 0%, rgba(25, 239, 131, 0.06) 100%);
-  border-color: rgba(25, 239, 131, 0.4);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.12) 0%, rgba(var(--green-rgb), 0.06) 100%);
+  border-color: rgba(var(--green-rgb), 0.4);
   transform: translateY(-1px);
-  box-shadow: 0 8px 25px rgba(25, 239, 131, 0.15);
+  box-shadow: 0 8px 25px rgba(var(--green-rgb), 0.15);
 }
 
 .goal-task-header-left {
@@ -1331,13 +1331,13 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 1.2em;
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
   transition: all 0.3s ease;
 }
 
 .goal-task-header:hover .goal-icon-wrapper {
   transform: scale(1.1);
-  box-shadow: 0 6px 20px rgba(25, 239, 131, 0.4);
+  box-shadow: 0 6px 20px rgba(var(--green-rgb), 0.4);
 }
 
 .goal-title-section {
@@ -1380,19 +1380,19 @@ export default {
 
 .goal-status-indicator.status-working {
   background: rgba(251, 191, 36, 0.2);
-  color: #fbbf24;
+  color: var(--color-yellow);
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
 .goal-status-indicator.status-complete {
   background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
+  color: var(--color-green);
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 .goal-status-indicator.status-failed {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: var(--color-red);
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
@@ -1425,7 +1425,7 @@ export default {
 .mini-progress-bar {
   width: 80px;
   height: 6px;
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -1447,13 +1447,13 @@ export default {
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .goal-task-header:hover .collapse-toggle-icon {
   color: var(--color-light-green);
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.4);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.4);
 }
 </style>

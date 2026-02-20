@@ -1155,7 +1155,7 @@ body[data-page='terminal-agents'] .main-panel {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.15) transparent;
+  scrollbar-color: var(--color-duller-navy) transparent;
   display: flex;
   flex-direction: column;
 }
@@ -1169,12 +1169,12 @@ body[data-page='terminal-agents'] .main-panel {
 }
 
 .input-scrollable-area::-webkit-scrollbar-thumb {
-  background-color: rgba(25, 239, 131, 0.3);
+  background-color: var(--color-duller-navy);
   border-radius: 3px;
 }
 
 .input-scrollable-area::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(25, 239, 131, 0.5);
+  background-color: var(--color-med-navy);
 }
 
 .input-buttons {
@@ -1199,7 +1199,7 @@ body[data-page='terminal-agents'] .main-panel {
 }
 
 .prompt {
-  color: var(--color-light-green);
+  color: var(--color-primary);
   margin-right: 0.5rem;
   line-height: 1.5;
   flex-shrink: 0;
@@ -1221,7 +1221,7 @@ body[data-page='terminal-agents'] .main-panel {
   max-height: 150px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.15) transparent;
+  scrollbar-color: var(--color-duller-navy) transparent;
   align-self: center;
 }
 
@@ -1234,12 +1234,12 @@ body[data-page='terminal-agents'] .main-panel {
 }
 
 .chat-input-textarea::-webkit-scrollbar-thumb {
-  background-color: rgba(25, 239, 131, 0.3);
+  background-color: var(--color-duller-navy);
   border-radius: 3px;
 }
 
 .chat-input-textarea::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(25, 239, 131, 0.5);
+  background-color: var(--color-med-navy);
 }
 
 .chat-input-textarea::placeholder {
@@ -1258,7 +1258,7 @@ body[data-page='terminal-agents'] .main-panel {
   border-radius: 50%;
   border: none;
   background: var(--color-darker-2);
-  color: white;
+  color: var(--color-dull-white);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1270,17 +1270,17 @@ body[data-page='terminal-agents'] .main-panel {
 
 .chat-mic-button:hover:not(:disabled) {
   background: var(--color-darker-0);
-  color: var(--color-light-green);
+  color: var(--color-primary);
 }
 
 .chat-mic-button.is-listening {
-  background: #ff4444;
-  color: white;
+  background: var(--color-red);
+  color: var(--color-dull-white);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
 .chat-mic-button:disabled {
-  background: rgba(127, 129, 147, 0.3);
+  background: var(--color-darker-1);
   cursor: not-allowed;
   transform: none;
 }
@@ -1288,10 +1288,10 @@ body[data-page='terminal-agents'] .main-panel {
 @keyframes pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
+    box-shadow: 0 0 0 0 rgba(var(--red-rgb), 0.7);
   }
   50% {
-    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
+    box-shadow: 0 0 0 10px rgba(var(--red-rgb), 0);
   }
 }
 
@@ -1312,12 +1312,12 @@ body[data-page='terminal-agents'] .main-panel {
 }
 
 .chat-send-button:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
   transform: scale(1.05);
 }
 
 .chat-send-button:disabled {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   cursor: not-allowed;
   transform: none;
 }
@@ -1327,8 +1327,8 @@ body[data-page='terminal-agents'] .main-panel {
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: #ff4444;
-  color: white;
+  background: var(--color-red);
+  color: var(--color-dull-white);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1340,17 +1340,18 @@ body[data-page='terminal-agents'] .main-panel {
 }
 
 .chat-stop-button:hover {
-  background: #cc0000;
+  background: var(--color-red);
+  opacity: 0.8;
   transform: scale(1.05);
 }
 
 @keyframes pulse-stop {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
+    box-shadow: 0 0 0 0 rgba(var(--red-rgb), 0.7);
   }
   50% {
-    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
+    box-shadow: 0 0 0 10px rgba(var(--red-rgb), 0);
   }
 }
 
@@ -1372,7 +1373,7 @@ body[data-page='terminal-agents'] .main-panel {
 }
 
 .scrollable-content::-webkit-scrollbar-thumb {
-  background-color: var(--color-light-green);
+  background-color: var(--color-duller-navy);
   border-radius: 4px;
   border: 2px solid var(--color-dark-navy);
 }
@@ -1391,7 +1392,7 @@ body[data-page='terminal-agents'] .main-panel {
   align-items: flex-start;
   scrollbar-width: thin !important;
   /* scrollbar-color: var(--color-green) var(--color-dark-navy); */
-  scrollbar-color: rgba(25, 239, 131, 0.15) transparent;
+  scrollbar-color: var(--color-duller-navy) transparent;
 }
 
 .main-panel.centered-content .scrollable-content {
@@ -1415,7 +1416,7 @@ body[data-page='terminal-agents'] .main-panel {
 } */
 
 .resize-handle {
-  width: 8px;
+  width: 4px;
   background: transparent;
   cursor: col-resize;
   position: relative;
@@ -1428,37 +1429,37 @@ body[data-page='terminal-agents'] .main-panel {
 }
 
 .resize-handle:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--primary-rgb), 0.1);
 }
 
 .resize-handle-indicator {
   width: 2px;
   height: 30px;
-  background: rgba(25, 239, 131, 0.3);
+  background: var(--color-duller-navy);
   border-radius: 1px;
   transition: all 0.2s ease;
 }
 
 .resize-handle:hover .resize-handle-indicator {
-  background: rgba(25, 239, 131, 0.6);
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.4);
+  background: var(--color-med-navy);
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.4);
   height: 50px;
 }
 
 .resize-handle:active .resize-handle-indicator {
-  background: var(--color-green);
-  box-shadow: 0 0 12px rgba(25, 239, 131, 0.6);
+  background: var(--color-primary);
+  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.6);
 }
 
 /* Switch mode styles */
 .resize-handle.switch-mode {
-  background: rgba(255, 165, 0, 0.2);
+  background: rgba(var(--yellow-rgb), 0.2);
   cursor: ew-resize;
 }
 
 .resize-handle.switch-mode .resize-handle-indicator {
-  background: rgba(255, 165, 0, 0.8);
-  box-shadow: 0 0 10px rgba(255, 165, 0, 0.6);
+  background: rgba(var(--yellow-rgb), 0.8);
+  box-shadow: 0 0 10px rgba(var(--yellow-rgb), 0.6);
   height: 60px;
   width: 4px;
 }
@@ -1471,7 +1472,7 @@ body[data-page='terminal-agents'] .main-panel {
   transform: translate(-50%, -50%);
   width: 0;
   height: 0;
-  border-left: 6px solid rgba(255, 165, 0, 0.9);
+  border-left: 6px solid rgba(var(--yellow-rgb), 0.9);
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
 }
@@ -1484,7 +1485,7 @@ body[data-page='terminal-agents'] .main-panel {
   transform: translate(-50%, -50%) rotate(180deg);
   width: 0;
   height: 0;
-  border-left: 6px solid rgba(255, 165, 0, 0.9);
+  border-left: 6px solid rgba(var(--yellow-rgb), 0.9);
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   margin-left: -12px;
@@ -1550,7 +1551,7 @@ body[data-page='terminal-agents'] .main-panel {
   transform: translate(-50%, -50%);
   width: 2px;
   height: 60px;
-  background: rgba(25, 239, 131, 0.3);
+  background: var(--color-duller-navy);
   border-radius: 1px;
   z-index: 10;
 }
@@ -1558,8 +1559,8 @@ body[data-page='terminal-agents'] .main-panel {
 /* Hover effect for collapsed panels */
 .left-panel-component.collapsed:hover::before,
 .right-panel-component.collapsed:hover::before {
-  background: rgba(25, 239, 131, 0.6);
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.4);
+  background: var(--color-med-navy);
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.4);
   height: 80px;
   cursor: pointer;
 }
@@ -1669,7 +1670,7 @@ body[data-page='terminal-agents'] .main-panel {
   .hamburger-bar {
     width: 100%;
     height: 3px;
-    background-color: var(--color-green);
+    background-color: var(--color-primary);
     border-radius: 2px;
   }
 }
@@ -1708,7 +1709,7 @@ body[data-page='terminal-agents'] .main-panel {
 
 .base-screen-lines-output {
   margin-bottom: 16px; /* Add some space between lines and slot content */
-  font-family: monospace; /* Typical terminal font */
+  font-family: var(--font-family-mono); /* Typical terminal font */
   color: var(--color-light-med-navy); /* Example color */
 }
 
@@ -1733,8 +1734,8 @@ body[data-page='terminal-agents'] .main-panel {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: var(--color-darker-1);
+  border: 1px solid var(--color-dull-navy);
   border-radius: 16px;
   font-size: 0.85em;
   color: var(--color-light-med-navy);
@@ -1742,8 +1743,8 @@ body[data-page='terminal-agents'] .main-panel {
 }
 
 .file-chip:hover {
-  background: rgba(25, 239, 131, 0.15);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: var(--color-darker-2);
+  border-color: var(--color-duller-navy);
 }
 
 .file-icon {

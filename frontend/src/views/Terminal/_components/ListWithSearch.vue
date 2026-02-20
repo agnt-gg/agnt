@@ -160,7 +160,7 @@ export default {
   height: 58px;
   overflow-y: auto;
   padding: 8px;
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
   border-radius: 8px 8px 0 0;
   align-content: flex-start;
   flex-direction: row;
@@ -174,8 +174,8 @@ export default {
   width: 100%;
 }
 .select-all-btn {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.25);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.25);
   color: var(--color-light-green);
   border-radius: 4px;
   padding: 7px 12px;
@@ -185,18 +185,17 @@ export default {
   transition: background 0.15s, color 0.15s, border 0.15s;
 }
 .select-all-btn:hover {
-  background: rgba(25, 239, 131, 0.22);
+  background: var(--color-darker-2);
 }
 .select-all-btn.remove {
-  background: rgba(255, 50, 50, 0.05);
-  border: 1px solid rgba(255, 50, 50, 0.25);
-  color: #ff3232;
+  background: rgba(var(--red-rgb), 0.05);
+  border: 1px solid rgba(var(--red-rgb), 0.25);
+  color: var(--color-red);
   opacity: 0.75;
 }
 .select-all-btn.remove:hover {
-  background: rgba(255, 50, 50, 0.22);
+  background: rgba(var(--red-rgb), 0.22);
   opacity: 1;
-  /* color: #fff; */
 }
 
 /* Styling for thin scrollbar */
@@ -204,30 +203,30 @@ export default {
   width: 4px;
 }
 .selected-chips::-webkit-scrollbar-track {
-  background: rgba(25, 239, 131, 0.05);
+  background: var(--color-darker-0);
   border-radius: 4px;
 }
 .selected-chips::-webkit-scrollbar-thumb {
-  background: rgba(25, 239, 131, 0.3);
+  background: var(--color-duller-navy);
   border-radius: 4px;
 }
 .selected-chips::-webkit-scrollbar-thumb:hover {
-  background: rgba(25, 239, 131, 0.5);
+  background: var(--color-med-navy);
 }
 
 .chip {
   display: flex;
   align-items: center;
-  background: rgba(25, 239, 131, 0.15);
+  background: var(--color-darker-2);
   border-radius: 16px;
   padding: 4px 8px 2px 12px;
   font-size: 0.9em;
-  color: var(--color-light-green);
+  color: var(--color-dull-white);
 }
 .chip-remove {
   background: none;
   border: none;
-  color: var(--color-light-green);
+  color: var(--color-med-navy);
   font-size: 1.2em;
   line-height: 1;
   padding: 0 0 0 4px;
@@ -235,7 +234,7 @@ export default {
   margin-left: 4px;
 }
 .chip-remove:hover {
-  color: #fff;
+  color: var(--color-dull-white);
 }
 .list-with-search-controls {
   display: flex;

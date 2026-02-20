@@ -217,7 +217,7 @@ export default {
 <style scoped>
 .mission-order-board {
   background: rgba(0, 0, 0, 0.15); /* Darker for mission board */
-  border: 1px solid rgba(25, 239, 131, 0.25);
+  border: 1px solid rgba(var(--green-rgb), 0.25);
   padding: 10px;
   height: 100%; /* Fill available space in panel */
   display: flex;
@@ -249,8 +249,8 @@ export default {
 }
 
 .mission-item {
-  background-color: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  background-color: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
   border-left: 3px solid var(--color-blue); /* Default for "Available" */
   border-radius: 3px;
   padding: 6px 8px;
@@ -271,7 +271,7 @@ export default {
 }
 .mission-item.status-complete {
   border-left-color: var(--color-green);
-  background-color: rgba(25, 239, 131, 0.1);
+  background-color: rgba(var(--green-rgb), 0.1);
   animation: flash-green 0.3s ease-out;
 }
 .mission-item.status-failed {
@@ -281,8 +281,8 @@ export default {
 }
 
 @keyframes flash-green {
-  0% { background-color: rgba(25, 239, 131, 0.3); }
-  100% { background-color: rgba(25, 239, 131, 0.1); }
+  0% { background-color: rgba(var(--green-rgb), 0.3); }
+  100% { background-color: rgba(var(--green-rgb), 0.1); }
 }
 @keyframes flash-red {
   0% { background-color: rgba(239, 68, 68, 0.3); }
@@ -345,7 +345,7 @@ export default {
 .mission-progress-bar-container {
   width: 60px; /* Fixed width for progress bar */
   height: 6px;
-  background-color: rgba(25, 239, 131, 0.2);
+  background-color: rgba(var(--green-rgb), 0.2);
   border-radius: 3px;
   overflow: hidden;
 }

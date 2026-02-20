@@ -271,7 +271,7 @@ export default {
 
 .hex-coords {
   color: var(--color-grey);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 .territory-lock {
@@ -288,7 +288,7 @@ export default {
 .territory-info {
   margin: 1.5rem 0;
   padding: 1rem;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 4px;
 }
 
@@ -328,7 +328,7 @@ export default {
 .hex-resources {
   margin: 1.5rem 0;
   padding: 1rem;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 4px;
 }
 
@@ -349,7 +349,7 @@ export default {
 .territory-boost {
   margin: 1.5rem 0;
   padding: 1rem;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 4px;
 }
 

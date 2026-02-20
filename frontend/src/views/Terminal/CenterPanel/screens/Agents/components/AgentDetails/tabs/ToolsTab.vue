@@ -49,7 +49,7 @@ h3.section-title {
   align-items: center;
   gap: 8px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .section-title i {
@@ -70,7 +70,7 @@ h3.section-title {
 }
 
 .tool-card {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 4px;
   padding: 12px;
 }
@@ -91,7 +91,7 @@ h3.section-title {
 .tool-button {
   flex: 1;
   padding: 6px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   background: none;
   color: var(--color-light-green);
@@ -104,7 +104,7 @@ h3.section-title {
 }
 
 .tool-button:hover {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
 }
 
 .empty-state {

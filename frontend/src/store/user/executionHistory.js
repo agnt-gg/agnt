@@ -152,7 +152,7 @@ export default {
         commit('SET_PAGINATION', {
           page,
           pageSize,
-          total: summaries.length + (state.goalExecutionSummaries?.length || 0) + (state.agentExecutionSummaries?.length || 0),
+          total: (state.executionSummaries?.length || 0) + (state.goalExecutionSummaries?.length || 0) + (state.agentExecutionSummaries?.length || 0),
         });
       } catch (error) {
         console.error('Error fetching executions:', error);

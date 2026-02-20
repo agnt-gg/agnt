@@ -18,6 +18,11 @@
 @import './themes/_light.css';
 @import './themes/_dark.css';
 @import './themes/_cyberpunk.css';
+@import './themes/_midnight.css';
+@import './themes/_ember.css';
+@import './themes/_nord.css';
+@import './themes/_rose.css';
+@import './themes/_hacker.css';
 
 /* Utility styles */
 @import './utilities/_utilities.css';

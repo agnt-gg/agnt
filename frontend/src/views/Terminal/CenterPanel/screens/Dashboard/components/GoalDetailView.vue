@@ -291,7 +291,7 @@ export default {
 .detail-section {
   margin-bottom: 24px;
   padding-bottom: 20px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .detail-section:last-child {
@@ -310,7 +310,7 @@ export default {
 }
 
 .goal-overview {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 8px;
   padding: 16px;
 }
@@ -336,7 +336,7 @@ export default {
 }
 
 .status-item {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 6px;
   padding: 8px 12px;
   text-align: center;
@@ -356,15 +356,15 @@ export default {
 }
 
 .status-value.status-working {
-  color: #fbbf24;
+  color: var(--color-yellow);
 }
 
 .status-value.status-complete {
-  color: #22c55e;
+  color: var(--color-green);
 }
 
 .status-value.status-failed {
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .status-value.status-needs-input {
@@ -389,7 +389,7 @@ export default {
 }
 
 .status-value.priority.urgent {
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .progress-section {
@@ -401,7 +401,7 @@ export default {
 .progress-bar {
   flex: 1;
   height: 6px;
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -427,8 +427,8 @@ export default {
 }
 
 .task-item {
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 8px;
@@ -497,15 +497,15 @@ export default {
 }
 
 .task-success {
-  color: #22c55e;
+  color: var(--color-green);
 }
 
 .task-error {
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .task-executing {
-  color: #fbbf24;
+  color: var(--color-yellow);
 }
 
 .task-details-expandable,
@@ -559,9 +559,9 @@ export default {
 
 .action-button {
   padding: 8px 16px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   cursor: pointer;
   display: flex;
@@ -572,8 +572,8 @@ export default {
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .action-button.primary {
@@ -583,13 +583,13 @@ export default {
 }
 
 .action-button.primary:hover {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
 }
 
 .action-button.danger {
   border-color: rgba(239, 68, 68, 0.3);
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .action-button.danger:hover {

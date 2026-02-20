@@ -574,7 +574,7 @@ export default {
   font-size: 1.5em;
   font-weight: bold;
   color: var(--color-green);
-  text-shadow: 0 0 10px rgba(25, 239, 131, 0.3);
+  text-shadow: 0 0 10px rgba(var(--green-rgb), 0.3);
 }
 
 .score-tier {
@@ -720,7 +720,7 @@ export default {
 .boost-badge {
   font-size: 0.65em;
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   padding: 3px 4px 0;
   border-radius: 3px;
   font-weight: bold;
@@ -811,7 +811,7 @@ export default {
 }
 
 .detail-row.highlight {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   padding: 4px 6px;
   border-radius: 4px;
   margin: 2px 0;

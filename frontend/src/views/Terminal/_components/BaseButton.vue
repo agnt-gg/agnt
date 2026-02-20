@@ -58,13 +58,13 @@ export default {
 }
 
 .base-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.5);
 }
 
 .base-button:focus {
-  box-shadow: 0 0 12px rgba(25, 239, 131, 0.7);
-  background: rgba(25, 239, 131, 0.15);
+  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.7);
+  background: rgba(var(--green-rgb), 0.15);
   outline: none;
 }
 
@@ -74,13 +74,13 @@ export default {
 }
 
 .base-button.success:hover {
-  background: rgba(25, 239, 131, 0.1);
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.5);
 }
 
 .base-button.success:focus {
-  box-shadow: 0 0 12px rgba(25, 239, 131, 0.7);
-  background: rgba(25, 239, 131, 0.15);
+  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.7);
+  background: rgba(var(--green-rgb), 0.15);
 }
 
 .base-button.danger {

@@ -199,7 +199,7 @@ h4.section-title {
   gap: 8px;
   padding-bottom: 16px;
   margin: 0;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 h4.section-title {
   font-size: 0.9em;
@@ -217,7 +217,7 @@ h4.section-title {
   padding: 32px;
   color: var(--color-grey);
   gap: 8px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 4px;
 }
 .empty-state i {
@@ -229,8 +229,8 @@ h4.section-title {
 }
 .action-button {
   padding: 8px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-light-green);
   cursor: pointer;
@@ -240,12 +240,12 @@ h4.section-title {
   transition: all 0.2s;
 }
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 .progress-bar {
   flex: 1;
   height: 4px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -270,7 +270,7 @@ h4.section-title {
   display: flex;
   gap: 12px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 .tasks-section {
   display: flex;
@@ -285,8 +285,8 @@ h4.section-title {
   padding: 16px;
 }
 .task-card {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   padding: 16px;
   display: flex;
@@ -295,8 +295,8 @@ h4.section-title {
   transition: all 0.2s;
 }
 .task-card:hover {
-  background: rgba(25, 239, 131, 0.15);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 .task-card.completed {
   opacity: 0.7;
@@ -331,8 +331,8 @@ h4.section-title {
   gap: 8px;
 }
 .info-card {
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   padding: 16px;
   display: flex;
@@ -356,8 +356,8 @@ h4.section-title {
   width: 120px;
   padding: 8px 12px;
   border-radius: 4px;
-  border: 1px solid rgba(25, 239, 131, 0.25);
-  background: rgba(25, 239, 131, 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.25);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   font-size: 0.95em;
   transition: background 0.15s, color 0.15s, border 0.15s;
@@ -365,20 +365,20 @@ h4.section-title {
   height: 33px;
 }
 select option {
-  background-color: #080921;
+  background-color: var(--color-ultra-dark-navy);
 }
 .goal-tasks-group {
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 6px;
   overflow: hidden;
 }
 .goal-task-header {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 .goal-task-title {
   color: var(--color-light-green);
@@ -397,12 +397,12 @@ select option {
   background: rgba(108, 117, 125, 0.1);
 }
 .task-card.assigned {
-  border-left: 4px solid #ffc107;
+  border-left: 4px solid var(--color-yellow);
   background: rgba(255, 193, 7, 0.1);
 }
 .task-card.running {
   border-left: 4px solid var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 .task-card.completed {
   border-left: 4px solid #28a745;
@@ -431,10 +431,10 @@ select option {
 }
 .task-status-badge.assigned {
   background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
+  color: var(--color-yellow);
 }
 .task-status-badge.running {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 .task-status-badge.completed {
@@ -460,12 +460,12 @@ select option {
   gap: 4px;
 }
 .tool-tag {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   color: var(--color-light-green);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 0.75em;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
 }
 .task-times {
   display: flex;
@@ -482,7 +482,7 @@ select option {
 }
 .empty-state.small {
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   text-align: center;
   color: var(--color-grey);
   font-size: 0.9em;

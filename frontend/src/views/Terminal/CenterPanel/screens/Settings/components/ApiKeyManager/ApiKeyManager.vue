@@ -105,7 +105,7 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 0.65em;
-  color: #ffd700;
+  color: var(--color-yellow);
   background: rgba(255, 215, 0, 0.15);
   padding: 2px 8px;
   border-radius: 4px;
@@ -126,7 +126,7 @@ export default {
 
 .pro-locked-message i {
   font-size: 3em;
-  color: #ffd700;
+  color: var(--color-yellow);
   margin-bottom: 16px;
 }
 
@@ -172,7 +172,7 @@ body.dark .pro-locked-message h4 {
   background: rgba(0, 0, 0, 0.8);
   padding: 12px 16px;
   border-radius: 8px;
-  border: 2px solid #ffd700;
+  border: 2px solid var(--color-yellow);
   pointer-events: all;
   z-index: 10;
   white-space: nowrap;
@@ -180,7 +180,7 @@ body.dark .pro-locked-message h4 {
 
 .locked-overlay i {
   font-size: 1.2em;
-  color: #ffd700;
+  color: var(--color-yellow);
   margin-right: 6px;
 }
 
@@ -234,7 +234,7 @@ input:disabled {
 
 .lock-icon {
   font-size: 10px;
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 
 body.dark .copy-button {

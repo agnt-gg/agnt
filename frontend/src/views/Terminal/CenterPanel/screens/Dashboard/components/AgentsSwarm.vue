@@ -161,7 +161,7 @@ export default {
 }
 
 .status-data {
-  color: #3b82f6;
+  color: var(--color-blue);
 }
 
 .status-guard {

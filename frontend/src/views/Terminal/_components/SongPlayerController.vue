@@ -145,7 +145,7 @@ onMounted(() => {
   cursor: not-allowed;
 }
 .player-btn:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
 }
 .volume-slider {
   width: 100%;

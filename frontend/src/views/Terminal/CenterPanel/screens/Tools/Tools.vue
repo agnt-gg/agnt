@@ -895,8 +895,6 @@ export default {
   top: 0;
   z-index: 1;
   background: transparent;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   /* padding-bottom: 16px; */
   display: flex;
   flex-direction: column;
@@ -923,13 +921,13 @@ export default {
 .tool-tabs {
   display: flex;
   gap: 2px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.4);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.4);
   padding-bottom: 1px;
 }
 
 .tab-button {
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.4);
+  border: 1px solid rgba(var(--green-rgb), 0.4);
   color: var(--color-light-green);
   padding: 8px 16px;
   cursor: pointer;
@@ -945,11 +943,11 @@ export default {
 }
 
 .tab-button:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .tab-button.active {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   border-bottom: 1px solid var(--color-green);
   color: var(--color-green);
 }
@@ -961,7 +959,7 @@ export default {
 
 .text-bright-green {
   color: var(--color-green);
-  text-shadow: 0 0 5px rgba(25, 239, 131, 0.4);
+  text-shadow: 0 0 5px rgba(var(--green-rgb), 0.4);
 }
 
 .font-bold {
@@ -1028,7 +1026,7 @@ export default {
   padding-left: 0;
   padding-right: 16px;
   background-color: transparent;
-  border-right: 1px solid rgba(25, 239, 131, 0.2);
+  border-right: 1px solid rgba(var(--green-rgb), 0.2);
   font-size: smaller;
   position: sticky;
   top: 0;
@@ -1066,11 +1064,11 @@ export default {
 }
 
 .category-item:hover {
-  background-color: rgba(25, 239, 131, 0.1);
+  background-color: rgba(var(--green-rgb), 0.1);
 }
 
 .category-item.active {
-  background-color: rgba(25, 239, 131, 0.15);
+  background-color: rgba(var(--green-rgb), 0.15);
   color: #ffffff !important;
 }
 
@@ -1089,18 +1087,18 @@ export default {
 .main-category {
   font-weight: bold;
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.07);
+  background: rgba(var(--green-rgb), 0.07);
 }
 
 .main-active {
-  background: rgba(25, 239, 131, 0.18) !important;
+  background: rgba(var(--green-rgb), 0.18) !important;
   color: #ffffff !important;
 }
 
 .all-tools {
   font-weight: bold;
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.13);
+  background: rgba(var(--green-rgb), 0.13);
   border-radius: 4px;
   margin-bottom: 4px;
 }
@@ -1157,7 +1155,7 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .hide-empty-button,
@@ -1178,14 +1176,14 @@ export default {
 
 .hide-empty-button:hover,
 .collapse-all-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
   opacity: 1;
 }
 
 .hide-empty-button.active,
 .collapse-all-button.active {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
   color: var(--color-green);
   opacity: 1;
@@ -1235,7 +1233,7 @@ export default {
 }
 
 .category-header:hover {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 6px;
   padding: 4px 6px;
   margin: -4px -6px 14px -6px;
@@ -1263,8 +1261,8 @@ export default {
 }
 
 .collapse-toggle:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .collapse-toggle.collapsed i {
@@ -1331,7 +1329,6 @@ export default {
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s ease;
-  backdrop-filter: blur(4px);
 }
 
 .tool-card.last-odd {
@@ -1339,14 +1336,14 @@ export default {
 }
 
 .tool-card:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.2);
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .tool-card.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
 }
 
@@ -1390,7 +1387,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--color-green), rgba(25, 239, 131, 0.7));
+  background: linear-gradient(135deg, var(--color-green), rgba(var(--green-rgb), 0.7));
   color: var(--color-darker-0);
   font-weight: 700;
   font-size: 10px;
@@ -1421,7 +1418,7 @@ export default {
   font-size: 11px;
   font-weight: 700;
   background: rgba(255, 215, 0, 0.15);
-  color: #ffd700;
+  color: var(--color-yellow);
   border: 1px solid rgba(255, 215, 0, 0.4);
   text-transform: uppercase;
   box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
@@ -1434,7 +1431,7 @@ export default {
   font-size: 11px;
   font-weight: 700;
   background: rgba(138, 43, 226, 0.15);
-  color: #a855f7;
+  color: var(--color-violet);
   border: 1px solid rgba(138, 43, 226, 0.4);
   text-transform: uppercase;
   box-shadow: 0 0 8px rgba(138, 43, 226, 0.3);
@@ -1446,7 +1443,7 @@ export default {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-green);
   text-transform: uppercase;
   flex-shrink: 0;
@@ -1504,7 +1501,7 @@ export default {
 
 .category-card.drag-over {
   border-color: var(--color-green);
-  background: linear-gradient(180deg, rgba(25, 239, 131, 0.08), rgba(25, 239, 131, 0.04));
+  background: linear-gradient(180deg, rgba(var(--green-rgb), 0.08), rgba(var(--green-rgb), 0.04));
   transform: scaleY(1.02);
 }
 
@@ -1559,7 +1556,6 @@ export default {
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s ease;
-  backdrop-filter: blur(4px);
 }
 
 .marketplace-card.last-odd {
@@ -1567,14 +1563,14 @@ export default {
 }
 
 .marketplace-card:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.2);
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .marketplace-card.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
 }
 
@@ -1610,7 +1606,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--color-green), rgba(25, 239, 131, 0.7));
+  background: linear-gradient(135deg, var(--color-green), rgba(var(--green-rgb), 0.7));
   color: var(--color-darker-0);
   font-weight: 700;
   font-size: 14px;
@@ -1652,7 +1648,7 @@ export default {
   font-size: 11px;
   font-weight: 700;
   background: rgba(255, 215, 0, 0.15);
-  color: #ffd700;
+  color: var(--color-yellow);
   border: 1px solid rgba(255, 215, 0, 0.4);
 }
 
@@ -1661,7 +1657,7 @@ export default {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-green);
   text-transform: uppercase;
 }
@@ -1781,7 +1777,7 @@ export default {
 .marketplace-avatar-placeholder {
   width: 60px;
   height: 60px;
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.1), rgba(25, 239, 131, 0.05));
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.1), rgba(var(--green-rgb), 0.05));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1899,7 +1895,7 @@ export default {
 .install-button {
   width: 100%;
   padding: 10px 16px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-green);
   border: 1px solid transparent;
   font-weight: 700;
@@ -1919,7 +1915,7 @@ export default {
 .install-button:hover {
   background: var(--color-green);
   color: var(--color-navy);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
   transform: translateY(-1px);
 }
 
@@ -1981,7 +1977,7 @@ export default {
 .create-button:hover {
   background: var(--color-primary-hover);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .create-button i {
@@ -2001,10 +1997,10 @@ export default {
 }
 
 .marketplace-button:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .marketplace-button i {

@@ -1442,7 +1442,7 @@ export default {
 
 .search-input:focus {
   outline: none;
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .controls-group {
@@ -1524,7 +1524,7 @@ body.dark .category-pill {
 
 .category-pill:hover {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   transform: translateY(-1px);
 }
 
@@ -1546,7 +1546,7 @@ body.dark .category-pill {
 }
 
 body.dark .results-info {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .marketplace-content {
@@ -1701,14 +1701,14 @@ body.dark .results-info {
 
 /* .featured-card:hover .workflow-avatar,
 .workflow-card:hover .workflow-avatar {
-  border-right-color: rgba(25, 239, 131, 0.5);
-  box-shadow: inset -2px 0 12px rgba(25, 239, 131, 0.2);
+  border-right-color: rgba(var(--green-rgb), 0.5);
+  box-shadow: inset -2px 0 12px rgba(var(--green-rgb), 0.2);
 } */
 
 .workflow-avatar-placeholder {
   width: 80px;
   height: 80px;
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.1), rgba(25, 239, 131, 0.05));
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.1), rgba(var(--green-rgb), 0.05));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1722,8 +1722,8 @@ body.dark .results-info {
 
 .featured-card:hover,
 .workflow-card:hover {
-  background: rgba(25, 239, 131, 0.08);
-  border-color: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.08);
+  border-color: rgba(var(--green-rgb), 0.2);
   /* transform: translateY(-1px); */
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
 }
@@ -1851,7 +1851,7 @@ body.dark .results-info {
 }
 
 .category-header:hover {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 6px;
   padding: 4px 6px;
   margin: -4px -6px 14px -6px;
@@ -1879,8 +1879,8 @@ body.dark .results-info {
 }
 
 .collapse-toggle:hover {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .collapse-toggle.collapsed i {
@@ -1948,15 +1948,15 @@ body.dark .results-info {
 }
 
 .workflow-card:hover {
-  /* border-color: rgba(25, 239, 131, 0.4); */
+  /* border-color: rgba(var(--green-rgb), 0.4); */
   /* transform: translateY(-2px); */
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
 }
 
 .workflow-card.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
-  /* box-shadow: 0 6px 20px rgba(25, 239, 131, 0.2); */
+  /* box-shadow: 0 6px 20px rgba(var(--green-rgb), 0.2); */
 }
 
 .workflow-card.installed {
@@ -1995,7 +1995,7 @@ body.dark .results-info {
 
 .workflow-type.type-agent {
   background: rgba(236, 72, 153, 0.2);
-  color: var(--color-pink);
+  color: var(--color-primary);
 }
 
 .workflow-type.type-tool {
@@ -2005,7 +2005,7 @@ body.dark .results-info {
 
 .workflow-type.type-plugin {
   background: rgba(139, 92, 246, 0.2);
-  color: #a78bfa;
+  color: var(--color-violet);
 }
 
 .workflow-price {
@@ -2147,9 +2147,9 @@ body.dark .results-info {
 }
 
 .table-install-button:hover {
-  background: rgba(25, 239, 131, 0.9);
+  background: rgba(var(--green-rgb), 0.9);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3);
 }
 
 .table-install-button:active {
@@ -2206,7 +2206,7 @@ body.dark .results-info {
 }
 
 .earnings-card:hover {
-  border-color: rgba(25, 239, 131, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
@@ -2215,7 +2215,7 @@ body.dark .results-info {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2273,8 +2273,8 @@ body.dark .results-info {
 
 .breakdown-item {
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
@@ -2287,8 +2287,8 @@ body.dark .results-info {
 }
 
 .breakdown-item.net {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .breakdown-label {
@@ -2305,7 +2305,7 @@ body.dark .results-info {
 }
 
 .breakdown-item.fee .breakdown-value {
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .breakdown-item.net .breakdown-value {

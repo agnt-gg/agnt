@@ -1,0 +1,71 @@
+/* EMBER THEME - Warm dark, amber/copper accents */
+body.dark.ember {
+  --color-background: #120c08;
+  /* Background hierarchy */
+  --color-black-navy: #120c08;
+  --color-ultra-dark-navy: #1a1210;
+  --color-dark-navy: #1c1410;
+  --color-navy: #1e1614;
+  --color-dull-navy: #2e2018;
+  --color-duller-navy: #3a2820;
+
+  /* Text hierarchy */
+  --color-med-navy: #806050;
+  --color-light-med-navy: #a89888;
+  --color-light-navy: #907868;
+  --color-bright-light-navy: #806858;
+  --color-ultra-light-navy: #1e1614;
+  --color-dull-white: #c8b8a8;
+
+  /* Accent colors — cyan is orange/amber in ember */
+  --color-green: #60b870;
+  --color-blue: #e09040;
+  --color-pink: #d06080;
+  --color-red: #d05040;
+  --color-yellow: #e8a030;
+  --color-orange: #e09040;
+  --color-indigo: #a07acc;
+  --color-violet: #a07acc;
+
+  /* Semantic colors */
+  --color-light-green: #c8b8a8;
+  --color-primary: #e09040;
+  --color-secondary: #e8a030;
+
+  /* Overlays */
+  --color-popup: rgba(26, 18, 16, 0.95);
+  --color-darker-0: rgba(18, 12, 8, 0.3);
+  --color-darker-1: rgba(18, 12, 8, 0.5);
+  --color-darker-2: rgba(18, 12, 8, 0.7);
+  --color-darker-3: rgba(18, 12, 8, 0.9);
+  --color-lighter-0: rgba(200, 170, 130, 0.05);
+  --color-lighter-1: rgba(200, 170, 130, 0.1);
+  --color-lighter-2: rgba(200, 170, 130, 0.2);
+  --color-lighter-3: rgba(200, 170, 130, 0.4);
+
+  /* Dark overlays */
+  --color-dark-0: rgba(18, 12, 8, 0.1);
+  --color-dark-1: rgba(18, 12, 8, 0.2);
+  --color-dark-2: rgba(18, 12, 8, 0.4);
+  --color-dark-3: rgba(18, 12, 8, 0.8);
+
+  /* Terminal */
+  --terminal-border-color: #2e2018;
+  --terminal-border-color-light: #3a2820;
+  --terminal-muted-color: #2e2018;
+
+  /* Text */
+  --color-text: #c8b8a8;
+  --color-text-muted: #806050;
+  --color-text-secondary: #806050;
+  --color-text-dull: #2e2018;
+
+  /* RGB components */
+  --green-rgb: 96, 184, 112;
+  --blue-rgb: 224, 144, 64;
+  --pink-rgb: 208, 96, 128;
+  --red-rgb: 208, 80, 64;
+  --yellow-rgb: 232, 160, 48;
+  --indigo-rgb: 160, 122, 204;
+  --primary-rgb: 224, 144, 64;
+}

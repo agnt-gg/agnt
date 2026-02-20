@@ -188,8 +188,8 @@ export default {
 }
 
 .activity-item.error {
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .activity-item.system {
@@ -198,8 +198,8 @@ export default {
 }
 
 .activity-item.recovery {
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .activity-item.truncation {
@@ -210,7 +210,7 @@ export default {
 .activity-timestamp {
   font-size: 0.65em;
   color: var(--color-duller-navy);
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-family-mono);
   flex-shrink: 0;
   min-width: 60px;
 }
@@ -232,7 +232,7 @@ export default {
 }
 
 .activity-item.tool .activity-text {
-  color: #ffa500;
+  color: var(--color-orange);
 }
 
 .activity-item.error .activity-text,

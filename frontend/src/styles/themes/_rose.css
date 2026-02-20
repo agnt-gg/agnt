@@ -1,0 +1,79 @@
+/* ROSE THEME - Soft light pink/rose */
+body.rose {
+  --color-background: #faf4f4;
+  /* Background hierarchy — light warm pinks */
+  --color-black-navy: #faf4f4;
+  --color-ultra-dark-navy: #ffffff;
+  --color-dark-navy: #f4ecec;
+  --color-navy: #ffffff;
+  --color-dull-navy: #e8d8d8;
+  --color-duller-navy: #c8b0b0;
+
+  /* Text hierarchy — dark warm tones */
+  --color-med-navy: #887070;
+  --color-light-med-navy: #503838;
+  --color-light-navy: #e0d0d0;
+  --color-bright-light-navy: #d8c8c8;
+  --color-ultra-light-navy: #fff8f8;
+  --color-dull-white: #3a2828;
+  --color-white: #ffffff;
+
+  /* Accent colors */
+  --color-green: #4a9868;
+  --color-blue: #5a8ab0;
+  --color-pink: #c8507a;
+  --color-red: #c85050;
+  --color-yellow: #b89030;
+  --color-orange: #c07040;
+  --color-indigo: #8868b0;
+  --color-violet: #8868b0;
+
+  /* Semantic colors */
+  --color-light-green: #3a2828;
+  --color-primary: #c8507a;
+  --color-secondary: #5a8ab0;
+
+  /* Overlays */
+  --color-popup: rgba(244, 236, 236, 0.95);
+  --color-darker-0: rgba(120, 90, 90, 0.06);
+  --color-darker-1: rgba(120, 90, 90, 0.1);
+  --color-darker-2: rgba(120, 90, 90, 0.18);
+  --color-darker-3: rgba(120, 90, 90, 0.3);
+  --color-lighter-0: rgba(255, 255, 255, 0.3);
+  --color-lighter-1: rgba(255, 255, 255, 0.5);
+  --color-lighter-2: rgba(255, 255, 255, 0.7);
+  --color-lighter-3: rgba(255, 255, 255, 0.9);
+
+  /* Dark overlays */
+  --color-dark-0: rgba(120, 90, 90, 0.06);
+  --color-dark-1: rgba(120, 90, 90, 0.1);
+  --color-dark-2: rgba(120, 90, 90, 0.18);
+  --color-dark-3: rgba(120, 90, 90, 0.3);
+
+  /* Terminal */
+  --terminal-width: 100%;
+  --terminal-height: 100%;
+  --terminal-border-radius: 0;
+  --terminal-border-color: #e8d8d8;
+  --terminal-border-color-light: #d8c8c8;
+  --terminal-screen-lines: 0.125;
+  --terminal-box-shadow: none;
+  --terminal-muted-color: #e8d8d8;
+
+  /* Text */
+  --color-text: #3a2828;
+  --color-text-muted: #887070;
+  --color-text-secondary: #887070;
+  --color-text-dull: #e8d8d8;
+
+  /* RGB components */
+  --green-rgb: 74, 152, 104;
+  --blue-rgb: 90, 138, 176;
+  --pink-rgb: 200, 80, 122;
+  --red-rgb: 200, 80, 80;
+  --yellow-rgb: 184, 144, 48;
+  --indigo-rgb: 136, 104, 176;
+  --primary-rgb: 200, 80, 122;
+
+  color: #3a2828;
+}

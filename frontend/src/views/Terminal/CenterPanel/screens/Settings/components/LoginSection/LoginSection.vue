@@ -375,7 +375,7 @@ export default {
   align-items: center;
   justify-content: center;
   padding: 32px 28px;
-  background: radial-gradient(circle at top, rgba(0, 255, 153, 0.06), transparent 55%),
+  background: radial-gradient(circle at top, rgba(var(--green-rgb), 0.06), transparent 55%),
     linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
   border-radius: 16px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
@@ -415,8 +415,7 @@ export default {
 }
 
 body.dark .auth-section {
-  background: radial-gradient(circle at top, rgba(0, 255, 153, 0.05), transparent 55%),
-    linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
+  background: linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
   border: 1px solid var(--terminal-border-color);
 }
 
@@ -486,7 +485,7 @@ body.dark .auth-section {
 
 input[type='email'] {
   width: 100%;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 15px;
   padding: 8px 14px;
   border: 1px solid var(--terminal-border-color);
@@ -509,7 +508,7 @@ input[type='email']:hover {
 input[type='email']:focus {
   border-color: var(--color-green);
   outline: none;
-  box-shadow: 0 0 0 1px rgba(0, 255, 153, 0.38);
+  box-shadow: 0 0 0 1px rgba(var(--green-rgb), 0.38);
 }
 
 body.dark input[type='email'] {
@@ -526,12 +525,12 @@ body.dark input[type='email']:focus {
 }
 
 button.magic-link {
-  background: linear-gradient(135deg, var(--color-green) 0%, #00d084 100%);
+  background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
   color: var(--color-ultra-dark-navy);
   border: none;
   padding: 10px 18px;
   border-radius: 999px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -618,7 +617,7 @@ body.dark .google-auth {
 }
 
 body.dark .google-auth:hover {
-  background: rgba(15, 23, 42, 1);
+  background: var(--color-darker-1);
 }
 
 .settings-section.full-width.top-section inner-setting-panel.auth-section {
@@ -755,20 +754,20 @@ body.dark .google-auth:hover {
   align-items: center;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(0, 255, 153, 0.16);
+  background: rgba(var(--green-rgb), 0.16);
   font-size: 12px;
   font-weight: 500;
 }
 
 .code-input {
   width: 100%;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 26px;
   font-weight: 600;
   padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
-  background: rgba(5, 8, 18, 0.9);
+  background: var(--color-darker-2);
   color: var(--color-text);
   text-align: center;
   letter-spacing: 10px;
@@ -777,22 +776,22 @@ body.dark .google-auth:hover {
 }
 
 .code-input:hover {
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: var(--color-duller-navy);
 }
 
 .code-input:focus {
   outline: none;
   border-color: var(--color-green);
-  box-shadow: 0 0 0 1px rgba(0, 255, 153, 0.38);
+  box-shadow: 0 0 0 1px rgba(var(--green-rgb), 0.38);
 }
 
 body.dark .code-input {
-  background: rgba(5, 8, 18, 0.9);
-  border-color: rgba(100, 100, 150, 0.2);
+  background: var(--color-darker-2);
+  border-color: var(--terminal-border-color);
 }
 
 body.dark .code-input:hover {
-  border-color: rgba(100, 100, 150, 0.35);
+  border-color: var(--color-duller-navy);
 }
 
 body.dark .code-input:focus {
@@ -810,7 +809,7 @@ body.dark .code-input:focus {
   flex: 1;
   padding: 10px 16px;
   border-radius: 999px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-weight: 600;
   cursor: pointer;
   border: none;
@@ -819,7 +818,7 @@ body.dark .code-input:focus {
 }
 
 .verify-btn {
-  background: linear-gradient(135deg, var(--color-green) 0%, #00d084 100%);
+  background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
   color: var(--color-ultra-dark-navy);
 }
 
@@ -841,12 +840,12 @@ body.dark .code-input:focus {
 
 .cancel-btn {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--terminal-border-color);
   color: var(--color-text-muted);
 }
 
 body.dark .cancel-btn {
-  border-color: rgba(100, 100, 150, 0.2);
+  border-color: var(--terminal-border-color);
   color: var(--color-text-muted);
 }
 

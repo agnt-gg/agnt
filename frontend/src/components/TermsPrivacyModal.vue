@@ -358,7 +358,7 @@ export default {
 }
 
 .terms-modal {
-  background: radial-gradient(circle at top, rgba(0, 255, 153, 0.06), transparent 55%),
+  background: radial-gradient(circle at top, rgba(var(--green-rgb), 0.06), transparent 55%),
     linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
@@ -421,7 +421,7 @@ body.dark .terms-modal {
   background: transparent;
   border: none;
   padding: 12px 20px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 0.95em;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -528,7 +528,7 @@ body.dark .terms-modal {
 
 .warning-box strong {
   display: block;
-  color: #ffc107;
+  color: var(--color-yellow);
   font-size: 1.1em;
   margin-bottom: 8px;
 }
@@ -540,8 +540,8 @@ body.dark .terms-modal {
 }
 
 .manifesto-intro {
-  background: rgba(0, 255, 153, 0.1);
-  border: 2px solid rgba(0, 255, 153, 0.4);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 2px solid rgba(var(--green-rgb), 0.4);
   border-radius: 12px;
   padding: 16px 20px;
   margin: 0 0 24px 0;
@@ -570,7 +570,7 @@ body.dark .terms-modal {
 
 .legal-notice strong {
   display: block;
-  color: #ff3b30;
+  color: var(--color-red);
   font-size: 1.1em;
   margin-bottom: 8px;
   text-transform: uppercase;
@@ -596,7 +596,7 @@ body.dark .terms-modal {
   border: none;
   padding: 12px 32px;
   border-radius: 999px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 1em;
   font-weight: 600;
   cursor: pointer;
@@ -605,7 +605,7 @@ body.dark .terms-modal {
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 255, 153, 0.3);
+  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.3);
 }
 
 /* Transitions */

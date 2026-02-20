@@ -269,7 +269,7 @@ export default {
     nodeStyle() {
       const baseStyle = {
         transform: `translate(${this.node.x}px, ${this.node.y}px)`,
-        border: this.node.isSelected ? '2px solid var(--color-pink)' : '',
+        border: this.node.isSelected ? '2px solid var(--color-primary)' : '',
       };
 
       // Use custom dimensions for ALL resizable widget preview nodes if they exist
@@ -587,7 +587,7 @@ export default {
   border: 1px solid rgba(1, 5, 42, 0.25);
   background: var(--color-dull-white);
   color: var(--Dark-Navy, #01052a);
-  font-family: 'League Spartan';
+  font-family: var(--font-family-primary);
   font-size: 16px;
   font-style: normal;
   font-weight: 400;
@@ -626,11 +626,11 @@ export default {
 }
 
 .node.selected::after {
-  border-color: var(--color-pink);
+  border-color: var(--color-primary);
 }
 
 .node.selected {
-  border: 3px solid var(--color-pink) !important;
+  border: 3px solid var(--color-primary) !important;
   /* border: none !important; */
   /* transition: none; */
   animation: none !important;
@@ -722,7 +722,7 @@ export default {
 }
 
 .node-delete-button:hover {
-  color: var(--Dark-Navy, #e53d8f);
+  color: var(--color-primary);
   transform: scale(1.2);
 }
 
@@ -868,24 +868,24 @@ export default {
 
 .node.has-output {
   /* border: 2px solid #14FF89; */
-  border: 3px solid #19ef83;
+  border: 3px solid var(--color-green);
 }
 
 body.dark .node.has-output {
-  border: 3px solid #19ef83;
+  border: 3px solid var(--color-green);
   /* border: 2px solid var(--color-blue); */
 }
 
 .node.has-error {
-  border: 2px solid #fe4e4e;
+  border: 2px solid var(--color-red);
   /* color: #FE4E4E; */
   animation: breathe 1.25s ease-in-out infinite;
-  border-color: #fe4e4e;
+  border-color: var(--color-red);
 }
 
 body.dark .node.has-error.has-output {
-  border: 2px solid #fe4e4e;
-  border-color: #fe4e4e;
+  border: 2px solid var(--color-red);
+  border-color: var(--color-red);
 }
 
 /* .node.has-error.selected::after {
@@ -893,8 +893,8 @@ body.dark .node.has-error.has-output {
   } */
 
 .node-error {
-  color: #fe4e4e;
-  font-family: monospace;
+  color: var(--color-red);
+  font-family: var(--font-family-mono);
   font-size: 0.8em;
   margin-right: 0;
 }
@@ -1034,7 +1034,7 @@ body.dark .node.has-error.has-output {
 
 .resize-handle:hover {
   transform: scale(1.2);
-  background: var(--color-pink);
+  background: var(--color-primary);
 }
 
 .node:hover .resize-handle {

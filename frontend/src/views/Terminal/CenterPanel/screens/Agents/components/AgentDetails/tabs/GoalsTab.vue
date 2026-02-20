@@ -183,7 +183,7 @@ h4.section-title {
   gap: 8px;
   padding-bottom: 16px;
   margin: 0;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
 }
 h4.section-title {
   font-size: 0.9em;
@@ -201,7 +201,7 @@ h4.section-title {
   padding: 32px;
   color: var(--color-grey);
   gap: 8px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 4px;
 }
 .empty-state i {
@@ -214,8 +214,8 @@ h4.section-title {
 
 .action-button {
   padding: 8px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-light-green);
   cursor: pointer;
@@ -226,7 +226,7 @@ h4.section-title {
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 
 .action-button.primary {
@@ -236,13 +236,13 @@ h4.section-title {
 }
 
 .action-button.primary:hover {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
 }
 
 .progress-bar {
   flex: 1;
   height: 4px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -269,7 +269,7 @@ h4.section-title {
 
 /* .goal-input-section {
   background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   padding: 16px;
 } */
@@ -284,7 +284,7 @@ h4.section-title {
   width: 100%;
   min-height: 120px;
   padding: 16px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.3);
   color: var(--color-light-green);
@@ -297,7 +297,7 @@ h4.section-title {
 .goal-input:focus {
   outline: none;
   border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
 }
 
 .goal-input::placeholder {
@@ -327,8 +327,8 @@ h4.section-title {
 }
 
 .goal-card {
-  background: rgba(25, 239, 131, 0.08);
-  border: 1px solid rgba(25, 239, 131, 0.25);
+  background: rgba(var(--green-rgb), 0.08);
+  border: 1px solid rgba(var(--green-rgb), 0.25);
   border-radius: 8px;
   padding: 20px;
   display: flex;
@@ -339,14 +339,14 @@ h4.section-title {
 }
 
 .goal-card:hover {
-  background: rgba(25, 239, 131, 0.12);
-  border-color: rgba(25, 239, 131, 0.4);
+  background: rgba(var(--green-rgb), 0.12);
+  border-color: rgba(var(--green-rgb), 0.4);
   transform: translateY(-1px);
 }
 
 .goal-card.executing {
   border-color: var(--color-green);
-  box-shadow: 0 0 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.3);
 }
 
 .goal-card.executing::before {
@@ -373,7 +373,7 @@ h4.section-title {
 .goal-card.completed {
   opacity: 0.8;
   border-style: dashed;
-  border-color: rgba(25, 239, 131, 0.2);
+  border-color: rgba(var(--green-rgb), 0.2);
 }
 
 .goal-header {
@@ -412,13 +412,13 @@ h4.section-title {
 }
 
 .goal-status.executing {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
 .goal-status.paused {
   background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
+  color: var(--color-yellow);
 }
 
 .goal-status.completed {
@@ -453,17 +453,17 @@ h4.section-title {
 
 .goal-priority.medium {
   background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
+  color: var(--color-yellow);
 }
 
 .goal-priority.high {
   background: rgba(255, 152, 0, 0.2);
-  color: #ff9800;
+  color: var(--color-orange);
 }
 
 .goal-priority.urgent {
   background: rgba(244, 67, 54, 0.2);
-  color: #f44336;
+  color: var(--color-red);
 }
 
 .goal-time {
@@ -489,7 +489,7 @@ h4.section-title {
 }
 
 .goal-current-tasks {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 4px;
   padding: 8px;
   margin: 4px 0;
@@ -512,7 +512,7 @@ h4.section-title {
 }
 
 .current-task {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   padding: 2px 8px;
   border-radius: 3px;
   font-size: 0.8em;
@@ -528,9 +528,9 @@ h4.section-title {
 
 .goal-button {
   padding: 6px 12px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   cursor: pointer;
   display: flex;
@@ -541,14 +541,14 @@ h4.section-title {
 }
 
 .goal-button:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .goal-button.danger {
   border-color: rgba(244, 67, 54, 0.3);
   background: rgba(244, 67, 54, 0.1);
-  color: #f44336;
+  color: var(--color-red);
 }
 
 .goal-button.danger:hover {

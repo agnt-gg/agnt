@@ -584,12 +584,12 @@ export default {
 /* .workflow-details {
   border-radius: 8px;
   padding: 15px;
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
 } */
 
 .workflow-header {
   margin-bottom: 15px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -628,7 +628,7 @@ export default {
 
 .workflow-tools {
   margin-top: 15px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -644,7 +644,7 @@ h3 {
   gap: 12px;
   flex-wrap: wrap;
   padding: 8px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 4px;
 }
 
@@ -661,13 +661,13 @@ h3 {
 
 .workflow-progress {
   margin-top: 15px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
 .progress-bar {
   height: 20px;
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-radius: 10px;
   overflow: hidden;
   position: relative;
@@ -690,7 +690,7 @@ h3 {
 
 .workflow-info {
   margin-top: 15px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
   display: flex;
   flex-direction: column;
@@ -713,7 +713,7 @@ h3 {
 
 .info-value-select {
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   color: var(--color-light-green);
   border-radius: 4px;
   padding: 4px 8px;
@@ -734,7 +734,7 @@ h3 {
 
 .workflow-actions {
   margin-top: 15px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
   display: flex;
   flex-direction: column;
@@ -743,7 +743,7 @@ h3 {
 
 .action-button {
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   padding: 10px;
   border-radius: 4px;
@@ -756,17 +756,17 @@ h3 {
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-color: var(--color-green);
 }
 
 .action-button.edit {
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
   color: var(--color-green);
 }
 
 .action-button.edit:hover {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
 }
 

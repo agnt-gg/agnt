@@ -28,9 +28,36 @@
       </div>
     </div>
 
+    <!-- Font Selector -->
+    <div class="sf-row" :class="{ locked: !isPro }">
+      <label>Font</label>
+      <select :value="fontFamily" @change="isPro ? setFontFamily($event.target.value) : null" :disabled="!isPro">
+        <option value="sans">Sans-serif</option>
+        <option value="mono">Monospace</option>
+      </select>
+    </div>
+
+    <!-- Scale Slider -->
+    <div class="sf-row" :class="{ locked: !isPro }">
+      <label
+        >Scale <span class="value-badge">{{ uiScale }}%</span></label
+      >
+      <div class="slider-notched">
+        <input type="range" min="75" max="125" step="25" :value="uiScale" @input="handleScaleInput" :disabled="!isPro" />
+        <div class="slider-ticks">
+          <span class="slider-tick" style="left: 0%">75</span>
+          <span class="slider-tick" style="left: 50%">100</span>
+          <span class="slider-tick" style="left: 100%">125</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode Toggles -->
     <div class="mode-toggle-group" :class="{ locked: !isPro }">
       <Tooltip
-        :text="isPro ? (useCustomBackground ? 'Disable Custom Background' : 'Enable Custom Background') : 'Upgrade to PRO to unlock custom backgrounds'"
+        :text="
+          isPro ? (useCustomBackground ? 'Disable Custom Background' : 'Enable Custom Background') : 'Upgrade to PRO to unlock custom backgrounds'
+        "
         width="auto"
       >
         <button
@@ -44,10 +71,7 @@
           <i v-if="!isPro" class="fas fa-lock lock-icon"></i>
         </button>
       </Tooltip>
-      <Tooltip
-        :text="isPro ? (isGreyscaleMode ? 'Disable Greyscale' : 'Enable Greyscale') : 'Upgrade to PRO to unlock greyscale mode'"
-        width="auto"
-      >
+      <Tooltip :text="isPro ? (isGreyscaleMode ? 'Disable Greyscale' : 'Enable Greyscale') : 'Upgrade to PRO to unlock greyscale mode'" width="auto">
         <button
           @click="isPro ? toggleGreyscaleMode() : null"
           class="mode-toggle greyscale-toggle"
@@ -61,33 +85,48 @@
       </Tooltip>
     </div>
 
+    <!-- Background settings (only when custom bg is on) -->
+    <div v-if="useCustomBackground && isPro" class="background-settings">
+      <!-- Background Media Upload -->
+      <div class="sf-row">
+        <label>Background</label>
+        <div class="sf-upload">
+          <button type="button" class="sf-upload-btn" @click="$refs.fileInput.click()">Choose File</button>
+          <span class="sf-upload-name">{{ bgFileName }}</span>
+          <button v-if="currentThemeBackgroundImage" type="button" class="sf-upload-clear" @click="removeBackgroundImage">&times;</button>
+        </div>
+        <input ref="fileInput" type="file" accept="image/*,video/*" @change="handleMediaUpload" style="display: none" />
+      </div>
+
+      <!-- Background Preview -->
+      <div class="sf-row" v-if="currentThemeBackgroundImage">
+        <label></label>
+        <div class="current-background">
+          <video v-if="isVideoBackground" :src="currentThemeBackgroundImage" class="background-preview" autoplay loop muted></video>
+          <img v-else :src="currentThemeBackgroundImage" alt="Current background" class="background-preview" />
+        </div>
+      </div>
+
+      <!-- Opacity Slider -->
+      <div class="sf-row">
+        <label
+          >Opacity <span class="value-badge">{{ bgOpacity }}%</span></label
+        >
+        <input type="range" min="50" max="100" step="1" :value="bgOpacity" @input="setBgOpacity(parseInt($event.target.value))" />
+      </div>
+
+      <!-- Blur Slider -->
+      <div class="sf-row">
+        <label
+          >Blur <span class="value-badge">{{ bgBlur }}px</span></label
+        >
+        <input type="range" min="0" max="20" step="1" :value="bgBlur" @input="setBgBlur(parseInt($event.target.value))" />
+      </div>
+    </div>
+
     <div v-if="!isPro" class="locked-overlay">
       <i class="fas fa-lock"></i>
       <p>Upgrade to PRO to unlock</p>
-    </div>
-
-    <div class="background-image-group" v-if="useCustomBackground && isPro">
-      <label class="theme-label">Background Media</label>
-      <div class="background-controls">
-        <div class="current-background" v-if="currentThemeBackgroundImage">
-          <video v-if="isVideoBackground" :src="currentThemeBackgroundImage" class="background-preview" autoplay loop muted></video>
-          <img v-else :src="currentThemeBackgroundImage" alt="Current background" class="background-preview" />
-          <Tooltip text="Remove background media" width="auto">
-            <button @click="removeBackgroundImage" class="remove-bg-btn">
-              <i class="fas fa-times"></i>
-            </button>
-          </Tooltip>
-        </div>
-        <div class="upload-controls">
-          <input ref="fileInput" type="file" accept="image/*,video/*" @change="handleMediaUpload" class="file-input" style="display: none" />
-          <Tooltip text="Upload background image or video" width="auto">
-            <button @click="$refs.fileInput.click()" class="upload-btn">
-              <i class="fas fa-upload"></i>
-              <span class="upload-label">{{ currentThemeBackgroundImage ? 'Change Media' : 'Upload Media' }}</span>
-            </button>
-          </Tooltip>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -106,33 +145,35 @@ export default {
   data() {
     return {
       availableThemes: [
-        // {
-        //   id: 'light',
-        //   name: 'Light',
-        //   icon: 'fas fa-sun',
-        // },
-        {
-          id: 'dark',
-          name: 'Dark',
-          icon: 'fas fa-moon',
-        },
-        {
-          id: 'cyberpunk',
-          name: 'Cyberpunk',
-          icon: 'fas fa-microchip',
-        },
+        { id: 'dark', name: 'Dark', icon: 'fas fa-moon' },
+        { id: 'cyberpunk', name: 'Cyberpunk', icon: 'fas fa-microchip' },
+        { id: 'midnight', name: 'Midnight', icon: 'fas fa-star' },
+        { id: 'ember', name: 'Ember', icon: 'fas fa-fire' },
+        { id: 'nord', name: 'Nord', icon: 'fas fa-snowflake' },
+        { id: 'hacker', name: 'Hacker', icon: 'fas fa-terminal' },
+        { id: 'light', name: 'Light', icon: 'fas fa-sun' },
+        { id: 'rose', name: 'Rose', icon: 'fas fa-heart' },
       ],
+      bgFileName: 'No file',
     };
   },
   computed: {
-    ...mapGetters('theme', ['currentTheme', 'isGreyscaleMode', 'currentThemeBackgroundImage', 'useCustomBackground']),
+    ...mapGetters('theme', [
+      'currentTheme',
+      'isGreyscaleMode',
+      'currentThemeBackgroundImage',
+      'useCustomBackground',
+      'fontFamily',
+      'uiScale',
+      'bgOpacity',
+      'bgBlur',
+    ]),
     ...mapGetters('userAuth', ['planType']),
     isPro() {
       return this.planType !== 'free';
     },
     isVideoBackground() {
       if (!this.currentThemeBackgroundImage) return false;
-      // Check if the data URL indicates a video format
       return this.currentThemeBackgroundImage.startsWith('data:video/');
     },
   },
@@ -143,6 +184,10 @@ export default {
       'toggleUseCustomBackground',
       'setCustomBackgroundImage',
       'removeCustomBackgroundImage',
+      'setFontFamily',
+      'setUiScale',
+      'setBgOpacity',
+      'setBgBlur',
     ]),
     selectTheme(themeId) {
       this.setTheme(themeId);
@@ -151,7 +196,6 @@ export default {
       const file = event.target.files[0];
       if (!file) return;
 
-      // Validate file type
       const isImage = file.type.startsWith('image/');
       const isVideo = file.type.startsWith('video/');
 
@@ -165,7 +209,6 @@ export default {
         return;
       }
 
-      // Validate file size (max 5MB for images, 20MB for videos)
       const maxSize = isVideo ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
       if (file.size > maxSize) {
         const maxSizeMB = isVideo ? '20MB' : '5MB';
@@ -178,21 +221,26 @@ export default {
         return;
       }
 
+      this.bgFileName = file.name;
+
       const reader = new FileReader();
       reader.onload = (e) => {
-        const mediaDataUrl = e.target.result;
         this.setCustomBackgroundImage({
           theme: this.currentTheme,
-          imageDataUrl: mediaDataUrl,
+          imageDataUrl: e.target.result,
         });
       };
       reader.readAsDataURL(file);
 
-      // Clear the input so the same file can be selected again
       event.target.value = '';
     },
     removeBackgroundImage() {
       this.removeCustomBackgroundImage(this.currentTheme);
+      this.bgFileName = 'No file';
+    },
+    handleScaleInput(event) {
+      if (!this.isPro) return;
+      this.setUiScale(parseInt(event.target.value, 10));
     },
   },
 };
@@ -208,7 +256,8 @@ export default {
 }
 
 .field-group.locked-section .theme-selector-group,
-.field-group.locked-section .mode-toggle-group {
+.field-group.locked-section .mode-toggle-group,
+.field-group.locked-section .sf-row {
   pointer-events: none;
   user-select: none;
 }
@@ -238,45 +287,13 @@ body.dark .theme-label {
   align-items: center;
   gap: 4px;
   font-size: var(--font-size-xs);
-  color: #ffd700;
+  color: var(--color-yellow);
   background: rgba(255, 215, 0, 0.15);
   padding: 2px 8px;
   border-radius: 4px;
   border: 1px solid rgba(255, 215, 0, 0.4);
   font-weight: 600;
   margin-left: 8px;
-}
-
-.pro-locked-message {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--color-text);
-  background: rgba(255, 215, 0, 0.05);
-  border: 1px solid rgba(255, 215, 0, 0.2);
-  border-radius: 8px;
-  margin-top: 8px;
-}
-
-.pro-locked-message i {
-  font-size: 3em;
-  color: #ffd700;
-  margin-bottom: 16px;
-}
-
-.pro-locked-message h4 {
-  margin: 0 0 8px 0;
-  color: var(--color-text);
-  font-size: 1.2em;
-}
-
-.pro-locked-message p {
-  margin: 0;
-  color: var(--color-light-med-navy);
-  font-size: 0.95em;
-}
-
-body.dark .pro-locked-message h4 {
-  color: var(--color-dull-white);
 }
 
 .theme-options {
@@ -296,7 +313,7 @@ body.dark .pro-locked-message h4 {
   background: rgba(0, 0, 0, 0.8);
   padding: 12px 16px;
   border-radius: 8px;
-  border: 2px solid #ffd700;
+  border: 2px solid var(--color-yellow);
   pointer-events: all;
   z-index: 10;
   white-space: nowrap;
@@ -304,7 +321,7 @@ body.dark .pro-locked-message h4 {
 
 .locked-overlay i {
   font-size: 1.2em;
-  color: #ffd700;
+  color: var(--color-yellow);
   margin-right: 6px;
 }
 
@@ -324,8 +341,6 @@ body.dark .pro-locked-message h4 {
   padding: 6px 12px;
   border: 1px solid var(--color-light-navy);
   border-radius: 6px;
-  /* background: var(--color-ultra-light-navy);
-  color: var(--color-dark-navy); */
   cursor: pointer;
   transition: all 0.2s ease;
   min-width: 70px;
@@ -336,13 +351,12 @@ body.dark .pro-locked-message h4 {
 
 .theme-option:hover:not(.disabled) {
   border-color: var(--color-med-navy);
-  /* background: var(--color-white); */
   transform: translateY(-1px);
 }
 
 .theme-option.active {
-  border-color: var(--color-pink);
-  background: var(--color-pink);
+  border-color: var(--color-primary);
+  background: var(--color-primary);
   color: var(--color-white);
 }
 
@@ -364,7 +378,7 @@ body.dark .pro-locked-message h4 {
 .lock-icon {
   font-size: 10px;
   margin-left: auto;
-  color: #ffd700;
+  color: var(--color-yellow);
 }
 
 .theme-name {
@@ -373,30 +387,194 @@ body.dark .pro-locked-message h4 {
   white-space: nowrap;
 }
 
-/* Dark theme styles */
-body.dark .theme-option {
-  border-color: var(--color-dull-navy);
-  background: var(--color-ultra-dark-navy);
-  color: var(--color-dull-white);
+/* ── Settings Rows ── */
+.sf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-body.dark .theme-option:hover:not(.disabled) {
-  border-color: var(--color-med-navy);
+.sf-row label {
+  flex: 0 0 110px;
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.5px;
+  color: var(--color-med-navy);
+  text-align: left;
 }
 
-body.dark .theme-option.active {
-  border-color: var(--color-pink);
-  background: var(--color-pink);
-  color: var(--color-white);
+.sf-row select {
+  flex: 1;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 
-body.dark .theme-option.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--color-ultra-dark-navy);
+.sf-row select:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
-/* Greyscale toggle */
+.sf-row input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 4px;
+  background: var(--color-darker-2);
+  border: none;
+  border-radius: 2px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sf-row input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--color-darker-2);
+  border-radius: 2px;
+}
+
+.sf-row input[type='range']::-moz-range-track {
+  height: 4px;
+  background: var(--color-darker-2);
+  border-radius: 2px;
+}
+
+.sf-row input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  margin-top: -4px;
+}
+
+.sf-row input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: none;
+  cursor: pointer;
+}
+
+.value-badge {
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+  margin-left: 4px;
+}
+
+/* ── Scale Slider with Tick Marks ── */
+.slider-notched {
+  position: relative;
+  flex: 1;
+}
+
+.slider-notched input[type='range'] {
+  width: 100%;
+}
+
+.slider-ticks {
+  display: none;
+  position: relative;
+  height: 12px;
+  margin-top: 2px;
+  margin-left: calc(12px / 2);
+  margin-right: calc(12px / 2);
+}
+
+.slider-tick {
+  position: absolute;
+  font-size: var(--font-size-xs);
+  color: var(--color-med-navy);
+  /* transform: translateX(-50%); */
+}
+
+.slider-tick::before {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 4px;
+  background: var(--color-med-navy);
+  margin: 0 auto 2px;
+}
+
+/* ── Upload Row ── */
+.sf-upload {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sf-upload-btn {
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.sf-upload-btn:hover {
+  background: var(--color-darker-2);
+  border-color: var(--color-primary);
+}
+
+.sf-upload-name {
+  flex: 1;
+  font-size: var(--font-size-xs);
+  color: var(--color-med-navy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sf-upload-clear {
+  background: none;
+  border: none;
+  color: var(--color-med-navy);
+  cursor: pointer;
+  font-size: var(--font-size-lg);
+  padding: 0 2px;
+  font-family: inherit;
+  transition: color 0.15s;
+}
+
+.sf-upload-clear:hover {
+  color: var(--color-red);
+}
+
+/* ── Background Preview ── */
+.current-background {
+  position: relative;
+  display: inline-block;
+  max-width: 200px;
+}
+
+.background-preview {
+  width: 100%;
+  max-width: 200px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--terminal-border-color);
+}
+
+.background-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Mode Toggles ── */
 .mode-toggle-group {
   display: flex;
   flex-direction: row;
@@ -410,10 +588,9 @@ body.dark .theme-option.disabled {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
-  /* background: var(--color-ultra-light-navy); */
-  color: var(--color-dark-navy);
+  color: var(--color-text);
   cursor: pointer;
   transition: all 0.2s ease;
   height: 32px;
@@ -423,13 +600,12 @@ body.dark .theme-option.disabled {
 
 .mode-toggle:hover:not(.disabled) {
   border-color: var(--color-med-navy);
-  background: var(--color-white);
   transform: translateY(-1px);
 }
 
 .mode-toggle.active {
-  border-color: var(--color-pink);
-  background: var(--color-pink);
+  border-color: var(--color-primary);
+  background: var(--color-primary);
   color: var(--color-white);
 }
 
@@ -453,6 +629,36 @@ body.dark .theme-option.disabled {
   white-space: nowrap;
 }
 
+.wide-group {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+/* ── Dark Theme ── */
+body.dark .theme-option {
+  border-color: var(--color-dull-navy);
+  background: var(--color-ultra-dark-navy);
+  color: var(--color-dull-white);
+}
+
+body.dark .theme-option:hover:not(.disabled) {
+  border-color: var(--color-med-navy);
+}
+
+body.dark .theme-option.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-white);
+}
+
+body.dark .theme-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--color-ultra-dark-navy);
+}
+
 body.dark .mode-toggle {
   border-color: var(--color-dull-navy);
   color: var(--color-dull-white);
@@ -463,8 +669,8 @@ body.dark .mode-toggle:hover:not(.disabled) {
 }
 
 body.dark .mode-toggle.active {
-  border-color: var(--color-pink);
-  background: var(--color-pink);
+  border-color: var(--color-primary);
+  background: var(--color-primary);
   color: var(--color-white);
 }
 
@@ -473,186 +679,34 @@ body.dark .mode-toggle.disabled {
   cursor: not-allowed;
 }
 
-.wide-group {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 100%;
+body.dark .sf-row label {
+  color: var(--color-med-navy);
 }
 
-/* Background Image Upload Styles */
-.background-image-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.background-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.current-background {
-  position: relative;
-  display: inline-block;
-  max-width: 200px;
-}
-
-.background-preview {
-  width: 100%;
-  max-width: 200px;
-  height: 100px;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid var(--color-light-navy);
-}
-
-.remove-bg-btn {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid var(--color-light-navy);
-  background: var(--color-white);
-  color: var(--color-dark-navy);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  transition: all 0.2s ease;
-}
-
-.remove-bg-btn:hover {
-  background: var(--color-pink);
-  color: var(--color-white);
-  border-color: var(--color-pink);
-}
-
-.upload-controls {
-  display: flex;
-  align-items: center;
-}
-
-.upload-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--color-light-navy);
-  border-radius: 6px;
-  background: var(--color-ultra-light-navy);
-  color: var(--color-dark-navy);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  height: 32px;
-  font-size: var(--font-size-sm);
-}
-
-.upload-btn:hover {
-  border-color: var(--color-med-navy);
-  background: var(--color-white);
-  transform: translateY(-1px);
-}
-
-.upload-btn i {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.upload-label {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-/* Dark theme styles for background upload */
-body.dark .background-preview {
-  border-color: var(--color-dull-navy);
-}
-
-body.dark .remove-bg-btn {
-  border-color: var(--color-dull-navy);
-  background: var(--color-ultra-dark-navy);
-  color: var(--color-dull-white);
-}
-
-body.dark .remove-bg-btn:hover {
-  background: var(--color-pink);
-  color: var(--color-white);
-  border-color: var(--color-pink);
-}
-
-body.dark .upload-btn {
-  border-color: var(--color-dull-navy);
-  background: var(--color-ultra-dark-navy);
-  color: var(--color-dull-white);
-}
-
-body.dark .upload-btn:hover {
-  border-color: var(--color-med-navy);
-  background: var(--color-ultra-dark-navy);
-}
-
-/* Cyberpunk theme styles for background upload */
-body.dark.cyberpunk .background-preview {
-  border-color: var(--color-dull-navy);
-}
-
-body.dark.cyberpunk .remove-bg-btn {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: var(--color-dull-navy);
-  color: var(--color-dull-white);
-}
-
-body.dark.cyberpunk .remove-bg-btn:hover {
-  background: var(--color-green);
-  color: var(--color-black-navy);
-  border-color: var(--color-green);
-}
-
-body.dark.cyberpunk .upload-btn {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: var(--color-dull-navy);
-  color: var(--color-dull-white);
-}
-
-body.dark.cyberpunk .upload-btn:hover {
-  background: rgba(0, 0, 0, 0.5);
-  border-color: var(--color-green);
-}
-
-/* Cyberpunk theme styles */
+/* ── Cyberpunk overrides ── */
 body.dark.cyberpunk .theme-option {
   background: rgba(0, 0, 0, 0.3);
   border-color: var(--color-dull-navy);
-  /* font-family: monospace; */
 }
 
 body.dark.cyberpunk .theme-option:hover:not(.disabled) {
   background: rgba(0, 0, 0, 0.5);
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
 }
 
 body.dark.cyberpunk .theme-option.active {
-  border-color: var(--color-green);
-  background: var(--color-green);
-  /* color: var(--color-black-navy); */
+  border-color: var(--color-primary);
+  background: var(--color-primary);
 }
 
 body.dark.cyberpunk .theme-option.disabled {
   opacity: 0.5;
-  cursor: not-allowed;
   background: rgba(0, 0, 0, 0.3);
 }
 
 body.dark.cyberpunk .mode-toggle {
   background: rgba(0, 0, 0, 0.3);
   border-color: var(--color-dull-navy);
-  /* font-family: monospace; */
 }
 
 body.dark.cyberpunk .mode-toggle:hover:not(.disabled) {
@@ -660,14 +714,12 @@ body.dark.cyberpunk .mode-toggle:hover:not(.disabled) {
 }
 
 body.dark.cyberpunk .mode-toggle.active {
-  border-color: var(--color-green);
-  background: var(--color-green);
-  /* color: var(--color-black-navy); */
+  border-color: var(--color-primary);
+  background: var(--color-primary);
 }
 
 body.dark.cyberpunk .mode-toggle.disabled {
   opacity: 0.5;
-  cursor: not-allowed;
   background: rgba(0, 0, 0, 0.3);
 }
 </style>

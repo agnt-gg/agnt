@@ -1,0 +1,71 @@
+/* HACKER THEME - Green-on-black terminal */
+body.dark.hacker {
+  --color-background: #000000;
+  /* Background hierarchy — pure black */
+  --color-black-navy: #000000;
+  --color-ultra-dark-navy: #0a0a0a;
+  --color-dark-navy: #0a0e0a;
+  --color-navy: #0c100c;
+  --color-dull-navy: #1a2a1a;
+  --color-duller-navy: #1a3a1a;
+
+  /* Text hierarchy — all green */
+  --color-med-navy: #308030;
+  --color-light-med-navy: #38c838;
+  --color-light-navy: #30a830;
+  --color-bright-light-navy: #289028;
+  --color-ultra-light-navy: #0c100c;
+  --color-dull-white: #40e840;
+
+  /* Accent colors — green everywhere */
+  --color-green: #40ff40;
+  --color-blue: #40e0a0;
+  --color-pink: #60d060;
+  --color-red: #c04040;
+  --color-yellow: #80e040;
+  --color-orange: #60c040;
+  --color-indigo: #40c080;
+  --color-violet: #40c080;
+
+  /* Semantic colors */
+  --color-light-green: #40e840;
+  --color-primary: #40ff40;
+  --color-secondary: #40e0a0;
+
+  /* Overlays */
+  --color-popup: rgba(10, 10, 10, 0.95);
+  --color-darker-0: rgba(0, 0, 0, 0.3);
+  --color-darker-1: rgba(0, 0, 0, 0.5);
+  --color-darker-2: rgba(0, 0, 0, 0.7);
+  --color-darker-3: rgba(0, 0, 0, 0.9);
+  --color-lighter-0: rgba(64, 232, 64, 0.03);
+  --color-lighter-1: rgba(64, 232, 64, 0.06);
+  --color-lighter-2: rgba(64, 232, 64, 0.12);
+  --color-lighter-3: rgba(64, 232, 64, 0.25);
+
+  /* Dark overlays */
+  --color-dark-0: rgba(0, 0, 0, 0.1);
+  --color-dark-1: rgba(0, 0, 0, 0.2);
+  --color-dark-2: rgba(0, 0, 0, 0.4);
+  --color-dark-3: rgba(0, 0, 0, 0.8);
+
+  /* Terminal */
+  --terminal-border-color: #1a2a1a;
+  --terminal-border-color-light: #1a3a1a;
+  --terminal-muted-color: #1a2a1a;
+
+  /* Text */
+  --color-text: #40e840;
+  --color-text-muted: #308030;
+  --color-text-secondary: #308030;
+  --color-text-dull: #1a2a1a;
+
+  /* RGB components */
+  --green-rgb: 64, 255, 64;
+  --blue-rgb: 64, 224, 160;
+  --pink-rgb: 96, 208, 96;
+  --red-rgb: 192, 64, 64;
+  --yellow-rgb: 128, 224, 64;
+  --indigo-rgb: 64, 192, 128;
+  --primary-rgb: 64, 255, 64;
+}

@@ -60,7 +60,7 @@ export default {
       ctx.clearRect(0, 0, width, height);
 
       // Draw efficiency arc background
-      ctx.strokeStyle = "rgba(25, 239, 131, 0.2)";
+      ctx.strokeStyle = "rgba(var(--green-rgb), 0.2)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(
@@ -75,7 +75,7 @@ export default {
 
       // Draw actual efficiency
       const efficiencyValue = automationEfficiency.value / 100;
-      ctx.strokeStyle = "rgba(25, 239, 131, 0.8)";
+      ctx.strokeStyle = "rgba(var(--green-rgb), 0.8)";
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.arc(
@@ -142,7 +142,7 @@ export default {
   color: var(--color-duller-navy);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 .performance-grid {

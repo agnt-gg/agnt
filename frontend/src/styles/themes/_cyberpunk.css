@@ -1,8 +1,10 @@
 /* CYBERPUNK THEME */
 body.dark.cyberpunk {
   --color-primary: var(--color-green);
-  /* --color-background is now set dynamically by JavaScript */
-  /* --font-weight: bold; */
+  --color-secondary: var(--color-blue);
+  --color-background: #0b0b30;
+  --color-text-secondary: var(--color-med-navy);
+  --color-text-dull: var(--color-dull-navy);
   --terminal-width: calc(100vw - 16px);
   --terminal-height: calc(100vh - 16px);
   --terminal-border-radius: 16px;
@@ -10,32 +12,23 @@ body.dark.cyberpunk {
   --terminal-border-color-light: rgba(18, 224, 255, 0.1);
   --terminal-box-shadow: 0 0 15px rgba(25, 239, 131, 0.05), inset 0 0 10px rgba(0, 0, 0, 0.25);
   --terminal-screen-lines: 0.25;
-  --terminal-muted-color: linear-gradient(135deg, rgba(18, 224, 255, 0.04) 0%, rgba(18, 224, 255, 0.02) 100%);
+  --terminal-muted-color: var(--color-dull-navy);
 
   --color-dark-0: rgba(0, 0, 0, 0.1);
   --color-dark-1: rgba(0, 0, 0, 0.2);
   --color-dark-2: rgba(0, 0, 0, 0.4);
   --color-dark-3: rgba(0, 0, 0, 0.8);
 
-  /* --color-darker-0: rgba(0, 0, 0, 0.1);
-  --color-darker-1: rgba(0, 0, 0, 0.2);
-  --color-darker-2: rgba(0, 0, 0, 0.4);
-  --color-darker-3: rgba(0, 0, 0, 0.8); */
-
   --color-popup: rgba(16, 16, 38, 0.95);
 
-  --color-primary: var(--color-green);
-  --color-secondary: var(--color-blue);
-
-  /* --base-font-size: 14px; */
-  --font-size-xs: calc(var(--base-font-size) * 0.75);
-  --font-size-sm: calc(var(--base-font-size) * 0.875);
-  --font-size-md: var(--base-font-size);
-  --font-size-lg: calc(var(--base-font-size) * 1.125);
-  --font-size-xl: calc(var(--base-font-size) * 1.25);
-  --font-size-xxl: calc(var(--base-font-size) * 1.5);
-  --font-size-xxxl: calc(var(--base-font-size) * 2);
-  --font-size-display: calc(var(--base-font-size) * 2.5);
+  /* RGB components — primary is green in cyberpunk */
+  --green-rgb: 25, 239, 131;
+  --blue-rgb: 18, 224, 255;
+  --pink-rgb: 229, 61, 143;
+  --red-rgb: 254, 78, 78;
+  --yellow-rgb: 255, 215, 0;
+  --indigo-rgb: 125, 61, 229;
+  --primary-rgb: 25, 239, 131;
 
   line-height: 1.25;
 }
@@ -136,7 +129,7 @@ body.dark.cyberpunk settings-panel {
 }
 
 body.dark.cyberpunk #left-sidebar {
-  background: #070710dc;
+  background: var(--color-background);
 }
 
 /* body.dark.cyberpunk .card-inner {

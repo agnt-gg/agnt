@@ -456,7 +456,7 @@ h3.section-title {
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.1);
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.3) transparent;
+  scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -475,9 +475,9 @@ h3.section-title {
 }
 
 .chat-input-container {
-  /* border-top: 1px solid rgba(25, 239, 131, 0.3); */
+  /* border-top: 1px solid rgba(var(--green-rgb), 0.3); */
   padding: 12px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 .chat-input-wrapper {
   display: flex;
@@ -518,7 +518,7 @@ h3.section-title {
 }
 
 .chat-mic-button.is-listening {
-  background: #ff4444;
+  background: var(--color-red);
   color: white;
   animation: pulse 1.5s ease-in-out infinite;
 }
@@ -553,11 +553,11 @@ h3.section-title {
   transition: all 0.2s;
 }
 .chat-send-button:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
   transform: scale(1.05);
 }
 .chat-send-button:disabled {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   cursor: not-allowed;
   transform: none;
 }

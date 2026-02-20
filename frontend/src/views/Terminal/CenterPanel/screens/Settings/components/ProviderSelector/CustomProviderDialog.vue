@@ -373,8 +373,8 @@ export default {
 }
 
 .test-result.success {
-  background: rgba(25, 239, 131, 0.1);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .test-result.error {
@@ -460,7 +460,7 @@ export default {
 .btn-primary:hover:not(:disabled) {
   /* background: var(--color-light-green);
   transform: translateY(-1px); */
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .btn-secondary {

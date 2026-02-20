@@ -368,13 +368,13 @@ export default {
 }
 
 .upload-area:hover {
-  border-color: rgba(25, 239, 131, 0.5);
-  background: rgba(25, 239, 131, 0.05);
+  border-color: rgba(var(--green-rgb), 0.5);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .upload-area.drag-over {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   transform: scale(1.02);
 }
 
@@ -425,7 +425,7 @@ export default {
 }
 
 .image-preview-item:hover {
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
@@ -514,7 +514,7 @@ export default {
 
 .add-more-btn:hover {
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .add-more-btn i {

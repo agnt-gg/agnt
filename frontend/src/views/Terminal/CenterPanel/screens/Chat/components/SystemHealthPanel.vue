@@ -130,7 +130,7 @@ export default {
 .uptime {
   font-size: 0.7em;
   color: var(--color-text);
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-family-mono);
 }
 
 .health-items {
@@ -149,23 +149,23 @@ export default {
 }
 
 .health-item.healthy {
-  background: rgba(25, 239, 131, 0.05);
-  border: 1px solid rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .health-item.active {
-  background: rgba(18, 224, 255, 0.05);
-  border: 1px solid rgba(18, 224, 255, 0.1);
+  background: rgba(var(--blue-rgb), 0.05);
+  border: 1px solid rgba(var(--blue-rgb), 0.1);
 }
 
 .health-item.warning {
-  background: rgba(255, 165, 0, 0.05);
-  border: 1px solid rgba(255, 165, 0, 0.1);
+  background: rgba(var(--orange-rgb), 0.05);
+  border: 1px solid rgba(var(--orange-rgb), 0.1);
 }
 
 .health-item.error {
-  background: rgba(255, 107, 107, 0.05);
-  border: 1px solid rgba(255, 107, 107, 0.1);
+  background: rgba(var(--red-rgb), 0.05);
+  border: 1px solid rgba(var(--red-rgb), 0.1);
 }
 
 .health-item.idle {
@@ -182,23 +182,23 @@ export default {
 
 .health-item.healthy .indicator {
   background: var(--color-green);
-  box-shadow: 0 0 6px rgba(25, 239, 131, 0.4);
+  box-shadow: 0 0 6px rgba(var(--green-rgb), 0.4);
 }
 
 .health-item.active .indicator {
   background: var(--color-blue);
-  box-shadow: 0 0 6px rgba(18, 224, 255, 0.4);
+  box-shadow: 0 0 6px rgba(var(--blue-rgb), 0.4);
   animation: pulse 2s infinite;
 }
 
 .health-item.warning .indicator {
-  background: #ffa500;
-  box-shadow: 0 0 6px rgba(255, 165, 0, 0.4);
+  background: var(--color-orange);
+  box-shadow: 0 0 6px rgba(var(--orange-rgb), 0.4);
 }
 
 .health-item.error .indicator {
-  background: #ff6b6b;
-  box-shadow: 0 0 6px rgba(255, 107, 107, 0.4);
+  background: var(--color-red);
+  box-shadow: 0 0 6px rgba(var(--red-rgb), 0.4);
 }
 
 .health-item.idle .indicator {
@@ -224,7 +224,7 @@ export default {
 .item-status {
   font-size: 0.7em;
   color: var(--color-med-navy);
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-family-mono);
 }
 
 .health-item.healthy .item-status {
@@ -236,11 +236,11 @@ export default {
 }
 
 .health-item.warning .item-status {
-  color: #ffa500;
+  color: var(--color-orange);
 }
 
 .health-item.error .item-status {
-  color: #ff6b6b;
+  color: var(--color-red);
 }
 
 .memory-info {
@@ -264,7 +264,7 @@ export default {
 .memory-value {
   font-size: 0.7em;
   color: var(--color-bright-light-navy);
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-family-mono);
 }
 
 @media (max-width: 768px) {

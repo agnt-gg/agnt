@@ -154,8 +154,8 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 16px;
-  background: linear-gradient(135deg, rgba(25, 239, 131, 0.15) 0%, rgba(25, 239, 131, 0.05) 100%);
-  border: 1px solid rgba(25, 239, 131, 0.4);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.15) 0%, rgba(var(--green-rgb), 0.05) 100%);
+  border: 1px solid rgba(var(--green-rgb), 0.4);
   border-radius: 12px;
   padding: 12px 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -179,14 +179,14 @@ defineExpose({
 }
 
 .update-title {
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 14px;
   font-weight: 600;
   color: var(--color-green, #19ef83);
 }
 
 .update-version {
-  font-family: 'Fira Code', monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--fg-dim, rgba(255, 255, 255, 0.6));
 }
@@ -197,7 +197,7 @@ defineExpose({
 }
 
 .update-btn {
-  font-family: 'Fira Code', monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   font-weight: 500;
   padding: 6px 12px;

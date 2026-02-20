@@ -136,7 +136,7 @@ export default {
 <style scoped>
 .data-section {
   background: rgba(0,0,0,0.15); /* Simplified background */
-  border: 1px solid rgba(25, 239, 131, 0.2); /* Standard accent border */
+  border: 1px solid rgba(var(--green-rgb), 0.2); /* Standard accent border */
   border-radius: 6px; /* Standard border-radius */
   padding: 16px; /* Standard padding */
   /* Removed: complex background, border-top, backdrop-filter, box-shadow */
@@ -147,7 +147,7 @@ export default {
   font-size: 1.1em; /* Standard title font-size */
   margin: 0 0 12px 0; /* Standard margins */
   padding-bottom: 8px; /* Standard padding */
-  border-bottom: 1px solid rgba(25, 239, 131, 0.15); /* Standard border */
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.15); /* Standard border */
   display: flex;
   align-items: center;
   gap: 8px; /* Standard gap */
@@ -220,8 +220,8 @@ export default {
 }
 
 .item-card {
-  background: rgba(25, 239, 131, 0.03); /* Subtler theme base, slightly different from agent card for variety */
-  border: 1px solid rgba(25, 239, 131, 0.15); /* Standard accent border */
+  background: rgba(var(--green-rgb), 0.03); /* Subtler theme base, slightly different from agent card for variety */
+  border: 1px solid rgba(var(--green-rgb), 0.15); /* Standard accent border */
   border-radius: 4px; /* Standard border-radius */
   padding: 12px; /* Standardized padding */
   display: flex;
@@ -297,7 +297,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1); /* Standardized border color */
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1); /* Standardized border color */
 }
 
 .item-name {
@@ -345,7 +345,7 @@ export default {
 .status-and-action {
   margin-top: auto;
   padding-top: 10px; /* Adjusted padding */
-  border-top: 1px solid rgba(25, 239, 131, 0.1); /* Standardized border color */
+  border-top: 1px solid rgba(var(--green-rgb), 0.1); /* Standardized border color */
   display: flex;
   flex-direction: column;
   gap: 8px; /* Adjusted gap */
@@ -453,9 +453,9 @@ export default {
     text-align: center;
     font-size: 1em; /* Adjusted font-size */
     grid-column: 1 / -1;
-    border: 1px dashed rgba(25, 239, 131, 0.3); /* Adjusted border */
+    border: 1px dashed rgba(var(--green-rgb), 0.3); /* Adjusted border */
     border-radius: 4px; /* Standard radius */
-    background-color: rgba(25, 239, 131, 0.03); /* Subtle theme background */
+    background-color: rgba(var(--green-rgb), 0.03); /* Subtle theme background */
     display: flex;
     flex-direction: column;
     align-items: center;

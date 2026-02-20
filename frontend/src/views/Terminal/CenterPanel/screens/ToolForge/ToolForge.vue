@@ -288,7 +288,7 @@ export default {
   border-radius: 4px;
   padding: 24px;
   width: 400px;
-  box-shadow: 0 0 20px rgba(25, 239, 131, 0.4);
+  box-shadow: 0 0 20px rgba(var(--green-rgb), 0.4);
   text-align: center;
 }
 

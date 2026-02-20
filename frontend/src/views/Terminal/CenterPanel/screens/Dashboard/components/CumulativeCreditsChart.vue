@@ -101,6 +101,12 @@ export default {
       }
     });
 
+    // Resolve CSS variable for Canvas 2D (which can't parse var() references)
+    const getGreenRgb = () => {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue('--green-rgb').trim();
+      return raw || '25, 239, 131';
+    };
+
     const fetchCreditsData = () => {
       // Dispatch action to fetch from store
       store.dispatch('userStats/fetchCreditsActivity', {
@@ -133,6 +139,8 @@ export default {
 
       console.log('Rendering chart with', data.labels.length, 'data points', 'Range:', activityDays.value, 'days');
 
+      const g = getGreenRgb();
+
       chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
@@ -149,16 +157,16 @@ export default {
                   return null;
                 }
                 const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-                gradient.addColorStop(0, 'rgba(25, 239, 131, 0)');
-                gradient.addColorStop(1, 'rgba(25, 239, 131, 0.3)');
+                gradient.addColorStop(0, `rgba(${g}, 0)`);
+                gradient.addColorStop(1, `rgba(${g}, 0.3)`);
                 return gradient;
               },
-              borderColor: 'rgba(25, 239, 131, 1)',
+              borderColor: `rgba(${g}, 1)`,
               tension: 0.4,
               pointRadius: 0,
               pointHoverRadius: 4,
-              pointBackgroundColor: 'rgba(25, 239, 131, 1)',
-              pointHoverBackgroundColor: 'rgba(25, 239, 131, 1)',
+              pointBackgroundColor: `rgba(${g}, 1)`,
+              pointHoverBackgroundColor: `rgba(${g}, 1)`,
               pointBorderColor: '#fff',
               pointHoverBorderColor: '#fff',
               pointBorderWidth: 2,
@@ -182,10 +190,10 @@ export default {
               beginAtZero: true,
               min: 0,
               grid: {
-                color: 'rgba(25, 239, 131, 0.05)',
+                color: `rgba(${g}, 0.05)`,
               },
               ticks: {
-                color: 'rgba(25, 239, 131, 0.5)',
+                color: `rgba(${g}, 0.5)`,
                 font: { size: 10 },
                 maxTicksLimit: 6,
                 callback: function (value) {
@@ -200,7 +208,7 @@ export default {
                 display: false,
               },
               ticks: {
-                color: 'rgba(25, 239, 131, 0.5)',
+                color: `rgba(${g}, 0.5)`,
                 font: { size: 10 },
                 maxRotation: 0,
                 autoSkip: true,
@@ -219,7 +227,7 @@ export default {
               backgroundColor: 'rgba(0, 0, 0, 0.8)',
               titleColor: '#fff',
               bodyColor: '#fff',
-              borderColor: 'rgba(25, 239, 131, 0.3)',
+              borderColor: `rgba(${g}, 0.3)`,
               borderWidth: 1,
               padding: 10,
               displayColors: false,
@@ -361,7 +369,7 @@ export default {
   justify-content: center;
   align-items: center;
   z-index: 10;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.9em;
 }
 
@@ -408,8 +416,8 @@ export default {
 }
 
 .chart-type-toggle {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-grey-light);
   padding: 6px 12px;
   border-radius: 4px;
@@ -422,7 +430,7 @@ export default {
 }
 
 .chart-type-toggle:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
@@ -480,8 +488,8 @@ export default {
 }
 
 .time-range-select {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-grey-light);
   padding: 6px 10px;
   border-radius: 4px;
@@ -493,13 +501,13 @@ export default {
 }
 
 .time-range-select:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .time-range-select:focus {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
 }
 

@@ -1,4 +1,5 @@
 <template>
+  <div class="dashboard-screen-root">
   <BaseScreen
     ref="baseScreenRef"
     activeRightPanel="DashboardPanel"
@@ -100,6 +101,7 @@
   </BaseScreen>
 
   <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="dashboard" @close="onTutorialClose" />
+  </div>
 </template>
 
 <script>
@@ -649,6 +651,14 @@ export default {
 </script>
 
 <style scoped>
+.dashboard-screen-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* Dashboard loading skeleton */
 .dashboard-loading {
   display: flex;
@@ -694,7 +704,7 @@ export default {
 
 .text-bright-green {
   color: var(--color-green);
-  text-shadow: 0 0 5px rgba(25, 239, 131, 0.4);
+  text-shadow: 0 0 5px rgba(var(--green-rgb), 0.4);
 }
 .font-bold {
   font-weight: bold;

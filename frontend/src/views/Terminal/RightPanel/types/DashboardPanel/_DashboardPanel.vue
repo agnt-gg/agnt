@@ -117,13 +117,13 @@ export default defineComponent({
   padding-right: 4px;
   z-index: 3;
   /* overflow-y: auto; */
-  scrollbar-color: #19ef831f transparent;
+  scrollbar-color: var(--color-duller-navy) transparent;
   scrollbar-width: thin;
 }
 
 .goal-input-section {
-  background: rgba(25, 239, 131, 0.2);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   padding: 16px;
 }
@@ -151,7 +151,7 @@ export default defineComponent({
   width: 100%;
   min-height: 120px;
   padding: 16px;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.3);
   color: var(--color-light-green);
@@ -165,7 +165,7 @@ export default defineComponent({
 .goal-input:focus {
   outline: none;
   border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
 }
 
 .goal-input::placeholder {
@@ -181,8 +181,8 @@ export default defineComponent({
 
 .action-button {
   padding: 8px 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   color: var(--color-light-green);
   cursor: pointer;
@@ -194,7 +194,7 @@ export default defineComponent({
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 
 .action-button.primary {
@@ -204,7 +204,7 @@ export default defineComponent({
 }
 
 .action-button.primary:hover {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
 }
 
 .action-button:disabled {
@@ -213,13 +213,13 @@ export default defineComponent({
 }
 
 .action-button:disabled:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .boost-section {
-  /* background: rgba(25, 239, 131, 0.05); */
+  /* background: rgba(var(--green-rgb), 0.05); */
   background: rgb(0 0 0 / 10%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   padding: 16px;
   border-radius: 4px;
 }
@@ -240,8 +240,8 @@ export default defineComponent({
 }
 
 .boost-card {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   padding: 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -249,7 +249,7 @@ export default defineComponent({
 }
 
 .boost-card:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   transform: translateY(-2px);
 }
 
@@ -277,9 +277,9 @@ export default defineComponent({
 }
 
 .bonus-tracker {
-  /* background: rgba(25, 239, 131, 0.05); */
+  /* background: rgba(var(--green-rgb), 0.05); */
   background: rgb(0 0 0 / 10%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   padding: 16px;
   border-radius: 4px;
 }
@@ -288,7 +288,7 @@ h4 {
   margin: 0 0 16px 0;
   color: var(--color-green);
   font-size: 1em;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
   padding-bottom: 8px;
 }
 
@@ -318,8 +318,8 @@ h4 {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   font-size: 0.8em;
 }
 
@@ -329,9 +329,9 @@ h4 {
 }
 
 .leaderboard-section {
-  /* background: rgba(25, 239, 131, 0.05); */
+  /* background: rgba(var(--green-rgb), 0.05); */
   background: rgb(0 0 0 / 10%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   padding: 16px;
   border-radius: 4px;
 }
@@ -367,7 +367,7 @@ h4 {
   display: flex;
   align-items: center;
   padding: 8px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .leaderboard-item:last-child {
@@ -391,7 +391,7 @@ h4 {
 
 .missions-section {
   background: rgb(0 0 0 / 10%);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 4px;
   padding: 0;
   /* margin-bottom: 16px; */

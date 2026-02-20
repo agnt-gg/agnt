@@ -50,7 +50,7 @@ export default {
   justify-content: space-between;
   margin-bottom: 14px;
   padding: 8px 0;
-  border-bottom: 1px dashed rgba(25, 239, 131, 0.1);
+  border-bottom: 1px dashed rgba(var(--green-rgb), 0.1);
 }
 .about-section {
   /* margin-top: 18px; */

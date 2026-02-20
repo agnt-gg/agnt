@@ -60,7 +60,7 @@ export default {
   color: var(--color-duller-navy);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 .tasks-list {
@@ -91,7 +91,7 @@ export default {
 .task-id {
   font-size: 0.75em;
   color: var(--color-blue);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 .task-impact {

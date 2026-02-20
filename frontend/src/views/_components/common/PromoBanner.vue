@@ -133,7 +133,7 @@ export default {
   right: 0;
   z-index: 1000;
   background: linear-gradient(135deg, var(--color-blue) 0%, var(--color-green) 50%, var(--color-blue) 100%);
-  border-bottom: 2px solid var(--color-pink);
+  border-bottom: 2px solid var(--color-primary);
   padding: 8px 40px 8px 16px;
   cursor: pointer;
   transition: all 0.3s ease;

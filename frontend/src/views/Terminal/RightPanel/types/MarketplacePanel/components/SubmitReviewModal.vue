@@ -277,7 +277,7 @@ export default {
 }
 
 .item-info {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 12px;
@@ -303,7 +303,7 @@ export default {
   gap: 4px;
   font-size: 11px;
   color: var(--color-green);
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   padding: 2px 8px;
   border-radius: 12px;
 }
@@ -377,7 +377,7 @@ export default {
 .form-input:focus,
 .form-textarea:focus {
   outline: none;
-  border-color: rgba(25, 239, 131, 0.5);
+  border-color: rgba(var(--green-rgb), 0.5);
 }
 
 .form-textarea {
@@ -411,7 +411,7 @@ export default {
 .remove-btn {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  color: var(--color-red);
   width: 32px;
   height: 32px;
   border-radius: 6px;
@@ -444,8 +444,8 @@ export default {
 }
 
 .add-image-btn:hover {
-  background: rgba(25, 239, 131, 0.05);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.05);
+  border-color: rgba(var(--green-rgb), 0.3);
   color: var(--color-text);
 }
 
@@ -458,7 +458,7 @@ export default {
 .error-message {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  color: var(--color-red);
   padding: 12px;
   border-radius: 6px;
   display: flex;
@@ -500,8 +500,8 @@ export default {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.05);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.05);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 .btn-primary {
@@ -510,9 +510,9 @@ export default {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.9);
+  background: rgba(var(--green-rgb), 0.9);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .fa-spinner {

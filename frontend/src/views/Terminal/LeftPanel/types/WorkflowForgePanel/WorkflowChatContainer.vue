@@ -748,7 +748,7 @@ export default {
 }
 
 .chat-mic-button.is-listening {
-  background: #ff4444;
+  background: var(--color-red);
   color: white;
   animation: pulse 1.5s ease-in-out infinite;
 }
@@ -785,12 +785,12 @@ export default {
 }
 
 .chat-send-button:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.8);
+  background: rgba(var(--green-rgb), 0.8);
   transform: scale(1.05);
 }
 
 .chat-send-button:disabled {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   cursor: not-allowed;
   transform: none;
 }

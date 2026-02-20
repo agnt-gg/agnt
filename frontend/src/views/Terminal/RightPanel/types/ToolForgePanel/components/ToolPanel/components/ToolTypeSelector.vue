@@ -94,18 +94,18 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
 }
 
 .type-btn:hover {
   background: var(--color-lighter-0, #f8f9fa);
-  border-color: var(--color-pink, #e74c86);
-  color: var(--color-pink, #e74c86);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .type-btn.active {
-  background: var(--color-pink, #e74c86);
-  border-color: var(--color-pink, #e74c86);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: white;
 }
 
@@ -122,13 +122,13 @@ body.dark .type-btn {
 
 body.dark .type-btn:hover {
   background: var(--color-darker-1);
-  border-color: var(--color-pink);
-  color: var(--color-pink);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 body.dark .type-btn.active {
-  background: var(--color-pink);
-  border-color: var(--color-pink);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: white;
 }
 </style>

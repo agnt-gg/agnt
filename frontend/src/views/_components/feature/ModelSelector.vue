@@ -292,7 +292,7 @@ select {
   border-radius: 6px;
   background-color: var(--color-ultra-light-navy);
   color: var(--color-navy);
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
   width: inherit;

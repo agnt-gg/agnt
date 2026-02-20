@@ -166,7 +166,7 @@ export default {
 
 .dropdown-trigger {
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   color: var(--color-light-green);
   border-radius: 4px;
   padding: 8px 12px;
@@ -219,18 +219,18 @@ export default {
   max-height: 300px;
   overflow: hidden;
   z-index: 1000;
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .dropdown-search {
   padding: 8px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
 }
 
 .search-input {
   width: 100%;
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
   color: var(--color-light-green);
   border-radius: 3px;
   padding: 6px 8px;
@@ -253,7 +253,7 @@ export default {
 }
 
 .category-group {
-  border-bottom: 1px solid rgba(25, 239, 131, 0.05);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.05);
 }
 
 .category-group:last-child {
@@ -272,18 +272,18 @@ export default {
 
 .main-category:hover,
 .sub-category:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
 }
 
 .main-category.selected,
 .sub-category.selected {
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
   color: var(--color-green);
 }
 
 .main-category {
   /* font-weight: 500; */
-  border-bottom: 1px solid rgba(25, 239, 131, 0.05);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.05);
 }
 
 .sub-category {
@@ -322,15 +322,15 @@ export default {
 }
 
 .dropdown-content::-webkit-scrollbar-track {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .dropdown-content::-webkit-scrollbar-thumb {
-  background: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.3);
   border-radius: 3px;
 }
 
 .dropdown-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(25, 239, 131, 0.5);
+  background: rgba(var(--green-rgb), 0.5);
 }
 </style>

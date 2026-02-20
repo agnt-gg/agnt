@@ -45,38 +45,22 @@
 </template>
 
 <script>
-import { computed, ref, inject } from 'vue';
+import { computed, defineAsyncComponent, ref, inject } from 'vue';
 
-// Eagerly import all panel components so they're available instantly
-import AgentForgePanel from './types/AgentForgePanel/AgentForgePanel.vue';
-import AgentsPanel from './types/AgentsPanel/AgentsPanel.vue';
-import ChatPanel from './types/ChatPanel/ChatPanel.vue';
-import GoalsPanel from './types/GoalsPanel/GoalsPanel.vue';
-import MarketplacePanel from './types/MarketplacePanel/MarketplacePanel.vue';
-import RunsPanel from './types/RunsPanel/RunsPanel.vue';
-import SecretsPanel from './types/SecretsPanel/SecretsPanel.vue';
-import SettingsPanel from './types/SettingsPanel/SettingsPanel.vue';
-import ToolForgePanel from './types/ToolForgePanel/ToolForgePanel.vue';
-import ToolsPanel from './types/ToolsPanel/ToolsPanel.vue';
-import WorkflowForgePanel from './types/WorkflowForgePanel/WorkflowForgePanel.vue';
-import WorkflowsPanel from './types/WorkflowsPanel/WorkflowsPanel.vue';
-
-const panelMap = {
-  AgentForgePanel,
-  AgentsPanel,
-  ChatPanel,
-  GoalsPanel,
-  MarketplacePanel,
-  RunsPanel,
-  SecretsPanel,
-  SettingsPanel,
-  ToolForgePanel,
-  ToolsPanel,
-  WorkflowForgePanel,
-  WorkflowsPanel,
+// Lazy-load panel components on demand (cached so re-navigation is instant)
+const panelCache = new Map();
+const loadPanel = (panelName) => {
+  if (panelCache.has(panelName)) {
+    return panelCache.get(panelName);
+  }
+  const component = defineAsyncComponent(() =>
+    import(`./types/${panelName}/${panelName}.vue`).catch(() => {
+      return import('./types/ChatPanel/ChatPanel.vue');
+    })
+  );
+  panelCache.set(panelName, component);
+  return component;
 };
-
-const getPanel = (panelName) => panelMap[panelName] || ChatPanel;
 
 export default {
   name: 'LeftPanel',
@@ -104,17 +88,17 @@ export default {
     const activePanelComponent = computed(() => {
       // If we have an activePanel prop, use it directly
       if (props.activePanel) {
-        return getPanel(props.activePanel);
+        return loadPanel(props.activePanel);
       }
 
       // Try to derive panel name from activeScreen
       if (props.activeScreen) {
         const panelName = props.activeScreen.charAt(0).toUpperCase() + props.activeScreen.slice(1).toLowerCase() + 'Panel';
-        return getPanel(panelName);
+        return loadPanel(panelName);
       }
 
       // Default fallback to ChatPanel
-      return ChatPanel;
+      return loadPanel('ChatPanel');
     });
 
     const closePanel = () => {
@@ -214,7 +198,7 @@ export default {
 }
 
 .nav-section h4 {
-  color: var(--color-light-green);
+  color: var(--color-med-navy);
   font-size: 0.9em;
   font-weight: 500;
   margin: 0;
@@ -230,9 +214,9 @@ export default {
 }
 
 .action-btn {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
-  color: var(--color-light-green);
+  background: var(--color-darker-1);
+  border: 1px solid var(--color-dull-navy);
+  color: var(--color-dull-white);
   padding: 8px 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -246,8 +230,8 @@ export default {
 }
 
 .action-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.5);
+  background: var(--color-darker-2);
+  border-color: var(--color-duller-navy);
   transform: translateX(2px);
 }
 
@@ -275,8 +259,8 @@ export default {
 }
 
 .recent-item:hover {
-  background: rgba(25, 239, 131, 0.05);
-  color: var(--color-light-green);
+  background: var(--color-darker-1);
+  color: var(--color-dull-white);
 }
 
 .recent-item i {
@@ -299,12 +283,12 @@ export default {
 .left-panel::-webkit-scrollbar-thumb {
   background-color: transparent;
   border-radius: 16px 0px 0px 16px;
-  border: 1px solid rgba(25, 239, 131, 0.6);
+  border: 1px solid var(--color-duller-navy);
   cursor: default;
 }
 
 .left-panel::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(25, 239, 131, 0.6);
+  background-color: var(--color-duller-navy);
 }
 
 @media (max-width: 800px) {

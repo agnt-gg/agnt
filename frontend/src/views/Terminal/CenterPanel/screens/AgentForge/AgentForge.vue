@@ -963,7 +963,7 @@ export default {
 .info-card:hover,
 .bio-card:hover,
 .capabilities-card:hover {
-  /* border-color: rgba(25, 239, 131, 0.3); */
+  /* border-color: rgba(var(--green-rgb), 0.3); */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
@@ -1057,7 +1057,7 @@ export default {
   background: var(--color-dark-1);
   border-color: var(--color-primary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
 }
 
 .remove-button {
@@ -1117,8 +1117,8 @@ export default {
 }
 
 .adjust-button {
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   width: 32px;
   height: 32px;
@@ -1131,7 +1131,7 @@ export default {
 }
 
 .adjust-button:hover {
-  background: rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
 }
 
 .number-input {
@@ -1178,8 +1178,8 @@ export default {
 .checkbox-label input[type='checkbox'] {
   width: 16px;
   height: 16px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 3px;
   cursor: pointer;
   appearance: none;
@@ -1289,13 +1289,13 @@ export default {
   transition: all 0.2s ease;
   padding: 4px 10px;
   border-radius: 6px;
-  background: rgba(25, 239, 131, 0.1);
-  border: 1px solid rgba(25, 239, 131, 0.2);
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
 }
 
 .add-more-btn:hover {
-  background: rgba(25, 239, 131, 0.2);
-  border-color: rgba(25, 239, 131, 0.4);
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.4);
   transform: translateY(-1px);
 }
 
@@ -1391,8 +1391,8 @@ export default {
 
 .validation-status.valid {
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.3);
-  background: rgba(25, 239, 131, 0.05);
+  border-color: rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--green-rgb), 0.05);
 }
 
 .validation-status.invalid {
@@ -1417,7 +1417,7 @@ export default {
 
 .create-agent-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 6px 20px rgba(var(--green-rgb), 0.3);
 }
 
 .create-agent-button:disabled {
@@ -1432,7 +1432,7 @@ export default {
   max-height: 220px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(25, 239, 131, 0.3) transparent;
+  scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
 }
 
 /* Fix for select dropdown overflow */
@@ -1465,8 +1465,8 @@ export default {
 }
 
 :deep(.base-input input:focus) {
-  border-color: rgba(25, 239, 131, 0.5);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.1);
 }
 
 :deep(.base-select select) {
@@ -1479,8 +1479,8 @@ export default {
 }
 
 :deep(.base-select select:focus) {
-  border-color: rgba(25, 239, 131, 0.5);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.1);
 }
 
 :deep(.base-textarea textarea) {
@@ -1495,8 +1495,8 @@ export default {
 }
 
 :deep(.base-textarea textarea:focus) {
-  border-color: rgba(25, 239, 131, 0.5);
-  box-shadow: 0 0 0 2px rgba(25, 239, 131, 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.1);
 } */
 
 /* Responsive Design */
@@ -1710,7 +1710,7 @@ export default {
 
 .modal-content {
   background: var(--color-darker-0, #1a1a2e);
-  border: 1px solid var(--terminal-border-color, rgba(25, 239, 131, 0.2));
+  border: 1px solid var(--terminal-border-color, rgba(var(--green-rgb), 0.2));
   border-radius: 12px;
   width: 90%;
   max-width: 600px;
@@ -1725,7 +1725,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--terminal-border-color, rgba(25, 239, 131, 0.2));
+  border-bottom: 1px solid var(--terminal-border-color, rgba(var(--green-rgb), 0.2));
 }
 
 .modal-header h3 {

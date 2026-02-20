@@ -160,7 +160,7 @@ export default {
 
 .panel-header .title {
   color: var(--color-green);
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
   letter-spacing: 0.48px;
@@ -209,11 +209,11 @@ export default {
 }
 
 :deep(.category-item:hover) {
-  background-color: rgba(25, 239, 131, 0.1);
+  background-color: rgba(var(--green-rgb), 0.1);
 }
 
 :deep(.category-item.active) {
-  background-color: rgba(25, 239, 131, 0.15);
+  background-color: rgba(var(--green-rgb), 0.15);
   border-left: 3px solid var(--color-green);
   padding-left: 9px;
 }
@@ -224,7 +224,7 @@ export default {
 }
 
 :deep(.main-active) {
-  background: rgba(25, 239, 131, 0.18) !important;
+  background: rgba(var(--green-rgb), 0.18) !important;
 }
 
 :deep(.all-items) {

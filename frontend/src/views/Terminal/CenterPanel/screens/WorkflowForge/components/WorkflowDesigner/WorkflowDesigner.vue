@@ -2538,7 +2538,7 @@ export default {
 <style scoped>
 /* GLOBAL SHARED STYLES FOR THIS PAGE HERE */
 body {
-  font-family: Arial, sans-serif;
+  font-family: var(--font-family-primary);
   margin: 0;
   padding: 0;
   overflow: hidden;

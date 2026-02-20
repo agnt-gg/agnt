@@ -350,7 +350,7 @@ export default {
 .detail-row {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px dashed rgba(25, 239, 131, 0.1);
+  border-bottom: 1px dashed rgba(var(--green-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -393,7 +393,7 @@ export default {
 }
 
 .tool-item {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   padding: 12px;
   border-radius: 8px;
   border-left: 2px solid var(--color-green);

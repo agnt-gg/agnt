@@ -401,7 +401,7 @@ body.dark #sidebar p {
   /* background: var(--color-dull-white); */
   background: var(--color-lighter-1);
   color: var(--Dark-Navy, #01052a);
-  font-family: 'League Spartan', sans-serif !important;
+  font-family: var(--font-family-primary) !important;
   font-size: 16px;
   font-style: normal;
   font-weight: 400;
@@ -589,7 +589,7 @@ body.dark .search-input {
   font-size: 9px;
   font-weight: 700;
   background: rgba(255, 215, 0, 0.15);
-  color: #ffd700;
+  color: var(--color-yellow);
   border: 1px solid rgba(255, 215, 0, 0.4);
   text-transform: uppercase;
   box-shadow: 0 0 6px rgba(255, 215, 0, 0.3);

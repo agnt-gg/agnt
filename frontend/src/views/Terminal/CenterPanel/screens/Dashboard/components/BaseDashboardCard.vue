@@ -1,6 +1,6 @@
 <template>
-  <div class="dashboard-card">
-    <div v-if="title" class="card-header">
+  <div class="dashboard-card" :class="{ 'in-widget': inWidget }">
+    <div v-if="title && !inWidget" class="card-header">
       <h4>{{ title }}</h4>
     </div>
     <div class="card-content">
@@ -11,6 +11,8 @@
 </template>
 
 <script>
+import { inject } from 'vue';
+
 export default {
   name: 'BaseDashboardCard',
   props: {
@@ -22,6 +24,10 @@ export default {
       type: String,
       default: '',
     },
+  },
+  setup() {
+    const inWidget = inject('isInsideWidgetCanvas', false);
+    return { inWidget };
   },
 };
 </script>
@@ -37,6 +43,12 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.dashboard-card.in-widget {
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 .card-header {

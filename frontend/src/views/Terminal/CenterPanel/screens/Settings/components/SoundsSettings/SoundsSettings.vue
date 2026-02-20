@@ -178,7 +178,7 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 16px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   transition: all 0.2s ease;
@@ -186,8 +186,8 @@ export default {
 }
 
 .control-row.master-control {
-  border-color: rgba(25, 239, 131, 0.3);
-  background: rgba(25, 239, 131, 0.08);
+  border-color: rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--green-rgb), 0.08);
 }
 
 .control-row.disabled {
@@ -299,13 +299,13 @@ input:checked + .slider:before {
   border-radius: 50%;
   background: var(--color-green);
   cursor: pointer;
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.5);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.5);
   transition: all 0.2s ease;
 }
 
 .volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 12px rgba(25, 239, 131, 0.8);
+  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.8);
 }
 
 .volume-slider::-moz-range-thumb {
@@ -315,13 +315,13 @@ input:checked + .slider:before {
   background: var(--color-green);
   cursor: pointer;
   border: none;
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.5);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.5);
   transition: all 0.2s ease;
 }
 
 .volume-slider::-moz-range-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 12px rgba(25, 239, 131, 0.8);
+  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.8);
 }
 
 .volume-slider:disabled {
@@ -347,9 +347,9 @@ input:checked + .slider:before {
 }
 
 .test-button:hover:not(:disabled) {
-  background: rgba(25, 239, 131, 0.9);
+  background: rgba(var(--green-rgb), 0.9);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 
 .test-button:disabled {
@@ -376,7 +376,7 @@ input:checked + .slider:before {
 }
 
 .info-card i {
-  color: #3b82f6;
+  color: var(--color-blue);
   font-size: 1.2em;
   flex-shrink: 0;
   margin-top: 2px;

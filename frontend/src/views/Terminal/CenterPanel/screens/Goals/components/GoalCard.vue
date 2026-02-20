@@ -98,8 +98,8 @@ export default {
 }
 
 .goal-card:hover {
-  background: rgba(25, 239, 131, 0.05);
-  border-color: rgba(25, 239, 131, 0.3);
+  background: rgba(var(--green-rgb), 0.05);
+  border-color: rgba(var(--green-rgb), 0.3);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
@@ -126,7 +126,7 @@ export default {
 .goal-id {
   font-size: 0.75em;
   color: var(--color-text-muted);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 .goal-status {

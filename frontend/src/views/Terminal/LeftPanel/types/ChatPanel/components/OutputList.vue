@@ -710,7 +710,7 @@ export default {
 
 .panel-header .title {
   color: var(--color-green);
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
   letter-spacing: 0.48px;
@@ -860,18 +860,17 @@ div#saved-outputs {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 40px 12px 12px;
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   transition: all 0.2s;
   position: relative;
   overflow: visible;
-  backdrop-filter: blur(4px);
 }
 
 .output-item:hover {
   border-color: var(--color-green);
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
 }
 
 .output-content {
@@ -944,7 +943,7 @@ div#saved-outputs {
 
 .menu-item.delete:hover {
   background: rgba(220, 38, 38, 0.1);
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .menu-item i {
@@ -1208,8 +1207,8 @@ body.dark .create-output-btn {
 }
 
 .selection-btn.delete-btn {
-  border-color: #ef4444;
-  color: #ef4444;
+  border-color: var(--color-red);
+  color: var(--color-red);
 }
 
 .selection-btn.delete-btn:hover {

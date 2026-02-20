@@ -358,7 +358,7 @@ export default {
 
 .panel-header .title {
   color: var(--color-green);
-  font-family: 'League Spartan', sans-serif;
+  font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
   letter-spacing: 0.48px;
@@ -457,13 +457,13 @@ body.workflow-editor-fullscreen {
 }
 
 .error-message {
-  color: #fe4e4e;
+  color: var(--color-red);
   margin-bottom: 16px;
 }
 
 .error-message h3 {
   margin: 0 0 8px 0;
-  color: #fe4e4e;
+  color: var(--color-red);
 }
 
 .parameter-wrapper h3.label {
@@ -472,10 +472,10 @@ body.workflow-editor-fullscreen {
 
 .error-message p {
   margin-top: 8px;
-  color: #fe4e4e;
-  font-family: monospace;
+  color: var(--color-red);
+  font-family: var(--font-family-mono);
   padding: 3px 8px;
-  border: 1px solid #fe4e4e;
+  border: 1px solid var(--color-red);
   border-radius: 8px;
   background: rgba(254, 78, 78, 0.1);
   overflow-wrap: anywhere;

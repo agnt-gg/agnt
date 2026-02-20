@@ -193,12 +193,12 @@ export default {
 .mission-details {
   border-radius: 8px;
   padding: 15px;
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.3);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
 }
 
 .mission-header {
   margin-bottom: 15px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.1);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -227,7 +227,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -265,7 +265,7 @@ h3 {
 
 .mission-objectives {
   margin-top: 15px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -299,7 +299,7 @@ h3 {
 
 .mission-assignment {
   margin-top: 15px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -318,7 +318,7 @@ h3 {
   width: 6px;
 }
 .agent-list::-webkit-scrollbar-track {
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
 }
 .agent-list::-webkit-scrollbar-thumb {
   background-color: var(--color-green);
@@ -330,7 +330,7 @@ h3 {
   justify-content: space-between;
   align-items: center;
   padding: 8px 10px;
-  background: rgba(25, 239, 131, 0.05);
+  background: rgba(var(--green-rgb), 0.05);
   border-radius: 4px;
 }
 
@@ -357,13 +357,13 @@ h3 {
 
 .mission-actions {
   margin-top: 15px;
-  border-top: 1px dashed rgba(25, 239, 131, 0.2);
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
   padding-top: 15px;
 }
 
 .action-button {
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-light-green);
   padding: 10px 12px;
   border-radius: 4px;
@@ -374,21 +374,21 @@ h3 {
 }
 
 .action-button:hover {
-  background: rgba(25, 239, 131, 0.1);
+  background: rgba(var(--green-rgb), 0.1);
   border-color: var(--color-green);
 }
 
 .action-button:focus {
   outline: none;
   border-color: var(--color-green);
-  background: rgba(25, 239, 131, 0.15);
+  background: rgba(var(--green-rgb), 0.15);
 }
 
 .no-mission-selected {
   color: var(--color-grey);
   text-align: center;
   padding: 30px 15px;
-  border: 1px dashed rgba(25, 239, 131, 0.2);
+  border: 1px dashed rgba(var(--green-rgb), 0.2);
   border-radius: 4px;
   font-style: italic;
 }

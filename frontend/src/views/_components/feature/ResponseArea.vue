@@ -203,7 +203,7 @@ body.dark #response-area hr {
 #response-area .assistant-message-receive a,
 #response-area .user-message-sent a,
 #response-area .system-message a {
-  color: var(--color-pink); /* Use a distinct link color */
+  color: var(--color-primary); /* Use a distinct link color */
   font-weight: 500;
   text-decoration: underline; /* Make it clear it's a link */
   cursor: pointer; /* Show the pointer cursor on hover */
@@ -304,7 +304,7 @@ body[data-page='chat'] .system-message::before {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  border: 2px solid var(--color-pink);
+  border: 2px solid var(--color-primary);
 }
 
 /* Add avatar styling */
@@ -327,7 +327,7 @@ body[data-page='chat'] .assistant-message-receive::before {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  border: 2px solid var(--color-pink);
+  border: 2px solid var(--color-primary);
 }
 
 .assistant-avatar {
@@ -350,7 +350,7 @@ body[data-page='chat'] .assistant-message-receive::before {
 .assistant-avatar .avatar-icon {
   width: 100%;
   height: 100%;
-  color: var(--color-pink);
+  color: var(--color-primary);
 }
 
 /* Replace the existing cursor animation styles with this */

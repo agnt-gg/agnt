@@ -157,10 +157,10 @@ export default {
 
 .tooltip-content {
   background: rgba(14, 22, 33, 0.95);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 8px;
   padding: 12px 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 15px rgba(25, 239, 131, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 15px rgba(var(--green-rgb), 0.2);
   backdrop-filter: blur(10px);
   position: relative;
 }
@@ -170,7 +170,7 @@ export default {
   font-weight: bold;
   font-size: 1.1em;
   margin-bottom: 8px;
-  border-bottom: 1px solid rgba(25, 239, 131, 0.2);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
   padding-bottom: 6px;
 }
 
@@ -185,7 +185,7 @@ export default {
   width: 12px;
   height: 12px;
   background: rgba(14, 22, 33, 0.95);
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
   transform: rotate(45deg);
   z-index: -1;
 }

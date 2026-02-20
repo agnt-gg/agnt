@@ -4,17 +4,22 @@
     <div class="cv-toolbar">
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
 
-      <!-- Contextual sub-tabs for the active section -->
+      <!-- Contextual sub-tabs for the active section, or custom page name -->
       <div class="cv-nav-panels">
-        <button
-          v-for="tab in activeSectionTabs"
-          :key="tab.screen"
-          class="cv-pbtn"
-          :class="{ on: screenName === tab.screen }"
-          @click="$emit('screen-change', tab.screen)"
-        >
-          {{ tab.label }}
-        </button>
+        <template v-if="onCustomPage && activePage">
+          <span class="cv-page-title">{{ activePage.name }}</span>
+        </template>
+        <template v-else>
+          <button
+            v-for="tab in activeSectionTabs"
+            :key="tab.screen"
+            class="cv-pbtn"
+            :class="{ on: screenName === tab.screen }"
+            @click="$emit('screen-change', tab.screen)"
+          >
+            {{ tab.label }}
+          </button>
+        </template>
       </div>
 
       <!-- Right side controls -->
@@ -58,62 +63,66 @@
       <div class="cv-sidebar">
         <!-- Main sections (top) -->
         <div class="cv-sb-pages">
-          <button
-            v-for="section in mainSections"
-            :key="section.id"
-            class="cv-sb-page"
-            :class="{ active: activeSection && activeSection.id === section.id }"
-            :title="section.label"
-            @click="navigateToSection(section)"
-          >
-            <i :class="section.icon"></i>
-          </button>
+          <Tooltip v-for="section in mainSections" :key="section.id" :text="section.label" position="right" width="auto">
+            <button
+              class="cv-sb-page"
+              :class="{ active: !onCustomPage && activeSection && activeSection.id === section.id }"
+              @click="navigateToSection(section)"
+            >
+              <i :class="section.icon"></i>
+            </button>
+          </Tooltip>
         </div>
 
         <!-- Custom pages -->
         <div class="cv-sb-custom" v-if="customPages.length > 0">
-          <button
-            v-for="page in customPages"
-            :key="page.id"
-            class="cv-sb-page"
-            :class="{ active: page.id === activePageId && !activeSection }"
-            :title="page.name"
-            @click="switchToPage(page.id)"
-            @contextmenu.prevent="openContextMenu($event, page)"
-          >
-            <i :class="page.icon || 'fas fa-th'"></i>
-          </button>
+          <Tooltip v-for="page in customPages" :key="page.id" :text="page.name" position="right" width="auto">
+            <button
+              class="cv-sb-page"
+              :class="{ active: onCustomPage && page.id === activePageId }"
+              @click="switchToPage(page.id)"
+              @contextmenu.prevent="openContextMenu($event, page)"
+            >
+              <i :class="page.icon || 'fas fa-th'"></i>
+            </button>
+          </Tooltip>
         </div>
 
         <!-- Add page button -->
-        <button class="cv-sb-add" @click="startAddPage" title="Add page">+</button>
+        <Tooltip text="Add page" position="right" width="auto">
+          <button class="cv-sb-add" @click="startAddPage">+</button>
+        </Tooltip>
 
         <!-- Separator -->
         <div class="cv-sb-sep" v-if="settingsSections.length > 0"></div>
 
         <!-- Settings sections (bottom) -->
         <div class="cv-sb-bottom">
-          <button
-            v-for="section in settingsSections"
-            :key="section.id"
-            class="cv-sb-page"
-            :class="{ active: activeSection && activeSection.id === section.id }"
-            :title="section.label"
-            @click="navigateToSection(section)"
-          >
-            <i :class="section.icon"></i>
-          </button>
+          <Tooltip v-for="section in settingsSections" :key="section.id" :text="section.label" position="right" width="auto">
+            <button
+              class="cv-sb-page"
+              :class="{ active: !onCustomPage && activeSection && activeSection.id === section.id }"
+              @click="navigateToSection(section)"
+            >
+              <i :class="section.icon"></i>
+            </button>
+          </Tooltip>
         </div>
       </div>
 
-      <!-- Dashboard: the canvas grid -->
+      <!-- Main content area -->
       <div class="cv-dashboard">
+        <!-- Custom pages: full widget canvas system -->
         <WidgetCanvas
-          v-if="activePageId"
+          v-if="onCustomPage && activePageId"
           :pageId="activePageId"
+          :isCustomPage="true"
           @open-catalog="showCatalog = true"
           @screen-change="(screen, opts) => $emit('screen-change', screen, opts)"
         />
+
+        <!-- Section screens: render directly via slot (fast, no widget overhead) -->
+        <slot v-else />
       </div>
     </div>
 
@@ -160,6 +169,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useStore } from 'vuex';
 import WidgetCanvas from './WidgetCanvas.vue';
 import WidgetCatalog from './WidgetCatalog.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getDefaultLayout } from './defaultLayouts.js';
 import { useElectron, electronUtils } from '@/composables/useElectron';
 
@@ -212,7 +222,7 @@ const SECTION_ROUTES = new Set(ALL_SECTIONS.flatMap((s) => s.screens.map((t) => 
 
 export default {
   name: 'CanvasScreen',
-  components: { WidgetCanvas, WidgetCatalog },
+  components: { WidgetCanvas, WidgetCatalog, Tooltip },
   props: {
     screenName: { type: String, default: 'ChatScreen' },
   },
@@ -241,12 +251,18 @@ export default {
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
 
+    // Track when user has navigated to a custom page (no section)
+    const onCustomPage = ref(false);
+
     // Section data (static)
     const mainSections = MAIN_SECTIONS;
     const settingsSections = SETTINGS_SECTIONS;
 
     // Custom pages = pages that don't belong to any section
     const customPages = computed(() => allPages.value.filter((p) => !SECTION_ROUTES.has(p.route)));
+
+    // Is the active page a custom (user-created) page?
+    const isCustomPage = computed(() => onCustomPage.value);
 
     // Find the active section based on current screenName
     const activeSection = computed(() => {
@@ -345,10 +361,12 @@ export default {
     }
 
     function switchToPage(pageId) {
+      onCustomPage.value = true;
       store.dispatch('widgetLayout/setActivePage', pageId);
     }
 
     function navigateToSection(section) {
+      onCustomPage.value = false;
       // Navigate to the first screen in the section
       emit('screen-change', section.screens[0].screen);
     }
@@ -359,14 +377,17 @@ export default {
       store.dispatch('widgetLayout/resetPageToDefault', { pageId: activePage.value.id, defaultWidgets: dw });
     }
 
-    // Ensure a page exists for the current screen
-    async function ensurePageForScreen(screenName) {
+    // Ensure a page exists for the current screen (synchronous for instant render)
+    function ensurePageForScreen(screenName) {
+      // Route-driven navigation → we're on a section page, not a custom page
+      onCustomPage.value = false;
       const existingPage = store.getters['widgetLayout/pageForRoute'](screenName);
       if (existingPage) {
         store.dispatch('widgetLayout/setActivePage', existingPage.id);
       } else {
         const defaultWidgets = getDefaultLayout(screenName);
-        await store.dispatch('widgetLayout/createPageFromDefault', { screenName, defaultWidgets });
+        // Don't await - commits happen synchronously, API save is background
+        store.dispatch('widgetLayout/createPageFromDefault', { screenName, defaultWidgets });
       }
     }
 
@@ -381,17 +402,18 @@ export default {
       },
     );
 
-    onMounted(async () => {
+    onMounted(() => {
       updateClock();
       clockTimer = setInterval(updateClock, 1000);
 
       document.addEventListener('click', closeCtx);
 
       if (!store.getters['widgetLayout/isLoaded']) {
-        await store.dispatch('widgetLayout/fetchLayouts');
+        // Fire and forget - don't block render. Store already has localStorage data.
+        store.dispatch('widgetLayout/fetchLayouts');
       }
-      // Now that layouts are loaded, ensure a page exists for the current screen
-      await ensurePageForScreen(props.screenName);
+      // Synchronous - commits happen immediately, API calls are background
+      ensurePageForScreen(props.screenName);
     });
 
     onBeforeUnmount(() => {
@@ -408,6 +430,8 @@ export default {
       mainSections,
       settingsSections,
       customPages,
+      isCustomPage,
+      onCustomPage,
       activeSection,
       activeSectionTabs,
       ctxMenu,
@@ -447,8 +471,8 @@ export default {
 .cv-toolbar {
   height: 32px;
   min-height: 32px;
-  background: var(--color-darker-0, rgba(0, 0, 0, 0.3));
-  border-bottom: 1px solid var(--terminal-border-color);
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-dull-navy);
   display: flex;
   align-items: center;
   padding: 0 12px;
@@ -499,13 +523,21 @@ export default {
 
 .cv-pbtn:hover {
   color: var(--color-light-0, #889);
-  border-color: rgba(255, 255, 255, 0.04);
+  border-color: var(--color-dull-navy);
 }
 
 .cv-pbtn.on {
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.15);
-  background: rgba(25, 239, 131, 0.04);
+  border-color: rgba(var(--green-rgb), 0.15);
+  background: rgba(var(--green-rgb), 0.04);
+}
+
+.cv-page-title {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--color-green);
+  white-space: nowrap;
+  text-transform: uppercase;
 }
 
 .cv-right {
@@ -546,7 +578,7 @@ export default {
 
 .cv-btn:hover {
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.2);
+  border-color: rgba(var(--green-rgb), 0.2);
 }
 
 .cv-win-ctrl {
@@ -557,9 +589,9 @@ export default {
 }
 
 .cv-win-close:hover {
-  color: #fff;
-  background: #e81123;
-  border-color: #e81123;
+  color: var(--color-dull-white);
+  background: var(--color-red);
+  border-color: var(--color-red);
 }
 
 /* ── macOS traffic light buttons ── */
@@ -650,8 +682,8 @@ export default {
 .cv-sidebar {
   width: 44px;
   min-width: 44px;
-  background: var(--color-darker-0, rgba(0, 0, 0, 0.2));
-  border-right: 1px solid var(--terminal-border-color);
+  background: var(--color-background);
+  border-right: 1px solid var(--color-dull-navy);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -719,21 +751,21 @@ export default {
 
 .cv-sb-page:hover {
   color: var(--color-light-0, #889);
-  border-color: rgba(255, 255, 255, 0.04);
-  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--color-dull-navy);
+  background: var(--color-darker-0);
 }
 
 .cv-sb-page.active {
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.25);
-  background: rgba(25, 239, 131, 0.06);
-  box-shadow: 0 0 8px rgba(25, 239, 131, 0.1);
+  border-color: rgba(var(--green-rgb), 0.25);
+  background: rgba(var(--green-rgb), 0.06);
+  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.1);
 }
 
 .cv-sb-add {
   width: 32px;
   height: 32px;
-  border: 1px dashed rgba(255, 255, 255, 0.06);
+  border: 1px dashed var(--color-dull-navy);
   border-radius: 4px;
   background: none;
   color: var(--color-text-muted, #334);
@@ -750,16 +782,30 @@ export default {
 
 .cv-sb-add:hover {
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.3);
+  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 /* ═══════════════════ DASHBOARD ═══════════════════ */
 .cv-dashboard {
   position: relative;
   flex: 1;
-  height: 100%;
+  min-height: 0;
   overflow: hidden;
   border-bottom-right-radius: var(--terminal-screen-border-radius, 0);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.cv-dashboard > * {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Gap for direct screen content (slot) - WidgetCanvas has its own GRID_GAP */
+.cv-dashboard > :not(.widget-canvas) {
+  margin: 4px;
 }
 
 /* ═══════════════════ CONTEXT MENU ═══════════════════ */
@@ -783,13 +829,13 @@ export default {
 }
 
 .cv-ctx-item:hover {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
   color: var(--color-green);
 }
 
 .cv-ctx-item.cv-ctx-danger:hover {
-  background: rgba(224, 90, 90, 0.08);
-  color: #e05a5a;
+  background: rgba(var(--red-rgb), 0.08);
+  color: var(--color-red);
 }
 
 /* ═══════════════════ MODAL ═══════════════════ */
@@ -825,7 +871,7 @@ export default {
 .cv-modal-input {
   width: 100%;
   padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   color: var(--color-light-0, #ccd);
@@ -836,7 +882,7 @@ export default {
 }
 
 .cv-modal-input:focus {
-  border-color: rgba(25, 239, 131, 0.4);
+  border-color: rgba(var(--green-rgb), 0.4);
 }
 
 .cv-modal-msg {
@@ -872,28 +918,35 @@ export default {
 
 .cv-modal-cancel:hover {
   color: var(--color-light-0, #aab);
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--color-duller-navy);
 }
 
 .cv-modal-ok {
-  background: rgba(25, 239, 131, 0.08);
+  background: rgba(var(--green-rgb), 0.08);
   color: var(--color-green);
-  border-color: rgba(25, 239, 131, 0.2);
+  border-color: rgba(var(--green-rgb), 0.2);
 }
 
 .cv-modal-ok:hover {
-  background: rgba(25, 239, 131, 0.15);
-  border-color: rgba(25, 239, 131, 0.4);
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: rgba(var(--green-rgb), 0.4);
 }
 
 .cv-modal-ok.cv-modal-danger {
-  background: rgba(224, 90, 90, 0.08);
-  color: #e05a5a;
-  border-color: rgba(224, 90, 90, 0.2);
+  background: rgba(var(--red-rgb), 0.08);
+  color: var(--color-red);
+  border-color: rgba(var(--red-rgb), 0.2);
 }
 
 .cv-modal-ok.cv-modal-danger:hover {
-  background: rgba(224, 90, 90, 0.15);
-  border-color: rgba(224, 90, 90, 0.4);
+  background: rgba(var(--red-rgb), 0.15);
+  border-color: rgba(var(--red-rgb), 0.4);
+}
+</style>
+
+<style>
+/* ═══════════════════ CUSTOM BACKGROUND MODE ═══════════════════ */
+body.custom-bg .cv-dashboard {
+  background: transparent !important;
 }
 </style>

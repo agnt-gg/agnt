@@ -227,14 +227,14 @@ export default {
   width: 100%;
   padding: 8px 12px;
   background: transparent;
-  border: 1px solid rgba(25, 239, 131, 0.3);
+  border: 1px solid var(--color-dull-navy);
   border-radius: 8px;
-  color: var(--color-light-green);
+  color: var(--color-dull-white);
   font-size: 0.9em;
 }
 
 select option {
-  background-color: #080921;
+  background-color: var(--color-ultra-dark-navy);
 }
 
 .search-input:focus {

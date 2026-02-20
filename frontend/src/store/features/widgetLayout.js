@@ -25,12 +25,15 @@ function getAuthHeaders() {
     : { 'Content-Type': 'application/json' };
 }
 
+// Load from localStorage synchronously at init so the first render is instant
+const _cached = loadFromLocalStorage();
+
 const state = {
-  pages: [],
+  pages: _cached?.pages || [],
   activePageId: null,
-  layouts: {}, // { [pageId]: [widgetInstance, ...] }
+  layouts: _cached?.layouts || {},
   isDirty: false,
-  isLoaded: false,
+  isLoaded: !!_cached,
 };
 
 const getters = {
@@ -118,19 +121,11 @@ const actions = {
   /**
    * Load layouts from backend, fallback to localStorage.
    */
-  async fetchLayouts({ commit }) {
-    // Try localStorage first for instant load
-    const cached = loadFromLocalStorage();
-    if (cached) {
-      commit('SET_PAGES', cached.pages || []);
-      commit('SET_ALL_LAYOUTS', cached.layouts || {});
-      if (cached.pages?.length > 0) {
-        commit('SET_ACTIVE_PAGE', cached.pages[0].id);
-      }
-      commit('SET_LOADED', true);
-    }
+  async fetchLayouts({ commit, state }) {
+    // State is already pre-loaded from localStorage at init time.
+    // Just sync with backend in background.
+    const hasCache = state.pages.length > 0;
 
-    // Then try backend
     try {
       const response = await fetch(`${API_CONFIG.BASE_URL}/layouts`, {
         headers: getAuthHeaders(),
@@ -152,9 +147,6 @@ const actions = {
           }
           commit('SET_PAGES', pages);
           commit('SET_ALL_LAYOUTS', layouts);
-          if (!cached) {
-            commit('SET_ACTIVE_PAGE', pages[0].id);
-          }
           commit('SET_LOADED', true);
           saveToLocalStorage(pages, layouts);
         }
@@ -162,7 +154,6 @@ const actions = {
     } catch {
       // Backend unavailable - localStorage data is fine
     }
-
     commit('SET_LOADED', true);
   },
 
