@@ -1818,29 +1818,15 @@ export default {
         const transaction = db.transaction(['media'], 'readwrite');
         const store = transaction.objectStore('media');
 
-        // Get all keys
-        const allKeys = await new Promise((resolve, reject) => {
-          const request = store.getAllKeys();
+        // Use store.clear() instead of iterating and deleting one-by-one
+        await new Promise((resolve, reject) => {
+          const request = store.clear();
           request.onerror = () => reject(request.error);
-          request.onsuccess = () => resolve(request.result);
+          request.onsuccess = () => resolve();
         });
 
-        // Delete ALL entries - fresh start for each workflow load
-        let cleanedCount = 0;
-        for (const key of allKeys) {
-          await new Promise((resolve, reject) => {
-            const deleteRequest = store.delete(key);
-            deleteRequest.onerror = () => reject(deleteRequest.error);
-            deleteRequest.onsuccess = () => resolve();
-          });
-          cleanedCount++;
-        }
-
         db.close();
-
-        if (cleanedCount > 0) {
-          console.log(`🧹 CRITICAL: Cleaned up ALL ${cleanedCount} IndexedDB entries before loading workflow`);
-        }
+        console.log('🧹 Cleaned up all IndexedDB media entries before loading workflow');
       } catch (error) {
         console.error('❌ Error cleaning up IndexedDB entries:', error);
       }
@@ -2234,17 +2220,19 @@ export default {
           return;
         }
 
-        await fetchCustomTools();
-
         const isImporting = id.startsWith('shared_');
         const endpoint = getEndpoint(isImporting ? 'import' : 'load');
         const workflowId = isImporting ? id.substring(7) : id;
         const url = `${endpoint}${isImporting ? '/workflows' : '/workflows'}/${workflowId}`;
 
-        const response = await fetch(url, {
-          credentials: 'include',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        // Fetch custom tools and workflow data in parallel instead of sequentially
+        const [, response] = await Promise.all([
+          fetchCustomTools(),
+          fetch(url, {
+            credentials: 'include',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }),
+        ]);
 
         if (!response.ok) {
           if (response.status === 403) {
@@ -2322,8 +2310,10 @@ export default {
             proxy.$store.dispatch('canvas/updateCanvasState', stateToSave);
           }
 
+          // Defer status polling to after the canvas has rendered
+          // This prevents an extra HTTP round-trip during the critical loading path
           if (pollWorkflowStatusRef.value) {
-            pollWorkflowStatusRef.value();
+            setTimeout(() => pollWorkflowStatusRef.value(), 1000);
           }
 
           // If importing or not the owner, show a message to the user
@@ -2438,34 +2428,29 @@ export default {
         console.log('WorkflowDesigner: Generated new workflowId:', newWorkflowId);
       }
 
-      // Load workflow if ID param is set in URL - this will override any generated ID
-      loadWorkflowFromUrl();
+      // Don't call loadWorkflowFromUrl() here - the parent WorkflowForge.vue handles it
+      // via initializeScreen -> loadWorkflowFromUrl to avoid double-loading.
 
       await fetchCustomTools();
 
-      cleanup.setTimeout(() => {
-        isLoading.value = false;
-      }, 500);
+      isLoading.value = false;
     });
 
-    // Update the nodes array watcher
+    // Notify parent when nodes/edges array references change
+    // Using shallow watch (no deep: true) to avoid CPU thrashing during load
+    // Array references change on reassignment (e.g., this.nodes = newArray)
     watch(
       () => nodes.value,
       (newNodes) => {
-        // Use $emit to notify the parent component that nodes have been updated
         proxy.$emit('update:nodes', newNodes);
-      },
-      { deep: true }
+      }
     );
 
-    // Update the edges array watcher
     watch(
       () => edges.value,
       (newEdges) => {
-        // Use $emit to notify the parent component that edges have been updated
         proxy.$emit('update:edges', newEdges);
-      },
-      { deep: true }
+      }
     );
 
     // Add watchers for selectedNodeContent and selectedEdgeContent to emit events

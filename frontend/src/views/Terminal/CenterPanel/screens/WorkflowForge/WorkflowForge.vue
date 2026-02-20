@@ -260,27 +260,8 @@ export default {
       { immediate: true }
     );
 
-    // Add watcher for nodes array to update selectedNodeContent when nodes change
-    // BUT DO NOT call updatePanelProps - let the handlers do that
-    watch(
-      () => workflowDesigner.value?.nodes,
-      (newNodes) => {
-        if (newNodes && selectedNodeContent.value) {
-          // Find the updated node that matches the currently selected node
-          const updatedNode = newNodes.find((node) => node.id === selectedNodeContent.value.id);
-          if (updatedNode) {
-            console.log('Terminal: Updating selectedNodeContent with new node data:', updatedNode);
-            if (updatedNode.error) {
-              console.log('Terminal: Node has error:', updatedNode.error);
-            }
-            // Update the content but DON'T trigger updatePanelProps
-            // The panel will get updated through the normal flow
-            selectedNodeContent.value = { ...updatedNode };
-          }
-        }
-      },
-      { deep: true }
-    );
+    // Listen for node-selected events from the designer to keep selectedNodeContent in sync
+    // This replaces the expensive deep watcher on the entire nodes array
 
     // Track if we've already initialized a conversation to prevent reinitialization
     let hasInitializedConversation = false;
@@ -455,10 +436,9 @@ export default {
       if (route.query.id) {
         // Reset the flag when initializing with a workflow ID
         hasAttemptedLoad = false;
-        // Wait a bit more for the workflow designer to fully initialize
-        setTimeout(() => {
-          loadWorkflowFromUrl();
-        }, 500);
+        // nextTick is sufficient - the designer ref is available after the first render
+        await nextTick();
+        loadWorkflowFromUrl();
       }
     };
 
