@@ -304,16 +304,12 @@ export default {
     // Helper function to get category icons
     const getCategoryIcon = (categoryName) => {
       const categoryIcons = {
-        'Data & Knowledge': 'fas fa-database',
-        Productivity: 'fas fa-tasks',
-        Automation: 'fas fa-cogs',
-        Communication: 'fas fa-comments',
-        Analysis: 'fas fa-chart-line',
-        Monitoring: 'fas fa-eye',
         triggers: 'fas fa-play',
         actions: 'fas fa-bolt',
         utilities: 'fas fa-wrench',
+        widgets: 'fas fa-th-large',
         controls: 'fas fa-sliders-h',
+        plugins: 'fas fa-puzzle-piece',
         custom: 'fas fa-user',
       };
       return categoryIcons[categoryName] || 'fas fa-tools';
@@ -354,16 +350,23 @@ export default {
     });
 
     // Combine all tools (system + custom)
+    // Categories: triggers, actions, utilities, widgets, controls, plugins, custom
     const allAvailableTools = computed(() => {
       const storeTools = customTools.value.map((tool) => ({
         ...tool,
-        title: tool.title || tool.name, // Use existing title, or fallback to name
+        title: tool.title || tool.name,
         source: tool.is_builtin ? 'system_builtin' : 'custom',
-        category: tool.is_builtin ? tool.category.toLowerCase() : 'custom', // Use tool's category for built-in tools, 'custom' for custom tools
+        category: 'custom',
         icon: tool.icon || 'custom',
       }));
 
-      return [...systemTools.value, ...storeTools];
+      // Remap plugin tools to 'plugins' category, keep folder-based categories for system tools
+      const remappedSystemTools = systemTools.value.map((tool) => ({
+        ...tool,
+        category: tool.isPlugin ? 'plugins' : tool.category,
+      }));
+
+      return [...remappedSystemTools, ...storeTools];
     });
 
     const scrollToBottom = () => baseScreenRef.value?.scrollToBottom();
@@ -654,8 +657,8 @@ export default {
         utilities: '🔧',
         widgets: '🎨',
         controls: '🎛️',
+        plugins: '🧩',
         custom: '👤',
-        Uncategorized: '📋',
       };
 
       const categoryDisplayNames = {
@@ -664,8 +667,8 @@ export default {
         utilities: 'Utilities',
         widgets: 'Widgets',
         controls: 'Controls',
+        plugins: 'Plugins',
         custom: 'Custom',
-        Uncategorized: 'Uncategorized',
       };
 
       return {

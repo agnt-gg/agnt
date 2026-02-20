@@ -64,8 +64,43 @@ export default {
     const selectedCategory = ref(null);
     const selectedMainCategory = ref(null);
 
-    // Read directly from Vuex so data is available immediately (not dependent on center screen props)
-    const allAvailableTools = computed(() => store.getters['tools/allTools'] || []);
+    // Build full tool list from BOTH stores (same logic as center panel's allAvailableTools)
+    // Categories: triggers, actions, utilities, widgets, controls, plugins, custom
+    const allAvailableTools = computed(() => {
+      // 1) Workflow/system tools (triggers, actions, utilities, widgets, controls + plugins)
+      const toolLibrary = store.getters['tools/workflowTools'];
+      const systemTools = [];
+      if (toolLibrary) {
+        const processCategory = (categoryTools, categoryName) => {
+          if (!categoryTools) return;
+          categoryTools.forEach((tool) => {
+            systemTools.push({
+              ...tool,
+              id: `system-${tool.type}`,
+              source: tool.isPlugin ? 'plugin' : 'system',
+              category: tool.isPlugin ? 'plugins' : categoryName,
+              isPlugin: tool.isPlugin || false,
+            });
+          });
+        };
+        processCategory(toolLibrary.triggers, 'triggers');
+        processCategory(toolLibrary.actions, 'actions');
+        processCategory(toolLibrary.utilities, 'utilities');
+        processCategory(toolLibrary.widgets, 'widgets');
+        processCategory(toolLibrary.controls, 'controls');
+      }
+
+      // 2) Custom tools from store
+      const storeCustomTools = (store.getters['tools/customTools'] || []).map((tool) => ({
+        ...tool,
+        title: tool.title || tool.name,
+        source: 'custom',
+        category: 'custom',
+        icon: tool.icon || 'custom',
+      }));
+
+      return [...systemTools, ...storeCustomTools];
+    });
 
     // Define main tool categories based on actual tool categories from store and tools
     const mainToolCategories = computed(() => {

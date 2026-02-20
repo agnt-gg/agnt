@@ -156,26 +156,26 @@ export default {
 }
 
 .tooltip-content {
-  background: rgba(14, 22, 33, 0.95);
-  border: 1px solid rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--color-background-rgb, 16, 16, 31), 0.95);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 12px 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 15px rgba(var(--green-rgb), 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   position: relative;
 }
 
 .tooltip-title {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: bold;
   font-size: 1.1em;
   margin-bottom: 8px;
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
+  border-bottom: 1px solid var(--terminal-border-color);
   padding-bottom: 6px;
 }
 
 .tooltip-text {
-  color: var(--color-grey-light);
+  color: var(--color-text);
   font-size: 0.95em;
   line-height: 1.5;
 }
@@ -184,8 +184,8 @@ export default {
   position: absolute;
   width: 12px;
   height: 12px;
-  background: rgba(14, 22, 33, 0.95);
-  border: 1px solid rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--color-background-rgb, 16, 16, 31), 0.95);
+  border: 1px solid var(--terminal-border-color);
   transform: rotate(45deg);
   z-index: -1;
 }
