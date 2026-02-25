@@ -93,12 +93,21 @@ export default {
       emit('bring-to-front', props.widget.instanceId);
     }
 
+    // Block iframes from stealing mouse events during drag/resize
+    function blockIframes() {
+      document.body.style.setProperty('--wf-iframe-pointer', 'none');
+      document.body.classList.add('wf-interacting');
+    }
+    function unblockIframes() {
+      document.body.classList.remove('wf-interacting');
+    }
+
     // ── Drag ──
     function onDragStart(e) {
       if (isMaximized.value) return;
 
       isDragging.value = true;
-      const el = frameRef.value;
+      blockIframes();
       dragState = {
         startX: e.clientX,
         startY: e.clientY,
@@ -138,6 +147,7 @@ export default {
       document.removeEventListener('mousemove', onDragMove);
       document.removeEventListener('mouseup', onDragEnd);
       isDragging.value = false;
+      unblockIframes();
 
       if (dragState && dragState._lastCol !== undefined) {
         emit('drag-end', {
@@ -153,6 +163,7 @@ export default {
 
     // ── Resize ──
     function onResizeStart(e) {
+      blockIframes();
       resizeState = {
         startX: e.clientX,
         startY: e.clientY,
@@ -197,6 +208,7 @@ export default {
     function onResizeEnd() {
       document.removeEventListener('mousemove', onResizeMove);
       document.removeEventListener('mouseup', onResizeEnd);
+      unblockIframes();
 
       if (resizeState && resizeState._lastCols !== undefined) {
         emit('resize-end', {
@@ -380,5 +392,10 @@ body.custom-bg .widget-frame:not(.is-screen-widget) {
   backdrop-filter: blur(var(--bg-blur, 0px));
   -webkit-backdrop-filter: blur(var(--bg-blur, 0px));
   border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Disable iframe pointer events during drag/resize so mouseup isn't swallowed */
+body.wf-interacting iframe {
+  pointer-events: none !important;
 }
 </style>

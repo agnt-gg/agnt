@@ -78,10 +78,19 @@ export default {
     const activeCategory = ref('all');
     const searchInput = ref(null);
 
+    // Access reactive store definitions to trigger recompute when custom widgets change
+    const customDefinitions = computed(() => store.getters['widgetDefinitions/allDefinitions']);
+
+    const allCatalogWidgets = computed(() => {
+      // Touch customDefinitions so Vue tracks it as a dependency
+      const _ = customDefinitions.value;
+      return getAllWidgets();
+    });
+
     const categories = computed(() => {
       const cats = [{ id: 'all', label: 'All' }];
       const seen = new Set();
-      for (const w of getAllWidgets()) {
+      for (const w of allCatalogWidgets.value) {
         if (!seen.has(w.category)) {
           seen.add(w.category);
           cats.push({
@@ -94,7 +103,7 @@ export default {
     });
 
     const filteredWidgets = computed(() => {
-      let widgets = getAllWidgets();
+      let widgets = allCatalogWidgets.value;
 
       if (activeCategory.value !== 'all') {
         widgets = widgets.filter((w) => w.category === activeCategory.value);
@@ -176,7 +185,7 @@ export default {
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
 }
 
@@ -186,7 +195,8 @@ export default {
   border-radius: 8px;
   width: 480px;
   max-width: 90vw;
-  max-height: 80vh;
+  height: 70vh;
+  margin-top: 10vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 16px 64px rgba(0, 0, 0, 0.5);
@@ -252,35 +262,32 @@ export default {
 /* ── Category tabs ── */
 .wc-tabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 16px;
-  overflow-x: auto;
+  justify-content: space-evenly;
+  padding: 8px 0;
   border-bottom: 1px solid var(--terminal-border-color);
+  flex-shrink: 0;
 }
 
 .wc-tab {
   background: none;
-  border: 1px solid transparent;
+  border: none;
   color: var(--color-text-muted, #556);
-  font-size: var(--font-size-xs, 11px);
-  letter-spacing: 1px;
+  font-size: 10px;
+  font-family: inherit;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
-  padding: 4px 10px;
-  border-radius: 4px;
+  padding: 4px 0;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: color 0.15s;
   white-space: nowrap;
 }
 
 .wc-tab:hover {
   color: var(--color-light-0, #aab);
-  border-color: rgba(255, 255, 255, 0.05);
 }
 
 .wc-tab.active {
   color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.25);
-  background: rgba(var(--green-rgb), 0.06);
 }
 
 /* ── Body ── */

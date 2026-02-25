@@ -145,9 +145,26 @@
             ref="modalInputRef"
             class="cv-modal-input"
             v-model="modal.value"
+            placeholder="Page name"
             @keydown.enter="submitModal"
             @keydown.escape="cancelModal"
           />
+          <!-- Icon picker -->
+          <div v-if="modal.showIconPicker" class="cv-icon-picker">
+            <div class="cv-icon-label">Icon</div>
+            <div class="cv-icon-grid">
+              <button
+                v-for="ico in PAGE_ICONS"
+                :key="ico"
+                class="cv-icon-btn"
+                :class="{ active: modal.icon === ico }"
+                @click="modal.icon = ico"
+                type="button"
+              >
+                <i :class="ico"></i>
+              </button>
+            </div>
+          </div>
           <p v-if="modal.type === 'confirm'" class="cv-modal-msg">{{ modal.message }}</p>
           <div class="cv-modal-actions">
             <button class="cv-modal-btn cv-modal-cancel" @click="cancelModal">Cancel</button>
@@ -205,6 +222,15 @@ const MAIN_SECTIONS = [
     screens: [
       { screen: 'ToolsScreen', label: 'MY TOOLS' },
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE' },
+    ],
+  },
+  {
+    id: 'widgets',
+    icon: 'fas fa-puzzle-piece',
+    label: 'Widgets',
+    screens: [
+      { screen: 'WidgetManagerScreen', label: 'MY WIDGETS' },
+      { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
     ],
   },
 ];
@@ -292,7 +318,15 @@ export default {
     }
 
     // ── Modal (replaces prompt/confirm) ──
-    const modal = ref({ show: false, type: 'input', title: '', value: '', message: '', okLabel: 'OK', danger: false });
+    const PAGE_ICONS = [
+      'fas fa-th', 'fas fa-home', 'fas fa-star', 'fas fa-heart', 'fas fa-bolt',
+      'fas fa-rocket', 'fas fa-globe', 'fas fa-chart-bar', 'fas fa-code', 'fas fa-database',
+      'fas fa-server', 'fas fa-shield-alt', 'fas fa-cube', 'fas fa-palette', 'fas fa-terminal',
+      'fas fa-brain', 'fas fa-atom', 'fas fa-fire', 'fas fa-gem', 'fas fa-crown',
+      'fas fa-flask', 'fas fa-leaf', 'fas fa-moon', 'fas fa-sun', 'fas fa-cloud',
+    ];
+
+    const modal = ref({ show: false, type: 'input', title: '', value: '', icon: 'fas fa-th', showIconPicker: false, message: '', okLabel: 'OK', danger: false });
     let modalResolve = null;
 
     function showModal(opts) {
@@ -306,7 +340,14 @@ export default {
     }
 
     function submitModal() {
-      const result = modal.value.type === 'input' ? modal.value.value : true;
+      let result;
+      if (modal.value.type === 'input') {
+        result = modal.value.showIconPicker
+          ? { value: modal.value.value, icon: modal.value.icon }
+          : modal.value.value;
+      } else {
+        result = true;
+      }
       modal.value.show = false;
       if (modalResolve) modalResolve(result);
       modalResolve = null;
@@ -323,18 +364,27 @@ export default {
       const page = ctxMenu.value.page;
       closeCtx();
       if (!page) return;
-      const name = await showModal({ type: 'input', title: 'Rename Page', value: page.name, okLabel: 'Rename' });
-      if (name && name.trim()) {
-        store.dispatch('widgetLayout/renamePage', { pageId: page.id, name: name.trim() });
+      const result = await showModal({ type: 'input', title: 'Rename Page', value: page.name, icon: page.icon || 'fas fa-th', showIconPicker: true, okLabel: 'Rename' });
+      if (result && result.value && result.value.trim()) {
+        store.dispatch('widgetLayout/renamePage', { pageId: page.id, name: result.value.trim(), icon: result.icon });
       }
     }
 
-    function doResetPage() {
+    async function doResetPage() {
       const page = ctxMenu.value.page;
       closeCtx();
       if (!page) return;
-      const dw = page.route ? getDefaultLayout(page.route) : [];
-      store.dispatch('widgetLayout/resetPageToDefault', { pageId: page.id, defaultWidgets: dw });
+      const ok = await showModal({
+        type: 'confirm',
+        title: 'Reset Layout',
+        message: `Reset "${page.name}" to its default layout? All widget positions will be lost.`,
+        okLabel: 'Reset',
+        danger: true,
+      });
+      if (ok) {
+        const dw = page.route ? getDefaultLayout(page.route) : [];
+        store.dispatch('widgetLayout/resetPageToDefault', { pageId: page.id, defaultWidgets: dw });
+      }
     }
 
     async function doDelete() {
@@ -354,9 +404,9 @@ export default {
     }
 
     async function startAddPage() {
-      const name = await showModal({ type: 'input', title: 'New Page', value: '', okLabel: 'Create' });
-      if (name && name.trim()) {
-        store.dispatch('widgetLayout/addPage', { name: name.trim(), icon: 'fas fa-th' });
+      const result = await showModal({ type: 'input', title: 'New Page', value: '', icon: 'fas fa-th', showIconPicker: true, okLabel: 'Create' });
+      if (result && result.value && result.value.trim()) {
+        store.dispatch('widgetLayout/addPage', { name: result.value.trim(), icon: result.icon || 'fas fa-th' });
       }
     }
 
@@ -438,6 +488,7 @@ export default {
       openContextMenu,
       modal,
       modalInputRef,
+      PAGE_ICONS,
       submitModal,
       cancelModal,
       startRename,
@@ -676,7 +727,7 @@ export default {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding-right: 4px;
+  /* padding-right: 4px; */
 }
 
 /* ═══════════════════ SIDEBAR ═══════════════════ */
@@ -806,6 +857,10 @@ export default {
 
 /* Gap for direct screen content (slot) - WidgetCanvas has its own GRID_GAP */
 .cv-dashboard > :not(.widget-canvas) {
+  margin: 0px;
+}
+
+.custom-bg .cv-dashboard > :not(.widget-canvas) {
   margin: 4px;
 }
 
@@ -844,14 +899,16 @@ export default {
   position: fixed;
   inset: 0;
   z-index: 4000;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .cv-modal {
-  background: var(--color-darker-0, #0c0c18);
+  background: var(--color-background);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 16px 20px;
@@ -931,6 +988,52 @@ export default {
 .cv-modal-ok:hover {
   background: rgba(var(--green-rgb), 0.15);
   border-color: rgba(var(--green-rgb), 0.4);
+}
+
+/* ── Icon Picker ── */
+.cv-icon-picker {
+  margin-top: 12px;
+}
+
+.cv-icon-label {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #556);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.cv-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.cv-icon-btn {
+  width: 100%;
+  aspect-ratio: 1;
+  background: none;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  color: var(--color-text-muted, #556);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+}
+
+.cv-icon-btn:hover {
+  color: var(--color-light-0, #aab);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.cv-icon-btn.active {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.4);
+  background: rgba(var(--green-rgb), 0.08);
 }
 
 .cv-modal-ok.cv-modal-danger {

@@ -140,15 +140,17 @@ export default {
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: 6px;
+  overflow-y: auto;
 }
 
 .tool-family {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   padding: 2px 0;
-  flex-wrap: no-wrap;
+  flex: 1;
 }
 
 .family-name {
@@ -156,13 +158,15 @@ export default {
   font-weight: bold;
   min-width: 60px;
   font-size: 0.8em;
+  flex-shrink: 0;
 }
 
 .tools-list {
-  display: grid;
-  grid-template-columns: repeat(12, 16px);
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+  flex: 1;
 }
 
 .tool-item {

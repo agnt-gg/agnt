@@ -134,21 +134,53 @@ const actions = {
       if (response.ok) {
         const data = await response.json();
         if (data.pages && data.pages.length > 0) {
-          const pages = data.pages.map((p) => ({
+          const backendPages = data.pages.map((p) => ({
             id: p.page_id,
             name: p.page_name,
             icon: p.page_icon,
             route: p.route,
             order: p.page_order,
           }));
-          const layouts = {};
+          const backendLayouts = {};
           for (const p of data.pages) {
-            layouts[p.page_id] = JSON.parse(p.layout_data || '[]');
+            backendLayouts[p.page_id] = JSON.parse(p.layout_data || '[]');
           }
-          commit('SET_PAGES', pages);
-          commit('SET_ALL_LAYOUTS', layouts);
+
+          // Preserve local-only custom pages (no route) that aren't in backend yet
+          const backendIds = new Set(backendPages.map((p) => p.id));
+          const localOnlyPages = state.pages.filter((p) => !p.route && !backendIds.has(p.id));
+          const localOnlyLayouts = {};
+          for (const p of localOnlyPages) {
+            if (state.layouts[p.id]) {
+              localOnlyLayouts[p.id] = state.layouts[p.id];
+            }
+          }
+
+          const mergedPages = [...backendPages, ...localOnlyPages];
+          const mergedLayouts = { ...backendLayouts, ...localOnlyLayouts };
+
+          commit('SET_PAGES', mergedPages);
+          commit('SET_ALL_LAYOUTS', mergedLayouts);
           commit('SET_LOADED', true);
-          saveToLocalStorage(pages, layouts);
+          saveToLocalStorage(mergedPages, mergedLayouts);
+
+          // Push local-only pages to backend so they persist next time
+          for (const p of localOnlyPages) {
+            try {
+              await fetch(`${API_CONFIG.BASE_URL}/layouts`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                  page_id: p.id,
+                  page_name: p.name,
+                  page_icon: p.icon,
+                  page_order: p.order || 0,
+                  route: p.route,
+                  layout_data: JSON.stringify(localOnlyLayouts[p.id] || []),
+                }),
+              });
+            } catch {}
+          }
         }
       }
     } catch {
@@ -253,8 +285,10 @@ const actions = {
   /**
    * Rename a page.
    */
-  renamePage({ commit, dispatch, state }, { pageId, name }) {
-    commit('UPDATE_PAGE', { pageId, updates: { name } });
+  renamePage({ commit, dispatch, state }, { pageId, name, icon }) {
+    const updates = { name };
+    if (icon) updates.icon = icon;
+    commit('UPDATE_PAGE', { pageId, updates });
     saveToLocalStorage(state.pages, state.layouts);
     dispatch('saveLayout');
   },
@@ -280,6 +314,8 @@ const actions = {
       WorkflowForgeScreen: 'Workflow Forge',
       ToolForgeScreen: 'Tool Forge',
       AgentForgeScreen: 'Agent Forge',
+      WidgetManagerScreen: 'Widget Manager',
+      WidgetForgeScreen: 'Widget Forge',
     };
 
     const iconMap = {
@@ -296,6 +332,8 @@ const actions = {
       WorkflowForgeScreen: 'fas fa-hammer',
       ToolForgeScreen: 'fas fa-tools',
       AgentForgeScreen: 'fas fa-user-cog',
+      WidgetManagerScreen: 'fas fa-puzzle-piece',
+      WidgetForgeScreen: 'fas fa-magic',
     };
 
     const page = {

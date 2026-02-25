@@ -26,6 +26,8 @@ import MarketplaceScreen from '@/views/Terminal/CenterPanel/screens/Marketplace/
 import WorkflowForgeScreen from '@/views/Terminal/CenterPanel/screens/WorkflowForge/WorkflowForge.vue';
 import ToolForgeScreen from '@/views/Terminal/CenterPanel/screens/ToolForge/ToolForge.vue';
 import AgentForgeScreen from '@/views/Terminal/CenterPanel/screens/AgentForge/AgentForge.vue';
+import WidgetManagerScreen from '@/views/Terminal/CenterPanel/screens/WidgetManager/WidgetManager.vue';
+import WidgetForgeScreen from '@/views/Terminal/CenterPanel/screens/WidgetForge/WidgetForge.vue';
 
 export function registerAllWidgets() {
   // ── Dashboard cards (small composable widgets) ──
@@ -200,6 +202,28 @@ export function registerAllWidgets() {
     defaultSize: { cols: 12, rows: 8 },
     minSize: { cols: 6, rows: 4 },
     description: 'Create custom agents',
+    isScreenWidget: true,
+  });
+
+  registerWidget('widget-manager', {
+    name: 'Widget Manager',
+    icon: 'fas fa-puzzle-piece',
+    category: 'forge',
+    component: WidgetManagerScreen,
+    defaultSize: { cols: 12, rows: 8 },
+    minSize: { cols: 6, rows: 4 },
+    description: 'Manage custom widgets',
+    isScreenWidget: true,
+  });
+
+  registerWidget('widget-forge', {
+    name: 'Widget Forge',
+    icon: 'fas fa-magic',
+    category: 'forge',
+    component: WidgetForgeScreen,
+    defaultSize: { cols: 12, rows: 8 },
+    minSize: { cols: 6, rows: 4 },
+    description: 'Create custom widgets',
     isScreenWidget: true,
   });
 }

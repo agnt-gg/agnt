@@ -60,9 +60,9 @@
                 <span class="file-icon">📎</span>
                 <span class="file-name">{{ file.name }}</span>
                 <Tooltip text="Remove file" width="auto">
-                <button @click="removeFile(index)" class="file-remove-btn">
-                  <i class="fas fa-times"></i>
-                </button>
+                  <button @click="removeFile(index)" class="file-remove-btn">
+                    <i class="fas fa-times"></i>
+                  </button>
                 </Tooltip>
               </div>
             </div>
@@ -91,39 +91,35 @@
               style="display: none"
             />
             <Tooltip text="Attach files" width="auto">
-            <button v-if="!isStreaming" @click="triggerFileInput" :disabled="isInputDisabled" class="chat-attach-button">
-              <i class="fas fa-paperclip"></i>
-            </button>
+              <button v-if="!isStreaming" @click="triggerFileInput" :disabled="isInputDisabled" class="chat-attach-button">
+                <i class="fas fa-paperclip"></i>
+              </button>
             </Tooltip>
             <Tooltip text="AI Provider Settings" width="auto">
-            <button
-              v-if="!isStreaming"
-              ref="providerSelectorButtonRef"
-              @click="toggleProviderSelector"
-              :disabled="isInputDisabled"
-              class="chat-provider-button"
-            >
-              <i class="fas fa-robot"></i>
-            </button>
+              <button
+                v-if="!isStreaming"
+                ref="providerSelectorButtonRef"
+                @click="toggleProviderSelector"
+                :disabled="isInputDisabled"
+                class="chat-provider-button"
+              >
+                <i class="fas fa-robot"></i>
+              </button>
             </Tooltip>
             <Tooltip :text="isListening ? 'Stop recording' : 'Start voice input'" width="auto">
-            <button
-              v-if="isSupported && !isStreaming"
-              @click="toggleListening"
-              :disabled="isInputDisabled"
-              class="chat-mic-button"
-              :class="{ 'is-listening': isListening }"
-            >
-              <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
-            </button>
+              <button
+                v-if="isSupported && !isStreaming"
+                @click="toggleListening"
+                :disabled="isInputDisabled"
+                class="chat-mic-button"
+                :class="{ 'is-listening': isListening }"
+              >
+                <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
+              </button>
             </Tooltip>
             <template v-if="!isStreaming">
               <Tooltip text="Send message" width="auto">
-                <button
-                  @click="triggerSubmit"
-                  :disabled="!currentUserInput.trim() || isInputDisabled"
-                  class="chat-send-button"
-                >
+                <button @click="triggerSubmit" :disabled="!currentUserInput.trim() || isInputDisabled" class="chat-send-button">
                   <i class="fas fa-paper-plane"></i>
                 </button>
               </Tooltip>
@@ -297,10 +293,10 @@ export default {
     // Track if user manually set panel widths (vs auto-adjusted)
     // If the stored width matches a "minimum" value (200, 280), it was likely auto-shrunk
     const isLeftPanelUserSized = ref(
-      localStorage.getItem('leftPanelUserSized') === 'true' || (actualLeftPanelWidth.value !== 200 && actualLeftPanelWidth.value !== 280)
+      localStorage.getItem('leftPanelUserSized') === 'true' || (actualLeftPanelWidth.value !== 200 && actualLeftPanelWidth.value !== 280),
     );
     const isRightPanelUserSized = ref(
-      localStorage.getItem('rightPanelUserSized') === 'true' || (rightPanelWidth.value !== 200 && rightPanelWidth.value !== 280)
+      localStorage.getItem('rightPanelUserSized') === 'true' || (rightPanelWidth.value !== 200 && rightPanelWidth.value !== 280),
     );
 
     // --- Dual Resize System State ---
@@ -580,7 +576,7 @@ export default {
         // Normal resize - adjust left panel width
         const newLeftWidth = Math.max(
           minLeftPanelWidth,
-          Math.min(mouseX, containerRect.width - minMainWidth - (showRightPanel.value ? rightPanelWidth.value + 8 : 0) - 8)
+          Math.min(mouseX, containerRect.width - minMainWidth - (showRightPanel.value ? rightPanelWidth.value + 8 : 0) - 8),
         );
         actualLeftPanelWidth.value = newLeftWidth;
 
@@ -661,7 +657,7 @@ export default {
         // Normal resize - adjust right panel width
         const newRightWidth = Math.max(
           minRightPanelWidth,
-          Math.min(containerWidth - mouseX, containerWidth - minMainWidth - (showLeftPanel.value ? actualLeftPanelWidth.value + 8 : 0) - 8)
+          Math.min(containerWidth - mouseX, containerWidth - minMainWidth - (showLeftPanel.value ? actualLeftPanelWidth.value + 8 : 0) - 8),
         );
         rightPanelWidth.value = newRightWidth;
 
@@ -852,7 +848,7 @@ export default {
         await nextTick();
         scrollToBottom();
       },
-      { deep: true }
+      { deep: true },
     );
 
     watch(currentUserInput, autoResizeTextarea);
@@ -880,7 +876,7 @@ export default {
       (newValue) => {
         leftPanelCollapsed.value = newValue;
         calculateMainContentWidth();
-      }
+      },
     );
 
     watch(
@@ -888,7 +884,7 @@ export default {
       (newValue) => {
         rightPanelCollapsed.value = newValue;
         calculateMainContentWidth();
-      }
+      },
     );
 
     watch(
@@ -896,7 +892,7 @@ export default {
       (newValue) => {
         showLeftPanel.value = newValue;
         calculateMainContentWidth();
-      }
+      },
     );
 
     watch(
@@ -904,7 +900,7 @@ export default {
       (newValue) => {
         showRightPanel.value = newValue;
         calculateMainContentWidth();
-      }
+      },
     );
 
     // Handle tutorial navigation
@@ -1050,6 +1046,10 @@ export default {
   z-index: 10;
   outline: none !important;
   border: none !important;
+}
+
+.custom-bg .terminal-content {
+  width: calc(100% - 8px);
 }
 
 .three-panel-container {
@@ -1830,5 +1830,4 @@ body[data-page='goals-page'] .scrollable-content {
   overflow-y: hidden !important;
   padding: 0;
 }
-
 </style>

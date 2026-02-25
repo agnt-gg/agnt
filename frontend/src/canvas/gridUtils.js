@@ -43,9 +43,10 @@ export function snapToGrid(x, y, cellWidth, cellHeight) {
  * Snap a pixel size to the nearest grid span.
  */
 export function snapSizeToGrid(width, height, cellWidth, cellHeight) {
+  // Use floor + 0.3 threshold so shrinking feels responsive (don't require dragging past halfway)
   return {
-    cols: Math.max(1, Math.round((width + GRID_GAP) / cellWidth)),
-    rows: Math.max(1, Math.round((height + GRID_GAP) / cellHeight)),
+    cols: Math.max(1, Math.floor((width + GRID_GAP) / cellWidth + 0.3)),
+    rows: Math.max(1, Math.floor((height + GRID_GAP) / cellHeight + 0.3)),
   };
 }
 

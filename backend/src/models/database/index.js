@@ -547,6 +547,31 @@ function createTables() {
       // Index for faster agent tool execution lookups (CRITICAL for run details)
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tool_executions_execution_id ON agent_tool_executions(execution_id)`);
 
+      // Custom widget definitions for Widget Forge system
+      db.run(`CREATE TABLE IF NOT EXISTS widget_definitions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        icon TEXT DEFAULT 'fas fa-puzzle-piece',
+        category TEXT DEFAULT 'custom',
+        widget_type TEXT NOT NULL DEFAULT 'html',
+        source_code TEXT,
+        config JSON DEFAULT '{}',
+        data_bindings JSON DEFAULT '[]',
+        default_size JSON DEFAULT '{"cols":4,"rows":3}',
+        min_size JSON DEFAULT '{"cols":2,"rows":2}',
+        is_shared INTEGER DEFAULT 0,
+        is_published INTEGER DEFAULT 0,
+        version TEXT DEFAULT '1.0.0',
+        thumbnail TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_widget_definitions_user_id ON widget_definitions(user_id)`);
+
       // Widget layouts for dynamic canvas system
       db.run(`CREATE TABLE IF NOT EXISTS widget_layouts (
         id TEXT PRIMARY KEY,

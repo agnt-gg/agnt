@@ -58,6 +58,8 @@ import SecretsScreen from './CenterPanel/screens/Secrets/Secrets.vue';
 import GoalsScreen from './CenterPanel/screens/Goals/Goals.vue';
 import RunsScreen from './CenterPanel/screens/Runs/Runs.vue';
 import MarketplaceScreen from './CenterPanel/screens/Marketplace/Marketplace.vue';
+import WidgetManagerScreen from './CenterPanel/screens/WidgetManager/WidgetManager.vue';
+import WidgetForgeScreen from './CenterPanel/screens/WidgetForge/WidgetForge.vue';
 
 const screenComponents = {
   ChatScreen,
@@ -74,6 +76,8 @@ const screenComponents = {
   GoalsScreen,
   RunsScreen,
   MarketplaceScreen,
+  WidgetManagerScreen,
+  WidgetForgeScreen,
 };
 
 export default {
@@ -126,6 +130,8 @@ export default {
         GoalsScreen: '/goals',
         RunsScreen: '/runs',
         MarketplaceScreen: '/marketplace',
+        WidgetManagerScreen: '/widget-manager',
+        WidgetForgeScreen: '/widget-forge',
       };
 
       if (screenName in screenRoutes) {

@@ -36,6 +36,7 @@
         :is="getWidgetComponent(instance.widgetId)"
         v-if="getWidgetComponent(instance.widgetId)"
         :widgetInstanceId="instance.instanceId"
+        v-bind="getWidgetDefinition(instance.widgetId) ? { definition: getWidgetDefinition(instance.widgetId) } : {}"
         @screen-change="(screen, opts) => widgetBus.navigate(screen, opts)"
         @navigate="(screen, opts) => widgetBus.navigate(screen, opts)"
       />
@@ -87,6 +88,11 @@ export default {
     function getWidgetComponent(widgetId) {
       const def = getWidget(widgetId);
       return def?.component || null;
+    }
+
+    function getWidgetDefinition(widgetId) {
+      const def = getWidget(widgetId);
+      return def?.customDefinition || null;
     }
 
     // Recalculate cell dimensions on container resize
@@ -212,6 +218,7 @@ export default {
       GRID_GAP,
       visibleWidgets,
       getWidgetComponent,
+      getWidgetDefinition,
       widgetBus,
       onDragStart,
       onDragEnd,

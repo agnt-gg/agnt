@@ -28,6 +28,9 @@ import goals from './features/goals';
 import goalTemplates from './features/goalTemplates';
 import contentOutputs from './features/contentOutputs';
 import widgetLayout from './features/widgetLayout';
+import widgetDefinitions from './features/widgetDefinitions';
+import { registerCustomWidgets } from '@/canvas/widgetRegistry.js';
+import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 
 const store = createStore({
   state: {
@@ -52,7 +55,7 @@ const store = createStore({
      * Initialize store data in background after app mount
      * Optimized to fetch data in parallel without blocking UI
      */
-    async initializeStore({ commit, dispatch }) {
+    async initializeStore({ commit, dispatch, getters: rootGetters }) {
       console.log('Initializing app data in background...');
 
       try {
@@ -88,12 +91,24 @@ const store = createStore({
           dispatch('marketplace/fetchMyPurchases'),
           dispatch('marketplace/fetchMyInstalls'),
           dispatch('widgetLayout/fetchLayouts'),
+          dispatch('widgetDefinitions/fetchDefinitions'),
         ]).then((results) => {
           results.forEach((result, index) => {
             if (result.status === 'rejected') {
               console.warn(`Secondary fetch ${index} failed:`, result.reason);
             }
           });
+
+          // Register custom widgets into the canvas registry
+          try {
+            const definitions = rootGetters['widgetDefinitions/allDefinitions'];
+            if (definitions.length > 0) {
+              registerCustomWidgets(definitions, CustomWidgetRenderer);
+              console.log(`Registered ${definitions.length} custom widget(s) into canvas registry`);
+            }
+          } catch (err) {
+            console.warn('Failed to register custom widgets:', err);
+          }
 
           // Signal all data is ready
           commit('SET_ALL_DATA_READY');
@@ -138,6 +153,7 @@ const store = createStore({
     goalTemplates,
     contentOutputs,
     widgetLayout,
+    widgetDefinitions,
   },
 });
 

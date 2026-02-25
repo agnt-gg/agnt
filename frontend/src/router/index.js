@@ -121,6 +121,18 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'RunsScreen' },
     },
     {
+      path: '/widget-manager',
+      name: 'TerminalWidgetManager',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'WidgetManagerScreen' },
+    },
+    {
+      path: '/widget-forge',
+      name: 'TerminalWidgetForge',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'WidgetForgeScreen' },
+    },
+    {
       path: '/ball-jumper',
       name: 'TerminalBallJumper',
       component: Terminal,
