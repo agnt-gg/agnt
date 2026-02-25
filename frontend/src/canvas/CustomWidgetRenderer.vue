@@ -1,12 +1,24 @@
 <template>
   <div class="cwr-root" :class="['cwr-type-' + widgetType]">
-    <!-- HTML widget: sandboxed iframe -->
+    <!-- External URL iframe -->
     <iframe
-      v-if="widgetType === 'html' || widgetType === 'iframe'"
+      v-if="widgetType === 'iframe'"
+      class="cwr-iframe"
+      :src="config.url || ''"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+      frameborder="0"
+      loading="eager"
+      @load="onIframeLoad"
+    ></iframe>
+
+    <!-- HTML widget: sandboxed iframe with srcdoc -->
+    <iframe
+      v-else-if="widgetType === 'html'"
       class="cwr-iframe"
       :srcdoc="renderedSource"
       sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
       frameborder="0"
+      loading="eager"
       @load="onIframeLoad"
     ></iframe>
 
@@ -65,7 +77,7 @@ export default {
     widgetInstanceId: { type: String, default: '' },
   },
   setup(props) {
-    const isLoading = ref(false);
+    const isLoading = ref(true);
     const error = ref(null);
     let refreshTimer = null;
 
@@ -75,12 +87,6 @@ export default {
 
     // ── HTML rendering ──
     const renderedSource = computed(() => {
-      if (widgetType.value === 'iframe') {
-        // External URL - use srcdoc with redirect
-        const url = config.value.url || '';
-        return `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${url}"></head><body></body></html>`;
-      }
-
       // HTML widget — user source can contain <style>, <script>, and HTML freely
       const html = sourceCode.value || '';
       const themeVars = `
@@ -170,11 +176,22 @@ export default {
     }
 
     onMounted(() => {
+      // Only show loading for iframe-based widgets
+      if (widgetType.value !== 'html' && widgetType.value !== 'iframe') {
+        isLoading.value = false;
+      }
       setupAutoRefresh();
     });
 
     onBeforeUnmount(() => {
       clearAutoRefresh();
+    });
+
+    // Show spinner when iframe source changes
+    watch(renderedSource, () => {
+      if (widgetType.value === 'html' || widgetType.value === 'iframe') {
+        isLoading.value = true;
+      }
     });
 
     watch(() => config.value.refresh_interval, setupAutoRefresh);
