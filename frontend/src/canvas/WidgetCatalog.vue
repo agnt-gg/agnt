@@ -77,14 +77,18 @@ export default {
     const searchQuery = ref('');
     const activeCategory = ref('all');
     const searchInput = ref(null);
+    const refreshKey = ref(0);
 
-    // Access reactive store definitions to trigger recompute when custom widgets change
+    // Track store definitions reactively
     const customDefinitions = computed(() => store.getters['widgetDefinitions/allDefinitions']);
 
     const allCatalogWidgets = computed(() => {
-      // Touch customDefinitions so Vue tracks it as a dependency
-      const _ = customDefinitions.value;
-      return getAllWidgets();
+      // Depend on both the store definitions and refreshKey to ensure recompute
+      const defs = customDefinitions.value;
+      const _ = refreshKey.value;
+      // Build list from registry (includes both built-in and custom widgets)
+      const widgets = getAllWidgets();
+      return widgets;
     });
 
     const categories = computed(() => {
@@ -151,11 +155,12 @@ export default {
       }
     }
 
-    // Auto-focus search on open
+    // Auto-focus search on open + force refresh widget list from registry
     watch(
       () => props.isOpen,
       (open) => {
         if (open) {
+          refreshKey.value++;
           nextTick(() => searchInput.value?.focus());
         } else {
           searchQuery.value = '';

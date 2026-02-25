@@ -419,7 +419,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 0 12px;
+  padding: 6px 12px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   background: none;
@@ -506,8 +506,8 @@ export default {
 .wm-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
-  width: calc(100% - 32px);
+  padding: 16px 0;
+  width: 100%;
 }
 
 .wm-grid {

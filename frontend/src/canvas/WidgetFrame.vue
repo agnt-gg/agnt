@@ -17,7 +17,7 @@
       <span class="wf-icon"><i :class="widgetDef?.icon"></i></span>
       <span class="wf-title">{{ widgetDef?.name }}</span>
       <div class="wf-ctrl">
-        <button @mousedown.stop @click="$emit('collapse', widget.instanceId)">&#9472;</button>
+        <button @mousedown.stop @click="$emit('collapse', widget.instanceId)">{{ widget.collapsed ? '&#43;' : '&#9472;' }}</button>
         <button @mousedown.stop @click="$emit('close', widget.instanceId)">&#10005;</button>
       </div>
     </div>
@@ -28,11 +28,7 @@
     </div>
 
     <!-- Resize handle (hidden for full-screen widgets) -->
-    <div
-      v-if="!widget.collapsed && !isMaximized && showControls"
-      class="wf-resize"
-      @mousedown.prevent.stop="onResizeStart"
-    ></div>
+    <div v-if="!widget.collapsed && !isMaximized && showControls" class="wf-resize" @mousedown.prevent.stop="onResizeStart"></div>
   </div>
 </template>
 
@@ -72,14 +68,7 @@ export default {
           zIndex: props.widget.zIndex || 1,
         };
       }
-      const px = gridToPixel(
-        props.widget.col,
-        props.widget.row,
-        props.widget.cols,
-        props.widget.rows,
-        props.cellWidth,
-        props.cellHeight,
-      );
+      const px = gridToPixel(props.widget.col, props.widget.row, props.widget.cols, props.widget.rows, props.cellWidth, props.cellHeight);
       return {
         left: px.x + 'px',
         top: px.y + 'px',
@@ -336,7 +325,7 @@ export default {
   padding: 0 8px;
   cursor: grab;
   user-select: none;
-  border-bottom: 1px solid var(--color-text-muted, #556);
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 .wf-hdr:active {
