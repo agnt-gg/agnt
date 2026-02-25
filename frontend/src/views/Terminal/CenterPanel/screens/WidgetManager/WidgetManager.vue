@@ -156,6 +156,8 @@ export default {
       if (!store.getters['widgetDefinitions/isLoaded']) {
         store.dispatch('widgetDefinitions/fetchDefinitions');
       }
+
+      document.body.setAttribute('data-page', 'terminal-widget-manager');
     });
 
     const customDefinitions = computed(() => store.getters['widgetDefinitions/allDefinitions']);
@@ -350,7 +352,7 @@ export default {
   flex-wrap: nowrap;
   align-content: flex-start;
   justify-content: flex-start;
-  align-items: flex-start;
+  align-items: center;
   gap: 0;
   width: 100%;
   height: 100%;
@@ -362,10 +364,10 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 0 0 16px;
   border-bottom: 1px solid var(--terminal-border-color);
   flex-shrink: 0;
-  width: calc(100% - 32px);
+  width: 100%;
 }
 
 .wm-header-left {
@@ -467,6 +469,7 @@ export default {
   overflow-x: auto;
   flex-shrink: 0;
   width: calc(100% - 32px);
+  justify-content: center;
 }
 
 .wm-tab {
@@ -508,6 +511,7 @@ export default {
   overflow-y: auto;
   padding: 16px 0;
   width: 100%;
+  max-width: 1048px;
 }
 
 .wm-grid {

@@ -247,6 +247,8 @@ export default {
           activePanel.value = 'config';
         }
       }
+
+      document.body.setAttribute('data-page', 'terminal-widget-forge');
     });
 
     // Sync configJson ↔ form.config
@@ -416,7 +418,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 0px;
+  padding: 0 0 16px;
   border-bottom: 1px solid var(--terminal-border-color);
   flex-shrink: 0;
   width: 100%;

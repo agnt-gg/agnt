@@ -1385,7 +1385,7 @@ body[data-page='terminal-agents'] .main-panel {
   flex-wrap: nowrap;
   align-content: flex-start;
   justify-content: flex-start;
-  align-items: flex-start;
+  align-items: center;
   scrollbar-width: thin !important;
   /* scrollbar-color: var(--color-green) var(--color-dark-navy); */
   scrollbar-color: var(--color-duller-navy) transparent;
