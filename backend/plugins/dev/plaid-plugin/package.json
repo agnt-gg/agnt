@@ -1,0 +1,10 @@
+{
+  "name": "plaid-plugin",
+  "version": "1.0.0",
+  "description": "Plaid banking integration plugin for AGNT - Connect bank accounts, view balances, transactions, transfer money, and more",
+  "type": "module",
+  "main": "plaid-api.js",
+  "dependencies": {
+    "plaid": "^26.0.0"
+  }
+}

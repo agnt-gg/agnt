@@ -1,0 +1,7 @@
+{
+  "name": "bankr-plugin",
+  "version": "2.0.0",
+  "description": "Bankr.bot integration plugin for AGNT — crypto trading, token launching, and self-sustaining AI agents across Base, Ethereum, Polygon, Unichain, and Solana.",
+  "type": "module",
+  "main": "bankr-api.js"
+}

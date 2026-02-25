@@ -1,0 +1,314 @@
+{
+  "name": "bankr-plugin",
+  "version": "2.0.0",
+  "description": "Bankr.bot integration for AGNT — AI-powered crypto trading, token launching, cross-chain swaps, Polymarket betting, and self-sustaining agent infrastructure across Base, Ethereum, Polygon, Unichain, and Solana.",
+  "author": "AGNT Team",
+  "icon": "bankr",
+  "tools": [
+    {
+      "type": "bankr_api",
+      "entryPoint": "./bankr-api.js",
+      "schema": {
+        "title": "Bankr API",
+        "category": "action",
+        "type": "bankr_api",
+        "icon": "bankr",
+        "description": "Interact with Bankr.bot to trade tokens, check prices, launch tokens, sign transactions, manage wallets, and more across Base, Ethereum, Polygon, Unichain, and Solana.",
+        "authRequired": "apiKey",
+        "authProvider": "bankr",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["PROMPT", "GET_JOB", "CANCEL_JOB", "GET_ACCOUNT", "LAUNCH_TOKEN", "CHECK_FEES", "CLAIM_FEES", "SIGN", "SUBMIT_TRANSACTION"],
+            "default": "PROMPT",
+            "description": "The action to perform on Bankr"
+          },
+          "prompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Natural language command (e.g., 'swap $50 ETH to USDC on base', 'price of BTC', 'DCA $10 into ETH daily')",
+            "conditional": {
+              "field": "action",
+              "value": "PROMPT"
+            }
+          },
+          "threadId": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional thread ID for multi-turn conversations",
+            "conditional": {
+              "field": "action",
+              "value": "PROMPT"
+            }
+          },
+          "waitForCompletion": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": true,
+            "description": "If true, polls the job until completion. If false, returns the jobId immediately.",
+            "conditional": {
+              "field": "action",
+              "value": "PROMPT"
+            }
+          },
+          "timeoutMs": {
+            "type": "number",
+            "inputType": "text",
+            "default": 120000,
+            "required": false,
+            "description": "Max wait time for job completion in ms (default: 120000 = 2 min)",
+            "conditional": {
+              "field": "action",
+              "value": ["PROMPT", "LAUNCH_TOKEN"]
+            }
+          },
+          "jobId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Job ID to check status or cancel",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_JOB", "CANCEL_JOB"]
+            }
+          },
+          "name": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Token name (e.g., 'My Agent Token')",
+            "conditional": {
+              "field": "action",
+              "value": "LAUNCH_TOKEN"
+            }
+          },
+          "symbol": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Token symbol (e.g., 'AGENT')",
+            "conditional": {
+              "field": "action",
+              "value": "LAUNCH_TOKEN"
+            }
+          },
+          "chain": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["base", "ethereum", "polygon", "unichain", "solana"],
+            "default": "base",
+            "description": "Blockchain network. Token launch supports base/solana. Sign supports base/ethereum/polygon/unichain. Submit supports all 5.",
+            "conditional": {
+              "field": "action",
+              "value": ["LAUNCH_TOKEN", "SIGN", "SUBMIT_TRANSACTION"]
+            }
+          },
+          "vaultPercent": {
+            "type": "number",
+            "inputType": "text",
+            "default": 0,
+            "required": false,
+            "description": "Percentage of supply to vault (0-90%). Signals long-term commitment to holders.",
+            "conditional": {
+              "field": "action",
+              "value": "LAUNCH_TOKEN"
+            }
+          },
+          "vestingCliffDays": {
+            "type": "number",
+            "inputType": "text",
+            "default": 7,
+            "required": false,
+            "description": "Vesting cliff in days (minimum 7 for Base). No tokens released until cliff passes.",
+            "conditional": {
+              "field": "action",
+              "value": "LAUNCH_TOKEN"
+            }
+          },
+          "vestingDurationDays": {
+            "type": "number",
+            "inputType": "text",
+            "default": 30,
+            "required": false,
+            "description": "Total vesting duration in days. Tokens release linearly after cliff.",
+            "conditional": {
+              "field": "action",
+              "value": "LAUNCH_TOKEN"
+            }
+          },
+          "feeSplitAddress": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional address to route your fee share to (e.g., treasury, collaborator). Immutable after deploy.",
+            "conditional": {
+              "field": "action",
+              "value": "LAUNCH_TOKEN"
+            }
+          },
+          "tokenName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Token name to check or claim fees for",
+            "conditional": {
+              "field": "action",
+              "value": ["CHECK_FEES", "CLAIM_FEES"]
+            }
+          },
+          "signType": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["message", "typedData", "transaction"],
+            "default": "message",
+            "description": "Type of data to sign",
+            "conditional": {
+              "field": "action",
+              "value": "SIGN"
+            }
+          },
+          "data": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The data to sign — plain text message, JSON typed data (EIP-712), or serialized transaction object",
+            "conditional": {
+              "field": "action",
+              "value": "SIGN"
+            }
+          },
+          "signedTransaction": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The signed transaction data (hex string for EVM, base64/base58 for Solana)",
+            "conditional": {
+              "field": "action",
+              "value": "SUBMIT_TRANSACTION"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation completed successfully"
+          },
+          "message": {
+            "type": "string",
+            "description": "The text response from Bankr's AI agent"
+          },
+          "richData": {
+            "type": "object",
+            "description": "Structured data (prices, balances, transaction details, etc.)"
+          },
+          "jobId": {
+            "type": "string",
+            "description": "The job ID for tracking async operations"
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Thread ID for continuing multi-turn conversations"
+          },
+          "status": {
+            "type": "string",
+            "description": "Job status: queued, processing, completed, failed, cancelled"
+          },
+          "username": {
+            "type": "string",
+            "description": "Your Bankr username (GET_ACCOUNT)"
+          },
+          "wallets": {
+            "type": "object",
+            "description": "Wallet addresses across all chains (GET_ACCOUNT)"
+          },
+          "bankrClub": {
+            "type": "boolean",
+            "description": "Whether you have Bankr Club membership (GET_ACCOUNT)"
+          },
+          "socials": {
+            "type": "object",
+            "description": "Connected social accounts (GET_ACCOUNT)"
+          },
+          "tokenAddress": {
+            "type": "string",
+            "description": "Deployed token contract address (LAUNCH_TOKEN)"
+          },
+          "chain": {
+            "type": "string",
+            "description": "Chain used for the operation"
+          },
+          "fees": {
+            "type": "object",
+            "description": "Fee information (CHECK_FEES / CLAIM_FEES)"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Cryptographic signature (SIGN)"
+          },
+          "signerAddress": {
+            "type": "string",
+            "description": "Wallet address that produced the signature (SIGN)"
+          },
+          "transactionHash": {
+            "type": "string",
+            "description": "On-chain transaction hash (SUBMIT_TRANSACTION)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the operation failed"
+          }
+        }
+      }
+    },
+    {
+      "type": "bankr_fee_monitor",
+      "entryPoint": "./bankr-fee-monitor.js",
+      "schema": {
+        "title": "Bankr Fee Monitor",
+        "category": "trigger",
+        "type": "bankr_fee_monitor",
+        "icon": "bankr",
+        "description": "Monitor your token's accumulated trading fees and trigger workflows when fees exceed a threshold. Use for auto-claiming, reinvesting, or alerting on fee revenue.",
+        "authRequired": "apiKey",
+        "authProvider": "bankr",
+        "parameters": {
+          "tokenName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Name of the token to monitor fees for (e.g., 'AGENT')"
+          },
+          "thresholdUsd": {
+            "type": "number",
+            "inputType": "text",
+            "default": 10,
+            "description": "Minimum fee accumulation (USD equivalent) to trigger the workflow"
+          },
+          "pollIntervalMs": {
+            "type": "number",
+            "inputType": "text",
+            "default": 300000,
+            "description": "How often to check fees in ms (default: 300000 = 5 minutes)"
+          }
+        },
+        "outputs": {
+          "tokenName": {
+            "type": "string",
+            "description": "The token being monitored"
+          },
+          "feeAmount": {
+            "type": "number",
+            "description": "Current unclaimed fee amount (native token)"
+          },
+          "feeCurrency": {
+            "type": "string",
+            "description": "Currency of the fees (WETH, SOL, etc.)"
+          },
+          "feeUsdValue": {
+            "type": "number",
+            "description": "Estimated USD value of unclaimed fees"
+          },
+          "lastChecked": {
+            "type": "string",
+            "description": "ISO timestamp of the last check"
+          }
+        }
+      }
+    }
+  ]
+}

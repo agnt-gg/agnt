@@ -1,0 +1,380 @@
+{
+  "name": "plaid-plugin",
+  "version": "1.0.0",
+  "description": "Plaid banking integration plugin for AGNT - Connect bank accounts, view balances, transactions, transfer money, and more across 12,000+ financial institutions",
+  "author": "AGNT",
+  "icon": "plaid",
+  "tools": [
+    {
+      "type": "plaid-link",
+      "entryPoint": "./plaid-link.js",
+      "schema": {
+        "title": "Plaid Link",
+        "category": "action",
+        "type": "plaid-link",
+        "icon": "plaid",
+        "description": "Connect bank accounts via Plaid Link. Create link tokens, exchange public tokens for access tokens, and manage connected bank items.",
+        "authRequired": "apiKey",
+        "authProvider": "plaid",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "CREATE_LINK_TOKEN",
+              "EXCHANGE_PUBLIC_TOKEN",
+              "GET_ITEM",
+              "UPDATE_ITEM",
+              "REMOVE_ITEM",
+              "SEARCH_INSTITUTIONS",
+              "GET_INSTITUTION"
+            ],
+            "description": "The Plaid Link operation to perform"
+          },
+          "products": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated Plaid products to enable (e.g., 'auth,transactions,balance,identity,investments,liabilities,transfer'). Defaults to 'auth,transactions'.",
+            "default": "auth,transactions",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_LINK_TOKEN", "SEARCH_INSTITUTIONS"]
+            }
+          },
+          "countryCodes": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated country codes (e.g., 'US,CA,GB'). Defaults to 'US'.",
+            "default": "US",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_LINK_TOKEN", "SEARCH_INSTITUTIONS"]
+            }
+          },
+          "language": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["en", "es", "fr", "nl", "de"],
+            "default": "en",
+            "description": "Language for Plaid Link UI",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_LINK_TOKEN"
+            }
+          },
+          "publicToken": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The public_token received from Plaid Link to exchange for an access_token",
+            "conditional": {
+              "field": "action",
+              "value": "EXCHANGE_PUBLIC_TOKEN"
+            }
+          },
+          "accessToken": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The access_token for an existing connected bank item",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_ITEM", "UPDATE_ITEM", "REMOVE_ITEM"]
+            }
+          },
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Search query for financial institutions (e.g., 'Chase', 'Wells Fargo')",
+            "conditional": {
+              "field": "action",
+              "value": "SEARCH_INSTITUTIONS"
+            }
+          },
+          "institutionId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The Plaid institution ID (e.g., 'ins_3' for Chase)",
+            "conditional": {
+              "field": "action",
+              "value": "GET_INSTITUTION"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation succeeded"
+          },
+          "result": {
+            "type": "object",
+            "description": "The result of the Plaid Link operation (link_token, access_token, item info, etc.)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the operation failed"
+          }
+        }
+      }
+    },
+    {
+      "type": "plaid-api",
+      "entryPoint": "./plaid-api.js",
+      "schema": {
+        "title": "Plaid API",
+        "category": "action",
+        "type": "plaid-api",
+        "icon": "plaid",
+        "description": "Interact with connected bank accounts - get balances, transactions, account/routing numbers, identity info, investments, and initiate transfers.",
+        "authRequired": "apiKey",
+        "authProvider": "plaid",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "GET_ACCOUNTS",
+              "GET_BALANCE",
+              "SYNC_TRANSACTIONS",
+              "GET_TRANSACTIONS",
+              "GET_RECURRING_TRANSACTIONS",
+              "REFRESH_TRANSACTIONS",
+              "GET_AUTH",
+              "GET_IDENTITY",
+              "MATCH_IDENTITY",
+              "GET_INVESTMENT_HOLDINGS",
+              "GET_INVESTMENT_TRANSACTIONS",
+              "GET_LIABILITIES",
+              "CREATE_TRANSFER",
+              "GET_TRANSFER",
+              "LIST_TRANSFERS"
+            ],
+            "description": "The banking operation to perform"
+          },
+          "accessToken": {
+            "type": "string",
+            "inputType": "text",
+            "required": true,
+            "description": "The access_token for the connected bank item (obtained via Plaid Link)"
+          },
+          "accountIds": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional comma-separated account IDs to filter results to specific accounts",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "GET_ACCOUNTS",
+                "GET_BALANCE",
+                "SYNC_TRANSACTIONS",
+                "GET_TRANSACTIONS",
+                "GET_RECURRING_TRANSACTIONS",
+                "GET_AUTH",
+                "GET_IDENTITY",
+                "GET_INVESTMENT_HOLDINGS",
+                "GET_INVESTMENT_TRANSACTIONS",
+                "GET_LIABILITIES"
+              ]
+            }
+          },
+          "cursor": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Pagination cursor from a previous SYNC_TRANSACTIONS call. Leave empty for initial sync.",
+            "conditional": {
+              "field": "action",
+              "value": "SYNC_TRANSACTIONS"
+            }
+          },
+          "startDate": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Start date in YYYY-MM-DD format",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_TRANSACTIONS", "GET_INVESTMENT_TRANSACTIONS"]
+            }
+          },
+          "endDate": {
+            "type": "string",
+            "inputType": "text",
+            "description": "End date in YYYY-MM-DD format",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_TRANSACTIONS", "GET_INVESTMENT_TRANSACTIONS"]
+            }
+          },
+          "count": {
+            "type": "number",
+            "inputType": "number",
+            "default": 100,
+            "description": "Maximum number of transactions per page (max 500)",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_TRANSACTIONS", "SYNC_TRANSACTIONS"]
+            }
+          },
+          "offset": {
+            "type": "number",
+            "inputType": "number",
+            "default": 0,
+            "description": "Number of transactions to skip (for pagination with GET_TRANSACTIONS)",
+            "conditional": {
+              "field": "action",
+              "value": "GET_TRANSACTIONS"
+            }
+          },
+          "legalName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Legal name to verify against bank records",
+            "conditional": {
+              "field": "action",
+              "value": "MATCH_IDENTITY"
+            }
+          },
+          "email": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Email to verify against bank records",
+            "conditional": {
+              "field": "action",
+              "value": "MATCH_IDENTITY"
+            }
+          },
+          "phone": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Phone number to verify against bank records",
+            "conditional": {
+              "field": "action",
+              "value": "MATCH_IDENTITY"
+            }
+          },
+          "transferAccountId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The account ID to transfer from/to",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_TRANSFER"
+            }
+          },
+          "transferType": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["debit", "credit"],
+            "description": "Transfer type: 'debit' pulls money from user, 'credit' pushes money to user",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_TRANSFER"
+            }
+          },
+          "transferNetwork": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["ach", "same-day-ach", "rtp"],
+            "default": "ach",
+            "description": "Transfer network to use",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_TRANSFER"
+            }
+          },
+          "transferAmount": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Transfer amount as a decimal string (e.g., '100.00')",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_TRANSFER"
+            }
+          },
+          "transferDescription": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Description for the transfer (max 15 chars for ACH)",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_TRANSFER"
+            }
+          },
+          "transferId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The transfer ID to look up",
+            "conditional": {
+              "field": "action",
+              "value": "GET_TRANSFER"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation succeeded"
+          },
+          "result": {
+            "type": "object",
+            "description": "The result of the Plaid API operation (accounts, transactions, balances, transfers, etc.)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the operation failed"
+          }
+        }
+      }
+    },
+    {
+      "type": "plaid-webhook",
+      "entryPoint": "./plaid-webhook.js",
+      "schema": {
+        "title": "Plaid Webhook",
+        "category": "trigger",
+        "type": "plaid-webhook",
+        "icon": "plaid",
+        "description": "Listen for Plaid webhook events - transaction updates, auth changes, transfer status changes, and more.",
+        "authRequired": "apiKey",
+        "authProvider": "plaid",
+        "parameters": {
+          "webhookFilter": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "ALL",
+              "TRANSACTIONS",
+              "AUTH",
+              "IDENTITY",
+              "INVESTMENTS_TRANSACTIONS",
+              "LIABILITIES",
+              "ITEM",
+              "TRANSFER"
+            ],
+            "default": "ALL",
+            "description": "Filter which webhook event types trigger the workflow"
+          }
+        },
+        "outputs": {
+          "webhookType": {
+            "type": "string",
+            "description": "The type of webhook (e.g., 'TRANSACTIONS', 'ITEM', 'TRANSFER')"
+          },
+          "webhookCode": {
+            "type": "string",
+            "description": "The specific webhook code (e.g., 'SYNC_UPDATES_AVAILABLE', 'DEFAULT_UPDATE')"
+          },
+          "itemId": {
+            "type": "string",
+            "description": "The item_id associated with the webhook event"
+          },
+          "error": {
+            "type": "object",
+            "description": "Error information if the webhook is reporting an error"
+          },
+          "payload": {
+            "type": "object",
+            "description": "The full webhook payload data"
+          }
+        }
+      }
+    }
+  ]
+}
