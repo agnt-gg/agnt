@@ -4,7 +4,7 @@
 
 AGNT is an Electron-based desktop AI agent framework for building, deploying, and orchestrating intelligent workflows. It combines a Vue.js frontend, Express.js backend, and Electron shell to provide a cross-platform desktop application for managing AI agents, workflows, and plugins.
 
-**Version**: 0.3.7
+**Version**: 0.5.0
 **Platform**: Windows, macOS, GNU/Linux
 **Website**: https://agnt.gg
 **Author**: Nathan Wilbanks
@@ -12,11 +12,13 @@ AGNT is an Electron-based desktop AI agent framework for building, deploying, an
 ### Local-First Architecture
 
 **AGNT is designed for:**
+
 - ✅ Single users - Personal desktop or laptop
 - ✅ Families - Shared Docker backend across household
 - ✅ Small teams - 2-10 people in same organization
 
 **NOT designed for:**
+
 - ❌ Multi-tenant SaaS - Hundreds of unrelated users
 - ❌ Public hosting - Each org self-hosts their own
 - ❌ Large enterprises - 50+ concurrent users
@@ -26,6 +28,7 @@ AGNT is an Electron-based desktop AI agent framework for building, deploying, an
 ## Architecture
 
 ### Tech Stack
+
 - **Desktop Shell**: Electron (v33.0.2)
 - **Backend**: Express.js + Node.js (ES Modules)
 - **Frontend**: Vue.js 3 + Vite
@@ -34,6 +37,7 @@ AGNT is an Electron-based desktop AI agent framework for building, deploying, an
 - **Testing**: Playwright (E2E)
 
 ### Application Structure
+
 ```
 ┌─────────────────────────────────────┐
 │   Electron Main Process (main.js)   │
@@ -72,11 +76,13 @@ npm start            # Backend runs on port 3333
 ```
 
 **Frontend Dev Server** (recommended for rapid iteration):
+
 - Frontend runs on Vite dev server (port 5173)
 - Hot module replacement (HMR) for instant updates
 - Electron window loads from dev server
 
 **Production Mode** (test built frontend):
+
 ```bash
 # Build frontend first
 cd frontend && npm run build && cd ..
@@ -86,6 +92,7 @@ npm start
 ```
 
 ### User Manages Dev Server
+
 - **DO NOT** start/stop the frontend dev server automatically
 - User controls `npm run dev` in a separate terminal
 - Frontend changes appear instantly via HMR
@@ -140,6 +147,7 @@ npm start
 ## Common Commands
 
 ### Development
+
 ```bash
 npm start                      # Start Electron app (dev or prod mode)
 npm run dev                    # Start backend server only (port 3333)
@@ -147,6 +155,7 @@ cd frontend && npm run dev     # Start frontend dev server (port 5173)
 ```
 
 ### Building
+
 ```bash
 # Build frontend (ALWAYS do this before building Electron)
 cd frontend && npm run build && cd ..
@@ -162,12 +171,14 @@ npm run build:all              # All platforms
 ```
 
 ### Testing
+
 ```bash
 npm run test:e2e               # Run all Playwright tests
 npx playwright test tests/e2e/agents.spec.js  # Specific test
 ```
 
 ### Plugin Development
+
 ```bash
 # Create plugin in backend/plugins/dev/my-plugin/
 # Build it:
@@ -180,11 +191,13 @@ node build-plugin.js my-plugin
 ## Git Commits
 
 ### Commit Message Style
+
 - **NO** Claude attribution (`Co-Authored-By: Claude` or `Generated with Claude Code`)
 - Write professional, descriptive commit messages
 - Use conventional format: `type: description`
 
 **Examples:**
+
 ```bash
 git commit -m "feat: add goal evaluation reports"
 git commit -m "fix: resolve workflow execution race condition"
@@ -193,9 +206,11 @@ git commit -m "refactor: simplify agent chat streaming"
 ```
 
 ### Committing Changes
+
 Only create commits when requested by the user. If unclear, ask first.
 
 1. Check status and diff:
+
    ```bash
    git status
    git diff
@@ -203,6 +218,7 @@ Only create commits when requested by the user. If unclear, ask first.
    ```
 
 2. Stage and commit:
+
    ```bash
    git add <files>
    git commit -m "type: description"
@@ -217,18 +233,21 @@ Only create commits when requested by the user. If unclear, ask first.
 ## Code Style & Conventions
 
 ### Backend (Express.js)
+
 - **ES Modules**: Use `import/export`, not `require/module.exports`
 - **Async/Await**: Prefer over callbacks
 - **Error Handling**: Always wrap async routes in try-catch
 - **Logging**: Use `console.log` for important events (structured logs preferred)
 
 ### Frontend (Vue.js)
+
 - **Composition API**: Prefer over Options API for new code
 - **TypeScript**: Not currently used (JavaScript + JSDoc for types)
 - **CSS Scoped**: Use `<style scoped>` in Single File Components
 - **API Calls**: Always use services from `frontend/src/services/`
 
 ### Plugin System
+
 - Plugins are `.agnt` files (ZIP archives)
 - Each plugin has `manifest.json` with tools/actions/widgets
 - Tools implement `execute(params, inputData, workflowEngine)`
@@ -258,6 +277,7 @@ GROQ_API_KEY=
 ## Building for Distribution
 
 ### Pre-build Checklist
+
 1. ✅ Build frontend: `cd frontend && npm run build && cd ..`
 2. ✅ Test production mode: `npm start` (loads from `frontend/dist`)
 3. ✅ Run E2E tests: `npm run test:e2e`
@@ -267,27 +287,30 @@ GROQ_API_KEY=
 ### Platform-Specific Notes
 
 **Windows**:
+
 - Requires `windows-build-tools` for native modules
 - Output: `dist/AGNT-{version}-win-x64.exe` (NSIS installer)
 
 **macOS**:
+
 - Requires Xcode Command Line Tools
 - Builds both x64 and ARM64 (Apple Silicon)
 - Output: `dist/AGNT-{version}-mac-{arch}.dmg` and `.zip`
 - **Code Signing**: Disabled by default (`hardenedRuntime: false`)
 
 **GNU/Linux**:
+
 - Requires build tools: `build-essential libx11-dev libxkbfile-dev`
 - Output: AppImage, DEB, RPM
 - See `docs/_LINUX-BUILD-INSTRUCTIONS.md`
 
 ### Build Outputs
 
-| Platform | Formats            | Architecture | Notes                    |
-| -------- | ------------------ | ------------ | ------------------------ |
-| Windows  | NSIS (.exe)        | x64          | One-click installer      |
-| macOS    | DMG, ZIP           | x64, ARM64   | Universal builds         |
-| GNU/Linux    | AppImage, DEB, RPM | x64          | Portable + distro pkgs   |
+| Platform  | Formats            | Architecture | Notes                  |
+| --------- | ------------------ | ------------ | ---------------------- |
+| Windows   | NSIS (.exe)        | x64          | One-click installer    |
+| macOS     | DMG, ZIP           | x64, ARM64   | Universal builds       |
+| GNU/Linux | AppImage, DEB, RPM | x64          | Portable + distro pkgs |
 
 All outputs saved to `dist/` (gitignored).
 
@@ -303,6 +326,7 @@ AGNT_HOME=/home/youruser docker-compose up -d
 ```
 
 **Data Directory:** `~/.agnt/data/`
+
 - SQLite database: `~/.agnt/data/agnt.db`
 - Plugins: `~/.agnt/data/plugins/`
 - Logs: `~/.agnt/logs/`
@@ -314,6 +338,7 @@ See `docs/SELF_HOSTING.md` for complete Docker setup, networking, and configurat
 ## AI Provider Support
 
 Supported providers (9+):
+
 - **OpenAI**: GPT-4, GPT-4 Turbo, GPT-3.5
 - **Anthropic**: Claude 3.5 Sonnet, Claude 3 Opus/Sonnet/Haiku
 - **Google**: Gemini Pro, Gemini Ultra
@@ -337,6 +362,7 @@ AGNT uses a **VSCode-style plugin distribution** system:
 5. **Hot Reload**: Plugins can be installed/uninstalled without restart
 
 **Plugin Types**:
+
 - **Tools**: Workflow actions (API calls, data transforms, etc.)
 - **Triggers**: Workflow starters (webhooks, schedules, etc.)
 - **Widgets**: UI components for workflows
@@ -346,6 +372,7 @@ See `backend/plugins/README.md` for plugin development guide.
 ## Testing
 
 ### E2E Tests (Playwright)
+
 ```bash
 # Run all tests
 npm run test:e2e
@@ -358,6 +385,7 @@ npx playwright test --headed --debug
 ```
 
 Test files in `tests/e2e/`:
+
 - `agents.spec.js` - Agent creation and chat
 - `workflows.spec.js` - Workflow designer
 - `plugins.spec.js` - Plugin installation
@@ -367,19 +395,25 @@ See `docs/_TESTS_INSTRUCTIONS.md` for more details.
 ## Troubleshooting
 
 ### Frontend Not Loading
+
 1. Check if frontend dev server is running: `cd frontend && npm run dev`
 2. Or build frontend: `cd frontend && npm run build`
 3. Hard refresh browser: Ctrl+Shift+R (GNU/Linux/Win) or Cmd+Shift+R (Mac)
 
 ### Backend Port Conflicts
+
 If port 3333 is in use, change in `.env`:
+
 ```bash
 PORT=3334
 ```
+
 Also update `backend/server.js` CORS origins.
 
 ### Native Module Errors
+
 Rebuild native modules for Electron:
+
 ```bash
 npm run rebuild
 ```
@@ -387,6 +421,7 @@ npm run rebuild
 See `docs/_REBUILD-INSTRUCTIONS.md` for native module rebuilding.
 
 ### Plugin Not Loading
+
 1. Check plugin manifest: `backend/plugins/dev/my-plugin/manifest.json`
 2. Rebuild plugin: `node backend/plugins/build-plugin.js my-plugin`
 3. Check logs: Backend console shows plugin load errors
@@ -394,42 +429,48 @@ See `docs/_REBUILD-INSTRUCTIONS.md` for native module rebuilding.
 ## Security Notes
 
 ### Sensitive Files (NEVER COMMIT)
+
 - `.env` (API keys, secrets)
 - `*mcp.json` (MCP server configs with tokens)
 - `*.db`, `*.sqlite`, `*.sqlite3` (user data)
 - `*.p12`, `*.pfx`, `*.key`, `*.pem` (code signing certs)
 
 ### API Key Storage
+
 - User API keys stored locally (SQLite or filesystem)
 - **NEVER** hardcode API keys in source
 - Use `.env.example` as template (no real keys)
 
 ### Puppeteer/Playwright
+
 - Browsers **NOT** bundled (security + size reasons)
 - Uses system-installed Chrome/Edge/Firefox
 - `PUPPETEER_SKIP_DOWNLOAD=true` in environment
 
 ## Documentation
 
-| Document                                                     | Description                  |
-| ------------------------------------------------------------ | ---------------------------- |
-| [📚 API Documentation](docs/_API-DOCUMENTATION.md)           | REST API reference           |
-| [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)         | Detailed build guide         |
-| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md)    | GNU/Linux-specific setup         |
-| [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                | Docker deployment & hosting  |
-| [🔌 Plugin Development](backend/plugins/README.md)           | Creating custom plugins      |
-| [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)            | Native module rebuilding     |
-| [🧪 Testing Instructions](docs/_TESTS_INSTRUCTIONS.md)       | E2E test setup and usage     |
+| Document                                                      | Description                 |
+| ------------------------------------------------------------- | --------------------------- |
+| [📚 API Documentation](docs/_API-DOCUMENTATION.md)            | REST API reference          |
+| [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)          | Detailed build guide        |
+| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup    |
+| [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                 | Docker deployment & hosting |
+| [🔌 Plugin Development](backend/plugins/README.md)            | Creating custom plugins     |
+| [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)             | Native module rebuilding    |
+| [🧪 Testing Instructions](docs/_TESTS_INSTRUCTIONS.md)        | E2E test setup and usage    |
 
 ## Meta-Instructions
 
 ### Cross-Repository Awareness
+
 When working on AGNT:
+
 1. **Read CLAUDE.md** at the start of each session
 2. If user mentions other repos (unsandbox.com, etc.), read their CLAUDE.md too
 3. Each repo has unique conventions - respect them
 
 ### Working with Claude
+
 - **Research vs. Implementation**: Clearly distinguish between exploration (reading files, searching) and implementation (writing code)
 - **Ask Before Committing**: Only create git commits when explicitly requested
 - **No Time Estimates**: Never give time estimates for tasks
