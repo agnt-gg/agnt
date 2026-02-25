@@ -334,7 +334,22 @@ async function universalChatHandler(req, res, context = {}) {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
+  // Abort controller for cancelling LLM streams when client disconnects
+  const streamAbortController = new AbortController();
+  let isClientDisconnected = false;
+
+  // Use res.on('close') — fires when the *response* connection is closed by the client.
+  // req.on('close') can fire prematurely once the request body is consumed.
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      isClientDisconnected = true;
+      streamAbortController.abort();
+      console.log(`[Stream Abort] Client disconnected during ${chatType} chat, aborting LLM stream`);
+    }
+  });
+
   const sendEvent = (eventName, data) => {
+    if (isClientDisconnected) return;
     try {
       // Send via SSE (Server-Sent Events) to current client
       res.write(`event: ${eventName}\n`);
@@ -405,6 +420,8 @@ async function universalChatHandler(req, res, context = {}) {
     provider,
     model,
     normalizedProvider,
+    // Abort signal for cancelling LLM streams
+    abortSignal: streamAbortController.signal,
   };
 
   try {
@@ -715,7 +732,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     let currentRound = 0;
     const toolExecutionDetails = [];
 
-    while (toolCalls && toolCalls.length > 0 && currentRound < config.maxToolRounds) {
+    while (toolCalls && toolCalls.length > 0 && currentRound < config.maxToolRounds && !isClientDisconnected) {
       currentRound++;
       console.log(`[Tool Loop] Round ${currentRound}: Executing ${toolCalls.length} tool(s)`);
 

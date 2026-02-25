@@ -149,6 +149,27 @@
       </div>
     </Teleport>
 
+    <!-- Visualization Fullscreen Modal (Chart.js, D3, Three.js) -->
+    <Teleport to="body">
+      <div v-if="showVizModal" class="html-preview-modal" @click="closeVizModal">
+        <div class="html-preview-content" @click.stop>
+          <div class="html-preview-header">
+            <h3>{{ vizModalTitle }}</h3>
+            <div class="html-preview-header-actions">
+              <button class="share-preview-btn" @click="openShareModal(vizModalHTML)" :disabled="isSharing">
+                <span class="btn-icon">{{ isSharing ? '⏳' : '🚀' }}</span>
+                <span class="btn-text">{{ isSharing ? 'Sharing...' : 'Share' }}</span>
+              </button>
+              <button class="close-preview-btn" @click="closeVizModal">✕</button>
+            </div>
+          </div>
+          <div class="html-preview-body">
+            <iframe :srcdoc="vizModalHTML" class="html-preview-iframe" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"></iframe>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Share Modal - Teleported to body -->
     <Teleport to="body">
       <div v-if="showShareModal" class="share-modal-overlay" @click="closeShareModal">
@@ -231,17 +252,48 @@
 </template>
 
 <script>
-import { computed, ref, onMounted, onUpdated, nextTick } from 'vue';
+import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import showdown from 'showdown';
 import hljs from 'highlight.js';
-import mermaid from 'mermaid';
+import { Chart, registerables } from 'chart.js';
+import * as d3 from 'd3';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+// Pre-bundle common Three.js addons so LLM dynamic imports resolve locally
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { DragControls } from 'three/examples/jsm/controls/DragControls.js';
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
+import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
+import { ParametricGeometry } from 'three/examples/jsm/geometries/ParametricGeometry.js';
+
+// Addon registry for sandboxed LLM code (resolves dynamic imports locally)
+const THREE_ADDONS = {
+  OrbitControls, GLTFLoader, FontLoader, TextGeometry,
+  EffectComposer, RenderPass, UnrealBloomPass,
+  DragControls, TransformControls,
+  FBXLoader, OBJLoader, MTLLoader, SVGLoader,
+  RoundedBoxGeometry, ConvexGeometry, ParametricGeometry,
+};
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/atom-one-dark.css';
+
 import defaultAvatar from '@/assets/images/annie-avatar.png';
 import ProviderSetup from './ProviderSetup.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/../user.config.js';
+
+Chart.register(...registerables);
 
 // Simple showdown converter like in response.js
 const markdownConverter = new showdown.Converter({
@@ -253,14 +305,46 @@ const markdownConverter = new showdown.Converter({
   ghCodeBlocks: true,
   preserveIndent: true,
   extensions: [
-    // Add a custom extension to wrap Mermaid code blocks in divs with class "mermaid"
     function () {
       return [
         {
           type: 'output',
           filter: function (text) {
-            // Match code blocks with language "mermaid"
-            return text.replace(/<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g, '<div class="mermaid">$1</div>');
+            // Simple hash for deterministic IDs from content
+            const hashCode = (s) => {
+              let h = 0;
+              for (let i = 0; i < s.length; i++) {
+                h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+              }
+              return Math.abs(h).toString(36);
+            };
+
+            // Convert ```chartjs code blocks into chart containers
+            let blockIndex = 0;
+            let result = text.replace(
+              /<pre><code class="[^"]*language-chartjs[^"]*">([\s\S]*?)<\/code><\/pre>/g,
+              (match, config) => {
+                const id = 'chart-' + hashCode(config) + '-' + blockIndex++;
+                return `<div class="chartjs-container" data-chart-id="${id}"><canvas id="${id}"></canvas><code class="chartjs-config" style="display:none">${config}</code></div>`;
+              },
+            );
+            // Convert ```d3 code blocks into D3 containers
+            result = result.replace(
+              /<pre><code class="[^"]*language-d3[^"]*">([\s\S]*?)<\/code><\/pre>/g,
+              (match, code) => {
+                const id = 'd3-' + hashCode(code) + '-' + blockIndex++;
+                return `<div class="d3-container" data-d3-id="${id}"><code class="d3-code" style="display:none">${code}</code></div>`;
+              },
+            );
+            // Convert ```threejs code blocks into Three.js containers
+            result = result.replace(
+              /<pre><code class="[^"]*language-threejs[^"]*">([\s\S]*?)<\/code><\/pre>/g,
+              (match, code) => {
+                const id = 'three-' + hashCode(code) + '-' + blockIndex++;
+                return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${code}</code></div>`;
+              },
+            );
+            return result;
           },
         },
       ];
@@ -306,70 +390,6 @@ export default {
   },
   emits: ['toggle-tool', 'provider-connected', 'open-html-preview'],
   setup(props, { emit }) {
-    // Initialize Mermaid with minimal theming to reduce inline styles
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: 'dark',
-      securityLevel: 'loose',
-      fontFamily: 'Arial, sans-serif',
-      fontSize: 16,
-      // Disable as many inline styles as possible
-      themeVariables: {
-        primaryColor: 'transparent',
-        primaryTextColor: '#fff',
-        primaryBorderColor: 'transparent',
-        lineColor: '#5E5E5E',
-        secondaryColor: 'transparent',
-        tertiaryColor: 'transparent',
-        background: 'transparent',
-        mainBkg: 'transparent',
-        secondBkg: 'transparent',
-        tertiaryBkg: 'transparent',
-        primaryBorderColor: 'transparent',
-        secondaryBorderColor: 'transparent',
-        tertiaryBorderColor: 'transparent',
-        lineColor: '#5E5E5E',
-        textColor: '#fff',
-        nodeTextColor: '#fff',
-      },
-      // Configure Mermaid to use full width
-      flowchart: {
-        useMaxWidth: true,
-        htmlLabels: true,
-        curve: 'linear',
-        // Add text wrapping configuration
-        wrap: true,
-        padding: 10,
-      },
-      sequence: {
-        useMaxWidth: true,
-        wrap: true,
-      },
-      gantt: {
-        useMaxWidth: true,
-        wrap: true,
-      },
-      class: {
-        useMaxWidth: true,
-        wrap: true,
-      },
-      state: {
-        useMaxWidth: true,
-        wrap: true,
-      },
-      pie: {
-        useMaxWidth: true,
-        wrap: true,
-      },
-      journey: {
-        useMaxWidth: true,
-        wrap: true,
-      },
-      mindmap: {
-        useMaxWidth: true,
-        wrap: true,
-      },
-    });
     // Get Vuex store for auth token
     const store = useStore();
 
@@ -377,6 +397,16 @@ export default {
     const showPreviewModal = ref(false);
     const previewHTML = ref('');
     const previewIframe = ref(null);
+    const chartInstances = ref([]);
+    const renderedChartIds = new Set();
+    const renderedD3Ids = new Set();
+    const renderedThreeIds = new Set();
+    const threeInstances = ref([]);
+
+    // Visualization fullscreen modal state
+    const showVizModal = ref(false);
+    const vizModalTitle = ref('');
+    const vizModalHTML = ref('');
 
     // Share to AGNT Creations state
     const showShareModal = ref(false);
@@ -436,6 +466,114 @@ export default {
       showPreviewModal.value = false;
       previewHTML.value = '';
       // Restore body scroll
+      document.body.style.overflow = '';
+    };
+
+    // Build a self-contained HTML document for fullscreen iframe rendering
+    const buildVizHTML = (container, type) => {
+      const sourceCode = container.getAttribute('data-source-code') || '';
+      if (!sourceCode) return null;
+
+      if (type === 'chartjs') {
+        return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"><\/script>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;display:flex;align-items:center;justify-content:center;height:100vh;padding:24px}canvas{max-width:100%;max-height:100%}</style>
+</head><body><canvas id="chart"></canvas><script>
+try{const config=${sourceCode};
+config.options=config.options||{};config.options.responsive=true;config.options.maintainAspectRatio=true;
+config.options.plugins=config.options.plugins||{};config.options.plugins.legend=config.options.plugins.legend||{};
+config.options.plugins.legend.labels=config.options.plugins.legend.labels||{};
+config.options.plugins.legend.labels.color=config.options.plugins.legend.labels.color||'#e0e0e0';
+const palette=['#e53d8f','#12e0ff','#19ef83','#ffd700','#7d3de5','#ff9500','#ff4444','#d13de5'];
+const chartType=config.type||'bar';
+if(['bar','line','scatter','bubble'].includes(chartType)){
+config.options.scales=config.options.scales||{};
+config.options.scales.x=config.options.scales.x||{};config.options.scales.x.ticks=config.options.scales.x.ticks||{};config.options.scales.x.ticks.color='#a0a0a0';
+config.options.scales.x.grid=config.options.scales.x.grid||{};config.options.scales.x.grid.color='rgba(255,255,255,0.08)';
+config.options.scales.y=config.options.scales.y||{};config.options.scales.y.ticks=config.options.scales.y.ticks||{};config.options.scales.y.ticks.color='#a0a0a0';
+config.options.scales.y.grid=config.options.scales.y.grid||{};config.options.scales.y.grid.color='rgba(255,255,255,0.08)';
+}
+if(config.data&&config.data.datasets){config.data.datasets.forEach((ds,i)=>{const c=palette[i%palette.length];
+if(['pie','doughnut','polarArea'].includes(chartType)){ds.backgroundColor=ds.backgroundColor||palette.slice(0,(config.data.labels||[]).length);ds.borderColor=ds.borderColor||'rgba(0,0,0,0.2)';}
+else{ds.backgroundColor=ds.backgroundColor||c;ds.borderColor=ds.borderColor||c;}});}
+new Chart(document.getElementById('chart'),config);
+}catch(e){document.body.innerHTML='<div style="color:#ff4d4d;padding:40px;text-align:center"><strong>Chart Render Failed</strong><br>'+e.message+'</div>';}
+<\/script></body></html>`;
+      }
+
+      if (type === 'd3') {
+        return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/d3@7"><\/script>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;overflow:hidden}
+#chart{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+text{fill:#e0e0e0}.axis text{fill:#a0a0a0;font-size:11px}.axis path,.axis line{stroke:#555}.grid line{stroke:rgba(255,255,255,0.08)}</style>
+</head><body><div id="chart"></div><script>
+try{const container=d3.select('#chart');${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replace(/^\s*export\s+(?:default\s+)?/gm, '')}
+// Scale SVG to fill viewport after render
+setTimeout(()=>{const svg=document.querySelector('svg');if(svg){const w=parseFloat(svg.getAttribute('width'))||svg.getBoundingClientRect().width;const h=parseFloat(svg.getAttribute('height'))||svg.getBoundingClientRect().height;if(w&&h){svg.setAttribute('viewBox','0 0 '+w+' '+h);svg.removeAttribute('width');svg.removeAttribute('height');svg.style.width='100%';svg.style.height='100%';svg.style.maxWidth='100vw';svg.style.maxHeight='100vh';}}},50);
+}catch(e){document.body.innerHTML='<div style="color:#ff4d4d;padding:40px;text-align:center"><strong>D3 Render Failed</strong><br>'+e.message+'</div>';}
+<\/script></body></html>`;
+      }
+
+      if (type === 'threejs') {
+        return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;overflow:hidden}canvas{width:100%;height:100vh;display:block;cursor:grab}canvas:active{cursor:grabbing}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}<\/script>
+</head><body><canvas id="c"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {FontLoader} from 'three/addons/loaders/FontLoader.js';
+import {TextGeometry} from 'three/addons/geometries/TextGeometry.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {DragControls} from 'three/addons/controls/DragControls.js';
+import {TransformControls} from 'three/addons/controls/TransformControls.js';
+import {FBXLoader} from 'three/addons/loaders/FBXLoader.js';
+import {OBJLoader} from 'three/addons/loaders/OBJLoader.js';
+import {MTLLoader} from 'three/addons/loaders/MTLLoader.js';
+import {SVGLoader} from 'three/addons/loaders/SVGLoader.js';
+import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {ConvexGeometry} from 'three/addons/geometries/ConvexGeometry.js';
+import {ParametricGeometry} from 'three/addons/geometries/ParametricGeometry.js';
+const THREE_ADDONS={OrbitControls,GLTFLoader,FontLoader,TextGeometry,EffectComposer,RenderPass,UnrealBloomPass,DragControls,TransformControls,FBXLoader,OBJLoader,MTLLoader,SVGLoader,RoundedBoxGeometry,ConvexGeometry,ParametricGeometry};
+try{
+const canvas=document.getElementById('c');
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x1a1a2e);
+const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,1000);
+camera.position.set(3,3,5);camera.lookAt(0,0,0);
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const controls=new OrbitControls(camera,canvas);controls.enableDamping=true;controls.dampingFactor=0.05;
+scene.add(new THREE.AmbientLight(0x404040,2));
+const dl=new THREE.DirectionalLight(0xffffff,1.5);dl.position.set(5,10,7);scene.add(dl);
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replace(/^\s*export\s+(?:default\s+)?/gm, '')}
+{const an=()=>{requestAnimationFrame(an);controls.update();renderer.render(scene,camera);};an();}
+}catch(e){document.body.innerHTML='<div style="color:#ff4d4d;padding:40px;text-align:center"><strong>3D Render Failed</strong><br>'+e.message+'</div>';}
+<\/script></body></html>`;
+      }
+
+      return null;
+    };
+
+    // Open visualization fullscreen - render in iframe just like HTML preview
+    const openVizFullscreen = (container, type) => {
+      const html = buildVizHTML(container, type);
+      if (!html) return;
+      vizModalTitle.value = type === 'chartjs' ? 'Chart.js' : type === 'd3' ? 'D3 Visualization' : '3D Scene';
+      vizModalHTML.value = html;
+      showVizModal.value = true;
+      document.body.style.overflow = 'hidden';
+    };
+
+    // Close visualization fullscreen modal
+    const closeVizModal = () => {
+      showVizModal.value = false;
+      vizModalTitle.value = '';
+      vizModalHTML.value = '';
       document.body.style.overflow = '';
     };
 
@@ -648,6 +786,58 @@ export default {
       });
     };
 
+    // Add Copy/Fullscreen buttons to rendered Chart.js, D3, and Three.js containers
+    const addVizActionButtons = () => {
+      nextTick(() => {
+        if (!messageRef.value) return;
+
+        const vizContainers = messageRef.value.querySelectorAll(
+          '.chartjs-container:not([data-viz-buttons]), .d3-container:not([data-viz-buttons]), .threejs-container:not([data-viz-buttons])'
+        );
+
+        vizContainers.forEach((container) => {
+          container.setAttribute('data-viz-buttons', 'true');
+          container.style.position = 'relative';
+
+          // Determine type
+          let type = 'chartjs';
+          if (container.classList.contains('d3-container')) type = 'd3';
+          else if (container.classList.contains('threejs-container')) type = 'threejs';
+
+          // Source code is stored during render (data-source-code attribute)
+          const sourceCode = container.getAttribute('data-source-code') || '';
+
+          // Create button container
+          const btnContainer = document.createElement('div');
+          btnContainer.className = 'viz-action-buttons';
+
+          // Copy button
+          const copyBtn = document.createElement('button');
+          copyBtn.className = 'html-action-btn copy-btn';
+          copyBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Copy</span>';
+          copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(sourceCode).catch(console.error);
+            copyBtn.innerHTML = '<span class="btn-icon">✓</span><span class="btn-text">Copied!</span>';
+            setTimeout(() => { copyBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Copy</span>'; }, 2000);
+          };
+
+          // Fullscreen button
+          const fsBtn = document.createElement('button');
+          fsBtn.className = 'html-action-btn preview-btn';
+          fsBtn.innerHTML = '<span class="btn-icon">⛶</span><span class="btn-text">Fullscreen</span>';
+          fsBtn.onclick = (e) => {
+            e.stopPropagation();
+            openVizFullscreen(container, type);
+          };
+
+          btnContainer.appendChild(copyBtn);
+          btnContainer.appendChild(fsBtn);
+          container.appendChild(btnContainer);
+        });
+      });
+    };
+
     // Add download/copy buttons to images in assistant messages
     const addImageActionButtons = () => {
       nextTick(() => {
@@ -844,6 +1034,21 @@ export default {
     // Legacy alias for backward compatibility
     const sanitizeHTML = addTargetBlankToLinks;
 
+    // Wrapper to suppress showdown's noisy "maximum nesting of 10 spans" console.error
+    // This warning fires during streaming when incomplete markdown creates recursive span patterns - harmless
+    const safeMarkdownToHtml = (text) => {
+      const origError = console.error;
+      console.error = (...args) => {
+        if (typeof args[0] === 'string' && args[0].includes('maximum nesting')) return;
+        origError.apply(console, args);
+      };
+      try {
+        return markdownConverter.makeHtml(text);
+      } finally {
+        console.error = origError;
+      }
+    };
+
     // Detect if content is HTML
     const isHTMLContent = (content) => {
       if (!content || typeof content !== 'string') return false;
@@ -859,533 +1064,295 @@ export default {
       return htmlPatterns.some((pattern) => pattern.test(content));
     };
 
-    // Sanitize Mermaid code to remove invalid characters and fix common issues
-    const sanitizeMermaidCode = (code) => {
-      let sanitized = code;
 
-      // Remove any HTML/CSS that might have been accidentally included
-      sanitized = sanitized.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-      sanitized = sanitized.replace(/<[^>]+>/g, '');
-
-      // Remove zero-width characters and other invisible Unicode characters
-      sanitized = sanitized.replace(/[\u200B-\u200D\uFEFF]/g, '');
-      sanitized = sanitized.replace(/[\u2028\u2029]/g, '\n'); // Replace line/paragraph separators
-
-      // Fix common arrow syntax issues
-      // Replace various arrow-like characters with standard Mermaid arrows
-      sanitized = sanitized.replace(/[→←↑↓⟶⟵⟷↔]/g, '-->');
-      sanitized = sanitized.replace(/[─━│┃]/g, '-'); // Replace box drawing characters
-      sanitized = sanitized.replace(/[┌┐└┘├┤┬┴┼]/g, ''); // Remove box corners
-
-      // Fix common bracket/parenthesis issues
-      // Replace various bracket types with standard ones
-      sanitized = sanitized.replace(/[｛｝]/g, function (match) {
-        return match === '｛' ? '{' : '}';
-      });
-      sanitized = sanitized.replace(/[［］]/g, function (match) {
-        return match === '［' ? '[' : ']';
-      });
-      sanitized = sanitized.replace(/[（）]/g, function (match) {
-        return match === '（' ? '(' : ')';
-      });
-
-      // Replace smart quotes and other quote variations with standard quotes
-      sanitized = sanitized.replace(/[""''`´]/g, '"');
-
-      // Fix common node ID issues - but preserve valid Mermaid syntax
-      // Only sanitize if there are actual problematic characters, not valid Mermaid shapes
-
-      // First, check if this looks like a valid flowchart with standard node shapes
-      const hasValidFlowchartSyntax = /^flowchart\s+(TD|TB|BT|RL|LR)/.test(sanitized.trim());
-
-      if (!hasValidFlowchartSyntax) {
-        // Only apply aggressive sanitization to non-standard diagrams
-        sanitized = sanitized.replace(/(\w+[^[\s]*?)(\([^)]*\))?(\[[^\]]+\])?/g, (match, nodeId, parens, brackets) => {
-          // Clean the node ID - remove ALL special characters except alphanumeric, underscore, dash
-          let cleanNodeId = nodeId.replace(/[^a-zA-Z0-9_-]/g, '');
-
-          // If we have both parens and brackets, keep only the brackets (label)
-          if (parens && brackets) {
-            // Extract label from brackets, remove problematic characters
-            const label = brackets.slice(1, -1).replace(/[()[\]!@#$%^&*]/g, '');
-            return `${cleanNodeId}[${label}]`;
-          } else if (brackets) {
-            // Just brackets - clean the label
-            const label = brackets.slice(1, -1).replace(/[()[\]!@#$%^&*]/g, '');
-            return `${cleanNodeId}[${label}]`;
-          } else if (parens) {
-            // Just parens - convert to brackets for safety
-            const label = parens.slice(1, -1).replace(/[()[\]!@#$%^&*]/g, '');
-            return `${cleanNodeId}[${label}]`;
-          }
-
-          // No brackets or parens, just return the clean ID
-          return cleanNodeId || match;
-        });
-
-        // Additional pass to catch any remaining problematic node patterns
-        // Remove any node IDs that still have parentheses followed by brackets
-        sanitized = sanitized.replace(/(\w+)\([^)]*\)\[[^\]]*\]/g, (match, nodeId) => {
-          return `${nodeId}[Node]`;
-        });
-      } else {
-        // For valid flowcharts, only remove truly problematic characters from labels
-        // Preserve standard Mermaid node shapes: [], (), {}, (())
-        sanitized = sanitized.replace(/(\w+)(\([^)]*\)|\[[^\]]+\]|\{[^}]*\})/g, (match, nodeId, shape) => {
-          // Only clean the node ID if it has invalid characters
-          const cleanNodeId = nodeId.replace(/[^a-zA-Z0-9_-]/g, '') || nodeId;
-
-          // Clean the shape content but preserve the shape syntax
-          if (shape.startsWith('[') && shape.endsWith(']')) {
-            // Rectangle node - clean label but keep brackets
-            const label = shape.slice(1, -1).replace(/[!@#$%^&*]/g, '');
-            return `${cleanNodeId}[${label}]`;
-          } else if (shape.startsWith('(') && shape.endsWith(')')) {
-            // Round node - clean label but keep parentheses
-            const label = shape.slice(1, -1).replace(/[!@#$%^&*]/g, '');
-            return `${cleanNodeId}(${label})`;
-          } else if (shape.startsWith('{') && shape.endsWith('}')) {
-            // Diamond node - clean label but keep braces
-            const label = shape.slice(1, -1).replace(/[!@#$%^&*]/g, '');
-            return `${cleanNodeId}{${label}}`;
-          }
-
-          return match;
-        });
-      }
-
-      // Fix edge label syntax - ensure proper format and remove problematic characters
-      // First, handle the specific case from the error: -->|contains "!dice" edge-->
-      sanitized = sanitized.replace(/-->\|([^|]*)"([^"]*)"([^|]*?)(?:edge)?-->/g, (match, before, quoted, after) => {
-        // Remove exclamation marks and clean up the label
-        const cleanLabel = (before + quoted + after).replace(/!/g, '').trim();
-        return `-->|${cleanLabel}|`;
-      });
-
-      // Fix other edge label formats
-      sanitized = sanitized.replace(/-->\|([^|]+)\|/g, (match, label) => {
-        // Remove exclamation marks from edge labels
-        const cleanLabel = label.replace(/!/g, '').trim();
-        return `-->|${cleanLabel}|`;
-      });
-
-      // Fix edge labels with -- syntax
-      sanitized = sanitized.replace(/--\s*([^->|]+?)\s*-->/g, (match, label) => {
-        // Remove exclamation marks and clean up
-        const cleanLabel = label.replace(/!/g, '').replace(/"/g, '').trim();
-        return cleanLabel ? `-->|${cleanLabel}|` : '-->';
-      });
-
-      // Fix edge labels with quotes
-      sanitized = sanitized.replace(/--\s*"([^"]+?)"\s*-->/g, (match, label) => {
-        // Remove exclamation marks
-        const cleanLabel = label.replace(/!/g, '').trim();
-        return `-->|${cleanLabel}|`;
-      });
-
-      // Clean up any remaining "edge" keywords in arrows
-      sanitized = sanitized.replace(/\s+edge\s*-->/g, ' -->');
-      sanitized = sanitized.replace(/\s+edge-->/g, '-->');
-
-      // Remove or replace problematic Unicode characters
-      // Keep only ASCII and common extended Latin characters
-      sanitized = sanitized.replace(/[^\x00-\x7F\xA0-\xFF\n\r\t]/g, '');
-
-      // Fix multiple dashes (should be exactly 2 or 3)
-      sanitized = sanitized.replace(/----+/g, '---');
-      sanitized = sanitized.replace(/--([^->])/g, '-- $1');
-
-      // Ensure proper spacing around arrows
-      sanitized = sanitized.replace(/(\w+)-->/g, '$1 -->');
-      sanitized = sanitized.replace(/-->(\w+)/g, '--> $1');
-
-      // Remove any remaining control characters
-      sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-
-      // Fix common subgraph issues
-      sanitized = sanitized.replace(/subgraph\s+([^a-zA-Z0-9_\s])/g, 'subgraph $1');
-
-      // Ensure node definitions don't have trailing invalid characters
-      sanitized = sanitized.replace(/(\[[^\]]+\])[^\s\n\r;|>-]/g, '$1');
-
-      // Clean up excessive whitespace
-      sanitized = sanitized.replace(/[ \t]+/g, ' '); // Multiple spaces to single
-      sanitized = sanitized.replace(/\n{3,}/g, '\n\n'); // Multiple newlines to double
-
-      // Trim each line
-      sanitized = sanitized
-        .split('\n')
-        .map((line) => line.trim())
-        .join('\n');
-
-      // Remove empty lines at the beginning and end
-      sanitized = sanitized.trim();
-
-      return sanitized;
-    };
-
-    // Fix foreignObject widths and center text properly
-    const fixForeignObjectWidths = (svg) => {
-      // Find all foreignObject elements in node labels
-      const foreignObjects = svg.querySelectorAll('.label foreignObject');
-
-      foreignObjects.forEach((foreignObject) => {
-        try {
-          const div = foreignObject.querySelector('div');
-          const span = foreignObject.querySelector('span');
-          const textElement = span || div;
-
-          if (textElement) {
-            // Get the actual text content
-            const textContent = textElement.textContent || textElement.innerText || '';
-
-            // Create a temporary element to measure text width
-            const tempElement = document.createElement('span');
-            tempElement.style.visibility = 'hidden';
-            tempElement.style.position = 'absolute';
-            tempElement.style.whiteSpace = 'nowrap';
-
-            // Get computed styles with fallbacks
-            const computedStyle = window.getComputedStyle(textElement);
-            tempElement.style.fontSize = computedStyle.fontSize || '14px';
-            tempElement.style.fontFamily = computedStyle.fontFamily || 'Arial, sans-serif';
-            tempElement.style.fontWeight = computedStyle.fontWeight || 'normal';
-            tempElement.textContent = textContent;
-
-            document.body.appendChild(tempElement);
-            const textWidth = tempElement.offsetWidth || 100; // Fallback width
-            document.body.removeChild(tempElement);
-
-            // Add padding to the width
-            const padding = 20;
-            const currentWidth = parseInt(foreignObject.getAttribute('width')) || 100;
-            const newWidth = Math.max(textWidth + padding, currentWidth);
-
-            // Validate newWidth is a valid number
-            if (!isNaN(newWidth) && isFinite(newWidth) && newWidth > 0) {
-              // Update the foreignObject width and center it
-              foreignObject.setAttribute('width', newWidth);
-              foreignObject.setAttribute('x', -(newWidth / 2));
-
-              // Get the foreignObject height and ensure proper vertical centering
-              const foreignObjectHeight = parseInt(foreignObject.getAttribute('height')) || 50;
-
-              // Center the text content within the foreignObject
-              if (textElement && !isNaN(foreignObjectHeight) && isFinite(foreignObjectHeight)) {
-                textElement.style.textAlign = 'center';
-                textElement.style.width = '100%';
-                textElement.style.height = '100%';
-                textElement.style.display = 'flex';
-                textElement.style.alignItems = 'center';
-                textElement.style.justifyContent = 'center';
-                textElement.style.margin = '0';
-                textElement.style.padding = '0';
-                textElement.style.lineHeight = '1.2';
-                textElement.style.boxSizing = 'border-box';
-                textElement.style.transform = 'scale(.9)';
-
-                // For multi-line text, ensure proper vertical centering
-                if (textContent.length > 20 || textContent.includes(' ')) {
-                  textElement.style.minHeight = foreignObjectHeight + 'px';
-                }
-              }
-
-              // Update the parent rect if it exists
-              const parentNode = foreignObject.closest('.node');
-              if (parentNode) {
-                const rect = parentNode.querySelector('rect.label-container, rect');
-                if (rect) {
-                  // Center the rect as well
-                  rect.setAttribute('width', newWidth);
-                  rect.setAttribute('x', -(newWidth / 2));
-                }
-              }
-
-              // Update the label group transform to ensure proper centering
-              const labelGroup = foreignObject.closest('.label');
-              if (labelGroup) {
-                const transform = labelGroup.getAttribute('transform');
-                if (transform) {
-                  const match = transform.match(/translate\(([^,]+),([^)]+)\)/);
-                  if (match) {
-                    const translateY = parseFloat(match[2]);
-                    // Validate translateY is a valid number
-                    if (!isNaN(translateY) && isFinite(translateY)) {
-                      // Center the label group horizontally
-                      labelGroup.setAttribute('transform', `translate(0,${translateY})`);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } catch (error) {
-          // Silently catch errors for individual foreignObject elements
-          // This prevents one bad element from breaking the entire diagram
-          console.warn('Error fixing foreignObject width:', error);
-        }
-      });
-    };
-
-    // Apply node status coloring based on content keywords
-    const applyNodeStatusColoring = (svg) => {
-      // Find all node elements in the SVG
-      const nodes = svg.querySelectorAll('.node');
-
-      nodes.forEach((node) => {
-        // Get the node's text content from its label
-        const labelElement = node.querySelector('.nodeLabel, .label');
-        if (!labelElement) return;
-
-        const nodeText = (labelElement.textContent || '').toLowerCase().trim();
-
-        // Define keyword patterns for each status
-        const statusPatterns = {
-          success: [
-            // Success keywords
-            'success',
-            'successful',
-            'complete',
-            'completed',
-            'done',
-            'finished',
-            'passed',
-            'ok',
-            'ready',
-            // Success symbols
-            '✓',
-            '✔',
-            '✅',
-            '☑',
-            '✔️',
-            // Success phrases
-            'format cli response',
-            'send discord response',
-            'response sent',
-            'task complete',
-            // Workflow-specific success patterns
-            'step complete',
-            'step completed',
-            'workflow finished',
-            'workflow complete',
-            'execution successful',
-            'task done',
-            'process completed',
-            'operation success',
-            'node executed',
-            'step executed',
-            'workflow success',
-            'execution complete',
-          ],
-          warning: [
-            // Warning keywords
-            'warning',
-            'caution',
-            'pending',
-            'waiting',
-            'processing',
-            'in progress',
-            'review',
-            'check',
-            // Warning symbols
-            '⚠',
-            '⚠️',
-            '!',
-            '❗',
-            '❕',
-            // Warning phrases
-            'parse command',
-            'command success',
-            'needs review',
-            'validate',
-            // Workflow-specific warning patterns
-            'step pending',
-            'workflow paused',
-            'awaiting execution',
-            'needs input',
-            'manual step',
-            'conditional branch',
-            'step processing',
-            'workflow processing',
-            'awaiting approval',
-            'requires review',
-            'step waiting',
-            'node pending',
-          ],
-          error: [
-            // Error keywords
-            'error',
-            'failed',
-            'failure',
-            'broken',
-            'issue',
-            'problem',
-            'exception',
-            'crash',
-            'bug',
-            // Error symbols
-            '✗',
-            '✘',
-            '❌',
-            '❎',
-            '⛔',
-            '🚫',
-            '💥',
-            // Error phrases
-            'format error message',
-            'error handling',
-            'failed to',
-            'connection failed',
-            // Workflow-specific error patterns
-            'step failed',
-            'workflow error',
-            'execution failed',
-            'task error',
-            'process failed',
-            'operation failed',
-            'node failed',
-            'step error',
-            'workflow failed',
-            'execution error',
-            'timeout occurred',
-            'validation error',
-            'connection timeout',
-            'step timeout',
-          ],
-        };
-
-        // Check which status matches the node text
-        let detectedStatus = null;
-
-        // Check for exact matches and partial matches
-        for (const [status, patterns] of Object.entries(statusPatterns)) {
-          for (const pattern of patterns) {
-            if (nodeText.includes(pattern.toLowerCase())) {
-              detectedStatus = status;
-              break;
-            }
-          }
-          if (detectedStatus) break;
-        }
-
-        // Apply the detected status class
-        if (detectedStatus) {
-          node.classList.add(detectedStatus);
-
-          // Also check for specific node shapes and apply to their containers
-          const shapeElements = node.querySelectorAll('rect, circle, ellipse, polygon, path, .basic, .label-container');
-          shapeElements.forEach((shape) => {
-            shape.parentElement?.classList.add(detectedStatus);
-          });
-        }
-      });
-    };
-
-    const renderMermaidDiagrams = () => {
+    const renderChartJsDiagrams = () => {
       nextTick(() => {
-        if (messageRef.value) {
-          // Find all Mermaid diagram containers
-          const mermaidElements = messageRef.value.querySelectorAll('.mermaid:not([data-processed])');
-          if (mermaidElements.length > 0) {
-            // Sanitize and prepare elements for rendering
-            const elementsToRender = [];
+        if (!messageRef.value) return;
 
-            mermaidElements.forEach((el) => {
-              // Get the original Mermaid code
-              const originalCode = el.textContent || el.innerText || '';
+        const containers = messageRef.value.querySelectorAll('.chartjs-container');
+        containers.forEach((container) => {
+          const chartId = container.getAttribute('data-chart-id');
+          if (!chartId || renderedChartIds.has(chartId)) return;
+          renderedChartIds.add(chartId);
 
-              // Store original code for error display
-              el.setAttribute('data-original-code', originalCode);
+          try {
+            // Read config from the hidden code element and decode HTML entities
+            const configEl = container.querySelector('.chartjs-config');
+            if (!configEl) return;
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = configEl.textContent || '';
+            const rawConfig = textarea.value;
+            configEl.remove();
 
-              // Sanitize the code
-              const sanitizedCode = sanitizeMermaidCode(originalCode);
+            // Store source code for copy/fullscreen buttons
+            container.setAttribute('data-source-code', rawConfig);
 
-              // Update the element with sanitized code
-              el.textContent = sanitizedCode;
+            // Parse JSON config
+            const config = JSON.parse(rawConfig);
 
-              // Add to render list
-              elementsToRender.push(el);
-            });
+            // Apply dark theme defaults
+            const defaults = {
+              responsive: true,
+              maintainAspectRatio: true,
+              plugins: {
+                legend: {
+                  labels: { color: '#e0e0e0' },
+                },
+              },
+              scales: {},
+            };
 
-            // Render all sanitized Mermaid diagrams
-            mermaid
-              .run({
-                nodes: elementsToRender,
-              })
-              .then(() => {
-                // Mark elements as processed and remove inline styles
-                elementsToRender.forEach((el) => {
-                  el.setAttribute('data-processed', 'true');
+            config.options = config.options || {};
+            config.options.responsive = defaults.responsive;
+            config.options.maintainAspectRatio = defaults.maintainAspectRatio;
+            config.options.plugins = config.options.plugins || {};
+            config.options.plugins.legend = config.options.plugins.legend || {};
+            config.options.plugins.legend.labels = config.options.plugins.legend.labels || {};
+            config.options.plugins.legend.labels.color = config.options.plugins.legend.labels.color || '#e0e0e0';
 
-                  // Remove all inline styles from Mermaid SVG elements
-                  const svg = el.querySelector('svg');
-                  if (svg) {
-                    // Remove inline styles from all elements
-                    svg.querySelectorAll('*[style]').forEach((element) => {
-                      element.removeAttribute('style');
-                    });
+            // Apply axis colors for cartesian charts
+            const chartType = config.type || 'bar';
+            if (['bar', 'line', 'scatter', 'bubble'].includes(chartType)) {
+              config.options.scales = config.options.scales || {};
+              config.options.scales.x = config.options.scales.x || {};
+              config.options.scales.x.ticks = config.options.scales.x.ticks || {};
+              config.options.scales.x.ticks.color = config.options.scales.x.ticks.color || '#a0a0a0';
+              config.options.scales.x.grid = config.options.scales.x.grid || {};
+              config.options.scales.x.grid.color = config.options.scales.x.grid.color || 'rgba(255,255,255,0.08)';
+              config.options.scales.y = config.options.scales.y || {};
+              config.options.scales.y.ticks = config.options.scales.y.ticks || {};
+              config.options.scales.y.ticks.color = config.options.scales.y.ticks.color || '#a0a0a0';
+              config.options.scales.y.grid = config.options.scales.y.grid || {};
+              config.options.scales.y.grid.color = config.options.scales.y.grid.color || 'rgba(255,255,255,0.08)';
+            }
 
-                    // Add a class to identify successful diagrams
-                    el.classList.add('mermaid-success');
-
-                    // Apply node status coloring based on content
-                    applyNodeStatusColoring(svg);
-
-                    // Fix foreignObject widths to prevent text breaking
-                    fixForeignObjectWidths(svg);
-                  }
-                });
-              })
-              .catch((err) => {
-                console.error('Mermaid rendering error:', err);
-                // Mark elements as processed even if there's an error to avoid infinite loops
-                mermaidElements.forEach((el) => {
-                  el.setAttribute('data-processed', 'true');
-                  // Show the original Mermaid code along with the error message
-                  // Try to get the original unsanitized code if available
-                  let mermaidCode = el.getAttribute('data-original-code') || el.textContent;
-                  // Try to extract only the actual diagram code by finding common Mermaid patterns
-                  // First try to match the specific diagram type with its content
-                  const diagramMatch = mermaidCode.match(
-                    /(graph|sequenceDiagram|gantt|classDiagram|stateDiagram|pie|flowchart|erDiagram|requirementDiagram|gitGraph|journey|quadrantChart|sankey|xychart|mindmap|timeline|quadrantChart|sankey).*?(\n\s*\n|$)/s,
-                  );
-                  if (diagramMatch) {
-                    mermaidCode = diagramMatch[0];
-                  } else {
-                    // If no specific pattern matched, try to find any content that looks like a diagram
-                    const generalMatch = mermaidCode.match(
-                      /(graph|flowchart|sequenceDiagram|gantt|classDiagram|stateDiagram|pie|erDiagram|requirementDiagram|gitGraph|journey|quadrantChart|sankey|xychart|mindmap|timeline).*?(%%.*?\n)*.*?(?=\n\s*\n|$)/s,
-                    );
-                    if (generalMatch) {
-                      mermaidCode = generalMatch[0];
-                    }
-                  }
-                  // Simple HTML escaping function
-                  const escapeHtml = (unsafe) => {
-                    return unsafe
-                      .replace(/&/g, '&' + 'amp;')
-                      .replace(/</g, '&' + 'lt;')
-                      .replace(/>/g, '&' + 'gt;')
-                      .replace(/"/g, '&' + 'quot;')
-                      .replace(/'/g, '&' + '#039;');
-                  };
-                  el.innerHTML = `
-                  <div class="mermaid-error-wrapper">
-                    <div class="mermaid-error">
-                      <div class="error-header">Mermaid Diagram Error:</div>
-                      <div class="error-message">${err.message}</div>
-                      <details class="error-details">
-                        <summary>Show diagram code</summary>
-                        <pre class="mermaid-code">${escapeHtml(mermaidCode)}</pre>
-                      </details>
-                    </div>
-                  </div>
-                `;
-                });
+            // Apply default colors to datasets if not set
+            const palette = ['#e53d8f', '#12e0ff', '#19ef83', '#ffd700', '#7d3de5', '#ff9500', '#ff4444', '#d13de5'];
+            if (config.data && config.data.datasets) {
+              config.data.datasets.forEach((ds, i) => {
+                const color = palette[i % palette.length];
+                if (['pie', 'doughnut', 'polarArea'].includes(chartType)) {
+                  ds.backgroundColor = ds.backgroundColor || palette.slice(0, (config.data.labels || []).length);
+                  ds.borderColor = ds.borderColor || 'rgba(0,0,0,0.2)';
+                } else {
+                  ds.backgroundColor = ds.backgroundColor || color;
+                  ds.borderColor = ds.borderColor || color;
+                }
               });
+            }
+
+            const canvas = container.querySelector('canvas');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const instance = new Chart(ctx, config);
+            chartInstances.value.push(instance);
+          } catch (err) {
+            console.warn('Chart.js rendering error:', err.message);
+            container.innerHTML = `<div style="padding: 16px; background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); border-radius: 8px; color: var(--color-red, #ff4d4d); font-size: 13px;">
+              <strong>Chart Render Failed</strong><br><span style="opacity:0.8">${err.message}</span>
+            </div>`;
           }
+        });
+      });
+    };
+
+    const renderD3Diagrams = () => {
+      nextTick(() => {
+        if (!messageRef.value) return;
+
+        const containers = messageRef.value.querySelectorAll('.d3-container');
+        containers.forEach((container) => {
+          const d3Id = container.getAttribute('data-d3-id');
+          if (!d3Id || renderedD3Ids.has(d3Id)) return;
+          renderedD3Ids.add(d3Id);
+
+          (async () => {
+            try {
+              const codeEl = container.querySelector('.d3-code');
+              if (!codeEl) return;
+
+              // Decode HTML entities
+              const textarea = document.createElement('textarea');
+              textarea.innerHTML = codeEl.textContent || '';
+              const d3Code = textarea.value;
+              codeEl.remove();
+
+              // Store source code for copy/fullscreen buttons
+              container.setAttribute('data-source-code', d3Code);
+
+              // Create a chart div inside the container
+              const chartDiv = document.createElement('div');
+              chartDiv.classList.add('d3-chart');
+              container.appendChild(chartDiv);
+
+              // Execute D3 code with the bundled d3 module
+              // The LLM code expects `container` as a d3 selection and `d3` as the d3 module
+              // Strip import/export statements - d3 is already injected as a parameter
+              const cleanedD3Code = d3Code
+                .replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '')
+                .replace(/^\s*export\s+(?:default\s+)?/gm, '');
+              const containerSelection = d3.select(chartDiv);
+              const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+              const fn = new AsyncFunction('d3', 'container', cleanedD3Code);
+              await fn(d3, containerSelection);
+            } catch (err) {
+              console.warn('D3 rendering error:', err.message);
+              container.innerHTML = `<div style="padding: 16px; background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); border-radius: 8px; color: var(--color-red, #ff4d4d); font-size: 13px;">
+                <strong>D3 Render Failed</strong><br><span style="opacity:0.8">${err.message}</span>
+              </div>`;
+            }
+          })();
+        });
+      });
+    };
+
+    const renderThreeJsDiagrams = () => {
+      nextTick(() => {
+        if (!messageRef.value) return;
+
+        const containers = messageRef.value.querySelectorAll('.threejs-container');
+        containers.forEach((container) => {
+          const threeId = container.getAttribute('data-three-id');
+          if (!threeId || renderedThreeIds.has(threeId)) return;
+          renderedThreeIds.add(threeId);
+
+          // Use an async IIFE so LLM-generated code can use await
+          (async () => {
+            try {
+              const codeEl = container.querySelector('.threejs-code');
+              if (!codeEl) return;
+
+              const textarea = document.createElement('textarea');
+              textarea.innerHTML = codeEl.textContent || '';
+              const threeCode = textarea.value;
+              codeEl.remove();
+
+              // Store source code for copy/fullscreen buttons
+              container.setAttribute('data-source-code', threeCode);
+
+              // Create canvas for Three.js
+              const canvas = document.createElement('canvas');
+              canvas.classList.add('threejs-canvas');
+              canvas.width = 600;
+              canvas.height = 400;
+              container.appendChild(canvas);
+
+              // Set up scene, camera, renderer
+              const scene = new THREE.Scene();
+              scene.background = new THREE.Color(0x1a1a2e);
+
+              const camera = new THREE.PerspectiveCamera(60, canvas.width / canvas.height, 0.1, 1000);
+              camera.position.set(3, 3, 5);
+              camera.lookAt(0, 0, 0);
+
+              const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+              renderer.setSize(canvas.width, canvas.height);
+              renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+              // Add orbit controls
+              const controls = new OrbitControls(camera, canvas);
+              controls.enableDamping = true;
+              controls.dampingFactor = 0.05;
+
+              // Add default lighting
+              const ambientLight = new THREE.AmbientLight(0x404040, 2);
+              scene.add(ambientLight);
+              const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+              directionalLight.position.set(5, 10, 7);
+              scene.add(directionalLight);
+
+              // Safe atob wrapper that sanitizes malformed base64 from LLM output
+              const safeAtob = (str) => {
+                let cleaned = str.replace(/[^A-Za-z0-9+/=]/g, '');
+                while (cleaned.length % 4 !== 0) cleaned += '=';
+                return atob(cleaned);
+              };
+
+              // Guard against LLM generating absurdly large typed arrays (e.g. 2 billion vertices)
+              const MAX_ARRAY_LENGTH = 10_000_000; // 10M elements max
+              const guardedTHREE = new Proxy(THREE, {
+                get(target, prop) {
+                  const val = target[prop];
+                  // Wrap BufferAttribute constructors to cap array sizes
+                  if (prop === 'BufferAttribute' || prop === 'Float32BufferAttribute' ||
+                      prop === 'Uint16BufferAttribute' || prop === 'Uint32BufferAttribute' ||
+                      prop === 'Int8BufferAttribute' || prop === 'Int16BufferAttribute' ||
+                      prop === 'Int32BufferAttribute' || prop === 'Float64BufferAttribute' ||
+                      prop === 'Uint8BufferAttribute' || prop === 'Uint8ClampedBufferAttribute') {
+                    return new Proxy(val, {
+                      construct(Target, args) {
+                        const arr = args[0];
+                        if (arr && arr.length > MAX_ARRAY_LENGTH) {
+                          throw new Error(`Buffer too large (${arr.length.toLocaleString()} elements, max ${MAX_ARRAY_LENGTH.toLocaleString()})`);
+                        }
+                        return new Target(...args);
+                      },
+                    });
+                  }
+                  return val;
+                },
+              });
+
+              // Strip static import/export statements - THREE is already injected
+              // Replace dynamic import() calls with local addon lookups
+              const cleanedCode = threeCode
+                .replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '')
+                .replace(/^\s*export\s+(?:default\s+)?/gm, '')
+                .replace(/await\s+import\s*\(\s*['"][^'"]*['"]\s*\)/g, 'THREE_ADDONS')
+                .replace(/import\s*\(\s*['"][^'"]*['"]\s*\)/g, 'Promise.resolve(THREE_ADDONS)');
+
+              // Destructured names from imports (e.g. `const { GLTFLoader } = await import(...)`)
+              // will now resolve from THREE_ADDONS which contains all pre-bundled addons
+
+              // Execute user code with guarded THREE, addons, scene, camera, renderer, controls
+              const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+              const fn = new AsyncFunction('THREE', 'THREE_ADDONS', 'scene', 'camera', 'renderer', 'controls', 'canvas', 'atob', cleanedCode);
+              await fn(guardedTHREE, THREE_ADDONS, scene, camera, renderer, controls, canvas, safeAtob);
+
+              // Animation loop
+              let animationId;
+              const animate = () => {
+                animationId = requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+              };
+              animate();
+
+              // Store for cleanup
+              threeInstances.value.push({ renderer, animationId, controls });
+            } catch (err) {
+              console.warn('Three.js rendering error:', err.message);
+              container.innerHTML = `<div style="padding: 16px; background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); border-radius: 8px; color: var(--color-red, #ff4d4d); font-size: 13px;">
+                <strong>3D Render Failed</strong><br><span style="opacity:0.8">${err.message}</span>
+              </div>`;
+            }
+          })();
+        });
+      });
+    };
+
+    const destroyChartInstances = () => {
+      chartInstances.value.forEach((instance) => {
+        try {
+          instance.destroy();
+        } catch (e) {
+          // ignore
         }
       });
+      chartInstances.value = [];
+
+      // Clean up Three.js instances
+      threeInstances.value.forEach(({ renderer, animationId, controls }) => {
+        try {
+          cancelAnimationFrame(animationId);
+          controls.dispose();
+          renderer.dispose();
+        } catch (e) {
+          // ignore
+        }
+      });
+      threeInstances.value = [];
     };
 
     const highlightCode = () => {
@@ -1393,13 +1360,18 @@ export default {
         if (messageRef.value) {
           // Highlight all code blocks, including those with v-html
           messageRef.value.querySelectorAll('pre code').forEach((block) => {
-            if (!block.classList.contains('hljs') && !block.classList.contains('language-mermaid')) {
+            if (!block.classList.contains('hljs')) {
               hljs.highlightElement(block);
             }
           });
 
-          // Render Mermaid diagrams
-          renderMermaidDiagrams();
+          // Only render charts/D3 when message is fully streamed (status is null)
+          if (!props.status) {
+            renderChartJsDiagrams();
+            renderD3Diagrams();
+            renderThreeJsDiagrams();
+            addVizActionButtons();
+          }
 
           // Add HTML code action buttons
           addHTMLCodeButtons();
@@ -1424,10 +1396,25 @@ export default {
       });
     };
 
-    onMounted(highlightCode);
-    onUpdated(highlightCode);
+    // Debounce heavy rendering (charts, D3, hljs) during streaming
+    let highlightTimer = null;
+    const debouncedHighlightCode = () => {
+      if (highlightTimer) clearTimeout(highlightTimer);
+      // Fast debounce during streaming, immediate when done
+      const delay = props.status ? 300 : 0;
+      highlightTimer = setTimeout(highlightCode, delay);
+    };
 
-    const renderedContent = computed(() => {
+    onMounted(highlightCode);
+    onUpdated(debouncedHighlightCode);
+    onBeforeUnmount(() => {
+      if (highlightTimer) clearTimeout(highlightTimer);
+      if (renderTimer) clearTimeout(renderTimer);
+      destroyChartInstances();
+    });
+
+    // Core render function - extracted from computed for throttling
+    const renderMessageContent = () => {
       if (typeof props.message.content === 'string') {
         if (props.message.content.toLowerCase() === 'null' || props.message.content.toLowerCase() === 'undefined') {
           return '';
@@ -1497,7 +1484,7 @@ export default {
           let renderedCompleted = '';
           if (completedContent.trim()) {
             let processedCompleted = completedContent.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
-            renderedCompleted = markdownConverter.makeHtml(processedCompleted);
+            renderedCompleted = safeMarkdownToHtml(processedCompleted);
             // Add target="_blank" to links in the completed content
             renderedCompleted = addTargetBlankToLinks(renderedCompleted);
           }
@@ -1511,33 +1498,68 @@ export default {
         // Add space between sentence endings (. ! ? :) and capital letters
         let processedContent = props.message.content.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3'); // Don't add space if there's already a newline
 
-        let renderedHtml = markdownConverter.makeHtml(processedContent);
+        let renderedHtml = safeMarkdownToHtml(processedContent);
 
         // CRITICAL: Resolve image references AFTER markdown conversion
         // This ensures the HTML structure is complete before we replace image references
         const imageRefPattern = /\{\{IMAGE_REF:([^}]+)\}\}/g;
 
-        console.log('[MessageItem] Processing rendered HTML for image references');
-        console.log('[MessageItem] Image cache size:', props.imageCache.size);
-        console.log('[MessageItem] Image cache keys:', Array.from(props.imageCache.keys()));
-
         renderedHtml = renderedHtml.replace(imageRefPattern, (match, imageId) => {
-          console.log(`[MessageItem] Attempting to resolve: ${imageId}`);
           const cached = props.imageCache.get(imageId);
-          console.log(`[MessageItem] Cache lookup result:`, cached ? 'FOUND' : 'NOT FOUND');
           if (cached && cached.data) {
-            console.log(`[MessageItem] Resolved image reference: ${imageId}, data length: ${cached.data.length}`);
-            return cached.data; // Return the actual data URL
+            return cached.data;
           }
-          console.warn(`[MessageItem] Image reference not found in cache: ${imageId}`);
-          return ''; // Remove unresolved references
+          return '';
         });
 
         // Add target="_blank" to all links in markdown-generated HTML
         return addTargetBlankToLinks(renderedHtml);
       }
       return '';
-    });
+    };
+
+    // Throttled rendering: during streaming, cap markdown re-renders to ~15fps
+    const renderedContent = ref('');
+    let renderTimer = null;
+    let lastRenderTime = 0;
+    const RENDER_INTERVAL = 66; // ~15fps during streaming
+
+    watch(
+      () => [props.message.content, props.status, props.imageCache],
+      () => {
+        if (!props.status) {
+          // Not streaming - render immediately
+          if (renderTimer) {
+            clearTimeout(renderTimer);
+            renderTimer = null;
+          }
+          renderedContent.value = renderMessageContent();
+          lastRenderTime = Date.now();
+        } else {
+          // Streaming - throttle renders
+          const now = Date.now();
+          const elapsed = now - lastRenderTime;
+
+          if (elapsed >= RENDER_INTERVAL) {
+            // Enough time passed, render now
+            renderedContent.value = renderMessageContent();
+            lastRenderTime = now;
+            if (renderTimer) {
+              clearTimeout(renderTimer);
+              renderTimer = null;
+            }
+          } else if (!renderTimer) {
+            // Schedule a render for later
+            renderTimer = setTimeout(() => {
+              renderedContent.value = renderMessageContent();
+              lastRenderTime = Date.now();
+              renderTimer = null;
+            }, RENDER_INTERVAL - elapsed);
+          }
+        }
+      },
+      { immediate: true, deep: false },
+    );
 
     const formatJSON = (obj) => {
       try {
@@ -1810,6 +1832,10 @@ export default {
       previewHTML,
       previewIframe,
       closePreviewModal,
+      showVizModal,
+      vizModalTitle,
+      vizModalHTML,
+      closeVizModal,
       handleProviderConnected,
       hasImages,
       extractImages,
@@ -1972,493 +1998,6 @@ body[data-page='terminal-tool-forge'] .message-wrapper.assistant .message-card {
   margin-bottom: 0;
 }
 
-/* Mermaid Styling - Consistent appearance for all diagrams */
-
-/* Default state - Pink border */
-.message-text :deep(.mermaid) {
-  --mermaid-node-fill: var(--color-darker-1);
-  --mermaid-node-stroke: var(--terminal-border-color);
-  --mermaid-edge-color: var(--color-lighter-1);
-}
-
-/* Success state - Green border */
-/* .message-text :deep(.mermaid-success) {
-  --mermaid-node-stroke: var(--color-green);
-} */
-
-/* Error state - Red border */
-.message-text :deep(.mermaid-error-wrapper) {
-  --mermaid-node-stroke: #ff6b6b;
-}
-
-/* Apply consistent styles to all Mermaid nodes */
-.message-text :deep(.mermaid .node rect),
-.message-text :deep(.mermaid circle),
-.message-text :deep(.mermaid ellipse),
-.message-text :deep(.mermaid polygon),
-.message-text :deep(.mermaid path.node),
-.message-text :deep(.mermaid .basic),
-.message-text :deep(.mermaid .label-container),
-.message-text :deep(.mermaid .node.ok rect) {
-  fill: var(--mermaid-node-fill) !important;
-  stroke: var(--mermaid-node-stroke) !important;
-  stroke-width: 1px !important;
-  rx: 8 !important;
-  ry: 8 !important;
-}
-
-/* Node Status Styling - Success nodes (green stroke) */
-.message-text :deep(.mermaid .node.success rect),
-.message-text :deep(.mermaid .node.success circle),
-.message-text :deep(.mermaid .node.success ellipse),
-.message-text :deep(.mermaid .node.success polygon),
-.message-text :deep(.mermaid .node.success path),
-.message-text :deep(.mermaid .node.success .basic),
-.message-text :deep(.mermaid .node.success .label-container) {
-  stroke: var(--color-green) !important;
-}
-
-/* Node Status Styling - Warning nodes (yellow stroke) */
-.message-text :deep(.mermaid .node.warning rect),
-.message-text :deep(.mermaid .node.warning circle),
-.message-text :deep(.mermaid .node.warning ellipse),
-.message-text :deep(.mermaid .node.warning polygon),
-.message-text :deep(.mermaid .node.warning path),
-.message-text :deep(.mermaid .node.warning .basic),
-.message-text :deep(.mermaid .node.warning .label-container) {
-  stroke: var(--color-yellow) !important;
-}
-
-/* Node Status Styling - Error nodes (red stroke) */
-.message-text :deep(.mermaid .node.error rect),
-.message-text :deep(.mermaid .node.error circle),
-.message-text :deep(.mermaid .node.error ellipse),
-.message-text :deep(.mermaid .node.error polygon),
-.message-text :deep(.mermaid .node.error path),
-.message-text :deep(.mermaid .node.error .basic),
-.message-text :deep(.mermaid .node.error .label-container) {
-  stroke: var(--color-red) !important;
-}
-
-/* Force all extra node classes to use only our 3 status types */
-/* Override any Mermaid-generated classes like trigger, process, display, action, etc. */
-.message-text :deep(.mermaid .node:not(.success):not(.warning):not(.error) rect),
-.message-text :deep(.mermaid .node:not(.success):not(.warning):not(.error) circle),
-.message-text :deep(.mermaid .node:not(.success):not(.warning):not(.error) ellipse),
-.message-text :deep(.mermaid .node:not(.success):not(.warning):not(.error) polygon),
-.message-text :deep(.mermaid .node:not(.success):not(.warning):not(.error) path),
-.message-text :deep(.mermaid .node:not(.success):not(.warning):not(.error) .basic),
-.message-text :deep(.mermaid .node:not(.success):not(.warning):not(.error) .label-container) {
-  stroke: var(--mermaid-node-stroke) !important; /* Default neutral stroke */
-}
-
-/* Force override any extra classes that might be applied - MAXIMUM SPECIFICITY */
-.message-text :deep(.mermaid .node.trigger rect),
-.message-text :deep(.mermaid .node.trigger circle),
-.message-text :deep(.mermaid .node.trigger ellipse),
-.message-text :deep(.mermaid .node.trigger polygon),
-.message-text :deep(.mermaid .node.trigger path),
-.message-text :deep(.mermaid .node.trigger .basic),
-.message-text :deep(.mermaid .node.trigger .label-container),
-.message-text :deep(.mermaid .node.process rect),
-.message-text :deep(.mermaid .node.process circle),
-.message-text :deep(.mermaid .node.process ellipse),
-.message-text :deep(.mermaid .node.process polygon),
-.message-text :deep(.mermaid .node.process path),
-.message-text :deep(.mermaid .node.process .basic),
-.message-text :deep(.mermaid .node.process .label-container),
-.message-text :deep(.mermaid .node.display rect),
-.message-text :deep(.mermaid .node.display circle),
-.message-text :deep(.mermaid .node.display ellipse),
-.message-text :deep(.mermaid .node.display polygon),
-.message-text :deep(.mermaid .node.display path),
-.message-text :deep(.mermaid .node.display .basic),
-.message-text :deep(.mermaid .node.display .label-container),
-.message-text :deep(.mermaid .node.action rect),
-.message-text :deep(.mermaid .node.action circle),
-.message-text :deep(.mermaid .node.action ellipse),
-.message-text :deep(.mermaid .node.action polygon),
-.message-text :deep(.mermaid .node.action path),
-.message-text :deep(.mermaid .node.action .basic),
-.message-text :deep(.mermaid .node.action .label-container),
-.message-text :deep(.mermaid .node.utility rect),
-.message-text :deep(.mermaid .node.utility circle),
-.message-text :deep(.mermaid .node.utility ellipse),
-.message-text :deep(.mermaid .node.utility polygon),
-.message-text :deep(.mermaid .node.utility path),
-.message-text :deep(.mermaid .node.utility .basic),
-.message-text :deep(.mermaid .node.utility .label-container) {
-  stroke: var(--mermaid-node-stroke) !important; /* Force default neutral stroke */
-  fill: var(--mermaid-node-fill) !important; /* Override any fill colors */
-}
-
-/* Override Mermaid's inline generated styles with maximum specificity */
-.message-text :deep(.mermaid svg .trigger > *),
-.message-text :deep(.mermaid svg .trigger span),
-.message-text :deep(.mermaid svg .process > *),
-.message-text :deep(.mermaid svg .process span),
-.message-text :deep(.mermaid svg .display > *),
-.message-text :deep(.mermaid svg .display span),
-.message-text :deep(.mermaid svg .action > *),
-.message-text :deep(.mermaid svg .action span) {
-  fill: var(--mermaid-node-fill) !important;
-  stroke: var(--mermaid-node-stroke) !important;
-}
-
-/* Even more specific overrides for inline styles */
-.message-text :deep(.mermaid svg g.node.trigger rect),
-.message-text :deep(.mermaid svg g.node.process rect),
-.message-text :deep(.mermaid svg g.node.display rect),
-.message-text :deep(.mermaid svg g.node.action rect) {
-  fill: var(--mermaid-node-fill) !important;
-  stroke: var(--mermaid-node-stroke) !important;
-}
-
-/* Ensure success nodes always override any other classes */
-.message-text :deep(.mermaid .node.success rect),
-.message-text :deep(.mermaid .node.success circle),
-.message-text :deep(.mermaid .node.success ellipse),
-.message-text :deep(.mermaid .node.success polygon),
-.message-text :deep(.mermaid .node.success path),
-.message-text :deep(.mermaid .node.success .basic),
-.message-text :deep(.mermaid .node.success .label-container) {
-  stroke: var(--color-green) !important;
-}
-
-/* Ensure warning nodes always override any other classes */
-.message-text :deep(.mermaid .node.warning rect),
-.message-text :deep(.mermaid .node.warning circle),
-.message-text :deep(.mermaid .node.warning ellipse),
-.message-text :deep(.mermaid .node.warning polygon),
-.message-text :deep(.mermaid .node.warning path),
-.message-text :deep(.mermaid .node.warning .basic),
-.message-text :deep(.mermaid .node.warning .label-container) {
-  stroke: var(--color-yellow) !important;
-}
-
-/* Ensure error nodes always override any other classes */
-.message-text :deep(.mermaid .node.error rect),
-.message-text :deep(.mermaid .node.error circle),
-.message-text :deep(.mermaid .node.error ellipse),
-.message-text :deep(.mermaid .node.error polygon),
-.message-text :deep(.mermaid .node.error path),
-.message-text :deep(.mermaid .node.error .basic),
-.message-text :deep(.mermaid .node.error .label-container) {
-  stroke: var(--color-red) !important;
-}
-
-/* Node labels */
-.message-text :deep(.mermaid .nodeLabel) {
-  color: var(--color-white) !important;
-  fill: var(--color-white) !important;
-}
-
-rect.basic.label-container {
-  transform: scale(0.75);
-}
-
-.message-text :deep(.mermaid .nodeLabel p) {
-  transform: scale(0.75);
-}
-
-.message-text :deep(.mermaid .label foreignObject) {
-  overflow: visible !important;
-}
-
-.message-text :deep(.mermaid .label div) {
-  color: var(--color-white) !important;
-  /* margin-top: -7px !important; */
-}
-
-/* Edges/Lines */
-.message-text :deep(.mermaid .edge-pattern-solid),
-.message-text :deep(.mermaid .edge-pattern-dotted),
-.message-text :deep(.mermaid .edge-pattern-dashed),
-.message-text :deep(.mermaid path.edge-path),
-.message-text :deep(.mermaid .flowchart-link) {
-  stroke: var(--mermaid-edge-color) !important;
-  stroke-width: 2px !important;
-  fill: none !important;
-}
-
-/* Arrow markers */
-.message-text :deep(.mermaid marker path) {
-  fill: var(--mermaid-edge-color) !important;
-  stroke: var(--mermaid-edge-color) !important;
-}
-
-/* Edge labels */
-.message-text :deep(.mermaid .edgeLabel) {
-  background-color: var(--color-darker-1) !important;
-  color: var(--color-white) !important;
-}
-
-.message-text :deep(.mermaid .edgeLabel p),
-.message-text :deep(.mermaid .labelBkg) {
-  white-space: nowrap;
-  background: transparent !important;
-}
-
-.message-text :deep(.mermaid .nodeLabel p) {
-  white-space: normal !important;
-  word-break: normal !important;
-  overflow-wrap: break-word !important;
-  background: transparent !important;
-}
-
-.message-text :deep(.mermaid .node .nodeLabel p) {
-  white-space: normal !important;
-  word-break: normal !important;
-  overflow-wrap: break-word !important;
-}
-
-.message-text :deep(.mermaid .edgeLabel rect) {
-  fill: var(--color-darker-1) !important;
-  stroke: none !important;
-}
-
-.message-text :deep(.mermaid .edgeLabel span),
-.message-text :deep(.mermaid .edgeLabel div) {
-  color: var(--color-white) !important;
-}
-
-/* Special diagram types */
-.message-text :deep(.mermaid .actor),
-.message-text :deep(.mermaid .task),
-.message-text :deep(.mermaid .section) {
-  fill: var(--mermaid-node-fill) !important;
-  stroke: var(--mermaid-node-stroke) !important;
-  stroke-width: 3px !important;
-}
-
-/* Pie charts - Updated selectors based on actual DOM structure */
-.message-text :deep(.mermaid .pieCircle) {
-  stroke: var(--mermaid-node-stroke) !important;
-  stroke-width: 3px !important;
-}
-
-.message-text :deep(.mermaid .pieTitleText) {
-  fill: var(--color-white) !important;
-}
-
-/* Pie slice colors - Target ONLY pie chart path elements, exclude flowchart elements */
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(1):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #ff6b6b !important; /* Red */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(2):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #4ecdc4 !important; /* Teal */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(3):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #45b7d1 !important; /* Blue */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(4):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #96ceb4 !important; /* Green */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(5):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #feca57 !important; /* Yellow */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(6):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #ff9ff3 !important; /* Pink */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(7):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #54a0ff !important; /* Light Blue */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(8):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #5f27cd !important; /* Purple */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(9):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #00d2d3 !important; /* Cyan */
-}
-
-.message-text :deep(.mermaid svg path.pieCircle:nth-child(10):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #ff6348 !important; /* Orange */
-}
-
-/* More specific selectors for pie slices - exclude flowchart elements */
-.message-text :deep(.mermaid svg g path:nth-of-type(1).pieCircle:not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #ff6b6b !important; /* Red */
-}
-
-.message-text :deep(.mermaid svg g path:nth-of-type(2).pieCircle:not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #4ecdc4 !important; /* Teal */
-}
-
-.message-text :deep(.mermaid svg g path:nth-of-type(3).pieCircle:not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #45b7d1 !important; /* Blue */
-}
-
-.message-text :deep(.mermaid svg g path:nth-of-type(4).pieCircle:not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #96ceb4 !important; /* Green */
-}
-
-.message-text :deep(.mermaid svg g path:nth-of-type(5).pieCircle:not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #feca57 !important; /* Yellow */
-}
-
-/* Legend colors to match slices exactly - Use the same colors as pie slices */
-/* Target legend rectangles and apply the same colors as the corresponding pie slices */
-
-/* First legend item - matches first pie slice */
-.message-text :deep(.mermaid svg g.legend:nth-of-type(1) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(1) rect),
-.message-text :deep(.mermaid svg g[transform*='translate(216,-44)'] rect) {
-  fill: #ff6b6b !important; /* Red */
-}
-
-/* Second legend item - matches second pie slice */
-.message-text :deep(.mermaid svg g.legend:nth-of-type(2) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(2) rect),
-.message-text :deep(.mermaid svg g[transform*='translate(216,-22)'] rect) {
-  fill: #4ecdc4 !important; /* Teal */
-}
-
-/* Third legend item - matches third pie slice */
-.message-text :deep(.mermaid svg g.legend:nth-of-type(3) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(3) rect),
-.message-text :deep(.mermaid svg g[transform*='translate(216,0)'] rect) {
-  fill: #45b7d1 !important; /* Blue */
-}
-
-/* Fourth legend item - matches fourth pie slice */
-.message-text :deep(.mermaid svg g.legend:nth-of-type(4) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(4) rect),
-.message-text :deep(.mermaid svg g[transform*='translate(216,22)'] rect) {
-  fill: #96ceb4 !important; /* Green */
-}
-
-/* Fifth legend item - matches fifth pie slice */
-.message-text :deep(.mermaid svg g.legend:nth-of-type(5) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(5) rect),
-.message-text :deep(.mermaid svg g[transform*='translate(216,44)'] rect) {
-  fill: #feca57 !important; /* Yellow */
-}
-
-/* Additional legend items for larger pie charts */
-.message-text :deep(.mermaid svg g.legend:nth-of-type(6) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(6) rect) {
-  fill: #ff9ff3 !important; /* Pink */
-}
-
-.message-text :deep(.mermaid svg g.legend:nth-of-type(7) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(7) rect) {
-  fill: #54a0ff !important; /* Light Blue */
-}
-
-.message-text :deep(.mermaid svg g.legend:nth-of-type(8) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(8) rect) {
-  fill: #5f27cd !important; /* Purple */
-}
-
-.message-text :deep(.mermaid svg g.legend:nth-of-type(9) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(9) rect) {
-  fill: #00d2d3 !important; /* Cyan */
-}
-
-.message-text :deep(.mermaid svg g.legend:nth-of-type(10) rect),
-.message-text :deep(.mermaid svg g[class='legend']:nth-child(10) rect) {
-  fill: #ff6348 !important; /* Orange */
-}
-
-/* Fallback: Apply colors to any legend rectangle based on position */
-.message-text :deep(.mermaid svg g.legend rect) {
-  fill: var(--color-text) !important; /* Default fallback */
-}
-
-/* Alternative approach - target by position in DOM, but exclude flowchart elements */
-.message-text :deep(.mermaid svg g:nth-child(2) path:nth-child(2):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #ff6b6b !important; /* Red - first slice */
-}
-
-.message-text :deep(.mermaid svg g:nth-child(2) path:nth-child(3):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #4ecdc4 !important; /* Teal - second slice */
-}
-
-.message-text :deep(.mermaid svg g:nth-child(2) path:nth-child(4):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #45b7d1 !important; /* Blue - third slice */
-}
-
-.message-text :deep(.mermaid svg g:nth-child(2) path:nth-child(5):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #96ceb4 !important; /* Green - fourth slice */
-}
-
-.message-text :deep(.mermaid svg g:nth-child(2) path:nth-child(6):not(.flowchart-link):not(.edge-pattern-solid)) {
-  fill: #feca57 !important; /* Yellow - fifth slice */
-}
-
-/* Legend text styling */
-.message-text :deep(.mermaid svg g.legend text) {
-  fill: var(--color-white) !important;
-  font-size: 14px !important;
-}
-
-/* Pie chart percentage labels */
-.message-text :deep(.mermaid .pieSectionText) {
-  fill: var(--color-white) !important;
-  font-size: 12px !important;
-  font-weight: bold !important;
-}
-
-/* Additional fallback selectors for different Mermaid versions */
-.message-text :deep(.mermaid .slice0) {
-  fill: #ff6b6b !important;
-}
-.message-text :deep(.mermaid .slice1) {
-  fill: #4ecdc4 !important;
-}
-.message-text :deep(.mermaid .slice2) {
-  fill: #45b7d1 !important;
-}
-.message-text :deep(.mermaid .slice3) {
-  fill: #96ceb4 !important;
-}
-.message-text :deep(.mermaid .slice4) {
-  fill: #feca57 !important;
-}
-.message-text :deep(.mermaid .slice5) {
-  fill: #ff9ff3 !important;
-}
-.message-text :deep(.mermaid .slice6) {
-  fill: #54a0ff !important;
-}
-.message-text :deep(.mermaid .slice7) {
-  fill: #5f27cd !important;
-}
-.message-text :deep(.mermaid .slice8) {
-  fill: #00d2d3 !important;
-}
-.message-text :deep(.mermaid .slice9) {
-  fill: #ff6348 !important;
-}
-
-/* Gantt charts */
-.message-text :deep(.mermaid .grid .tick line) {
-  stroke: var(--color-darker-2) !important;
-}
-
-.message-text :deep(.mermaid .grid .tick text) {
-  fill: var(--color-white) !important;
-}
-
-/* Mindmap specific styles */
-.message-text :deep(g.mindmap-edges .edge) {
-  stroke-width: 2px !important;
-  stroke: var(--mermaid-edge-color) !important;
-}
-
-.message-text :deep(.mermaid .mindmap-node) {
-  fill: var(--mermaid-node-fill) !important;
-  stroke: var(--mermaid-node-stroke) !important;
-  stroke-width: 3px !important;
-}
-
 .message-text :deep(pre) {
   background-color: var(--color-darker-1);
   padding: 16px;
@@ -2487,159 +2026,13 @@ rect.basic.label-container {
 }
 
 /* Hide code blocks until they're highlighted to prevent janky rendering during streaming */
-/* .message-text :deep(pre code:not(.hljs):not(.language-mermaid)) {
+/* .message-text :deep(pre code:not(.hljs)) {
   opacity: 0;
   transition: opacity 0.2s ease;
 } */
 
 .message-text :deep(pre code.hljs) {
   opacity: 1;
-}
-
-.message-text :deep(.mermaid) {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  padding: 16px 0;
-  text-align: center;
-  /* font-size: 1.2em; */
-  min-width: 100%;
-}
-
-.message-text :deep(.mermaid svg) {
-  width: 100% !important;
-  height: auto !important;
-  max-width: 100% !important;
-  max-height: 500px !important; /* Limit maximum height */
-  min-width: 100% !important;
-}
-
-/* Override Mermaid's inline styles */
-.message-text :deep(.mermaid svg[style*='max-width']) {
-  max-width: 100% !important;
-  width: 100% !important;
-}
-
-/* Ensure Mermaid diagrams use full width */
-.message-text :deep(.mermaid-chart) {
-  width: 100% !important;
-  max-width: 100% !important;
-}
-
-.message-text :deep(.mermaid-chart svg) {
-  width: 100% !important;
-  height: auto !important;
-  max-width: 100% !important;
-}
-
-/* Ensure Mermaid diagrams use full width */
-.message-text :deep(.mermaid-chart) {
-  width: 100% !important;
-  max-width: 100% !important;
-}
-
-.message-text :deep(.mermaid-chart svg) {
-  width: 100% !important;
-  height: auto !important;
-  max-width: 100% !important;
-}
-
-.message-text :deep(.mermaid foreignObject) {
-  overflow: visible !important;
-}
-
-.message-text :deep(.mermaid .nodeLabel) {
-  white-space: normal !important;
-  word-break: normal !important;
-  overflow-wrap: break-word !important;
-  font-size: var(--font-size-xs) !important;
-}
-
-/* Target foreignObject content specifically */
-.message-text :deep(.mermaid foreignObject div) {
-  white-space: normal !important;
-  word-break: normal !important;
-  overflow-wrap: break-word !important;
-}
-
-.message-text :deep(.mermaid foreignObject .nodeLabel) {
-  white-space: normal !important;
-  word-break: normal !important;
-  overflow-wrap: break-word !important;
-}
-
-.message-text :deep(.mermaid foreignObject span) {
-  white-space: normal !important;
-  word-break: normal !important;
-  overflow-wrap: break-word !important;
-}
-
-.message-text :deep(pre code.language-mermaid) {
-  background-color: transparent;
-  padding: 0;
-  border-radius: 0;
-  border: none;
-  font-size: var(--font-size-sm) !important;
-}
-
-.message-text :deep(.mermaid-error-wrapper) {
-  border: 3px solid var(--color-red) !important;
-  border-radius: 8px;
-  padding: 2px;
-  margin: 16px 0;
-}
-
-.message-text :deep(.mermaid .node.error rect) {
-  fill: var(--mermaid-node-fill) !important;
-  stroke: var(--color-red) !important;
-}
-
-.message-text :deep(.mermaid .node.warning rect) {
-  fill: var(--mermaid-node-fill) !important;
-  stroke: var(--color-yellow) !important;
-}
-
-.message-text :deep(.mermaid-error) {
-  background-color: rgba(255, 107, 107, 0.1);
-  border-radius: 6px;
-  padding: 16px;
-  text-align: left;
-}
-
-.message-text :deep(.mermaid-error .error-header) {
-  color: var(--color-red) !important;
-  font-weight: bold;
-  margin-bottom: 8px;
-}
-
-.message-text :deep(.mermaid-error .error-message) {
-  color: var(--color-red) !important;
-  font-family: var(--font-family-mono);
-  font-size: 0.9em;
-  margin-bottom: 12px;
-  white-space: pre-wrap;
-}
-
-.message-text :deep(.mermaid-error .error-details) {
-  border-top: 1px solid rgba(255, 107, 107, 0.2);
-  padding-top: 12px;
-}
-
-.message-text :deep(.mermaid-error .error-details summary) {
-  cursor: pointer;
-  color: var(--color-light-med-navy);
-  font-weight: 500;
-}
-
-.message-text :deep(.mermaid-error .mermaid-code) {
-  background-color: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
-  padding: 12px;
-  margin-top: 8px;
-  font-family: var(--font-family-mono);
-  font-size: 0.8em;
-  white-space: pre-wrap;
-  overflow-x: auto;
 }
 
 .message-text :deep(h1),
@@ -3953,4 +3346,120 @@ span.nodeLabel p {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Chart.js inline charts in chat messages */
+.message-text :deep(.chartjs-container) {
+  width: 100%;
+  max-width: 100%;
+  max-height: 400px;
+  padding: 16px;
+  margin: 12px 0;
+  background-color: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-text :deep(.chartjs-container canvas) {
+  max-height: 360px !important;
+  width: 100% !important;
+}
+
+/* D3 inline visualizations in chat messages */
+.message-text :deep(.d3-container) {
+  width: 100%;
+  max-width: 100%;
+  margin: 12px 0;
+  padding: 16px;
+  background-color: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-text :deep(.d3-container .d3-chart) {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-text :deep(.d3-container svg) {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.message-text :deep(.d3-container text) {
+  fill: #e0e0e0;
+}
+
+.message-text :deep(.d3-container .axis text) {
+  fill: #a0a0a0;
+  font-size: 11px;
+}
+
+.message-text :deep(.d3-container .axis path),
+.message-text :deep(.d3-container .axis line) {
+  stroke: #555;
+}
+
+.message-text :deep(.d3-container .grid line) {
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+/* Three.js inline 3D scenes in chat messages */
+.message-text :deep(.threejs-container) {
+  width: 100%;
+  max-width: 100%;
+  margin: 12px 0;
+  background-color: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-text :deep(.threejs-container .threejs-canvas) {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 450px;
+  display: block;
+  cursor: grab;
+}
+
+.message-text :deep(.threejs-container .threejs-canvas:active) {
+  cursor: grabbing;
+}
+
+/* Visualization action buttons (Copy / Fullscreen) on chart/d3/threejs containers */
+.message-text :deep(.viz-action-buttons) {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.message-text :deep(.chartjs-container:hover .viz-action-buttons),
+.message-text :deep(.d3-container:hover .viz-action-buttons),
+.message-text :deep(.threejs-container:hover .viz-action-buttons) {
+  opacity: 1;
+}
+
 </style>

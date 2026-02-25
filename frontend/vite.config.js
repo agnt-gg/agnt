@@ -66,9 +66,6 @@ export default defineConfig({
           // 3D graphics - only used in BallJumper minigame
           'vendor-3d': ['three'],
 
-          // Diagram rendering - only used in workflows
-          'vendor-mermaid': ['mermaid'],
-
           // Utility libraries - shared across app
           'vendor-utils': [
             'axios',

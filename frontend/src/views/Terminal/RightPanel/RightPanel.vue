@@ -32,7 +32,7 @@ const loadPanel = (panelName) => {
   const component = defineAsyncComponent(() =>
     import(`./types/${panelName}/${panelName}.vue`).catch(() => {
       return import('./types/ChatPanel/ChatPanel.vue');
-    })
+    }),
   );
   panelCache.set(panelName, component);
   return component;
@@ -157,7 +157,7 @@ export default {
 .controls-panel {
   flex-shrink: 0;
   height: 100%;
-  padding: 16px;
+  padding: 12px;
   box-sizing: border-box;
   background: var(--color-background);
   border-left: 1px solid var(--terminal-border-color);

@@ -732,13 +732,12 @@ export default {
           // Restore conversation ID
           currentConversationId.value = conversationData.conversationId;
 
-          // IMPORTANT: Set the savedOutputId so autosave updates this conversation instead of creating a new one
+          // IMPORTANT: Set the savedOutputId and cached title so autosave updates this conversation instead of creating a new one
           store.commit('chat/SET_SAVED_OUTPUT_ID', contentId);
+          store.commit('chat/SET_SAVED_OUTPUT_TITLE', conversationData.title || null);
 
-          // Restore all messages
-          conversationData.messages.forEach((msg) => {
-            store.commit('chat/ADD_MESSAGE', msg);
-          });
+          // Restore all messages in a single batch commit (avoids N re-renders)
+          store.commit('chat/SET_MESSAGES', conversationData.messages);
 
           terminalLines.value.push(
             `Loaded conversation from ${new Date(conversationData.createdAt).toLocaleDateString()} (${conversationData.messages.length} messages)`
@@ -782,6 +781,9 @@ export default {
 
       // Clear agent context so orchestrator chats aren't labeled with old agent names
       store.commit('chat/CLEAR_CURRENT_AGENT');
+
+      // Fetch active workflows in background so the header shows them immediately
+      store.dispatch('workflows/fetchWorkflows', { activeOnly: true });
 
       // Fetch app version for display
       await fetchVersion();

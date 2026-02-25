@@ -31,6 +31,7 @@ export default {
     dataCache: new Map(),
     // Autosave state
     savedOutputId: null,
+    savedOutputTitle: null, // Cached title to avoid re-fetching full record on autosave
     lastSaveTimestamp: null,
     isSaving: false,
     autosaveEnabled: true,
@@ -88,6 +89,19 @@ export default {
       } else {
         console.error('Invalid message format pushed to store:', message);
       }
+    },
+    SET_MESSAGES(state, messages) {
+      // Batch-set all messages at once (single reactive update instead of N commits)
+      state.messages = messages.filter(
+        (msg) => msg && msg.role && msg.content !== undefined
+      );
+      // Trim to max if needed
+      if (state.messages.length > MAX_MESSAGES) {
+        state.messages.splice(0, state.messages.length - MAX_MESSAGES);
+      }
+    },
+    SET_SAVED_OUTPUT_TITLE(state, title) {
+      state.savedOutputTitle = title;
     },
     REMOVE_MESSAGE(state, messageId) {
       const index = state.messages.findIndex(m => m.id === messageId);
@@ -181,6 +195,7 @@ export default {
         clearTimeout(state.autosaveDebounceTimer);
       }
       state.savedOutputId = null;
+      state.savedOutputTitle = null;
       state.lastSaveTimestamp = null;
       state.isSaving = false;
       state.saveStatus = null;
@@ -253,6 +268,7 @@ export default {
     },
     CLEAR_AUTOSAVE_STATE(state) {
       state.savedOutputId = null;
+      state.savedOutputTitle = null;
       state.lastSaveTimestamp = null;
       state.isSaving = false;
       state.saveStatus = null;
@@ -655,30 +671,10 @@ export default {
       }
 
       try {
-        // If updating an existing conversation, fetch the current title to preserve it
-        let conversationTitle = null;
-        if (state.savedOutputId) {
-          try {
-            const existingResponse = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/${state.savedOutputId}`, {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            });
-            if (existingResponse.ok) {
-              const existingData = await existingResponse.json();
-              // Preserve the existing title
-              conversationTitle = existingData.title;
-            } else if (existingResponse.status === 404) {
-              // Conversation was deleted - clear the savedOutputId and treat as new
-              console.warn('[Autosave] Saved conversation was deleted (404), creating new conversation');
-              commit('SET_SAVED_OUTPUT_ID', null);
-            }
-          } catch (error) {
-            console.warn('[Autosave] Could not fetch existing title, will generate new one:', error);
-          }
-        }
+        // Use cached title instead of re-fetching the full record from the server
+        let conversationTitle = state.savedOutputTitle || null;
 
-        // Only generate a new title if we don't have one (new conversation or fetch failed)
+        // Only generate a new title if we don't have a cached one
         if (!conversationTitle) {
           const firstUserMessage = state.messages.find((msg) => msg.role === 'user');
           // Include agent name in title if this is an agent chat
@@ -744,8 +740,9 @@ export default {
 
         const result = await response.json();
 
-        // Store the output ID for future updates
+        // Store the output ID and title for future updates (avoids re-fetching)
         commit('SET_SAVED_OUTPUT_ID', result.id);
+        commit('SET_SAVED_OUTPUT_TITLE', conversationTitle);
         commit('SET_LAST_SAVE_TIMESTAMP', Date.now());
         commit('SET_IS_SAVING', false);
         commit('SET_SAVE_STATUS', 'saved');
@@ -800,6 +797,11 @@ export default {
         }
 
         const result = await response.json();
+
+        // Cache the new title so autosave doesn't re-fetch
+        if (state.savedOutputId === outputId) {
+          commit('SET_SAVED_OUTPUT_TITLE', title);
+        }
 
         // Dispatch event to notify OutputList to refresh
         window.dispatchEvent(new CustomEvent('conversation-renamed', { detail: { id: outputId, title } }));

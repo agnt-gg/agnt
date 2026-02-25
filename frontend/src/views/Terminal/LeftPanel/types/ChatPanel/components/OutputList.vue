@@ -191,27 +191,9 @@ export default {
 
           const query = searchQuery.value.toLowerCase();
 
-          // Search in title
+          // Search against title only (no JSON.parse or DOM creation on every keystroke)
           const title = getPreviewText(output.content, output).toLowerCase();
-          if (title.includes(query)) return true;
-
-          // Search in full content for conversation-type outputs
-          if (output.content_type === 'conversation') {
-            try {
-              const conversationData = JSON.parse(output.content);
-              // Search through all message contents
-              return conversationData.messages.some((msg) => msg.content && msg.content.toLowerCase().includes(query));
-            } catch (e) {
-              // If parsing fails, fall back to searching raw content
-              return output.content.toLowerCase().includes(query);
-            }
-          }
-
-          // For HTML outputs, search in the text content
-          const tempElement = document.createElement('div');
-          tempElement.innerHTML = output.content;
-          const textContent = (tempElement.textContent || tempElement.innerText || '').toLowerCase();
-          return textContent.includes(query);
+          return title.includes(query);
         })
         .sort((a, b) => {
           let aValue = sortKey.value === 'content' ? getPreviewText(a.content, a) : a[sortKey.value];
@@ -266,29 +248,29 @@ export default {
     }
 
     function getPreviewText(content, output) {
-      // First, check if there's a title field in the output object
+      // Use the title field directly (list endpoint no longer sends full content)
       if (output && output.title) {
         return truncateText(output.title);
       }
 
-      // Try to parse as JSON (for conversation-type outputs)
-      try {
-        const parsed = JSON.parse(content);
-        if (parsed.title) {
-          return truncateText(parsed.title);
+      // Fallback for legacy outputs that may still have content
+      if (content && typeof content === 'string') {
+        // Try JSON title extraction only if content looks like JSON
+        if (content.charAt(0) === '{') {
+          try {
+            const parsed = JSON.parse(content);
+            if (parsed.title) {
+              return truncateText(parsed.title);
+            }
+          } catch (e) {
+            // Not valid JSON
+          }
         }
-      } catch (e) {
-        // Not JSON, continue with HTML parsing
+        // Simple text truncation as last resort
+        return truncateText(content.replace(/<[^>]*>/g, '').split('\n')[0]);
       }
 
-      // Fall back to HTML text extraction for legacy outputs
-      const tempElement = document.createElement('div');
-      tempElement.innerHTML = content;
-
-      const textContent = tempElement.textContent || tempElement.innerText;
-
-      const firstLine = textContent.split('\n')[0];
-      return truncateText(firstLine);
+      return 'Untitled';
     }
 
     function truncateText(text, maxLength = 100) {

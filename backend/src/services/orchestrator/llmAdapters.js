@@ -385,6 +385,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           }
         });
 
+        const abortSignal = context.abortSignal;
         const stream = await this.client.chat.completions.create({
           model: this.model,
           messages: currentMessages,
@@ -395,6 +396,12 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
         try {
           for await (const chunk of stream) {
+            if (abortSignal?.aborted) {
+              stream.controller?.abort?.();
+              console.log('[OpenAI Stream] Aborted by client disconnect');
+              break;
+            }
+
             const delta = chunk.choices[0]?.delta;
 
             if (!delta) continue;
@@ -1072,6 +1079,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           systemParam = systemPrompt;
         }
 
+        const abortSignal = context.abortSignal;
         const stream = await this.client.messages.stream({
           model: this.model,
           system: systemParam,
@@ -1084,6 +1092,12 @@ Please carefully check the tool schema and ensure all parameters match the expec
         let streamParseError = null;
         try {
           for await (const event of stream) {
+            if (abortSignal?.aborted) {
+              stream.abort?.();
+              console.log('[Anthropic Stream] Aborted by client disconnect');
+              break;
+            }
+
             // Skip null/undefined events
             if (!event || !event.type) {
               console.warn('[Anthropic] Received null or invalid event, skipping');
@@ -1679,9 +1693,16 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
           console.log('[Cerebras Debug] First tool schema sample:', JSON.stringify(cerebrasTools[0], null, 2));
         }
 
+        const abortSignal = context.abortSignal;
         const stream = await this.client.chat.completions.create(requestParams);
 
         for await (const chunk of stream) {
+          if (abortSignal?.aborted) {
+            stream.controller?.abort?.();
+            console.log('[Cerebras Stream] Aborted by client disconnect');
+            break;
+          }
+
           const delta = chunk.choices[0]?.delta;
 
           if (!delta) continue;
@@ -2329,6 +2350,7 @@ class GeminiAdapter extends BaseAdapter {
           config.tools = [{ functionDeclarations: geminiTools }];
         }
 
+        const abortSignal = context.abortSignal;
         const response = await this.client.models.generateContentStream({
           model: this.model,
           config: config,
@@ -2337,6 +2359,11 @@ class GeminiAdapter extends BaseAdapter {
 
         // Stream chunks
         for await (const chunk of response) {
+          if (abortSignal?.aborted) {
+            console.log('[Gemini Stream] Aborted by client disconnect');
+            break;
+          }
+
           const delta = chunk.text || '';
 
           if (delta) {
@@ -2850,10 +2877,16 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 
         console.log(`[OpenAI Responses] Streaming call to model '${this.model}'`);
 
+        const abortSignal = context.abortSignal;
         const stream = await this.client.responses.create(requestParams);
 
         // Handle streaming events
         for await (const event of stream) {
+          if (abortSignal?.aborted) {
+            console.log('[OpenAI Responses Stream] Aborted by client disconnect');
+            break;
+          }
+
           // Handle different event types from Responses API
           if (event.type === 'response.output_item.added') {
             // New output item started
@@ -3048,12 +3081,17 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    * Consume a streaming response and return accumulated results.
    * Used by both call() and callStream() to process SSE events.
    */
-  async _consumeStream(stream, onChunk = null) {
+  async _consumeStream(stream, onChunk = null, abortSignal = null) {
     let accumulatedContent = '';
     let accumulatedToolCalls = [];
     let responseId = null;
 
     for await (const event of stream) {
+      if (abortSignal?.aborted) {
+        console.log('[Codex Stream] Aborted by client disconnect');
+        break;
+      }
+
       if (event.type === 'response.output_item.added') {
         const item = event.item;
         if (item.type === 'function_call') {
@@ -3186,8 +3224,9 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
         console.log(`[Codex Responses] Streaming call to model '${this.model}' via ChatGPT backend`);
 
+        const abortSignal = context.abortSignal;
         const stream = await this.client.responses.create(params);
-        const { accumulatedContent, accumulatedToolCalls } = await this._consumeStream(stream, onChunk);
+        const { accumulatedContent, accumulatedToolCalls } = await this._consumeStream(stream, onChunk, abortSignal);
 
         if (attempt > 0) {
           console.log(`Codex Responses streaming call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);

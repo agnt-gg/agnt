@@ -139,9 +139,24 @@ export default {
     },
     async fetchWorkflows({ commit, state }, { activeOnly = false } = {}) {
       // Request deduplication - prevent duplicate concurrent calls
-      if (state.isFetchingWorkflows) return;
+      // Allow active-only fetches to proceed even if a full fetch is in progress
+      if (state.isFetchingWorkflows && !activeOnly) return;
 
-      commit('SET_FETCHING_WORKFLOWS', true);
+      // For active-only fetches while a full fetch is running, wait for it to complete
+      // then do the active-only fetch to ensure fresh status data
+      if (state.isFetchingWorkflows && activeOnly) {
+        // Wait for the current fetch to finish (poll briefly)
+        let waited = 0;
+        while (state.isFetchingWorkflows && waited < 5000) {
+          await new Promise((r) => setTimeout(r, 100));
+          waited += 100;
+        }
+      }
+
+      const isActiveOnlyFetch = activeOnly;
+      if (!isActiveOnlyFetch) {
+        commit('SET_FETCHING_WORKFLOWS', true);
+      }
       commit('SET_LOADING', true);
       try {
         const token = localStorage.getItem('token');
@@ -174,8 +189,15 @@ export default {
 
         if (activeOnly) {
           // Merge active workflow updates into existing state
+          // Add workflows that aren't in state yet (fixes race condition where
+          // active-only fetch runs before full fetch populates the list)
           processedWorkflows.forEach((workflow) => {
-            commit('UPDATE_WORKFLOW', workflow);
+            const exists = state.workflows.some((w) => w.id === workflow.id);
+            if (exists) {
+              commit('UPDATE_WORKFLOW', workflow);
+            } else {
+              commit('ADD_WORKFLOW', workflow);
+            }
           });
         } else {
           commit('SET_WORKFLOWS', processedWorkflows);
@@ -188,7 +210,9 @@ export default {
         }
       } finally {
         commit('SET_LOADING', false);
-        commit('SET_FETCHING_WORKFLOWS', false);
+        if (!isActiveOnlyFetch) {
+          commit('SET_FETCHING_WORKFLOWS', false);
+        }
       }
     },
     async deleteWorkflow({ commit }, workflowId) {

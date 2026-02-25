@@ -151,115 +151,180 @@ export const IMPORTANT_GUIDELINES = `IMPORTANT GUIDELINES:
 
 6. **Return rich responses**:
    - Format your final response in markdown
-   - Include code blocks, ASCII art, valid TD mermaid charts, lists, tables where appropriate
+   - Include code blocks, ASCII art, Chart.js charts, D3 visualizations, Three.js 3D scenes, lists, tables where appropriate
    - Embed images, links, youtube frames, videos, anytime you can
    - Summarize the results of your tool usage clearly
    - YOU WILL BE PUNISHED IF YOU ONLY RETURN PLAIN TEXT!!`;
 
-export const MERMAID_CHART_CHEATSHEET = `MERMAID CHART CHEATSHEET:
-# Mermaid LLM Checklist ✅
+export const CHART_CHEATSHEET = `CHART.JS VISUALIZATION GUIDE:
 
-A bulletproof checklist for LLMs to follow when generating Mermaid diagrams.
-This is fed into a narrow chat window so TD neutral type charts work best.
+When you want to show data visually, use a \\\`\\\`\\\`chartjs code block with a JSON Chart.js config.
+The frontend will render it as an interactive chart automatically.
 
-## 🔄 Flowchart ('graph') Rules
+SYNTAX: Wrap valid JSON in a chartjs fenced code block:
+\\\`\\\`\\\`chartjs
+{ "type": "...", "data": { ... } }
+\\\`\\\`\\\`
 
-- Always start with 'flowchart TD' for top-down flowcharts (most common)
-- Always label nodes with '[Node Name]' for rectangles or '{Node Name}' for diamonds
-- Use proper arrow syntax: '-->' for solid arrows, '-.->' for dash arrows, '==>' for thick arrows
-- Separate nodes and connections with newlines for clarity
-- Escape special characters in labels:
-  * Use backslashes for pipe and colon: '\|', '\:'
-  * For parentheses in labels, either:
-    - Use double quotes around the entire label: A["Timer Trigger (Every 30 Minutes)"]
-    - Or escape with backslashes: A[Timer Trigger \(Every 30 Minutes\)]
-- Example of correct syntax with special characters:
-  flowchart TD
-      A["Timer Trigger (Every 30 Minutes)"] --> B{Decision}
-      B -->|Yes| C["Action (Step 1)"]
-      B -->|No| D[Action \(Step 2\)]
-      C --> E[End]
-- Example of correct syntax:
-  flowchart TD
-      A[Start] --> B{Decision}
-      B -->|Yes| C[Action 1]
-      B -->|No| D[Action 2]
-      C --> E[End]
-      D --> E
+SUPPORTED TYPES: bar, line, pie, doughnut, radar, polarArea
 
-## 🧬 Sequence Diagram Rules
+RULES:
+- Must be valid JSON (no comments, no trailing commas, no JS functions)
+- Always include "type" and "data" keys
+- "data" must have "labels" array and "datasets" array
+- Each dataset needs "label" and "data" at minimum
+- Colors are auto-applied if omitted (theme-aware palette)
+- Keep labels short and data arrays matching in length
+- "options" is optional - dark theme styling is applied automatically
 
-- Define participants explicitly with 'participant' keyword
-- Use correct arrow syntax: '->>' for solid arrows, '-->>' for dotted arrows
-- Escape pipe characters in messages with '\\|'
-- Example of correct syntax:
-  sequenceDiagram
-      participant User
-      participant System
-      User->>System: Request
-      System-->>User: Response
+EXAMPLES:
 
-## 🗓️ Gantt Chart Rules
+Bar chart:
+\\\`\\\`\\\`chartjs
+{"type":"bar","data":{"labels":["Jan","Feb","Mar","Apr"],"datasets":[{"label":"Revenue","data":[12,19,8,15]}]}}
+\\\`\\\`\\\`
 
-- Use proper task syntax: 'Task Name :YYYY-MM-DD, duration'
-- Escape colons in task names with '\:'
-- Example of correct syntax:
-  gantt
-      title Project Timeline
-      dateFormat  YYYY-MM-DD
-      section Section
-      Task 1 :2024-01-01, 10d
+Line chart:
+\\\`\\\`\\\`chartjs
+{"type":"line","data":{"labels":["Mon","Tue","Wed","Thu","Fri"],"datasets":[{"label":"Users","data":[65,59,80,81,56],"fill":false}]}}
+\\\`\\\`\\\`
 
-## 🥯 Pie Chart Rules
+Pie chart:
+\\\`\\\`\\\`chartjs
+{"type":"pie","data":{"labels":["Desktop","Mobile","Tablet"],"datasets":[{"data":[55,30,15]}]}}
+\\\`\\\`\\\`
 
-- Use numeric values for pie slices (no percentages in values)
-- Separate labels from values with ':'
-- Example of correct syntax:
-  pie
-      title Sample Pie Chart
-      "Category A" : 45
-      "Category B" : 30
-      "Category C" : 25
+Multi-dataset bar chart:
+\\\`\\\`\\\`chartjs
+{"type":"bar","data":{"labels":["Q1","Q2","Q3","Q4"],"datasets":[{"label":"2024","data":[10,20,30,40]},{"label":"2025","data":[15,25,35,45]}]}}
+\\\`\\\`\\\`
 
-## 📦 Class Diagram Rules
+WHEN TO USE CHART.JS:
+- Showing numeric comparisons, trends, distributions, or proportions
+- Summarizing data from tool results (API responses, database queries, etc.)
+- Visualizing workflow execution stats or performance metrics
+- Any time data would be clearer as a visual than a table
 
-- Define classes with 'class ClassName {' and close with '}'
-- Include method parameters with '()' even if empty
-- Use proper syntax for relationships: 'ClassA "1" --> "many" ClassB'
-- Example of correct syntax:
-  classDiagram
-      class Animal {
-          +name: string
-          +age: int
-          +eat()
-      }
-      class Dog {
-          +breed: string
-          +bark()
-      }
-      Animal <|-- Dog
+D3.JS VISUALIZATION GUIDE:
 
-## 🔧 General Syntax Rules
+For advanced/custom visualizations (treemaps, force graphs, custom SVGs, etc.), use a \\\`\\\`\\\`d3 code block with JavaScript.
+The frontend renders it in a sandboxed iframe with D3 v7 loaded. A \`container\` variable (d3 selection of #chart div) is available.
 
-- ALWAYS start diagrams with the correct diagram type declaration (flowchart, sequenceDiagram, etc.)
-- ALWAYS use proper node syntax with square brackets [Node Name] or braces {Node Name}
-- NEVER put square brackets directly after flowchart direction (TD[Node Name] is WRONG)
-- NEVER use HTML tags, CSS, inline styles, or JavaScript in diagrams
-- NEVER use markdown formatting inside diagrams
-- NEVER include explanations or comments inside the diagram code block, also labels very brief
-- Use '%%' for comments, not '//'
-- Close all opening braces '{' and brackets '[' properly
-- Test diagrams at [mermaid.live](https://mermaid.live) when possible
-- When in doubt, keep it simple - complex diagrams often break
+SYNTAX: Wrap D3 JavaScript code in a d3 fenced code block:
+\\\`\\\`\\\`d3
+// 'container' is already a d3.select("#chart") selection
+const svg = container.append("svg").attr("width", 400).attr("height", 300);
+// ... your D3 code here
+\\\`\\\`\\\`
 
-## ❌ Common Mistakes to Avoid
+RULES:
+- \`container\` is pre-defined as d3.select("#chart") - use it directly
+- D3 v7 is loaded - use d3.* methods freely
+- Dark theme: background is transparent, text defaults to #e0e0e0
+- Keep SVG dimensions reasonable (width 400-600, height 200-400)
+- No external data fetches - all data must be inline
+- Use the AGNT color palette: #e53d8f, #12e0ff, #19ef83, #ffd700, #7d3de5, #ff9500
 
-- flowchart TD[Node Name]  (WRONG - bracket in wrong place)
-- flowchart TD Node Name   (WRONG - missing brackets)
-- graph TD                (AVOID - use flowchart instead)
-- HTML tags in diagrams    (WRONG - breaks rendering)
-- Inline CSS styling       (WRONG - breaks rendering)
-- Markdown in diagrams     (WRONG - breaks rendering)`;
+EXAMPLE - Horizontal bar chart:
+\\\`\\\`\\\`d3
+const data = [{label: "Alpha", value: 40}, {label: "Beta", value: 65}, {label: "Gamma", value: 30}];
+const w = 450, h = data.length * 40 + 20;
+const svg = container.append("svg").attr("width", w).attr("height", h);
+const x = d3.scaleLinear().domain([0, d3.max(data, d => d.value)]).range([0, w - 120]);
+const y = d3.scaleBand().domain(data.map(d => d.label)).range([10, h - 10]).padding(0.3);
+svg.selectAll("rect").data(data).join("rect")
+  .attr("x", 80).attr("y", d => y(d.label)).attr("width", d => x(d.value)).attr("height", y.bandwidth())
+  .attr("fill", (d,i) => ["#e53d8f","#12e0ff","#19ef83"][i]);
+svg.selectAll(".label").data(data).join("text").attr("class","label")
+  .attr("x", 75).attr("y", d => y(d.label) + y.bandwidth()/2).attr("dy", "0.35em")
+  .attr("text-anchor","end").attr("fill","#e0e0e0").attr("font-size","13px").text(d => d.label);
+svg.selectAll(".val").data(data).join("text").attr("class","val")
+  .attr("x", d => 85 + x(d.value)).attr("y", d => y(d.label) + y.bandwidth()/2).attr("dy","0.35em")
+  .attr("fill","#e0e0e0").attr("font-size","12px").text(d => d.value);
+\\\`\\\`\\\`
+
+THREE.JS 3D VISUALIZATION GUIDE:
+
+For interactive 3D scenes, use a \\\`\\\`\\\`threejs code block with JavaScript.
+The frontend renders it in a sandboxed environment with Three.js. Pre-defined variables: THREE, THREE_ADDONS, scene, camera, renderer, controls, canvas.
+
+SYNTAX:
+\\\`\\\`\\\`threejs
+// scene, camera, renderer, controls are already set up
+// Just add objects to the scene
+const geometry = new THREE.BoxGeometry(1, 1, 1);
+const material = new THREE.MeshStandardMaterial({ color: 0xe53d8f });
+const cube = new THREE.Mesh(geometry, material);
+scene.add(cube);
+\\\`\\\`\\\`
+
+PRE-DEFINED SETUP (do NOT recreate these):
+- \`scene\` - THREE.Scene with dark background (0x1a1a2e)
+- \`camera\` - PerspectiveCamera at position (3, 3, 5) looking at origin
+- \`renderer\` - WebGLRenderer with antialiasing on the canvas
+- \`controls\` - OrbitControls with damping (user can rotate/zoom)
+- \`canvas\` - The canvas element (600x400)
+- Ambient light (0x404040) and directional light already added
+- Animation loop already running (calls controls.update + renderer.render each frame)
+
+AVAILABLE ADDONS (via THREE_ADDONS object):
+- Loaders: GLTFLoader, FBXLoader, OBJLoader, MTLLoader, SVGLoader, FontLoader
+- Controls: OrbitControls, DragControls, TransformControls
+- Geometries: TextGeometry, RoundedBoxGeometry, ConvexGeometry, ParametricGeometry
+- Post-processing: EffectComposer, RenderPass, UnrealBloomPass
+Usage: \`const { GLTFLoader } = THREE_ADDONS;\` or \`const loader = new THREE_ADDONS.GLTFLoader();\`
+
+⚠️ CRITICAL SANDBOX RULES:
+- Do NOT use \`import\` or \`export\` statements - they will cause errors
+- Do NOT use dynamic \`import()\` calls - they will fail
+- ALL Three.js classes are on the \`THREE\` object (e.g., THREE.BoxGeometry, THREE.Vector3)
+- ALL addons are on the \`THREE_ADDONS\` object (e.g., THREE_ADDONS.GLTFLoader)
+- Do NOT create new Scene, Camera, Renderer, or animation loop - they already exist
+- Keep geometry vertex counts reasonable (under 1 million) - huge buffers will be blocked
+- \`await\` is supported - the code runs in an async context
+- AGNT palette: 0xe53d8f (pink), 0x12e0ff (cyan), 0x19ef83 (green), 0xffd700 (gold), 0x7d3de5 (purple)
+
+RULES:
+- Just add meshes, lights, helpers, etc. to \`scene\`
+- Use THREE.* for all Three.js classes
+- For custom per-frame logic, override: renderer.setAnimationLoop((time) => { /* your code */ controls.update(); renderer.render(scene, camera); });
+
+EXAMPLE - Spinning torus knot:
+\\\`\\\`\\\`threejs
+const geo = new THREE.TorusKnotGeometry(1, 0.3, 128, 32);
+const mat = new THREE.MeshStandardMaterial({ color: 0x12e0ff, metalness: 0.5, roughness: 0.3 });
+const knot = new THREE.Mesh(geo, mat);
+scene.add(knot);
+renderer.setAnimationLoop((time) => {
+  knot.rotation.x = time * 0.001;
+  knot.rotation.y = time * 0.0015;
+  controls.update();
+  renderer.render(scene, camera);
+});
+\\\`\\\`\\\`
+
+EXAMPLE - Using addons (post-processing bloom):
+\\\`\\\`\\\`threejs
+const { EffectComposer, RenderPass, UnrealBloomPass } = THREE_ADDONS;
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(canvas.width, canvas.height), 1.5, 0.4, 0.85));
+const geo = new THREE.IcosahedronGeometry(1.5, 1);
+const mat = new THREE.MeshStandardMaterial({ color: 0x12e0ff, emissive: 0x12e0ff, emissiveIntensity: 0.5 });
+scene.add(new THREE.Mesh(geo, mat));
+renderer.setAnimationLoop((time) => {
+  scene.rotation.y = time * 0.0005;
+  controls.update();
+  composer.render();
+});
+\\\`\\\`\\\`
+
+WHEN TO USE WHICH:
+- **Chart.js** (\\\`\\\`\\\`chartjs): Standard 2D charts (bar, line, pie) - JSON config, simplest
+- **D3** (\\\`\\\`\\\`d3): Custom 2D visualizations (treemaps, force graphs, network diagrams)
+- **Three.js** (\\\`\\\`\\\`threejs): Interactive 3D scenes (3D models, particles, physics, spatial data)`;
+
+
 
 export const MCP_TOOL_USE_RULES = `MCP TOOL USE RULES
 
@@ -353,8 +418,8 @@ ${RESPONSE_FORMATTING}
 ${CRITICAL_IMAGE_REFERENCE_FORMATTING}
 
 ${IMPORTANT_GUIDELINES}
-   
-${MERMAID_CHART_CHEATSHEET}
+
+${CHART_CHEATSHEET}
 
 ${MCP_TOOL_USE_RULES}
 

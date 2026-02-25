@@ -129,46 +129,59 @@ WORKFLOW NOTES:
 - Label Nodes do not need to be connected to anything. They are just UI visual indicators for the user.
 - IGNORE LABEL NODES COMPLETELY
 
-WORKFLOW CHART GENERATION RULES:
-- ALWAYS generate Mermaid flowcharts that reflect current workflow execution state
-- ONLY USE THESE 3 STATUS TYPES - NO OTHER CLASSES OR CATEGORIES:
-  * SUCCESS: "✅ [Node Name]", "✓ [Node Name]", "[Node Name] Complete", "[Node Name] Done"
-  * ERROR: "❌ [Node Name]", "✗ [Node Name]", "[Node Name] Failed", "[Node Name] Error" 
-- CRITICAL: Do NOT use any other node classifications like "trigger", "warning", "action", "process", "display" etc.
-- CRITICAL: Every node must fall into one of these 2 categories: SUCCESS or ERROR
+CHART.JS VISUALIZATION GUIDE:
 
-CHART RELIABILITY RULES:
-- Use simple flowchart TD structure for maximum compatibility
-- Keep node labels concise but include status symbols when showing workflow states
-- Avoid complex nested structures that might break rendering
-- Test syntax example: flowchart TD → A[✅ Step 1] → B[✅ Step 2] → C[❌ Step 3]
-- Always escape special characters in labels using quotes: A["Node (with parens)"]
-- NEVER add extra CSS classes or categories beyond the 3 status types
+When you want to show data visually, use a \\\`\\\`\\\`chartjs code block with a JSON Chart.js config.
+The frontend will render it as an interactive chart automatically.
 
-RELIABLE CHART TEMPLATES:
-Use these proven templates for consistent rendering:
+SYNTAX: Wrap valid JSON in a chartjs fenced code block:
+\\\`\\\`\\\`chartjs
+{ "type": "...", "data": { ... } }
+\\\`\\\`\\\`
 
-Basic Linear Workflow:
-flowchart TD
-    A[✅ Start] --> B[✅ Processing] --> C[❌ Failed]
+SUPPORTED TYPES: bar, line, pie, doughnut, radar, polarArea
 
-Conditional Workflow:
-flowchart TD
-    A[✅ Start] --> B{Decision}
-    B -->|Success| C[✅ Complete]
-    B -->|Error| D[❌ Failed]
+RULES:
+- Must be valid JSON (no comments, no trailing commas, no JS functions)
+- Always include "type" and "data" keys
+- "data" must have "labels" array and "datasets" array
+- Each dataset needs "label" and "data" at minimum
+- Colors are auto-applied if omitted (theme-aware palette)
+- Keep labels short and data arrays matching in length
+- "options" is optional - dark theme styling is applied automatically
 
-Multi-Step Process:
-flowchart TD
-    A[✅ Input] --> B[✅ Validate]
-    B --> C[✅ Process] 
-    C --> D[✅ Output]
+EXAMPLES:
+
+Bar chart:
+\\\`\\\`\\\`chartjs
+{"type":"bar","data":{"labels":["Jan","Feb","Mar","Apr"],"datasets":[{"label":"Revenue","data":[12,19,8,15]}]}}
+\\\`\\\`\\\`
+
+Pie chart:
+\\\`\\\`\\\`chartjs
+{"type":"pie","data":{"labels":["Desktop","Mobile","Tablet"],"datasets":[{"data":[55,30,15]}]}}
+\\\`\\\`\\\`
+
+WHEN TO USE CHART.JS:
+- Showing numeric comparisons, trends, distributions, or proportions
+- Summarizing workflow execution stats or performance metrics
+- Any time data would be clearer as a visual than a table
+
+D3.JS: For advanced 2D visualizations, use a \\\`\\\`\\\`d3 code block with JavaScript.
+A \`container\` variable (d3.select("#chart")) is pre-defined. D3 v7 is loaded.
+
+THREE.JS: For interactive 3D scenes, use a \\\`\\\`\\\`threejs code block with JavaScript.
+Pre-defined: THREE, scene, camera, renderer, controls, canvas. Just add objects to scene.
+
+WHEN TO USE WHICH:
+- Chart.js (\\\`\\\`\\\`chartjs): Standard 2D charts (bar, line, pie) - JSON config, simplest
+- D3 (\\\`\\\`\\\`d3): Custom 2D visualizations (treemaps, force graphs, network diagrams)
+- Three.js (\\\`\\\`\\\`threejs): Interactive 3D scenes (3D models, particles, spatial data)
 
 ${
   workflowState && workflowState.nodes
     ? `
-CURRENT WORKFLOW STATUS MAPPING:
-Generate charts that reflect these exact workflow node states:
+CURRENT WORKFLOW STATUS:
 ${workflowState.nodes
   .map((node) => {
     const status = node.status || 'default';
@@ -176,9 +189,6 @@ ${workflowState.nodes
     return `- ${statusSymbol} ${node.name || node.id}: ${status}`;
   })
   .join('\n')}
-
-CRITICAL: Map each workflow step to a chart node with appropriate status symbols.
-Preserve workflow execution order and connections in chart flow.
 `
     : ''
 }
@@ -186,115 +196,10 @@ Preserve workflow execution order and connections in chart flow.
 RESPONSE FORMATTING:
 - **Return rich responses**
 - Format your final response in markdown
-- Include code blocks, ASCII art, valid TD mermaid charts, lists, tables where appropriate
+- Include code blocks, ASCII art, Chart.js charts, D3 visualizations, Three.js 3D scenes, lists, tables where appropriate
 - Embed images, links, youtube frames, videos, anytime you can
 - Summarize the results of your tool usage clearly
 - YOU WILL BE PUNISHED IF YOU ONLY RETURN PLAIN TEXT!!
-
-MERMAID CHEATSHEET:
-# Mermaid LLM Checklist ✅
-
-A bulletproof checklist for LLMs to follow when generating Mermaid diagrams.
-This is fed into a narrow chat window so TD neutral type charts work best.
-
-## 🔄 Flowchart ('graph') Rules
-
-- Always start with 'flowchart TD' for top-down flowcharts (most common)
-- Always label nodes with '[Node Name]' for rectangles or '{Node Name}' for diamonds
-- Use proper arrow syntax: '-->' for solid arrows, '-.->' for dash arrows, '==>' for thick arrows
-- Separate nodes and connections with newlines for clarity
-- Escape special characters in labels:
-  * Use backslashes for pipe and colon: '\|', '\:'
-  * For parentheses in labels, either:
-    - Use double quotes around the entire label: A["Timer Trigger (Every 30 Minutes)"]
-    - Or escape with backslashes: A[Timer Trigger \(Every 30 Minutes\)]
-- Example of correct syntax with special characters:
-  flowchart TD
-      A["Timer Trigger (Every 30 Minutes)"] --> B{Decision}
-      B -->|Yes| C["Action (Step 1)"]
-      B -->|No| D[Action \(Step 2\)]
-      C --> E[End]
-- Example of correct syntax:
-  flowchart TD
-      A[Start] --> B{Decision}
-      B -->|Yes| C[Action 1]
-      B -->|No| D[Action 2]
-      C --> E[End]
-      D --> E
-
-## 🧬 Sequence Diagram Rules
-
-- Define participants explicitly with 'participant' keyword
-- Use correct arrow syntax: '->>' for solid arrows, '-->>' for dotted arrows
-- Escape pipe characters in messages with '\\|'
-- Example of correct syntax:
-  sequenceDiagram
-      participant User
-      participant System
-      User->>System: Request
-      System-->>User: Response
-
-## 🗓️ Gantt Chart Rules
-
-- Use proper task syntax: 'Task Name :YYYY-MM-DD, duration'
-- Escape colons in task names with '\:'
-- Example of correct syntax:
-  gantt
-      title Project Timeline
-      dateFormat  YYYY-MM-DD
-      section Section
-      Task 1 :2024-01-01, 10d
-
-## 🥯 Pie Chart Rules
-
-- Use numeric values for pie slices (no percentages in values)
-- Separate labels from values with ':'
-- Example of correct syntax:
-  pie
-      title Sample Pie Chart
-      "Category A" : 45
-      "Category B" : 30
-      "Category C" : 25
-
-## 📦 Class Diagram Rules
-
-- Define classes with 'class ClassName {' and close with '}'
-- Include method parameters with '()' even if empty
-- Use proper syntax for relationships: 'ClassA "1" --> "many" ClassB'
-- Example of correct syntax:
-  classDiagram
-      class Animal {
-          +name: string
-          +age: int
-          +eat()
-      }
-      class Dog {
-          +breed: string
-          +bark()
-      }
-      Animal <|-- Dog
-
-## 🔧 General Syntax Rules
-
-- ALWAYS start diagrams with the correct diagram type declaration (flowchart, sequenceDiagram, etc.)
-- ALWAYS use proper node syntax with square brackets [Node Name] or braces {Node Name}
-- NEVER put square brackets directly after flowchart direction (TD[Node Name] is WRONG)
-- NEVER use HTML tags, CSS, inline styles, or JavaScript in diagrams
-- NEVER use markdown formatting inside diagrams
-- NEVER include explanations or comments inside the diagram code block, also labels very brief.
-- Use '%%' for comments, not '//'
-- Close all opening braces '{' and brackets '[' properly
-- Test diagrams at [mermaid.live](https://mermaid.live) when possible
-- When in doubt, keep it simple - complex diagrams often break
-
-## ❌ Common Mistakes to Avoid
-
-- flowchart TD[Node Name]  (WRONG - bracket in wrong place)
-- flowchart TD Node Name   (WRONG - missing brackets)
-- graph TD                (AVOID - use flowchart instead)
-- HTML tags in diagrams    (WRONG - breaks rendering)
-- Inline CSS styling       (WRONG - breaks rendering)
-- Markdown in diagrams     (WRONG - breaks rendering)
 
 WORKFLOW MODIFICATION TOOL (Single LLM, Full Context):
 You have ONE powerful tool for all workflow modifications:

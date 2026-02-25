@@ -254,8 +254,9 @@ function createTables() {
         FOREIGN KEY (workflow_id) REFERENCES workflows(id)
       )`);
 
-      // Index for faster content_outputs queries by user_id
+      // Index for faster content_outputs queries by user_id, sorted by updated_at
       db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_id ON content_outputs(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_updated ON content_outputs(user_id, updated_at DESC)`);
 
       db.run(
         `CREATE TABLE IF NOT EXISTS user_data (

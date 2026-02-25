@@ -24,33 +24,31 @@ class ContentOutputModel {
   }
   static findAllByUserId(userId, limit = null, offset = null) {
     return new Promise((resolve, reject) => {
-      // First get the total count
-      db.get('SELECT COUNT(*) as total FROM content_outputs WHERE user_id = ?', [userId], (err, countResult) => {
+      // Use a single query with COUNT() window function to avoid two round-trips
+      // Exclude the large 'content' column - the list view only needs metadata
+      const listColumns = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, created_at, updated_at';
+      let query = `SELECT ${listColumns}, COUNT(*) OVER() as _total_count FROM content_outputs WHERE user_id = ? ORDER BY updated_at DESC`;
+      const params = [userId];
+
+      if (limit !== null) {
+        query += ' LIMIT ?';
+        params.push(limit);
+
+        if (offset !== null) {
+          query += ' OFFSET ?';
+          params.push(offset);
+        }
+      }
+
+      db.all(query, params, (err, outputs) => {
         if (err) {
           reject(err);
           return;
         }
-
-        const totalCount = countResult.total;
-
-        // Then get the paginated results
-        let query = 'SELECT * FROM content_outputs WHERE user_id = ? ORDER BY updated_at DESC';
-        const params = [userId];
-
-        if (limit !== null) {
-          query += ' LIMIT ?';
-          params.push(limit);
-
-          if (offset !== null) {
-            query += ' OFFSET ?';
-            params.push(offset);
-          }
-        }
-
-        db.all(query, params, (err, outputs) => {
-          if (err) reject(err);
-          else resolve({ outputs, totalCount });
-        });
+        const totalCount = outputs.length > 0 ? outputs[0]._total_count : 0;
+        // Strip the _total_count field from results
+        const cleanOutputs = outputs.map(({ _total_count, ...rest }) => rest);
+        resolve({ outputs: cleanOutputs, totalCount });
       });
     });
   }

@@ -152,7 +152,7 @@ export default {
           console.log('New user detected, fetching tools');
           fetchWorkflowTools();
         }
-      }
+      },
     );
 
     // Get workflow tools from Vuex store (centralized source)
@@ -448,6 +448,10 @@ body.dark #sidebar p {
   background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%; */
+}
+
+.node.starter .svg-icon {
+  width: 18px;
 }
 
 div#sidebar-wrapper.closed {
