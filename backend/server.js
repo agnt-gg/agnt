@@ -198,14 +198,16 @@ app.use((err, req, res, next) => {
 async function initializePlugins() {
   console.log('=== Plugin System Initialization ===');
 
-  // Step 1: Install plugin dependencies (npm install for each plugin)
+  // Step 1: Install plugin dependencies (npm install for each plugin that needs it)
+  // This validates all plugins and ensures node_modules exist
   console.log('Installing plugin dependencies...');
   const installResult = await PluginInstaller.installAllPlugins();
   console.log('Plugin installation result:', installResult);
 
   // Step 2: Initialize plugin manager (scan and register plugins)
+  // Pass the already-validated plugin list to skip redundant filesystem checks
   console.log('Initializing plugin manager...');
-  await PluginManager.initialize();
+  await PluginManager.initialize(installResult?.plugins);
   console.log('Plugin manager initialized');
 
   // Step 3: Reload plugin tools in orchestrator toolRegistry
@@ -229,13 +231,6 @@ function startServer() {
   let retries = 0;
 
   const tryStarting = async () => {
-    // Warm Codex thread cache so conversations can resume after restarts
-    try {
-      await CodexCliSessionManager.init();
-    } catch (error) {
-      console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
-    }
-
     // Create HTTP server from Express app
     const httpServer = createServer(app);
 
@@ -282,8 +277,14 @@ function startServer() {
       console.log(`[Socket.IO] Real-time sync enabled`);
       retries = 0; // Reset retries on successful start
 
-      // Initialize plugins FIRST before spawning workflow process
-      // This ensures all plugins are copied and registered before WorkflowProcess starts
+      // Warm Codex thread cache so conversations can resume after restarts
+      try {
+        await CodexCliSessionManager.init();
+      } catch (error) {
+        console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
+      }
+
+      // Initialize plugins before spawning workflow process
       console.log('Initializing plugins before spawning workflow process...');
       try {
         await initializePlugins();
@@ -292,21 +293,20 @@ function startServer() {
         console.error('Plugin initialization error (non-fatal):', error);
       }
 
-      // Spawn workflow process AFTER plugins are ready
+      // Spawn workflow process AFTER plugins and database are ready
       console.log('Spawning workflow process...');
       try {
         await WorkflowProcessBridge.spawn();
         console.log('Workflow process spawned successfully');
 
-        // Delay workflow restart to allow server to start immediately
-        // This prevents blocking the server startup and allows frontend to load quickly
+        // Restart active workflows shortly after spawn
         setTimeout(() => {
           console.log('Starting workflow restart...');
           WorkflowProcessBridge.restartActiveWorkflows().catch((error) => {
             console.error('Error restarting active workflows:', error);
           });
-        }, 10000); // 10 second delay - server starts first
-        console.log('Workflow restart scheduled in 10 seconds...');
+        }, 5000);
+        console.log('Workflow restart scheduled in 5 seconds...');
       } catch (error) {
         console.error('Failed to spawn workflow process:', error);
         console.error('Server will continue running but workflows will not be available');

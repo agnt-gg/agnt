@@ -11,12 +11,11 @@ class ToolRegistry {
     this.tools = new Map();
     this.pluginTools = new Map(); // Separate map for plugin tools
     this._isInitialized = false;
-    this._initializationPromise = this._initialize();
+    this._initializationPromise = null;
   }
 
   async _initialize() {
     if (this._isInitialized) return;
-    if (this._initializationPromise) return this._initializationPromise;
 
     console.log('[Orchestrator ToolRegistry] Initializing...');
     const toolLibraryPath = path.join(__dirname, '../../tools/toolLibrary.json');
@@ -153,6 +152,7 @@ class ToolRegistry {
    * Reload plugin tools (called when plugins are installed/uninstalled)
    */
   async reloadPluginTools() {
+    await this.ensureInitialized();
     console.log('[Orchestrator ToolRegistry] Reloading plugin tools...');
     this.pluginTools.clear();
     await this._loadPluginTools();
@@ -282,6 +282,10 @@ class ToolRegistry {
   }
 
   async ensureInitialized() {
+    if (this._isInitialized) return;
+    if (!this._initializationPromise) {
+      this._initializationPromise = this._initialize();
+    }
     return this._initializationPromise;
   }
 

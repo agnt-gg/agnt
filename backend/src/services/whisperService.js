@@ -1,4 +1,3 @@
-import { pipeline, env } from '@xenova/transformers';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -10,32 +9,48 @@ const execAsync = promisify(exec);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configure transformers.js cache directory to a writable location
-// This is required for Electron ASAR builds where node_modules is read-only
-const cacheDir = process.env.USER_DATA_PATH
-  ? path.join(process.env.USER_DATA_PATH, 'transformers-cache')
-  : path.join(os.homedir(), '.cache', 'transformers');
+// Lazy-load transformers.js - only imported when speech features are first used
+let _pipeline = null;
+let _envConfigured = false;
 
-// Ensure cache directory exists
-if (!fs.existsSync(cacheDir)) {
-  fs.mkdirSync(cacheDir, { recursive: true });
+async function getTransformersPipeline() {
+  if (!_pipeline) {
+    const { pipeline, env } = await import('@xenova/transformers');
+
+    if (!_envConfigured) {
+      // Configure transformers.js cache directory to a writable location
+      // This is required for Electron ASAR builds where node_modules is read-only
+      const cacheDir = process.env.USER_DATA_PATH
+        ? path.join(process.env.USER_DATA_PATH, 'transformers-cache')
+        : path.join(os.homedir(), '.cache', 'transformers');
+
+      // Ensure cache directory exists
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+
+      // Set the cache directory for transformers.js
+      env.cacheDir = cacheDir;
+      env.localModelPath = cacheDir;
+
+      // Disable local model check to always use cache directory
+      env.allowLocalModels = true;
+
+      // Disable multi-threading to avoid Worker blob URL issues in Node.js/Electron
+      // The onnxruntime-web library tries to use Web Workers with blob URLs,
+      // which Node.js doesn't support. Running single-threaded avoids this.
+      env.backends.onnx.wasm.numThreads = 1;
+      env.backends.onnx.wasm.proxy = false;
+
+      console.log('Transformers.js cache directory:', cacheDir);
+      console.log('ONNX WASM threads disabled for Node.js compatibility');
+      _envConfigured = true;
+    }
+
+    _pipeline = pipeline;
+  }
+  return _pipeline;
 }
-
-// Set the cache directory for transformers.js
-env.cacheDir = cacheDir;
-env.localModelPath = cacheDir;
-
-// Disable local model check to always use cache directory
-env.allowLocalModels = true;
-
-// Disable multi-threading to avoid Worker blob URL issues in Node.js/Electron
-// The onnxruntime-web library tries to use Web Workers with blob URLs,
-// which Node.js doesn't support. Running single-threaded avoids this.
-env.backends.onnx.wasm.numThreads = 1;
-env.backends.onnx.wasm.proxy = false;
-
-console.log('Transformers.js cache directory:', cacheDir);
-console.log('ONNX WASM threads disabled for Node.js compatibility');
 
 class WhisperService {
   constructor() {
@@ -71,8 +86,9 @@ class WhisperService {
       console.log('Initializing Whisper transcriber (Transformers.js)...');
       console.log('This will download the model on first use (~100MB)');
 
-      // Create transcriber pipeline
+      // Lazy-load transformers.js and create transcriber pipeline
       // Using tiny.en model for speed - can upgrade to base.en for better accuracy
+      const pipeline = await getTransformersPipeline();
       this.transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en');
 
       this.isInitialized = true;

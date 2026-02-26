@@ -77,7 +77,7 @@ class PluginManager {
   /**
    * Initialize the plugin manager - scan and register all plugins
    */
-  async initialize() {
+  async initialize(validatedPluginNames) {
     if (this.initialized) {
       return;
     }
@@ -89,8 +89,15 @@ class PluginManager {
       // Ensure plugins directory exists
       await this.ensurePluginsDirectory();
 
-      // Scan for installed plugins
-      await this.scanPlugins();
+      // If we have pre-validated plugin names from PluginInstaller, load only those
+      // This avoids a redundant directory scan + manifest read for each plugin
+      if (validatedPluginNames && validatedPluginNames.length > 0) {
+        console.log(`[PluginManager] Loading ${validatedPluginNames.length} pre-validated plugins`);
+        await Promise.all(validatedPluginNames.map((name) => this.loadPlugin(name)));
+      } else {
+        // Fallback: scan directory if no pre-validated list provided
+        await this.scanPlugins();
+      }
 
       this.initialized = true;
       console.log(`[PluginManager] Initialized with ${this.plugins.size} plugins, ${this.toolToPlugin.size} tools`);
