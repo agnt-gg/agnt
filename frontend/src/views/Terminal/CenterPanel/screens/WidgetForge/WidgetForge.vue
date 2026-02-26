@@ -226,8 +226,8 @@ export default {
 
     const canSave = computed(() => form.name.trim().length > 0);
 
-    // Load existing definition if editing
-    onMounted(() => {
+    // Load existing definition or reset form — runs on mount AND when activeDefinition changes
+    function loadOrResetForm() {
       const existing = store.getters['widgetDefinitions/activeDefinition'];
       if (existing) {
         form.name = existing.name || '';
@@ -246,8 +246,31 @@ export default {
         } else {
           activePanel.value = 'config';
         }
+      } else {
+        form.name = '';
+        form.description = '';
+        form.icon = 'fas fa-puzzle-piece';
+        form.category = 'custom';
+        form.widget_type = 'html';
+        form.source_code = '';
+        form.config = {};
+        form.default_size = { cols: 4, rows: 3 };
+        form.min_size = { cols: 2, rows: 2 };
+        configJson.value = '{}';
+        activePanel.value = 'template';
+        selectedTemplate.value = null;
+        previewKey.value++;
       }
+    }
 
+    // React to activeDefinition changes (covers both mount and screen switches)
+    watch(
+      () => store.getters['widgetDefinitions/activeDefinition'],
+      () => loadOrResetForm(),
+      { immediate: true },
+    );
+
+    onMounted(() => {
       document.body.setAttribute('data-page', 'terminal-widget-forge');
     });
 

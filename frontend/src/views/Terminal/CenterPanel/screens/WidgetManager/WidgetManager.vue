@@ -253,6 +253,7 @@ export default {
     }
 
     function createNewWidget() {
+      store.dispatch('widgetDefinitions/setActiveDefinition', null);
       emit('screen-change', 'WidgetForgeScreen');
     }
 
@@ -309,6 +310,9 @@ export default {
 
     function handlePanelAction(action, payload) {
       if (action === 'navigate') {
+        if (payload === 'WidgetForgeScreen') {
+          store.dispatch('widgetDefinitions/setActiveDefinition', null);
+        }
         emit('screen-change', payload);
       } else if (action === 'category-filter-changed' && payload) {
         activeCategory.value = payload.selectedCategory || 'all';
