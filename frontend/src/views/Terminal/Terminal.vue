@@ -31,7 +31,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -43,41 +43,28 @@ import OnboardingModal from '@/components/OnboardingModal.vue';
 // Canvas system (provides navigation sidebar + toolbar)
 import CanvasScreen from '@/canvas/CanvasScreen.vue';
 
-// All screen components loaded eagerly for instant navigation
+// Chat + Settings loaded eagerly (default screen + auth fallback)
 import ChatScreen from './CenterPanel/screens/Chat/Chat.vue';
-import AgentsScreen from './CenterPanel/screens/Agents/Agents.vue';
-import ToolsScreen from './CenterPanel/screens/Tools/Tools.vue';
-import WorkflowsScreen from './CenterPanel/screens/Workflows/Workflows.vue';
-import DashboardScreen from './CenterPanel/screens/Dashboard/Dashboard.vue';
 import SettingsScreen from './CenterPanel/screens/Settings/Settings.vue';
-import WorkflowForgeScreen from './CenterPanel/screens/WorkflowForge/WorkflowForge.vue';
-import ToolForgeScreen from './CenterPanel/screens/ToolForge/ToolForge.vue';
-import AgentForgeScreen from './CenterPanel/screens/AgentForge/AgentForge.vue';
-import BallJumperScreen from './CenterPanel/screens/Minigames/BallJumper/BallJumper.vue';
-import SecretsScreen from './CenterPanel/screens/Secrets/Secrets.vue';
-import GoalsScreen from './CenterPanel/screens/Goals/Goals.vue';
-import RunsScreen from './CenterPanel/screens/Runs/Runs.vue';
-import MarketplaceScreen from './CenterPanel/screens/Marketplace/Marketplace.vue';
-import WidgetManagerScreen from './CenterPanel/screens/WidgetManager/WidgetManager.vue';
-import WidgetForgeScreen from './CenterPanel/screens/WidgetForge/WidgetForge.vue';
 
+// All other screens lazy-loaded on first navigation
 const screenComponents = {
   ChatScreen,
-  AgentsScreen,
-  ToolsScreen,
-  WorkflowsScreen,
-  DashboardScreen,
   SettingsScreen,
-  WorkflowForgeScreen,
-  ToolForgeScreen,
-  AgentForgeScreen,
-  BallJumperScreen,
-  SecretsScreen,
-  GoalsScreen,
-  RunsScreen,
-  MarketplaceScreen,
-  WidgetManagerScreen,
-  WidgetForgeScreen,
+  AgentsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Agents/Agents.vue')),
+  ToolsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Tools/Tools.vue')),
+  WorkflowsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Workflows/Workflows.vue')),
+  DashboardScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Dashboard/Dashboard.vue')),
+  WorkflowForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/WorkflowForge/WorkflowForge.vue')),
+  ToolForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/ToolForge/ToolForge.vue')),
+  AgentForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/AgentForge/AgentForge.vue')),
+  BallJumperScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Minigames/BallJumper/BallJumper.vue')),
+  SecretsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Secrets/Secrets.vue')),
+  GoalsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Goals/Goals.vue')),
+  RunsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Runs/Runs.vue')),
+  MarketplaceScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Marketplace/Marketplace.vue')),
+  WidgetManagerScreen: defineAsyncComponent(() => import('./CenterPanel/screens/WidgetManager/WidgetManager.vue')),
+  WidgetForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/WidgetForge/WidgetForge.vue')),
 };
 
 export default {
@@ -85,7 +72,6 @@ export default {
   components: {
     TerminalLayout,
     CanvasScreen,
-    ...screenComponents,
     OnboardingModal,
     UpdateNotification,
   },
