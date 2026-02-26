@@ -23,6 +23,7 @@ import songPlayer from './app/songPlayer';
 // import missionAssignments from './features/_missionAssignments';
 import secrets from './features/secrets';
 import webhooks from './features/webhooks';
+import emailListeners from './features/emailListeners';
 import mcpServers from './features/mcpServers';
 import goals from './features/goals';
 import goalTemplates from './features/goalTemplates';
@@ -149,6 +150,7 @@ const store = createStore({
     // missionAssignments,
     secrets,
     webhooks,
+    emailListeners,
     mcpServers,
     goals,
     goalTemplates,

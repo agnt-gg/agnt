@@ -435,7 +435,7 @@
         </div>
         <div class="secrets-grid">
           <div class="secrets-section full-width">
-            <EmailServer />
+            <EmailServer @open-workflow="openWorkflow" />
           </div>
         </div>
       </div>

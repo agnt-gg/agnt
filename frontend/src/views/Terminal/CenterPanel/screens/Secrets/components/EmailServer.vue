@@ -2,32 +2,32 @@
   <div class="email-server-container">
     <div class="email-server-header">
       <h3>
-        Email Server Connections
+        Active Email Listeners
         <span v-if="!isPro" class="pro-badge-label"> <i class="fas fa-lock"></i> PRO </span>
       </h3>
-      <p class="subtitle">Managed email server for your workflows</p>
+      <p class="subtitle">Managed email listeners registered for your workflows</p>
     </div>
 
-    <div v-if="isLoading" class="loading">Loading email servers...</div>
+    <div v-if="isLoading" class="loading">Loading email listeners...</div>
 
-    <div v-else-if="emailServers.length === 0 && isPro" class="no-email-servers">
+    <div v-else-if="emailListeners.length === 0 && isPro" class="no-email-servers">
       <i class="fas fa-envelope-open-text"></i>
-      <p style="color: var(--color-yellow); font-weight: 600">🚀 Email Server Enabled</p>
-      <p class="hint">You can now use email nodes to enable email functionality within your workflows</p>
+      <p style="color: var(--color-green); font-weight: 600">🚀 Email Server Enabled</p>
+      <p class="hint">Email listeners are automatically created when you add a Receive Email trigger node to a workflow</p>
     </div>
 
-    <!-- Example email servers for non-pro users -->
+    <!-- Example email listeners for non-pro users -->
     <div v-if="!isPro" class="email-servers-list locked">
       <div v-for="i in 2" :key="'example-' + i" class="email-server-card locked">
         <div class="email-server-info">
           <div class="email-server-name">
-            <i class="fas fa-server"></i>
-            <span class="server-link">Example Email Server {{ i }}</span>
+            <i class="fas fa-project-diagram"></i>
+            <span class="server-link">Example Workflow {{ i }}</span>
           </div>
           <div class="email-server-details">
-            <span class="label">Host:</span>
+            <span class="label">Email:</span>
             <code class="detail-text">workflow-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx@agnt.gg</code>
-            <Tooltip text="Upgrade to PRO to access email servers" width="auto">
+            <Tooltip text="Upgrade to PRO to access email listeners" width="auto">
               <button class="copy-btn disabled" disabled>
                 <i class="fas fa-copy"></i>
                 <i class="fas fa-lock lock-icon"></i>
@@ -37,15 +37,11 @@
           <div class="email-server-meta">
             <span class="meta-item status-badge status-listening">
               <i class="fas fa-circle"></i>
-              active
+              listening
             </span>
             <span class="meta-item">
-              <i class="fas fa-exchange-alt"></i>
-              SMTP
-            </span>
-            <span class="meta-item">
-              <i class="fas fa-lock"></i>
-              TLS
+              <i class="fas fa-envelope"></i>
+              Built-in Email
             </span>
             <span class="meta-item">
               <i class="fas fa-calendar"></i>
@@ -61,45 +57,41 @@
     </div>
 
     <div v-else-if="isPro" class="email-servers-list">
-      <div v-for="server in emailServers" :key="server.id" class="email-server-card">
+      <div v-for="listener in emailListeners" :key="listener.id" class="email-server-card">
         <div class="email-server-info">
-          <div class="email-server-name">
-            <i class="fas fa-server"></i>
-            <span class="server-link">
-              {{ server.name || 'Unnamed Server' }}
+          <div class="email-server-name" @click="openWorkflow(listener.workflow_id)">
+            <i class="fas fa-project-diagram"></i>
+            <span class="workflow-link">
+              {{ listener.workflow_name || 'Unnamed Workflow' }}
             </span>
           </div>
           <div class="email-server-details">
-            <span class="label">Host:</span>
-            <code class="detail-text">{{ server.host }}:{{ server.port }}</code>
-            <Tooltip :text="isPro ? 'Copy Host' : 'Upgrade to PRO to access email servers'" width="auto">
+            <span class="label">Email:</span>
+            <code class="detail-text">{{ listener.email_address }}</code>
+            <Tooltip :text="isPro ? 'Copy Email Address' : 'Upgrade to PRO to access email listeners'" width="auto">
               <button
                 class="copy-btn"
-                @click="isPro ? copyToClipboard(server.host, server.id) : null"
+                @click="isPro ? copyToClipboard(listener.email_address, listener.id) : null"
                 :disabled="!isPro"
                 :class="{ disabled: !isPro }"
               >
-                <i :class="copiedId === server.id ? 'fas fa-check' : 'fas fa-copy'"></i>
-                <span v-if="copiedId === server.id" class="copied-text">Copied!</span>
+                <i :class="copiedId === listener.id ? 'fas fa-check' : 'fas fa-copy'"></i>
+                <span v-if="copiedId === listener.id" class="copied-text">Copied!</span>
               </button>
             </Tooltip>
           </div>
           <div class="email-server-meta">
-            <span class="meta-item status-badge" :class="getStatusClass(server.status)">
+            <span class="meta-item status-badge" :class="getStatusClass(listener.workflow_status)">
               <i class="fas fa-circle"></i>
-              {{ server.status || 'unknown' }}
+              {{ listener.workflow_status || 'unknown' }}
             </span>
-            <span v-if="server.protocol" class="meta-item">
-              <i class="fas fa-exchange-alt"></i>
-              {{ server.protocol }}
-            </span>
-            <span v-if="server.secure" class="meta-item">
-              <i class="fas fa-lock"></i>
-              {{ server.secure ? 'TLS' : 'No TLS' }}
+            <span class="meta-item">
+              <i class="fas fa-envelope"></i>
+              {{ listener.email_config }}
             </span>
             <span class="meta-item">
               <i class="fas fa-calendar"></i>
-              {{ formatDate(server.created_at) }}
+              {{ formatDate(listener.created_at) }}
             </span>
           </div>
         </div>
@@ -119,10 +111,11 @@ export default {
   components: {
     Tooltip,
   },
-  setup() {
+  emits: ['open-workflow'],
+  setup(props, { emit }) {
     const store = useStore();
-    const emailServers = ref([]);
-    const isLoading = ref(false);
+    const emailListeners = computed(() => store.getters['emailListeners/allEmailListeners']);
+    const isLoading = computed(() => store.getters['emailListeners/isLoading']);
     const copiedId = ref(null);
 
     // Use verified license for premium check
@@ -131,16 +124,18 @@ export default {
 
     onMounted(() => {
       if (isPro.value) {
-        // TODO: Fetch email servers from store/API
-        // store.dispatch('emailServers/fetchEmailServers');
-        isLoading.value = false;
+        store.dispatch('emailListeners/fetchEmailListeners');
       }
     });
 
-    const copyToClipboard = async (text, serverId) => {
+    const openWorkflow = (workflowId) => {
+      emit('open-workflow', workflowId);
+    };
+
+    const copyToClipboard = async (text, listenerId) => {
       try {
         await navigator.clipboard.writeText(text);
-        copiedId.value = serverId;
+        copiedId.value = listenerId;
         setTimeout(() => {
           copiedId.value = null;
         }, 2000);
@@ -161,9 +156,13 @@ export default {
 
     const getStatusClass = (status) => {
       switch (status) {
-        case 'active':
+        case 'running':
+          return 'status-running';
+        case 'listening':
           return 'status-listening';
-        case 'inactive':
+        case 'queued':
+          return 'status-queued';
+        case 'stopped':
           return 'status-stopped';
         case 'error':
           return 'status-error';
@@ -173,10 +172,11 @@ export default {
     };
 
     return {
-      emailServers,
+      emailListeners,
       isLoading,
       copiedId,
       isPro,
+      openWorkflow,
       copyToClipboard,
       formatDate,
       getStatusClass,
@@ -222,14 +222,14 @@ export default {
 .no-email-servers {
   text-align: center;
   padding: 40px 20px;
-  color: var(--color-yellow);
+  color: var(--color-text);
   border-top: 1px solid var(--terminal-border-color);
 }
 
 .no-email-servers i {
   font-size: 3em;
   margin-bottom: 16px;
-  color: var(--color-yellow);
+  opacity: 0.5;
 }
 
 .no-email-servers p {
@@ -316,15 +316,21 @@ body.dark .email-server-card {
   font-size: 1.1em;
   font-weight: 600;
   width: fit-content;
+  cursor: pointer;
 }
 
 .email-server-name i {
   color: var(--color-green);
 }
 
-.server-link {
+.workflow-link {
   color: var(--color-text);
   transition: color 0.2s ease;
+}
+
+.email-server-name:hover .workflow-link {
+  color: var(--color-green);
+  text-decoration: underline;
 }
 
 .email-server-details {
@@ -430,9 +436,19 @@ body.dark .email-server-card {
   font-size: 0.6em;
 }
 
+.status-running {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-green);
+}
+
 .status-listening {
   background: rgba(59, 130, 246, 0.2);
   color: var(--color-blue);
+}
+
+.status-queued {
+  background: rgba(251, 191, 36, 0.2);
+  color: var(--color-yellow);
 }
 
 .status-stopped {
