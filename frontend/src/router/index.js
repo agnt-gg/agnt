@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 // import Marketplace from '@/views/Marketplace/Marketplace.vue';
 // import ExecutionDetails from '@/views/ExecutionDetails/ExecutionDetails.vue';
 import Terminal from '@/views/Terminal/Terminal.vue';
-import DocsView from '@/views/Docs/Docs.vue';
+const DocsView = () => import('@/views/Docs/Docs.vue');
 import OAuthCallback from '@/views/_components/utility/OAuthCallback.vue';
 import store from '@/store/state';
 

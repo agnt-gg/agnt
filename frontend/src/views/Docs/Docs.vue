@@ -25,8 +25,9 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
-import showdown from 'showdown';
-import hljs from 'highlight.js';
+// showdown and highlight.js are lazy-loaded on first use
+let _showdown = null;
+let _hljs = null;
 import { addCopyEventListenerToPreButtons } from '../_components/base/response.js';
 import LoadingOverlay from '@/views/_components/utility/LoadingOverlay.vue';
 
@@ -82,16 +83,7 @@ export default {
     const renderedContent = ref('');
     const contentWrapper = ref(null);
     const isDarkMode = ref(false);
-    const converter = new showdown.Converter({
-      tables: true,
-      tasklists: true,
-      strikethrough: true,
-      ghCodeBlocks: true,
-      smoothLivePreview: true,
-      simpleLineBreaks: true,
-      parseImgDimensions: true,
-      emoji: true,
-    });
+    let converter = null;
     const isLoading = ref(false);
 
     // detect if dark mode so we can change doc images
@@ -99,29 +91,48 @@ export default {
       const theme = localStorage.getItem('currentTheme') || 'dark';
       isDarkMode.value = !['light', 'rose'].includes(theme);
     };
-    // custom image rendering extension
-    converter.addExtension(
-      {
-        type: 'output',
-        filter: function (text) {
-          return text.replace(/<img([^>]*)src="([^"]*)"([^>]*)>/g, function (match, before, src, after) {
-            const altMatch = match.match(/alt="([^"]*)"/);
-            const alt = altMatch ? altMatch[1] : '';
 
-            // Modify the src attribute if NOT in dark mode
-            if (!isDarkMode.value) {
-              const lastDotIndex = src.lastIndexOf('.');
-              if (lastDotIndex !== -1) {
-                src = src.substring(0, lastDotIndex) + '-dark' + src.substring(lastDotIndex);
+    const getConverter = async () => {
+      if (converter) return converter;
+      if (!_showdown) {
+        const mod = await import('showdown');
+        _showdown = mod.default;
+      }
+      converter = new _showdown.Converter({
+        tables: true,
+        tasklists: true,
+        strikethrough: true,
+        ghCodeBlocks: true,
+        smoothLivePreview: true,
+        simpleLineBreaks: true,
+        parseImgDimensions: true,
+        emoji: true,
+      });
+      // custom image rendering extension
+      converter.addExtension(
+        {
+          type: 'output',
+          filter: function (text) {
+            return text.replace(/<img([^>]*)src="([^"]*)"([^>]*)>/g, function (match, before, src, after) {
+              const altMatch = match.match(/alt="([^"]*)"/);
+              const alt = altMatch ? altMatch[1] : '';
+
+              // Modify the src attribute if NOT in dark mode
+              if (!isDarkMode.value) {
+                const lastDotIndex = src.lastIndexOf('.');
+                if (lastDotIndex !== -1) {
+                  src = src.substring(0, lastDotIndex) + '-dark' + src.substring(lastDotIndex);
+                }
               }
-            }
 
-            return `<img${before}src="${src}"${after} title="${alt}">`;
-          });
+              return `<img${before}src="${src}"${after} title="${alt}">`;
+            });
+          },
         },
-      },
-      'addTitleToImagesAndHandleDarkMode'
-    );
+        'addTitleToImagesAndHandleDarkMode'
+      );
+      return converter;
+    };
     const fetchDocsList = async () => {
       for (const [type, files] of Object.entries(markdownFiles)) {
         const importedDocs = await Promise.all(
@@ -160,7 +171,8 @@ export default {
           return p1;
         });
 
-        renderedContent.value = converter.makeHtml(content);
+        const conv = await getConverter();
+        renderedContent.value = conv.makeHtml(content);
         await nextTick();
         highlightCode();
         renderMathJax();
@@ -188,9 +200,15 @@ export default {
         }
       }
     };
-    const highlightCode = () => {
-      document.querySelectorAll('pre code').forEach((block) => {
-        hljs.highlightElement(block);
+    const highlightCode = async () => {
+      const codeBlocks = document.querySelectorAll('pre code');
+      if (codeBlocks.length === 0) return;
+      if (!_hljs) {
+        const mod = await import('highlight.js');
+        _hljs = mod.default;
+      }
+      codeBlocks.forEach((block) => {
+        _hljs.highlightElement(block);
       });
     };
     const renderMathJax = () => {

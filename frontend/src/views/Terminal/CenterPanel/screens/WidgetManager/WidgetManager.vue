@@ -136,7 +136,7 @@
 <script>
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import { getAllWidgets } from '@/canvas/widgetRegistry.js';
+import { getAllWidgets, registerCustomWidgets } from '@/canvas/widgetRegistry.js';
 import BaseScreen from '../../BaseScreen.vue';
 
 export default {
@@ -151,10 +151,15 @@ export default {
     const importData = ref('');
     const deleteTarget = ref(null);
 
-    // Fetch custom widget definitions
-    onMounted(() => {
+    // Fetch custom widget definitions and register them into the canvas registry
+    onMounted(async () => {
       if (!store.getters['widgetDefinitions/isLoaded']) {
-        store.dispatch('widgetDefinitions/fetchDefinitions');
+        await store.dispatch('widgetDefinitions/fetchDefinitions');
+        const { default: CustomWidgetRenderer } = await import('@/canvas/CustomWidgetRenderer.vue');
+        const definitions = store.getters['widgetDefinitions/allDefinitions'];
+        if (definitions.length > 0) {
+          registerCustomWidgets(definitions, CustomWidgetRenderer);
+        }
       }
 
       document.body.setAttribute('data-page', 'terminal-widget-manager');

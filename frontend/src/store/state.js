@@ -30,8 +30,6 @@ import goalTemplates from './features/goalTemplates';
 import contentOutputs from './features/contentOutputs';
 import widgetLayout from './features/widgetLayout';
 import widgetDefinitions from './features/widgetDefinitions';
-import { registerCustomWidgets } from '@/canvas/widgetRegistry.js';
-import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 
 const store = createStore({
   state: {
@@ -82,35 +80,21 @@ const store = createStore({
         commit('SET_CRITICAL_DATA_READY');
 
         // PHASE 2: Fetch secondary data (less urgent, can load after)
+        // Deferred to respective screens: fetchReferralBalance, fetchReferralTree (Settings),
+        // fetchCreditsActivity (Dashboard), fetchMyPurchases/fetchMyInstalls (Marketplace),
+        // fetchDefinitions (WidgetManager)
         Promise.allSettled([
-          dispatch('userStats/fetchReferralBalance'),
-          dispatch('userStats/fetchReferralTree'),
-          dispatch('userStats/fetchCreditsActivity', { activityDays: 90 }),
           dispatch('goals/fetchGoals'),
           dispatch('tools/fetchTools'),
           dispatch('tools/fetchWorkflowTools'),
           dispatch('executionHistory/fetchExecutions'),
-          dispatch('marketplace/fetchMyPurchases'),
-          dispatch('marketplace/fetchMyInstalls'),
           dispatch('widgetLayout/fetchLayouts'),
-          dispatch('widgetDefinitions/fetchDefinitions'),
         ]).then((results) => {
           results.forEach((result, index) => {
             if (result.status === 'rejected') {
               console.warn(`Secondary fetch ${index} failed:`, result.reason);
             }
           });
-
-          // Register custom widgets into the canvas registry
-          try {
-            const definitions = rootGetters['widgetDefinitions/allDefinitions'];
-            if (definitions.length > 0) {
-              registerCustomWidgets(definitions, CustomWidgetRenderer);
-              console.log(`Registered ${definitions.length} custom widget(s) into canvas registry`);
-            }
-          } catch (err) {
-            console.warn('Failed to register custom widgets:', err);
-          }
 
           // Signal all data is ready
           commit('SET_ALL_DATA_READY');

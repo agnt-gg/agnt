@@ -583,6 +583,8 @@ export default {
       terminalLines.value.push('Dashboard Ready.');
       baseScreenRef.value?.scrollToBottom();
 
+      // Note: creditsActivity is fetched by CumulativeCreditsChart on its own mount
+
       // Non-blocking: health check runs in background
       if (store.getters['appAuth/needsHealthCheck']) {
         store.dispatch('appAuth/checkConnectionHealthStream').catch((error) => {

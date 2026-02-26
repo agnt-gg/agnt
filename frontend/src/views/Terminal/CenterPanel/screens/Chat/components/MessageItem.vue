@@ -255,36 +255,6 @@
 import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import showdown from 'showdown';
-import hljs from 'highlight.js';
-import { Chart, registerables } from 'chart.js';
-import * as d3 from 'd3';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-// Pre-bundle common Three.js addons so LLM dynamic imports resolve locally
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
-import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { DragControls } from 'three/examples/jsm/controls/DragControls.js';
-import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
-import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
-import { ParametricGeometry } from 'three/examples/jsm/geometries/ParametricGeometry.js';
-
-// Addon registry for sandboxed LLM code (resolves dynamic imports locally)
-const THREE_ADDONS = {
-  OrbitControls, GLTFLoader, FontLoader, TextGeometry,
-  EffectComposer, RenderPass, UnrealBloomPass,
-  DragControls, TransformControls,
-  FBXLoader, OBJLoader, MTLLoader, SVGLoader,
-  RoundedBoxGeometry, ConvexGeometry, ParametricGeometry,
-};
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/atom-one-dark.css';
 
@@ -293,7 +263,89 @@ import ProviderSetup from './ProviderSetup.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/../user.config.js';
 
-Chart.register(...registerables);
+// Lazy-loaded heavy library caches (loaded on first use)
+let _hljs = null;
+let _Chart = null;
+let _d3 = null;
+let _THREE = null;
+let _THREE_ADDONS = null;
+let _OrbitControls = null;
+
+const loadHljs = async () => {
+  if (!_hljs) {
+    const mod = await import('highlight.js');
+    _hljs = mod.default;
+  }
+  return _hljs;
+};
+
+const loadChartJs = async () => {
+  if (!_Chart) {
+    const { Chart, registerables } = await import('chart.js');
+    Chart.register(...registerables);
+    _Chart = Chart;
+  }
+  return _Chart;
+};
+
+const loadD3 = async () => {
+  if (!_d3) {
+    _d3 = await import('d3');
+  }
+  return _d3;
+};
+
+const loadThreeJs = async () => {
+  if (!_THREE) {
+    const [
+      threeModule,
+      { OrbitControls },
+      { GLTFLoader },
+      { FontLoader },
+      { TextGeometry },
+      { EffectComposer },
+      { RenderPass },
+      { UnrealBloomPass },
+      { DragControls },
+      { TransformControls },
+      { FBXLoader },
+      { OBJLoader },
+      { MTLLoader },
+      { SVGLoader },
+      { RoundedBoxGeometry },
+      { ConvexGeometry },
+      { ParametricGeometry },
+    ] = await Promise.all([
+      import('three'),
+      import('three/examples/jsm/controls/OrbitControls.js'),
+      import('three/examples/jsm/loaders/GLTFLoader.js'),
+      import('three/examples/jsm/loaders/FontLoader.js'),
+      import('three/examples/jsm/geometries/TextGeometry.js'),
+      import('three/examples/jsm/postprocessing/EffectComposer.js'),
+      import('three/examples/jsm/postprocessing/RenderPass.js'),
+      import('three/examples/jsm/postprocessing/UnrealBloomPass.js'),
+      import('three/examples/jsm/controls/DragControls.js'),
+      import('three/examples/jsm/controls/TransformControls.js'),
+      import('three/examples/jsm/loaders/FBXLoader.js'),
+      import('three/examples/jsm/loaders/OBJLoader.js'),
+      import('three/examples/jsm/loaders/MTLLoader.js'),
+      import('three/examples/jsm/loaders/SVGLoader.js'),
+      import('three/examples/jsm/geometries/RoundedBoxGeometry.js'),
+      import('three/examples/jsm/geometries/ConvexGeometry.js'),
+      import('three/examples/jsm/geometries/ParametricGeometry.js'),
+    ]);
+    _THREE = threeModule;
+    _OrbitControls = OrbitControls;
+    _THREE_ADDONS = {
+      OrbitControls, GLTFLoader, FontLoader, TextGeometry,
+      EffectComposer, RenderPass, UnrealBloomPass,
+      DragControls, TransformControls,
+      FBXLoader, OBJLoader, MTLLoader, SVGLoader,
+      RoundedBoxGeometry, ConvexGeometry, ParametricGeometry,
+    };
+  }
+  return { THREE: _THREE, THREE_ADDONS: _THREE_ADDONS, OrbitControls: _OrbitControls };
+};
 
 // Simple showdown converter like in response.js
 const markdownConverter = new showdown.Converter({
@@ -1066,10 +1118,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
 
     const renderChartJsDiagrams = () => {
-      nextTick(() => {
+      nextTick(async () => {
         if (!messageRef.value) return;
 
         const containers = messageRef.value.querySelectorAll('.chartjs-container');
+        if (containers.length === 0) return;
+
+        const Chart = await loadChartJs();
+
         containers.forEach((container) => {
           const chartId = container.getAttribute('data-chart-id');
           if (!chartId || renderedChartIds.has(chartId)) return;
@@ -1158,10 +1214,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     };
 
     const renderD3Diagrams = () => {
-      nextTick(() => {
+      nextTick(async () => {
         if (!messageRef.value) return;
 
         const containers = messageRef.value.querySelectorAll('.d3-container');
+        if (containers.length === 0) return;
+
+        const d3 = await loadD3();
+
         containers.forEach((container) => {
           const d3Id = container.getAttribute('data-d3-id');
           if (!d3Id || renderedD3Ids.has(d3Id)) return;
@@ -1208,10 +1268,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     };
 
     const renderThreeJsDiagrams = () => {
-      nextTick(() => {
+      nextTick(async () => {
         if (!messageRef.value) return;
 
         const containers = messageRef.value.querySelectorAll('.threejs-container');
+        if (containers.length === 0) return;
+
+        const { THREE, THREE_ADDONS, OrbitControls } = await loadThreeJs();
+
         containers.forEach((container) => {
           const threeId = container.getAttribute('data-three-id');
           if (!threeId || renderedThreeIds.has(threeId)) return;
@@ -1356,14 +1420,16 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     };
 
     const highlightCode = () => {
-      nextTick(() => {
+      nextTick(async () => {
         if (messageRef.value) {
           // Highlight all code blocks, including those with v-html
-          messageRef.value.querySelectorAll('pre code').forEach((block) => {
-            if (!block.classList.contains('hljs')) {
+          const codeBlocks = messageRef.value.querySelectorAll('pre code:not(.hljs)');
+          if (codeBlocks.length > 0) {
+            const hljs = await loadHljs();
+            codeBlocks.forEach((block) => {
               hljs.highlightElement(block);
-            }
-          });
+            });
+          }
 
           // Only render charts/D3 when message is fully streamed (status is null)
           if (!props.status) {

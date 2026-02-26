@@ -441,17 +441,34 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, defineAsyncComponent, shallowRef } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
-import { Codemirror } from 'vue-codemirror';
-import { javascript } from '@codemirror/lang-javascript';
-import { python } from '@codemirror/lang-python';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { API_CONFIG, AI_PROVIDERS_CONFIG, IMAP_EMAIL_DOMAIN } from '@/tt.config';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
-import showdown from 'showdown';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
+// Lazy-load CodeMirror and its dependencies only when codearea fields are present
+const Codemirror = defineAsyncComponent(() =>
+  import('vue-codemirror').then((m) => m.Codemirror)
+);
+
+// Lazy-load CodeMirror extensions (cached at module level)
+let _cmExtensions = null;
+const loadCodeMirrorExtensions = async () => {
+  if (!_cmExtensions) {
+    const [{ javascript }, { python }, { oneDark }] = await Promise.all([
+      import('@codemirror/lang-javascript'),
+      import('@codemirror/lang-python'),
+      import('@codemirror/theme-one-dark'),
+    ]);
+    _cmExtensions = { javascript, python, oneDark };
+  }
+  return _cmExtensions;
+};
+
+// Lazy-load showdown (cached at module level)
+let _showdown = null;
 
 export default {
   name: 'PanelTab',
@@ -529,13 +546,20 @@ export default {
       return result;
     });
 
+    const cmExtensions = shallowRef(null);
+
     onMounted(() => {
       console.log('PanelTab mounted');
       fetchConnectedApps();
+      // Pre-load CodeMirror extensions in background
+      loadCodeMirrorExtensions().then((ext) => {
+        cmExtensions.value = ext;
+      });
     });
 
     return {
       isConnected,
+      cmExtensions,
       // ... other returned properties and methods
     };
   },
@@ -632,6 +656,8 @@ export default {
       return this.nodeContent && this.nodeContent.category === 'custom';
     },
     codeEditorExtensions() {
+      if (!this.cmExtensions) return [];
+      const { javascript, python, oneDark } = this.cmExtensions;
       const languageExtension = this.isPythonNode ? python() : javascript();
       return [languageExtension, oneDark];
     },
@@ -682,8 +708,12 @@ export default {
     },
   },
   async mounted() {
-    // Initialize showdown converter
-    this.converter = new showdown.Converter({
+    // Lazy-load showdown and initialize converter
+    if (!_showdown) {
+      const mod = await import('showdown');
+      _showdown = mod.default;
+    }
+    this.converter = new _showdown.Converter({
       tables: true,
       tasklists: true,
       strikethrough: true,
