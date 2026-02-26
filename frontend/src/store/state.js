@@ -61,10 +61,13 @@ const store = createStore({
       try {
         // PHASE 1: Fetch critical UI data first (what user sees immediately)
         // These run in parallel for fastest initial render
+        // Includes content outputs + connected apps since chat panels need them immediately
         const criticalResults = await Promise.allSettled([
           dispatch('agents/fetchAgents'),
           dispatch('workflows/fetchWorkflows'),
           dispatch('userStats/fetchStats'),
+          dispatch('contentOutputs/fetchOutputs'),
+          dispatch('appAuth/fetchConnectedApps'),
         ]);
 
         // Log critical failures
@@ -74,7 +77,7 @@ const store = createStore({
           }
         });
 
-        // Signal that critical data is ready (agents, workflows, stats)
+        // Signal that critical data is ready (agents, workflows, stats, outputs, connected apps)
         commit('SET_CRITICAL_DATA_READY');
 
         // PHASE 2: Fetch secondary data (less urgent, can load after)
@@ -86,8 +89,6 @@ const store = createStore({
           dispatch('tools/fetchTools'),
           dispatch('tools/fetchWorkflowTools'),
           dispatch('executionHistory/fetchExecutions'),
-          dispatch('appAuth/fetchConnectedApps'),
-          dispatch('contentOutputs/fetchOutputs'),
           dispatch('marketplace/fetchMyPurchases'),
           dispatch('marketplace/fetchMyInstalls'),
           dispatch('widgetLayout/fetchLayouts'),

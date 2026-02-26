@@ -214,6 +214,8 @@ function createTables() {
 
       // Index for faster workflow queries by user_id
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflows_user_id ON workflows(user_id)`);
+      // Composite index for status-filtered queries (active workflows panel)
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflows_user_status ON workflows(user_id, status)`);
 
       // Workflow version history table
       db.run(`CREATE TABLE IF NOT EXISTS workflow_versions (
@@ -618,17 +620,76 @@ function createTables() {
 // Function to run migrations
 function runMigrations() {
   return new Promise((resolve, reject) => {
-    // Migration: Add current_version_id to workflows table for version control (2026-02-04)
-    db.run(`ALTER TABLE workflows ADD COLUMN current_version_id INTEGER`, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error('Error adding current_version_id column to workflows:', err);
-        // Don't reject - continue with other migrations
-      } else if (!err) {
-        console.log('✓ Added current_version_id column to workflows table');
-      }
-      // Resolve after this migration completes
-      resolve();
+    db.serialize(() => {
+      // Migration: Add current_version_id to workflows table for version control (2026-02-04)
+      db.run(`ALTER TABLE workflows ADD COLUMN current_version_id INTEGER`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding current_version_id column to workflows:', err);
+        } else if (!err) {
+          console.log('✓ Added current_version_id column to workflows table');
+        }
+      });
+
+      // Migration: Add denormalized metadata columns to workflows for fast summary queries (2026-02-26)
+      // These columns avoid parsing the full workflow_data JSON blob for list/summary views
+      const summaryColumns = [
+        { name: 'name', type: 'TEXT' },
+        { name: 'description', type: 'TEXT' },
+        { name: 'category', type: 'TEXT' },
+        { name: 'node_summary', type: 'TEXT' },  // JSON array of {type, icon, label}
+      ];
+
+      let columnsAdded = 0;
+      summaryColumns.forEach((col, i) => {
+        db.run(`ALTER TABLE workflows ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to workflows:`, err);
+          } else if (!err) {
+            columnsAdded++;
+            console.log(`✓ Added ${col.name} column to workflows table`);
+          }
+
+          // After last column, always attempt backfill for rows with NULL name
+          // (handles both fresh migrations and DBs where columns existed but were never populated)
+          if (i === summaryColumns.length - 1) {
+            backfillWorkflowSummaryColumns();
+            resolve();
+          }
+        });
+      });
     });
+  });
+}
+
+/**
+ * Backfill denormalized columns from existing workflow_data.
+ * Runs once after migration adds new columns.
+ */
+function backfillWorkflowSummaryColumns() {
+  db.all('SELECT id, workflow_data FROM workflows WHERE name IS NULL', (err, rows) => {
+    if (err || !rows || rows.length === 0) return;
+    console.log(`Backfilling ${rows.length} workflow(s) with summary columns...`);
+
+    rows.forEach((row) => {
+      try {
+        const data = JSON.parse(row.workflow_data);
+        const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+        const nodeSummary = JSON.stringify(nodes.map(n => ({
+          type: n.type || '',
+          icon: n.icon || n.data?.icon || 'custom',
+          label: n.text || n.data?.label || n.type || 'Unknown Tool',
+        })));
+
+        db.run(
+          `UPDATE workflows SET name = ?, description = ?, category = ?, node_summary = ? WHERE id = ?`,
+          [data.name || '', data.description || '', data.category || '', nodeSummary, row.id]
+        );
+      } catch (e) {
+        console.error(`Failed to backfill workflow ${row.id}:`, e.message);
+      }
+    });
+
+    console.log('✓ Workflow summary columns backfilled');
   });
 }
 

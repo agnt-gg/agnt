@@ -616,7 +616,10 @@ export default {
 
     // Setup lifecycle hooks
     onMounted(() => {
-      fetchSavedOutputs();
+      // Only fetch if store is empty (initializeStore pre-loads outputs in Phase 2)
+      if (outputs.value.length === 0) {
+        fetchSavedOutputs();
+      }
       document.addEventListener('click', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('conversation-saved', handleConversationSaved);

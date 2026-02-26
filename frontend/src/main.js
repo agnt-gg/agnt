@@ -73,9 +73,13 @@ const initializeApp = async () => {
       }
     }
 
-    // PARALLEL: Run all independent auth calls together instead of sequentially
-    // This reduces 4 sequential waits into 1 parallel batch
-    console.log('Fetching auth data in parallel...');
+    // Fire LOCAL data loading IMMEDIATELY - don't wait for remote auth
+    // initializeStore only hits localhost:3333 and should be fast
+    console.log('Starting local data + remote auth in parallel...');
+    store.dispatch('initializeStore').catch(console.error);
+    store.dispatch('appAuth/startPolling');
+
+    // Remote auth calls (agnt.gg) run in parallel - don't block local data
     const authPromises = [
       store.dispatch('userAuth/fetchUserData'),
       store.dispatch('aiProvider/fetchCustomProviders'),
@@ -102,13 +106,6 @@ const initializeApp = async () => {
     store.dispatch('aiProvider/loadUserSettings').catch((error) => {
       console.error('Failed to load user settings:', error);
     });
-
-    // Initialize store data in background (non-blocking)
-    // Screens will show their own loading states if data isn't ready yet
-    store.dispatch('initializeStore').catch(console.error);
-
-    // Start centralized polling for connected apps (60 second interval)
-    store.dispatch('appAuth/startPolling');
 
     // Start periodic license refresh
     startLicenseRefresh();

@@ -64,20 +64,7 @@ export default {
     };
 
     onMounted(() => {
-      // Data is pre-loaded by initializeStore in main.js
-      // Fire background refresh in parallel (non-blocking, uses store caching)
-      Promise.allSettled([
-        store.dispatch('userStats/fetchStats'),
-        store.dispatch('workflows/fetchWorkflows', { activeOnly: true }),
-        store.dispatch('goals/fetchGoals'),
-        store.dispatch('appAuth/fetchConnectedApps'),
-      ]).then(() => {
-        if (store.getters['appAuth/needsHealthCheck']) {
-          store.dispatch('appAuth/checkConnectionHealthStream').catch((error) => {
-            console.error('Error with initial health check stream:', error);
-          });
-        }
-      });
+      // Data is pre-loaded by initializeStore in main.js - no redundant fetches needed
     });
 
     return {

@@ -782,39 +782,28 @@ export default {
       // Clear agent context so orchestrator chats aren't labeled with old agent names
       store.commit('chat/CLEAR_CURRENT_AGENT');
 
-      // Fetch active workflows in background so the header shows them immediately
-      store.dispatch('workflows/fetchWorkflows', { activeOnly: true });
-
-      // Fetch app version for display
-      await fetchVersion();
-
-      // Register stream event callback for this component
+      // Register stream event callback (sync dispatch, no need to await)
       store.dispatch('chat/registerStreamEventCallback', handleStreamEvent);
 
-      // CRITICAL: Fetch connected apps FIRST before any other checks
+      // PHASE 1: Get connected apps (fast — local checks resolve in <100ms, remote merges later)
+      // fetchConnectedApps has built-in deduplication (joins in-flight promise from initializeStore)
+      const versionPromise = fetchVersion(); // fire early, don't block on it
+      const localServerPromise = checkLocalServer(); // fire early, don't block on 1s timeout
       await store.dispatch('appAuth/fetchConnectedApps');
 
-      // CRITICAL: Check local server and auto-switch BEFORE setting up welcome messages
-      await checkLocalServer();
+      // ensureValidModel is a synchronous commit internally
+      store.dispatch('aiProvider/ensureValidModel');
 
-      // If local server is running and no other provider is set, auto-switch
+      // PHASE 2: Check local server result (may already be resolved or will resolve soon)
+      // Use a short race so we don't wait the full 1s timeout if LM Studio isn't running
+      await Promise.race([
+        localServerPromise,
+        new Promise(r => setTimeout(r, 200)),
+      ]);
+
       if (isLocalServerRunning.value) {
         await autoSwitchToLocalIfNeeded();
       }
-
-      // Wait for next tick to ensure provider state is fully updated
-      await nextTick();
-
-      // Poll for local server status every 5 seconds
-      const localServerCheckInterval = setInterval(() => {
-        checkLocalServer();
-      }, 5000);
-
-      // Store interval ID for cleanup
-      cleanup.setInterval(localServerCheckInterval);
-
-      // Ensure a valid model is selected for the current provider
-      await store.dispatch('aiProvider/ensureValidModel');
 
       // Check if we're loading a saved output
       const contentId = route.query['content-id'];
@@ -863,7 +852,7 @@ export default {
     <div class="setup-icon">🚀</div>
     <h2>Welcome to AGNT!</h2>
   </div>
-  
+
   <div class="setup-content">
     <div class="setup-step">
       <div class="step-number">1</div>
@@ -892,15 +881,21 @@ export default {
         }
       }
 
-      await store.dispatch('userStats/fetchStats');
-      await store.dispatch('workflows/fetchWorkflows', { activeOnly: true });
-      await store.dispatch('goals/fetchGoals');
+      // PHASE 3: Fire-and-forget background data (don't block the UI)
+      // Note: userStats, workflows (summary), and goals are already fetched by initializeStore
+      // Only fetch active workflows for status updates and await the version promise
+      Promise.allSettled([
+        store.dispatch('workflows/fetchWorkflows', { activeOnly: true }),
+        versionPromise,
+      ]);
 
-      // Listen for global new-chat trigger
+      // Set up polling and event listeners
+      cleanup.setInterval(() => {
+        checkLocalServer();
+      }, 30000);
       window.addEventListener('trigger-new-chat', clearConversation);
 
       await nextTick();
-      // scrollToBottom();
       if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
         MathJax.typesetPromise();
       }
@@ -909,7 +904,7 @@ export default {
       if (!hasConnectedAIProvider.value) {
         cleanup.setTimeout(() => {
           noProviderTutorial.value.initializeTutorial();
-        }, 1000); // Show after 1 second
+        }, 1000);
       }
 
       focusInput();

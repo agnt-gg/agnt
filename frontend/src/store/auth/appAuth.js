@@ -1,6 +1,9 @@
 import { API_CONFIG } from '@/tt.config.js';
 import axios from 'axios';
 
+// In-flight promise for deduplicating concurrent fetchConnectedApps calls
+let _fetchConnectedAppsPromise = null;
+
 const state = {
   connectedApps: [],
   allProviders: [],
@@ -85,71 +88,74 @@ const mutations = {
 
 const actions = {
   async fetchConnectedApps({ commit }) {
-    const token = localStorage.getItem('token');
-    let connectedApps = [];
+    // Deduplicate concurrent calls - return existing in-flight promise
+    if (_fetchConnectedAppsPromise) return _fetchConnectedAppsPromise;
 
-    try {
-      const headers = token
-        ? {
-            Authorization: `Bearer ${token}`,
+    _fetchConnectedAppsPromise = (async () => {
+      try {
+        const token = localStorage.getItem('token');
+        let connectedApps = [];
+
+        // Local status checks are fast (localhost) — run them in parallel
+        // Remote agnt.gg call runs concurrently but we don't block on it for initial render
+        const remotePromise = axios.get(`${API_CONFIG.REMOTE_URL}/auth/connected`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          timeout: 5000,
+        }).catch(() => null);
+
+        // Fast local checks — these resolve in <100ms
+        const [codexResult, ccResult] = await Promise.allSettled([
+          axios.get(`${API_CONFIG.BASE_URL}/codex/status`),
+          axios.get(`${API_CONFIG.BASE_URL}/claude-code/status`),
+        ]);
+
+        // Process Codex status
+        if (codexResult.status === 'fulfilled') {
+          const codexStatus = codexResult.value?.data || {};
+          commit('SET_CODEX_STATUS', codexStatus);
+          if (codexStatus.available === true && !connectedApps.includes('openai-codex-cli')) {
+            connectedApps = [...connectedApps, 'openai-codex-cli'];
           }
-        : {};
-
-      const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/connected`, {
-        headers,
-      });
-
-      if (Array.isArray(response.data)) {
-        const normalizeProviderId = (app) => {
-          if (typeof app === 'string') return app.toLowerCase();
-          if (app?.provider_id) return String(app.provider_id).toLowerCase();
-          if (app?.id) return String(app.id).toLowerCase();
-          return null;
-        };
-
-        connectedApps = response.data.map(normalizeProviderId).filter(Boolean);
-      }
-    } catch (error) {
-      console.error('Error fetching connected apps:', error);
-    }
-
-    // Local Codex auth:
-    // - openai-codex-cli: connected when Codex login exists locally.
-    try {
-      const codexStatusResponse = await axios.get(`${API_CONFIG.BASE_URL}/codex/status`);
-      const codexStatus = codexStatusResponse?.data || {};
-      commit('SET_CODEX_STATUS', codexStatus);
-
-      if (codexStatus.available === true) {
-        if (!connectedApps.includes('openai-codex-cli')) {
-          connectedApps = [...connectedApps, 'openai-codex-cli'];
+        } else {
+          console.warn('Error checking Codex status:', codexResult.reason?.message);
+          commit('SET_CODEX_STATUS', { available: false, apiUsable: false, hint: 'Codex status unavailable' });
         }
-      }
-    } catch (error) {
-      console.warn('Error checking Codex status:', error?.message || error);
-      commit('SET_CODEX_STATUS', { available: false, apiUsable: false, hint: 'Codex status unavailable' });
-    }
 
-    // Local Claude Code auth:
-    // - claude-code: connected when Claude CLI credentials exist locally.
-    try {
-      const ccStatusResponse = await axios.get(`${API_CONFIG.BASE_URL}/claude-code/status`);
-      const ccStatus = ccStatusResponse?.data || {};
-      commit('SET_CLAUDE_CODE_STATUS', ccStatus);
-
-      if (ccStatus.available === true) {
-        if (!connectedApps.includes('claude-code')) {
-          connectedApps = [...connectedApps, 'claude-code'];
+        // Process Claude Code status
+        if (ccResult.status === 'fulfilled') {
+          const ccStatus = ccResult.value?.data || {};
+          commit('SET_CLAUDE_CODE_STATUS', ccStatus);
+          if (ccStatus.available === true && !connectedApps.includes('claude-code')) {
+            connectedApps = [...connectedApps, 'claude-code'];
+          }
+        } else {
+          console.warn('Error checking Claude Code status:', ccResult.reason?.message);
+          commit('SET_CLAUDE_CODE_STATUS', { available: false, apiUsable: false, hint: 'Claude Code status unavailable' });
         }
-      }
-    } catch (error) {
-      console.warn('Error checking Claude Code status:', error?.message || error);
-      commit('SET_CLAUDE_CODE_STATUS', { available: false, apiUsable: false, hint: 'Claude Code status unavailable' });
-    }
 
-    // De-duplicate while preserving order.
-    const deduped = Array.from(new Set(connectedApps));
-    commit('SET_CONNECTED_APPS', deduped);
+        // Commit local results immediately so UI can render
+        const localDeduped = Array.from(new Set(connectedApps));
+        commit('SET_CONNECTED_APPS', localDeduped);
+
+        // Now await the remote result and merge it in
+        const remoteResult = await remotePromise;
+        if (remoteResult && Array.isArray(remoteResult.data)) {
+          const normalizeProviderId = (app) => {
+            if (typeof app === 'string') return app.toLowerCase();
+            if (app?.provider_id) return String(app.provider_id).toLowerCase();
+            if (app?.id) return String(app.id).toLowerCase();
+            return null;
+          };
+          const remoteApps = remoteResult.data.map(normalizeProviderId).filter(Boolean);
+          const merged = Array.from(new Set([...remoteApps, ...connectedApps]));
+          commit('SET_CONNECTED_APPS', merged);
+        }
+      } finally {
+        _fetchConnectedAppsPromise = null;
+      }
+    })();
+
+    return _fetchConnectedAppsPromise;
   },
   async fetchAllProviders({ commit }) {
     try {

@@ -99,21 +99,79 @@ class WorkflowService {
   }
   async getAllWorkflows(req, res) {
     try {
-      const workflows = await WorkflowModel.findAllByUserId(req.user.userId);
-      const mappedWorkflows = workflows.map((row) => {
-        const data = JSON.parse(row.workflow_data);
-        return {
-          ...data,
-          id: row.id,
-          created_at: row.created_at,
-          updated_at: row.updated_at,
-          status: row.status,
-        };
-      });
-      res.json({ workflows: mappedWorkflows });
+      const statusFilter = req.query.status;
+      let workflows;
+
+      if (statusFilter) {
+        // Status-filtered queries use lightweight columns (no workflow_data parsing)
+        const statuses = statusFilter.split(',').map(s => s.trim()).filter(Boolean);
+        workflows = await WorkflowModel.findByUserIdAndStatus(req.user.userId, statuses);
+
+        const mappedWorkflows = workflows.map((row) => {
+          const nodeSummary = row.node_summary ? JSON.parse(row.node_summary) : [];
+          return {
+            id: row.id,
+            name: row.name || '',
+            category: row.category || '',
+            description: row.description || '',
+            status: row.status,
+            is_shareable: Boolean(row.is_shareable),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            nodes: nodeSummary.map(ns => ({
+              type: ns.type,
+              icon: ns.icon,
+              text: ns.label,
+              data: { label: ns.label, icon: ns.icon },
+            })),
+          };
+        });
+        res.json({ workflows: mappedWorkflows });
+      } else {
+        // Full fetch (rare — used when all workflow data is actually needed)
+        workflows = await WorkflowModel.findAllByUserId(req.user.userId);
+        const mappedWorkflows = workflows.map((row) => {
+          const data = JSON.parse(row.workflow_data);
+          return {
+            ...data,
+            id: row.id,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            status: row.status,
+          };
+        });
+        res.json({ workflows: mappedWorkflows });
+      }
     } catch (error) {
       console.error('Error retrieving workflows:', error);
       res.status(500).json({ error: 'Error retrieving workflows' });
+    }
+  }
+  async getAllWorkflowsSummary(req, res) {
+    try {
+      // Use lightweight summary query — no workflow_data parsing needed
+      const workflows = await WorkflowModel.findAllSummaryByUserId(req.user.userId);
+
+      const summaries = workflows.map((row) => {
+        const nodeSummary = row.node_summary ? JSON.parse(row.node_summary) : [];
+        return {
+          id: row.id,
+          name: row.name || '',
+          category: row.category || '',
+          description: row.description || '',
+          status: row.status,
+          is_shareable: Boolean(row.is_shareable),
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          node_count: nodeSummary.length,
+          node_summary: nodeSummary,
+        };
+      });
+
+      res.json({ workflows: summaries });
+    } catch (error) {
+      console.error('Error retrieving workflow summaries:', error);
+      res.status(500).json({ error: 'Error retrieving workflow summaries' });
     }
   }
   async getWorkflowById(req, res) {

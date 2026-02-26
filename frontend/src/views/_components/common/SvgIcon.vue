@@ -3,8 +3,45 @@
 </template>
 
 <script>
-// Global SVG cache to prevent duplicate fetches
+// Pre-load all SVGs at build time via Vite glob import (raw strings)
+const svgModules = import.meta.glob('/src/assets/icons/*.svg', {
+  eager: true,
+  query: '?raw',
+  import: 'default',
+});
+
+// Build a name -> content map at module load (instant, no network requests)
 const svgCache = new Map();
+
+const gradientDef = `
+  <linearGradient id="SVG-Gradient" gradientTransform="rotate(-45)">
+    <stop offset="0%" stop-color="#E53d8F" />
+    <stop offset="50%" stop-color="#3E405A" />
+  </linearGradient>
+  <linearGradient id="SVG-Gradient-Dark" gradientTransform="rotate(-45)">
+    <stop offset="0%" stop-color="#19EF83" />
+    <stop offset="50%" stop-color="#12E0FF" />
+  </linearGradient>
+`;
+
+function injectGradient(svgContent) {
+  const match = svgContent.match(/<svg[^>]*>/i);
+  if (match) {
+    const i = match.index + match[0].length;
+    return svgContent.slice(0, i) + `<defs>${gradientDef}</defs>` + svgContent.slice(i);
+  }
+  return svgContent;
+}
+
+for (const [path, raw] of Object.entries(svgModules)) {
+  // Extract icon name from path: "/src/assets/icons/agent.svg" -> "agent"
+  const name = path.split('/').pop().replace('.svg', '');
+  if (raw.trim().toLowerCase().startsWith('<svg')) {
+    svgCache.set(name, injectGradient(raw));
+  } else {
+    svgCache.set(name, '');
+  }
+}
 
 export default {
   name: 'SvgIcon',
@@ -16,74 +53,12 @@ export default {
   },
   data() {
     return {
-      svgContent: '',
+      svgContent: svgCache.get(this.name) || '',
     };
   },
-  mounted() {
-    this.loadSvg();
-  },
   watch: {
-    name() {
-      this.loadSvg();
-    },
-  },
-  methods: {
-    async loadSvg() {
-      // Check cache first
-      if (svgCache.has(this.name)) {
-        this.svgContent = svgCache.get(this.name);
-        return;
-      }
-
-      const basePath = import.meta.env.PROD ? '/assets/icons' : '/src/assets/icons';
-
-      try {
-        const response = await fetch(`${basePath}/${this.name}.svg`);
-        if (!response.ok) {
-          this.$emit('error', `Icon not found: ${this.name}`);
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        let svgContent = await response.text();
-
-        // Only process valid SVG content
-        if (svgContent.trim().toLowerCase().startsWith('<svg')) {
-          svgContent = this.injectGradient(svgContent);
-          // Cache the processed SVG
-          svgCache.set(this.name, svgContent);
-          this.svgContent = svgContent;
-        } else {
-          this.$emit('error', `Invalid SVG content for: ${this.name}`);
-          this.svgContent = '';
-        }
-      } catch (error) {
-        console.error(`Failed to load SVG: ${this.name}`, error);
-        this.$emit('error', error);
-        this.svgContent = '';
-      }
-    },
-    injectGradient(svgContent) {
-      const gradientDef = `
-        <linearGradient id="SVG-Gradient" gradientTransform="rotate(-45)">
-          <stop offset="0%" stop-color="#E53d8F" />
-          <stop offset="50%" stop-color="#3E405A" />
-        </linearGradient>
-        <linearGradient id="SVG-Gradient-Dark" gradientTransform="rotate(-45)">
-          <stop offset="0%" stop-color="#19EF83" />
-          <stop offset="50%" stop-color="#12E0FF" />
-        </linearGradient>
-      `;
-
-      // Use a more robust regex to find the right spot to inject the gradient
-      const svgOpenTagRegex = /<svg[^>]*>/i;
-      const match = svgContent.match(svgOpenTagRegex);
-
-      if (match) {
-        const insertionPoint = match.index + match[0].length;
-        return svgContent.slice(0, insertionPoint) + `<defs>${gradientDef}</defs>` + svgContent.slice(insertionPoint);
-      }
-
-      // If we can't find a suitable injection point, return the original SVG
-      return svgContent;
+    name(newName) {
+      this.svgContent = svgCache.get(newName) || '';
     },
   },
 };

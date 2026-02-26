@@ -226,6 +226,43 @@ async function initializePlugins() {
   console.log('=== Plugin System Ready ===');
 }
 
+async function deferredInit() {
+  // Warm Codex thread cache so conversations can resume after restarts
+  try {
+    await CodexCliSessionManager.init();
+  } catch (error) {
+    console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
+  }
+
+  // Initialize plugins before spawning workflow process
+  console.log('Initializing plugins before spawning workflow process...');
+  try {
+    await initializePlugins();
+    console.log('Plugin initialization complete');
+  } catch (error) {
+    console.error('Plugin initialization error (non-fatal):', error);
+  }
+
+  // Spawn workflow process AFTER plugins and database are ready
+  console.log('Spawning workflow process...');
+  try {
+    await WorkflowProcessBridge.spawn();
+    console.log('Workflow process spawned successfully');
+
+    // Restart active workflows shortly after spawn
+    setTimeout(() => {
+      console.log('Starting workflow restart...');
+      WorkflowProcessBridge.restartActiveWorkflows().catch((error) => {
+        console.error('Error restarting active workflows:', error);
+      });
+    }, 5000);
+    console.log('Workflow restart scheduled in 5 seconds...');
+  } catch (error) {
+    console.error('Failed to spawn workflow process:', error);
+    console.error('Server will continue running but workflows will not be available');
+  }
+}
+
 function startServer() {
   const maxRetries = 5;
   let retries = 0;
@@ -272,45 +309,18 @@ function startServer() {
     global.io = io;
 
     // Start server FIRST so health check responds immediately
-    const server = httpServer.listen(config.port, async () => {
+    const server = httpServer.listen(config.port, () => {
       console.log(`Master server listening on port ${config.port}`);
       console.log(`[Socket.IO] Real-time sync enabled`);
       retries = 0; // Reset retries on successful start
 
-      // Warm Codex thread cache so conversations can resume after restarts
-      try {
-        await CodexCliSessionManager.init();
-      } catch (error) {
-        console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
-      }
-
-      // Initialize plugins before spawning workflow process
-      console.log('Initializing plugins before spawning workflow process...');
-      try {
-        await initializePlugins();
-        console.log('Plugin initialization complete');
-      } catch (error) {
-        console.error('Plugin initialization error (non-fatal):', error);
-      }
-
-      // Spawn workflow process AFTER plugins and database are ready
-      console.log('Spawning workflow process...');
-      try {
-        await WorkflowProcessBridge.spawn();
-        console.log('Workflow process spawned successfully');
-
-        // Restart active workflows shortly after spawn
-        setTimeout(() => {
-          console.log('Starting workflow restart...');
-          WorkflowProcessBridge.restartActiveWorkflows().catch((error) => {
-            console.error('Error restarting active workflows:', error);
-          });
-        }, 5000);
-        console.log('Workflow restart scheduled in 5 seconds...');
-      } catch (error) {
-        console.error('Failed to spawn workflow process:', error);
-        console.error('Server will continue running but workflows will not be available');
-      }
+      // Defer all heavy initialization to next tick so the listen callback
+      // returns immediately and the server can respond to health checks
+      setImmediate(() => {
+        deferredInit().catch((error) => {
+          console.error('Deferred initialization error:', error);
+        });
+      });
     });
 
     server.on('error', (error) => {

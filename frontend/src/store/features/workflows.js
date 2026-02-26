@@ -164,9 +164,13 @@ export default {
           throw new Error('No authentication token found');
         }
 
-        let url = `${API_CONFIG.BASE_URL}/workflows/`;
+        let url;
         if (activeOnly) {
-          url += '?status=running,listening,error';
+          // Active-only fetches still use the full endpoint for status data
+          url = `${API_CONFIG.BASE_URL}/workflows/?status=running,listening,error`;
+        } else {
+          // Full list uses lightweight summary endpoint (no nodes/edges/parameters)
+          url = `${API_CONFIG.BASE_URL}/workflows/summary`;
         }
 
         const response = await fetch(url, {
@@ -185,6 +189,16 @@ export default {
           category: workflow.category || '',
           status: workflow.status || 'stopped',
           updated_at: new Date(workflow.updated_at),
+          // Map node_summary to nodes-like structure for backward compat with list views
+          // (Workflows.vue and WorkflowsPanel read .nodes for tool display)
+          nodes: workflow.nodes || (workflow.node_summary
+            ? workflow.node_summary.map(ns => ({
+                type: ns.type,
+                icon: ns.icon,
+                text: ns.label,
+                data: { label: ns.label, icon: ns.icon },
+              }))
+            : []),
         }));
 
         if (activeOnly) {

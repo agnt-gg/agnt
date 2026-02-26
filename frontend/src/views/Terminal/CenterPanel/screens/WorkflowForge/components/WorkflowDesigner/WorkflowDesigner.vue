@@ -2430,8 +2430,11 @@ export default {
 
       // Don't call loadWorkflowFromUrl() here - the parent WorkflowForge.vue handles it
       // via initializeScreen -> loadWorkflowFromUrl to avoid double-loading.
-
-      await fetchCustomTools();
+      // loadWorkflow() already fetches custom tools in parallel with workflow data,
+      // so only fetch here for new workflows (no URL id) to avoid a duplicate request.
+      if (!urlWorkflowId) {
+        fetchCustomTools();
+      }
 
       isLoading.value = false;
     });

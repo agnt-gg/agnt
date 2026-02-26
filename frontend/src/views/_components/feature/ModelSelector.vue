@@ -116,8 +116,13 @@ export default {
       }
     };
 
-    onMounted(() => {
-      store.dispatch('appAuth/fetchConnectedApps').then(async () => {
+    onMounted(async () => {
+      // Use existing connected apps data from initializeStore (deduplicated if re-fetched)
+      if (!store.getters['appAuth/connectedApps']?.length) {
+        await store.dispatch('appAuth/fetchConnectedApps');
+      }
+
+      {
         // If many providers are connected and the global provider is among them,
         // default the Model Selector to display the same provider as the global one.
         if (connectedProviders.value.length > 1 && connectedProviders.value.includes(globalProvider.value.toLowerCase())) {
@@ -214,7 +219,7 @@ export default {
           await store.dispatch('aiProvider/fetchProviderModels', { provider: props.initialProvider });
           updateSelectorModels(props.initialProvider);
         }
-      });
+      }
     });
 
     // Optionally, watch for changes in the initialModel prop to update the UI.

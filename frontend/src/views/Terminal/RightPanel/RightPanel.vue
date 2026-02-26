@@ -117,8 +117,8 @@ export default {
     let pollingInterval;
 
     onMounted(() => {
-      fetchStats();
-      pollingInterval = setInterval(fetchStats, 5000);
+      // Stats are pre-loaded by initializeStore - just set up a gentle refresh
+      pollingInterval = setInterval(fetchStats, 60000);
     });
 
     onUnmounted(() => {
