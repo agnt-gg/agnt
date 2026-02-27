@@ -162,7 +162,7 @@
 <script>
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import { getAllWidgets, registerCustomWidgets } from '@/canvas/widgetRegistry.js';
+import { getAllWidgets } from '@/canvas/widgetRegistry.js';
 import BaseScreen from '../../BaseScreen.vue';
 
 export default {
@@ -179,15 +179,11 @@ export default {
     const isDragOver = ref(false);
     const deleteTarget = ref(null);
 
-    // Fetch custom widget definitions and register them into the canvas registry
     onMounted(async () => {
+      // Definitions are fetched at startup (store initializeStore Phase 2).
+      // If somehow not yet loaded (e.g. race condition), fetch now as fallback.
       if (!store.getters['widgetDefinitions/isLoaded']) {
         await store.dispatch('widgetDefinitions/fetchDefinitions');
-        const { default: CustomWidgetRenderer } = await import('@/canvas/CustomWidgetRenderer.vue');
-        const definitions = store.getters['widgetDefinitions/allDefinitions'];
-        if (definitions.length > 0) {
-          registerCustomWidgets(definitions, CustomWidgetRenderer);
-        }
       }
 
       document.body.setAttribute('data-page', 'terminal-widget-manager');

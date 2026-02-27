@@ -81,14 +81,14 @@ const store = createStore({
 
         // PHASE 2: Fetch secondary data (less urgent, can load after)
         // Deferred to respective screens: fetchReferralBalance, fetchReferralTree (Settings),
-        // fetchCreditsActivity (Dashboard), fetchMyPurchases/fetchMyInstalls (Marketplace),
-        // fetchDefinitions (WidgetManager)
+        // fetchCreditsActivity (Dashboard), fetchMyPurchases/fetchMyInstalls (Marketplace)
         Promise.allSettled([
           dispatch('goals/fetchGoals'),
           dispatch('tools/fetchTools'),
           dispatch('tools/fetchWorkflowTools'),
           dispatch('executionHistory/fetchExecutions'),
           dispatch('widgetLayout/fetchLayouts'),
+          dispatch('widgetDefinitions/fetchDefinitions'),
         ]).then((results) => {
           results.forEach((result, index) => {
             if (result.status === 'rejected') {

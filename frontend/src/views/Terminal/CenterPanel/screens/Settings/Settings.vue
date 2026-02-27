@@ -394,6 +394,12 @@ body.dark .settings-section {
   border: 1px solid var(--terminal-border-color);
 }
 
+.settings-section.full-width,
+body.dark .settings-section.full-width {
+  background: transparent;
+  border: none;
+}
+
 .setting-row {
   display: flex;
   align-items: center;

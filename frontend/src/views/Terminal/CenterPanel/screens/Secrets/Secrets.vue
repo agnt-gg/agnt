@@ -2081,7 +2081,8 @@ body.dark .secrets-section {
   border: 1px solid var(--terminal-border-color);
 }
 
-.secrets-section.full-width {
+.secrets-section.full-width,
+body.dark .secrets-section.full-width {
   background: transparent;
   border: none;
 }
