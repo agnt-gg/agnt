@@ -169,6 +169,7 @@
                           selected: selectedWorkflowId === workflow.id,
                           dragging: draggedWorkflow?.id === workflow.id,
                           'last-odd': workflows.length % 2 === 1 && index === workflows.length - 1,
+                          [workflow.status?.toLowerCase()]: !!workflow.status,
                         }"
                         draggable="true"
                         @click="handleWorkflowClick(workflow)"
@@ -1679,6 +1680,23 @@ export default {
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.workflow-card.listening {
+  border-left: 3px solid var(--color-blue);
+}
+
+.workflow-card.running {
+  border-left: 3px solid var(--color-green);
+}
+
+.workflow-card.stopped {
+  color: var(--color-text-muted);
+  border-left: 3px solid var(--color-text-muted);
+}
+
+.workflow-card.error {
+  border-left: 3px solid var(--color-red);
 }
 
 .table-row.listening .col-status {

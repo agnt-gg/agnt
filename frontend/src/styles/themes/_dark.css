@@ -1,6 +1,6 @@
 /* DARK THEME */
 body.dark {
-  --color-primary: var(--color-pink);
+  --color-primary: var(--color-green);
   --color-secondary: var(--color-blue);
   --svg-gradient-start: var(--color-green);
   --svg-gradient-end: var(--color-blue);
@@ -33,7 +33,7 @@ body.dark {
   --red-rgb: 254, 78, 78;
   --yellow-rgb: 255, 215, 0;
   --indigo-rgb: 125, 61, 229;
-  --primary-rgb: 229, 61, 143;
+  --primary-rgb: 25, 239, 131;
 
   font-size: var(--font-size-sm);
   line-height: 1.25;

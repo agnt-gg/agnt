@@ -586,13 +586,14 @@ export default {
   padding: 14px;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-primary);
+  border-left: 3px solid var(--color-blue);
   border-radius: 6px;
   transition: all 0.2s ease;
   position: relative;
 }
 
 .wm-card.wm-custom {
+  border-left: 3px solid var(--color-green);
   cursor: pointer;
 }
 

@@ -108,6 +108,10 @@ export default {
       return raw || '229, 61, 143';
     };
 
+    const getTextMutedColor = () => {
+      return getComputedStyle(document.body).getPropertyValue('--color-text-muted').trim() || '#888';
+    };
+
     const fetchCreditsData = () => {
       // Dispatch action to fetch from store
       store.dispatch('userStats/fetchCreditsActivity', {
@@ -141,6 +145,7 @@ export default {
       console.log('Rendering chart with', data.labels.length, 'data points', 'Range:', activityDays.value, 'days');
 
       const g = getPrimaryRgb();
+      const mutedColor = getTextMutedColor();
 
       chartInstance = new Chart(ctx, {
         type: 'line',
@@ -194,7 +199,7 @@ export default {
                 color: `rgba(${g}, 0.05)`,
               },
               ticks: {
-                color: `rgba(${g}, 0.5)`,
+                color: mutedColor,
                 font: { size: 10 },
                 maxTicksLimit: 6,
                 callback: function (value) {
@@ -209,7 +214,7 @@ export default {
                 display: false,
               },
               ticks: {
-                color: `rgba(${g}, 0.5)`,
+                color: mutedColor,
                 font: { size: 10 },
                 maxRotation: 0,
                 autoSkip: true,
@@ -400,7 +405,7 @@ export default {
 }
 
 .chart-header h4 {
-  color: var(--color-primary);
+  color: var(--color-text);
   font-size: 1em;
   margin: 0;
 }

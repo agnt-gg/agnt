@@ -109,6 +109,10 @@
                         :class="{
                           selected: selectedTool?.id === item.id,
                           'last-odd': tools.length % 2 === 1 && index === tools.length - 1,
+                          'tool-plugin': item.isPlugin,
+                          'tool-pro': !item.isPlugin && item.requiresPro,
+                          'tool-custom': !item.isPlugin && !item.requiresPro && item.source === 'custom',
+                          'tool-system': !item.isPlugin && !item.requiresPro && item.source === 'system',
                         }"
                         @click="selectTool(item)"
                       >
@@ -177,6 +181,10 @@
                           selected: selectedTool?.id === tool.id,
                           dragging: draggedTool?.id === tool.id,
                           'last-odd': tools.length % 2 === 1 && index === tools.length - 1,
+                          'tool-plugin': tool.isPlugin,
+                          'tool-pro': !tool.isPlugin && tool.requiresPro,
+                          'tool-custom': !tool.isPlugin && !tool.requiresPro && tool.source === 'custom',
+                          'tool-system': !tool.isPlugin && !tool.requiresPro && tool.source === 'system',
                         }"
                         draggable="true"
                         @click="selectTool(tool)"
@@ -1331,6 +1339,22 @@ export default {
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.tool-card.tool-system {
+  border-left: 3px solid var(--color-blue);
+}
+
+.tool-card.tool-pro {
+  border-left: 3px solid var(--color-yellow);
+}
+
+.tool-card.tool-custom {
+  border-left: 3px solid var(--color-green);
+}
+
+.tool-card.tool-plugin {
+  border-left: 3px solid var(--color-violet);
 }
 
 .tool-card.last-odd {

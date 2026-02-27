@@ -672,7 +672,7 @@ export default {
   background: rgba(var(--yellow-rgb), 0.15);
   color: var(--color-yellow);
   border: 1px solid rgba(var(--yellow-rgb), 0.4);
-  box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.3);
+  /* box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.3); */
 }
 
 .tier-badge {
@@ -685,7 +685,7 @@ export default {
   background: rgba(var(--yellow-rgb), 0.15);
   color: var(--color-yellow);
   border: 1px solid rgba(var(--yellow-rgb), 0.4);
-  box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.3);
+  /* box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.3); */
 }
 
 /* Score Header */

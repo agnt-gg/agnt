@@ -283,12 +283,12 @@ export default {
 }
 
 .terminal-modal-content {
-  background: var(--color-dark-navy);
-  border: 1px solid var(--color-green);
+  background: var(--color-background);
+  border: 1px solid var(--color-primary);
   border-radius: 4px;
   padding: 24px;
   width: 400px;
-  box-shadow: 0 0 20px rgba(var(--green-rgb), 0.4);
+  box-shadow: 0 0 20px rgba(var(--color-primary-rgb, var(--green-rgb)), 0.4);
   text-align: center;
 }
 
@@ -301,12 +301,12 @@ export default {
 }
 
 .terminal-modal-header i {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 24px;
 }
 
 .terminal-modal-header span {
-  color: var(--color-light-green);
+  color: var(--color-primary);
   font-size: 18px;
   font-weight: bold;
 }
@@ -323,7 +323,7 @@ export default {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background-color: var(--color-green);
+  background-color: var(--color-primary);
   animation: dot-pulse 1.5s infinite ease-in-out;
 }
 
@@ -336,7 +336,7 @@ export default {
 }
 
 .terminal-modal-text {
-  color: var(--color-grey-light);
+  color: var(--color-text-muted);
   font-size: 14px;
 }
 

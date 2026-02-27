@@ -118,15 +118,15 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: linear-gradient(135deg, rgba(18, 224, 255, 0.04) 0%, rgba(18, 224, 255, 0.02) 100%);
-  border-bottom: 1px solid rgba(18, 224, 255, 0.1);
+  background: linear-gradient(135deg, rgba(var(--color-primary-rgb, var(--green-rgb)), 0.04) 0%, rgba(var(--color-primary-rgb, var(--green-rgb)), 0.02) 100%);
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 .response-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: 500;
 }
 
@@ -146,8 +146,8 @@ export default {
 }
 
 .control-button:hover {
-  color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.1);
+  color: var(--color-primary);
+  background: rgba(var(--color-primary-rgb, var(--green-rgb)), 0.1);
 }
 
 .response-body {
@@ -179,7 +179,7 @@ export default {
   height: calc(100vh - 64px);
   max-width: 100%;
   z-index: 9999;
-  background: var(--color-dark-navy);
+  background: var(--color-background);
   padding: 32px;
   overflow-y: auto;
 }
@@ -204,7 +204,7 @@ export default {
 .content-display {
   line-height: 1.6;
   white-space: pre-wrap;
-  color: var(--color-white);
+  color: var(--color-text);
   font-size: 14px;
 }
 </style>

@@ -126,6 +126,7 @@
                         class="agent-card"
                         :class="{
                           selected: selectedAgent?.id === item.id,
+                          active: (item.status || '').toLowerCase() === 'active',
                           'last-odd': agents.length % 2 === 1 && index === agents.length - 1,
                         }"
                         @click="selectAgent(item)"
@@ -193,6 +194,7 @@
                         class="agent-card"
                         :class="{
                           selected: selectedAgent?.id === agent.id,
+                          active: (agent.status || '').toLowerCase() === 'active',
                           dragging: draggedAgent && draggedAgent.id === agent.id && draggedAgent === agent,
                           'last-odd': agents.length % 2 === 1 && index === agents.length - 1,
                         }"
@@ -2178,6 +2180,15 @@ export default {
   background: rgba(var(--green-rgb), 0.08);
   border-color: rgba(var(--green-rgb), 0.2);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.agent-card.active {
+  border-left: 3px solid var(--color-green);
+}
+
+.agent-card:not(.active) {
+  color: var(--color-text-muted);
+  border-left: 3px solid var(--color-text-muted);
 }
 
 .agent-card.selected {

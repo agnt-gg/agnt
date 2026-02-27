@@ -375,9 +375,9 @@ export default {
   align-items: center;
   justify-content: center;
   padding: 32px 28px;
-  background:
+  /* background:
     radial-gradient(circle at top, rgba(var(--green-rgb), 0.06), transparent 55%),
-    linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
+    linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%); */
   border-radius: 16px;
   /* box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4); */
   height: fit-content;

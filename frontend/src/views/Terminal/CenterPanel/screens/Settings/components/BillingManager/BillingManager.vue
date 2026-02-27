@@ -1171,7 +1171,7 @@ body.dark .billing-header {
 .current-plan-badge.pro-badge {
   background: rgba(var(--yellow-rgb), 0.15);
   border: 2px solid rgba(var(--yellow-rgb), 0.4);
-  box-shadow: 0 0 12px rgba(var(--yellow-rgb), 0.3);
+  /* box-shadow: 0 0 12px rgba(var(--yellow-rgb), 0.3); */
 }
 
 .badge-label {

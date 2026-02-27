@@ -59,7 +59,7 @@ export default {
 
 .card-header h4 {
   margin: 0;
-  color: var(--color-primary);
+  color: var(--color-text);
   font-weight: bold;
   font-size: var(--font-size-sm);
 }

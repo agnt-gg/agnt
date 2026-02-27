@@ -2230,7 +2230,7 @@ export default {
 }
 
 .referral-name {
-  color: var(--color-primary);
+  color: var(--color-text);
   font-weight: 700;
 }
 

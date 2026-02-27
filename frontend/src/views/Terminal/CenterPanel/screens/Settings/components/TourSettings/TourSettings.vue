@@ -468,14 +468,14 @@ export default {
 }
 
 .setting-group h3 {
-  color: var(--color-light-green);
+  color: var(--color-primary);
   font-size: 1.2em;
   font-weight: 500;
   margin: 0;
 }
 
 .description {
-  color: var(--color-light-med-navy);
+  color: var(--color-text-muted);
   font-size: 0.95em;
   margin: 0;
   opacity: 0.9;
@@ -494,7 +494,7 @@ export default {
 
 .setting-row:hover {
   background: var(--color-darker-1);
-  border-color: var(--color-light-green);
+  border-color: var(--color-primary);
 }
 
 .setting-info {
@@ -503,14 +503,14 @@ export default {
 
 .setting-label {
   display: block;
-  color: var(--color-white);
+  color: var(--color-text);
   font-size: 1em;
   font-weight: 500;
   margin-bottom: 4px;
 }
 
 .setting-description {
-  color: var(--color-light-med-navy);
+  color: var(--color-text-muted);
   font-size: 0.9em;
   margin: 0;
   opacity: 0.8;
@@ -560,13 +560,13 @@ export default {
 }
 
 input:checked + .slider {
-  background-color: var(--color-green);
-  border-color: var(--color-green);
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 input:checked + .slider:before {
   transform: translateX(24px);
-  background-color: var(--color-darker-3);
+  background-color: var(--color-white);
 }
 
 .tour-list {
@@ -588,7 +588,7 @@ input:checked + .slider:before {
 
 .tour-item:hover {
   background: var(--color-darker-1);
-  border-color: var(--color-light-green);
+  border-color: var(--color-primary);
 }
 
 .tour-item-info {
@@ -603,7 +603,7 @@ input:checked + .slider:before {
 }
 
 .tour-name {
-  color: var(--color-white);
+  color: var(--color-text);
   font-size: 1em;
   font-weight: 500;
 }
@@ -618,11 +618,11 @@ input:checked + .slider:before {
 
 .tour-status.completed {
   background: var(--terminal-muted-color);
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .tour-description {
-  color: var(--color-light-med-navy);
+  color: var(--color-text-muted);
   font-size: 0.9em;
   margin: 0;
   opacity: 0.8;
@@ -642,18 +642,18 @@ input:checked + .slider:before {
   transition: all 0.2s ease;
 }
 
-.btn-reset {
+button.btn-reset {
   background: var(--color-darker-1);
-  color: var(--color-text);
+  color: var(--color-text) !important;
 }
 
 .btn-reset:hover {
   background: var(--color-darker-2);
 }
 
-.btn-start {
+button.btn-start {
   background: var(--color-primary);
-  color: var(--color-text);
+  color: var(--color-white) !important;
 }
 
 .btn-start:hover {
@@ -667,10 +667,10 @@ input:checked + .slider:before {
   margin-top: 8px;
 }
 
-.btn-reset-all {
+button.btn-reset-all {
   padding: 10px 20px;
   background: var(--color-darker-1);
-  color: var(--color-text);
+  color: var(--color-text) !important;
   border: none;
   border-radius: 8px;
   font-size: 0.95em;
@@ -690,7 +690,7 @@ input:checked + .slider:before {
 }
 
 .info-text {
-  color: var(--color-light-med-navy);
+  color: var(--color-text-muted);
   font-size: 0.95em;
   line-height: 1.6;
   margin: 8px 0 0 0;
