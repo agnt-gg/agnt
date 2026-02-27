@@ -102,7 +102,7 @@ export default {
 .toggle-button {
   background: transparent;
   border: 1px solid var(--terminal-border-color);
-  color: var(--color-white);
+  color: var(--color-text);
   padding: 8px 12px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -122,7 +122,7 @@ export default {
 
 .toggle-button.active {
   background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-white);
+  color: var(--color-text);
 }
 
 .tab-tabs {
@@ -144,7 +144,7 @@ button.tab-button:last-child {
 .tab-button {
   background: transparent;
   border: 1px solid var(--terminal-border-color);
-  color: var(--color-white);
+  color: var(--color-text);
   padding: 8px 16px;
   cursor: pointer !important;
   border-radius: 0;
@@ -173,7 +173,7 @@ button.tab-button:last-child {
 .tab-button.active {
   background: rgba(var(--green-rgb), 0.2);
   border-bottom: 1px solid var(--color-green); /* This creates the active tab underline that sits on top of the .tab-controls border */
-  color: var(--color-white);
+  color: var(--color-text);
   opacity: 1;
 }
 </style>

@@ -162,7 +162,7 @@ export default {
 }
 
 .value.clickable {
-  color: var(--color-green);
+  color: var(--color-primary);
   background: var(--color-darker-1);
   padding: 2px 4px;
   border-radius: 2px;
@@ -213,13 +213,13 @@ export default {
 
 .bar-fill {
   height: 100%;
-  background: var(--color-green);
-  color: var(--color-green);
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  color: var(--color-primary);
   font-size: 0.7em;
   line-height: 16px;
   padding-left: 2px;
   transition: width 0.3s ease;
-  text-shadow: 0 0 2px var(--color-green);
+  text-shadow: none;
   font-weight: bold;
 }
 </style>

@@ -372,7 +372,7 @@ export default {
 .run-filters-section,
 .recent-runs-section,
 .quick-actions-section {
-  background: rgb(0 0 0 / 10%);
+  background: transparent;
   border: 1px solid var(--terminal-border-color);
   padding: 16px;
   border-radius: 8px;

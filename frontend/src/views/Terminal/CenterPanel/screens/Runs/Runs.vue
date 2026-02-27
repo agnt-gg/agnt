@@ -1899,7 +1899,7 @@ ${execution.log}
   background: rgba(var(--green-rgb), 0.08);
   border-color: rgba(var(--green-rgb), 0.2);
   /* transform: translateY(-1px); */
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .execution-card.selected {

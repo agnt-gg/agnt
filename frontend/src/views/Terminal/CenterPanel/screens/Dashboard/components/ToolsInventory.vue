@@ -187,7 +187,7 @@ export default {
 .tool-icon {
   width: 14px;
   height: 14px;
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .tool-icon.status-healthy {

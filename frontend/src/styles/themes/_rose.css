@@ -33,6 +33,8 @@ body.rose {
   --color-light-green: #3a2828;
   --color-primary: #c8507a;
   --color-secondary: #5a8ab0;
+  --svg-gradient-start: #c8507a;
+  --svg-gradient-end: #5a8ab0;
 
   /* Overlays */
   --color-popup: rgba(244, 236, 236, 0.95);

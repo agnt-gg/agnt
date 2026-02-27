@@ -1131,18 +1131,18 @@ ${this.contactForm.message}
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  background: rgba(var(--green-rgb), 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   gap: 20px;
 }
 
 body.dark .billing-header {
-  background: rgba(var(--green-rgb), 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .header-content h2 {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.4em;
   font-weight: 700;
   margin: 0 0 4px 0;
@@ -1162,16 +1162,16 @@ body.dark .billing-header {
   align-items: flex-end;
   gap: 2px;
   padding: 10px 16px;
-  background: rgba(var(--green-rgb), 0.1);
-  border: 2px solid var(--color-green);
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 2px solid var(--color-primary);
   border-radius: 8px;
   min-width: 140px;
 }
 
 .current-plan-badge.pro-badge {
-  background: rgba(255, 215, 0, 0.15);
-  border: 2px solid rgba(255, 215, 0, 0.4);
-  box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
+  background: rgba(var(--yellow-rgb), 0.15);
+  border: 2px solid rgba(var(--yellow-rgb), 0.4);
+  box-shadow: 0 0 12px rgba(var(--yellow-rgb), 0.3);
 }
 
 .badge-label {
@@ -1184,7 +1184,7 @@ body.dark .billing-header {
 }
 
 .badge-plan {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 0.95em;
   font-weight: 700;
   letter-spacing: 0.3px;
@@ -1220,7 +1220,7 @@ body.dark .billing-section {
 }
 
 .section-header h3 {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.3em;
   font-weight: 700;
   margin: 0 0 6px 0;
@@ -1272,18 +1272,18 @@ body.dark .billing-toggle {
 }
 
 .toggle-option:hover {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .toggle-option.active {
-  background: var(--color-green);
+  background: var(--color-primary);
   color: var(--color-dark-navy);
-  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3);
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.3);
 }
 
 .save-badge {
-  background: rgba(255, 215, 0, 0.9);
-  color: #000;
+  background: rgba(var(--yellow-rgb), 0.9);
+  color: var(--color-dark-navy);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.75em;
@@ -1292,7 +1292,7 @@ body.dark .billing-toggle {
 }
 
 .toggle-option.active .save-badge {
-  background: rgba(255, 215, 0, 1);
+  background: var(--color-yellow);
 }
 
 /* Subscription Management */
@@ -1325,7 +1325,7 @@ body.dark .billing-toggle {
 }
 
 .info-value {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1em;
   font-weight: 700;
 }
@@ -1368,9 +1368,9 @@ body.dark .billing-toggle {
 }
 
 .reactivate-button {
-  background: var(--color-green);
+  background: var(--color-primary);
   color: white;
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
   margin-top: 24px;
 }
 
@@ -1387,7 +1387,7 @@ body.dark .billing-toggle {
 .cancellation-notice {
   margin-top: 16px;
   padding: 12px;
-  background: rgba(255, 107, 157, 0.1);
+  background: rgba(var(--pink-rgb), 0.1);
   border: 1px solid var(--color-primary);
   border-radius: 6px;
   color: var(--color-primary);
@@ -1397,7 +1397,7 @@ body.dark .billing-toggle {
 
 /* Cancel Section at Bottom */
 .cancel-section {
-  background: rgba(255, 107, 157, 0.05);
+  background: rgba(var(--red-rgb), 0.05);
   border: 1px solid var(--color-red);
 }
 
@@ -1422,7 +1422,7 @@ body.dark .billing-toggle {
   background: var(--color-primary);
   border-color: var(--color-primary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 107, 157, 0.4);
+  box-shadow: 0 4px 12px rgba(var(--red-rgb), 0.4);
 }
 
 /* Comparison Table */
@@ -1440,7 +1440,7 @@ body.dark .billing-toggle {
 }
 
 .comparison-table thead tr {
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.05), rgba(18, 224, 255, 0.05));
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.05), rgba(var(--primary-rgb), 0.02));
 }
 
 .comparison-table th {
@@ -1458,7 +1458,7 @@ body.dark .billing-toggle {
 
 .comparison-table th.feature-column {
   text-align: left;
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: 700;
   font-size: 0.8em;
   text-transform: uppercase;
@@ -1495,7 +1495,7 @@ body.dark .billing-toggle {
 }
 
 .plan-name {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 0.85em;
   font-weight: 700;
   text-transform: uppercase;
@@ -1537,7 +1537,7 @@ body.dark .billing-toggle {
 }
 
 .feature-row:hover {
-  background: rgba(var(--green-rgb), 0.03);
+  background: rgba(var(--primary-rgb), 0.03);
 }
 
 .feature-name {
@@ -1569,7 +1569,7 @@ body.dark .billing-toggle {
 }
 
 .feature-check.included {
-  color: var(--color-green);
+  color: var(--color-primary);
   opacity: 1;
 }
 
@@ -1624,9 +1624,9 @@ body.dark .billing-toggle {
 .plan-button.personal-pro,
 .plan-button.business-pro,
 .plan-button.enterprise {
-  background: rgba(var(--green-rgb), 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
   color: var(--color-text);
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
 }
 
 .plan-button.community-core:hover:not(:disabled),
@@ -1634,7 +1634,7 @@ body.dark .billing-toggle {
 .plan-button.business-pro:hover:not(:disabled),
 .plan-button.enterprise:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(var(--green-rgb), 0.4);
+  box-shadow: 0 6px 16px rgba(var(--primary-rgb), 0.4);
   filter: brightness(1.1);
 }
 
@@ -1642,7 +1642,7 @@ body.dark .billing-toggle {
   background: var(--color-lighter-0);
   color: var(--color-text);
   border: none;
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
   cursor: not-allowed;
   opacity: 0.8;
   font-weight: 700;
@@ -1791,7 +1791,7 @@ body.dark .billing-toggle {
 
 .close-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .modal-body {
@@ -1827,7 +1827,7 @@ body.dark .billing-toggle {
 }
 
 .btn-primary {
-  background: var(--color-green);
+  background: var(--color-primary);
   color: var(--color-dark-navy);
   font-weight: 600;
 }
@@ -1879,12 +1879,12 @@ body.dark .upload-label {
 }
 
 .upload-label:hover {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
+  border-color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .upload-label i {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.1em;
 }
 
@@ -1936,27 +1936,27 @@ body.dark .upload-label {
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  background: rgba(255, 193, 7, 0.1);
-  border: 2px solid rgba(255, 193, 7, 0.5);
+  background: rgba(var(--yellow-rgb), 0.1);
+  border: 2px solid rgba(var(--yellow-rgb), 0.5);
   padding: 20px 24px;
 }
 
 body.dark .scheduled-change-notice {
-  background: rgba(255, 193, 7, 0.08);
+  background: rgba(var(--yellow-rgb), 0.08);
 }
 
 /* Upgrade Notice Styling */
 .scheduled-change-notice.upgrade-notice {
-  background: rgba(var(--green-rgb), 0.1);
-  border: 2px solid rgba(var(--green-rgb), 0.5);
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 2px solid rgba(var(--primary-rgb), 0.5);
 }
 
 body.dark .scheduled-change-notice.upgrade-notice {
-  background: rgba(var(--green-rgb), 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
 }
 
 .scheduled-change-notice.upgrade-notice .notice-content h3 {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .notice-icon {
@@ -1995,15 +1995,15 @@ body.dark .scheduled-change-notice.upgrade-notice {
 
 .notice-content strong {
   font-weight: 700;
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .cancel-change-button {
   margin-top: 12px;
   padding: 10px 20px;
-  background: var(--color-green);
+  background: var(--color-primary);
   color: white;
-  border: 2px solid var(--color-green);
+  border: 2px solid var(--color-primary);
   border-radius: 8px;
   font-size: 0.85em;
   font-weight: 600;
@@ -2014,10 +2014,10 @@ body.dark .scheduled-change-notice.upgrade-notice {
 }
 
 .cancel-change-button:hover:not(:disabled) {
-  background: var(--color-light-green);
-  border-color: var(--color-light-green);
+  background: var(--color-secondary);
+  border-color: var(--color-secondary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.4);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.4);
 }
 
 .cancel-change-button:disabled {
@@ -2027,11 +2027,11 @@ body.dark .scheduled-change-notice.upgrade-notice {
 
 /* Discount Ribbon */
 .discount-ribbon {
-  background: linear-gradient(135deg, #ff6b9d 0%, #c06c84 50%, #ffa07a 100%);
-  border: 2px solid #ff1493;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-pink) 50%, var(--color-secondary) 100%);
+  border: 2px solid var(--color-primary);
   border-radius: 12px;
   padding: 8px 24px;
-  box-shadow: 0 4px 20px rgba(255, 20, 147, 0.4);
+  box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.4);
   animation: pulse-glow 2s ease-in-out infinite;
   position: relative;
   overflow: hidden;
@@ -2051,10 +2051,10 @@ body.dark .scheduled-change-notice.upgrade-notice {
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 4px 20px rgba(255, 20, 147, 0.4);
+    box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.4);
   }
   50% {
-    box-shadow: 0 4px 30px rgba(255, 20, 147, 0.6);
+    box-shadow: 0 4px 30px rgba(var(--primary-rgb), 0.6);
   }
 }
 

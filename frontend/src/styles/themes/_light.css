@@ -42,6 +42,8 @@ body:not(.dark):not(.rose) {
   --color-pink: #d03580;
   --color-primary: #d03580;
   --color-secondary: #0ea5c8;
+  --svg-gradient-start: #d03580;
+  --svg-gradient-end: #0ea5c8;
   --color-light-green: #2a2a3a;
 
   /* Popup/dropdown backgrounds - MUST be light for light mode */

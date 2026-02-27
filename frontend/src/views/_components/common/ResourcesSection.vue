@@ -215,8 +215,8 @@ body.dark .resource-link {
 }
 
 body:not(.dark):not(.rose) button.resource-link.resource-button {
-  border: 1px solid var(--terminal-border-color);
-  color: var(--color-primary);
+  border: 1px solid var(--color-light-navy);
+  color: var(--color-text-muted);
 }
 
 .resource-link i {
@@ -225,8 +225,8 @@ body:not(.dark):not(.rose) button.resource-link.resource-button {
 
 .resource-link:hover,
 body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
-  border-color: var(--color-green);
-  color: var(--color-green);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
   transform: translateY(-2px);
 }
 
@@ -236,10 +236,10 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 
 .resource-button {
   cursor: pointer;
-  border: none;
   font-family: inherit;
   width: 100%;
   text-align: left;
+  background: transparent;
 }
 
 /* Modal Styles */
@@ -305,7 +305,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 
 .close-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .modal-body {
@@ -334,7 +334,7 @@ body.dark .feedback-textarea {
 
 .feedback-textarea:focus {
   outline: none;
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
 }
 
 .modal-footer {
@@ -357,7 +357,7 @@ body.dark .feedback-textarea {
 }
 
 .btn-primary {
-  background: var(--color-green);
+  background: var(--color-primary);
   color: var(--color-dark-navy);
   font-weight: 600;
 }
@@ -409,12 +409,12 @@ body.dark .upload-label {
 }
 
 .upload-label:hover {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
+  border-color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .upload-label i {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.1em;
 }
 

@@ -2068,7 +2068,7 @@ export default {
 }
 
 .secrets-section {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 1px solid var(--color-light-navy);
   padding: 24px;
   transition: all 0.3s ease;
@@ -2076,7 +2076,6 @@ export default {
 }
 
 body.dark .secrets-section {
-  background: rgba(0, 0, 0, 10%);
   border: 1px solid var(--terminal-border-color);
 }
 
@@ -2284,7 +2283,7 @@ body.dark .form-actions {
 }
 
 .mcp-server-card {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   padding: 12px 16px;
@@ -2297,7 +2296,6 @@ body.dark .form-actions {
 }
 
 body.dark .mcp-server-card {
-  background: rgba(0, 0, 0, 10%);
   border: 1px solid var(--terminal-border-color);
 }
 
@@ -2487,7 +2485,7 @@ body.dark .mcp-server-card {
 }
 
 .npm-package-card {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   padding: 12px;
@@ -2499,7 +2497,6 @@ body.dark .mcp-server-card {
 }
 
 body.dark .npm-package-card {
-  background: rgba(0, 0, 0, 10%);
   border: 1px solid var(--terminal-border-color);
 }
 
@@ -2770,7 +2767,7 @@ body.dark .category-pills {
 }
 
 .category-pill {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 2px solid var(--color-light-navy);
   border-radius: 20px;
   padding: 6px 14px;
@@ -2783,7 +2780,6 @@ body.dark .category-pills {
 }
 
 body.dark .category-pill {
-  background: rgba(0, 0, 0, 20%);
   border-color: var(--terminal-border-color);
 }
 
@@ -2827,7 +2823,7 @@ body.dark .results-info {
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
-  background: var(--color-dull-white);
+  background: transparent;
   border: 2px solid var(--color-light-navy);
   border-radius: 8px;
   transition: all 0.2s ease;
@@ -2835,7 +2831,6 @@ body.dark .results-info {
 }
 
 body.dark .oauth-list-item {
-  background: rgba(0, 0, 0, 10%);
   border-color: var(--terminal-border-color);
 }
 
@@ -2949,7 +2944,7 @@ body.dark .pagination {
 }
 
 .page-btn {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 2px solid var(--color-light-navy);
   border-radius: 6px;
   padding: 8px 16px;
@@ -2963,7 +2958,6 @@ body.dark .pagination {
 }
 
 body.dark .page-btn {
-  background: rgba(0, 0, 0, 10%);
   border-color: var(--terminal-border-color);
 }
 

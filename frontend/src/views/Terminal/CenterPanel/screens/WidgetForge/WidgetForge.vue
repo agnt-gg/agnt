@@ -450,7 +450,7 @@ export default {
 .wf-back {
   background: none;
   border: 1px solid var(--terminal-border-color);
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 12px;
   padding: 4px 8px;
@@ -529,7 +529,7 @@ export default {
 .wf-panel-title {
   font-size: 10px;
   letter-spacing: 2px;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   padding: 8px 12px;
   border-bottom: 1px solid var(--terminal-border-color);
   display: flex;
@@ -565,7 +565,7 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   min-height: 200px;
 }
 
@@ -576,7 +576,7 @@ export default {
   padding: 4px 8px;
   border-bottom: 1px solid var(--terminal-border-color);
   font-size: 10px;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   letter-spacing: 1px;
   flex-shrink: 0;
 }
@@ -598,7 +598,7 @@ export default {
   justify-content: center;
   height: 100%;
   gap: 8px;
-  color: var(--color-text-muted, #334);
+  color: var(--color-text-muted);
   font-size: 11px;
 }
 

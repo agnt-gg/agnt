@@ -349,7 +349,7 @@ export default {
 }
 
 .webhook-card {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   padding: 16px;
@@ -365,7 +365,6 @@ export default {
 }
 
 body.dark .webhook-card {
-  background: rgba(0, 0, 0, 10%);
   border: 1px solid var(--terminal-border-color);
 }
 

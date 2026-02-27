@@ -153,11 +153,11 @@ export default {
 }
 
 .status-active {
-  color: #10b981;
+  color: var(--color-green);
 }
 
 .status-idle {
-  color: #f59e0b;
+  color: var(--color-orange);
 }
 
 .status-data {
@@ -165,6 +165,6 @@ export default {
 }
 
 .status-guard {
-  color: #8b5cf6;
+  color: var(--color-indigo);
 }
 </style>

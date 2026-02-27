@@ -531,13 +531,13 @@ export default {
 }
 
 .leaderboard-card:hover {
-  border-color: var(--color-green);
-  box-shadow: 0 4px 12px rgba(18, 224, 255, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.1);
 }
 
 /* Header Card */
 .header-card {
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.05) 0%, rgba(18, 224, 255, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.05) 0%, rgba(var(--primary-rgb), 0.02) 100%);
 }
 
 .card-header {
@@ -559,12 +559,12 @@ export default {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.5em;
-  color: var(--color-darker-3);
+  color: white;
 }
 
 .card-title {
@@ -612,20 +612,20 @@ export default {
 }
 
 .tab-button:hover {
-  background: rgba(127, 129, 147, 0.1);
+  background: rgba(var(--primary-rgb), 0.1);
   color: var(--color-text);
 }
 
 .tab-button.active {
-  background: var(--color-green);
-  color: var(--color-darker-3);
-  box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.3);
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.3);
 }
 
 .sync-button {
   padding: 10px 20px;
-  background: var(--color-green);
-  color: var(--color-darker-3);
+  background: var(--color-primary);
+  color: white;
   border: none;
   border-radius: 8px;
   font-weight: 600;
@@ -638,7 +638,7 @@ export default {
 
 .sync-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
 }
 
 .sync-button:disabled {
@@ -661,7 +661,7 @@ export default {
 }
 
 .info-tooltip:hover > i {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .tooltip-content {
@@ -670,7 +670,7 @@ export default {
   right: 0;
   width: 320px;
   background: var(--color-popup);
-  border: 2px solid var(--color-green);
+  border: 2px solid var(--color-primary);
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
@@ -690,7 +690,7 @@ export default {
 .tooltip-content h4 {
   font-size: 1em;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--color-primary);
   margin: 0 0 12px 0;
 }
 
@@ -706,7 +706,7 @@ export default {
 }
 
 .tooltip-content strong {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -716,8 +716,8 @@ export default {
   align-items: center;
   gap: 24px;
   padding: 16px;
-  background: rgba(var(--green-rgb), 0.1);
-  border: 2px solid var(--color-green);
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 2px solid var(--color-primary);
   border-radius: 8px;
 }
 
@@ -741,8 +741,7 @@ export default {
 .rank-value {
   font-size: 1.8em;
   font-weight: bold;
-  color: var(--color-green);
-  text-shadow: 0 0 10px rgba(var(--green-rgb), 0.3);
+  color: var(--color-primary);
 }
 
 .rank-user-info {
@@ -784,7 +783,7 @@ export default {
 }
 
 .stat-value.agnt-value {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 /* Leaderboard Table */
@@ -837,13 +836,13 @@ export default {
 }
 
 .table-row.current-user {
-  background: rgba(var(--green-rgb), 0.08);
-  border-left: 4px solid var(--color-green);
+  background: rgba(var(--primary-rgb), 0.08);
+  border-left: 4px solid var(--color-primary);
   padding-left: 20px;
 }
 
 .table-row.top-three {
-  background: rgba(var(--green-rgb), 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .table-cell {
@@ -863,7 +862,7 @@ export default {
 
 .rank-number.rank-gold {
   font-size: 1.8em;
-  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.6));
+  filter: drop-shadow(0 0 8px rgba(var(--yellow-rgb), 0.6));
 }
 
 .rank-number.rank-silver {
@@ -873,7 +872,7 @@ export default {
 
 .rank-number.rank-bronze {
   font-size: 1.4em;
-  filter: drop-shadow(0 0 4px rgba(205, 127, 50, 0.6));
+  filter: drop-shadow(0 0 4px rgba(var(--yellow-rgb), 0.6));
 }
 
 .user-info {
@@ -886,7 +885,7 @@ export default {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -927,8 +926,7 @@ export default {
 .agnt-value {
   font-size: 1.1em;
   font-weight: bold;
-  color: var(--color-green);
-  text-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
+  color: var(--color-primary);
 }
 
 .level-value {
@@ -1002,8 +1000,8 @@ export default {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
-  color: var(--color-darker-3);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;

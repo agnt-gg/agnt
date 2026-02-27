@@ -150,14 +150,14 @@ export default {
 
 .token-count {
   font-size: 0.8em;
-  color: var(--color-bright-light-navy);
+  color: var(--color-text-muted);
   font-family: var(--font-family-mono);
 }
 
 .percentage {
   font-size: 0.8em;
   font-weight: 600;
-  color: var(--color-light-med-navy);
+  color: var(--color-text);
 }
 
 .last-managed {

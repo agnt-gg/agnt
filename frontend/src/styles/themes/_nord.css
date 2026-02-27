@@ -32,6 +32,8 @@ body.dark.nord {
   --color-light-green: #d8dee9;
   --color-primary: #88c0d0;
   --color-secondary: #81a1c1;
+  --svg-gradient-start: #88c0d0;
+  --svg-gradient-end: #81a1c1;
 
   /* Overlays */
   --color-popup: rgba(59, 66, 82, 0.95);

@@ -102,9 +102,10 @@ export default {
     });
 
     // Resolve CSS variable for Canvas 2D (which can't parse var() references)
-    const getGreenRgb = () => {
-      const raw = getComputedStyle(document.documentElement).getPropertyValue('--green-rgb').trim();
-      return raw || '25, 239, 131';
+    // Read from document.body since theme variables are set on body.* selectors
+    const getPrimaryRgb = () => {
+      const raw = getComputedStyle(document.body).getPropertyValue('--primary-rgb').trim();
+      return raw || '229, 61, 143';
     };
 
     const fetchCreditsData = () => {
@@ -139,7 +140,7 @@ export default {
 
       console.log('Rendering chart with', data.labels.length, 'data points', 'Range:', activityDays.value, 'days');
 
-      const g = getGreenRgb();
+      const g = getPrimaryRgb();
 
       chartInstance = new Chart(ctx, {
         type: 'line',
@@ -296,6 +297,9 @@ export default {
       { deep: true }
     );
 
+    // Re-render chart when theme changes (body class changes update CSS variables)
+    let themeObserver = null;
+
     onMounted(() => {
       fetchCreditsData();
 
@@ -305,12 +309,27 @@ export default {
           renderChart();
         });
       }
+
+      // Watch for theme changes on <body> class list
+      // Use a short delay so CSS variables have time to update after the class swap
+      themeObserver = new MutationObserver(() => {
+        if (chartData.value.labels.length > 0) {
+          setTimeout(() => {
+            renderChart();
+          }, 100);
+        }
+      });
+      themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     });
 
     onUnmounted(() => {
       if (chartInstance) {
         chartInstance.destroy();
         chartInstance = null;
+      }
+      if (themeObserver) {
+        themeObserver.disconnect();
+        themeObserver = null;
       }
     });
 
@@ -364,7 +383,7 @@ export default {
   right: 0;
   bottom: 0;
   background: var(--color-darker-0);
-  color: var(--color-green);
+  color: var(--color-primary);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -381,7 +400,7 @@ export default {
 }
 
 .chart-header h4 {
-  color: var(--color-light-green);
+  color: var(--color-primary);
   font-size: 1em;
   margin: 0;
 }
@@ -390,19 +409,19 @@ export default {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(255, 157, 0, 0.1);
-  border: 1px solid rgba(255, 157, 0, 0.3);
+  background: rgba(var(--yellow-rgb), 0.1);
+  border: 1px solid rgba(var(--yellow-rgb), 0.3);
   padding: 2px 8px;
   border-radius: 4px;
   margin-left: 8px;
   font-family: var(--font-family-mono);
   font-size: 0.85em;
-  color: #ff9d00;
+  color: var(--color-orange);
   transition: all 0.2s ease;
 }
 
 .streak-badge:hover {
-  background: rgba(255, 157, 0, 0.2);
+  background: rgba(var(--yellow-rgb), 0.2);
   transform: translateY(-1px);
 }
 
@@ -416,9 +435,9 @@ export default {
 }
 
 .chart-type-toggle {
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-grey-light);
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  color: var(--color-text-muted);
   padding: 6px 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -430,13 +449,13 @@ export default {
 }
 
 .chart-type-toggle:hover {
-  background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.2);
+  color: var(--color-primary);
 }
 
 .chart-type-toggle.active {
-  background: var(--color-green);
-  color: var(--color-dark-navy);
+  background: var(--color-primary);
+  color: #ffffff;
 }
 
 .toggle-label {
@@ -471,7 +490,7 @@ export default {
 }
 
 .info-icon:hover {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .clickable {
@@ -488,9 +507,9 @@ export default {
 }
 
 .time-range-select {
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-grey-light);
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  color: var(--color-text-muted);
   padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
@@ -501,14 +520,14 @@ export default {
 }
 
 .time-range-select:hover {
-  background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.5);
+  background: rgba(var(--primary-rgb), 0.2);
+  color: var(--color-primary);
+  border-color: rgba(var(--primary-rgb), 0.5);
 }
 
 .time-range-select:focus {
-  background: rgba(var(--green-rgb), 0.15);
-  border-color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.15);
+  border-color: var(--color-primary);
 }
 
 .time-range-select option {

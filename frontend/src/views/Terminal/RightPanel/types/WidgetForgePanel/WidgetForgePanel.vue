@@ -160,12 +160,12 @@ export default {
   font-size: 10px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
 }
 
 .config-value {
   font-size: 12px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   text-transform: capitalize;
 }
 
@@ -180,7 +180,7 @@ export default {
   align-items: flex-start;
   gap: 8px;
   font-size: 10px;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   line-height: 1.4;
 }
 

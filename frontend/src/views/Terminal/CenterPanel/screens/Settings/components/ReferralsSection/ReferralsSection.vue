@@ -1161,8 +1161,8 @@ export default {
 }
 
 .referral-card:hover {
-  border-color: var(--color-green);
-  box-shadow: 0 4px 12px rgba(18, 224, 255, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.1);
 }
 
 /* Card Header */
@@ -1185,12 +1185,12 @@ export default {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.5em;
-  color: var(--color-darker-3);
+  color: white;
 }
 
 .card-title {
@@ -1226,8 +1226,7 @@ export default {
 .balance-value {
   font-size: 1.5em;
   font-weight: bold;
-  color: var(--color-yellow);
-  text-shadow: 0 0 10px rgba(239, 235, 25, 0.3);
+  color: var(--color-primary);
 }
 
 /* Referral Link Section */
@@ -1261,13 +1260,13 @@ export default {
 
 .referral-input:focus {
   outline: none;
-  border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(18, 224, 255, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.1);
 }
 
 .referral-input.editing {
-  border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
+  border-color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .referral-input:disabled {
@@ -1282,8 +1281,8 @@ export default {
 
 .copy-button {
   padding: 12px 24px;
-  background: var(--color-green);
-  color: var(--color-darker-3);
+  background: var(--color-primary);
+  color: white;
   border: none;
   border-radius: 8px;
   font-weight: 600;
@@ -1296,13 +1295,13 @@ export default {
 }
 
 .copy-button:hover {
-  background: var(--color-green);
+  background: var(--color-primary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
 }
 
 .copy-button.copied {
-  background: var(--color-green);
+  background: var(--color-primary);
 }
 
 .help-text {
@@ -1330,9 +1329,9 @@ export default {
 }
 
 .stat-card:hover {
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(18, 224, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.1);
 }
 
 .stat-icon {
@@ -1390,8 +1389,8 @@ export default {
 
 .level-badge {
   padding: 4px 12px;
-  background: rgba(18, 224, 255, 0.15);
-  color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary);
   border-radius: 6px;
   font-size: 0.85em;
   font-weight: 600;
@@ -1423,18 +1422,18 @@ export default {
 
 .referral-item:hover {
   background: rgba(127, 129, 147, 0.1);
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
 }
 
 .referral-item.active {
-  border-color: rgba(var(--green-rgb), 0.3);
+  border-color: rgba(var(--primary-rgb), 0.3);
 }
 
 .referral-avatar {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1499,9 +1498,10 @@ export default {
 }
 
 .referral-status.active {
-  color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.15);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.15);
 }
+
 
 .referral-rewards {
   display: flex;
@@ -1526,7 +1526,7 @@ export default {
 
 .reward-value {
   font-size: 0.9em;
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: 700;
 }
 
@@ -1575,8 +1575,8 @@ export default {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
-  color: var(--color-darker-3);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1631,8 +1631,8 @@ export default {
 
 .level-badge-small {
   padding: 4px 10px;
-  background: rgba(18, 224, 255, 0.15);
-  color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary);
   border-radius: 6px;
   font-size: 0.75em;
   font-weight: 600;
@@ -1654,19 +1654,19 @@ export default {
 }
 
 .highlight-box {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 237, 78, 0.1) 100%);
-  border: 2px solid rgba(255, 215, 0, 0.3);
+  background: linear-gradient(135deg, rgba(var(--yellow-rgb), 0.1) 0%, rgba(var(--yellow-rgb), 0.05) 100%);
+  border: 2px solid rgba(var(--yellow-rgb), 0.3);
 }
 
 .highlight-box .level-badge-small {
-  background: rgba(255, 215, 0, 0.2);
+  background: rgba(var(--yellow-rgb), 0.2);
   color: var(--color-yellow);
 }
 
 .example-box {
   padding: 16px;
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
-  border: 1px solid rgba(var(--green-rgb), 0.2);
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.08) 0%, rgba(var(--primary-rgb), 0.04) 100%);
+  border: 1px solid rgba(var(--primary-rgb), 0.2);
   border-radius: 8px;
   font-size: 0.9em;
   color: var(--color-text-muted);
@@ -1674,7 +1674,7 @@ export default {
 }
 
 .example-box strong {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 /* Dynamic Calculation Box */
@@ -1688,7 +1688,7 @@ export default {
 }
 
 .calculation-box strong {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.05em;
   display: block;
   /* margin-bottom: 16px; */
@@ -1713,19 +1713,19 @@ export default {
 }
 
 .calc-row.network-section {
-  background: rgba(var(--green-rgb), 0.08);
-  border-color: rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--primary-rgb), 0.08);
+  border-color: rgba(var(--primary-rgb), 0.3);
 }
 
 .calc-row.total-row {
-  background: rgba(255, 215, 0, 0.1);
-  border: 2px solid rgba(255, 215, 0, 0.4);
+  background: rgba(var(--yellow-rgb), 0.1);
+  border: 2px solid rgba(var(--yellow-rgb), 0.4);
   margin-top: 8px;
 }
 
 .calc-row.agnt-row {
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.15) 0%, rgba(18, 224, 255, 0.15) 100%);
-  border: 2px solid var(--color-green);
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.15) 0%, rgba(var(--primary-rgb), 0.08) 100%);
+  border: 2px solid var(--color-primary);
 }
 
 .calc-label {
@@ -1741,9 +1741,8 @@ export default {
 }
 
 .calc-value.agnt-boost {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.1em;
-  text-shadow: 0 0 8px rgba(var(--green-rgb), 0.4);
 }
 
 .calc-detail {
@@ -1753,7 +1752,7 @@ export default {
   padding: 8px 14px 8px 28px;
   background: rgba(127, 129, 147, 0.05);
   border-radius: 6px;
-  border-left: 3px solid rgba(var(--green-rgb), 0.3);
+  border-left: 3px solid rgba(var(--primary-rgb), 0.3);
   font-size: 0.85em;
 }
 
@@ -1795,7 +1794,7 @@ export default {
 
 .breakdown-level-label {
   font-size: 0.8em;
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1814,7 +1813,7 @@ export default {
 }
 
 .breakdown-referral:hover {
-  background: rgba(var(--green-rgb), 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
   transform: translateX(4px);
 }
 
@@ -1834,16 +1833,16 @@ export default {
 
 /* Referral Code Entry Card */
 .referral-code-card {
-  border: 2px solid var(--color-green);
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.05) 0%, rgba(18, 224, 255, 0.05) 100%);
+  border: 2px solid var(--color-primary);
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.05) 0%, rgba(var(--primary-rgb), 0.02) 100%);
 }
 
 .referral-code-card:hover {
-  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.2);
+  box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.2);
 }
 
 .bonus-icon {
-  background: linear-gradient(135deg, var(--color-yellow) 0%, #ffed4e 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -1879,8 +1878,8 @@ export default {
 
 .referral-code-input:focus {
   outline: none;
-  border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(18, 224, 255, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.1);
 }
 
 .referral-code-input:disabled {
@@ -1890,8 +1889,8 @@ export default {
 
 .submit-button {
   padding: 12px 24px;
-  background: var(--color-green);
-  color: var(--color-darker-3);
+  background: var(--color-primary);
+  color: white;
   border: none;
   border-radius: 8px;
   font-weight: 600;
@@ -1905,7 +1904,7 @@ export default {
 
 .submit-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
 }
 
 .submit-button:disabled {
@@ -1920,7 +1919,7 @@ export default {
 }
 
 .success-message {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 0.85em;
   margin-top: 8px;
   font-weight: 600;
@@ -1928,16 +1927,16 @@ export default {
 
 /* Bonus Received Card */
 .bonus-received-card {
-  border: 2px solid var(--color-green);
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
+  border: 2px solid var(--color-primary);
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.08) 0%, rgba(var(--primary-rgb), 0.04) 100%);
 }
 
 .bonus-received-card:hover {
-  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.25);
+  box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.25);
 }
 
 .success-icon {
-  background: linear-gradient(135deg, var(--color-green) 0%, #00d4aa 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
 }
 
 .bonus-info {
@@ -1970,18 +1969,17 @@ export default {
 }
 
 .bonus-amount {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.2em;
-  text-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
 }
 
 /* Commission Card Styles */
 .commission-icon {
-  background: linear-gradient(135deg, var(--color-yellow) 0%, #ffed4e 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
 }
 
 .commission-value {
-  color: var(--color-yellow);
+  color: var(--color-primary);
 }
 
 .commission-stats {
@@ -2033,8 +2031,8 @@ export default {
   display: flex;
   gap: 16px;
   padding: 20px;
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 237, 78, 0.1) 100%);
-  border: 2px solid rgba(255, 215, 0, 0.3);
+  background: linear-gradient(135deg, rgba(var(--yellow-rgb), 0.1) 0%, rgba(var(--yellow-rgb), 0.05) 100%);
+  border: 2px solid rgba(var(--yellow-rgb), 0.3);
   border-radius: 8px;
   margin-bottom: 24px;
 }
@@ -2076,7 +2074,7 @@ export default {
 }
 
 .stripe-connect-button:hover {
-  background: #5248e6;
+  background: var(--color-indigo);
   transform: translateY(-1px);
 }
 
@@ -2100,8 +2098,8 @@ export default {
 .toggle-all-button {
   padding: 6px 12px;
   background: transparent;
-  color: var(--color-green);
-  border: 1px solid var(--color-green);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
   border-radius: 6px;
   font-size: 0.85em;
   font-weight: 600;
@@ -2113,8 +2111,8 @@ export default {
 }
 
 .toggle-all-button:hover {
-  background: var(--color-green);
-  color: var(--color-darker-3);
+  background: var(--color-primary);
+  color: white;
   transform: translateY(-1px);
 }
 
@@ -2154,11 +2152,11 @@ export default {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(var(--green-rgb), 0.1);
+  background: rgba(var(--primary-rgb), 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .history-item-info {
@@ -2176,8 +2174,8 @@ export default {
 
 .history-item-plan {
   padding: 2px 8px;
-  background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary);
   border-radius: 4px;
   font-size: 0.85em;
   font-weight: 600;
@@ -2204,7 +2202,7 @@ export default {
 
 .history-item-paid {
   font-size: 0.75em;
-  color: var(--color-green);
+  color: var(--color-primary);
   margin-top: 4px;
   display: flex;
   align-items: center;
@@ -2232,7 +2230,7 @@ export default {
 }
 
 .referral-name {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: 700;
 }
 
@@ -2257,7 +2255,7 @@ export default {
 }
 
 .history-item-status.status-pending {
-  background: rgba(255, 193, 7, 0.2);
+  background: rgba(var(--yellow-rgb), 0.2);
   color: var(--color-yellow);
 }
 
@@ -2271,8 +2269,9 @@ export default {
   color: var(--color-green);
 }
 
+
 .history-item-status.status-cancelled {
-  background: rgba(244, 67, 54, 0.2);
+  background: rgba(var(--red-rgb), 0.2);
   color: var(--color-red);
 }
 
@@ -2280,8 +2279,8 @@ export default {
   margin-top: 12px;
   padding: 8px 16px;
   background: transparent;
-  color: var(--color-green);
-  border: 1px solid var(--color-green);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
@@ -2290,8 +2289,8 @@ export default {
 }
 
 .view-all-button:hover {
-  background: var(--color-green);
-  color: var(--color-darker-3);
+  background: var(--color-primary);
+  color: white;
 }
 
 .commission-empty {
@@ -2332,15 +2331,15 @@ export default {
   display: flex;
   gap: 16px;
   padding: 20px;
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.08) 0%, rgba(18, 224, 255, 0.08) 100%);
-  border: 2px solid rgba(var(--green-rgb), 0.3);
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.08) 0%, rgba(var(--primary-rgb), 0.04) 100%);
+  border: 2px solid rgba(var(--primary-rgb), 0.3);
   border-radius: 8px;
   margin-top: 24px;
 }
 
 .notice-icon {
   font-size: 2em;
-  color: var(--color-green);
+  color: var(--color-primary);
   flex-shrink: 0;
 }
 
@@ -2377,11 +2376,11 @@ export default {
   padding: 8px 12px;
   background: rgba(127, 129, 147, 0.05);
   border-radius: 6px;
-  border-left: 3px solid var(--color-green);
+  border-left: 3px solid var(--color-primary);
 }
 
 .notice-detail-item i {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.1em;
   margin-top: 2px;
   flex-shrink: 0;

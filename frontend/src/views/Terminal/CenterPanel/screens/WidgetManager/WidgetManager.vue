@@ -447,9 +447,9 @@ export default {
 
 .wm-count {
   font-size: 10px;
-  color: var(--color-text-muted, #445);
+  color: var(--color-text-muted);
   padding: 1px 6px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-0);
   border-radius: 3px;
 }
 
@@ -476,7 +476,7 @@ export default {
 }
 
 .wm-search-input::placeholder {
-  color: var(--color-text-muted, #334);
+  color: var(--color-text-muted);
 }
 
 .wm-btn {
@@ -487,7 +487,7 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   background: none;
-  color: var(--color-text-muted, #667);
+  color: var(--color-text-muted);
   font-size: 11px;
   font-family: inherit;
   cursor: pointer;
@@ -496,8 +496,8 @@ export default {
 }
 
 .wm-btn:hover {
-  color: var(--color-light-0, #aab);
-  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--color-text);
+  border-color: var(--terminal-border-color);
 }
 
 .wm-btn-create {
@@ -542,7 +542,7 @@ export default {
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   font-size: 10px;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -553,8 +553,8 @@ export default {
 }
 
 .wm-tab:hover {
-  color: var(--color-light-0, #aab);
-  border-color: rgba(255, 255, 255, 0.04);
+  color: var(--color-text);
+  border-color: var(--color-darker-1);
 }
 
 .wm-tab.active {
@@ -584,10 +584,11 @@ export default {
 
 .wm-card {
   padding: 14px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
+  border-left: 3px solid var(--color-primary);
   border-radius: 6px;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
   position: relative;
 }
 
@@ -596,8 +597,9 @@ export default {
 }
 
 .wm-card:hover {
+  background: rgba(var(--green-rgb), 0.08);
   border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .wm-card-header {
@@ -609,11 +611,11 @@ export default {
 
 .wm-card-icon {
   font-size: 18px;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
 }
 
 .wm-card.wm-custom .wm-card-icon {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .wm-card-badges {
@@ -635,26 +637,26 @@ export default {
 
 .wm-badge-builtin {
   background: rgba(100, 100, 200, 0.1);
-  color: var(--color-text-muted, #667);
+  color: var(--color-text-muted);
 }
 
 .wm-badge-shared {
   background: rgba(var(--green-rgb), 0.08);
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .wm-card-name {
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   font-weight: 600;
   margin-bottom: 4px;
 }
 
 .wm-card-desc {
   font-size: 10px;
-  color: var(--color-text-muted, #445);
+  color: var(--color-text-muted);
   margin-bottom: 8px;
   line-height: 1.3;
   display: -webkit-box;
@@ -672,7 +674,7 @@ export default {
 .wm-card-type,
 .wm-card-size {
   font-size: 9px;
-  color: var(--color-text-muted, #334);
+  color: var(--color-text-muted);
   letter-spacing: 0.5px;
 }
 
@@ -681,14 +683,14 @@ export default {
   gap: 2px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: 1px solid var(--color-darker-1);
 }
 
 .wm-card-actions button {
   flex: 1;
   background: none;
   border: 1px solid transparent;
-  color: var(--color-text-muted, #445);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 11px;
   padding: 3px;
@@ -720,18 +722,18 @@ export default {
 
 .wm-empty-icon {
   font-size: 32px;
-  color: var(--color-text-muted, #334);
+  color: var(--color-text-muted);
   opacity: 0.3;
 }
 .wm-empty-text {
   font-size: 12px;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   letter-spacing: 2px;
   text-transform: uppercase;
 }
 .wm-empty-hint {
   font-size: 11px;
-  color: var(--color-text-muted, #334);
+  color: var(--color-text-muted);
 }
 
 /* ── Modal ── */
@@ -777,7 +779,7 @@ export default {
 .wm-modal-header button {
   background: none;
   border: none;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 14px;
   padding: 2px;
@@ -793,12 +795,12 @@ export default {
 
 .wm-modal-text {
   font-size: 13px;
-  color: var(--color-light-0, #99a);
+  color: var(--color-text);
   line-height: 1.5;
 }
 
 .wm-modal-text strong {
-  color: var(--color-light-0, #ccd);
+  color: var(--color-text);
 }
 
 .wm-import-dropzone {
@@ -828,7 +830,7 @@ export default {
 
 .wm-dropzone-icon {
   font-size: 24px;
-  color: var(--color-text-muted, #445);
+  color: var(--color-text-muted);
 }
 
 .wm-dropzone-icon-ready {
@@ -837,7 +839,7 @@ export default {
 
 .wm-dropzone-text {
   font-size: 12px;
-  color: var(--color-light-0, #99a);
+  color: var(--color-text);
   letter-spacing: 0.5px;
 }
 
@@ -850,7 +852,7 @@ export default {
 
 .wm-dropzone-hint {
   font-size: 10px;
-  color: var(--color-text-muted, #334);
+  color: var(--color-text-muted);
 }
 
 .wm-import-error {

@@ -1,7 +1,7 @@
 <template>
   <div class="global-pulse-ribbon">
     <div class="pulse-section agnt-score-section">
-      <span class="pulse-label"><span style="color: var(--color-green)">AGNT</span> XP:</span>
+      <span class="pulse-label"><span style="color: var(--color-primary)">AGNT</span> XP:</span>
       <span class="agnt-score-value">{{ agntScoreData?.formatted || '0' }}</span>
     </div>
     <!-- <div class="pulse-section">
@@ -32,7 +32,7 @@
     </div>
     <div class="pulse-section" v-if="daysStreak > 0">
       <span class="pulse-label">Streak:</span>
-      <span class="pulse-item clickable" style="color: #ff9d00">[{{ daysStreak }} days 🔥]</span>
+      <span class="pulse-item clickable" style="color: var(--color-orange)">[{{ daysStreak }} days 🔥]</span>
     </div>
     <!-- <div class="pulse-section status-section">
       <span class="pulse-label">Status:</span>
@@ -145,7 +145,7 @@ export default {
 }
 
 .pulse-item {
-  color: var(--color-green);
+  color: var(--color-primary);
   background: var(--color-darker-1);
   padding: 2px 6px;
   border-radius: 2px;
@@ -187,17 +187,17 @@ export default {
 }
 
 .agnt-score-section {
-  background: rgba(var(--green-rgb), 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
   padding: 4px 12px;
   border-radius: 4px;
-  border: 1px solid rgba(var(--green-rgb), 0.2);
+  border: 1px solid rgba(var(--primary-rgb), 0.2);
 }
 
 .agnt-score-value {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: bold;
   font-size: 1.1em;
-  text-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
+  text-shadow: 0 0 8px rgba(var(--primary-rgb), 0.3);
   letter-spacing: 0.5px;
   /* Prevent any layout shifts or animations */
   min-width: 60px;

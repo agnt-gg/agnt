@@ -1326,7 +1326,6 @@ export default {
   border: 1px solid var(--terminal-border-color);
   padding: 12px;
   border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.01);
   border-left: 3px solid var(--color-primary);
   width: calc(50% - 4px);
   box-sizing: border-box;
@@ -1341,8 +1340,7 @@ export default {
 .tool-card:hover {
   background: rgba(var(--green-rgb), 0.08);
   border-color: rgba(var(--green-rgb), 0.2);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .tool-card.selected {
@@ -1553,7 +1551,6 @@ export default {
   border: 1px solid var(--terminal-border-color);
   padding: 12px;
   border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.01);
   border-left: 3px solid var(--color-primary);
   width: calc(50% - 4px);
   box-sizing: border-box;
@@ -1568,8 +1565,7 @@ export default {
 .marketplace-card:hover {
   background: rgba(var(--green-rgb), 0.08);
   border-color: rgba(var(--green-rgb), 0.2);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .marketplace-card.selected {

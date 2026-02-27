@@ -2120,7 +2120,7 @@ body[data-page='terminal-tool-forge'] .message-wrapper.assistant .message-card {
 .message-text :deep(h4),
 .message-text :deep(h5),
 .message-text :deep(h6) {
-  color: var(--color-white);
+  color: var(--color-text);
   font-weight: 600;
   line-height: 1.3;
   margin-top: 1em;

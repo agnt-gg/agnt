@@ -155,7 +155,7 @@ export default {
 
 .progress-fill {
   height: 100%;
-  background: var(--color-green);
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
   transition: width 0.3s ease;
   position: relative;
   min-width: 105%; /* Ensure fill extends beyond container to avoid border-radius showing through */

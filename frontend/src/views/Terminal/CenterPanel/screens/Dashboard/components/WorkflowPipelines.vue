@@ -157,17 +157,17 @@ export default {
 }
 
 .workflow-status.running {
-  background: rgba(34, 197, 94, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
 .workflow-status.listening {
-  background: rgba(59, 130, 246, 0.2);
+  background: rgba(var(--blue-rgb), 0.2);
   color: var(--color-blue);
 }
 
 .workflow-status.error {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(var(--red-rgb), 0.2);
   color: var(--color-red);
 }
 
@@ -193,17 +193,17 @@ export default {
 }
 
 .workflow-status-text.running {
-  background: rgba(34, 197, 94, 0.2);
+  background: rgba(var(--green-rgb), 0.2);
   color: var(--color-green);
 }
 
 .workflow-status-text.listening {
-  background: rgba(59, 130, 246, 0.2);
+  background: rgba(var(--blue-rgb), 0.2);
   color: var(--color-blue);
 }
 
 .workflow-status-text.error {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(var(--red-rgb), 0.2);
   color: var(--color-red);
 }
 </style>

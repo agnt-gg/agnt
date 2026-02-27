@@ -6,12 +6,12 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
           <defs>
             <linearGradient id="SVG-Gradient" gradientTransform="rotate(-45)">
-              <stop offset="0%" stop-color="#E53d8F" />
-              <stop offset="50%" stop-color="#E53DE3" />
+              <stop offset="0%" stop-color="var(--svg-gradient-start, #E53d8F)" />
+              <stop offset="50%" stop-color="var(--svg-gradient-end, #E53DE3)" />
             </linearGradient>
             <linearGradient id="SVG-Gradient-Dark" gradientTransform="rotate(-45)">
-              <stop offset="0%" stop-color="#12FFC4" />
-              <stop offset="50%" stop-color="#12E0FF" />
+              <stop offset="0%" stop-color="var(--svg-gradient-start, #12FFC4)" />
+              <stop offset="50%" stop-color="var(--svg-gradient-end, #12E0FF)" />
             </linearGradient>
           </defs>
           <path

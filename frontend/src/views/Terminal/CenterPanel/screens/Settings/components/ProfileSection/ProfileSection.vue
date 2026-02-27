@@ -520,7 +520,7 @@ export default {
   align-items: center;
   justify-content: center;
   border: 3px solid var(--color-darker-0);
-  box-shadow: 0 4px 12px rgba(18, 224, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
   overflow: hidden;
 }
 
@@ -663,29 +663,29 @@ export default {
 }
 
 .plan-badge {
-  background: rgba(18, 224, 255, 0.15);
-  color: var(--color-cyan);
-  border: 1px solid rgba(18, 224, 255, 0.3);
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
 }
 
 .plan-badge.pro-plan {
-  background: rgba(255, 215, 0, 0.15);
+  background: rgba(var(--yellow-rgb), 0.15);
   color: var(--color-yellow);
-  border: 1px solid rgba(255, 215, 0, 0.4);
-  box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+  border: 1px solid rgba(var(--yellow-rgb), 0.4);
+  box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.3);
 }
 
 .tier-badge {
-  background: rgba(18, 224, 255, 0.15);
-  color: var(--color-cyan);
-  border: 1px solid rgba(18, 224, 255, 0.3);
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
 }
 
 .tier-badge.pro-tier {
-  background: rgba(255, 215, 0, 0.15);
+  background: rgba(var(--yellow-rgb), 0.15);
   color: var(--color-yellow);
-  border: 1px solid rgba(255, 215, 0, 0.4);
-  box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+  border: 1px solid rgba(var(--yellow-rgb), 0.4);
+  box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.3);
 }
 
 /* Score Header */
@@ -711,15 +711,14 @@ export default {
 .score-value {
   font-size: 1.5em;
   font-weight: bold;
-  color: var(--color-green);
-  text-shadow: 0 0 10px rgba(var(--green-rgb), 0.3);
+  color: var(--color-primary);
 }
 
 .score-tier {
   font-size: 0.9em;
-  color: var(--color-cyan);
+  color: var(--color-primary);
   padding: 2px 8px;
-  background: rgba(18, 224, 255, 0.1);
+  background: rgba(var(--primary-rgb), 0.1);
   border-radius: 4px;
 }
 
@@ -748,9 +747,9 @@ export default {
 }
 
 .stat-card:hover {
-  border-color: var(--color-cyan);
+  border-color: var(--color-primary);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(18, 224, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.1);
 }
 
 .stat-card.highlight {
@@ -843,11 +842,11 @@ export default {
 
 .xp-needed-label {
   font-size: 0.85em;
-  color: var(--color-cyan);
-  background: rgba(18, 224, 255, 0.1);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.1);
   padding: 4px 8px;
   border-radius: 4px;
-  border: 1px solid rgba(18, 224, 255, 0.3);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -863,7 +862,7 @@ export default {
 
 .xp-progress-fill-large {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-yellow) 0%, var(--color-green) 100%);
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   border-radius: 12px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 2%;
@@ -901,8 +900,8 @@ export default {
   z-index: 1;
   font-size: 0.75em;
   font-weight: 700;
-  color: var(--color-darker-3);
-  text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   min-width: 40px;
   text-align: right;

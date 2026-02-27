@@ -1503,8 +1503,8 @@ body.dark .category-pills {
 }
 
 .category-pill {
-  background: var(--color-dull-white);
-  border: 2px solid var(--color-light-navy);
+  background: var(--color-darker-0);
+  border: 2px solid var(--terminal-border-color);
   border-radius: 20px;
   padding: 6px 14px;
   font-size: 0.85em;
@@ -1513,11 +1513,6 @@ body.dark .category-pills {
   transition: all 0.2s ease;
   color: var(--color-text);
   white-space: nowrap;
-}
-
-body.dark .category-pill {
-  background: rgba(0, 0, 0, 20%);
-  border-color: var(--terminal-border-color);
 }
 
 .category-pill:hover {
@@ -1573,11 +1568,11 @@ body.dark .results-info {
 }
 
 .marketplace-main-content::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.3) !important;
+  background: var(--color-darker-1) !important;
 }
 
 .marketplace-main-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.4) !important;
+  background: var(--color-darker-3) !important;
   border-radius: 4px;
 }
 
@@ -1675,7 +1670,7 @@ body.dark .results-info {
   width: 80px;
   height: 80px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1722,7 +1717,7 @@ body.dark .results-info {
   background: rgba(var(--green-rgb), 0.08);
   border-color: rgba(var(--green-rgb), 0.2);
   /* transform: translateY(-1px); */
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 /* Workflow Content */
 .workflow-content {
@@ -1932,7 +1927,6 @@ body.dark .results-info {
   border-left: 3px solid var(--color-green);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1944,9 +1938,7 @@ body.dark .results-info {
 }
 
 .workflow-card:hover {
-  /* border-color: rgba(var(--green-rgb), 0.4); */
-  /* transform: translateY(-2px); */
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .workflow-card.selected {

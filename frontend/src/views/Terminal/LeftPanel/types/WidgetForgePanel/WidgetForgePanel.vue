@@ -195,7 +195,7 @@ export default {
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   font-size: 10px;
   letter-spacing: 0.5px;
   cursor: pointer;
@@ -204,7 +204,7 @@ export default {
 }
 
 .tab-btn:hover {
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
 }
 
 .tab-btn.active {
@@ -235,7 +235,7 @@ export default {
 
 .tmpl-card {
   padding: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   cursor: pointer;
@@ -248,7 +248,7 @@ export default {
 
 .tmpl-card:hover {
   border-color: rgba(var(--green-rgb), 0.25);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-darker-1);
 }
 
 .tmpl-card.active {
@@ -258,7 +258,7 @@ export default {
 
 .tmpl-icon {
   font-size: 14px;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   flex-shrink: 0;
 }
 
@@ -270,7 +270,7 @@ export default {
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   font-weight: 600;
 }
 
@@ -284,7 +284,7 @@ export default {
 .section-title {
   font-size: 10px;
   letter-spacing: 2px;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   padding: 8px 0;
   display: flex;
   align-items: center;
@@ -303,8 +303,8 @@ export default {
 
 .code-editor {
   flex: 1;
-  background: var(--color-darker-1, #050510);
-  color: var(--color-light-0, #c8c8d4);
+  background: var(--color-darker-1);
+  color: var(--color-text);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
@@ -344,17 +344,17 @@ export default {
   font-size: 9px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   font-weight: 600;
 }
 
 .field input,
 .field select {
   padding: 6px 10px;
-  background: var(--color-darker-1, #050510);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   font-family: inherit;
   font-size: 12px;
   outline: none;
@@ -389,7 +389,7 @@ export default {
   background: none;
   border: 1px solid var(--terminal-border-color);
   border-radius: 3px;
-  color: var(--color-text-muted, #556);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 11px;
   display: flex;
@@ -400,8 +400,8 @@ export default {
 }
 
 .icon-btn:hover {
-  color: var(--color-light-0, #aab);
-  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--color-text);
+  border-color: var(--terminal-border-color);
 }
 
 .icon-btn.active {
@@ -412,10 +412,10 @@ export default {
 
 .config-json {
   width: 100%;
-  background: var(--color-darker-1, #050510);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   padding: 8px;

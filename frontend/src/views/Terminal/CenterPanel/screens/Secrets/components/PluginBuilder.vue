@@ -477,14 +477,10 @@ export default {
 }
 
 .builder-section {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   padding: 20px;
-}
-
-body.dark .builder-section {
-  background: rgba(0, 0, 0, 10%);
 }
 
 .section-header {

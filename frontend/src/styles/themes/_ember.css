@@ -32,6 +32,8 @@ body.dark.ember {
   --color-light-green: #c8b8a8;
   --color-primary: #e09040;
   --color-secondary: #e8a030;
+  --svg-gradient-start: #e09040;
+  --svg-gradient-end: #e8a030;
 
   /* Overlays */
   --color-popup: rgba(26, 18, 16, 0.95);

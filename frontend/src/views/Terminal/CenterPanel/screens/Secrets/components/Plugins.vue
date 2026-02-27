@@ -1249,7 +1249,7 @@ export default {
 }
 
 .plugin-card {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 2px solid var(--color-light-navy);
   border-radius: 12px;
   padding: 16px;
@@ -1260,7 +1260,7 @@ export default {
 }
 
 body.dark .plugin-card {
-  background: rgba(0, 0, 0, 10%);
+  background: transparent;
   border-color: var(--terminal-border-color);
 }
 
@@ -1422,7 +1422,7 @@ button.base-button.primary.refresh {
 .manual-install-section {
   margin-bottom: 8px;
   padding: 20px;
-  background: var(--color-dull-white);
+  background: var(--color-ultra-light-navy);
   border: 2px dashed var(--color-light-navy);
   border-radius: 12px;
 }
@@ -1528,14 +1528,10 @@ body.dark .manual-install-section {
 }
 
 .publish-step {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   padding: 20px;
-}
-
-body.dark .publish-step {
-  background: rgba(0, 0, 0, 10%);
 }
 
 .publish-step .step-header {

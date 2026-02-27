@@ -217,13 +217,13 @@ export default {
 
 .item-label {
   font-size: 0.75em;
-  color: var(--color-bright-light-navy);
+  color: var(--color-text);
   flex: 1;
 }
 
 .item-status {
   font-size: 0.7em;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   font-family: var(--font-family-mono);
 }
 
@@ -256,14 +256,14 @@ export default {
 
 .memory-label {
   font-size: 0.7em;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .memory-value {
   font-size: 0.7em;
-  color: var(--color-bright-light-navy);
+  color: var(--color-text);
   font-family: var(--font-family-mono);
 }
 

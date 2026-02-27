@@ -802,16 +802,16 @@ export default {
 }
 
 .cv-sb-page:hover {
-  color: var(--color-light-0, #889);
+  color: var(--color-text);
   border-color: var(--color-dull-navy);
   background: var(--color-darker-0);
 }
 
 .cv-sb-page.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.25);
-  background: rgba(var(--green-rgb), 0.06);
-  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.1);
+  color: var(--color-primary);
+  border-color: rgba(var(--primary-rgb), 0.25);
+  background: rgba(var(--primary-rgb), 0.06);
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.1);
 }
 
 .cv-sb-add {

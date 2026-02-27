@@ -15,12 +15,12 @@ const svgCache = new Map();
 
 const gradientDef = `
   <linearGradient id="SVG-Gradient" gradientTransform="rotate(-45)">
-    <stop offset="0%" stop-color="#E53d8F" />
-    <stop offset="50%" stop-color="#3E405A" />
+    <stop offset="0%" stop-color="var(--svg-gradient-start, #E53d8F)" />
+    <stop offset="50%" stop-color="var(--svg-gradient-end, #3E405A)" />
   </linearGradient>
   <linearGradient id="SVG-Gradient-Dark" gradientTransform="rotate(-45)">
-    <stop offset="0%" stop-color="#19EF83" />
-    <stop offset="50%" stop-color="#12E0FF" />
+    <stop offset="0%" stop-color="var(--svg-gradient-start, #19EF83)" />
+    <stop offset="50%" stop-color="var(--svg-gradient-end, #12E0FF)" />
   </linearGradient>
 `;
 
@@ -65,16 +65,16 @@ export default {
 </script>
 
 <style>
-body.dark .svg-icon path[fill] {
-  fill: var(--color-dull-white);
+.svg-icon path[fill] {
+  fill: var(--color-text);
 }
 
-body.dark .svg-icon path[stroke] {
-  stroke: var(--color-dull-white);
+.svg-icon path[stroke] {
+  stroke: var(--color-text);
 }
 
-body.dark .svg-icon rect[stroke] {
-  stroke: var(--color-dull-white);
+.svg-icon rect[stroke] {
+  stroke: var(--color-text);
 }
 </style>
 

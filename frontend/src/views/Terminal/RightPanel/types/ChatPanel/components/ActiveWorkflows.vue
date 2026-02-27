@@ -65,7 +65,7 @@ export default {
 .section-title {
   font-size: 0.75em;
   font-weight: 500;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
   font-family: var(--font-family-primary);
@@ -91,7 +91,7 @@ export default {
 
 .workflow-row:hover:not(.premium) {
   background: rgba(127, 129, 147, 0.1);
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: var(--color-text-muted);
 }
 
 .workflow-row.running {
@@ -101,12 +101,12 @@ export default {
 
 .workflow-row.listening {
   border-color: var(--color-blue);
-  background: rgba(18, 224, 255, 0.05);
+  background: rgba(var(--blue-rgb), 0.05);
 }
 
 .workflow-row.error {
   border-color: var(--color-red);
-  background: rgba(255, 77, 77, 0.05);
+  background: rgba(var(--red-rgb), 0.05);
 }
 
 .workflow-row.running .workflow-status,
@@ -151,7 +151,7 @@ export default {
 
 .workflow-name {
   font-size: 0.85em;
-  color: var(--color-light-med-navy);
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

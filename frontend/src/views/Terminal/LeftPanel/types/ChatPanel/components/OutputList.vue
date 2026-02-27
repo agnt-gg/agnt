@@ -737,7 +737,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--color-light-med-navy);
+  color: var(--color-text);
   font-size: 0.85em;
   opacity: 0.8;
 }
@@ -776,10 +776,10 @@ div#saved-outputs {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: var(--color-green);
-  border: 1px solid var(--color-green);
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
   border-radius: 6px;
-  color: var(--color-black-navy);
+  color: #ffffff;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -789,7 +789,7 @@ div#saved-outputs {
 
 .new-chat-btn:hover {
   background: transparent;
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .new-chat-btn i {
@@ -812,7 +812,7 @@ div#saved-outputs {
 /* .search-input {
   border: 1px solid var(--terminal-border-color);
   background: var(--color-black-navy);
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
 } */
 
 .sort-controls {
@@ -832,20 +832,20 @@ div#saved-outputs {
   background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 13px;
   transition: all 0.2s;
 }
 
 .sort-button:hover {
-  background: var(--color-black-navy);
-  border-color: var(--color-green);
+  background: var(--color-darker-1);
+  border-color: var(--color-primary);
 }
 
 .sort-button.active {
-  border-color: var(--color-green);
-  color: var(--color-green);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .sort-button i {
@@ -875,7 +875,7 @@ div#saved-outputs {
 }
 
 .output-item:hover {
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
   background: var(--color-darker-0);
 }
 
@@ -897,7 +897,7 @@ div#saved-outputs {
   padding: 4px 8px;
   background: transparent;
   border: none;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.2s;
@@ -905,8 +905,8 @@ div#saved-outputs {
 }
 
 .action-menu-btn:hover {
-  background: var(--color-black-navy);
-  color: var(--color-green);
+  background: var(--color-darker-1);
+  color: var(--color-primary);
 }
 
 .action-menu {
@@ -930,7 +930,7 @@ div#saved-outputs {
   padding: 10px 14px;
   background: transparent;
   border: none;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 13px;
   text-align: left;
@@ -944,7 +944,7 @@ div#saved-outputs {
 
 .menu-item:hover {
   background: var(--color-darker-1);
-  color: var(--color-light-med-navy);
+  color: var(--color-text);
 }
 
 .menu-item.delete:hover {
@@ -968,7 +968,7 @@ div#saved-outputs {
 }
 
 .output-preview {
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.4;
   white-space: nowrap;
@@ -1015,7 +1015,7 @@ div#saved-outputs {
 } */
 
 body.dark .create-output-btn {
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
 }
 
 /* Pagination Controls */
@@ -1032,7 +1032,7 @@ body.dark .create-output-btn {
 }
 
 .pagination-info {
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   font-size: 13px;
   text-align: center;
 }
@@ -1052,7 +1052,7 @@ body.dark .create-output-btn {
   background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 13px;
   transition: all 0.2s;
@@ -1062,9 +1062,9 @@ body.dark .create-output-btn {
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: var(--color-black-navy);
-  border-color: var(--color-green);
-  color: var(--color-green);
+  background: var(--color-darker-1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .pagination-btn:disabled {
@@ -1088,14 +1088,14 @@ body.dark .create-output-btn {
 .all-loaded-message {
   margin-top: 16px;
   padding: 8px;
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: var(--font-size-sm);
 }
 
@@ -1158,7 +1158,7 @@ body.dark .create-output-btn {
   align-items: center;
   padding: 12px 16px;
   background: var(--color-darker-1);
-  border: 1px solid var(--color-green);
+  border: 1px solid var(--color-primary);
   border-radius: 8px;
   margin-bottom: 0;
   animation: slideDown 0.2s ease;
@@ -1179,7 +1179,7 @@ body.dark .create-output-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -1201,7 +1201,7 @@ body.dark .create-output-btn {
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   background: transparent;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -1209,7 +1209,7 @@ body.dark .create-output-btn {
 }
 
 .selection-btn:hover {
-  background: var(--color-black-navy);
+  background: var(--color-darker-1);
 }
 
 .selection-btn.delete-btn {
@@ -1227,23 +1227,23 @@ body.dark .create-output-btn {
 
 /* Active/current item styling (when viewing) */
 .output-item.active {
-  border-color: var(--color-green);
-  background: rgba(34, 197, 94, 0.08);
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+  border-color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.08);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
 }
 
 .output-item.active:hover {
-  background: rgba(34, 197, 94, 0.12);
+  background: rgba(var(--primary-rgb), 0.12);
 }
 
 /* Selected item styling (for batch operations) */
 .output-item.selected {
-  border-color: var(--color-green);
-  background: rgba(34, 197, 94, 0.08);
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+  border-color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.08);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
 }
 
 .output-item.selected:hover {
-  background: rgba(34, 197, 94, 0.12);
+  background: rgba(var(--primary-rgb), 0.12);
 }
 </style>

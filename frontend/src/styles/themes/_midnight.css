@@ -32,6 +32,8 @@ body.dark.midnight {
   --color-light-green: #b0b8d8;
   --color-primary: #a070ff;
   --color-secondary: #40c0ff;
+  --svg-gradient-start: #a070ff;
+  --svg-gradient-end: #40c0ff;
 
   /* Overlays */
   --color-popup: rgba(12, 12, 36, 0.95);

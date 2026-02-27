@@ -1317,7 +1317,7 @@ ${execution.log}
 }
 
 .node-card:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-darker-1);
   /* border-color: rgba(var(--green-rgb), 0.3); */
 }
 
@@ -1637,7 +1637,7 @@ ${execution.log}
 }
 
 .execution-log {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 12px;
@@ -1699,7 +1699,7 @@ ${execution.log}
 }
 
 .panel-section {
-  background: rgb(0 0 0 / 10%);
+  background: transparent;
   border: 1px solid var(--terminal-border-color);
   padding: 16px;
   border-radius: 8px;

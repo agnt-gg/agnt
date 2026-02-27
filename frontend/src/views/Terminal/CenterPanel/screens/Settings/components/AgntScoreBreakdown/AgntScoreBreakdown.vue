@@ -573,15 +573,14 @@ export default {
 .score-value {
   font-size: 1.5em;
   font-weight: bold;
-  color: var(--color-green);
-  text-shadow: 0 0 10px rgba(var(--green-rgb), 0.3);
+  color: var(--color-primary);
 }
 
 .score-tier {
   font-size: 0.9em;
-  color: var(--color-cyan);
+  color: var(--color-primary);
   padding: 2px 8px;
-  background: rgba(18, 224, 255, 0.1);
+  background: rgba(var(--primary-rgb), 0.1);
   border-radius: 4px;
 }
 
@@ -598,7 +597,7 @@ export default {
 
 .refresh-btn:hover:not(:disabled) {
   background: rgba(127, 129, 147, 0.1);
-  border-color: var(--color-cyan);
+  border-color: var(--color-primary);
 }
 
 .refresh-btn:disabled {
@@ -628,7 +627,7 @@ export default {
 
 .tier-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-yellow) 0%, var(--color-green) 100%);
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   border-radius: 4px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -686,7 +685,7 @@ export default {
 }
 
 .breakdown-card:hover {
-  border-color: var(--color-cyan);
+  border-color: var(--color-primary);
   transform: translateY(-2px);
 }
 
@@ -713,14 +712,14 @@ export default {
 
 .card-score {
   font-weight: bold;
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 0.95em;
 }
 
 .boost-badge {
   font-size: 0.65em;
-  color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.2);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.2);
   padding: 3px 4px 0;
   border-radius: 3px;
   font-weight: bold;
@@ -738,7 +737,7 @@ export default {
 
 .bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-yellow) 0%, var(--color-green) 100%);
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   border-radius: 4px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 2%;
@@ -807,11 +806,11 @@ export default {
 }
 
 .detail-row span:last-child .total-value {
-  color: var(--color-green) !important;
+  color: var(--color-primary) !important;
 }
 
 .detail-row.highlight {
-  background: rgba(var(--green-rgb), 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
   padding: 4px 6px;
   border-radius: 4px;
   margin: 2px 0;
@@ -819,10 +818,10 @@ export default {
 
 .detail-note {
   font-size: 0.75em;
-  color: var(--color-cyan);
+  color: var(--color-primary);
   text-align: center;
   padding: 4px;
-  background: rgba(18, 224, 255, 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
   border-radius: 4px;
   margin-top: 4px;
   font-style: italic;

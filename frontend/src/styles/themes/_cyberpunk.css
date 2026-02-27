@@ -2,6 +2,8 @@
 body.dark.cyberpunk {
   --color-primary: var(--color-green);
   --color-secondary: var(--color-blue);
+  --svg-gradient-start: var(--color-green);
+  --svg-gradient-end: var(--color-blue);
   --color-background: #0b0b30;
   --color-background-rgb: 11, 11, 48;
   --color-text-secondary: var(--color-med-navy);

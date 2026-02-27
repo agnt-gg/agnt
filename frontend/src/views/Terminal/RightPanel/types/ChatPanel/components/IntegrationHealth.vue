@@ -723,7 +723,7 @@ export default {
 .section-title {
   font-size: 0.75em;
   font-weight: 500;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
   font-family: var(--font-family-primary);
@@ -751,7 +751,7 @@ export default {
   display: flex;
   justify-content: space-between;
   font-size: 0.7em;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
 }
 
 .health-summary {
@@ -779,18 +779,18 @@ export default {
 }
 
 .health-status.status-unknown {
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
 }
 
 .health-count {
   font-size: 0.8em;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
 }
 
 .refresh-button {
   background: none;
   border: 1px solid var(--color-duller-navy);
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   border-radius: 4px;
   padding: 4px 8px;
   cursor: pointer;
@@ -886,7 +886,7 @@ export default {
 .integration-name {
   display: none;
   font-size: 0.75em;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   text-align: center;
   line-height: 1.2;
   max-width: 100%;
