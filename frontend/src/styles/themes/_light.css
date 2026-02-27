@@ -1,191 +1,512 @@
 /* LIGHT THEME - Default theme styles */
 
-/* Light theme uses the default CSS variables and doesn't need body classes */
-/* This file exists for completeness and future light theme customizations */
+/* Light theme uses body:not(.dark):not(.rose) to avoid conflicting with rose */
 
-body:not(.dark) {
-  /* Light theme is the default - uses base styles from main.css */
+body:not(.dark):not(.rose) {
   --color-background: #f1f0f5;
   --color-background-rgb: 241, 240, 245;
-  --color-light-green: var(--color-dark-navy);
-  --color-primary: var(--color-pink);
-  --color-secondary: var(--color-blue);
-  --color-text: var(--color-dull-navy);
-  --color-text-muted: var(--color-med-navy);
-  --color-text-secondary: var(--color-med-navy);
-  --color-text-dull: var(--color-light-navy);
-  font-size: var(--font-size-sm);
+
+  /* ═══ OVERRIDE BASE COLOR SCALE FOR LIGHT MODE ═══ */
+  /* These base variables are used directly by many components.
+     In light mode they must map to light backgrounds / dark text. */
+  --color-black-navy: #f1f0f5; /* was #070710 - now matches background */
+  --color-ultra-dark-navy: #ffffff; /* was #0b0b17 - now white surfaces */
+  --color-dark-navy: #eeedf3; /* was #10101f - now subtle off-white */
+  --color-navy: #ffffff; /* was #131322 - now white */
+  --color-dull-navy: #d0d0dd; /* was #1f1f2f - now border-like */
+  --color-duller-navy: #b0b0c0; /* was #3e405a - now medium gray */
+  --color-med-navy: #6b6b80; /* was #7f8193 - slightly darker for contrast */
+  --color-light-med-navy: #4a4a60; /* was #d1d1db - now darker for text */
+  --color-light-navy: #d0d0dd; /* was #d9d9d9 - similar, subtle border */
+  --color-bright-light-navy: #e2e2ec; /* was #ebebeb - similar */
+  --color-ultra-light-navy: #f5f5fa; /* was #fafafa - similar light surface */
+  --color-dull-white: #2a2a3a; /* was #f7f7f7 - now dark (used as text in dark themes) */
+  --color-white: #ffffff; /* was #f1f0f5 - now true white */
+
+  /* Text hierarchy - dark text on light backgrounds */
+  --color-text: #2a2a3a;
+  --color-text-muted: #6b6b80;
+  --color-text-secondary: #6b6b80;
+  --color-text-dull: #9b9bab;
+
+  /* Accent colors - slightly deeper for light backgrounds */
+  --color-green: #15c870;
+  --color-blue: #0ea5c8;
+  --color-red: #dc3c3c;
+  --color-orange: #d47800;
+  --color-yellow: #c8a800;
+  --color-indigo: #6d35c8;
+  --color-violet: #b035c8;
+  --color-pink: #d03580;
+  --color-primary: #d03580;
+  --color-secondary: #0ea5c8;
+  --color-light-green: #2a2a3a;
+
+  /* Popup/dropdown backgrounds - MUST be light for light mode */
+  --color-popup: rgba(255, 255, 255, 0.98);
+
+  /* Overlay shades - subtle tints for light mode */
+  --color-darker-0: rgba(100, 100, 140, 0.06);
+  --color-darker-1: rgba(100, 100, 140, 0.1);
+  --color-darker-2: rgba(100, 100, 140, 0.18);
+  --color-darker-3: rgba(100, 100, 140, 0.3);
+
+  /* Lighter overlays */
+  --color-lighter-0: rgba(255, 255, 255, 0.3);
+  --color-lighter-1: rgba(255, 255, 255, 0.5);
+  --color-lighter-2: rgba(255, 255, 255, 0.7);
+  --color-lighter-3: rgba(255, 255, 255, 0.9);
+
+  /* Dark shades (used by some components via --color-dark-*) */
+  --color-dark-0: rgba(100, 100, 140, 0.06);
+  --color-dark-1: rgba(100, 100, 140, 0.1);
+  --color-dark-2: rgba(100, 100, 140, 0.18);
+  --color-dark-3: rgba(100, 100, 140, 0.3);
+
+  /* Terminal/border colors */
   --terminal-width: 100%;
   --terminal-height: 100%;
   --terminal-border-radius: 0;
-  --terminal-border-color: var(--color-light-navy);
-  --terminal-border-color-light: var(--color-bright-light-navy);
+  --terminal-border-color: #d0d0dd;
+  --terminal-border-color-light: #e2e2ec;
   --terminal-screen-lines: 0.125;
   --terminal-box-shadow: none;
-  --terminal-muted-color: var(--color-med-navy);
-
-  --color-darker-0: rgba(10, 0, 80, 0.1);
-  --color-darker-1: rgba(10, 0, 80, 0.2);
-  --color-darker-2: rgba(10, 0, 80, 0.4);
-  --color-darker-3: rgba(10, 0, 80, 0.8);
+  --terminal-muted-color: #9b9bab;
 
   /* RGB components */
-  --green-rgb: 25, 239, 131;
-  --blue-rgb: 18, 224, 255;
+  --green-rgb: 25, 200, 100;
+  --blue-rgb: 18, 180, 220;
   --pink-rgb: 229, 61, 143;
-  --red-rgb: 254, 78, 78;
-  --yellow-rgb: 255, 215, 0;
+  --red-rgb: 220, 60, 60;
+  --yellow-rgb: 200, 170, 0;
   --indigo-rgb: 125, 61, 229;
   --primary-rgb: 229, 61, 143;
 
+  font-size: var(--font-size-sm);
   line-height: 1.25;
+  color: #2a2a3a;
 }
 
-/* Light theme specific overrides if needed */
-body:not(.dark) h1,
-body:not(.dark) h2,
-body:not(.dark) h3,
-body:not(.dark) h4,
-body:not(.dark) h5 {
+/* ═══════════════════ TYPOGRAPHY ═══════════════════ */
+
+body:not(.dark):not(.rose) h1,
+body:not(.dark):not(.rose) h2,
+body:not(.dark):not(.rose) h3,
+body:not(.dark):not(.rose) h4,
+body:not(.dark):not(.rose) h5 {
   color: var(--color-text);
   opacity: 1;
 }
 
-body:not(.dark) p,
-body:not(.dark) li,
-body:not(.dark) th,
-body:not(.dark) td {
+body:not(.dark):not(.rose) p,
+body:not(.dark):not(.rose) li,
+body:not(.dark):not(.rose) th,
+body:not(.dark):not(.rose) td {
   color: var(--color-text);
   opacity: 1;
 }
 
-body:not(.dark) button {
+body:not(.dark):not(.rose) a {
+  color: var(--color-primary);
+}
+
+body:not(.dark):not(.rose) label,
+body:not(.dark):not(.rose) .label {
+  color: var(--color-text-muted);
+}
+
+body:not(.dark):not(.rose) .separator {
+  color: var(--color-text-muted);
+  opacity: 0.75;
+}
+
+/* ═══════════════════ BUTTONS ═══════════════════ */
+
+body:not(.dark):not(.rose) button {
   color: var(--color-text);
 }
 
-body:not(.dark) header {
+body:not(.dark):not(.rose) button.generate {
+  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
+  color: #ffffff;
+  font-weight: 600;
+}
+
+body:not(.dark):not(.rose) .cancel,
+body:not(.dark):not(.rose) .generate.holofx-bg.cancel {
+  background: #c0c0cc !important;
+}
+
+body:not(.dark):not(.rose) button.icon img {
+  filter: none;
+}
+
+body:not(.dark):not(.rose) button.icon svg path[fill],
+body:not(.dark):not(.rose) button.icon svg rect[fill] {
+  fill: var(--color-text-muted);
+  fill-opacity: 1;
+}
+
+body:not(.dark):not(.rose) button.icon svg path[stroke] {
+  stroke: var(--color-text-muted);
+}
+
+/* ═══════════════════ HEADER & SIDEBAR ═══════════════════ */
+
+body:not(.dark):not(.rose) header {
   border-bottom: 1px solid var(--terminal-border-color);
   background: var(--color-background);
   color: var(--color-text);
 }
 
-body:not(.dark) .separator {
-  color: var(--color-med-navy);
-  opacity: 0.75;
-}
-
-body:not(.dark) #left-sidebar {
+body:not(.dark):not(.rose) #left-sidebar {
   border-right: 1px solid var(--terminal-border-color);
   background: var(--color-background);
 }
 
-body:not(.dark) .left-sidebar-bottom-nav .svg-icon path {
-  fill: var(--color-med-navy);
+body:not(.dark):not(.rose) .left-sidebar-bottom-nav .svg-icon path {
+  fill: var(--color-text-muted);
 }
 
-body:not(.dark) a.router-link-active .svg-icon path {
+body:not(.dark):not(.rose) a.router-link-active .svg-icon path {
   fill: var(--color-primary);
 }
 
-body:not(.dark) button.generate {
-  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
-  color: var(--color-white);
-  font-weight: 600;
+/* ═══════════════════ MAIN AREA ═══════════════════ */
+
+body:not(.dark):not(.rose) main-area {
+  background: #f5f5fa;
 }
 
-body:not(.dark) main-area {
-  background: var(--color-ultra-light-navy);
-}
-
-body:not(.dark) .card-inner {
+/* body:not(.dark):not(.rose) .card-inner {
   border: 1px solid var(--terminal-border-color);
-  background: var(--color-white);
-}
+  background: #ffffff;
+} */
 
-/* Form elements */
-body:not(.dark) input[type='text'],
-body:not(.dark) input[type='number'],
-body:not(.dark) input[type='email'],
-body:not(.dark) input[type='password'],
-body:not(.dark) input[type='date'],
-body:not(.dark) input[type='datetime-local'],
-body:not(.dark) input[type='month'],
-body:not(.dark) input[type='week'],
-body:not(.dark) input[type='tel'],
-body:not(.dark) input[type='url'],
-body:not(.dark) input[type='search'],
-body:not(.dark) input[type='color'],
-body:not(.dark) textarea,
-body:not(.dark) select {
+/* ═══════════════════ FORM ELEMENTS ═══════════════════ */
+
+body:not(.dark):not(.rose) input[type='text'],
+body:not(.dark):not(.rose) input[type='number'],
+body:not(.dark):not(.rose) input[type='email'],
+body:not(.dark):not(.rose) input[type='password'],
+body:not(.dark):not(.rose) input[type='date'],
+body:not(.dark):not(.rose) input[type='datetime-local'],
+body:not(.dark):not(.rose) input[type='month'],
+body:not(.dark):not(.rose) input[type='week'],
+body:not(.dark):not(.rose) input[type='tel'],
+body:not(.dark):not(.rose) input[type='url'],
+body:not(.dark):not(.rose) input[type='search'],
+body:not(.dark):not(.rose) input[type='color'],
+body:not(.dark):not(.rose) textarea,
+body:not(.dark):not(.rose) select {
   color: var(--color-text);
-  background-color: var(--color-white);
+  background-color: #ffffff;
   border-color: var(--terminal-border-color);
 }
 
-body:not(.dark) input[type='text']:focus,
-body:not(.dark) input[type='number']:focus,
-body:not(.dark) textarea:focus,
-body:not(.dark) select:focus {
+body:not(.dark):not(.rose) input[type='text']:focus,
+body:not(.dark):not(.rose) input[type='number']:focus,
+body:not(.dark):not(.rose) textarea:focus,
+body:not(.dark):not(.rose) select:focus {
   outline: none;
   border: 1px solid var(--color-primary);
 }
 
-body:not(.dark) input::placeholder,
-body:not(.dark) textarea::placeholder {
-  color: var(--color-med-navy);
+body:not(.dark):not(.rose) input::placeholder,
+body:not(.dark):not(.rose) textarea::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+/* ═══════════════════ TABLES ═══════════════════ */
+
+body:not(.dark):not(.rose) table {
+  color: var(--color-text);
+}
+
+body:not(.dark):not(.rose) th {
+  color: var(--color-text);
+  background: rgba(100, 100, 140, 0.06);
+  border-bottom: 1px solid var(--terminal-border-color);
+  border-right: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) td {
+  background: transparent;
+  border-bottom: 1px solid var(--terminal-border-color);
+  border-right: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) tr:last-child {
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+/* ═══════════════════ PANELS & CONTAINERS ═══════════════════ */
+
+body:not(.dark):not(.rose) .panel-body {
+  background: #ffffff;
+  border: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) .panel-header .title {
+  color: var(--color-text-muted);
+}
+
+body:not(.dark):not(.rose) editor-area {
+  background: #f5f5fa;
+}
+
+body:not(.dark):not(.rose) inner-editor-area {
+  background: #ffffff;
+  border: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) inner-editor-area .placeholder-text {
+  color: var(--color-text-muted);
+}
+
+body:not(.dark):not(.rose) inner-editor-area .placeholder-text hr {
+  border-color: var(--terminal-border-color);
   opacity: 0.5;
 }
 
-/* Panels and containers */
-body:not(.dark) .panel-body {
-  background: var(--color-white);
-  border: 1px solid var(--terminal-border-color);
+body:not(.dark):not(.rose) inner-editor-area:focus {
+  outline: none;
+  border: 1px solid var(--color-primary);
 }
 
-body:not(.dark) inner-editor-area {
-  background: var(--color-white);
-  border: 1px solid var(--terminal-border-color);
-}
-
-body:not(.dark) bottom-menu {
+body:not(.dark):not(.rose) bottom-menu {
   border-top: 1px solid var(--terminal-border-color);
 }
 
-/* Workflow Designer */
-body:not(.dark) .grid-overlay {
-  opacity: 0.125;
-  background-image: radial-gradient(circle, var(--color-darker-3) 1px, transparent 1px);
+body:not(.dark):not(.rose) #editor-panel {
+  color: var(--color-text-muted);
+  background: transparent;
 }
 
-body:not(.dark) .node {
+/* ═══════════════════ MODALS ═══════════════════ */
+
+body:not(.dark):not(.rose) .modal-content {
+  background-color: #ffffff;
+  border: 1px solid var(--terminal-border-color);
+}
+
+/* ═══════════════════ WORKFLOW DESIGNER ═══════════════════ */
+
+body:not(.dark):not(.rose) .grid-overlay {
+  opacity: 0.2;
+  background-image: radial-gradient(circle, rgba(100, 100, 140, 0.3) 1px, transparent 1px);
+}
+
+body:not(.dark):not(.rose) .node {
   color: var(--color-text);
-  background: var(--color-lighter-2);
+  background: rgba(255, 255, 255, 0.8);
   border: 2px solid var(--terminal-border-color);
 }
 
-body:not(.dark) .node.starter {
-  background-image: url("data:image/svg+xml,%3Csvg width='240' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='238' height='46' fill='none' stroke='rgba(125,125,175,0.3)' stroke-width='1' stroke-dasharray='5,8' rx='8' ry='8'/%3E%3C/svg%3E");
+body:not(.dark):not(.rose) .node.starter {
+  background-image: url("data:image/svg+xml,%3Csvg width='240' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='238' height='46' fill='none' stroke='rgba(100,100,140,0.3)' stroke-width='1' stroke-dasharray='5,8' rx='8' ry='8'/%3E%3C/svg%3E");
 }
 
-body:not(.dark) .edges path {
-  stroke: var(--color-med-navy);
-  opacity: 0.5;
+body:not(.dark):not(.rose) .node.no-select.label-node {
+  background: transparent;
+  border: none;
 }
 
-body:not(.dark) .edges path.selected {
+body:not(.dark):not(.rose) #canvas .node svg path[stroke] {
+  stroke: var(--color-text);
+}
+
+body:not(.dark):not(.rose) #canvas .node svg rect[stroke] {
+  stroke: var(--color-text);
+}
+
+body:not(.dark):not(.rose) #canvas .node svg path[fill] {
+  fill: var(--color-text);
+}
+
+body:not(.dark):not(.rose) .connector {
+  border: 1px solid var(--terminal-border-color);
+  background: #ffffff;
+  color: var(--color-text);
+}
+
+body:not(.dark):not(.rose) .connector:hover {
+  border: 1px solid var(--color-text-muted);
+  background: #f5f5fa;
+}
+
+body:not(.dark):not(.rose) .connector svg path[stroke] {
+  stroke: var(--color-text);
+}
+
+body:not(.dark):not(.rose) .edges path {
+  stroke: var(--color-text-muted);
+  opacity: 0.4;
+}
+
+body:not(.dark):not(.rose) .edges path.hovered {
+  stroke: var(--color-text);
+}
+
+body:not(.dark):not(.rose) .edges path.selected {
   stroke: var(--color-primary);
   opacity: 1;
 }
 
-/* Code highlighting for light theme */
-body:not(.dark) pre,
-body:not(.dark) mjx-container {
-  background: var(--color-ultra-light-navy);
+body:not(.dark):not(.rose) div.sidebar-section {
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) #sidebar {
+  background: transparent;
+  border: none;
+}
+
+body:not(.dark):not(.rose) #sidebar p.title {
+  color: var(--color-text-muted);
+}
+
+body:not(.dark):not(.rose) #sidebar .node p {
   color: var(--color-text);
+}
+
+body:not(.dark):not(.rose) #workflow-engine-toggle {
+  border: 1px solid var(--terminal-border-color);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+body:not(.dark):not(.rose) .canvas-state-controls button {
+  border: 1px solid var(--terminal-border-color);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+body:not(.dark):not(.rose) .node-delete-button {
+  color: var(--color-text-muted);
+}
+
+/* ═══════════════════ CODE HIGHLIGHTING ═══════════════════ */
+/* Uses !important to override legacy base/css/main.css which loads later */
+
+body:not(.dark):not(.rose) pre,
+body:not(.dark):not(.rose) mjx-container {
+  background: #f0f0f8 !important;
+  color: var(--color-text) !important;
   border: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark) .hljs {
-  background: var(--color-ultra-light-navy);
+body:not(.dark):not(.rose) .hljs,
+body:not(.dark):not(.rose) .hljs[class] {
+  background: #f0f0f8 !important;
+  color: var(--color-text) !important;
+}
+
+body:not(.dark):not(.rose) code.math.language-math {
+  color: var(--color-text) !important;
+}
+
+body:not(.dark):not(.rose) span.hljs-comment {
+  color: var(--color-text-muted);
+}
+
+body:not(.dark):not(.rose) span.hljs-variable.constant_,
+body:not(.dark):not(.rose) span.hljs-built_in {
   color: var(--color-text);
+}
+
+body:not(.dark):not(.rose) span.hljs-variable.language_,
+body:not(.dark):not(.rose) span.hljs-title,
+body:not(.dark):not(.rose) span.hljs-title.function_ {
+  color: #b07020;
+}
+
+body:not(.dark):not(.rose) span.hljs-number {
+  color: #0a8754;
+}
+
+body:not(.dark):not(.rose) span.hljs-keyword {
+  color: #0070c0;
+}
+
+body:not(.dark):not(.rose) think {
+  color: var(--color-text);
+  background: rgba(100, 100, 140, 0.08);
+}
+
+/* ═══════════════════ CHAT ═══════════════════ */
+
+body[data-page='chat']:not(.dark):not(.rose) inner-editor-area {
+  background: #ffffff;
+  border: 1px solid var(--terminal-border-color);
+}
+
+body[data-page='chat']:not(.dark):not(.rose) .user-message-sent {
+  border: 1px solid var(--terminal-border-color);
+}
+
+/* ═══════════════════ MISC ELEMENTS ═══════════════════ */
+
+body:not(.dark):not(.rose) hr {
+  border-color: var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) .template-options {
+  border-bottom: 1px solid var(--terminal-border-color);
+  background: #f5f5fa;
+}
+
+body:not(.dark):not(.rose) .left-actions img,
+body:not(.dark):not(.rose) .right-actions img {
+  filter: none;
+}
+
+body:not(.dark):not(.rose) .action-items button {
+  border: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) .content-actions button.icon {
+  border: 1px solid var(--terminal-border-color);
+  opacity: 0.85;
+}
+
+body:not(.dark):not(.rose) .right-tabs svg path[fill] {
+  fill: var(--color-text-muted);
+}
+
+body:not(.dark):not(.rose) .error-message p {
+  border: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) input[type='file'] {
+  color: var(--color-text);
+  background-color: transparent;
+}
+
+body:not(.dark):not(.rose) div#saved-templates,
+body:not(.dark):not(.rose) div#saved-outputs {
+  border: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) .icon-option svg path[fill],
+body:not(.dark):not(.rose) .icon-option svg rect[fill] {
+  fill: var(--color-text);
+  fill-opacity: 1;
+}
+
+body:not(.dark):not(.rose) .icon-option svg path[stroke] {
+  stroke: var(--color-text);
+}
+
+body:not(.dark):not(.rose) inner-editor-area#response-area p span {
+  color: var(--color-text) !important;
+}
+
+body:not(.dark):not(.rose) inner-editor-area#response-area h2 {
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+body:not(.dark):not(.rose) button.copy-button {
+  color: var(--color-text-muted);
 }

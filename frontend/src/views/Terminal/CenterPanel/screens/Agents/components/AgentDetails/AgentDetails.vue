@@ -1945,6 +1945,6 @@ select option {
   height: 100%;
   width: 100%;
   border: none;
-  background: #0c0c29;
+  background: var(--color-background);
 }
 </style>

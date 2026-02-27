@@ -728,8 +728,8 @@ h3 {
 }
 
 .info-value-select option {
-  background-color: #0c0c29;
-  color: var(--color-light-green);
+  background-color: var(--color-popup);
+  color: var(--color-text);
 }
 
 .workflow-actions {

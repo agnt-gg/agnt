@@ -156,7 +156,7 @@ body[data-page='chat'] main-area {
 
 div#saved-templates,
 div#saved-outputs {
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }
 
@@ -319,7 +319,7 @@ tr {
 }
 
 tr:last-child {
-  border-bottom: 1px solid var(--color-light-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
 }
 
 tr:last-child td {
@@ -349,7 +349,7 @@ form {
    ======================================== */
 
 button {
-  color: var(--color-dull-navy);
+  color: var(--color-text);
   user-select: none;
 }
 
@@ -413,7 +413,7 @@ button.close i {
 
 .cancel,
 .generate.holofx-bg.cancel {
-  background: var(--color-light-navy) !important;
+  background: var(--terminal-border-color) !important;
 }
 
 a.icon {
@@ -422,7 +422,7 @@ a.icon {
 }
 
 .action-items button {
-  border: 1px solid var(--color-light-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
 }
 
@@ -440,7 +440,7 @@ a.icon {
 }
 
 button.copy-button {
-  color: var(--color-white);
+  color: var(--color-text);
 }
 
 /* ========================================
@@ -461,7 +461,7 @@ editor-area {
   height: -webkit-fill-available;
   min-height: 400px;
   padding: 16px 24px 24px;
-  background: var(--color-bright-light-navy);
+  background: var(--color-background);
   user-select: none;
 }
 
@@ -483,8 +483,8 @@ inner-editor-area {
   height: 100%;
   min-height: 240px;
   padding: 32px;
-  background: var(--color-dull-white);
-  border: 1px solid var(--color-light-navy);
+  background: var(--color-popup);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 16px 16px 0 0;
   user-select: all;
   line-height: 150%;
@@ -494,7 +494,7 @@ inner-editor-area {
 
 body[data-page='chat'] inner-editor-area {
   width: calc(800px - 32px);
-  background: var(--color-dull-white);
+  background: var(--color-popup);
   /* border-bottom: none !important; */
 }
 
@@ -527,7 +527,7 @@ inner-editor-area .placeholder-text .placeholder {
 
 inner-editor-area .placeholder-text hr {
   width: 100%;
-  border-color: var(--color-ultra-light-navy);
+  border-color: var(--terminal-border-color);
   opacity: 0.5;
   margin: 0;
 }
@@ -677,7 +677,7 @@ inner-editor-area.pdf-download {
 
 hr {
   width: 100%;
-  border-color: var(--color-ultra-light-navy);
+  border-color: var(--terminal-border-color);
   opacity: 0.5;
 }
 
@@ -743,10 +743,10 @@ ol li:last-child {
 
 /* SHARED */
 .modal-content {
-  background-color: #fefefe;
+  background-color: var(--color-popup);
   margin: 15% auto; /* 15% from the top and centered */
   padding: 20px;
-  border: 1px solid #888;
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   width: fit-content;
 }
@@ -770,9 +770,9 @@ ol li:last-child {
    ======================================== */
 
 think {
-  color: var(--color-white);
+  color: var(--color-text);
   padding: 16px;
-  background: rgb(0 0 0 / 20%);
+  background: var(--color-darker-0);
   border-radius: 8px;
   font-style: italic;
   opacity: 0.5;
@@ -798,8 +798,6 @@ think:hover {
 pre {
   width: 100%;
   width: fit-content;
-  background: var(--color-dull-navy);
-  color: var(--color-dull-white);
   border-radius: 16px;
   margin: 8px 0 16px;
   padding: 16px;
@@ -809,8 +807,6 @@ pre {
 mjx-container {
   width: 100%;
   width: fit-content;
-  background: var(--color-dull-navy);
-  color: var(--color-dull-white);
   border-radius: 16px;
   margin: 8px 0 16px;
   padding: 16px;
@@ -837,14 +833,12 @@ code.hljs {
 }
 
 code.math.language-math {
-  color: var(--color-white);
+  color: var(--color-text);
 }
 
 .hljs,
 mjx-container {
   font-size: var(--base-font-size);
-  background: var(--color-dull-navy);
-  color: var(--color-white) !important;
   border-radius: 16px;
   text-align: left !important;
 }
@@ -883,7 +877,7 @@ inner-editor-area.pdf-download li {
 
 span.hljs-comment {
   font-size: var(--font-size-sm);
-  color: var(--color-dull-white);
+  color: var(--color-text-muted);
   opacity: 0.5;
 }
 
@@ -932,7 +926,7 @@ span.hljs-title.function_ {
 
 span.hljs-variable.constant_,
 span.hljs-built_in {
-  color: var(--color-dull-white);
+  color: var(--color-text);
 }
 
 span.hljs-number {
@@ -964,7 +958,7 @@ body.dark inner-editor-area#response-area h2 {
 }
 
 inner-editor-area#response-area h2 {
-  border-top: 1px solid var(--color-light-navy);
+  border-top: 1px solid var(--terminal-border-color);
   padding-top: 16px;
   width: 100%;
 }
