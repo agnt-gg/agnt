@@ -824,8 +824,7 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
+  background: var(--color-popup);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -834,7 +833,7 @@ export default {
 }
 
 .onboarding-modal {
-  background: var(--color-background);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 24px;
   padding: 48px;
