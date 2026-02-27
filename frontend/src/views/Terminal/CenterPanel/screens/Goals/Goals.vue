@@ -216,16 +216,14 @@ body[data-page='goals-page'] .scrollable-content {
 .kanban-board {
   display: flex;
   height: calc(100% - 2px);
-  width: fit-content;
+  width: 100%;
   gap: 16px;
   padding-bottom: 16px;
-  margin: 0 auto;
 }
 
 .kanban-column {
   flex: 1;
-  min-width: 300px;
-  max-width: 400px;
+  min-width: 200px;
   background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
