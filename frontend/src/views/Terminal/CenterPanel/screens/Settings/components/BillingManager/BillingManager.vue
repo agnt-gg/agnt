@@ -1202,7 +1202,7 @@ body.dark .billing-header {
 }
 
 .billing-section {
-  background: var(--color-dull-white);
+  background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   padding: 20px;
@@ -1625,7 +1625,7 @@ body.dark .billing-toggle {
 .plan-button.business-pro,
 .plan-button.enterprise {
   background: rgba(var(--green-rgb), 0.05);
-  color: white;
+  color: var(--color-text);
   border-color: var(--color-green);
 }
 
@@ -2141,5 +2141,4 @@ body.dark .scheduled-change-notice.upgrade-notice {
     font-size: 1em;
   }
 }
-
 </style>

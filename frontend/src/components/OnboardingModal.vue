@@ -16,13 +16,45 @@
             <!-- Step 1: Welcome -->
             <div v-if="currentStep === 1" class="step welcome-step">
               <img src="/images/agnt-logo.png" alt="AGNT Logo" class="logo-large" />
-              <h1>Welcome to AGNT, {{ userName }}!</h1>
+              <h1>Welcome to <span style="color: var(--color-primary)">AGNT</span>, {{ userName }}!</h1>
               <p class="subtitle">Your AI-powered automation workspace is ready to go.</p>
               <p class="description">Let's get you started in just a few quick steps.</p>
             </div>
 
-            <!-- Step 2: Profile Setup -->
-            <div v-if="currentStep === 2" class="step profile-step">
+            <!-- Step 2: Theme Selection -->
+            <div v-if="currentStep === 2" class="step theme-step">
+              <div class="icon-circle">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"></circle>
+                  <line x1="12" y1="1" x2="12" y2="3"></line>
+                  <line x1="12" y1="21" x2="12" y2="23"></line>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                  <line x1="1" y1="12" x2="3" y2="12"></line>
+                  <line x1="21" y1="12" x2="23" y2="12"></line>
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+              </div>
+              <h2>Choose Your Theme</h2>
+              <p class="subtitle">Pick a look that suits your style</p>
+              <div class="theme-grid">
+                <button
+                  v-for="theme in availableThemes"
+                  :key="theme.id"
+                  class="theme-tile"
+                  :class="{ active: currentTheme === theme.id }"
+                  @click="selectTheme(theme.id)"
+                >
+                  <div class="theme-swatch" :class="'swatch-' + theme.id"></div>
+                  <span class="theme-tile-name">{{ theme.name }}</span>
+                </button>
+              </div>
+              <p class="hint" style="margin-top: 16px; text-align: center">You can change this anytime in Settings.</p>
+            </div>
+
+            <!-- Step 3: Profile Setup -->
+            <div v-if="currentStep === 3" class="step profile-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -57,8 +89,8 @@
               </div>
             </div>
 
-            <!-- Step 3: AI Provider Setup (conditional - only if not connected) -->
-            <div v-if="currentStep === 3 && !hasAiProvider" class="step provider-step">
+            <!-- Step 4: AI Provider Setup (conditional - only if not connected) -->
+            <div v-if="currentStep === 4 && !hasAiProvider" class="step provider-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
@@ -83,15 +115,17 @@
                   <div class="provider-icon">
                     <SvgIcon :name="provider.icon" />
                   </div>
-                  <span class="provider-name">{{ PROVIDER_DISPLAY_NAMES[provider.id] || PROVIDER_DISPLAY_NAMES[provider.name] || provider.name }}</span>
+                  <span class="provider-name">{{
+                    PROVIDER_DISPLAY_NAMES[provider.id] || PROVIDER_DISPLAY_NAMES[provider.name] || provider.name
+                  }}</span>
                 </button>
               </div>
 
               <p class="hint" style="margin-top: 16px; text-align: center">Don't have an API key? You can skip this step and configure it later.</p>
             </div>
 
-            <!-- Step 4 (or 3 if provider connected): Feature Tour -->
-            <div v-if="currentStep === (hasAiProvider ? 3 : 4)" class="step features-step">
+            <!-- Step 5 (or 4 if provider connected): Feature Tour -->
+            <div v-if="currentStep === (hasAiProvider ? 4 : 5)" class="step features-step">
               <h2>Explore Key Features</h2>
               <p class="subtitle">Here's what you can do with AGNT:</p>
               <div class="features-grid">
@@ -118,8 +152,8 @@
               </div>
             </div>
 
-            <!-- Step 5 (or 4 if provider connected): Quick Start -->
-            <div v-if="currentStep === (hasAiProvider ? 4 : 5)" class="step quickstart-step">
+            <!-- Step 6 (or 5 if provider connected): Quick Start -->
+            <div v-if="currentStep === (hasAiProvider ? 5 : 6)" class="step quickstart-step">
               <h2>What would you like to do first?</h2>
               <p class="subtitle">Choose your starting point:</p>
               <div class="quickstart-options">
@@ -137,7 +171,7 @@
                   </div>
                   <div class="option-check">
                     <svg v-if="selectedStartScreen === option.screen" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" fill="var(--color-green)" />
+                      <circle cx="12" cy="12" r="10" fill="var(--color-primary)" />
                       <path d="M9 12l2 2 4-4" stroke="var(--color-ultra-dark-navy)" stroke-width="2" stroke-linecap="round" />
                     </svg>
                   </div>
@@ -145,8 +179,8 @@
               </div>
             </div>
 
-            <!-- Step 6 (or 5 if provider connected): Referral Bonus (conditional) -->
-            <div v-if="currentStep === (hasAiProvider ? 5 : 6) && hasReferralBonus" class="step referral-step">
+            <!-- Step 7 (or 6 if provider connected): Referral Bonus (conditional) -->
+            <div v-if="currentStep === (hasAiProvider ? 6 : 7) && hasReferralBonus" class="step referral-step">
               <div class="celebration-icon">🎉</div>
               <h2>You've Earned a Bonus!</h2>
               <div class="bonus-display">
@@ -163,8 +197,8 @@
             <div v-if="currentStep === finalStep" class="step ready-step">
               <div class="success-icon">
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="var(--color-green)" stroke-width="2" />
-                  <path d="M9 12l2 2 4-4" stroke="var(--color-green)" stroke-width="2" stroke-linecap="round" />
+                  <circle cx="12" cy="12" r="10" stroke="var(--color-primary)" stroke-width="2" />
+                  <path d="M9 12l2 2 4-4" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" />
                 </svg>
               </div>
               <h2>Your Workspace is Ready!</h2>
@@ -173,6 +207,10 @@
                 <div class="summary-item" v-if="pseudonym">
                   <span class="summary-label">Display Name:</span>
                   <span class="summary-value">{{ pseudonym }}</span>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-label">Theme:</span>
+                  <span class="summary-value" style="text-transform: capitalize">{{ currentTheme }}</span>
                 </div>
                 <div class="summary-item">
                   <span class="summary-label">Starting Point:</span>
@@ -225,6 +263,22 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const modal = ref(null);
+
+    // Theme data
+    const currentTheme = computed(() => store.getters['theme/currentTheme']);
+    const availableThemes = [
+      { id: 'dark', name: 'Dark' },
+      { id: 'cyberpunk', name: 'Cyberpunk' },
+      { id: 'midnight', name: 'Midnight' },
+      { id: 'ember', name: 'Ember' },
+      { id: 'nord', name: 'Nord' },
+      { id: 'hacker', name: 'Hacker' },
+      { id: 'light', name: 'Light' },
+      { id: 'rose', name: 'Rose' },
+    ];
+    const selectTheme = (themeId) => {
+      store.dispatch('theme/setTheme', themeId);
+    };
 
     // User data
     const userName = computed(() => store.getters['userAuth/userName'] || 'there');
@@ -314,7 +368,7 @@ export default {
 
     // Computed
     const totalSteps = computed(() => {
-      let steps = 5; // Base steps: Welcome, Profile, Features, Quick Start, Ready
+      let steps = 6; // Base steps: Welcome, Theme, Profile, Features, Quick Start, Ready
       if (!hasAiProvider.value) steps++; // Add provider setup step
       if (hasReferralBonus.value) steps++; // Add referral bonus step
       return steps;
@@ -571,10 +625,7 @@ export default {
         const deviceCode = session.deviceCode || '(code unavailable)';
 
         if (!session.deviceUrl || !session.deviceCode) {
-          await showAlert(
-            'Codex Device Login',
-            session.message || 'Device code was not returned yet. Please try again in a moment.'
-          );
+          await showAlert('Codex Device Login', session.message || 'Device code was not returned yet. Please try again in a moment.');
           return;
         }
 
@@ -604,17 +655,13 @@ export default {
 
           if (isReady) {
             await selectProvider(provider);
-            const successMessage = isCliProvider
-              ? 'OpenAI Codex CLI connected successfully.'
-              : 'OpenAI Codex connected successfully.';
+            const successMessage = isCliProvider ? 'OpenAI Codex CLI connected successfully.' : 'OpenAI Codex connected successfully.';
             await showAlert('Success', successMessage);
             return;
           }
 
           const hint = latestStatus?.hint ? `\n\n${latestStatus.hint}` : '';
-          const suggestion = isCliProvider
-            ? ''
-            : '\n\nTip: If you do not have OpenAI API access, use the OpenAI Codex CLI provider instead.';
+          const suggestion = isCliProvider ? '' : '\n\nTip: If you do not have OpenAI API access, use the OpenAI Codex CLI provider instead.';
           await showAlert('Codex Not Ready', `Device login completed but the provider is not ready yet.${hint}${suggestion}`);
         } else {
           const latestStatus = await store.dispatch('appAuth/fetchCodexStatus');
@@ -704,7 +751,7 @@ export default {
           pseudonymStatus.value = 'current';
         }
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     // Fetch referrer info if has bonus
@@ -755,6 +802,9 @@ export default {
       transitionName,
       aiProviders,
       hasAiProvider,
+      currentTheme,
+      availableThemes,
+      selectTheme,
       nextStep,
       prevStep,
       complete,
@@ -784,9 +834,8 @@ export default {
 }
 
 .onboarding-modal {
-  background: radial-gradient(circle at top, rgba(var(--green-rgb), 0.06), transparent 55%),
-    linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-background);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 24px;
   padding: 48px;
   max-width: 700px;
@@ -795,12 +844,6 @@ export default {
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   position: relative;
-}
-
-body.dark .onboarding-modal {
-  background: radial-gradient(circle at top, rgba(var(--green-rgb), 0.05), transparent 55%),
-    linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
-  border: 1px solid var(--terminal-border-color);
 }
 
 /* Progress Dots */
@@ -815,18 +858,18 @@ body.dark .onboarding-modal {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color-darker-2);
   transition: all 0.3s ease;
 }
 
 .dot.active {
-  background: var(--color-green);
+  background: var(--color-primary);
   transform: scale(1.3);
-  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.5);
+  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.25);
 }
 
 .dot.completed {
-  background: var(--color-green);
+  background: var(--color-primary);
   opacity: 0.5;
 }
 
@@ -847,10 +890,10 @@ body.dark .onboarding-modal {
 .step h1 {
   font-size: 2.2em;
   margin: 24px 0 12px;
-  background: linear-gradient(135deg, var(--color-text) 0%, var(--color-green) 100%);
+  /* background: linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  background-clip: text;
+  background-clip: text; */
 }
 
 .step h2 {
@@ -876,7 +919,6 @@ body.dark .onboarding-modal {
 .logo-large {
   width: 120px;
   height: 120px;
-  filter: drop-shadow(0 10px 30px rgba(var(--green-rgb), 0.3));
   animation: float 3s ease-in-out infinite;
 }
 
@@ -895,12 +937,12 @@ body.dark .onboarding-modal {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-green) 0%, #00d084 100%);
+  background: var(--color-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 24px;
-  color: var(--color-ultra-dark-navy);
+  color: #ffffff;
 }
 
 .input-group {
@@ -925,8 +967,8 @@ body.dark .onboarding-modal {
   padding: 12px 16px;
   font-size: 1.1em;
   font-family: var(--font-family-primary);
-  background: rgba(5, 8, 18, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--color-dark-navy);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 12px;
   color: var(--color-text);
   transition: all 0.2s ease;
@@ -934,8 +976,8 @@ body.dark .onboarding-modal {
 
 .input-group input:focus {
   outline: none;
-  border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
 }
 
 .input-with-status {
@@ -961,13 +1003,13 @@ body.dark .onboarding-modal {
 }
 
 .status-indicator.checking {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-darker-1);
 }
 
 .status-indicator.available,
 .status-indicator.current {
-  background: rgba(var(--green-rgb), 0.2);
-  color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.2);
+  color: var(--color-primary);
 }
 
 .status-indicator.taken {
@@ -983,13 +1025,89 @@ body.dark .onboarding-modal {
 }
 
 .hint.success {
-  color: var(--color-green);
+  color: var(--color-primary);
   opacity: 1;
 }
 
 .hint.error {
   color: var(--color-red);
   opacity: 1;
+}
+
+/* Theme Step */
+.theme-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 28px;
+  max-width: 460px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.theme-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border: 2px solid var(--color-darker-2);
+  border-radius: 12px;
+  cursor: pointer;
+  background: transparent;
+  transition: all 0.2s ease;
+  width: 96px;
+  font-family: inherit;
+}
+
+.theme-tile:hover {
+  border-color: var(--color-text-muted);
+  background: var(--color-darker-0);
+  transform: translateY(-2px);
+}
+
+.theme-tile.active {
+  border-color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.theme-swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+}
+
+.swatch-dark {
+  background: #10101f;
+}
+.swatch-cyberpunk {
+  background: #0b0b30;
+}
+.swatch-midnight {
+  background: #080818;
+}
+.swatch-ember {
+  background: #120c08;
+}
+.swatch-nord {
+  background: #2e3440;
+}
+.swatch-hacker {
+  background: #000000;
+}
+.swatch-light {
+  background: #f1f0f5;
+}
+.swatch-rose {
+  background: #faf4f4;
+}
+
+.theme-tile-name {
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--color-text);
 }
 
 /* Provider Step */
@@ -1034,9 +1152,9 @@ body.dark .onboarding-modal {
 }
 
 .provider-tile:hover {
-  background: rgba(127, 129, 147, 0.1);
+  background: var(--color-darker-1);
   transform: translateY(-2px);
-  border-color: rgba(var(--green-rgb), 0.3);
+  border-color: rgba(var(--primary-rgb), 0.3);
 }
 
 .provider-icon :deep(svg) {
@@ -1062,16 +1180,16 @@ body.dark .onboarding-modal {
 }
 
 .feature-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-darker-0);
+  border: 1px solid var(--color-darker-1);
   border-radius: 16px;
   padding: 24px;
   transition: all 0.3s ease;
 }
 
 .feature-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: var(--color-green);
+  background: var(--color-darker-1);
+  border-color: var(--color-primary);
   transform: translateY(-2px);
 }
 
@@ -1106,8 +1224,8 @@ body.dark .onboarding-modal {
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 2px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-darker-0);
+  border: 2px solid var(--color-darker-1);
   border-radius: 16px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1115,13 +1233,13 @@ body.dark .onboarding-modal {
 }
 
 .quickstart-option:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(var(--green-rgb), 0.3);
+  background: var(--color-darker-1);
+  border-color: rgba(var(--primary-rgb), 0.3);
 }
 
 .quickstart-option.selected {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.12);
+  border-color: var(--color-primary);
 }
 
 .option-icon {
@@ -1169,8 +1287,8 @@ body.dark .onboarding-modal {
 }
 
 .bonus-display {
-  background: linear-gradient(135deg, rgba(var(--green-rgb), 0.2) 0%, rgba(0, 208, 132, 0.1) 100%);
-  border: 2px solid var(--color-green);
+  background: rgba(var(--primary-rgb), 0.12);
+  border: 2px solid var(--color-primary);
   border-radius: 16px;
   padding: 32px;
   margin: 24px 0;
@@ -1179,7 +1297,7 @@ body.dark .onboarding-modal {
 .bonus-amount {
   font-size: 3em;
   font-weight: 700;
-  color: var(--color-green);
+  color: var(--color-primary);
   margin-bottom: 8px;
 }
 
@@ -1209,8 +1327,8 @@ body.dark .onboarding-modal {
 }
 
 .ready-summary {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-darker-0);
+  border: 1px solid var(--color-darker-1);
   border-radius: 16px;
   padding: 24px;
   margin-top: 32px;
@@ -1221,7 +1339,7 @@ body.dark .onboarding-modal {
   display: flex;
   justify-content: space-between;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--color-darker-0);
 }
 
 .summary-item:last-child {
@@ -1246,7 +1364,7 @@ body.dark .onboarding-modal {
   gap: 16px;
   margin-top: 40px;
   padding-top: 32px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--color-darker-1);
 }
 
 .spacer {
@@ -1267,13 +1385,13 @@ body.dark .onboarding-modal {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-green) 0%, #00d084 100%);
-  color: var(--color-ultra-dark-navy);
+  background: var(--color-primary);
+  color: #ffffff;
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(var(--green-rgb), 0.3);
+  box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.3);
 }
 
 .btn-primary.btn-large {
@@ -1283,13 +1401,13 @@ body.dark .onboarding-modal {
 
 .btn-secondary {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--terminal-border-color);
   color: var(--color-text);
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: var(--color-darker-0);
+  border-color: var(--color-text-muted);
 }
 
 .btn-text {
@@ -1303,9 +1421,12 @@ body.dark .onboarding-modal {
 }
 
 /* Transitions */
-.modal-fade-enter-active,
+.modal-fade-enter-active {
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .modal-fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.25s ease-out;
 }
 
 .modal-fade-enter-from,
@@ -1313,31 +1434,61 @@ body.dark .onboarding-modal {
   opacity: 0;
 }
 
+.modal-fade-enter-active .onboarding-modal {
+  animation: modal-scale-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-fade-leave-active .onboarding-modal {
+  animation: modal-scale-out 0.25s ease-out forwards;
+}
+
+@keyframes modal-scale-in {
+  0% {
+    transform: scale(0.95) translateY(10px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes modal-scale-out {
+  0% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.97) translateY(8px);
+    opacity: 0;
+  }
+}
+
 .slide-left-enter-active,
 .slide-left-leave-active,
 .slide-right-enter-active,
 .slide-right-leave-active {
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .slide-left-enter-from {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateX(20px);
 }
 
 .slide-left-leave-to {
   opacity: 0;
-  transform: translateX(-30px);
+  transform: translateX(-20px);
 }
 
 .slide-right-enter-from {
   opacity: 0;
-  transform: translateX(-30px);
+  transform: translateX(-20px);
 }
 
 .slide-right-leave-to {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateX(20px);
 }
 
 /* Responsive */
@@ -1356,6 +1507,15 @@ body.dark .onboarding-modal {
 
   .step h2 {
     font-size: 1.5em;
+  }
+
+  .theme-grid {
+    max-width: 100%;
+  }
+
+  .theme-tile {
+    width: 80px;
+    padding: 10px 6px;
   }
 
   .modal-actions {

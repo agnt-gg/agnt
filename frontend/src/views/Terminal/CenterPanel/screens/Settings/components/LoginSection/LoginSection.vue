@@ -138,7 +138,7 @@ export default {
       const popup = window.open(
         `${API_CONFIG.REMOTE_URL}/users/auth/google?redirectUrl=${encodeURIComponent(redirectUrl)}`,
         'google-login-popup',
-        `width=${width},height=${height},top=${top},left=${left}`
+        `width=${width},height=${height},top=${top},left=${left}`,
       );
 
       const handleMessage = async (event) => {
@@ -329,7 +329,7 @@ export default {
               Authorization: `Bearer ${store.state.userAuth.token}`,
             },
             withCredentials: true,
-          }
+          },
         );
 
         if (response.data.success) {
@@ -375,12 +375,13 @@ export default {
   align-items: center;
   justify-content: center;
   padding: 32px 28px;
-  background: radial-gradient(circle at top, rgba(var(--green-rgb), 0.06), transparent 55%),
+  background:
+    radial-gradient(circle at top, rgba(var(--green-rgb), 0.06), transparent 55%),
     linear-gradient(135deg, var(--color-darker-1) 0%, var(--color-darker-0) 100%);
   border-radius: 16px;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
+  /* box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4); */
   height: fit-content;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--terminal-border-color);
   backdrop-filter: blur(12px);
   position: relative;
   overflow: visible;
@@ -403,8 +404,8 @@ export default {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
   background-size: 40px 40px;
   z-index: 0;
 }
@@ -424,7 +425,7 @@ body.dark .auth-section {
   height: 140px;
   margin-bottom: 16px;
   transition: all 0.45s cubic-bezier(0.4, 0, 0.2, 1);
-  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
+  /* filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45)); */
 }
 
 .logo.logged-in {

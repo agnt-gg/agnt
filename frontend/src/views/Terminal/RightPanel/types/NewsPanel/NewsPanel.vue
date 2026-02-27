@@ -349,7 +349,7 @@ body.dark .feature-item {
 /* Roadmap Items */
 .roadmap-item {
   padding: 12px;
-  background: var(--color-dull-white);
+  background: transparent;
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   margin-bottom: 8px;

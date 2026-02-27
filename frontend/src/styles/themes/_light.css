@@ -1,6 +1,8 @@
 /* LIGHT THEME - Default theme styles */
 
-/* Light theme uses body:not(.dark):not(.rose) to avoid conflicting with rose */
+/* Light theme variable block excludes rose so rose's own colors take priority.
+   All component-level selectors below use body:not(.dark) so that rose
+   (a light theme) inherits the same structural/component overrides. */
 
 body:not(.dark):not(.rose) {
   --color-background: #f1f0f5;
@@ -89,424 +91,418 @@ body:not(.dark):not(.rose) {
 
 /* ═══════════════════ TYPOGRAPHY ═══════════════════ */
 
-body:not(.dark):not(.rose) h1,
-body:not(.dark):not(.rose) h2,
-body:not(.dark):not(.rose) h3,
-body:not(.dark):not(.rose) h4,
-body:not(.dark):not(.rose) h5 {
+body:not(.dark) h1,
+body:not(.dark) h2,
+body:not(.dark) h3,
+body:not(.dark) h4,
+body:not(.dark) h5 {
   color: var(--color-text);
   opacity: 1;
 }
 
-body:not(.dark):not(.rose) p,
-body:not(.dark):not(.rose) li,
-body:not(.dark):not(.rose) th,
-body:not(.dark):not(.rose) td {
+body:not(.dark) p,
+body:not(.dark) li,
+body:not(.dark) th,
+body:not(.dark) td {
   color: var(--color-text);
   opacity: 1;
 }
 
-body:not(.dark):not(.rose) a {
+body:not(.dark) a {
   color: var(--color-primary);
 }
 
-body:not(.dark):not(.rose) label,
-body:not(.dark):not(.rose) .label {
+body:not(.dark) label,
+body:not(.dark) .label {
   color: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) .separator {
+body:not(.dark) .separator {
   color: var(--color-text-muted);
   opacity: 0.75;
 }
 
 /* ═══════════════════ BUTTONS ═══════════════════ */
 
-body:not(.dark):not(.rose) button {
+body:not(.dark) button {
   color: var(--color-text);
 }
 
-body:not(.dark):not(.rose) button.generate {
+body:not(.dark) button.generate {
   background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
   color: #ffffff;
   font-weight: 600;
 }
 
-body:not(.dark):not(.rose) .cancel,
-body:not(.dark):not(.rose) .generate.holofx-bg.cancel {
+body:not(.dark) .cancel,
+body:not(.dark) .generate.holofx-bg.cancel {
   background: #c0c0cc !important;
 }
 
-body:not(.dark):not(.rose) button.icon img {
+body:not(.dark) button.icon img {
   filter: none;
 }
 
-body:not(.dark):not(.rose) button.icon svg path[fill],
-body:not(.dark):not(.rose) button.icon svg rect[fill] {
+body:not(.dark) button.icon svg path[fill],
+body:not(.dark) button.icon svg rect[fill] {
   fill: var(--color-text-muted);
   fill-opacity: 1;
 }
 
-body:not(.dark):not(.rose) button.icon svg path[stroke] {
+body:not(.dark) button.icon svg path[stroke] {
   stroke: var(--color-text-muted);
 }
 
 /* ═══════════════════ HEADER & SIDEBAR ═══════════════════ */
 
-body:not(.dark):not(.rose) header {
-  border-bottom: 1px solid var(--terminal-border-color);
-  background: var(--color-background);
-  color: var(--color-text);
-}
-
-body:not(.dark):not(.rose) #left-sidebar {
+body:not(.dark) #left-sidebar {
   border-right: 1px solid var(--terminal-border-color);
   background: var(--color-background);
 }
 
-body:not(.dark):not(.rose) .left-sidebar-bottom-nav .svg-icon path {
+body:not(.dark) .left-sidebar-bottom-nav .svg-icon path {
   fill: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) a.router-link-active .svg-icon path {
+body:not(.dark) a.router-link-active .svg-icon path {
   fill: var(--color-primary);
 }
 
 /* ═══════════════════ MAIN AREA ═══════════════════ */
 
-body:not(.dark):not(.rose) main-area {
+body:not(.dark) main-area {
   background: #f5f5fa;
 }
 
-/* body:not(.dark):not(.rose) .card-inner {
+/* body:not(.dark) .card-inner {
   border: 1px solid var(--terminal-border-color);
   background: #ffffff;
 } */
 
 /* ═══════════════════ FORM ELEMENTS ═══════════════════ */
 
-body:not(.dark):not(.rose) input[type='text'],
-body:not(.dark):not(.rose) input[type='number'],
-body:not(.dark):not(.rose) input[type='email'],
-body:not(.dark):not(.rose) input[type='password'],
-body:not(.dark):not(.rose) input[type='date'],
-body:not(.dark):not(.rose) input[type='datetime-local'],
-body:not(.dark):not(.rose) input[type='month'],
-body:not(.dark):not(.rose) input[type='week'],
-body:not(.dark):not(.rose) input[type='tel'],
-body:not(.dark):not(.rose) input[type='url'],
-body:not(.dark):not(.rose) input[type='search'],
-body:not(.dark):not(.rose) input[type='color'],
-body:not(.dark):not(.rose) textarea,
-body:not(.dark):not(.rose) select {
+body:not(.dark) input[type='text'],
+body:not(.dark) input[type='number'],
+body:not(.dark) input[type='email'],
+body:not(.dark) input[type='password'],
+body:not(.dark) input[type='date'],
+body:not(.dark) input[type='datetime-local'],
+body:not(.dark) input[type='month'],
+body:not(.dark) input[type='week'],
+body:not(.dark) input[type='tel'],
+body:not(.dark) input[type='url'],
+body:not(.dark) input[type='search'],
+body:not(.dark) input[type='color'],
+body:not(.dark) textarea,
+body:not(.dark) select {
   color: var(--color-text);
   background-color: #ffffff;
   border-color: var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) input[type='text']:focus,
-body:not(.dark):not(.rose) input[type='number']:focus,
-body:not(.dark):not(.rose) textarea:focus,
-body:not(.dark):not(.rose) select:focus {
+body:not(.dark) input[type='text']:focus,
+body:not(.dark) input[type='number']:focus,
+body:not(.dark) textarea:focus,
+body:not(.dark) select:focus {
   outline: none;
   border: 1px solid var(--color-primary);
 }
 
-body:not(.dark):not(.rose) input::placeholder,
-body:not(.dark):not(.rose) textarea::placeholder {
+body:not(.dark) input::placeholder,
+body:not(.dark) textarea::placeholder {
   color: var(--color-text-muted);
   opacity: 0.6;
 }
 
 /* ═══════════════════ TABLES ═══════════════════ */
 
-body:not(.dark):not(.rose) table {
+body:not(.dark) table {
   color: var(--color-text);
 }
 
-body:not(.dark):not(.rose) th {
+body:not(.dark) th {
   color: var(--color-text);
   background: rgba(100, 100, 140, 0.06);
   border-bottom: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) td {
+body:not(.dark) td {
   background: transparent;
   border-bottom: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) tr:last-child {
+body:not(.dark) tr:last-child {
   border-bottom: 1px solid var(--terminal-border-color);
 }
 
 /* ═══════════════════ PANELS & CONTAINERS ═══════════════════ */
 
-body:not(.dark):not(.rose) .panel-body {
+body:not(.dark) .panel-body {
   background: #ffffff;
   border: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) .panel-header .title {
+body:not(.dark) .panel-header .title {
   color: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) editor-area {
+body:not(.dark) editor-area {
   background: #f5f5fa;
 }
 
-body:not(.dark):not(.rose) inner-editor-area {
+body:not(.dark) inner-editor-area {
   background: #ffffff;
   border: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) inner-editor-area .placeholder-text {
+body:not(.dark) inner-editor-area .placeholder-text {
   color: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) inner-editor-area .placeholder-text hr {
+body:not(.dark) inner-editor-area .placeholder-text hr {
   border-color: var(--terminal-border-color);
   opacity: 0.5;
 }
 
-body:not(.dark):not(.rose) inner-editor-area:focus {
+body:not(.dark) inner-editor-area:focus {
   outline: none;
   border: 1px solid var(--color-primary);
 }
 
-body:not(.dark):not(.rose) bottom-menu {
+body:not(.dark) bottom-menu {
   border-top: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) #editor-panel {
+body:not(.dark) #editor-panel {
   color: var(--color-text-muted);
   background: transparent;
 }
 
 /* ═══════════════════ MODALS ═══════════════════ */
 
-body:not(.dark):not(.rose) .modal-content {
+body:not(.dark) .modal-content {
   background-color: #ffffff;
   border: 1px solid var(--terminal-border-color);
 }
 
 /* ═══════════════════ WORKFLOW DESIGNER ═══════════════════ */
 
-body:not(.dark):not(.rose) .grid-overlay {
+body:not(.dark) .grid-overlay {
   opacity: 0.2;
   background-image: radial-gradient(circle, rgba(100, 100, 140, 0.3) 1px, transparent 1px);
 }
 
-body:not(.dark):not(.rose) .node {
+body:not(.dark) .node {
   color: var(--color-text);
   background: rgba(255, 255, 255, 0.8);
   border: 2px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) .node.starter {
+body:not(.dark) .node.starter {
   background-image: url("data:image/svg+xml,%3Csvg width='240' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='1' width='238' height='46' fill='none' stroke='rgba(100,100,140,0.3)' stroke-width='1' stroke-dasharray='5,8' rx='8' ry='8'/%3E%3C/svg%3E");
 }
 
-body:not(.dark):not(.rose) .node.no-select.label-node {
+body:not(.dark) .node.no-select.label-node {
   background: transparent;
   border: none;
 }
 
-body:not(.dark):not(.rose) #canvas .node svg path[stroke] {
+body:not(.dark) #canvas .node svg path[stroke] {
   stroke: var(--color-text);
 }
 
-body:not(.dark):not(.rose) #canvas .node svg rect[stroke] {
+body:not(.dark) #canvas .node svg rect[stroke] {
   stroke: var(--color-text);
 }
 
-body:not(.dark):not(.rose) #canvas .node svg path[fill] {
+body:not(.dark) #canvas .node svg path[fill] {
   fill: var(--color-text);
 }
 
-body:not(.dark):not(.rose) .connector {
+body:not(.dark) .connector {
   border: 1px solid var(--terminal-border-color);
   background: #ffffff;
   color: var(--color-text);
 }
 
-body:not(.dark):not(.rose) .connector:hover {
+body:not(.dark) .connector:hover {
   border: 1px solid var(--color-text-muted);
   background: #f5f5fa;
 }
 
-body:not(.dark):not(.rose) .connector svg path[stroke] {
+body:not(.dark) .connector svg path[stroke] {
   stroke: var(--color-text);
 }
 
-body:not(.dark):not(.rose) .edges path {
+body:not(.dark) .edges path {
   stroke: var(--color-text-muted);
   opacity: 0.4;
 }
 
-body:not(.dark):not(.rose) .edges path.hovered {
+body:not(.dark) .edges path.hovered {
   stroke: var(--color-text);
 }
 
-body:not(.dark):not(.rose) .edges path.selected {
+body:not(.dark) .edges path.selected {
   stroke: var(--color-primary);
   opacity: 1;
 }
 
-body:not(.dark):not(.rose) div.sidebar-section {
+body:not(.dark) div.sidebar-section {
   border-bottom: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) #sidebar {
+body:not(.dark) #sidebar {
   background: transparent;
   border: none;
 }
 
-body:not(.dark):not(.rose) #sidebar p.title {
+body:not(.dark) #sidebar p.title {
   color: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) #sidebar .node p {
+body:not(.dark) #sidebar .node p {
   color: var(--color-text);
 }
 
-body:not(.dark):not(.rose) #workflow-engine-toggle {
+body:not(.dark) #workflow-engine-toggle {
   border: 1px solid var(--terminal-border-color);
   background: transparent;
   color: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) .canvas-state-controls button {
+body:not(.dark) .canvas-state-controls button {
   border: 1px solid var(--terminal-border-color);
   background: transparent;
   color: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) .node-delete-button {
+body:not(.dark) .node-delete-button {
   color: var(--color-text-muted);
 }
 
 /* ═══════════════════ CODE HIGHLIGHTING ═══════════════════ */
 /* Uses !important to override legacy base/css/main.css which loads later */
 
-body:not(.dark):not(.rose) pre,
-body:not(.dark):not(.rose) mjx-container {
+body:not(.dark) pre,
+body:not(.dark) mjx-container {
   background: #f0f0f8 !important;
   color: var(--color-text) !important;
   border: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) .hljs,
-body:not(.dark):not(.rose) .hljs[class] {
+body:not(.dark) .hljs,
+body:not(.dark) .hljs[class] {
   background: #f0f0f8 !important;
   color: var(--color-text) !important;
 }
 
-body:not(.dark):not(.rose) code.math.language-math {
+body:not(.dark) code.math.language-math {
   color: var(--color-text) !important;
 }
 
-body:not(.dark):not(.rose) span.hljs-comment {
+body:not(.dark) span.hljs-comment {
   color: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) span.hljs-variable.constant_,
-body:not(.dark):not(.rose) span.hljs-built_in {
+body:not(.dark) span.hljs-variable.constant_,
+body:not(.dark) span.hljs-built_in {
   color: var(--color-text);
 }
 
-body:not(.dark):not(.rose) span.hljs-variable.language_,
-body:not(.dark):not(.rose) span.hljs-title,
-body:not(.dark):not(.rose) span.hljs-title.function_ {
+body:not(.dark) span.hljs-variable.language_,
+body:not(.dark) span.hljs-title,
+body:not(.dark) span.hljs-title.function_ {
   color: #b07020;
 }
 
-body:not(.dark):not(.rose) span.hljs-number {
+body:not(.dark) span.hljs-number {
   color: #0a8754;
 }
 
-body:not(.dark):not(.rose) span.hljs-keyword {
+body:not(.dark) span.hljs-keyword {
   color: #0070c0;
 }
 
-body:not(.dark):not(.rose) think {
+body:not(.dark) think {
   color: var(--color-text);
   background: rgba(100, 100, 140, 0.08);
 }
 
 /* ═══════════════════ CHAT ═══════════════════ */
 
-body[data-page='chat']:not(.dark):not(.rose) inner-editor-area {
+body[data-page='chat']:not(.dark) inner-editor-area {
   background: #ffffff;
   border: 1px solid var(--terminal-border-color);
 }
 
-body[data-page='chat']:not(.dark):not(.rose) .user-message-sent {
+body[data-page='chat']:not(.dark) .user-message-sent {
   border: 1px solid var(--terminal-border-color);
 }
 
 /* ═══════════════════ MISC ELEMENTS ═══════════════════ */
 
-body:not(.dark):not(.rose) hr {
+body:not(.dark) hr {
   border-color: var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) .template-options {
+body:not(.dark) .template-options {
   border-bottom: 1px solid var(--terminal-border-color);
   background: #f5f5fa;
 }
 
-body:not(.dark):not(.rose) .left-actions img,
-body:not(.dark):not(.rose) .right-actions img {
+body:not(.dark) .left-actions img,
+body:not(.dark) .right-actions img {
   filter: none;
 }
 
-body:not(.dark):not(.rose) .action-items button {
+body:not(.dark) .action-items button {
   border: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) .content-actions button.icon {
+body:not(.dark) .content-actions button.icon {
   border: 1px solid var(--terminal-border-color);
   opacity: 0.85;
 }
 
-body:not(.dark):not(.rose) .right-tabs svg path[fill] {
+body:not(.dark) .right-tabs svg path[fill] {
   fill: var(--color-text-muted);
 }
 
-body:not(.dark):not(.rose) .error-message p {
+body:not(.dark) .error-message p {
   border: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) input[type='file'] {
+body:not(.dark) input[type='file'] {
   color: var(--color-text);
   background-color: transparent;
 }
 
-body:not(.dark):not(.rose) div#saved-templates,
-body:not(.dark):not(.rose) div#saved-outputs {
+body:not(.dark) div#saved-templates,
+body:not(.dark) div#saved-outputs {
   border: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) .icon-option svg path[fill],
-body:not(.dark):not(.rose) .icon-option svg rect[fill] {
+body:not(.dark) .icon-option svg path[fill],
+body:not(.dark) .icon-option svg rect[fill] {
   fill: var(--color-text);
   fill-opacity: 1;
 }
 
-body:not(.dark):not(.rose) .icon-option svg path[stroke] {
+body:not(.dark) .icon-option svg path[stroke] {
   stroke: var(--color-text);
 }
 
-body:not(.dark):not(.rose) inner-editor-area#response-area p span {
+body:not(.dark) inner-editor-area#response-area p span {
   color: var(--color-text) !important;
 }
 
-body:not(.dark):not(.rose) inner-editor-area#response-area h2 {
+body:not(.dark) inner-editor-area#response-area h2 {
   border-top: 1px solid var(--terminal-border-color);
 }
 
-body:not(.dark):not(.rose) button.copy-button {
+body:not(.dark) button.copy-button {
   color: var(--color-text-muted);
 }

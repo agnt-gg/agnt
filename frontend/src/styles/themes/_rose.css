@@ -76,5 +76,7 @@ body.rose {
   --indigo-rgb: 136, 104, 176;
   --primary-rgb: 200, 80, 122;
 
+  font-size: var(--font-size-sm);
+  line-height: 1.25;
   color: #3a2828;
 }
