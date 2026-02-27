@@ -213,7 +213,7 @@ export default {
 
 .bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  background: linear-gradient(90deg, var(--color-secondary), var(--color-primary));
   color: var(--color-primary);
   font-size: 0.7em;
   line-height: 16px;

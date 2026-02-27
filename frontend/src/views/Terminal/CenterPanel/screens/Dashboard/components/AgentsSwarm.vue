@@ -130,9 +130,9 @@ export default {
 }
 
 .agent-name {
-  color: var(--color-text);
-  font-size: 0.8em;
-  font-weight: bold;
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+  font-weight: 600;
 }
 
 .agent-status {

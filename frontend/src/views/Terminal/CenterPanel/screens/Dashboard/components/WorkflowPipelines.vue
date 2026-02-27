@@ -177,8 +177,9 @@ export default {
 
 .workflow-name {
   flex: 1;
-  color: var(--color-text);
-  font-size: 0.8em;
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

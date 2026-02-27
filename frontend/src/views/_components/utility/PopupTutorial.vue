@@ -839,7 +839,7 @@ export default {
   background-color: var(--color-darker-2);
 }
 .next-button {
-  background-image: linear-gradient(45deg, var(--color-primary), var(--color-secondary));
+  background-image: linear-gradient(45deg, var(--color-secondary), var(--color-primary));
   color: var(--color-white) !important;
   border: none;
   padding: 8px 15px;
@@ -918,7 +918,7 @@ export default {
 }
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  background: linear-gradient(90deg, var(--color-secondary), var(--color-primary));
   transition: width 0.3s ease-in-out;
 }
 .skip-button {

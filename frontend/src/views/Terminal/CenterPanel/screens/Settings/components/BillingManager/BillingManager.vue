@@ -2027,7 +2027,7 @@ body.dark .scheduled-change-notice.upgrade-notice {
 
 /* Discount Ribbon */
 .discount-ribbon {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-pink) 50%, var(--color-secondary) 100%);
+  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-pink) 50%, var(--color-primary) 100%);
   border: 2px solid var(--color-primary);
   border-radius: 12px;
   padding: 8px 24px;

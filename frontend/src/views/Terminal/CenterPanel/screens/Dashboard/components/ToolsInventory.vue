@@ -154,10 +154,10 @@ export default {
 }
 
 .family-name {
-  color: var(--color-text);
-  font-weight: bold;
+  color: var(--color-text-muted);
+  font-weight: 600;
   min-width: 60px;
-  font-size: 0.8em;
+  font-size: 0.85em;
   flex-shrink: 0;
 }
 

@@ -122,14 +122,15 @@ export default {
 }
 
 .goal-link {
-  color: var(--color-blue);
+  color: var(--color-text-muted);
+  font-weight: 600;
   /* background: var(--color-darker-1);
   padding: 2px 4px; */
   border-radius: 2px;
   /* border: 1px solid var(--terminal-border-color); */
   transition: all 0.2s ease;
   min-width: 120px;
-  font-size: 0.8em;
+  font-size: 0.85em;
 }
 
 /* .goal-link:hover {
@@ -138,8 +139,8 @@ export default {
 } */
 
 .goal-progress {
-  color: var(--color-text);
-  font-weight: bold;
+  color: var(--color-text-muted);
+  font-weight: 600;
   min-width: 35px;
   font-size: 0.8em;
 }
@@ -155,7 +156,7 @@ export default {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  background: linear-gradient(90deg, var(--color-secondary), var(--color-primary));
   transition: width 0.3s ease;
   position: relative;
   min-width: 105%; /* Ensure fill extends beyond container to avoid border-radius showing through */

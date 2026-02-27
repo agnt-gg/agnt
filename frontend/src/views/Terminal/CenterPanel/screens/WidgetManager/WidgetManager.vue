@@ -106,13 +106,7 @@
                   @drop.prevent="handleFileDrop"
                   @click="$refs.fileInput.click()"
                 >
-                  <input
-                    ref="fileInput"
-                    type="file"
-                    accept=".json,.agnt-widget.json"
-                    style="display: none"
-                    @change="handleFileSelect"
-                  />
+                  <input ref="fileInput" type="file" accept=".json,.agnt-widget.json" style="display: none" @change="handleFileSelect" />
                   <template v-if="importFile">
                     <i class="fas fa-file-code wm-dropzone-icon wm-dropzone-icon-ready"></i>
                     <span class="wm-dropzone-filename">{{ importFile.name }}</span>
@@ -616,7 +610,7 @@ export default {
 }
 
 .wm-card.wm-custom .wm-card-icon {
-  color: var(--color-primary);
+  color: var(--color-green);
 }
 
 .wm-card-badges {
