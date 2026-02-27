@@ -292,7 +292,7 @@ export default {
 }
 
 .tool-title {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.1em;
   margin: 0;
 }
@@ -315,7 +315,7 @@ export default {
 }
 
 h3 {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.1em;
   margin: 0 0 15px 0;
   border-bottom: 1px solid var(--terminal-border-color-light);
@@ -338,7 +338,7 @@ h3 {
 }
 
 .config-icon {
-  color: var(--color-light-green);
+  color: var(--color-primary);
   width: 14px;
   text-align: center;
 }
@@ -349,7 +349,7 @@ h3 {
 }
 
 .config-value {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 0.9em;
   text-align: right;
   margin-left: auto;

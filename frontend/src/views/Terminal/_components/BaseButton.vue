@@ -40,8 +40,8 @@ export default {
   flex-wrap: nowrap;
   flex-direction: row;
   background: transparent;
-  border: 1px solid var(--color-green);
-  color: var(--color-green);
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
   padding: 12px 12px 12px;
   cursor: pointer;
   font-family: inherit;
@@ -58,13 +58,13 @@ export default {
 }
 
 .base-button:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.5);
+  background: rgba(var(--primary-rgb), 0.1);
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.5);
 }
 
 .base-button:focus {
-  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.7);
-  background: rgba(var(--green-rgb), 0.15);
+  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.7);
+  background: rgba(var(--primary-rgb), 0.15);
   outline: none;
 }
 
@@ -99,20 +99,19 @@ export default {
 }
 
 .base-button.secondary {
-  /* border-color: var(--color-grey);
-  color: var(--color-grey); */
-  border-color: var(--color-med-navy);
-  color: var(--color-med-navy);
+  border-color: var(--terminal-border-color);
+  color: var(--color-text-muted);
 }
 
 .base-button.secondary:hover {
-  background: rgba(128, 128, 128, 0.1);
-  box-shadow: 0 0 8px rgba(128, 128, 128, 0.5);
+  background: rgba(var(--primary-rgb), 0.05);
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.2);
+  color: var(--color-text);
 }
 
 .base-button.secondary:focus {
-  box-shadow: 0 0 12px rgba(128, 128, 128, 0.7);
-  background: rgba(128, 128, 128, 0.15);
+  box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.3);
+  background: rgba(var(--primary-rgb), 0.08);
 }
 
 .base-button.full-width {

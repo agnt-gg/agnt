@@ -16,27 +16,27 @@
         <div class="nav-items">
           <button class="nav-item" :class="{ active: activeSection === 'plugins' }" @click="handleNavClick('plugins')">
             <i class="fas fa-puzzle-piece"></i>
-            <p>My Plugins</p>
+            <span>My Plugins</span>
           </button>
           <button class="nav-item" :class="{ active: activeSection === 'oauth' }" @click="handleNavClick('oauth')">
             <i class="fas fa-plug"></i>
-            <p>Auth Connections</p>
+            <span>Auth Connections</span>
           </button>
           <button class="nav-item" :class="{ active: activeSection === 'providers' }" @click="handleNavClick('providers')" data-nav="providers">
             <i class="fas fa-robot"></i>
-            <p>Default AI Provider</p>
+            <span>Default AI Provider</span>
           </button>
           <button class="nav-item" :class="{ active: activeSection === 'mcp-servers' }" @click="handleNavClick('mcp-servers')">
             <i class="fas fa-server"></i>
-            <p>MCP / NPM Library</p>
+            <span>MCP / NPM Library</span>
           </button>
           <button class="nav-item" :class="{ active: activeSection === 'webhooks' }" @click="handleNavClick('webhooks')">
             <i class="fas fa-link"></i>
-            <p>Webhooks <span style="color: var(--color-yellow)">[PRO]</span></p>
+            <span>Webhooks <span style="color: var(--color-yellow)">[PRO]</span></span>
           </button>
           <button class="nav-item" :class="{ active: activeSection === 'email-server' }" @click="handleNavClick('email-server')">
             <i class="fas fa-envelope"></i>
-            <p>Email Server <span style="color: var(--color-yellow)">[PRO]</span></p>
+            <span>Email Server <span style="color: var(--color-yellow)">[PRO]</span></span>
           </button>
         </div>
       </div>
@@ -130,7 +130,7 @@ export default {
 }
 
 .panel-header .title {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
@@ -171,7 +171,7 @@ export default {
 }
 
 .nav-section h4 {
-  color: var(--color-light-green);
+  color: var(--color-primary);
   font-size: 0.9em;
   font-weight: 500;
   margin: 0;
@@ -194,7 +194,7 @@ export default {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: var(--color-light-primary);
+  color: var(--color-text-muted);
   font-size: 0.9em;
   /* Button reset styles */
   background: none;
@@ -205,8 +205,8 @@ export default {
 }
 
 .nav-item:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-light-green);
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--color-primary);
   transform: translateX(4px);
 }
 
@@ -219,9 +219,9 @@ export default {
 }
 
 .nav-item.active {
-  background: rgba(var(--green-rgb), 0.15);
+  background: rgba(var(--primary-rgb), 0.15);
   color: var(--color-text);
-  border-left: 3px solid var(--color-green);
+  border-left: 3px solid var(--color-primary);
   padding-left: 9px;
 }
 
@@ -233,7 +233,7 @@ export default {
 
 .nav-item.active i {
   opacity: 1;
-  text-shadow: 0 0 3px rgba(var(--green-rgb), 0.4);
+  text-shadow: 0 0 3px rgba(var(--primary-rgb), 0.4);
 }
 
 .nav-item span,

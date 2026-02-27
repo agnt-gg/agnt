@@ -801,7 +801,7 @@ export default {
 <style scoped>
 .popup-tutorial {
   position: fixed;
-  background-color: var(--color-navy);
+  background-color: var(--color-popup, var(--color-background));
   border-radius: 16px;
   border: 3px solid var(--color-primary);
   padding: 16px;
@@ -815,10 +815,10 @@ export default {
 .popup-tutorial h3 {
   margin-top: 0;
   margin-bottom: 8px;
-  color: var(--color-white);
+  color: var(--color-text);
 }
 .popup-tutorial p {
-  color: var(--color-light-navy);
+  color: var(--color-text-muted);
   line-height: 1.35;
 }
 .button-container {
@@ -827,8 +827,8 @@ export default {
   margin-top: 12px;
 }
 .back-button {
-  background-color: var(--color-dull-navy);
-  color: white;
+  background-color: var(--terminal-muted-color);
+  color: var(--color-text) !important;
   border: none;
   padding: 8px 15px;
   border-radius: 8px;
@@ -836,11 +836,11 @@ export default {
   transition: background-color 0.3s ease;
 }
 .back-button:hover {
-  background-color: var(--color-navy);
+  background-color: var(--color-darker-2);
 }
 .next-button {
-  background-image: linear-gradient(45deg, var(--color-primary), var(--color-violet));
-  color: white;
+  background-image: linear-gradient(45deg, var(--color-primary), var(--color-secondary));
+  color: var(--color-white) !important;
   border: none;
   padding: 8px 15px;
   border-radius: 8px;
@@ -862,10 +862,10 @@ export default {
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #7f8c8d;
+  color: var(--color-text-muted);
 }
 .close-button:hover {
-  color: var(--color-white);
+  color: var(--color-text);
 }
 .popup-arrow {
   position: absolute;
@@ -908,38 +908,22 @@ export default {
   transition: top 0.1s ease-out, left 0.1s ease-out, width 0.1s ease-out, height 0.1s ease-out, border-radius 0.3s ease-in-out;
 }
 
-body.dark .popup-tutorial {
-  background-color: var(--color-popup);
-}
-
-body.dark .popup-arrow-top {
-  border-color: transparent transparent var(--color-primary) transparent;
-}
-body.dark .popup-arrow-bottom {
-  border-color: var(--color-primary) transparent transparent transparent;
-}
-body.dark .popup-arrow-left {
-  border-color: transparent var(--color-primary) transparent transparent;
-}
-body.dark .popup-arrow-right {
-  border-color: transparent transparent transparent var(--color-primary);
-}
 .progress-bar-container {
   width: 100%;
   height: 6px;
-  background-color: var(--color-dull-navy);
+  background-color: var(--terminal-muted-color);
   margin-top: 8px;
   border-radius: 4px;
   overflow: hidden;
 }
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-green), var(--color-blue));
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
   transition: width 0.3s ease-in-out;
 }
 .skip-button {
-  background-color: var(--color-dull-navy);
-  color: white;
+  background-color: var(--terminal-muted-color);
+  color: var(--color-text) !important;
   border: none;
   padding: 8px 15px;
   border-radius: 8px;
@@ -948,7 +932,7 @@ body.dark .popup-arrow-right {
   margin-left: 8px;
 }
 .skip-button:hover {
-  background-color: var(--color-navy);
+  background-color: var(--color-darker-2);
 }
 .media-container {
   position: relative;
@@ -962,7 +946,7 @@ body.dark .popup-arrow-right {
   max-width: 100%;
   /* max-height: 200px; */
   border-radius: 4px;
-  border: 1px solid var(--color-dull-navy);
+  border: 1px solid var(--terminal-border-color);
 }
 
 .audio-button {
@@ -975,7 +959,7 @@ body.dark .popup-arrow-right {
   font-size: 18px;
   margin-top: 4px;
   margin-left: 0px;
-  color: var(--color-white);
+  color: var(--color-text);
   transition: color 0.3s ease;
 }
 

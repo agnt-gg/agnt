@@ -584,12 +584,12 @@ export default {
 /* .workflow-details {
   border-radius: 8px;
   padding: 15px;
-  box-shadow: 0 0 8px rgba(var(--green-rgb), 0.3);
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.3);
 } */
 
 .workflow-header {
   margin-bottom: 15px;
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
+  border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -605,7 +605,7 @@ export default {
 }
 
 .workflow-status.running {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .workflow-status.error {
@@ -628,7 +628,7 @@ export default {
 
 .workflow-tools {
   margin-top: 15px;
-  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -644,7 +644,7 @@ h3 {
   gap: 12px;
   flex-wrap: wrap;
   padding: 8px;
-  background: rgba(var(--green-rgb), 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
   border-radius: 4px;
 }
 
@@ -661,13 +661,13 @@ h3 {
 
 .workflow-progress {
   margin-top: 15px;
-  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
   padding-top: 15px;
 }
 
 .progress-bar {
   height: 20px;
-  background: rgba(var(--green-rgb), 0.1);
+  background: rgba(var(--primary-rgb), 0.1);
   border-radius: 10px;
   overflow: hidden;
   position: relative;
@@ -675,7 +675,7 @@ h3 {
 
 .progress-fill {
   height: 100%;
-  background: var(--color-green);
+  background: var(--color-primary);
   transition: width 0.3s ease;
 }
 
@@ -690,7 +690,7 @@ h3 {
 
 .workflow-info {
   margin-top: 15px;
-  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
   padding-top: 15px;
   display: flex;
   flex-direction: column;
@@ -708,13 +708,13 @@ h3 {
 }
 
 .info-value {
-  color: var(--color-light-green);
+  color: var(--color-text);
 }
 
 .info-value-select {
   background: transparent;
-  border: 1px solid rgba(var(--green-rgb), 0.2);
-  color: var(--color-light-green);
+  border: 1px solid rgba(var(--primary-rgb), 0.2);
+  color: var(--color-text);
   border-radius: 4px;
   padding: 4px 8px;
   width: 65%;
@@ -724,7 +724,7 @@ h3 {
 
 .info-value-select:focus {
   outline: none;
-  border-color: var(--color-green);
+  border-color: var(--color-primary);
 }
 
 .info-value-select option {
@@ -734,7 +734,7 @@ h3 {
 
 .workflow-actions {
   margin-top: 15px;
-  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
   padding-top: 15px;
   display: flex;
   flex-direction: column;
@@ -743,8 +743,8 @@ h3 {
 
 .action-button {
   background: transparent;
-  border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-light-green);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  color: var(--color-text);
   padding: 10px;
   border-radius: 4px;
   cursor: pointer;
@@ -756,18 +756,18 @@ h3 {
 }
 
 .action-button:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.1);
+  border-color: var(--color-primary);
 }
 
 .action-button.edit {
-  border-color: rgba(var(--green-rgb), 0.5);
-  color: var(--color-green);
+  border-color: rgba(var(--primary-rgb), 0.5);
+  color: var(--color-primary);
 }
 
 .action-button.edit:hover {
-  background: rgba(var(--green-rgb), 0.15);
-  border-color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.15);
+  border-color: var(--color-primary);
 }
 
 .action-button.stop {

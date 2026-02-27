@@ -165,7 +165,7 @@ export default {
 }
 
 .panel-header .title {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
@@ -215,12 +215,12 @@ export default {
 }
 
 :deep(.category-item:hover) {
-  background-color: rgba(var(--green-rgb), 0.1);
+  background-color: rgba(var(--primary-rgb), 0.1);
 }
 
 :deep(.category-item.active) {
-  background-color: rgba(var(--green-rgb), 0.15);
-  border-left: 3px solid var(--color-green);
+  background-color: rgba(var(--primary-rgb), 0.15);
+  border-left: 3px solid var(--color-primary);
   padding-left: 9px;
 }
 
@@ -230,7 +230,7 @@ export default {
 }
 
 :deep(.main-active) {
-  background: rgba(var(--green-rgb), 0.18) !important;
+  background: rgba(var(--primary-rgb), 0.18) !important;
 }
 
 :deep(.all-items) {
@@ -245,7 +245,7 @@ export default {
 }
 
 :deep(.cat-count) {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-weight: normal;
   font-size: 0.85em;
 }

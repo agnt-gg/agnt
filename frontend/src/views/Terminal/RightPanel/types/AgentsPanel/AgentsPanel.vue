@@ -541,16 +541,16 @@ export default {
 .panel-section {
   border-radius: 0px;
   padding: 15px;
-  /* box-shadow: 0 0 8px rgba(var(--green-rgb), 0.3); */
+  /* box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.3); */
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color-light);
 }
 
 .panel-section h2 {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 1.1em;
   margin: 0 0 15px 0;
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
+  border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -577,11 +577,11 @@ export default {
 .detail-row .label i {
   width: 14px;
   text-align: center;
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .detail-row .value {
-  color: var(--color-green);
+  color: var(--color-primary);
   text-align: right;
 }
 
@@ -616,11 +616,11 @@ export default {
 }
 
 .tool-item {
-  background: rgba(var(--green-rgb), 0.1);
+  background: rgba(var(--primary-rgb), 0.1);
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 0.9em;
-  color: var(--color-green);
+  color: var(--color-primary);
   text-align: center;
   width: fit-content;
 }
@@ -672,7 +672,7 @@ select.input {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
+  border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
   padding-bottom: 8px;
 }
 
@@ -697,8 +697,8 @@ select.input {
 }
 
 .edit-button-panel:hover {
-  color: var(--color-green);
-  background-color: rgba(var(--green-rgb), 0.1);
+  color: var(--color-primary);
+  background-color: rgba(var(--primary-rgb), 0.1);
 }
 
 .description-display {
@@ -717,7 +717,7 @@ select.input {
   display: flex;
   gap: 10px;
   margin-top: 10px;
-  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
   padding-top: 15px;
 }
 
@@ -759,8 +759,8 @@ select.input {
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  background: rgba(var(--green-rgb), 0.1);
-  border: 3px solid rgba(var(--green-rgb), 0.5);
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 3px solid rgba(var(--primary-rgb), 0.5);
   padding: 2px;
 }
 
@@ -771,10 +771,10 @@ select.input {
 
 .upload-button {
   padding: 6px 12px;
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
   border-radius: 4px;
-  color: var(--color-green);
+  color: var(--color-primary);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -784,7 +784,7 @@ select.input {
 }
 
 .upload-button:hover {
-  background: rgba(var(--green-rgb), 0.2);
+  background: rgba(var(--primary-rgb), 0.2);
 }
 
 .file-input {

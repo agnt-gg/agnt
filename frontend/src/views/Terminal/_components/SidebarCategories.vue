@@ -305,7 +305,7 @@ export default {
   padding-left: 0;
   padding-right: 16px;
   background-color: transparent;
-  border-right: 1px solid rgba(18, 224, 255, 0.1);
+  border-right: 1px solid var(--terminal-border-color);
   font-size: smaller;
   position: sticky;
   top: 0;
@@ -335,15 +335,15 @@ export default {
   cursor: pointer;
   transition: background-color 0.2s;
   border-radius: 4px;
-  color: var(--color-light-primary);
+  color: var(--color-text-muted);
 }
 
 .category-item:hover {
-  background-color: rgba(var(--green-rgb), 0.1);
+  background-color: rgba(var(--primary-rgb), 0.1);
 }
 
 .category-item.active {
-  background-color: rgba(var(--green-rgb), 0.15);
+  background-color: rgba(var(--primary-rgb), 0.15);
   color: var(--color-text) !important;
 }
 
@@ -358,18 +358,18 @@ export default {
 .main-category {
   font-weight: bold;
   color: var(--color-text);
-  background: rgba(127, 129, 147, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
 }
 
 .main-active {
-  background: rgba(var(--green-rgb), 0.18) !important;
+  background: rgba(var(--primary-rgb), 0.18) !important;
   color: var(--color-text) !important;
 }
 
 .all-items {
   font-weight: bold;
   color: var(--color-text);
-  background: rgba(127, 129, 147, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
   border-radius: 4px;
   margin-bottom: 4px;
 }
@@ -411,11 +411,11 @@ li.category-item.all-items i {
 }
 
 .sidebar-categories::-webkit-scrollbar-thumb {
-  background: rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--primary-rgb), 0.3);
   border-radius: 2px;
 }
 
 .sidebar-categories::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--green-rgb), 0.5);
+  background: rgba(var(--primary-rgb), 0.5);
 }
 </style>

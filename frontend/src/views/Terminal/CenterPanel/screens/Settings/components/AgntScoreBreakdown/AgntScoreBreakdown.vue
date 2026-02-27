@@ -775,8 +775,8 @@ export default {
   z-index: 1;
   font-size: 0.75em;
   font-weight: 700;
-  color: var(--color-darker-3);
-  text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
+  color: var(--color-white);
+  /* text-shadow: 0 0 3px rgba(255, 255, 255, 0.8); */
   white-space: nowrap;
   margin-bottom: -2px;
 }

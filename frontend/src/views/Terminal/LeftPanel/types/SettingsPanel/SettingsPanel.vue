@@ -37,7 +37,7 @@
           </button>
           <button class="nav-item" :class="{ active: activeSection === 'api-keys' }" @click="handleNavClick('api-keys')" data-nav="api-keys">
             <i class="fas fa-key"></i>
-            <p>API Key <span style="color: var(--color-yellow)">[PRO]</span></p>
+            <span>API Key <span style="color: var(--color-yellow)">[PRO]</span></span>
           </button>
         </div>
       </div>
@@ -47,7 +47,7 @@
         <div class="nav-items">
           <button class="nav-item" :class="{ active: activeSection === 'theme' }" @click="handleNavClick('theme')" data-nav="theme">
             <i class="fas fa-palette"></i>
-            <p>Theme <span style="color: var(--color-yellow)">[PRO]</span></p>
+            <span>Theme <span style="color: var(--color-yellow)">[PRO]</span></span>
           </button>
           <button class="nav-item" :class="{ active: activeSection === 'sounds' }" @click="handleNavClick('sounds')" data-nav="sounds">
             <i class="fas fa-volume-up"></i>
@@ -122,11 +122,6 @@ export default {
   gap: 20px;
 }
 
-/* .panel-header {
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
-  padding-bottom: 16px;
-} */
-
 .panel-header {
   display: flex;
   flex-direction: row;
@@ -151,7 +146,7 @@ export default {
   font-size: 1.2em;
   font-weight: 600;
   margin: 0 0 4px 0;
-  text-shadow: 0 0 5px rgba(var(--green-rgb), 0.3);
+  text-shadow: 0 0 5px rgba(var(--primary-rgb), 0.3);
 }
 
 .panel-subtitle {
@@ -175,7 +170,7 @@ export default {
 }
 
 .nav-section h4 {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 0.9em;
   font-weight: 500;
   margin: 0;
@@ -198,7 +193,7 @@ export default {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: var(--color-light-primary);
+  color: var(--color-text-muted);
   font-size: 0.9em;
   /* Button reset styles */
   background: none;
@@ -209,15 +204,15 @@ export default {
 }
 
 .nav-item:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--color-primary);
   transform: translateX(4px);
 }
 
 .nav-item.active {
-  background: rgba(var(--green-rgb), 0.15);
+  background: rgba(var(--primary-rgb), 0.15);
   color: var(--color-text);
-  border-left: 3px solid var(--color-green);
+  border-left: 3px solid var(--color-primary);
   padding-left: 9px;
 }
 
@@ -238,7 +233,7 @@ export default {
 
 .nav-item.active i {
   opacity: 1;
-  text-shadow: 0 0 3px rgba(var(--green-rgb), 0.4);
+  text-shadow: 0 0 3px rgba(var(--primary-rgb), 0.4);
 }
 
 .nav-item span,
