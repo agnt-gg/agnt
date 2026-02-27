@@ -1,7 +1,7 @@
 <template>
   <div class="cv-root">
     <!-- ── TOOLBAR (top bar + titlebar) ── -->
-    <div class="cv-toolbar">
+    <div v-if="isAuthenticated" class="cv-toolbar">
       <img class="cv-brand-logo" src="/images/agnt-logo-mark.svg" alt="AGNT" />
 
       <!-- Contextual sub-tabs for the active section, or custom page name -->
@@ -60,7 +60,7 @@
     <!-- ── MAIN AREA (sidebar + dashboard) ── -->
     <div class="cv-main-area">
       <!-- Sidebar: section icons -->
-      <div class="cv-sidebar">
+      <div v-if="isAuthenticated" class="cv-sidebar">
         <!-- Main sections (top) -->
         <div class="cv-sb-pages">
           <Tooltip v-for="section in mainSections" :key="section.id" :text="section.label" position="right" width="auto">
@@ -273,6 +273,8 @@ export default {
       electronUtils.window.close();
     }
 
+    const isAuthenticated = computed(() => store.getters['userAuth/isAuthenticated']);
+
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
@@ -472,6 +474,7 @@ export default {
     });
 
     return {
+      isAuthenticated,
       showCatalog,
       clock,
       activePageId,
