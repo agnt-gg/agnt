@@ -142,7 +142,7 @@
 </template>
 
 <script>
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, inject } from 'vue';
 import { useStore } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -155,6 +155,7 @@ export default {
     Tooltip,
   },
   setup() {
+    const route = useRoute();
     const router = useRouter();
     const store = useStore();
     const playSound = inject('playSound', () => {});
@@ -396,12 +397,22 @@ export default {
 
       if (!confirmed) return;
 
+      const currentContentId = route.query['content-id'];
+      const wasViewingDeleted = (activeOutputId.value && itemsToDelete.has(activeOutputId.value)) ||
+        (currentContentId && itemsToDelete.has(currentContentId));
+
       try {
         // Delete all highlighted outputs in parallel
         await Promise.all(Array.from(itemsToDelete).map((id) => store.dispatch('contentOutputs/deleteOutput', id)));
 
         clearSelection();
         activeOutputId.value = null;
+
+        // If the currently viewed chat was among the deleted, reset to fresh chat
+        if (wasViewingDeleted) {
+          router.push('/chat');
+          window.dispatchEvent(new CustomEvent('trigger-new-chat'));
+        }
 
         await simpleModal.value.showModal({
           title: 'Success',
@@ -519,9 +530,19 @@ export default {
         return;
       }
 
+      const wasActive = activeOutputId.value === outputId || route.query['content-id'] === outputId;
+
       try {
         await store.dispatch('contentOutputs/deleteOutput', outputId);
         activeMenu.value = null;
+
+        // If the deleted output was the currently viewed chat, reset to fresh chat
+        if (wasActive) {
+          activeOutputId.value = null;
+          router.push('/chat');
+          window.dispatchEvent(new CustomEvent('trigger-new-chat'));
+        }
+
         await simpleModal.value.showModal({
           title: 'Success',
           message: 'Output deleted successfully',
