@@ -147,11 +147,12 @@ function manageContext(messages, model, tools = []) {
 
       if (message.content && typeof message.content === 'string') {
         const messageTokens = estimateTokens(message.content);
-        if (messageTokens > 2000) {
-          // Truncate very large messages (but not system messages)
+        // Tool messages get aggressive truncation (they're often huge JSON blobs)
+        const maxTokensForRole = message.role === 'tool' ? 1000 : 2000;
+        if (messageTokens > maxTokensForRole) {
           return {
             ...message,
-            content: truncateContent(message.content, 2000),
+            content: truncateContent(message.content, maxTokensForRole),
           };
         }
       }
@@ -166,15 +167,23 @@ function manageContext(messages, model, tools = []) {
       currentTokens = estimateMessagesTokens(managedMessages);
     }
 
-    // Strategy 3: Keep only essential messages if still over limit
+    // Strategy 3: Keep system message + most recent messages (preserving order)
     if (currentTokens > availableTokens) {
       const systemMessage = managedMessages.find((m) => m.role === 'system');
-      const userMessages = managedMessages.filter((m) => m.role === 'user').slice(-2);
-      const assistantMessages = managedMessages.filter((m) => m.role === 'assistant').slice(-2);
-      const toolMessages = managedMessages.filter((m) => m.role === 'tool').slice(-3);
+      // Keep messages in their original order - just take the most recent ones
+      // This preserves the required assistant->tool message pairing
+      const nonSystemMessages = managedMessages.filter((m) => m.role !== 'system');
+      // Keep the last N messages that fit, working backwards
+      let kept = [];
+      let keptTokens = estimateMessagesTokens(systemMessage ? [systemMessage] : []);
+      for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+        const msgTokens = estimateMessagesTokens([nonSystemMessages[i]]);
+        if (keptTokens + msgTokens > availableTokens) break;
+        kept.unshift(nonSystemMessages[i]);
+        keptTokens += msgTokens;
+      }
 
-      managedMessages = [systemMessage, ...userMessages, ...assistantMessages, ...toolMessages].filter(Boolean);
-
+      managedMessages = [systemMessage, ...kept].filter(Boolean);
       currentTokens = estimateMessagesTokens(managedMessages);
     }
 
@@ -182,9 +191,33 @@ function manageContext(messages, model, tools = []) {
     if (currentTokens > availableTokens) {
       console.warn('Emergency context truncation required');
       const systemMessage = managedMessages.find((m) => m.role === 'system');
-      const lastUserMessage = managedMessages.filter((m) => m.role === 'user').slice(-1)[0];
+      let lastUserMessage = managedMessages.filter((m) => m.role === 'user').slice(-1)[0];
+
+      // Truncate the system message if it alone exceeds the limit
+      if (systemMessage) {
+        const sysTokens = estimateMessagesTokens([systemMessage]);
+        if (sysTokens > availableTokens * 0.7) {
+          console.warn('System message too large, truncating for emergency recovery');
+          if (typeof systemMessage.content === 'string') {
+            systemMessage.content = truncateContent(systemMessage.content, Math.floor(availableTokens * 0.5));
+          }
+        }
+      }
+
+      // Ensure we always have at least one user message for API compatibility
+      if (!lastUserMessage) {
+        lastUserMessage = { role: 'user', content: 'Please continue.' };
+      }
 
       managedMessages = [systemMessage, lastUserMessage].filter(Boolean);
+      currentTokens = estimateMessagesTokens(managedMessages);
+    }
+
+    // Final safety: ensure at least one non-system message exists
+    const hasNonSystemMessage = managedMessages.some((m) => m.role !== 'system');
+    if (!hasNonSystemMessage) {
+      console.warn('No non-system messages after context management, adding fallback');
+      managedMessages.push({ role: 'user', content: 'Please continue.' });
       currentTokens = estimateMessagesTokens(managedMessages);
     }
 

@@ -984,6 +984,41 @@ IMPORTANT: The image data is already available in the system context. You don't 
             });
           }
 
+          // Hard cap on tool result size to prevent context window overflow
+          // Even after data offloading, some tools return massive results with many sub-50k fields
+          const MAX_TOOL_RESULT_CHARS = 100000; // ~28k tokens
+          if (functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
+            console.log(`[Context Protection] Tool ${functionName} result too large (${functionResponseContent.length} chars), truncating to ${MAX_TOOL_RESULT_CHARS}`);
+            try {
+              const parsed = JSON.parse(functionResponseContent);
+              // Try to create a meaningful summary
+              if (parsed.success !== undefined && parsed.result) {
+                // For array results, keep count and first few items
+                if (Array.isArray(parsed.result)) {
+                  const summary = {
+                    ...parsed,
+                    result: parsed.result.slice(0, 10),
+                    _truncated: true,
+                    _total_count: parsed.result.length,
+                    _note: `Showing first 10 of ${parsed.result.length} items. Full data was sent to the frontend.`,
+                  };
+                  functionResponseContent = JSON.stringify(summary);
+                } else {
+                  // For object results, stringify and truncate
+                  functionResponseContent = functionResponseContent.substring(0, MAX_TOOL_RESULT_CHARS - 200) +
+                    '\n\n[Content truncated - full data sent to frontend. Total size: ' + functionResponseContent.length + ' chars]';
+                }
+              } else {
+                functionResponseContent = functionResponseContent.substring(0, MAX_TOOL_RESULT_CHARS - 200) +
+                  '\n\n[Content truncated - full data sent to frontend. Total size: ' + functionResponseContent.length + ' chars]';
+              }
+            } catch {
+              functionResponseContent = functionResponseContent.substring(0, MAX_TOOL_RESULT_CHARS - 200) +
+                '\n\n[Content truncated - full data sent to frontend. Total size: ' + functionResponseContent.length + ' chars]';
+            }
+            console.log(`[Context Protection] Truncated ${functionName} result to ${functionResponseContent.length} chars`);
+          }
+
           // Parse and validate response
           try {
             toolCallResult = JSON.parse(functionResponseContent);
@@ -1187,10 +1222,48 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
     // Extract final content
     if (normalizedProvider === 'anthropic') {
-      const textBlock = responseMessage.content.find((c) => c.type === 'text');
+      const textBlock = responseMessage.content?.find((c) => c.type === 'text');
       finalContentForLogging = textBlock ? textBlock.text : '';
     } else {
-      finalContentForLogging = responseMessage.content;
+      finalContentForLogging = responseMessage.content || '';
+    }
+
+    // Safety net: if tool loop ran but final response has no text content,
+    // make one more LLM call to generate a summary response
+    if (currentRound > 0 && !finalContentForLogging) {
+      console.log('[Tool Loop] Final response had no text content after tool execution, requesting follow-up');
+      try {
+        // Add a nudge message to prompt the LLM to summarize
+        messages.push({
+          role: 'user',
+          content: '[System: Your previous response contained only tool calls with no text. Please provide a brief summary of what you found/did based on the tool results above.]',
+        });
+
+        const followUpContext = manageContext(messages, model, finalToolSchemas);
+        const followUpResponse = await adapter.callStream(
+          followUpContext.messages,
+          [], // No tools - force a text-only response
+          (chunk) => {
+            if (chunk.type === 'content') {
+              sendEvent('content_delta', {
+                assistantMessageId,
+                delta: chunk.delta,
+                accumulated: chunk.accumulated,
+              });
+            }
+          },
+          conversationContext
+        );
+
+        if (followUpResponse.responseMessage.content) {
+          finalContentForLogging = typeof followUpResponse.responseMessage.content === 'string'
+            ? followUpResponse.responseMessage.content
+            : followUpResponse.responseMessage.content?.find?.((c) => c.type === 'text')?.text || '';
+          messages.push(followUpResponse.responseMessage);
+        }
+      } catch (followUpError) {
+        console.error('[Tool Loop] Follow-up LLM call failed:', followUpError.message);
+      }
     }
 
     // Send final content event

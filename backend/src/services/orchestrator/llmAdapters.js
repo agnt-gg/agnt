@@ -568,7 +568,7 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
         // Construct final message with only valid tool calls
         const responseMessage = {
           role: role,
-          content: accumulatedContent || null,
+          content: accumulatedContent ?? null,
           tool_calls: validToolCalls.length > 0 ? validToolCalls : undefined,
           // Include reasoning_content for providers like Kimi Code that require it for tool calls
           reasoning_content: accumulatedReasoningContent || undefined,
@@ -1774,7 +1774,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
 
         const responseMessage = {
           role: role,
-          content: accumulatedContent || null,
+          content: accumulatedContent ?? null,
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
         };
 
@@ -2410,7 +2410,7 @@ class GeminiAdapter extends BaseAdapter {
 
         const responseMessage = {
           role: 'assistant',
-          content: accumulatedContent || null,
+          content: accumulatedContent ?? null,
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
         };
 
@@ -2787,7 +2787,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 
         const responseMessage = {
           role: 'assistant',
-          content: textContent || null,
+          content: textContent ?? null,
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
         };
 
@@ -2955,7 +2955,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 
         const responseMessage = {
           role: 'assistant',
-          content: accumulatedContent || null,
+          content: accumulatedContent ?? null,
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
         };
 
@@ -3162,7 +3162,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         return {
           responseMessage: {
             role: 'assistant',
-            content: accumulatedContent || null,
+            content: accumulatedContent ?? null,
             tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
           },
           toolCalls: accumulatedToolCalls,
@@ -3235,7 +3235,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         return {
           responseMessage: {
             role: 'assistant',
-            content: accumulatedContent || null,
+            content: accumulatedContent ?? null,
             tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
           },
           toolCalls: accumulatedToolCalls,

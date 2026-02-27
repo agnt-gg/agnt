@@ -164,7 +164,12 @@
             </div>
           </div>
           <div class="html-preview-body">
-            <iframe :srcdoc="vizModalHTML" class="html-preview-iframe" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"></iframe>
+            <iframe
+              :srcdoc="vizModalHTML"
+              class="html-preview-iframe"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
+            ></iframe>
           </div>
         </div>
       </div>
@@ -337,11 +342,22 @@ const loadThreeJs = async () => {
     _THREE = threeModule;
     _OrbitControls = OrbitControls;
     _THREE_ADDONS = {
-      OrbitControls, GLTFLoader, FontLoader, TextGeometry,
-      EffectComposer, RenderPass, UnrealBloomPass,
-      DragControls, TransformControls,
-      FBXLoader, OBJLoader, MTLLoader, SVGLoader,
-      RoundedBoxGeometry, ConvexGeometry, ParametricGeometry,
+      OrbitControls,
+      GLTFLoader,
+      FontLoader,
+      TextGeometry,
+      EffectComposer,
+      RenderPass,
+      UnrealBloomPass,
+      DragControls,
+      TransformControls,
+      FBXLoader,
+      OBJLoader,
+      MTLLoader,
+      SVGLoader,
+      RoundedBoxGeometry,
+      ConvexGeometry,
+      ParametricGeometry,
     };
   }
   return { THREE: _THREE, THREE_ADDONS: _THREE_ADDONS, OrbitControls: _OrbitControls };
@@ -373,29 +389,20 @@ const markdownConverter = new showdown.Converter({
 
             // Convert ```chartjs code blocks into chart containers
             let blockIndex = 0;
-            let result = text.replace(
-              /<pre><code class="[^"]*language-chartjs[^"]*">([\s\S]*?)<\/code><\/pre>/g,
-              (match, config) => {
-                const id = 'chart-' + hashCode(config) + '-' + blockIndex++;
-                return `<div class="chartjs-container" data-chart-id="${id}"><canvas id="${id}"></canvas><code class="chartjs-config" style="display:none">${config}</code></div>`;
-              },
-            );
+            let result = text.replace(/<pre><code class="[^"]*language-chartjs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, config) => {
+              const id = 'chart-' + hashCode(config) + '-' + blockIndex++;
+              return `<div class="chartjs-container" data-chart-id="${id}"><canvas id="${id}"></canvas><code class="chartjs-config" style="display:none">${config}</code></div>`;
+            });
             // Convert ```d3 code blocks into D3 containers
-            result = result.replace(
-              /<pre><code class="[^"]*language-d3[^"]*">([\s\S]*?)<\/code><\/pre>/g,
-              (match, code) => {
-                const id = 'd3-' + hashCode(code) + '-' + blockIndex++;
-                return `<div class="d3-container" data-d3-id="${id}"><code class="d3-code" style="display:none">${code}</code></div>`;
-              },
-            );
+            result = result.replace(/<pre><code class="[^"]*language-d3[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
+              const id = 'd3-' + hashCode(code) + '-' + blockIndex++;
+              return `<div class="d3-container" data-d3-id="${id}"><code class="d3-code" style="display:none">${code}</code></div>`;
+            });
             // Convert ```threejs code blocks into Three.js containers
-            result = result.replace(
-              /<pre><code class="[^"]*language-threejs[^"]*">([\s\S]*?)<\/code><\/pre>/g,
-              (match, code) => {
-                const id = 'three-' + hashCode(code) + '-' + blockIndex++;
-                return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${code}</code></div>`;
-              },
-            );
+            result = result.replace(/<pre><code class="[^"]*language-threejs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
+              const id = 'three-' + hashCode(code) + '-' + blockIndex++;
+              return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${code}</code></div>`;
+            });
             return result;
           },
         },
@@ -844,7 +851,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         if (!messageRef.value) return;
 
         const vizContainers = messageRef.value.querySelectorAll(
-          '.chartjs-container:not([data-viz-buttons]), .d3-container:not([data-viz-buttons]), .threejs-container:not([data-viz-buttons])'
+          '.chartjs-container:not([data-viz-buttons]), .d3-container:not([data-viz-buttons]), .threejs-container:not([data-viz-buttons])',
         );
 
         vizContainers.forEach((container) => {
@@ -871,7 +878,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             e.stopPropagation();
             navigator.clipboard.writeText(sourceCode).catch(console.error);
             copyBtn.innerHTML = '<span class="btn-icon">✓</span><span class="btn-text">Copied!</span>';
-            setTimeout(() => { copyBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Copy</span>'; }, 2000);
+            setTimeout(() => {
+              copyBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Copy</span>';
+            }, 2000);
           };
 
           // Fullscreen button
@@ -1116,7 +1125,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       return htmlPatterns.some((pattern) => pattern.test(content));
     };
 
-
     const renderChartJsDiagrams = () => {
       nextTick(async () => {
         if (!messageRef.value) return;
@@ -1249,9 +1257,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               // Execute D3 code with the bundled d3 module
               // The LLM code expects `container` as a d3 selection and `d3` as the d3 module
               // Strip import/export statements - d3 is already injected as a parameter
-              const cleanedD3Code = d3Code
-                .replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '')
-                .replace(/^\s*export\s+(?:default\s+)?/gm, '');
+              const cleanedD3Code = d3Code.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replace(/^\s*export\s+(?:default\s+)?/gm, '');
               const containerSelection = d3.select(chartDiv);
               const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
               const fn = new AsyncFunction('d3', 'container', cleanedD3Code);
@@ -1339,11 +1345,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
                 get(target, prop) {
                   const val = target[prop];
                   // Wrap BufferAttribute constructors to cap array sizes
-                  if (prop === 'BufferAttribute' || prop === 'Float32BufferAttribute' ||
-                      prop === 'Uint16BufferAttribute' || prop === 'Uint32BufferAttribute' ||
-                      prop === 'Int8BufferAttribute' || prop === 'Int16BufferAttribute' ||
-                      prop === 'Int32BufferAttribute' || prop === 'Float64BufferAttribute' ||
-                      prop === 'Uint8BufferAttribute' || prop === 'Uint8ClampedBufferAttribute') {
+                  if (
+                    prop === 'BufferAttribute' ||
+                    prop === 'Float32BufferAttribute' ||
+                    prop === 'Uint16BufferAttribute' ||
+                    prop === 'Uint32BufferAttribute' ||
+                    prop === 'Int8BufferAttribute' ||
+                    prop === 'Int16BufferAttribute' ||
+                    prop === 'Int32BufferAttribute' ||
+                    prop === 'Float64BufferAttribute' ||
+                    prop === 'Uint8BufferAttribute' ||
+                    prop === 'Uint8ClampedBufferAttribute'
+                  ) {
                     return new Proxy(val, {
                       construct(Target, args) {
                         const arr = args[0];
@@ -2184,7 +2197,7 @@ body[data-page='terminal-tool-forge'] .message-wrapper.assistant .message-card {
 
 .message-wrapper.user .message-text :deep(strong),
 .message-wrapper.user .message-text :deep(b) {
-  color: var(--color-white);
+  color: var(--color-text);
 }
 
 .message-text :deep(em),
@@ -2193,7 +2206,7 @@ body[data-page='terminal-tool-forge'] .message-wrapper.assistant .message-card {
 }
 
 .message-wrapper.user .message-text {
-  color: var(--color-white);
+  color: var(--color-text);
 }
 
 .message-text *:first-child {
@@ -3527,5 +3540,4 @@ span.nodeLabel p {
 .message-text :deep(.threejs-container:hover .viz-action-buttons) {
   opacity: 1;
 }
-
 </style>

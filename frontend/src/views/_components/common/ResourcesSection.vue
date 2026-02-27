@@ -200,7 +200,7 @@ export default {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  background: var(--color-dull-white);
+  /* background: var(--color-dull-white); */
   border: 1px solid var(--color-light-navy);
   border-radius: 8px;
   color: var(--color-text-muted);
@@ -214,11 +214,17 @@ body.dark .resource-link {
   border: 1px solid var(--terminal-border-color);
 }
 
+body:not(.dark):not(.rose) button.resource-link.resource-button {
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-primary);
+}
+
 .resource-link i {
   color: var(--color-text);
 }
 
-.resource-link:hover {
+.resource-link:hover,
+body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
   border-color: var(--color-green);
   color: var(--color-green);
   transform: translateY(-2px);
