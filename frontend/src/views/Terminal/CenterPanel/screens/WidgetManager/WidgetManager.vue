@@ -91,18 +91,44 @@
 
         <!-- Import Modal -->
         <Teleport to="body">
-          <div v-if="showImportModal" class="wm-modal-overlay" @click.self="showImportModal = false">
+          <div v-if="showImportModal" class="wm-modal-overlay" @click.self="closeImportModal">
             <div class="wm-modal">
               <div class="wm-modal-header">
                 <span class="wm-modal-title">IMPORT WIDGET</span>
-                <button @click="showImportModal = false"><i class="fas fa-times"></i></button>
+                <button @click="closeImportModal"><i class="fas fa-times"></i></button>
               </div>
               <div class="wm-modal-body">
-                <textarea v-model="importData" class="wm-import-textarea" placeholder="Paste .agnt-widget JSON data here..." rows="10"></textarea>
+                <div
+                  class="wm-import-dropzone"
+                  :class="{ 'wm-dropzone-active': isDragOver, 'wm-dropzone-has-file': importFile }"
+                  @dragover.prevent="isDragOver = true"
+                  @dragleave.prevent="isDragOver = false"
+                  @drop.prevent="handleFileDrop"
+                  @click="$refs.fileInput.click()"
+                >
+                  <input
+                    ref="fileInput"
+                    type="file"
+                    accept=".json,.agnt-widget.json"
+                    style="display: none"
+                    @change="handleFileSelect"
+                  />
+                  <template v-if="importFile">
+                    <i class="fas fa-file-code wm-dropzone-icon wm-dropzone-icon-ready"></i>
+                    <span class="wm-dropzone-filename">{{ importFile.name }}</span>
+                    <span class="wm-dropzone-hint">Click or drop to replace</span>
+                  </template>
+                  <template v-else>
+                    <i class="fas fa-cloud-upload-alt wm-dropzone-icon"></i>
+                    <span class="wm-dropzone-text">Drop .agnt-widget.json file here</span>
+                    <span class="wm-dropzone-hint">or click to browse</span>
+                  </template>
+                </div>
+                <p v-if="importError" class="wm-import-error">{{ importError }}</p>
               </div>
               <div class="wm-modal-footer">
-                <button class="wm-btn" @click="showImportModal = false">Cancel</button>
-                <button class="wm-btn wm-btn-create" @click="doImport">Import</button>
+                <button class="wm-btn" @click="closeImportModal">Cancel</button>
+                <button class="wm-btn wm-btn-create" :disabled="!importFile" @click="doImport">Import</button>
               </div>
             </div>
           </div>
@@ -148,7 +174,9 @@ export default {
     const searchQuery = ref('');
     const activeCategory = ref('all');
     const showImportModal = ref(false);
-    const importData = ref('');
+    const importFile = ref(null);
+    const importError = ref('');
+    const isDragOver = ref(false);
     const deleteTarget = ref(null);
 
     // Fetch custom widget definitions and register them into the canvas registry
@@ -300,16 +328,40 @@ export default {
       }
     }
 
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        importFile.value = file;
+        importError.value = '';
+      }
+    }
+
+    function handleFileDrop(event) {
+      isDragOver.value = false;
+      const file = event.dataTransfer.files[0];
+      if (file) {
+        importFile.value = file;
+        importError.value = '';
+      }
+    }
+
+    function closeImportModal() {
+      showImportModal.value = false;
+      importFile.value = null;
+      importError.value = '';
+    }
+
     async function doImport() {
+      if (!importFile.value) return;
       try {
-        const parsed = JSON.parse(importData.value);
+        const text = await importFile.value.text();
+        const parsed = JSON.parse(text);
         const success = await store.dispatch('widgetDefinitions/importDefinition', parsed);
         if (success) {
-          showImportModal.value = false;
-          importData.value = '';
+          closeImportModal();
         }
       } catch {
-        // Invalid JSON
+        importError.value = 'Invalid JSON file. Please select a valid .agnt-widget.json file.';
       }
     }
 
@@ -334,7 +386,9 @@ export default {
       searchQuery,
       activeCategory,
       showImportModal,
-      importData,
+      importFile,
+      importError,
+      isDragOver,
       deleteTarget,
       categoryTabs,
       filteredWidgets,
@@ -345,6 +399,9 @@ export default {
       exportWidget,
       confirmDelete,
       doDelete,
+      handleFileSelect,
+      handleFileDrop,
+      closeImportModal,
       doImport,
       handlePanelAction,
     };
@@ -748,22 +805,68 @@ export default {
   color: var(--color-light-0, #ccd);
 }
 
-.wm-import-textarea {
-  width: 100%;
+.wm-import-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 32px 16px;
   background: var(--color-darker-1);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 4px;
-  color: var(--color-light-0, #aab);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  padding: 10px;
-  resize: vertical;
-  outline: none;
-  box-sizing: border-box;
+  border: 2px dashed var(--terminal-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
 }
 
-.wm-import-textarea:focus {
-  border-color: rgba(var(--green-rgb), 0.3);
+.wm-import-dropzone:hover,
+.wm-dropzone-active {
+  border-color: rgba(var(--green-rgb), 0.4);
+  background: rgba(var(--green-rgb), 0.03);
+}
+
+.wm-dropzone-has-file {
+  border-style: solid;
+  border-color: rgba(var(--green-rgb), 0.25);
+}
+
+.wm-dropzone-icon {
+  font-size: 24px;
+  color: var(--color-text-muted, #445);
+}
+
+.wm-dropzone-icon-ready {
+  color: var(--color-green);
+}
+
+.wm-dropzone-text {
+  font-size: 12px;
+  color: var(--color-light-0, #99a);
+  letter-spacing: 0.5px;
+}
+
+.wm-dropzone-filename {
+  font-size: 12px;
+  color: var(--color-green);
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.5px;
+}
+
+.wm-dropzone-hint {
+  font-size: 10px;
+  color: var(--color-text-muted, #334);
+}
+
+.wm-import-error {
+  margin-top: 8px;
+  margin-bottom: 0;
+  font-size: 11px;
+  color: var(--color-red);
+}
+
+.wm-modal-footer .wm-btn-create:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .wm-modal-footer {
