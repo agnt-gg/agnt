@@ -31,10 +31,12 @@
     <!-- Font Selector -->
     <div class="sf-row" :class="{ locked: !isPro }">
       <label>Font</label>
-      <select :value="fontFamily" @change="isPro ? setFontFamily($event.target.value) : null" :disabled="!isPro">
-        <option value="sans">Sans-serif</option>
-        <option value="mono">Monospace</option>
-      </select>
+      <CustomSelect
+        ref="fontSelect"
+        :options="fontOptions"
+        placeholder="Select font"
+        @option-selected="isPro ? setFontFamily($event.value) : null"
+      />
     </div>
 
     <!-- Scale Slider -->
@@ -135,12 +137,14 @@
 import { mapActions, mapGetters } from 'vuex';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 export default {
   name: 'ThemeSelector',
   components: {
     SimpleModal,
     Tooltip,
+    CustomSelect,
   },
   data() {
     return {
@@ -155,6 +159,10 @@ export default {
         { id: 'rose', name: 'Rose', icon: 'fas fa-heart' },
       ],
       bgFileName: 'No file',
+      fontOptions: [
+        { label: 'Sans-serif', value: 'sans' },
+        { label: 'Monospace', value: 'mono' },
+      ],
     };
   },
   computed: {
@@ -176,6 +184,12 @@ export default {
       if (!this.currentThemeBackgroundImage) return false;
       return this.currentThemeBackgroundImage.startsWith('data:video/');
     },
+  },
+  mounted() {
+    const current = this.fontOptions.find((o) => o.value === this.fontFamily);
+    if (current) {
+      this.$refs.fontSelect?.setSelectedOption(current);
+    }
   },
   methods: {
     ...mapActions('theme', [
@@ -400,6 +414,10 @@ body.dark .theme-label {
   letter-spacing: 0.5px;
   color: var(--color-med-navy);
   text-align: left;
+}
+
+.sf-row .custom-select {
+  width: 100px;
 }
 
 .sf-row select {

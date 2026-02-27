@@ -1396,8 +1396,6 @@ export default {
   top: 0;
   z-index: 1;
   background: transparent;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1630,7 +1628,6 @@ body.dark .results-info {
   cursor: pointer;
   transition: all 0.3s ease;
   min-height: 160px;
-  backdrop-filter: blur(4px);
 }
 
 .featured-card:hover {
@@ -1940,7 +1937,6 @@ body.dark .results-info {
   cursor: pointer;
   transition: all 0.3s ease;
   min-height: 150px;
-  backdrop-filter: blur(4px);
 }
 
 .workflow-card.last-odd {

@@ -956,7 +956,6 @@ export default {
   border-radius: 12px;
   overflow: visible;
   transition: all 0.2s ease;
-  backdrop-filter: blur(4px);
 }
 
 .avatar-card:hover,
@@ -1705,7 +1704,6 @@ export default {
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  backdrop-filter: blur(4px);
 }
 
 .modal-content {

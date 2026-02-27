@@ -1210,7 +1210,8 @@ export default {
             delete runningToolCalls.value[key];
           });
         }
-      }
+      },
+      { immediate: true }
     );
 
     // Watch for remote streaming to show "Annie is thinking..." in message bubble
@@ -1227,7 +1228,8 @@ export default {
             };
           }
         }
-      }
+      },
+      { immediate: true }
     );
 
     // Sync conversation ID from store

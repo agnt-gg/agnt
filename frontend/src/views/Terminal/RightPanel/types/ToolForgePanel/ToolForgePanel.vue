@@ -142,8 +142,6 @@ export default {
   flex-shrink: 0;
   /* padding: 16px 0 0; */
   background: transparent;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid var(--terminal-border-color);
   display: flex;
   justify-content: flex-end;

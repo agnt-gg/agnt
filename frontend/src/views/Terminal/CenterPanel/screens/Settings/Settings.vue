@@ -384,7 +384,6 @@ export default {
   padding: 24px;
   transition: all 0.3s ease;
   border-radius: 16px;
-  backdrop-filter: blur(4px);
 }
 
 body.dark .settings-section {

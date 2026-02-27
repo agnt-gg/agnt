@@ -214,7 +214,6 @@ export default {
   border-radius: 12px;
   overflow: visible;
   transition: all 0.2s ease;
-  backdrop-filter: blur(4px);
 }
 
 .parameters-card:hover {
