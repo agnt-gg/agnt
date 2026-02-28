@@ -1,6 +1,6 @@
 <template>
   <BaseDashboardCard title="GOALS MAP" footer-text="Click any [G-*] to tree">
-    <div class="goals-list">
+    <div class="goals-list" ref="listRef" :class="{ 'has-fade': canScroll && !isAtBottom }" @scroll="checkScroll">
       <div v-if="goals.length === 0" class="no-goals">
         <div class="empty-state">
           <i class="fas fa-bullseye"></i>
@@ -22,7 +22,7 @@
 </template>
 
 <script>
-import { computed } from 'vue';
+import { computed, ref, onMounted, onUpdated, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import BaseDashboardCard from './BaseDashboardCard.vue';
 
@@ -40,6 +40,17 @@ export default {
   emits: ['navigate'],
   setup(props, { emit }) {
     const store = useStore();
+    const listRef = ref(null);
+    const isAtBottom = ref(true);
+    const canScroll = ref(false);
+    const checkScroll = () => {
+      const el = listRef.value;
+      if (!el) return;
+      canScroll.value = el.scrollHeight > el.clientHeight + 4;
+      isAtBottom.value = !canScroll.value || el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+    };
+    onMounted(() => nextTick(checkScroll));
+    onUpdated(() => nextTick(checkScroll));
 
     const goals = computed(() => {
       // Try to get goals from store first, fallback to props
@@ -54,6 +65,10 @@ export default {
     return {
       goals,
       navigateToChat,
+      listRef,
+      isAtBottom,
+      canScroll,
+      checkScroll,
     };
   },
 };
@@ -67,6 +82,16 @@ export default {
   gap: 0;
   max-height: 306px;
   overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.goals-list::-webkit-scrollbar {
+  display: none;
+}
+
+.goals-list.has-fade {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 8px), transparent 100%);
+  mask-image: linear-gradient(to bottom, black calc(100% - 8px), transparent 100%);
 }
 
 .no-goals {

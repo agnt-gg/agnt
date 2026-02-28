@@ -2,7 +2,7 @@
   <div class="dashboard-section workflow-list-section">
     <h3 class="section-title">ACTIVE WORKFLOWS</h3>
 
-    <div class="workflow-list">
+    <div class="workflow-list" ref="workflowListRef" :class="{ 'has-fade': canScroll && !isAtBottom }" @scroll="checkScroll">
       <div
         v-for="template in workflowTemplates"
         :key="template.id"
@@ -23,7 +23,7 @@
 </template>
 
 <script>
-import { computed, inject } from 'vue';
+import { computed, inject, ref, onMounted, onUpdated, nextTick } from 'vue';
 import { useStore } from 'vuex';
 
 export default {
@@ -32,6 +32,17 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const playSound = inject('playSound', () => {});
+    const workflowListRef = ref(null);
+    const isAtBottom = ref(true);
+    const canScroll = ref(false);
+    const checkScroll = () => {
+      const el = workflowListRef.value;
+      if (!el) return;
+      canScroll.value = el.scrollHeight > el.clientHeight + 4;
+      isAtBottom.value = !canScroll.value || el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+    };
+    onMounted(() => nextTick(checkScroll));
+    onUpdated(() => nextTick(checkScroll));
 
     const workflowTemplates = computed(() => {
       const activeWorkflows = store.getters['workflows/activeWorkflows'] || [];
@@ -52,6 +63,10 @@ export default {
     return {
       workflowTemplates,
       editWorkflow,
+      workflowListRef,
+      isAtBottom,
+      canScroll,
+      checkScroll,
     };
   },
 };
@@ -76,8 +91,17 @@ export default {
   flex-direction: column;
   gap: 4px;
   max-height: 296px;
-  overflow: scroll;
-  padding-bottom: 1px;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.workflow-list::-webkit-scrollbar {
+  display: none;
+}
+
+.workflow-list.has-fade {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
 }
 
 .workflow-row {

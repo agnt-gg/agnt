@@ -1,6 +1,6 @@
 <template>
   <BaseDashboardCard title="ACTIVE WORKFLOWS" footer-text="Real-time workflow status">
-    <div class="pipeline-stages">
+    <div class="pipeline-stages" ref="listRef" :class="{ 'has-fade': canScroll && !isAtBottom }" @scroll="checkScroll">
       <div v-if="activeWorkflows.length === 0" class="no-workflows">
         <div class="empty-state">
           <i class="fas fa-cogs"></i>
@@ -22,7 +22,7 @@
 </template>
 
 <script>
-import { computed, inject } from 'vue';
+import { computed, inject, ref, onMounted, onUpdated, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import BaseDashboardCard from './BaseDashboardCard.vue';
 
@@ -40,6 +40,17 @@ export default {
   emits: ['navigate'],
   setup(props, { emit }) {
     const store = useStore();
+    const listRef = ref(null);
+    const isAtBottom = ref(true);
+    const canScroll = ref(false);
+    const checkScroll = () => {
+      const el = listRef.value;
+      if (!el) return;
+      canScroll.value = el.scrollHeight > el.clientHeight + 4;
+      isAtBottom.value = !canScroll.value || el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+    };
+    onMounted(() => nextTick(checkScroll));
+    onUpdated(() => nextTick(checkScroll));
 
     const activeWorkflows = computed(() => {
       const allWorkflows = store.getters['workflows/allWorkflows'] || [];
@@ -66,6 +77,10 @@ export default {
       activeWorkflows,
       getStatusIcon,
       navigateToWorkflowForge,
+      listRef,
+      isAtBottom,
+      canScroll,
+      checkScroll,
     };
   },
 };
@@ -79,6 +94,16 @@ export default {
   gap: 6px;
   max-height: 306px;
   overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.pipeline-stages::-webkit-scrollbar {
+  display: none;
+}
+
+.pipeline-stages.has-fade {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
 }
 
 .no-workflows {

@@ -24,7 +24,7 @@
         </button>
       </div>
 
-      <div class="integration-grid">
+      <div class="integration-grid" ref="gridRef" :class="{ 'has-fade': canGridScroll && !isGridAtBottom }" @scroll="checkGridScroll">
         <Tooltip
           v-for="integration in integrationDetails"
           :key="integration.provider"
@@ -50,7 +50,7 @@
 </template>
 
 <script>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted, onUpdated, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -69,7 +69,17 @@ export default {
   setup() {
     const store = useStore();
     const modal = ref(null);
+    const gridRef = ref(null);
+    const isGridAtBottom = ref(true);
+    const canGridScroll = ref(false);
     const refreshing = computed(() => store.getters['appAuth/isHealthCheckLoading']);
+
+    const checkGridScroll = () => {
+      const el = gridRef.value;
+      if (!el) return;
+      canGridScroll.value = el.scrollHeight > el.clientHeight + 4;
+      isGridAtBottom.value = !canGridScroll.value || el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+    };
 
     const connectionHealth = computed(() => store.state.appAuth.connectionHealth);
 
@@ -687,6 +697,7 @@ export default {
       if (store.getters['appAuth/needsHealthCheck']) {
         await refreshHealth();
       }
+      nextTick(checkGridScroll);
 
       // Listen for OAuth completion messages
       window.addEventListener('message', handleOAuthMessage);
@@ -710,6 +721,10 @@ export default {
       refreshing,
       handleIntegrationClick,
       modal,
+      gridRef,
+      isGridAtBottom,
+      canGridScroll,
+      checkGridScroll,
     };
   },
 };
@@ -830,13 +845,22 @@ export default {
   grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
   gap: 4px;
   margin-top: 16px;
-  padding: 8px;
+  padding: 8px 8px 12px;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   max-height: 188px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.integration-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.integration-grid.has-fade {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
 }
 
 /* Fix Tooltip container to fill grid cells */

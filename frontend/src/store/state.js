@@ -89,6 +89,7 @@ const store = createStore({
           dispatch('executionHistory/fetchExecutions'),
           dispatch('widgetLayout/fetchLayouts'),
           dispatch('widgetDefinitions/fetchDefinitions'),
+          dispatch('appAuth/fetchAllProviders'),
         ]).then((results) => {
           results.forEach((result, index) => {
             if (result.status === 'rejected') {

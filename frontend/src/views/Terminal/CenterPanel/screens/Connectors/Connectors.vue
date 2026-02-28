@@ -29,7 +29,21 @@
       <!-- OAuth Connections Section -->
       <div v-else-if="activeSection === 'oauth'" class="connectors-content">
         <div class="content-header">
-          <h2 class="content-title">Auth Connections</h2>
+          <div class="content-title-row">
+            <h2 class="content-title">Auth Connections</h2>
+            <div class="health-summary-inline" v-if="connectionHealth">
+              <span class="health-status-text" :class="'status-' + (connectionHealth.overall || 'unknown')">
+                {{ connectionHealth.overall === 'healthy' ? 'All Healthy' : connectionHealth.overall === 'degraded' ? 'Issues Detected' : connectionHealth.overall === 'critical' ? 'Critical' : '' }}
+              </span>
+              <span class="health-count-text">{{ healthyCount }}/{{ totalCount }} connected</span>
+              <button class="refresh-health-btn" @click="refreshConnectionHealth" :disabled="refreshingHealth">
+                <i class="fas fa-sync-alt" :class="{ 'fa-spin': refreshingHealth }"></i>
+              </button>
+            </div>
+            <button v-else class="refresh-health-btn" @click="refreshConnectionHealth" :disabled="refreshingHealth">
+              <i class="fas fa-sync-alt" :class="{ 'fa-spin': refreshingHealth }"></i> Check Health
+            </button>
+          </div>
           <p class="content-subtitle">Manage your API key and OAuth connections. Add, connect, use.</p>
         </div>
         <div class="connectors-grid">
@@ -100,29 +114,38 @@
 
               <!-- Grid View -->
               <div v-else-if="viewMode === 'grid'" class="oauth-app-grid">
-                <div v-for="provider in paginatedProviders" :key="provider.id" class="oauth-app-item" :class="{ connected: provider.connected }">
-                  <Tooltip text="Edit Provider" width="auto">
-                    <button class="edit-provider-btn" @click.stop="editProvider(provider)">
-                      <i class="fas fa-edit"></i>
-                    </button>
-                  </Tooltip>
-                  <div class="oauth-app-content" @click="handleOAuthAppClick(provider)">
-                    <div class="oauth-app-icon">
-                      <SvgIcon :name="provider.icon" />
+                <Tooltip
+                  v-for="provider in paginatedProviders"
+                  :key="provider.id"
+                  :text="provider.healthMetric && provider.healthMetric !== 'Connected' && provider.connected ? `${provider.name}: ${provider.healthMetric}` : provider.name"
+                  width="auto"
+                >
+                  <div class="oauth-app-item" :class="{ connected: provider.connected, healthy: provider.healthStatus === 'healthy', degraded: provider.healthStatus === 'degraded', unhealthy: provider.healthStatus === 'error' }">
+                    <Tooltip text="Edit Provider" width="auto">
+                      <button class="edit-provider-btn" @click.stop="editProvider(provider)">
+                        <i class="fas fa-edit"></i>
+                      </button>
+                    </Tooltip>
+                    <span v-if="provider.connected" class="health-dot" :class="provider.healthStatus || 'unknown'"></span>
+                    <div class="oauth-app-content" @click="handleOAuthAppClick(provider)">
+                      <div class="oauth-app-icon">
+                        <SvgIcon :name="provider.icon" />
+                      </div>
+                      <span class="oauth-app-name">{{ provider.name }}</span>
+                      <span class="connection-status" :class="{ connected: provider.connected && provider.healthStatus === 'healthy', degraded: provider.healthStatus === 'degraded', unhealthy: provider.healthStatus === 'error' }">
+                        {{ !provider.connected ? 'Not Connected' : provider.healthStatus === 'error' ? 'Error' : provider.healthStatus === 'degraded' ? 'Degraded' : 'Connected' }}
+                      </span>
                     </div>
-                    <span class="oauth-app-name">{{ provider.name }}</span>
-                    <span class="connection-status" :class="{ connected: provider.connected }">
-                      {{ provider.connected ? 'Connected' : 'Not Connected' }}
-                    </span>
                   </div>
-                </div>
+                </Tooltip>
               </div>
 
               <!-- List View -->
               <div v-else class="oauth-app-list">
-                <div v-for="provider in paginatedProviders" :key="provider.id" class="oauth-list-item" :class="{ connected: provider.connected }">
+                <div v-for="provider in paginatedProviders" :key="provider.id" class="oauth-list-item" :class="{ connected: provider.connected, healthy: provider.healthStatus === 'healthy', degraded: provider.healthStatus === 'degraded', unhealthy: provider.healthStatus === 'error' }">
                   <div class="list-item-icon">
                     <SvgIcon :name="provider.icon" />
+                    <span v-if="provider.connected" class="health-dot" :class="provider.healthStatus || 'unknown'"></span>
                   </div>
                   <div class="list-item-content" @click="handleOAuthAppClick(provider)">
                     <div class="list-item-name">{{ provider.name }}</div>
@@ -131,8 +154,17 @@
                     </div>
                   </div>
                   <div class="list-item-status">
-                    <span class="connection-status" :class="{ connected: provider.connected }">
-                      {{ provider.connected ? 'Connected' : 'Not Connected' }}
+                    <Tooltip
+                      v-if="provider.healthMetric && provider.healthMetric !== 'Connected' && provider.connected"
+                      :text="provider.healthMetric"
+                      width="auto"
+                    >
+                      <span class="connection-status" :class="{ connected: provider.connected && provider.healthStatus === 'healthy', degraded: provider.healthStatus === 'degraded', unhealthy: provider.healthStatus === 'error' }">
+                        {{ provider.healthStatus === 'error' ? 'Error' : provider.healthStatus === 'degraded' ? 'Degraded' : 'Connected' }}
+                      </span>
+                    </Tooltip>
+                    <span v-else class="connection-status" :class="{ connected: provider.connected && provider.healthStatus === 'healthy' }">
+                      {{ !provider.connected ? 'Not Connected' : provider.healthStatus === 'error' ? 'Error' : provider.healthStatus === 'degraded' ? 'Degraded' : 'Connected' }}
                     </span>
                   </div>
                   <div class="list-item-actions">
@@ -857,14 +889,45 @@ export default {
     // --- OAuth Providers State ---
     const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
-    const oauthProviders = computed(() =>
-      allProviders.value.map((p) => ({
-        ...p,
-        categories: Array.isArray(p.categories) ? p.categories : p.categories ? JSON.parse(p.categories) : [],
-        connected: connectedApps.value.includes(p.id),
-        connectionType: p.connectionType || p.connection_type,
-      }))
-    );
+    const connectionHealth = computed(() => store.state.appAuth.connectionHealth);
+    const refreshingHealth = computed(() => store.getters['appAuth/isHealthCheckLoading']);
+    const oauthProviders = computed(() => {
+      const healthProviders = connectionHealth.value?.providers || [];
+      return allProviders.value.map((p) => {
+        const isConnected = connectedApps.value.includes(p.id);
+        const healthStatus = healthProviders.find((hp) => hp.provider === p.id);
+        let status = healthStatus?.status;
+        let healthMetric = healthStatus?.details?.error || healthStatus?.error;
+        // Local-only providers fallback
+        if (!healthStatus && isConnected) {
+          status = 'healthy';
+          healthMetric = 'Connected';
+        }
+        return {
+          ...p,
+          categories: Array.isArray(p.categories) ? p.categories : p.categories ? JSON.parse(p.categories) : [],
+          connected: isConnected,
+          connectionType: p.connectionType || p.connection_type,
+          healthStatus: status || (isConnected ? 'healthy' : null),
+          healthMetric: healthMetric || (status === 'healthy' ? 'Connected' : isConnected ? 'Connected' : null),
+        };
+      });
+    });
+    const healthyCount = computed(() => {
+      const count = store.getters['appAuth/healthyConnectionsCount'] || 0;
+      return count > 0 ? count - 1 : 0;
+    });
+    const totalCount = computed(() => {
+      const count = store.getters['appAuth/totalConnectionsCount'] || 0;
+      return count > 0 ? count - 1 : 0;
+    });
+    const refreshConnectionHealth = async () => {
+      try {
+        await store.dispatch('appAuth/checkConnectionHealthStream');
+      } catch {
+        await store.dispatch('appAuth/checkConnectionHealth');
+      }
+    };
     const oauthSearch = ref('');
     const modalRef = ref(null);
     const isLoadingProviders = ref(false);
@@ -1269,6 +1332,14 @@ export default {
       terminalLines.value = ['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.'];
       resetForm();
       nextTick(() => baseScreenRef.value?.scrollToBottom());
+
+      // Load auth connections data and check health
+      store.dispatch('appAuth/fetchConnectedApps');
+      store.dispatch('appAuth/fetchAllProviders').then(() => {
+        if (store.getters['appAuth/needsHealthCheck']) {
+          refreshConnectionHealth();
+        }
+      });
 
       // Pre-refresh marketplace data in background if needed (respects cache)
       store.dispatch('marketplace/fetchMyPurchases');
@@ -1930,6 +2001,11 @@ export default {
       disconnectApp,
       handleOAuthAppClick,
       isLoadingProviders,
+      connectionHealth,
+      refreshingHealth,
+      healthyCount,
+      totalCount,
+      refreshConnectionHealth,
       modalRef,
       handlePanelAction,
       filteredOAuthProviders,
@@ -2051,6 +2127,65 @@ export default {
   gap: 16px;
 }
 
+.content-title-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.health-summary-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85em;
+}
+
+.health-status-text {
+  font-weight: 600;
+}
+
+.health-status-text.status-healthy {
+  color: var(--color-green);
+}
+
+.health-status-text.status-degraded {
+  color: var(--color-yellow);
+}
+
+.health-status-text.status-critical {
+  color: var(--color-red);
+}
+
+.health-count-text {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.refresh-health-btn {
+  background: none;
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-text-muted);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 1em;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.refresh-health-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.refresh-health-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .content-subtitle {
   color: var(--color-light-med-navy);
   font-size: 1em;
@@ -2152,17 +2287,51 @@ body.dark .form-actions {
   display: flex;
   flex-direction: column;
   align-items: center;
-  border: 2px solid var(--color-text-muted);
+  border: 2px solid var(--terminal-border-color);
   border-radius: 8px;
-  /* padding: 8px 0 0; */
   transition: all 0.3s ease;
   min-width: 88px;
   min-height: 88px;
   justify-content: center;
+  opacity: 0.6;
 }
 
 .oauth-app-item.connected {
   border-color: var(--color-green);
+  opacity: 1;
+}
+
+.oauth-app-item.connected.degraded {
+  border-color: var(--color-yellow);
+}
+
+.oauth-app-item.connected.unhealthy {
+  border-color: var(--color-red);
+}
+
+.health-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  z-index: 5;
+}
+
+.health-dot.healthy {
+  background: var(--color-green);
+  box-shadow: 0 0 4px var(--color-green);
+}
+
+.health-dot.degraded {
+  background: var(--color-yellow);
+  box-shadow: 0 0 4px var(--color-yellow);
+}
+
+.health-dot.error,
+.health-dot.unknown {
+  background: var(--color-text-muted);
 }
 
 .edit-provider-btn {
@@ -2179,6 +2348,10 @@ body.dark .form-actions {
   opacity: 0;
   transition: all 0.2s ease;
   z-index: 10;
+}
+
+.oauth-app-item:hover {
+  opacity: 1;
 }
 
 .oauth-app-item:hover .edit-provider-btn {
@@ -2227,6 +2400,14 @@ body.dark .form-actions {
 
 .connection-status.connected {
   color: var(--color-green);
+}
+
+.connection-status.degraded {
+  color: var(--color-yellow);
+}
+
+.connection-status.unhealthy {
+  color: var(--color-red);
 }
 
 .loading {
@@ -2828,6 +3009,7 @@ body.dark .results-info {
   border-radius: 8px;
   transition: all 0.2s ease;
   cursor: pointer;
+  opacity: 0.6;
 }
 
 body.dark .oauth-list-item {
@@ -2838,20 +3020,39 @@ body.dark .oauth-list-item {
   border-color: var(--color-green);
   box-shadow: 0 2px 8px rgba(var(--green-rgb), 0.1);
   transform: translateX(4px);
+  opacity: 1;
 }
 
 .oauth-list-item.connected {
   border-color: var(--color-green);
   background: rgba(var(--green-rgb), 0.03);
+  opacity: 1;
+}
+
+.oauth-list-item.connected.degraded {
+  border-color: var(--color-yellow);
+  background: rgba(var(--yellow-rgb), 0.03);
+}
+
+.oauth-list-item.connected.unhealthy {
+  border-color: var(--color-red);
+  background: rgba(var(--red-rgb), 0.03);
 }
 
 .list-item-icon {
+  position: relative;
   flex-shrink: 0;
   width: 40px;
   height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.list-item-icon .health-dot {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 .list-item-icon :deep(svg) {

@@ -1625,18 +1625,20 @@ export default {
 .tool-auth-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 4px 8px 2px;
+  border-radius: 12px;
   border: none;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   font-family: inherit;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   cursor: pointer;
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.15);
   color: var(--color-red);
+  border: 1px solid rgba(239, 68, 68, 0.4);
   transition: filter 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
 }
 
 .tool-auth-badge:hover {
@@ -1644,8 +1646,10 @@ export default {
 }
 
 .tool-auth-badge.connected {
-  background: rgba(34, 197, 94, 0.2);
+  background: rgba(34, 197, 94, 0.15);
   color: var(--color-green);
+  border-color: rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.3);
 }
 
 .tool-description {

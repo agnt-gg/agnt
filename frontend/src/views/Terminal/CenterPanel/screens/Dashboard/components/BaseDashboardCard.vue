@@ -67,10 +67,12 @@ export default {
 .card-content {
   padding: 12px;
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
   font-size: var(--font-size-sm);
+  overflow: hidden;
 }
 
 .section-title {

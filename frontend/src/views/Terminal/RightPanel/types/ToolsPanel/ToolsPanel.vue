@@ -10,6 +10,17 @@
         {{ selectedTool.description || 'No description available' }}
       </div>
 
+      <div v-if="selectedTool.authProvider" class="tool-connection">
+        <button
+          class="tool-connect-btn"
+          :class="{ connected: isProviderConnected(selectedTool.authProvider) }"
+          @click="handleProviderToggle(selectedTool.authProvider)"
+        >
+          <i class="fas" :class="isProviderConnected(selectedTool.authProvider) ? 'fa-check-circle' : 'fa-plug'"></i>
+          {{ isProviderConnected(selectedTool.authProvider) ? 'Connected' : 'Connect' }}
+        </button>
+      </div>
+
       <div class="tool-config" v-if="selectedTool.config">
         <h3>Configuration</h3>
         <div class="config-list">
@@ -65,6 +76,7 @@ import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import { useProviderConnection } from '@/composables/useProviderConnection.js';
 
 export default {
   name: 'ToolsPanel',
@@ -95,6 +107,7 @@ export default {
     const stripeConnected = ref(false);
     const toolCategories = computed(() => store.getters['tools/toolCategories'] || []);
     const simpleModal = ref(null);
+    const { isProviderConnected, handleProviderToggle } = useProviderConnection(simpleModal);
 
     // Check Stripe Connect status
     const checkStripeStatus = async () => {
@@ -249,6 +262,8 @@ export default {
     return {
       formatConfigValue,
       isCustomTool,
+      isProviderConnected,
+      handleProviderToggle,
       // Publishing
       showPublishModal,
       stripeConnected,
@@ -378,6 +393,38 @@ h3 {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.tool-connection {
+  margin-top: 0;
+}
+
+.tool-connect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  font-size: 0.85em;
+  font-weight: 600;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-red);
+  transition: all 0.2s ease;
+}
+
+.tool-connect-btn:hover {
+  filter: brightness(1.2);
+}
+
+.tool-connect-btn.connected {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--color-green);
+  border-color: rgba(34, 197, 94, 0.4);
 }
 
 .tool-actions {
