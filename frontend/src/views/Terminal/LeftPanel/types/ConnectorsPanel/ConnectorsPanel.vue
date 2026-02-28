@@ -1,7 +1,7 @@
 <template>
-  <div class="secrets-panel">
+  <div class="connectors-panel">
     <div class="panel-header">
-      <h2 class="title">/ Connect</h2>
+      <h2 class="title">/ Connectors</h2>
       <div class="panel-stats">
         <span class="stat-item">
           <i class="fas fa-shield-alt"></i>
@@ -10,7 +10,7 @@
       </div>
     </div>
 
-    <div class="secrets-nav">
+    <div class="connectors-nav">
       <div class="nav-section">
         <!-- <h4>Connections</h4> -->
         <div class="nav-items">
@@ -85,21 +85,21 @@ import { ref, computed } from 'vue';
 import { useStore } from 'vuex';
 
 export default {
-  name: 'SecretsPanel',
+  name: 'ConnectorsPanel',
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
     const activeSection = ref('plugins');
 
     const totalSecrets = computed(() => {
-      const secrets = store.getters['secrets/allSecrets'] || [];
+      const secrets = store.getters['connectors/allSecrets'] || [];
       const allProviders = store.state.appAuth?.allProviders || [];
       return secrets.length + allProviders.length;
     });
 
     const handleNavClick = (section) => {
       activeSection.value = section;
-      emit('panel-action', 'secrets-nav', section);
+      emit('panel-action', 'connectors-nav', section);
     };
 
     return {
@@ -112,7 +112,7 @@ export default {
 </script>
 
 <style scoped>
-.secrets-panel {
+.connectors-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -157,7 +157,7 @@ export default {
   text-align: center;
 }
 
-.secrets-nav {
+.connectors-nav {
   flex: 1;
   display: flex;
   flex-direction: column;

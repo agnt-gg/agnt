@@ -237,7 +237,7 @@ const SETTINGS_SECTIONS = [
       { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
     ],
   },
-  { id: 'connect', icon: 'fas fa-key', label: 'Connect', screens: [{ screen: 'SecretsScreen', label: 'CONNECT' }] },
+  { id: 'connect', icon: 'fas fa-key', label: 'Connectors', screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTORS' }] },
   { id: 'settings', icon: 'fas fa-cog', label: 'Settings', screens: [{ screen: 'SettingsScreen', label: 'SETTINGS' }] },
 ];
 

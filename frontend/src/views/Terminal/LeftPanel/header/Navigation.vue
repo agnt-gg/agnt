@@ -227,9 +227,9 @@ export default {
           // unlocksAt: 14,
         },
         {
-          screen: 'SecretsScreen',
+          screen: 'ConnectorsScreen',
           icon: 'integrations',
-          label: 'Connect',
+          label: 'Connectors',
           // disabled: userLevel.value < 18,
           // unlocksAt: 18,
         },

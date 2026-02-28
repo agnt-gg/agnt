@@ -128,14 +128,14 @@ export function registerAllWidgets() {
     isScreenWidget: true,
   });
 
-  registerWidget('secrets', {
-    name: 'Secrets',
+  registerWidget('connectors', {
+    name: 'Connectors',
     icon: 'fas fa-key',
     category: 'system',
-    component: defineAsyncComponent(() => import('@/views/Terminal/CenterPanel/screens/Secrets/Secrets.vue')),
+    component: defineAsyncComponent(() => import('@/views/Terminal/CenterPanel/screens/Connectors/Connectors.vue')),
     defaultSize: { cols: 12, rows: 8 },
     minSize: { cols: 4, rows: 3 },
-    description: 'API keys & secrets',
+    description: 'API keys & connectors',
     isScreenWidget: true,
   });
 

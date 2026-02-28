@@ -1,8 +1,8 @@
 <template>
-  <div class="ui-panel secrets-panel">
+  <div class="ui-panel connectors-panel">
     <!-- Default View -->
     <div v-if="!selectedPlugin">
-      <h2>Secrets</h2>
+      <h2>Connectors</h2>
       <div class="panel-section about-section">
         <div class="about-row">AGNT Terminal UI v0.3.1</div>
         <div class="about-row">Connect your favorite apps and MCPs.</div>
@@ -72,7 +72,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 
 export default {
-  name: 'SecretsPanel',
+  name: 'ConnectorsPanel',
   components: { BaseButton, SimpleModal },
   setup() {
     const store = useStore();
@@ -81,7 +81,7 @@ export default {
     const modalRef = ref(null);
     const panelRef = ref(null);
 
-    const selectedPlugin = computed(() => store.getters['secrets/selectedPlugin']);
+    const selectedPlugin = computed(() => store.getters['connectors/selectedPlugin']);
 
     // Handle clicks outside the panel to close it
     function handleClickOutside(event) {
@@ -89,13 +89,13 @@ export default {
       if (!selectedPlugin.value) return;
 
       // Check if click is inside the secrets panel (right panel)
-      const rightPanel = event.target.closest('.secrets-panel');
+      const rightPanel = event.target.closest('.connectors-panel');
       const pluginCard = event.target.closest('.plugin-card');
       const modal = event.target.closest('.simple-modal-overlay');
 
       // If click is not on the panel, not on a plugin card, and not on a modal, close the panel
       if (!rightPanel && !pluginCard && !modal) {
-        store.dispatch('secrets/selectPlugin', null);
+        store.dispatch('connectors/selectPlugin', null);
       }
     }
 
@@ -110,13 +110,13 @@ export default {
     });
 
     function closeDetails() {
-      store.dispatch('secrets/selectPlugin', null);
+      store.dispatch('connectors/selectPlugin', null);
     }
 
     async function editPlugin() {
       if (!selectedPlugin.value) return;
       // Switch tab to builder and load plugin
-      await store.dispatch('secrets/setActiveTab', 'builder');
+      await store.dispatch('connectors/setActiveTab', 'builder');
       await store.dispatch('pluginBuilder/loadPluginForEditing', selectedPlugin.value.name);
     }
 
@@ -178,9 +178,9 @@ export default {
         });
         const data = await response.json();
         if (data.success) {
-          store.dispatch('secrets/triggerRefresh');
+          store.dispatch('connectors/triggerRefresh');
           store.dispatch('tools/fetchTools', { force: true });
-          store.dispatch('secrets/selectPlugin', { ...plugin, _isInstalled: true });
+          store.dispatch('connectors/selectPlugin', { ...plugin, _isInstalled: true });
 
           await modalRef.value?.showModal({
             title: 'Success',
@@ -261,7 +261,7 @@ export default {
 
         if (data.success) {
           // Refresh list and tools
-          store.dispatch('secrets/triggerRefresh');
+          store.dispatch('connectors/triggerRefresh');
           store.dispatch('tools/fetchTools', { force: true });
           closeDetails();
 
@@ -304,7 +304,7 @@ export default {
 </script>
 
 <style scoped>
-.ui-panel.secrets-panel {
+.ui-panel.connectors-panel {
   padding: 0;
   display: flex;
   flex-direction: column;

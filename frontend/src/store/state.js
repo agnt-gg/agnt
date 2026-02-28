@@ -21,7 +21,7 @@ import marketplace from './features/marketplace';
 // import map from './features/_map';
 import songPlayer from './app/songPlayer';
 // import missionAssignments from './features/_missionAssignments';
-import secrets from './features/secrets';
+import connectors from './features/connectors';
 import webhooks from './features/webhooks';
 import emailListeners from './features/emailListeners';
 import mcpServers from './features/mcpServers';
@@ -132,7 +132,7 @@ const store = createStore({
     // map,
     songPlayer,
     // missionAssignments,
-    secrets,
+    connectors,
     webhooks,
     emailListeners,
     mcpServers,

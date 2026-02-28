@@ -27,7 +27,7 @@ export const defaultLayouts = {
 
   // ── System ──
   SettingsScreen: [{ widgetId: 'settings', col: 0, row: 0, cols: 12, rows: 8 }],
-  SecretsScreen: [{ widgetId: 'secrets', col: 0, row: 0, cols: 12, rows: 8 }],
+  ConnectorsScreen: [{ widgetId: 'connectors', col: 0, row: 0, cols: 12, rows: 8 }],
   MarketplaceScreen: [{ widgetId: 'marketplace', col: 0, row: 0, cols: 12, rows: 8 }],
   GoalsScreen: [{ widgetId: 'goals', col: 0, row: 0, cols: 12, rows: 8 }],
 };
@@ -58,7 +58,7 @@ export const routeScreenMap = {
   '/goals': 'GoalsScreen',
   '/runs': 'RunsScreen',
   '/settings': 'SettingsScreen',
-  '/secrets': 'SecretsScreen',
+  '/connectors': 'ConnectorsScreen',
   '/marketplace': 'MarketplaceScreen',
   '/workflow-forge': 'WorkflowForgeScreen',
   '/tool-forge': 'ToolForgeScreen',

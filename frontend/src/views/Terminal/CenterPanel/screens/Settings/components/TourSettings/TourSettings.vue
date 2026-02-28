@@ -110,7 +110,7 @@ export default {
         id: 'secrets',
         name: 'App Connections Tour',
         description: 'Learn how to navigate and configure your app integrations',
-        screen: 'SecretsScreen',
+        screen: 'ConnectorsScreen',
       },
       {
         id: 'ChatScreen',

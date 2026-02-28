@@ -73,10 +73,10 @@ const router = createRouter({
       meta: { terminalScreen: 'SettingsScreen' },
     },
     {
-      path: '/secrets',
-      name: 'TerminalSecrets',
+      path: '/connectors',
+      name: 'TerminalConnectors',
       component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'SecretsScreen' },
+      meta: { requiresAuth: true, terminalScreen: 'ConnectorsScreen' },
     },
     {
       path: '/agents',
@@ -151,7 +151,7 @@ router.beforeEach(async (to, from, next) => {
   if (to.path === '/settings' && to.query.code) {
     console.log('OAuth callback detected, redirecting to settings page');
     next({
-      path: '/secrets',
+      path: '/connectors',
       query: to.query, // Preserve all query parameters
     });
     return;

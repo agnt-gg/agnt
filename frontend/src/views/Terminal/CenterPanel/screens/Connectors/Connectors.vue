@@ -2,7 +2,7 @@
   <BaseScreen
     ref="baseScreenRef"
     :activeRightPanel="activeRightPanel"
-    screenId="SecretsScreen"
+    screenId="ConnectorsScreen"
     :showInput="false"
     :terminalLines="terminalLines"
     :panelProps="{ form: form, typeOptions: typeOptions }"
@@ -12,28 +12,28 @@
   >
     <template #default>
       <!-- Providers Section -->
-      <div v-if="activeSection === 'providers'" class="secrets-content">
+      <div v-if="activeSection === 'providers'" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">Default AI Provider</h2>
           <p class="content-subtitle">
             Choose your default AI service provider and model. This will be the provider and model used by Annie throughout the app.
           </p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section full-width">
+        <div class="connectors-grid">
+          <div class="connectors-section full-width">
             <ProviderSelector />
           </div>
         </div>
       </div>
 
       <!-- OAuth Connections Section -->
-      <div v-else-if="activeSection === 'oauth'" class="secrets-content">
+      <div v-else-if="activeSection === 'oauth'" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">Auth Connections</h2>
           <p class="content-subtitle">Manage your API key and OAuth connections. Add, connect, use.</p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section">
+        <div class="connectors-grid">
+          <div class="connectors-section">
             <!-- Search and Controls Bar -->
             <div class="controls-bar">
               <div class="search-wrapper">
@@ -159,13 +159,13 @@
       </div>
 
       <!-- MCP Servers Section -->
-      <div v-else-if="activeSection === 'mcp-servers'" class="secrets-content">
+      <div v-else-if="activeSection === 'mcp-servers'" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">MCP / NPM Library</h2>
           <p class="content-subtitle">Manage Model Context Protocol server connections. Enjoy access to over 2 million packages via NPM.</p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section full-width">
+        <div class="connectors-grid">
+          <div class="connectors-section full-width">
             <div class="plugins-header">
               <h3>
                 MCP Manager
@@ -415,41 +415,41 @@
       </div>
 
       <!-- Webhooks Section -->
-      <div v-else-if="activeSection === 'webhooks'" class="secrets-content">
+      <div v-else-if="activeSection === 'webhooks'" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">Webhooks</h2>
           <p class="content-subtitle">View and manage your active webhooks</p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section full-width">
+        <div class="connectors-grid">
+          <div class="connectors-section full-width">
             <Webhooks @open-workflow="openWorkflow" />
           </div>
         </div>
       </div>
 
       <!-- Email Server Section -->
-      <div v-else-if="activeSection === 'email-server'" class="secrets-content">
+      <div v-else-if="activeSection === 'email-server'" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">Email Server</h2>
           <p class="content-subtitle">Configure and manage your email server connections</p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section full-width">
+        <div class="connectors-grid">
+          <div class="connectors-section full-width">
             <EmailServer @open-workflow="openWorkflow" />
           </div>
         </div>
       </div>
 
       <!-- Plugins Section -->
-      <div v-else-if="activeSection === 'plugins'" class="secrets-content" @click="handlePluginAreaClick">
+      <div v-else-if="activeSection === 'plugins'" class="connectors-content" @click="handlePluginAreaClick">
         <div class="content-header">
           <h2 class="content-title">My Plugins</h2>
           <p class="content-subtitle">
             Extend AGNT with community plugins. Install tools like Discord, Slack, GitHub and more without bloating your app.
           </p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section full-width">
+        <div class="connectors-grid">
+          <div class="connectors-section full-width">
             <Plugins @show-alert="showAlert" />
           </div>
         </div>
@@ -584,13 +584,13 @@
       </div>
 
       <!-- Add Provider Section -->
-      <div v-else-if="activeSection === 'add-provider'" class="secrets-content">
+      <div v-else-if="activeSection === 'add-provider'" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">Add New Integration</h2>
           <p class="content-subtitle">Create a new app provider to connect additional services</p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section">
+        <div class="connectors-grid">
+          <div class="connectors-section">
             <div class="add-provider-form">
               <div class="form-row">
                 <BaseInput v-model="providerForm.id" label="Provider ID" placeholder="e.g., openrouter, custom-service" :required="true" />
@@ -646,13 +646,13 @@
       </div>
 
       <!-- API Keys Section -->
-      <div v-else-if="activeSection === 'api-keys'" class="secrets-content">
+      <div v-else-if="activeSection === 'api-keys'" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">API Keys</h2>
           <p class="content-subtitle">Manage your API keys and credentials</p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section">
+        <div class="connectors-grid">
+          <div class="connectors-section">
             <BaseTable
               :items="filteredSecrets"
               :columns="tableColumns"
@@ -681,13 +681,13 @@
       </div>
 
       <!-- Environment Variables Section -->
-      <div v-else-if="activeSection === 'env-vars'" class="secrets-content">
+      <div v-else-if="activeSection === 'env-vars'" class="connectors-content">
         <div class="content-header">
           <h2 class="content-title">Environment Variables</h2>
           <p class="content-subtitle">Manage your environment variables</p>
         </div>
-        <div class="secrets-grid">
-          <div class="secrets-section">
+        <div class="connectors-grid">
+          <div class="connectors-section">
             <BaseTable
               :items="filteredSecrets"
               :columns="tableColumns"
@@ -712,7 +712,7 @@
               </template>
             </BaseTable>
           </div>
-          <div class="secrets-section full-width">
+          <div class="connectors-section full-width">
             <ResourcesSection />
           </div>
         </div>
@@ -743,7 +743,7 @@ import ListWithSearch from '../../../_components/ListWithSearch.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
-import SecretsPanel from '@/views/Terminal/RightPanel/types/SecretsPanel/SecretsPanel.vue';
+import ConnectorsPanel from '@/views/Terminal/RightPanel/types/ConnectorsPanel/ConnectorsPanel.vue';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { useTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
@@ -755,7 +755,7 @@ import Plugins from './components/Plugins.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
-  name: 'SecretsScreen',
+  name: 'ConnectorsScreen',
   components: {
     BaseScreen,
     BaseTable,
@@ -768,7 +768,7 @@ export default {
     ListWithSearch,
     SvgIcon,
     SimpleModal,
-    SecretsPanel,
+    ConnectorsPanel,
     PopupTutorial,
     ProviderSelector,
     ResourcesSection,
@@ -795,7 +795,7 @@ export default {
     });
     const popup = ref({ show: false, type: 'success', message: '', icon: '' });
 
-    const activeRightPanel = computed(() => (store.getters['secrets/selectedPlugin'] ? 'SecretsPanel' : 'NewsPanel'));
+    const activeRightPanel = computed(() => (store.getters['connectors/selectedPlugin'] ? 'ConnectorsPanel' : 'NewsPanel'));
 
     // Provider form state
     const providerForm = ref({
@@ -839,7 +839,7 @@ export default {
       { key: 'actions', label: '', width: '100px' },
     ];
 
-    const allSecrets = computed(() => store.getters['secrets/allSecrets']);
+    const allSecrets = computed(() => store.getters['connectors/allSecrets']);
     const filteredSecrets = computed(() => {
       // Filter based on current section
       let type = 'env';
@@ -1233,12 +1233,12 @@ export default {
     function saveSecret() {
       if (!form.value.key || !form.value.value) return;
       if (form.value.id) {
-        store.dispatch('secrets/updateSecret', { ...form.value });
+        store.dispatch('connectors/updateSecret', { ...form.value });
         showPopup('success', 'Secret updated!', 'fas fa-check-circle');
         terminalLines.value.push(`[Secrets] Updated secret: ${form.value.key}`);
       } else {
         const id = 'secret-' + Date.now();
-        store.dispatch('secrets/addSecret', { ...form.value, id });
+        store.dispatch('connectors/addSecret', { ...form.value, id });
         showPopup('success', 'Secret added!', 'fas fa-check-circle');
         terminalLines.value.push(`[Secrets] Added secret: ${form.value.key}`);
       }
@@ -1257,7 +1257,7 @@ export default {
 
       if (!confirmed) return;
 
-      store.dispatch('secrets/deleteSecret', secret.id);
+      store.dispatch('connectors/deleteSecret', secret.id);
       showPopup('success', 'Secret deleted.', 'fas fa-trash');
       terminalLines.value.push(`[Secrets] Deleted secret: ${secret.key}`);
       resetForm();
@@ -1265,7 +1265,7 @@ export default {
     }
     function initializeScreen() {
       // Background load secrets
-      store.dispatch('secrets/loadSecrets');
+      store.dispatch('connectors/loadSecrets');
       terminalLines.value = ['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.'];
       resetForm();
       nextTick(() => baseScreenRef.value?.scrollToBottom());
@@ -1286,11 +1286,11 @@ export default {
         saveSecret();
       } else if (action === 'cancel') {
         resetForm();
-      } else if (action === 'secrets-nav') {
+      } else if (action === 'connectors-nav') {
         activeSection.value = payload;
         resetForm();
         selectedSecret.value = null;
-        store.dispatch('secrets/selectPlugin', null);
+        store.dispatch('connectors/selectPlugin', null);
       }
     }
 
@@ -1900,7 +1900,7 @@ export default {
       const pluginCard = event.target.closest('.plugin-card');
       if (!pluginCard) {
         // Clicked outside plugin cards, deselect the plugin to close the right panel
-        store.dispatch('secrets/selectPlugin', null);
+        store.dispatch('connectors/selectPlugin', null);
       }
     }
 
@@ -2004,7 +2004,7 @@ export default {
 </script>
 
 <style scoped>
-.secrets-content {
+.connectors-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -2059,7 +2059,7 @@ export default {
   line-height: 1.4;
 }
 
-.secrets-grid {
+.connectors-grid {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -2067,7 +2067,7 @@ export default {
   margin: 0;
 }
 
-.secrets-section {
+.connectors-section {
   background: transparent;
   border: 1px solid var(--color-light-navy);
   padding: 24px;
@@ -2075,12 +2075,12 @@ export default {
   border-radius: 16px;
 }
 
-body.dark .secrets-section {
+body.dark .connectors-section {
   border: 1px solid var(--terminal-border-color);
 }
 
-.secrets-section.full-width,
-body.dark .secrets-section.full-width {
+.connectors-section.full-width,
+body.dark .connectors-section.full-width {
   background: transparent;
   border: none;
 }

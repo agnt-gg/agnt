@@ -49,7 +49,7 @@ export function useTutorial(emitFunction) {
       hideArrow: true,
       navigateToScreen: computed(() => {
         // Only navigate if no provider is set
-        return !hasAIProvider.value ? 'SecretsScreen' : null;
+        return !hasAIProvider.value ? 'ConnectorsScreen' : null;
       }),
     },
     {

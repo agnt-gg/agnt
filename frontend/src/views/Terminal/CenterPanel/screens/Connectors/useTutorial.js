@@ -3,7 +3,7 @@ import { ref } from 'vue';
 export function useTutorial() {
   const tutorialConfig = ref([
     {
-      target: '.secrets-content',
+      target: '.connectors-content',
       position: 'center',
       title: 'Welcome to AGNT.gg!',
       content: 'Get started with a quick tour of the app from Annie, your dedicated AI assistant.',
@@ -11,7 +11,7 @@ export function useTutorial() {
       hideArrow: true,
     },
     {
-      target: '.secrets-content',
+      target: '.connectors-content',
       position: 'center',
       title: 'Welcome to Integrations!',
       content:
@@ -25,7 +25,7 @@ export function useTutorial() {
       audioContent: '/tutorial-assets/welcome-to-agnt.mp3',
     },
     {
-      target: '.secrets-content',
+      target: '.connectors-content',
       position: 'left',
       title: '📱 App Integrations',
       content:
@@ -89,7 +89,7 @@ export function useTutorial() {
       enforceStep: false,
     },
     {
-      target: '.secrets-content',
+      target: '.connectors-content',
       position: 'center',
       title: '💡 Pro Tips',
       content: 'Remember: Connect your AI provider first, then add other integrations as needed. All credentials are encrypted and stored securely!',
@@ -97,7 +97,7 @@ export function useTutorial() {
       hideArrow: true,
     },
     {
-      target: '.secrets-content',
+      target: '.connectors-content',
       position: 'center',
       title: '🎉 Tour Complete!',
       content:
@@ -113,7 +113,7 @@ export function useTutorial() {
   const onTutorialClose = () => {
     startTutorial.value = false;
     currentStep.value = 0;
-    localStorage.setItem('tutorial-SecretsScreen-completed', 'true');
+    localStorage.setItem('tutorial-ConnectorsScreen-completed', 'true');
   };
 
   const nextStep = () => {

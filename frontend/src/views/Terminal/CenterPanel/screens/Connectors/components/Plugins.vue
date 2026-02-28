@@ -385,18 +385,18 @@ export default {
 
     // Shared state from store
     const activeTab = computed({
-      get: () => store.getters['secrets/activeTab'],
-      set: (val) => store.dispatch('secrets/setActiveTab', val),
+      get: () => store.getters['connectors/activeTab'],
+      set: (val) => store.dispatch('connectors/setActiveTab', val),
     });
 
-    const selectedPlugin = computed(() => store.getters['secrets/selectedPlugin']);
+    const selectedPlugin = computed(() => store.getters['connectors/selectedPlugin']);
 
     // Stripe Connect status from store
     const stripeConnected = computed(() => store.getters['userAuth/stripeConnected'] || false);
 
     // Watch for refresh trigger from SecretsPanel
     watch(
-      () => store.getters['secrets/refreshTrigger'],
+      () => store.getters['connectors/refreshTrigger'],
       () => {
         refreshPlugins();
       }
@@ -712,7 +712,7 @@ export default {
           await store.dispatch('tools/refreshAllTools');
           // If uninstalled plugin was selected, deselect it
           if (selectedPlugin.value?.name === plugin.name) {
-            store.dispatch('secrets/selectPlugin', null);
+            store.dispatch('connectors/selectPlugin', null);
           }
         } else {
           throw new Error(data.error || 'Uninstallation failed');
@@ -727,11 +727,11 @@ export default {
     function selectPlugin(plugin) {
       playSound('typewriterKeyPress');
       const isInstalled = isPluginInstalled(plugin.name);
-      store.dispatch('secrets/selectPlugin', { ...plugin, _isInstalled: isInstalled });
+      store.dispatch('connectors/selectPlugin', { ...plugin, _isInstalled: isInstalled });
     }
 
     function deselectPlugin() {
-      store.dispatch('secrets/selectPlugin', null);
+      store.dispatch('connectors/selectPlugin', null);
     }
 
     function triggerFileUpload() {

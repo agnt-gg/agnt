@@ -176,7 +176,7 @@ export default {
       },
       nextStep: () => {
         // Navigate to Secrets screen
-        emit('screen-change', 'SecretsScreen');
+        emit('screen-change', 'ConnectorsScreen');
         noProviderTutorial.value.onTutorialClose();
       },
       initializeTutorial: () => {
