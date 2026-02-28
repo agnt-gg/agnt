@@ -198,7 +198,7 @@ body:not(.dark) input[type='color'],
 body:not(.dark) textarea,
 body:not(.dark) select {
   color: var(--color-text);
-  background-color: #ffffff;
+  background-color: transparent;
   border-color: var(--terminal-border-color);
 }
 
@@ -223,14 +223,14 @@ body:not(.dark) table {
 }
 
 body:not(.dark) th {
-  color: var(--color-text);
+  color: var(--color-darker-1);
   background: rgba(100, 100, 140, 0.06);
   border-bottom: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }
 
 body:not(.dark) td {
-  background: transparent;
+  background: var(--color-darker-0);
   border-bottom: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }

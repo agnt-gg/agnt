@@ -24,6 +24,7 @@ td {
   text-wrap: balance;
   overflow-wrap: normal;
   vertical-align: top;
+  background: var(--color-darker-0);
 }
 
 tr:last-child td {

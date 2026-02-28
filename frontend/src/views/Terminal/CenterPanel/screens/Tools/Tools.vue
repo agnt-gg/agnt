@@ -24,33 +24,52 @@
       /> -->
 
       <div class="tools-panel">
-        <!-- Sticky Header Container -->
-        <div class="sticky-header">
-          <!-- Tool Tabs and Layout Toggle -->
-          <BaseTabControls
-            :tabs="tabs"
-            :active-tab="activeTab"
-            :current-layout="currentLayout"
-            :show-grid-toggle="true"
-            :show-table-toggle="false"
-            @set-layout="setLayout"
-            @select-tab="selectTab"
-          />
-
-          <!-- Search Bar for Card View -->
-          <div class="card-view-search-bar">
-            <input type="text" class="search-input" placeholder="Search tools..." :value="searchQuery" @input="handleSearch($event.target.value)" />
+        <!-- Header bar -->
+        <div class="wm-header">
+          <div class="wm-header-left">
+            <span class="wm-title">TOOLS</span>
+            <span class="wm-count">{{ filteredTools.length }} tools</span>
+          </div>
+          <div class="wm-header-right">
+            <input
+              type="text"
+              class="wm-search-input"
+              placeholder="Search tools..."
+              :value="searchQuery"
+              @input="handleSearch($event.target.value)"
+            />
             <Tooltip :text="allCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'" width="auto">
-              <button class="collapse-all-button" :class="{ active: allCategoriesCollapsed }" @click="toggleCollapseAll">
+              <button class="wm-btn" :class="{ active: allCategoriesCollapsed }" @click="toggleCollapseAll" title="Toggle collapse">
                 <i :class="allCategoriesCollapsed ? 'fas fa-expand' : 'fas fa-compress'"></i>
               </button>
             </Tooltip>
             <Tooltip :text="hideEmptyCategories ? 'Show empty categories' : 'Hide empty categories'" width="auto">
-              <button class="hide-empty-button" :class="{ active: hideEmptyCategories }" @click="toggleHideEmptyCategories">
+              <button class="wm-btn" :class="{ active: hideEmptyCategories }" @click="toggleHideEmptyCategories" title="Toggle empty categories">
                 <i :class="hideEmptyCategories ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
               </button>
             </Tooltip>
+            <Tooltip text="Grid View" width="auto">
+              <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')" title="Grid view">
+                <i class="fas fa-th-large"></i>
+              </button>
+            </Tooltip>
+            <Tooltip text="Table View" width="auto">
+              <button class="wm-btn" :class="{ active: currentLayout === 'table' }" @click="setLayout('table')" title="Table view">
+                <i class="fas fa-table"></i>
+              </button>
+            </Tooltip>
+            <button class="wm-btn wm-btn-create" @click="handlePanelAction('navigate', 'ToolForgeScreen')" title="Create new tool">
+              <i class="fas fa-plus"></i>
+              <span>New Tool</span>
+            </button>
           </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="wm-tabs">
+          <button v-for="tab in tabs" :key="tab.id" class="wm-tab" :class="{ active: activeTab === tab.id }" @click="selectTab(tab.id)">
+            <i :class="tab.icon"></i> {{ tab.name }}
+          </button>
         </div>
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
@@ -238,7 +257,6 @@ import { useStore } from 'vuex';
 import { useMarketplaceInstall } from '@/composables/useMarketplaceInstall';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseCardGrid from '../../../_components/BaseCardGrid/BaseCardGrid.vue';
-import BaseTabControls from '../../../_components/BaseTabControls.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -256,7 +274,7 @@ const toolCategoryTabs = {
 
 export default {
   name: 'ToolsScreen',
-  components: { BaseScreen, BaseCardGrid, BaseTabControls, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip },
+  components: { BaseScreen, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip },
   emits: ['screen-change'],
   setup(props, { emit }) {
     // Initialize tutorial
@@ -429,7 +447,7 @@ export default {
           (tool) =>
             (tool.title && tool.title.toLowerCase().includes(query)) ||
             (tool.type && tool.type.toLowerCase().includes(query)) ||
-            (tool.description && tool.description.toLowerCase().includes(query))
+            (tool.description && tool.description.toLowerCase().includes(query)),
         );
       }
 
@@ -650,7 +668,7 @@ export default {
           selectedTool.value = null;
         }
       },
-      { deep: true }
+      { deep: true },
     );
 
     const setLayout = (layout) => {
@@ -901,66 +919,153 @@ export default {
   height: 100%;
 }
 
-.sticky-header {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: transparent;
-  /* padding-bottom: 16px; */
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
-  max-width: 1048px;
-  margin: 0 auto;
-  border-radius: 8px;
-  /* overflow: hidden; */
-}
-
-.sticky-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  /* background: var(--color-darker-0); */
-  opacity: 0.85;
-  z-index: -1;
-}
-
-.tool-tabs {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.4);
-  padding-bottom: 1px;
-}
-
-.tab-button {
-  background: transparent;
-  border: 1px solid rgba(var(--green-rgb), 0.4);
-  color: var(--color-light-green);
-  padding: 8px 16px;
-  cursor: pointer;
-  border-radius: 8px 8px 0 0;
-  transition: all 0.2s ease;
+/* ── Header ── */
+.wm-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 16px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  flex-shrink: 0;
+  width: calc(100% - 32px);
+}
+
+.wm-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wm-title {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--color-green);
+  font-weight: 600;
+}
+
+.wm-count {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  padding: 1px 6px;
+  background: var(--color-darker-0);
+  border-radius: 3px;
+}
+
+.wm-header-right {
+  display: flex;
+  align-items: stretch;
   gap: 8px;
 }
 
-.tab-button i {
+.wm-header-right :deep(.tooltip-container) {
+  display: flex;
+}
+
+.wm-header-right .wm-btn {
+  align-self: stretch;
+}
+
+.wm-search-input {
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  color: var(--color-light-green);
   font-size: 0.9em;
+  font-family: inherit;
+  outline: none;
+  width: 200px;
 }
 
-.tab-button:hover {
-  background: rgba(var(--green-rgb), 0.1);
+.wm-search-input:focus {
+  border-color: var(--color-green);
 }
 
-.tab-button.active {
-  background: rgba(var(--green-rgb), 0.2);
-  border-bottom: 1px solid var(--color-green);
+.wm-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.wm-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s;
+  letter-spacing: 0.5px;
+}
+
+.wm-btn:hover {
+  color: var(--color-text);
+  border-color: var(--terminal-border-color);
+}
+
+.wm-btn.active {
   color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.2);
+  background: rgba(var(--green-rgb), 0.04);
+}
+
+.wm-btn-create {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.2);
+  background: rgba(var(--green-rgb), 0.04);
+}
+
+.wm-btn-create:hover {
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
+}
+
+/* ── Category tabs ── */
+.wm-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  overflow-x: auto;
+  flex-shrink: 0;
+  width: calc(100% - 32px);
+  justify-content: center;
+}
+
+.wm-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.wm-tab:hover {
+  color: var(--color-text);
+  border-color: var(--color-darker-1);
+}
+
+.wm-tab.active {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.2);
+  background: rgba(var(--green-rgb), 0.04);
+}
+
+.wm-tab i {
+  font-size: 10px;
 }
 
 .terminal-line {
@@ -1145,64 +1250,6 @@ export default {
 .category-cards-container {
   width: 100%;
   padding: 0;
-}
-
-.card-view-search-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.search-input {
-  flex: 1;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  color: var(--color-light-green);
-  font-size: 0.9em;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: rgba(var(--green-rgb), 0.5);
-}
-
-.hide-empty-button,
-.collapse-all-button {
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  color: var(--color-green);
-  padding: 8px 10px;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  height: 44px;
-}
-
-.hide-empty-button:hover,
-.collapse-all-button:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.5);
-  opacity: 1;
-}
-
-.hide-empty-button.active,
-.collapse-all-button.active {
-  background: rgba(var(--green-rgb), 0.15);
-  border-color: var(--color-green);
-  color: var(--color-green);
-  opacity: 1;
-}
-
-.hide-empty-button i,
-.collapse-all-button i {
-  font-size: 0.9em;
 }
 
 .category-cards-grid {

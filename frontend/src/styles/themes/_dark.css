@@ -133,7 +133,7 @@ body.dark tr:last-child {
 
 body.dark th {
   color: var(--color-text);
-  background: var(--color-darker-1);
+  background: var(--color-darker-0);
   border-bottom: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }

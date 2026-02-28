@@ -1154,25 +1154,20 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             // Parse JSON config
             const config = JSON.parse(rawConfig);
 
-            // Apply dark theme defaults
-            const defaults = {
-              responsive: true,
-              maintainAspectRatio: true,
-              plugins: {
-                legend: {
-                  labels: { color: '#e0e0e0' },
-                },
-              },
-              scales: {},
-            };
+            // Resolve theme colors from CSS variables
+            const styles = getComputedStyle(document.body);
+            const textColor = styles.getPropertyValue('--color-text').trim() || '#e0e0e0';
+            const textMuted = styles.getPropertyValue('--color-text-muted').trim() || '#a0a0a0';
+            const primaryRgb = styles.getPropertyValue('--primary-rgb').trim() || '25, 239, 131';
+            const gridColor = `rgba(${primaryRgb}, 0.08)`;
 
             config.options = config.options || {};
-            config.options.responsive = defaults.responsive;
-            config.options.maintainAspectRatio = defaults.maintainAspectRatio;
+            config.options.responsive = true;
+            config.options.maintainAspectRatio = true;
             config.options.plugins = config.options.plugins || {};
             config.options.plugins.legend = config.options.plugins.legend || {};
             config.options.plugins.legend.labels = config.options.plugins.legend.labels || {};
-            config.options.plugins.legend.labels.color = config.options.plugins.legend.labels.color || '#e0e0e0';
+            config.options.plugins.legend.labels.color = config.options.plugins.legend.labels.color || textColor;
 
             // Apply axis colors for cartesian charts
             const chartType = config.type || 'bar';
@@ -1180,14 +1175,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               config.options.scales = config.options.scales || {};
               config.options.scales.x = config.options.scales.x || {};
               config.options.scales.x.ticks = config.options.scales.x.ticks || {};
-              config.options.scales.x.ticks.color = config.options.scales.x.ticks.color || '#a0a0a0';
+              config.options.scales.x.ticks.color = config.options.scales.x.ticks.color || textMuted;
               config.options.scales.x.grid = config.options.scales.x.grid || {};
-              config.options.scales.x.grid.color = config.options.scales.x.grid.color || 'rgba(255,255,255,0.08)';
+              config.options.scales.x.grid.color = config.options.scales.x.grid.color || gridColor;
               config.options.scales.y = config.options.scales.y || {};
               config.options.scales.y.ticks = config.options.scales.y.ticks || {};
-              config.options.scales.y.ticks.color = config.options.scales.y.ticks.color || '#a0a0a0';
+              config.options.scales.y.ticks.color = config.options.scales.y.ticks.color || textMuted;
               config.options.scales.y.grid = config.options.scales.y.grid || {};
-              config.options.scales.y.grid.color = config.options.scales.y.grid.color || 'rgba(255,255,255,0.08)';
+              config.options.scales.y.grid.color = config.options.scales.y.grid.color || gridColor;
             }
 
             // Apply default colors to datasets if not set

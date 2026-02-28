@@ -18,6 +18,16 @@
           </div>
           <div class="wm-header-right">
             <input v-model="searchQuery" type="text" class="wm-search-input" placeholder="Search widgets..." />
+            <Tooltip text="Grid View" width="auto">
+              <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')" title="Grid view">
+                <i class="fas fa-th-large"></i>
+              </button>
+            </Tooltip>
+            <Tooltip text="List View" width="auto">
+              <button class="wm-btn" :class="{ active: currentLayout === 'list' }" @click="setLayout('list')" title="List view">
+                <i class="fas fa-table"></i>
+              </button>
+            </Tooltip>
             <button class="wm-btn wm-btn-import" @click="showImportModal = true" title="Import widget">
               <i class="fas fa-file-import"></i>
               <span>Import</span>
@@ -158,10 +168,11 @@ import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { getAllWidgets } from '@/canvas/widgetRegistry.js';
 import BaseScreen from '../../BaseScreen.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'WidgetManagerScreen',
-  components: { BaseScreen },
+  components: { BaseScreen, Tooltip },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
@@ -172,6 +183,11 @@ export default {
     const importError = ref('');
     const isDragOver = ref(false);
     const deleteTarget = ref(null);
+    const currentLayout = ref('grid');
+
+    const setLayout = (layout) => {
+      currentLayout.value = layout;
+    };
 
     onMounted(async () => {
       // Definitions are fetched at startup (store initializeStore Phase 2).
@@ -380,6 +396,8 @@ export default {
       importError,
       isDragOver,
       deleteTarget,
+      currentLayout,
+      setLayout,
       categoryTabs,
       filteredWidgets,
       formatSize,
@@ -453,6 +471,14 @@ export default {
   gap: 8px;
 }
 
+.wm-header-right :deep(.tooltip-container) {
+  display: flex;
+}
+
+.wm-header-right .wm-btn {
+  align-self: stretch;
+}
+
 .wm-search-input {
   padding: 8px 12px;
   background: transparent;
@@ -492,6 +518,12 @@ export default {
 .wm-btn:hover {
   color: var(--color-text);
   border-color: var(--terminal-border-color);
+}
+
+.wm-btn.active {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.2);
+  background: rgba(var(--green-rgb), 0.04);
 }
 
 .wm-btn-create {

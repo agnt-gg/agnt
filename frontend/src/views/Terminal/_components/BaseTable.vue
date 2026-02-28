@@ -520,7 +520,10 @@ export default {
   background: rgba(var(--green-rgb), 0.1);
   color: var(--color-light-green);
   font-size: 0.95em;
-  transition: background 0.15s, color 0.15s, border 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border 0.15s;
   margin-left: 8px;
   height: 44px;
 }

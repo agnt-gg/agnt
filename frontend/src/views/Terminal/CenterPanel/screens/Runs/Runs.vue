@@ -1,239 +1,220 @@
 <template>
   <div class="runs-screen-root">
-  <SimpleModal ref="simpleModal" />
-  <BaseScreen
-    ref="baseScreenRef"
-    activeLeftPanel="RunsPanel"
-    activeRightPanel="RunsPanel"
-    screenId="RunsScreen"
-    :showInput="false"
-    :terminalLines="terminalLines"
-    :leftPanelProps="{
-      executions: filteredExecutions,
-      selectedExecutionId,
-      currentFilter,
-    }"
-    :panelProps="{
-      selectedExecutionId,
-      executions: allExecutions,
-    }"
-    @submit-input="handleUserInputSubmit"
-    @panel-action="handlePanelAction"
-    @screen-change="(screenName) => emit('screen-change', screenName)"
-    @base-mounted="initializeScreen"
-  >
-    <template #default>
-      <div class="runs-panel">
-        <!-- Sticky Header Container -->
-        <div class="sticky-header">
-          <!-- Execution Tabs -->
-          <BaseTabControls
-            :tabs="tabs"
-            :active-tab="activeTab"
-            :current-layout="currentLayout"
-            :show-grid-toggle="true"
-            :show-table-toggle="true"
-            @select-tab="selectTab"
-            @set-layout="setLayout"
-          />
-
-          <!-- Search Bar for Card View -->
-          <div v-if="currentLayout === 'grid'" class="card-view-search-bar">
-            <input
-              type="text"
-              class="search-input"
-              placeholder="Search executions..."
-              :value="searchQuery"
-              @input="handleSearch($event.target.value)"
-            />
-            <div class="type-filter-bar">
-              <button
-                v-for="filter in typeFilters"
-                :key="filter.id"
-                :class="['type-filter-btn', { active: executionTypeFilter === filter.id }]"
-                @click="selectTypeFilter(filter.id)"
-              >
-                <i :class="filter.icon"></i>
-                {{ filter.name }}
-              </button>
+    <SimpleModal ref="simpleModal" />
+    <BaseScreen
+      ref="baseScreenRef"
+      activeLeftPanel="RunsPanel"
+      activeRightPanel="RunsPanel"
+      screenId="RunsScreen"
+      :showInput="false"
+      :terminalLines="terminalLines"
+      :leftPanelProps="{
+        executions: filteredExecutions,
+        selectedExecutionId,
+        currentFilter,
+      }"
+      :panelProps="{
+        selectedExecutionId,
+        executions: allExecutions,
+      }"
+      @submit-input="handleUserInputSubmit"
+      @panel-action="handlePanelAction"
+      @screen-change="(screenName) => emit('screen-change', screenName)"
+      @base-mounted="initializeScreen"
+    >
+      <template #default>
+        <div class="runs-panel">
+          <!-- Header bar -->
+          <div class="wm-header">
+            <div class="wm-header-left">
+              <span class="wm-title">RUNS</span>
+              <span class="wm-count">{{ filteredExecutions.length }} runs</span>
+            </div>
+            <div class="wm-header-right">
+              <input
+                type="text"
+                class="wm-search-input"
+                placeholder="Search executions..."
+                :value="searchQuery"
+                @input="handleSearch($event.target.value)"
+              />
+              <Tooltip text="Grid View" width="auto">
+                <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')" title="Grid view">
+                  <i class="fas fa-th-large"></i>
+                </button>
+              </Tooltip>
+              <Tooltip text="Table View" width="auto">
+                <button class="wm-btn" :class="{ active: currentLayout === 'table' }" @click="setLayout('table')" title="Table view">
+                  <i class="fas fa-table"></i>
+                </button>
+              </Tooltip>
             </div>
           </div>
-        </div>
 
-        <!-- Main Content -->
-        <div class="runs-content">
-          <main class="runs-main-content">
-            <!-- Table View -->
-            <div v-if="currentLayout === 'table'" class="table-view-container">
-              <!-- Search Bar and Type Filter Row for Table View -->
-              <div class="table-view-search-bar">
-                <div class="search-wrapper">
-                  <input
-                    type="text"
-                    class="search-input"
-                    placeholder="Search executions..."
-                    :value="searchQuery"
-                    @input="handleSearch($event.target.value)"
-                  />
-                </div>
-                <div class="type-filter-bar">
-                  <button
-                    v-for="filter in typeFilters"
-                    :key="filter.id"
-                    :class="['type-filter-btn', { active: executionTypeFilter === filter.id }]"
-                    @click="selectTypeFilter(filter.id)"
+          <!-- Tabs -->
+          <div class="wm-tabs">
+            <button v-for="tab in tabs" :key="tab.id" class="wm-tab" :class="{ active: activeTab === tab.id }" @click="selectTab(tab.id)">
+              <i :class="tab.icon"></i> {{ tab.name }}
+            </button>
+            <span class="wm-tab-separator"></span>
+            <button
+              v-for="filter in typeFilters"
+              :key="filter.id"
+              class="wm-tab"
+              :class="{ active: executionTypeFilter === filter.id }"
+              @click="selectTypeFilter(filter.id)"
+            >
+              <i :class="filter.icon"></i> {{ filter.name }}
+            </button>
+          </div>
+
+          <!-- Main Content -->
+          <div class="runs-content">
+            <main class="runs-main-content">
+              <!-- Table View -->
+              <div v-if="currentLayout === 'table'" class="table-view-container">
+                <BaseTable
+                  :items="filteredExecutions"
+                  :columns="tableColumns"
+                  :selected-id="selectedExecutionId"
+                  :show-search="false"
+                  :show-sort-dropdown="false"
+                  :enable-column-sorting="true"
+                  :default-sort-column="'startTime'"
+                  :default-sort-direction="'desc'"
+                  :no-results-text="'No executions found.'"
+                  :title-key="'workflowName'"
+                  @row-click="handleExecutionClick"
+                  @row-double-click="handleExecutionDoubleClick"
+                >
+                  <template #status="{ item }">
+                    <div :class="['col-status', item.status.toLowerCase()]">
+                      <i :class="getStatusIcon(item.status)"></i>
+                      {{ item.status }}
+                    </div>
+                  </template>
+                  <template #executionType="{ item }">
+                    <span
+                      class="execution-type-badge"
+                      :class="isAgentExecution(item) ? 'agent-badge' : isGoalExecution(item) ? 'goal-badge' : 'workflow-badge'"
+                    >
+                      <i :class="getExecutionTypeIcon(item)"></i>
+                      {{ getExecutionTypeLabel(item) }}
+                    </span>
+                  </template>
+                  <template #workflowName="{ item }">
+                    <span class="workflow-name">{{ item.workflowName || 'Unnamed Workflow' }}</span>
+                  </template>
+                  <template #startTime="{ item }">
+                    {{ formatDate(item.startTime) }}
+                  </template>
+                  <template #endTime="{ item }">
+                    {{ item.endTime ? formatDate(item.endTime) : '-' }}
+                  </template>
+                  <template #duration="{ item }">
+                    {{ calculateDuration(item) }}
+                  </template>
+                </BaseTable>
+              </div>
+
+              <!-- Grid View -->
+              <div v-else class="executions-grid-container">
+                <div class="executions-grid">
+                  <div
+                    v-for="execution in filteredExecutions"
+                    :key="execution.id"
+                    class="execution-card"
+                    :class="{
+                      selected: selectedExecutionId === execution.id,
+                      [execution.status.toLowerCase()]: true,
+                    }"
+                    @click="handleExecutionClick(execution)"
+                    @dblclick="handleExecutionDoubleClick(execution)"
                   >
-                    <i :class="filter.icon"></i>
-                    {{ filter.name }}
+                    <!-- Execution Header -->
+                    <div class="execution-header">
+                      <div class="execution-title-section">
+                        <h3 class="execution-title">{{ execution.workflowName || 'Unnamed Workflow' }}</h3>
+                        <div class="status-badges">
+                          <span class="execution-status" :class="execution.status.toLowerCase()">
+                            <i :class="getStatusIcon(execution.status)"></i>
+                            {{ execution.status }}
+                          </span>
+                          <span
+                            class="execution-type-badge"
+                            :class="isAgentExecution(execution) ? 'agent-badge' : isGoalExecution(execution) ? 'goal-badge' : 'workflow-badge'"
+                          >
+                            <i :class="getExecutionTypeIcon(execution)"></i>
+                            {{ getExecutionTypeLabel(execution) }}
+                          </span>
+                        </div>
+                      </div>
+                      <div class="execution-actions">
+                        <Tooltip v-if="execution.status === 'running' || execution.status === 'started'" text="Stop Execution" width="auto">
+                          <button @click.stop="stopExecution(execution)" class="action-btn stop-btn">
+                            <i class="fas fa-stop"></i>
+                          </button>
+                        </Tooltip>
+                        <!-- <button @click.stop="deleteExecution(execution)" class="action-btn delete-btn" title="Delete Execution">
+                        <i class="fas fa-trash"></i>
+                      </button> -->
+                      </div>
+                    </div>
+
+                    <!-- Execution Info -->
+                    <div class="execution-info">
+                      <div class="info-row">
+                        <span class="info-label">Started:</span>
+                        <span class="info-value">{{ formatDate(execution.startTime) }}</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Duration:</span>
+                        <span class="info-value">{{ calculateDuration(execution) }}</span>
+                      </div>
+                      <div v-if="execution.creditsUsed" class="info-row">
+                        <span class="info-label">Credits:</span>
+                        <span class="info-value">{{ execution.creditsUsed }}</span>
+                      </div>
+                    </div>
+
+                    <!-- Node Count (if available) -->
+                    <div v-if="execution.nodeExecutions && execution.nodeExecutions.length > 0" class="node-count">
+                      <i class="fas fa-project-diagram"></i>
+                      {{ execution.nodeExecutions.length }} node{{ execution.nodeExecutions.length !== 1 ? 's' : '' }}
+                    </div>
+                  </div>
+
+                  <!-- Empty State -->
+                  <div v-if="filteredExecutions.length === 0" class="empty-state">
+                    <div class="empty-icon">
+                      <i class="fas fa-history"></i>
+                    </div>
+                    <h3>No Executions Found</h3>
+                    <p v-if="searchQuery">No executions match your search criteria.</p>
+                    <p v-else-if="activeTab !== 'all'">No {{ activeTab }} executions found.</p>
+                    <p v-else>Run some workflows to see execution history.</p>
+                  </div>
+                </div>
+
+                <!-- Load More Buttons -->
+                <div v-if="hasMoreExecutions" class="load-more-container">
+                  <button @click="loadMoreExecutions" class="load-more-btn">
+                    <i class="fas fa-chevron-down"></i>
+                    Next 108
+                  </button>
+                  <button @click="loadAllExecutions" class="load-all-btn">
+                    <i class="fas fa-list"></i>
+                    Load All ({{ remainingExecutionsCount }} remaining)
                   </button>
                 </div>
               </div>
-
-              <BaseTable
-                :items="filteredExecutions"
-                :columns="tableColumns"
-                :selected-id="selectedExecutionId"
-                :show-search="false"
-                :show-sort-dropdown="false"
-                :enable-column-sorting="true"
-                :default-sort-column="'startTime'"
-                :default-sort-direction="'desc'"
-                :no-results-text="'No executions found.'"
-                :title-key="'workflowName'"
-                @row-click="handleExecutionClick"
-                @row-double-click="handleExecutionDoubleClick"
-              >
-                <template #status="{ item }">
-                  <div :class="['col-status', item.status.toLowerCase()]">
-                    <i :class="getStatusIcon(item.status)"></i>
-                    {{ item.status }}
-                  </div>
-                </template>
-                <template #executionType="{ item }">
-                  <span
-                    class="execution-type-badge"
-                    :class="isAgentExecution(item) ? 'agent-badge' : isGoalExecution(item) ? 'goal-badge' : 'workflow-badge'"
-                  >
-                    <i :class="getExecutionTypeIcon(item)"></i>
-                    {{ getExecutionTypeLabel(item) }}
-                  </span>
-                </template>
-                <template #workflowName="{ item }">
-                  <span class="workflow-name">{{ item.workflowName || 'Unnamed Workflow' }}</span>
-                </template>
-                <template #startTime="{ item }">
-                  {{ formatDate(item.startTime) }}
-                </template>
-                <template #endTime="{ item }">
-                  {{ item.endTime ? formatDate(item.endTime) : '-' }}
-                </template>
-                <template #duration="{ item }">
-                  {{ calculateDuration(item) }}
-                </template>
-              </BaseTable>
-            </div>
-
-            <!-- Grid View -->
-            <div v-else class="executions-grid-container">
-              <div class="executions-grid">
-                <div
-                  v-for="execution in filteredExecutions"
-                  :key="execution.id"
-                  class="execution-card"
-                  :class="{
-                    selected: selectedExecutionId === execution.id,
-                    [execution.status.toLowerCase()]: true,
-                  }"
-                  @click="handleExecutionClick(execution)"
-                  @dblclick="handleExecutionDoubleClick(execution)"
-                >
-                  <!-- Execution Header -->
-                  <div class="execution-header">
-                    <div class="execution-title-section">
-                      <h3 class="execution-title">{{ execution.workflowName || 'Unnamed Workflow' }}</h3>
-                      <div class="status-badges">
-                        <span class="execution-status" :class="execution.status.toLowerCase()">
-                          <i :class="getStatusIcon(execution.status)"></i>
-                          {{ execution.status }}
-                        </span>
-                        <span
-                          class="execution-type-badge"
-                          :class="isAgentExecution(execution) ? 'agent-badge' : isGoalExecution(execution) ? 'goal-badge' : 'workflow-badge'"
-                        >
-                          <i :class="getExecutionTypeIcon(execution)"></i>
-                          {{ getExecutionTypeLabel(execution) }}
-                        </span>
-                      </div>
-                    </div>
-                    <div class="execution-actions">
-                      <Tooltip v-if="execution.status === 'running' || execution.status === 'started'" text="Stop Execution" width="auto">
-                        <button
-                          @click.stop="stopExecution(execution)"
-                          class="action-btn stop-btn"
-                        >
-                          <i class="fas fa-stop"></i>
-                        </button>
-                      </Tooltip>
-                      <!-- <button @click.stop="deleteExecution(execution)" class="action-btn delete-btn" title="Delete Execution">
-                        <i class="fas fa-trash"></i>
-                      </button> -->
-                    </div>
-                  </div>
-
-                  <!-- Execution Info -->
-                  <div class="execution-info">
-                    <div class="info-row">
-                      <span class="info-label">Started:</span>
-                      <span class="info-value">{{ formatDate(execution.startTime) }}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Duration:</span>
-                      <span class="info-value">{{ calculateDuration(execution) }}</span>
-                    </div>
-                    <div v-if="execution.creditsUsed" class="info-row">
-                      <span class="info-label">Credits:</span>
-                      <span class="info-value">{{ execution.creditsUsed }}</span>
-                    </div>
-                  </div>
-
-                  <!-- Node Count (if available) -->
-                  <div v-if="execution.nodeExecutions && execution.nodeExecutions.length > 0" class="node-count">
-                    <i class="fas fa-project-diagram"></i>
-                    {{ execution.nodeExecutions.length }} node{{ execution.nodeExecutions.length !== 1 ? 's' : '' }}
-                  </div>
-                </div>
-
-                <!-- Empty State -->
-                <div v-if="filteredExecutions.length === 0" class="empty-state">
-                  <div class="empty-icon">
-                    <i class="fas fa-history"></i>
-                  </div>
-                  <h3>No Executions Found</h3>
-                  <p v-if="searchQuery">No executions match your search criteria.</p>
-                  <p v-else-if="activeTab !== 'all'">No {{ activeTab }} executions found.</p>
-                  <p v-else>Run some workflows to see execution history.</p>
-                </div>
-              </div>
-
-              <!-- Load More Buttons -->
-              <div v-if="hasMoreExecutions" class="load-more-container">
-                <button @click="loadMoreExecutions" class="load-more-btn">
-                  <i class="fas fa-chevron-down"></i>
-                  Next 108
-                </button>
-                <button @click="loadAllExecutions" class="load-all-btn">
-                  <i class="fas fa-list"></i>
-                  Load All ({{ remainingExecutionsCount }} remaining)
-                </button>
-              </div>
-            </div>
-          </main>
+            </main>
+          </div>
         </div>
-      </div>
-    </template>
-  </BaseScreen>
+      </template>
+    </BaseScreen>
 
-  <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="runs" @close="onTutorialClose" />
+    <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="runs" @close="onTutorialClose" />
   </div>
 </template>
 
@@ -244,7 +225,6 @@ import { useRouter } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
-import BaseTabControls from '../../../_components/BaseTabControls.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import { useRunsTutorial } from './useRunsTutorial.js';
@@ -253,7 +233,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'RunsScreen',
-  components: { BaseScreen, BaseTable, BaseTabControls, SimpleModal, PopupTutorial, Tooltip },
+  components: { BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip },
   emits: ['screen-change', 'panel-action'],
   setup(props, { emit }) {
     const store = useStore();
@@ -374,7 +354,7 @@ export default {
           (execution) =>
             (execution.workflowName && execution.workflowName.toLowerCase().includes(query)) ||
             (execution.status && execution.status.toLowerCase().includes(query)) ||
-            (execution.id && execution.id.toLowerCase().includes(query))
+            (execution.id && execution.id.toLowerCase().includes(query)),
         );
       }
 
@@ -409,7 +389,7 @@ export default {
         `[Runs] Loaded ${increment} more executions (showing ${Math.min(displayLimit.value, filteredExecutionsBeforeLimit.value.length)} of ${
           filteredExecutionsBeforeLimit.value.length
         })`,
-        'info'
+        'info',
       );
     };
 
@@ -909,7 +889,7 @@ ${execution.nodeExecutions
   Status: ${node.status}
   Duration: ${calculateNodeDuration(node)}
   Credits: ${node.credits_used || 0}
-`
+`,
   )
   .join('')}
 `
@@ -1095,19 +1075,21 @@ ${execution.log}
       }
 
       // Non-blocking background refresh
-      refreshExecutions().then(() => {
-        const executions = store.getters['executionHistory/getExecutions'];
-        if (!cachedExecutions || cachedExecutions.length === 0) {
-          if (executions.length === 0) {
-            addLine('No executions found. Run some workflows to see execution history.', 'info');
-          } else {
-            const runningCount = executions.filter((e) => e.status === 'running' || e.status === 'started').length;
-            addLine(`Found ${executions.length} executions${runningCount > 0 ? ` (${runningCount} running)` : ''}.`, 'success');
+      refreshExecutions()
+        .then(() => {
+          const executions = store.getters['executionHistory/getExecutions'];
+          if (!cachedExecutions || cachedExecutions.length === 0) {
+            if (executions.length === 0) {
+              addLine('No executions found. Run some workflows to see execution history.', 'info');
+            } else {
+              const runningCount = executions.filter((e) => e.status === 'running' || e.status === 'started').length;
+              addLine(`Found ${executions.length} executions${runningCount > 0 ? ` (${runningCount} running)` : ''}.`, 'success');
+            }
           }
-        }
-      }).catch((error) => {
-        addLine(`Error loading executions: ${error.message}`, 'error');
-      });
+        })
+        .catch((error) => {
+          addLine(`Error loading executions: ${error.message}`, 'error');
+        });
 
       // Set up polling for running executions
       const startPolling = () => {
@@ -1233,29 +1215,149 @@ ${execution.log}
   height: 100%;
 }
 
-.sticky-header {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: transparent;
+/* ── Header ── */
+.wm-header {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
-  max-width: 1048px;
-  margin: 0 auto;
-  border-radius: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 16px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  flex-shrink: 0;
+  width: calc(100% - 32px);
 }
 
-.sticky-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  opacity: 0.85;
-  z-index: -1;
+.wm-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wm-title {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--color-green);
+  font-weight: 600;
+}
+
+.wm-count {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  padding: 1px 6px;
+  background: var(--color-darker-0);
+  border-radius: 3px;
+}
+
+.wm-header-right {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.wm-header-right :deep(.tooltip-container) {
+  display: flex;
+}
+
+.wm-header-right .wm-btn {
+  align-self: stretch;
+}
+
+.wm-search-input {
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  color: var(--color-light-green);
+  font-size: 0.9em;
+  font-family: inherit;
+  outline: none;
+  width: 200px;
+}
+
+.wm-search-input:focus {
+  border-color: var(--color-green);
+}
+
+.wm-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.wm-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s;
+  letter-spacing: 0.5px;
+}
+
+.wm-btn:hover {
+  color: var(--color-text);
+  border-color: var(--terminal-border-color);
+}
+
+.wm-btn.active {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.2);
+  background: rgba(var(--green-rgb), 0.04);
+}
+
+/* ── Category tabs ── */
+.wm-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  overflow-x: auto;
+  flex-shrink: 0;
+  width: calc(100% - 32px);
+  justify-content: center;
+}
+
+.wm-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.wm-tab:hover {
+  color: var(--color-text);
+  border-color: var(--color-darker-1);
+}
+
+.wm-tab.active {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.2);
+  background: rgba(var(--green-rgb), 0.04);
+}
+
+.wm-tab i {
+  font-size: 10px;
+}
+
+.wm-tab-separator {
+  width: 1px;
+  background: var(--terminal-border-color);
+  margin: 0 8px;
+  align-self: stretch;
 }
 
 .runs-content {
@@ -1839,39 +1941,6 @@ ${execution.log}
   padding: 0;
 }
 
-.card-view-search-bar,
-.table-view-search-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.table-view-search-bar {
-  padding: 0 0 8px 0;
-  border-bottom: 1px solid var(--terminal-border-color);
-}
-
-.search-wrapper {
-  flex: 1;
-  min-width: 0;
-}
-
-.search-input {
-  width: 100%;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  color: var(--color-light-green);
-  font-size: 0.9em;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: rgba(var(--green-rgb), 0.5);
-}
-
 .table-view-container {
   display: flex;
   flex-direction: column;
@@ -2219,65 +2288,8 @@ ${execution.log}
   font-size: 0.9em;
 }
 
-/* Type Filter Bar */
-.type-filter-bar {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.type-filter-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
-  color: var(--color-text-muted);
-  font-size: 0.85em;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.type-filter-btn:hover {
-  background: rgba(var(--green-rgb), 0.08);
-  border-color: rgba(var(--green-rgb), 0.3);
-  color: var(--color-text);
-}
-
-.type-filter-btn.active {
-  background: rgba(var(--green-rgb), 0.15);
-  border-color: var(--color-green);
-  color: var(--color-green);
-}
-
-.type-filter-btn i {
-  font-size: 0.9em;
-}
-
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  .card-view-search-bar,
-  .table-view-search-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .type-filter-bar {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .type-filter-btn {
-    flex: 1;
-    justify-content: center;
-    padding: 6px 8px;
-    font-size: 0.8em;
-  }
-
   .execution-header {
     flex-direction: column;
     align-items: flex-start;
