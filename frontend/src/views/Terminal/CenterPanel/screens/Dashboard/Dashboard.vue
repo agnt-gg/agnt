@@ -605,7 +605,6 @@ export default {
     });
 
     onUnmounted(() => {
-      document.body.removeAttribute('data-page');
       selectedMissionId.value = null;
     });
 

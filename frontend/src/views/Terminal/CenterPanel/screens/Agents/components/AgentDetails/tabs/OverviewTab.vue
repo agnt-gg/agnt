@@ -10,7 +10,7 @@
               'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='
             "
             alt="Agent profile"
-            class="agent-overview-avatar"
+            :class="['agent-overview-avatar', { inactive: (selectedAgent.status || '').toLowerCase() !== 'active' }]"
           />
           <h3 class="agent-name-display">{{ selectedAgent.name }}</h3>
         </div>
@@ -100,6 +100,11 @@ h3.section-title {
   background: rgba(var(--green-rgb), 0.1);
   padding: 2px;
   border: 3px solid rgba(var(--green-rgb), 0.5);
+}
+
+.agent-overview-avatar.inactive {
+  border-color: var(--color-text-muted);
+  background: rgba(100, 100, 120, 0.15);
 }
 
 .agent-name-display {

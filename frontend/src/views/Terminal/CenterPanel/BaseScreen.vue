@@ -1071,7 +1071,7 @@ export default {
   position: relative;
   overflow: hidden;
   min-width: 320px;
-  padding: 16px;
+  padding: 16px 12px;
   background: var(--color-background);
   justify-content: flex-start;
   flex-wrap: nowrap;
@@ -1096,6 +1096,14 @@ body[data-page='terminal-workflows'] .main-panel {
 }
 
 body[data-page='terminal-marketplace'] .main-panel {
+  padding: 16px 0;
+}
+
+body[data-page='terminal-widget-manager'] .main-panel {
+  padding: 16px 0;
+}
+
+body[data-page='terminal-goals'] .main-panel {
   padding: 16px 0;
 }
 

@@ -25,45 +25,27 @@
 
       <div class="tools-panel">
         <!-- Header bar -->
-        <div class="wm-header">
-          <div class="wm-header-left">
-            <span class="wm-title">TOOLS</span>
-            <span class="wm-count">{{ filteredTools.length }} tools</span>
-          </div>
-          <div class="wm-header-right">
-            <input
-              type="text"
-              class="wm-search-input"
-              placeholder="Search tools..."
-              :value="searchQuery"
-              @input="handleSearch($event.target.value)"
-            />
-            <Tooltip :text="allCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'" width="auto">
-              <button class="wm-btn" :class="{ active: allCategoriesCollapsed }" @click="toggleCollapseAll" title="Toggle collapse">
-                <i :class="allCategoriesCollapsed ? 'fas fa-expand' : 'fas fa-compress'"></i>
-              </button>
-            </Tooltip>
-            <Tooltip :text="hideEmptyCategories ? 'Show empty categories' : 'Hide empty categories'" width="auto">
-              <button class="wm-btn" :class="{ active: hideEmptyCategories }" @click="toggleHideEmptyCategories" title="Toggle empty categories">
-                <i :class="hideEmptyCategories ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
-              </button>
-            </Tooltip>
-            <Tooltip text="Grid View" width="auto">
-              <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')" title="Grid view">
-                <i class="fas fa-th-large"></i>
-              </button>
-            </Tooltip>
-            <Tooltip text="Table View" width="auto">
-              <button class="wm-btn" :class="{ active: currentLayout === 'table' }" @click="setLayout('table')" title="Table view">
-                <i class="fas fa-table"></i>
-              </button>
-            </Tooltip>
-            <button class="wm-btn wm-btn-create" @click="handlePanelAction('navigate', 'ToolForgeScreen')" title="Create new tool">
-              <i class="fas fa-plus"></i>
-              <span>New Tool</span>
-            </button>
-          </div>
-        </div>
+        <ScreenToolbar
+          title="TOOLS"
+          :count="filteredTools.length"
+          countLabel="tools"
+          searchPlaceholder="Search tools..."
+          :searchQuery="searchQuery"
+          :currentLayout="currentLayout"
+          :layoutOptions="['grid', 'table']"
+          :showCollapseToggle="true"
+          :allCategoriesCollapsed="allCategoriesCollapsed"
+          :showHideEmpty="true"
+          :hideEmptyCategories="hideEmptyCategories"
+          :sortOrder="sortOrder"
+          createLabel="New Tool"
+          @update:searchQuery="handleSearch"
+          @update:layout="setLayout"
+          @toggleCollapseAll="toggleCollapseAll"
+          @toggleHideEmpty="toggleHideEmptyCategories"
+          @update:sortOrder="(v) => sortOrder = v"
+          @create="handlePanelAction('navigate', 'ToolForgeScreen')"
+        />
 
         <!-- Tabs -->
         <div class="wm-tabs">
@@ -75,8 +57,42 @@
         <!-- Main Content (Sidebar moved to LeftPanel) -->
         <div class="tools-content">
           <main class="tools-main-content fade-in">
+            <!-- List View -->
+            <div v-if="currentLayout === 'table'" class="wm-list">
+              <div
+                v-for="tool in filteredTools"
+                :key="tool.id"
+                class="wm-list-row"
+                :class="{
+                  selected: selectedTool?.id === tool.id,
+                  'tool-plugin': tool.isPlugin,
+                  'tool-pro': !tool.isPlugin && tool.requiresPro,
+                  'tool-custom': !tool.isPlugin && !tool.requiresPro && tool.source === 'custom',
+                  'tool-system': !tool.isPlugin && !tool.requiresPro && tool.source === 'system',
+                }"
+                @click="selectTool(tool)"
+              >
+                <div class="wm-list-icon">
+                  <SvgIcon v-if="tool.icon" :name="tool.icon" class="wm-list-svg" />
+                  <i v-else class="fas fa-wrench"></i>
+                </div>
+                <div class="wm-list-name">{{ tool.title || tool.type }}</div>
+                <div class="wm-list-desc">{{ tool.description || 'No description available' }}</div>
+                <div class="wm-list-badges">
+                  <span v-if="tool.isPlugin" class="wm-badge wm-badge-plugin">PLUGIN</span>
+                  <span v-if="tool.requiresPro" class="wm-badge wm-badge-pro">PRO</span>
+                  <span v-if="tool.source && !tool.isPlugin" class="wm-badge wm-badge-builtin">{{ tool.source }}</span>
+                </div>
+                <span v-if="tool.type" class="wm-list-type">{{ tool.type }}</span>
+              </div>
+              <div v-if="filteredTools.length === 0" class="wm-empty">
+                <div class="wm-empty-icon"><i class="fas fa-wrench"></i></div>
+                <div class="wm-empty-text">No tools found</div>
+              </div>
+            </div>
+
             <!-- Category Cards View -->
-            <div class="category-cards-container">
+            <div v-else class="category-cards-container">
               <!-- Empty State - Only show for custom tab when no custom tools exist -->
               <div v-if="activeTab === 'custom' && Object.keys(toolsByCategory).length === 0" class="empty-state-container">
                 <div class="empty-state">
@@ -262,6 +278,7 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import { useToolsTutorial } from './useToolsTutorial.js';
 // NOTE: Static toolLibrary import removed - now using centralized Vuex store (tools/fetchWorkflowTools)
 
@@ -274,7 +291,7 @@ const toolCategoryTabs = {
 
 export default {
   name: 'ToolsScreen',
-  components: { BaseScreen, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip },
+  components: { BaseScreen, BaseCardGrid, TerminalHeader, SvgIcon, SimpleModal, PopupTutorial, Tooltip, ScreenToolbar },
   emits: ['screen-change'],
   setup(props, { emit }) {
     // Initialize tutorial
@@ -292,6 +309,7 @@ export default {
     const currentLayout = ref('grid');
     const hideEmptyCategories = ref(true);
     const collapsedCategories = ref(new Set());
+    const sortOrder = ref('az');
 
     // Drag and drop state
     const draggedTool = ref(null);
@@ -451,6 +469,12 @@ export default {
         );
       }
 
+      tools.sort((a, b) => {
+        const nameA = (a.title || a.type || '').toLowerCase();
+        const nameB = (b.title || b.type || '').toLowerCase();
+        return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      });
+
       return tools;
     });
 
@@ -509,6 +533,15 @@ export default {
         tools.forEach((tool) => {
           const category = tool.category || 'Uncategorized';
           categories[category].push(tool);
+        });
+      }
+
+      // Sort tools within each category
+      for (const key of Object.keys(categories)) {
+        categories[key].sort((a, b) => {
+          const nameA = (a.title || a.type || '').toLowerCase();
+          const nameB = (b.title || b.type || '').toLowerCase();
+          return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
         });
       }
 
@@ -875,6 +908,7 @@ export default {
       panelProps,
       // Search functionality
       searchQuery,
+      sortOrder,
       // Category functionality
       toolsByCategory,
       getCategoryInfo,
@@ -917,110 +951,6 @@ export default {
   gap: 0;
   width: 100%;
   height: 100%;
-}
-
-/* ── Header ── */
-.wm-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px 16px;
-  border-bottom: 1px solid var(--terminal-border-color);
-  flex-shrink: 0;
-  width: calc(100% - 32px);
-}
-
-.wm-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.wm-title {
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: var(--color-green);
-  font-weight: 600;
-}
-
-.wm-count {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  padding: 1px 6px;
-  background: var(--color-darker-0);
-  border-radius: 3px;
-}
-
-.wm-header-right {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.wm-header-right :deep(.tooltip-container) {
-  display: flex;
-}
-
-.wm-header-right .wm-btn {
-  align-self: stretch;
-}
-
-.wm-search-input {
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  color: var(--color-light-green);
-  font-size: 0.9em;
-  font-family: inherit;
-  outline: none;
-  width: 200px;
-}
-
-.wm-search-input:focus {
-  border-color: var(--color-green);
-}
-
-.wm-search-input::placeholder {
-  color: var(--color-text-muted);
-}
-
-.wm-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.12s;
-  letter-spacing: 0.5px;
-}
-
-.wm-btn:hover {
-  color: var(--color-text);
-  border-color: var(--terminal-border-color);
-}
-
-.wm-btn.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.wm-btn-create {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.wm-btn-create:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 /* ── Category tabs ── */
@@ -1066,6 +996,144 @@ export default {
 
 .wm-tab i {
   font-size: 10px;
+}
+
+/* ── List View ── */
+.wm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  max-width: 1048px;
+}
+
+.wm-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-left: 3px solid var(--color-blue);
+  border-radius: 8px;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.wm-list-row.tool-system {
+  border-left-color: var(--color-blue);
+}
+
+.wm-list-row.tool-pro {
+  border-left-color: var(--color-yellow);
+}
+
+.wm-list-row.tool-custom {
+  border-left-color: var(--color-green);
+}
+
+.wm-list-row.tool-plugin {
+  border-left-color: var(--color-violet);
+}
+
+.wm-list-row:hover {
+  background: rgba(var(--green-rgb), 0.06);
+  border-color: rgba(var(--green-rgb), 0.2);
+}
+
+.wm-list-row.selected {
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.25);
+}
+
+.wm-list-icon {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.wm-list-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.wm-list-name {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--color-text);
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 140px;
+}
+
+.wm-list-desc {
+  flex: 1;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.wm-list-badges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wm-badge {
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.wm-badge-builtin {
+  background: rgba(100, 100, 200, 0.1);
+  color: var(--color-text-muted);
+}
+
+.wm-badge-plugin {
+  background: rgba(var(--green-rgb), 0.1);
+  color: var(--color-green);
+}
+
+.wm-badge-pro {
+  background: rgba(var(--pink-rgb), 0.1);
+  color: var(--color-pink);
+}
+
+.wm-list-type {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  min-width: 50px;
+  text-align: right;
+}
+
+.wm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px;
+  gap: 8px;
+}
+
+.wm-empty-icon {
+  font-size: 32px;
+  color: var(--color-text-muted);
+  opacity: 0.3;
+}
+
+.wm-empty-text {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
 }
 
 .terminal-line {

@@ -501,7 +501,6 @@ export default {
 
     onUnmounted(() => {
       console.log('WorkflowDesigner Screen Unmounted');
-      document.body.removeAttribute('data-page');
       window.removeEventListener('workflow-updated', handleWorkflowUpdated);
       window.removeEventListener('workflow-started-from-chat', handleWorkflowStartedFromChat);
       window.removeEventListener('workflow-stopped-from-chat', handleWorkflowStoppedFromChat);

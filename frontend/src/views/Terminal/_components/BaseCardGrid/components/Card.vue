@@ -215,13 +215,54 @@ export default {
 .status-indicator.running {
   color: var(--color-green);
 }
-.status-indicator.completed,
-.status-indicator.stopped {
+.status-indicator.completed {
   color: var(--color-blue);
+}
+.status-indicator.stopped {
+  color: var(--color-text-muted);
 }
 .status-indicator.failed,
 .status-indicator.locked {
   color: var(--color-red);
+}
+.status-indicator.inactive {
+  color: var(--color-text-muted);
+}
+
+/* Status-based left border colors */
+.card-item.active,
+.card-item.running {
+  border-left: 3px solid var(--color-green);
+  padding-left: 11px;
+}
+.card-item.listening {
+  border-left: 3px solid var(--color-blue);
+  padding-left: 11px;
+}
+.card-item.failed,
+.card-item.error,
+.card-item.locked {
+  border-left: 3px solid var(--color-red);
+  padding-left: 11px;
+}
+.card-item.completed {
+  border-left: 3px solid var(--color-blue);
+  padding-left: 11px;
+}
+.card-item.stopped {
+  border-left: 3px solid var(--color-text-muted);
+  padding-left: 11px;
+}
+.card-item.inactive {
+  border-left: 3px solid var(--color-text-muted);
+  padding-left: 11px;
+}
+.card-item.queued,
+.card-item.waiting,
+.card-item.new,
+.card-item.available {
+  border-left: 3px solid var(--color-yellow);
+  padding-left: 11px;
 }
 
 /* Tool icons styling */

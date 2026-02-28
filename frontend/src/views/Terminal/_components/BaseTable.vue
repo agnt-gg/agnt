@@ -392,39 +392,44 @@ export default {
 .base-table {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   width: 100%;
   height: 100%;
-  min-height: 0; /* Important for flex child scrolling */
+  min-height: 0;
 }
 
 .table-container {
-  width: calc(100% - 2px);
-  border: 1px solid rgba(18, 224, 255, 0.1);
-  border-radius: 8px;
+  width: 100%;
   overflow: hidden;
   flex: 1;
-  min-height: 0; /* Important for flex child scrolling */
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
+/* ── Header row ── */
 .table-header {
   display: grid;
-  background: rgba(var(--green-rgb), 0.1);
-  padding: 10px 8px;
-  font-weight: 400;
-  color: var(--color-text);
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.4);
+  padding: 8px 14px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--terminal-border-color);
+  background: transparent;
 }
 
+/* ── Scrollable body ── */
 .table-body {
   scrollbar-width: thin;
-  /* scrollbar-color: var(--color-green) transparent; */
-  background: rgb(0 0 0 / 10%);
   overflow-y: auto;
   flex: 1;
-  min-height: 0; /* Important for flex child scrolling */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
 }
 
 .table-body::-webkit-scrollbar {
@@ -432,41 +437,77 @@ export default {
 }
 
 .table-body::-webkit-scrollbar-track {
-  background: rgba(var(--green-rgb), 0.05);
+  background: transparent;
 }
 
 .table-body::-webkit-scrollbar-thumb {
-  background-color: var(--color-green);
+  background-color: rgba(var(--green-rgb), 0.25);
   border-radius: 3px;
 }
 
+.table-body::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(var(--green-rgb), 0.4);
+}
+
+/* ── Row ── */
 .table-row {
   display: grid;
-  padding: 10px 8px;
-  border-top: 1px solid rgba(18, 224, 255, 0.1);
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-left: 3px solid var(--color-blue);
+  border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.15s;
   color: var(--color-text);
 }
 
-.table-row.listening .col-status {
-  color: var(--color-green);
-}
-
-.table-row:first-child {
-  border-top: none;
+.table-row:hover {
+  background: rgba(var(--green-rgb), 0.06);
+  border-color: rgba(var(--green-rgb), 0.2);
+  border-left-color: var(--color-green);
 }
 
 .table-row.selected {
-  background: rgba(var(--green-rgb), 0.15);
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.25);
   border-left: 3px solid var(--color-green);
-  padding-left: 5px;
 }
 
-.table-row:not(.selected):hover {
-  background: rgba(var(--green-rgb), 0.08);
+/* Status-based left border colors */
+.table-row.active,
+.table-row.running {
+  border-left-color: var(--color-green);
 }
 
+.table-row.listening {
+  border-left-color: var(--color-blue);
+}
+
+.table-row.failed,
+.table-row.error {
+  border-left-color: var(--color-red);
+}
+
+.table-row.completed {
+  border-left-color: var(--color-blue);
+}
+
+.table-row.stopped {
+  border-left-color: var(--color-text-muted);
+}
+
+.table-row.queued,
+.table-row.waiting {
+  border-left-color: var(--color-yellow);
+}
+
+.table-row.inactive {
+  border-left-color: var(--color-text-muted);
+}
+
+/* ── Cells ── */
 [class^='col-'] {
   padding: 0 8px;
   display: flex;
@@ -474,58 +515,100 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
 }
 
+/* Status text colors */
+.table-row .col-status {
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.table-row.running .col-status,
+.table-row.active .col-status {
+  color: var(--color-green);
+}
+
+.table-row.listening .col-status {
+  color: var(--color-blue);
+}
+
+.table-row.failed .col-status,
+.table-row.error .col-status {
+  color: var(--color-red);
+}
+
+.table-row.completed .col-status {
+  color: var(--color-blue);
+}
+
+.table-row.stopped .col-status {
+  color: var(--color-text-muted);
+}
+
+.table-row.queued .col-status,
+.table-row.waiting .col-status {
+  color: var(--color-yellow);
+}
+
+.table-row.inactive .col-status {
+  color: var(--color-text-muted);
+}
+
+/* ── Empty state ── */
 .no-results {
-  padding: 15px 10px;
-  color: var(--color-grey);
+  padding: 32px 10px;
+  color: var(--color-text-muted);
   text-align: center;
-  font-style: italic;
+  font-size: 11px;
+  letter-spacing: 1px;
   grid-column: 1 / -1;
   cursor: default;
+  border: none;
+  background: transparent;
 }
 
-/* Search Bar Styles */
+/* ── Search Bar ── */
 .search-bar {
   width: 100%;
   margin-bottom: 8px;
   display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-content: flex-start;
-  justify-content: flex-start;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .search-input {
   width: 100%;
   padding: 8px 12px;
   background: transparent;
-  border: 1px solid rgba(var(--green-rgb), 0.3);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   color: var(--color-light-green);
   font-size: 0.9em;
+  font-family: inherit;
+  outline: none;
 }
 
 .search-input:focus {
-  outline: none;
   border-color: var(--color-green);
+}
+
+.search-input::placeholder {
+  color: var(--color-text-muted);
 }
 
 .sort-select {
   width: 80px;
   padding: 7px 12px;
-  border-radius: 4px;
-  border: 1px solid rgba(var(--green-rgb), 0.25);
-  background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-light-green);
-  font-size: 0.95em;
-  transition:
-    background 0.15s,
-    color 0.15s,
-    border 0.15s;
+  border-radius: 8px;
+  border: 1px solid var(--terminal-border-color);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.9em;
+  font-family: inherit;
+  transition: all 0.12s;
   margin-left: 8px;
-  height: 44px;
+  height: 38px;
 }
 
 .sort-select:focus {
@@ -534,55 +617,25 @@ export default {
 }
 
 select option {
-  background-color: var(--color-ultra-dark-navy);
+  background-color: var(--color-background);
 }
 
-/* Status Colors */
-.table-row .col-status {
-  font-weight: 500;
-}
-
-.table-row.running .col-status,
-.table-row.active .col-status {
-  color: var(--color-green);
-}
-
-.table-row.failed .col-status,
-.table-row.error .col-status {
-  color: var(--color-red);
-}
-
-.table-row.completed .col-status,
-.table-row.stopped .col-status {
-  color: var(--color-blue);
-}
-
-.table-row.queued .col-status,
-.table-row.waiting .col-status {
-  color: var(--color-yellow);
-}
-
-.table-row:last-child {
-  border-bottom: 1px solid rgba(18, 224, 255, 0.1);
-}
-
-/* Sortable Column Styles */
+/* ── Sortable columns ── */
 .table-header .sortable {
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.2s;
+  transition: color 0.15s;
   position: relative;
 }
 
 .table-header .sortable:hover {
-  background: rgba(var(--green-rgb), 0.15);
+  color: var(--color-green);
 }
 
 .sort-arrow {
   margin-left: 4px;
-  font-size: 12px;
+  font-size: 10px;
   color: var(--color-green);
-  opacity: 0.8;
 }
 </style>
 

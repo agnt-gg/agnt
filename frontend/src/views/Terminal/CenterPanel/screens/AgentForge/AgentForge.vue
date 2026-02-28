@@ -135,10 +135,10 @@
                 </div>
               </div>
 
-              <!-- Row 3: Tools & Workflows (Full Width) -->
+              <!-- Row 3: Tools (Full Width) -->
               <div class="capabilities-card full-width">
                 <div class="card-header">
-                  <h3 class="card-title">Tools & Workflows</h3>
+                  <h3 class="card-title">Tools</h3>
                 </div>
 
                 <div class="capabilities-content">
@@ -154,21 +154,6 @@
                         <i class="fas fa-times" @click="removeFromArray(newAgent.tools, tool)"></i>
                       </div>
                       <div v-if="newAgent.tools.length > 6" class="more-count">+{{ newAgent.tools.length - 6 }} more</div>
-                    </div>
-                  </div>
-
-                  <div class="capability-section">
-                    <div class="capability-header">
-                      <i class="fas fa-sitemap"></i>
-                      <span>Workflows</span>
-                      <span class="add-more-btn" @click="showWorkflowsModal = true">+ Add more</span>
-                    </div>
-                    <div class="capability-tags">
-                      <div v-for="workflow in newAgent.workflows.slice(0, 6)" :key="workflow" class="capability-tag">
-                        {{ getWorkflowName(workflow) }}
-                        <i class="fas fa-times" @click="removeFromArray(newAgent.workflows, workflow)"></i>
-                      </div>
-                      <div v-if="newAgent.workflows.length > 6" class="more-count">+{{ newAgent.workflows.length - 6 }} more</div>
                     </div>
                   </div>
                 </div>
@@ -203,26 +188,6 @@
       </div>
     </div>
 
-    <div v-if="showWorkflowsModal" class="modal-overlay" @click="showWorkflowsModal = false">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h3>Select Workflows</h3>
-          <button class="modal-close" @click="showWorkflowsModal = false">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-        <div class="modal-body">
-          <ListWithSearch
-            :items="availableWorkflows"
-            v-model="newAgent.workflows"
-            labelKey="name"
-            idKey="id"
-            placeholder="Search and select workflows..."
-            :empty-message="availableWorkflows.length === 0 ? 'No workflows available' : 'No workflows selected'"
-          />
-        </div>
-      </div>
-    </div>
   </Teleport>
 
   <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="AgentForgeScreen" @close="onTutorialClose" />

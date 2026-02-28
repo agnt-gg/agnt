@@ -4,13 +4,10 @@
     :items="items"
     :columns="columns"
     :selected-id="selectedId"
-    :show-search="true"
-    search-placeholder="Search agents..."
-    :search-keys="['name', 'status', 'category']"
+    :show-search="false"
     :no-results-text="'No agents found.'"
     title-key="name"
     @row-click="(item) => emit('row-click', item)"
-    @search="(query) => emit('search', query)"
   >
     <template #avatar="{ item }">
       <div class="avatar-cell">
@@ -20,7 +17,7 @@
             'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='
           "
           alt="Agent avatar"
-          class="agent-avatar"
+          :class="['agent-avatar', { inactive: (item.status || '').toLowerCase() === 'inactive' }]"
         />
       </div>
     </template>
@@ -58,7 +55,7 @@
             'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='
           "
           alt="Agent avatar"
-          class="agent-avatar"
+          :class="['agent-avatar', { inactive: (item.status || '').toLowerCase() === 'inactive' }]"
         />
       </div>
     </template>
@@ -128,6 +125,11 @@ const emit = defineEmits(['row-click', 'search']);
   padding: 2px;
   border: 2px solid rgba(var(--green-rgb), 0.5);
   object-fit: cover;
+}
+
+.agent-avatar.inactive {
+  border-color: var(--color-text-muted);
+  background: rgba(100, 100, 120, 0.15);
 }
 
 .agent-category {

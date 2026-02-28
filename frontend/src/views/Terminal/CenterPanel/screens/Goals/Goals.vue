@@ -20,11 +20,11 @@
         <div v-if="isLoading && (!allGoals || allGoals.length === 0)" class="kanban-board">
           <div v-for="i in 3" :key="'skeleton-' + i" class="kanban-column">
             <div class="column-header">
-              <div class="skeleton-block" style="height: 16px; width: 60px;"></div>
-              <div class="skeleton-block" style="height: 16px; width: 24px; border-radius: 12px;"></div>
+              <div class="skeleton-block" style="height: 16px; width: 60px"></div>
+              <div class="skeleton-block" style="height: 16px; width: 24px; border-radius: 12px"></div>
             </div>
             <div class="column-content">
-              <div v-for="j in 2" :key="'skel-card-' + j" class="skeleton-block" style="height: 80px; border-radius: 8px;"></div>
+              <div v-for="j in 2" :key="'skel-card-' + j" class="skeleton-block" style="height: 80px; border-radius: 8px"></div>
             </div>
           </div>
         </div>
@@ -74,7 +74,7 @@ export default {
     const terminalLines = ref([]);
     const selectedGoalId = ref(null);
 
-    document.body.setAttribute('data-page', 'goals-page');
+    document.body.setAttribute('data-page', 'terminal-goals');
 
     const allGoals = computed(() => store.getters['goals/allGoals']);
     const isLoading = computed(() => store.getters['goals/isLoading']);
@@ -108,13 +108,16 @@ export default {
     const initializeScreen = () => {
       terminalLines.value.push('Loading goals...');
       // Non-blocking: render kanban immediately, data fills in reactively
-      store.dispatch('goals/fetchGoals').then(() => {
-        terminalLines.value.push(`Loaded ${allGoals.value.length} goals.`);
-        baseScreenRef.value?.scrollToBottom();
-      }).catch((error) => {
-        terminalLines.value.push(`Error loading goals: ${error.message}`);
-        baseScreenRef.value?.scrollToBottom();
-      });
+      store
+        .dispatch('goals/fetchGoals')
+        .then(() => {
+          terminalLines.value.push(`Loaded ${allGoals.value.length} goals.`);
+          baseScreenRef.value?.scrollToBottom();
+        })
+        .catch((error) => {
+          terminalLines.value.push(`Error loading goals: ${error.message}`);
+          baseScreenRef.value?.scrollToBottom();
+        });
     };
 
     const handleGoalClick = async (goal) => {
@@ -201,9 +204,9 @@ export default {
 
 <style scoped>
 .goals-screen {
-  padding: 0px;
+  padding: 0 16px;
   height: calc(100% - 4px);
-  width: 100%;
+  width: calc(100% - 32px);
   display: flex;
   overflow-x: auto;
 }

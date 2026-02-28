@@ -11,33 +11,30 @@
     <template #default>
       <div class="wm-root">
         <!-- Header bar -->
-        <div class="wm-header">
-          <div class="wm-header-left">
-            <span class="wm-title">WIDGET MANAGER</span>
-            <span class="wm-count">{{ filteredWidgets.length }} widgets</span>
-          </div>
-          <div class="wm-header-right">
-            <input v-model="searchQuery" type="text" class="wm-search-input" placeholder="Search widgets..." />
-            <Tooltip text="Grid View" width="auto">
-              <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')" title="Grid view">
-                <i class="fas fa-th-large"></i>
-              </button>
-            </Tooltip>
-            <Tooltip text="List View" width="auto">
-              <button class="wm-btn" :class="{ active: currentLayout === 'list' }" @click="setLayout('list')" title="List view">
-                <i class="fas fa-table"></i>
-              </button>
-            </Tooltip>
+        <ScreenToolbar
+          title="WIDGET MANAGER"
+          :count="filteredWidgets.length"
+          countLabel="widgets"
+          searchPlaceholder="Search widgets..."
+          :searchQuery="searchQuery"
+          :currentLayout="currentLayout"
+          :layoutOptions="['grid', 'list']"
+          :showCollapseToggle="false"
+          :showHideEmpty="false"
+          :sortOrder="sortOrder"
+          createLabel="New Widget"
+          @update:searchQuery="(v) => searchQuery = v"
+          @update:layout="setLayout"
+          @update:sortOrder="(v) => sortOrder = v"
+          @create="createNewWidget"
+        >
+          <template #extra-buttons>
             <button class="wm-btn wm-btn-import" @click="showImportModal = true" title="Import widget">
               <i class="fas fa-file-import"></i>
               <span>Import</span>
             </button>
-            <button class="wm-btn wm-btn-create" @click="createNewWidget" title="Create new widget">
-              <i class="fas fa-plus"></i>
-              <span>New Widget</span>
-            </button>
-          </div>
-        </div>
+          </template>
+        </ScreenToolbar>
 
         <!-- Category tabs -->
         <div class="wm-tabs">
@@ -54,7 +51,8 @@
         </div>
 
         <!-- Widget grid -->
-        <div class="wm-body">
+        <div class="wm-content">
+          <main class="wm-main-content">
           <!-- Grid View -->
           <div v-if="currentLayout === 'grid'" class="wm-grid">
             <div
@@ -161,6 +159,7 @@
               </div>
             </div>
           </div>
+          </main>
         </div>
 
         <!-- Import Modal -->
@@ -233,10 +232,11 @@ import { useStore } from 'vuex';
 import { getAllWidgets } from '@/canvas/widgetRegistry.js';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 
 export default {
   name: 'WidgetManagerScreen',
-  components: { BaseScreen, Tooltip },
+  components: { BaseScreen, Tooltip, ScreenToolbar },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
@@ -248,6 +248,7 @@ export default {
     const isDragOver = ref(false);
     const deleteTarget = ref(null);
     const currentLayout = ref('grid');
+    const sortOrder = ref('az');
 
     const setLayout = (layout) => {
       currentLayout.value = layout;
@@ -335,6 +336,16 @@ export default {
         );
       }
 
+      // Sort: preview widgets first, then by name
+      widgets = [...widgets].sort((a, b) => {
+        const aHas = a._isCustom && a._definition && hasPreview(a) ? 0 : 1;
+        const bHas = b._isCustom && b._definition && hasPreview(b) ? 0 : 1;
+        if (aHas !== bHas) return aHas - bHas;
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      });
+
       return widgets;
     });
 
@@ -420,7 +431,6 @@ export default {
 
       return '';
     }
-
 
     function createNewWidget() {
       store.dispatch('widgetDefinitions/setActiveDefinition', null);
@@ -521,6 +531,7 @@ export default {
 
     return {
       searchQuery,
+      sortOrder,
       activeCategory,
       showImportModal,
       importFile,
@@ -559,79 +570,14 @@ export default {
   flex-wrap: nowrap;
   align-content: flex-start;
   justify-content: flex-start;
-  align-items: center;
+  align-items: flex-start;
   gap: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
 }
 
-/* ── Header ── */
-.wm-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0 16px;
-  border-bottom: 1px solid var(--terminal-border-color);
-  flex-shrink: 0;
-  width: 100%;
-}
-
-.wm-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.wm-title {
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: var(--color-green);
-  font-weight: 600;
-}
-
-.wm-count {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  padding: 1px 6px;
-  background: var(--color-darker-0);
-  border-radius: 3px;
-}
-
-.wm-header-right {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.wm-header-right :deep(.tooltip-container) {
-  display: flex;
-}
-
-.wm-header-right .wm-btn {
-  align-self: stretch;
-}
-
-.wm-search-input {
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  color: var(--color-light-green);
-  font-size: 0.9em;
-  font-family: inherit;
-  outline: none;
-  width: 200px;
-}
-
-.wm-search-input:focus {
-  border-color: var(--color-green);
-}
-
-.wm-search-input::placeholder {
-  color: var(--color-text-muted);
-}
-
+/* ── Local button styles (modals + import) ── */
 .wm-btn {
   display: flex;
   align-items: center;
@@ -651,12 +597,6 @@ export default {
 .wm-btn:hover {
   color: var(--color-text);
   border-color: var(--terminal-border-color);
-}
-
-.wm-btn.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
 }
 
 .wm-btn-create {
@@ -726,20 +666,63 @@ export default {
   font-size: 10px;
 }
 
-/* ── Body / Grid ── */
-.wm-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 0;
+/* ── Content wrapper ── */
+.wm-content {
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-width: 1048px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 16px;
 }
 
+.wm-main-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll !important;
+  scrollbar-width: thin !important;
+  padding: 0 16px 16px;
+}
+
+.wm-main-content::-webkit-scrollbar {
+  width: 10px !important;
+  display: block !important;
+}
+
+.wm-main-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3) !important;
+}
+
+.wm-main-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.4) !important;
+  border-radius: 4px !important;
+}
+
+/*
+ * Grid with dense packing.
+ * Row height = 72px. Non-preview cards = 1 row. Preview cards = 3 rows.
+ * 3 rows + 2 gaps = 3×72 + 2×12 = 240px total for a preview card.
+ * dense auto-flow lets non-preview cards backfill gaps beside preview cards.
+ */
 .wm-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-auto-rows: 72px;
+  grid-auto-flow: dense;
   gap: 12px;
-  align-items: start;
+  width: 100%;
+}
+
+/* Preview cards span 3 rows */
+.wm-card:has(.wm-card-preview) {
+  grid-row: span 3;
+}
+
+/* Non-preview cards clamp to 1 row */
+.wm-card:not(:has(.wm-card-preview)) {
+  grid-row: span 1;
+  overflow: hidden;
 }
 
 /* ── List View ── */
@@ -747,6 +730,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  width: 100%;
 }
 
 .wm-list-row {
@@ -875,10 +859,13 @@ export default {
 }
 
 /* ── Preview area ── */
+/* Total preview card = 3 small cards + 2 gaps = ~240px
+ * Info (84px) + actions (37px) + borders (3px) = 124px overhead
+ * Preview height = 240 - 124 = 116px */
 .wm-card-preview {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 10;
+  height: 116px;
   overflow: hidden;
   background: #0c0c18;
   border-bottom: 1px solid var(--terminal-border-color);

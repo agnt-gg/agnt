@@ -27,45 +27,27 @@
 
       <div class="workflows-panel">
         <!-- Header bar -->
-        <div class="wm-header">
-          <div class="wm-header-left">
-            <span class="wm-title">WORKFLOWS</span>
-            <span class="wm-count">{{ filteredWorkflows.length }} workflows</span>
-          </div>
-          <div class="wm-header-right">
-            <input
-              type="text"
-              class="wm-search-input"
-              placeholder="Search workflows..."
-              :value="searchQuery"
-              @input="handleSearch($event.target.value)"
-            />
-            <Tooltip :text="allCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'" width="auto">
-              <button class="wm-btn" :class="{ active: allCategoriesCollapsed }" @click="toggleCollapseAll" title="Toggle collapse">
-                <i :class="allCategoriesCollapsed ? 'fas fa-expand' : 'fas fa-compress'"></i>
-              </button>
-            </Tooltip>
-            <Tooltip :text="hideEmptyCategories ? 'Show empty categories' : 'Hide empty categories'" width="auto">
-              <button class="wm-btn" :class="{ active: hideEmptyCategories }" @click="toggleHideEmptyCategories" title="Toggle empty categories">
-                <i :class="hideEmptyCategories ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
-              </button>
-            </Tooltip>
-            <Tooltip text="Grid View" width="auto">
-              <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')" title="Grid view">
-                <i class="fas fa-th-large"></i>
-              </button>
-            </Tooltip>
-            <Tooltip text="Table View" width="auto">
-              <button class="wm-btn" :class="{ active: currentLayout === 'table' }" @click="setLayout('table')" title="Table view">
-                <i class="fas fa-table"></i>
-              </button>
-            </Tooltip>
-            <button class="wm-btn wm-btn-create" @click="handlePanelAction('navigate', 'WorkflowForgeScreen')" title="Create new workflow">
-              <i class="fas fa-plus"></i>
-              <span>New Workflow</span>
-            </button>
-          </div>
-        </div>
+        <ScreenToolbar
+          title="WORKFLOWS"
+          :count="filteredWorkflows.length"
+          countLabel="workflows"
+          searchPlaceholder="Search workflows..."
+          :searchQuery="searchQuery"
+          :currentLayout="currentLayout"
+          :layoutOptions="['grid', 'table']"
+          :showCollapseToggle="true"
+          :allCategoriesCollapsed="allCategoriesCollapsed"
+          :showHideEmpty="true"
+          :hideEmptyCategories="hideEmptyCategories"
+          :sortOrder="sortOrder"
+          createLabel="New Workflow"
+          @update:searchQuery="handleSearch"
+          @update:layout="setLayout"
+          @toggleCollapseAll="toggleCollapseAll"
+          @toggleHideEmpty="toggleHideEmptyCategories"
+          @update:sortOrder="(v) => sortOrder = v"
+          @create="handlePanelAction('navigate', 'WorkflowForgeScreen')"
+        />
 
         <!-- Tabs -->
         <div class="wm-tabs">
@@ -83,7 +65,7 @@
               :items="filteredWorkflows"
               :columns="tableColumns"
               :selected-id="selectedWorkflowId"
-              :show-search="true"
+              :show-search="false"
               :show-sort-dropdown="false"
               :enable-column-sorting="true"
               search-placeholder="Search workflows..."
@@ -298,10 +280,11 @@ import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import { useWorkflowsTutorial } from './useWorkflowsTutorial.js';
 export default {
   name: 'WorkflowsScreen',
-  components: { BaseScreen, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip },
+  components: { BaseScreen, BaseTable, TerminalHeader, SvgIcon, PopupTutorial, SimpleModal, Tooltip, ScreenToolbar },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
@@ -315,6 +298,7 @@ export default {
     const searchQuery = ref('');
     const currentLayout = ref('grid');
     const hideEmptyCategories = ref(true);
+    const sortOrder = ref('az');
     let pollingInterval = null;
 
     const selectedCategory = ref(null);
@@ -413,6 +397,12 @@ export default {
         }
       }
 
+      workflows.sort((a, b) => {
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      });
+
       return workflows;
     });
 
@@ -501,6 +491,15 @@ export default {
         workflows.forEach((workflow) => {
           const category = workflow.category || 'Uncategorized';
           categories[category].push(workflow);
+        });
+      }
+
+      // Sort workflows within each category
+      for (const key of Object.keys(categories)) {
+        categories[key].sort((a, b) => {
+          const nameA = (a.name || '').toLowerCase();
+          const nameB = (b.name || '').toLowerCase();
+          return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
         });
       }
 
@@ -1114,6 +1113,7 @@ export default {
       tableColumns,
       handleSearch,
       searchQuery,
+      sortOrder,
       categories,
       categoriesWithCounts,
       mainWorkflowCategories,
@@ -1172,110 +1172,6 @@ export default {
   gap: 0;
   width: 100%;
   height: 100%;
-}
-
-/* ── Header ── */
-.wm-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px 16px;
-  border-bottom: 1px solid var(--terminal-border-color);
-  flex-shrink: 0;
-  width: calc(100% - 32px);
-}
-
-.wm-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.wm-title {
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: var(--color-green);
-  font-weight: 600;
-}
-
-.wm-count {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  padding: 1px 6px;
-  background: var(--color-darker-0);
-  border-radius: 3px;
-}
-
-.wm-header-right {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.wm-header-right :deep(.tooltip-container) {
-  display: flex;
-}
-
-.wm-header-right .wm-btn {
-  align-self: stretch;
-}
-
-.wm-search-input {
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  color: var(--color-light-green);
-  font-size: 0.9em;
-  font-family: inherit;
-  outline: none;
-  width: 200px;
-}
-
-.wm-search-input:focus {
-  border-color: var(--color-green);
-}
-
-.wm-search-input::placeholder {
-  color: var(--color-text-muted);
-}
-
-.wm-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.12s;
-  letter-spacing: 0.5px;
-}
-
-.wm-btn:hover {
-  color: var(--color-text);
-  border-color: var(--terminal-border-color);
-}
-
-.wm-btn.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.wm-btn-create {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.wm-btn-create:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 /* ── Category tabs ── */
@@ -1726,16 +1622,49 @@ export default {
   border-left: 3px solid var(--color-text-muted);
 }
 
-.workflow-card.error {
+.workflow-card.error,
+.workflow-card.failed {
   border-left: 3px solid var(--color-red);
+}
+
+.table-row.listening {
+  border-left: 3px solid var(--color-blue);
+  padding-left: 5px;
 }
 
 .table-row.listening .col-status {
   color: var(--color-blue);
 }
 
+.table-row.active,
+.table-row.running {
+  border-left: 3px solid var(--color-green);
+  padding-left: 5px;
+}
+
+.table-row.active .col-status,
+.table-row.running .col-status {
+  color: var(--color-green);
+}
+
+.table-row.error .col-status,
+.table-row.failed .col-status {
+  color: var(--color-red);
+}
+
+.table-row.stopped {
+  border-left: 3px solid var(--color-text-muted);
+  padding-left: 5px;
+}
+
 .table-row.stopped .col-status {
   color: var(--color-text-muted);
+}
+
+.table-row.error,
+.table-row.failed {
+  border-left: 3px solid var(--color-red);
+  padding-left: 5px;
 }
 
 /* IF USING FULL WIDTH LAST HANGING CHADS */

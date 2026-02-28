@@ -986,7 +986,6 @@ export default {
 
     onUnmounted(() => {
       // console.log("DashboardScreen Unmounted");
-      document.body.removeAttribute('data-page');
       selectedMissionId.value = null;
     });
 

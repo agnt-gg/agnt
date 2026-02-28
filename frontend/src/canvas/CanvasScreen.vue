@@ -128,7 +128,7 @@
 
     <!-- Context menu -->
     <Teleport to="body">
-      <div v-if="ctxMenu.show" class="cv-ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
+      <div v-if="ctxMenu.show" class="cv-ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @click.stop>
         <div class="cv-ctx-item" @click="startRename">Rename</div>
         <div class="cv-ctx-item" @click="doResetPage">Reset Layout</div>
         <div v-if="allPages.length > 1" class="cv-ctx-item cv-ctx-danger" @click="doDelete">Delete</div>
@@ -224,6 +224,10 @@ const MAIN_SECTIONS = [
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE' },
     ],
   },
+];
+
+const SETTINGS_SECTIONS = [
+  { id: 'marketplace', icon: 'fas fa-store', label: 'Marketplace', screens: [{ screen: 'MarketplaceScreen', label: 'MARKETPLACE' }] },
   {
     id: 'widgets',
     icon: 'fas fa-puzzle-piece',
@@ -233,10 +237,6 @@ const MAIN_SECTIONS = [
       { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
     ],
   },
-];
-
-const SETTINGS_SECTIONS = [
-  { id: 'marketplace', icon: 'fas fa-store', label: 'Marketplace', screens: [{ screen: 'MarketplaceScreen', label: 'MARKETPLACE' }] },
   { id: 'connect', icon: 'fas fa-key', label: 'Connect', screens: [{ screen: 'SecretsScreen', label: 'CONNECT' }] },
   { id: 'settings', icon: 'fas fa-cog', label: 'Settings', screens: [{ screen: 'SettingsScreen', label: 'SETTINGS' }] },
 ];
@@ -402,6 +402,8 @@ export default {
       });
       if (ok) {
         store.dispatch('widgetLayout/deletePage', page.id);
+        onCustomPage.value = false;
+        emit('screen-change', 'ChatScreen');
       }
     }
 
@@ -526,7 +528,7 @@ export default {
   height: 32px;
   min-height: 32px;
   background: var(--color-background);
-  border-bottom: 1px solid var(--color-dull-navy);
+  border-bottom: 1px solid var(--terminal-border-color);
   display: flex;
   align-items: center;
   padding: 0 12px;
@@ -738,7 +740,7 @@ export default {
   width: 44px;
   min-width: 44px;
   background: var(--color-background);
-  border-right: 1px solid var(--color-dull-navy);
+  border-right: 1px solid var(--terminal-border-color);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -871,7 +873,7 @@ export default {
 .cv-ctx-menu {
   position: fixed;
   z-index: 3000;
-  background: var(--color-darker-0, #0a0a14);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);

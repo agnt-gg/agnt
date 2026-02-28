@@ -20,45 +20,27 @@
     <template #default="{ terminalLines }">
       <div class="agents-panel" :class="{ 'has-details': selectedAgent, expanded: isDetailsExpanded }">
         <!-- Header bar -->
-        <div class="wm-header">
-          <div class="wm-header-left">
-            <span class="wm-title">AGENTS</span>
-            <span class="wm-count">{{ filteredAgentsGrid.length }} agents</span>
-          </div>
-          <div class="wm-header-right">
-            <input
-              type="text"
-              class="wm-search-input"
-              placeholder="Search agents..."
-              :value="searchQuery"
-              @input="handleSearch($event.target.value)"
-            />
-            <Tooltip :text="allCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'" width="auto">
-              <button class="wm-btn" :class="{ active: allCategoriesCollapsed }" @click="toggleCollapseAll" title="Toggle collapse">
-                <i :class="allCategoriesCollapsed ? 'fas fa-expand' : 'fas fa-compress'"></i>
-              </button>
-            </Tooltip>
-            <Tooltip :text="hideEmptyCategories ? 'Show empty categories' : 'Hide empty categories'" width="auto">
-              <button class="wm-btn" :class="{ active: hideEmptyCategories }" @click="toggleHideEmptyCategories" title="Toggle empty categories">
-                <i :class="hideEmptyCategories ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
-              </button>
-            </Tooltip>
-            <Tooltip text="Grid View" width="auto">
-              <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')" title="Grid view">
-                <i class="fas fa-th-large"></i>
-              </button>
-            </Tooltip>
-            <Tooltip text="Table View" width="auto">
-              <button class="wm-btn" :class="{ active: currentLayout === 'table' }" @click="setLayout('table')" title="Table view">
-                <i class="fas fa-table"></i>
-              </button>
-            </Tooltip>
-            <button class="wm-btn wm-btn-create" @click="handlePanelAction('navigate', 'AgentForgeScreen')" title="Create new agent">
-              <i class="fas fa-plus"></i>
-              <span>New Agent</span>
-            </button>
-          </div>
-        </div>
+        <ScreenToolbar
+          title="AGENTS"
+          :count="filteredAgentsGrid.length"
+          countLabel="agents"
+          searchPlaceholder="Search agents..."
+          :searchQuery="searchQuery"
+          :currentLayout="currentLayout"
+          :layoutOptions="['grid', 'table']"
+          :showCollapseToggle="true"
+          :allCategoriesCollapsed="allCategoriesCollapsed"
+          :showHideEmpty="true"
+          :hideEmptyCategories="hideEmptyCategories"
+          :sortOrder="sortOrder"
+          createLabel="New Agent"
+          @update:searchQuery="handleSearch"
+          @update:layout="setLayout"
+          @toggleCollapseAll="toggleCollapseAll"
+          @toggleHideEmpty="toggleHideEmptyCategories"
+          @update:sortOrder="(v) => sortOrder = v"
+          @create="handlePanelAction('navigate', 'AgentForgeScreen')"
+        />
 
         <!-- Tabs -->
         <div class="wm-tabs">
@@ -230,7 +212,7 @@
                       >
                         <div class="agent-header">
                           <div class="agent-avatar-name">
-                            <div class="agent-avatar">
+                            <div :class="['agent-avatar', (agent.status || 'inactive').toLowerCase() === 'active' ? 'status-active' : 'status-inactive']">
                               <img
                                 v-if="agent.avatar"
                                 :src="agent.avatar"
@@ -324,6 +306,7 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import { useAgentsTutorial } from './useAgentsTutorial.js';
 
 export default {
@@ -334,6 +317,7 @@ export default {
     SidebarCategories,
     AgentList,
     Tooltip,
+    ScreenToolbar,
     AgentDetails,
     SvgIcon,
     SimpleModal,
@@ -359,6 +343,7 @@ export default {
     const saveStatus = ref(null);
     const hideEmptyCategories = ref(true);
     const collapsedCategories = ref(new Set());
+    const sortOrder = ref('az');
 
     // Drag and drop state
     const draggedAgent = ref(null);
@@ -453,6 +438,11 @@ export default {
           [item.name, item.status || 'INACTIVE', item.category].some((val) => val && String(val).toLowerCase().includes(q)),
         );
       }
+      items.sort((a, b) => {
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      });
       return items;
     });
 
@@ -1349,6 +1339,15 @@ export default {
         });
       }
 
+      // Sort agents within each category
+      for (const key of Object.keys(categories)) {
+        categories[key].sort((a, b) => {
+          const nameA = (a.name || '').toLowerCase();
+          const nameB = (b.name || '').toLowerCase();
+          return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        });
+      }
+
       // Sort categories alphabetically (A-Z) and return as sorted object
       const sortedCategories = {};
       Object.keys(categories)
@@ -1682,6 +1681,7 @@ export default {
       emit,
       initializeScreen,
       searchQuery,
+      sortOrder,
       toggleAgent,
       panelProps,
       activeRightPanel,
@@ -1846,113 +1846,9 @@ export default {
   display: none;
 }
 
-.agents-panel.has-details.expanded .wm-header,
+.agents-panel.has-details.expanded :deep(.wm-header),
 .agents-panel.has-details.expanded .wm-tabs {
   display: none;
-}
-
-/* ── Header ── */
-.wm-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px 16px;
-  border-bottom: 1px solid var(--terminal-border-color);
-  flex-shrink: 0;
-  width: calc(100% - 32px);
-}
-
-.wm-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.wm-title {
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: var(--color-green);
-  font-weight: 600;
-}
-
-.wm-count {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  padding: 1px 6px;
-  background: var(--color-darker-0);
-  border-radius: 3px;
-}
-
-.wm-header-right {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.wm-header-right :deep(.tooltip-container) {
-  display: flex;
-}
-
-.wm-header-right .wm-btn {
-  align-self: stretch;
-}
-
-.wm-search-input {
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  color: var(--color-light-green);
-  font-size: 0.9em;
-  font-family: inherit;
-  outline: none;
-  width: 200px;
-}
-
-.wm-search-input:focus {
-  border-color: var(--color-green);
-}
-
-.wm-search-input::placeholder {
-  color: var(--color-text-muted);
-}
-
-.wm-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.12s;
-  letter-spacing: 0.5px;
-}
-
-.wm-btn:hover {
-  color: var(--color-text);
-  border-color: var(--terminal-border-color);
-}
-
-.wm-btn.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.wm-btn-create {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.wm-btn-create:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.3);
 }
 
 /* ── Category tabs ── */
@@ -2308,7 +2204,16 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--terminal-border-color);
+  padding: 2px;
+  border: 2px solid var(--color-text-muted);
+}
+
+.agent-avatar.status-active {
+  border-color: var(--color-green);
+}
+
+.agent-avatar.status-inactive {
+  border-color: var(--color-text-muted);
 }
 
 .avatar-image {
