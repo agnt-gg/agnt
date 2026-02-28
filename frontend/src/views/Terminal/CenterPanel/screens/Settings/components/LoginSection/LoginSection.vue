@@ -553,7 +553,7 @@ button.magic-link::before {
 
 button.magic-link:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
 button.magic-link:hover:not(:disabled)::before {
@@ -562,7 +562,7 @@ button.magic-link:hover:not(:disabled)::before {
 
 button.magic-link:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 
 button.magic-link:disabled {
@@ -601,14 +601,14 @@ button.magic-link:disabled {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--terminal-border-color);
   color: #111827;
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.24);
+  /* box-shadow: 0 6px 20px rgba(15, 23, 42, 0.24); */
 }
 
 .google-auth:hover {
   background: #ffffff;
   border-color: var(--terminal-border-color);
   /* transform: translateY(-1px); */
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.3);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
 }
 
 body.dark .google-auth {
