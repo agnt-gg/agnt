@@ -1075,32 +1075,40 @@ export default {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: none;
+  border: 2px solid transparent;
 }
 
 .swatch-dark {
   background: #10101f;
+  border-color: #19ef83;
 }
 .swatch-cyberpunk {
   background: #0b0b30;
+  border-color: #19ef83;
 }
 .swatch-midnight {
   background: #080818;
+  border-color: #a070ff;
 }
 .swatch-ember {
   background: #120c08;
+  border-color: #e09040;
 }
 .swatch-nord {
   background: #2e3440;
+  border-color: #88c0d0;
 }
 .swatch-hacker {
   background: #000000;
+  border-color: #19ef83;
 }
 .swatch-light {
   background: #f1f0f5;
+  border-color: #d03580;
 }
 .swatch-rose {
   background: #faf4f4;
+  border-color: #c8507a;
 }
 
 .theme-tile-name {
