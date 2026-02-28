@@ -55,8 +55,8 @@
 
         <!-- Widget grid -->
         <div class="wm-body">
-          <div class="wm-grid">
-            <!-- Built-in widgets -->
+          <!-- Grid View -->
+          <div v-if="currentLayout === 'grid'" class="wm-grid">
             <div
               v-for="widget in filteredWidgets"
               :key="widget.id"
@@ -64,22 +64,86 @@
               :class="{ 'wm-custom': widget._isCustom }"
               @click="widget._isCustom ? openEditor(widget) : null"
             >
-              <div class="wm-card-header">
-                <div class="wm-card-icon"><i :class="widget.icon"></i></div>
-                <div class="wm-card-badges">
-                  <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">CUSTOM</span>
-                  <span v-else class="wm-badge wm-badge-builtin">BUILT-IN</span>
-                  <span v-if="widget.is_shared" class="wm-badge wm-badge-shared">SHARED</span>
-                </div>
+              <!-- Preview area (custom widgets only) -->
+              <div v-if="widget._isCustom && widget._definition && hasPreview(widget)" class="wm-card-preview">
+                <!-- iframe-type: load external URL (needs scripts to render) -->
+                <iframe
+                  v-if="widget._definition.widget_type === 'iframe' && widget._definition.config?.url"
+                  class="wm-card-preview-iframe"
+                  :src="widget._definition.config.url"
+                  sandbox="allow-scripts allow-same-origin"
+                  frameborder="0"
+                  tabindex="-1"
+                  scrolling="no"
+                ></iframe>
+                <!-- html/markdown: static srcdoc preview -->
+                <iframe
+                  v-else
+                  class="wm-card-preview-iframe"
+                  :srcdoc="getPreviewHtml(widget)"
+                  sandbox=""
+                  frameborder="0"
+                  tabindex="-1"
+                  scrolling="no"
+                ></iframe>
               </div>
-              <div class="wm-card-name">{{ widget.name }}</div>
-              <div class="wm-card-desc">{{ widget.description }}</div>
-              <div class="wm-card-meta">
-                <span class="wm-card-type">{{ widget.widget_type || widget.category }}</span>
-                <span class="wm-card-size">{{ formatSize(widget) }}</span>
+              <!-- Info area -->
+              <div class="wm-card-info">
+                <div class="wm-card-header">
+                  <div class="wm-card-icon"><i :class="widget.icon"></i></div>
+                  <div class="wm-card-name">{{ widget.name }}</div>
+                  <div class="wm-card-badges">
+                    <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">CUSTOM</span>
+                    <span v-else class="wm-badge wm-badge-builtin">BUILT-IN</span>
+                    <span v-if="widget.is_shared" class="wm-badge wm-badge-shared">SHARED</span>
+                  </div>
+                </div>
+                <div class="wm-card-desc">{{ widget.description }}</div>
+                <div class="wm-card-meta">
+                  <span class="wm-card-type">{{ widget.widget_type || widget.category }}</span>
+                  <span class="wm-card-size">{{ formatSize(widget) }}</span>
+                </div>
               </div>
               <!-- Actions for custom widgets -->
               <div v-if="widget._isCustom" class="wm-card-actions" @click.stop>
+                <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
+                <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
+                <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
+                <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div v-if="filteredWidgets.length === 0" class="wm-empty">
+              <div class="wm-empty-icon"><i class="fas fa-puzzle-piece"></i></div>
+              <div class="wm-empty-text">No widgets found</div>
+              <div class="wm-empty-hint">
+                <span v-if="searchQuery">Try a different search term</span>
+                <span v-else>Create your first custom widget!</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- List View -->
+          <div v-else class="wm-list">
+            <div
+              v-for="widget in filteredWidgets"
+              :key="widget.id"
+              class="wm-list-row"
+              :class="{ 'wm-custom': widget._isCustom }"
+              @click="widget._isCustom ? openEditor(widget) : null"
+            >
+              <div class="wm-list-icon"><i :class="widget.icon"></i></div>
+              <div class="wm-list-name">{{ widget.name }}</div>
+              <div class="wm-list-desc">{{ widget.description }}</div>
+              <div class="wm-list-badges">
+                <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">CUSTOM</span>
+                <span v-else class="wm-badge wm-badge-builtin">BUILT-IN</span>
+                <span v-if="widget.is_shared" class="wm-badge wm-badge-shared">SHARED</span>
+              </div>
+              <span class="wm-list-type">{{ widget.widget_type || widget.category }}</span>
+              <span class="wm-list-size">{{ formatSize(widget) }}</span>
+              <div v-if="widget._isCustom" class="wm-list-actions" @click.stop>
                 <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
                 <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
                 <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
@@ -285,11 +349,78 @@ export default {
       return map[cat] || 'fas fa-folder';
     }
 
+    function hasPreview(widget) {
+      const def = widget._definition;
+      if (!def) return false;
+      const type = def.widget_type || '';
+      if (type === 'iframe') return !!def.config?.url;
+      if (type === 'html' || type === 'markdown') return !!def.source_code;
+      return false;
+    }
+
     function formatSize(widget) {
       const size = widget.defaultSize || widget.default_size;
       if (!size) return '';
       return `${size.cols}×${size.rows}`;
     }
+
+    function getPreviewHtml(widget) {
+      const def = widget._definition;
+      if (!def) return '';
+      const type = def.widget_type || '';
+      const source = def.source_code || '';
+      if (!source) return '';
+
+      // Strip all <script> tags and their contents for a static preview
+      const stripped = source.replace(/<script[\s\S]*?<\/script>/gi, '');
+
+      if (type === 'html') {
+        const themeVars = `<style>
+          :root {
+            --color-green: #19ef83; --color-red: #ff4757; --color-yellow: #ffd700;
+            --color-blue: #12e0ff; --color-purple: #7d3de5; --color-pink: #e53d8f;
+            --color-background: #0c0c18; --color-text: #c8c8d4; --color-text-muted: #556;
+            --color-border: #1a1a2e;
+            --font-family: 'JetBrains Mono', 'Fira Code', monospace;
+          }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body {
+            font-family: var(--font-family);
+            background: var(--color-background);
+            color: var(--color-text);
+            overflow: hidden;
+          }
+        </style>`;
+        if (stripped.trim().toLowerCase().startsWith('<!doctype') || stripped.trim().toLowerCase().startsWith('<html')) {
+          // Strip scripts from full HTML documents too
+          return stripped;
+        }
+        return `<!DOCTYPE html><html><head><meta charset="utf-8">${themeVars}</head><body>${stripped}</body></html>`;
+      }
+
+      if (type === 'markdown') {
+        const rendered = source
+          .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+          .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+          .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.+?)\*/g, '<em>$1</em>')
+          .replace(/`(.+?)`/g, '<code>$1</code>')
+          .replace(/^- (.+)$/gm, '<li>$1</li>')
+          .replace(/\n/g, '<br/>');
+        return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'JetBrains Mono', monospace; background: #0c0c18; color: #c8c8d4; padding: 12px; overflow: hidden; font-size: 13px; line-height: 1.5; }
+          h1, h2, h3 { color: #19ef83; margin-bottom: 4px; }
+          h1 { font-size: 18px; } h2 { font-size: 15px; } h3 { font-size: 13px; }
+          code { background: rgba(255,255,255,0.05); padding: 1px 4px; border-radius: 3px; }
+          strong { color: #eee; }
+        </style></head><body>${rendered}</body></html>`;
+      }
+
+      return '';
+    }
+
 
     function createNewWidget() {
       store.dispatch('widgetDefinitions/setActiveDefinition', null);
@@ -401,6 +532,8 @@ export default {
       categoryTabs,
       filteredWidgets,
       formatSize,
+      hasPreview,
+      getPreviewHtml,
       createNewWidget,
       openEditor,
       duplicateWidget,
@@ -604,41 +737,185 @@ export default {
 
 .wm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+/* ── List View ── */
+.wm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wm-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+
+.wm-list-row.wm-custom {
+  cursor: pointer;
+  border-left: 3px solid var(--color-green);
+}
+
+.wm-list-row:not(.wm-custom) {
+  border-left: 3px solid var(--color-blue);
+}
+
+.wm-list-row:hover {
+  background: rgba(var(--green-rgb), 0.06);
+  border-color: rgba(var(--green-rgb), 0.2);
+}
+
+.wm-list-icon {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.wm-list-row.wm-custom .wm-list-icon {
+  color: var(--color-green);
+}
+
+.wm-list-name {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--color-text);
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 140px;
+}
+
+.wm-list-desc {
+  flex: 1;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.wm-list-badges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wm-list-type,
+.wm-list-size {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  min-width: 50px;
+  text-align: right;
+}
+
+.wm-list-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.wm-list-actions button {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  transition: all 0.12s;
+}
+
+.wm-list-actions button:hover {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.15);
+  background: rgba(var(--green-rgb), 0.04);
+}
+
+.wm-list-actions .wm-card-delete:hover {
+  color: var(--color-red);
+  border-color: rgba(var(--red-rgb), 0.15);
+  background: rgba(var(--red-rgb), 0.04);
 }
 
 .wm-card {
-  padding: 14px;
+  display: flex;
+  flex-direction: column;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-blue);
   border-radius: 16px;
   transition: all 0.2s ease;
   position: relative;
+  overflow: hidden;
 }
 
 .wm-card.wm-custom {
-  border-left: 3px solid var(--color-green);
   cursor: pointer;
 }
 
 .wm-card:hover {
-  background: rgba(var(--green-rgb), 0.08);
-  border-color: rgba(var(--green-rgb), 0.2);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: rgba(var(--green-rgb), 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.wm-card:hover .wm-card-preview {
+  border-bottom-color: rgba(var(--green-rgb), 0.15);
+}
+
+/* ── Preview area ── */
+.wm-card-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: #0c0c18;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+.wm-card-preview-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 500%;
+  height: 500%;
+  transform: scale(0.2);
+  transform-origin: 0 0;
+  border: none;
+  pointer-events: none;
+  display: block;
+}
+
+/* ── Info area ── */
+.wm-card-info {
+  padding: 10px 14px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .wm-card-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  align-items: center;
+  gap: 6px;
 }
 
 .wm-card-icon {
-  font-size: 18px;
+  font-size: 14px;
   color: var(--color-text-muted);
+  flex-shrink: 0;
 }
 
 .wm-card.wm-custom .wm-card-icon {
@@ -648,6 +925,8 @@ export default {
 .wm-card-badges {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .wm-badge {
@@ -674,17 +953,18 @@ export default {
 
 .wm-card-name {
   font-size: 11px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  letter-spacing: 0.5px;
   color: var(--color-text);
   font-weight: 600;
-  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .wm-card-desc {
   font-size: 10px;
   color: var(--color-text-muted);
-  margin-bottom: 8px;
   line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -708,8 +988,7 @@ export default {
 .wm-card-actions {
   display: flex;
   gap: 2px;
-  margin-top: 8px;
-  padding-top: 8px;
+  padding: 6px 14px 10px;
   border-top: 1px solid var(--color-darker-1);
 }
 
