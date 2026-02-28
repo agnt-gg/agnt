@@ -39,7 +39,10 @@
         </div>
         <button class="upgrade-agent-button clickable" @click="emitAgentUpgrade(agent)">Upgrade Agent</button>
       </div>
-      <div v-if="!agents.length" class="empty-state-small">Recruiting initial agents...</div>
+      <div v-if="!agents.length" class="empty-state-small">
+        <p>No agents yet</p>
+        <button class="create-btn" @click="$emit('navigate', 'AgentForgeScreen')"><i class="fas fa-plus"></i> <span>Create New Agent</span></button>
+      </div>
     </div>
   </div>
 </template>
@@ -59,7 +62,7 @@ export default {
       default: 0
     }
   },
-  emits: ['upgrade-agent'],
+  emits: ['upgrade-agent', 'navigate'],
   setup(props, { emit }) {
     const emitAgentUpgrade = (agent) => {
       emit('upgrade-agent', agent);
@@ -96,11 +99,40 @@ export default {
 }
 
 .empty-state-small {
-    color: var(--color-grey);
-    font-style: italic;
-    padding: 10px;
-    text-align: center;
-    font-size: 0.9em;
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: 10px;
+}
+
+.empty-state-small p {
+  margin: 0 0 12px 0;
+  font-size: 0.9em;
+}
+
+.create-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--color-duller-navy);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s ease;
+}
+
+.create-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
+}
+
+.create-btn i {
+  font-size: 0.8em;
 }
 
 .agents-grid {

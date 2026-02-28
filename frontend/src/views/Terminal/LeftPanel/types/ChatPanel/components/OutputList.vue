@@ -771,20 +771,20 @@ div#saved-outputs {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: var(--color-primary);
-  border: 1px solid var(--color-primary);
+  background: transparent;
+  border: 1px dashed var(--color-duller-navy);
   border-radius: 6px;
-  color: #ffffff;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
   margin-left: auto;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .new-chat-btn:hover {
-  background: transparent;
+  border-color: var(--color-primary);
   color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .new-chat-btn i {
@@ -835,12 +835,12 @@ div#saved-outputs {
 
 .sort-button:hover {
   background: var(--color-darker-1);
-  border-color: var(--color-primary);
+  border-color: var(--color-text-muted);
 }
 
 .sort-button.active {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  border-color: var(--terminal-border-color);
+  color: var(--color-text-muted);
 }
 
 .sort-button i {

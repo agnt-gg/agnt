@@ -7,7 +7,7 @@
     <!-- <PerformanceOverview /> -->
 
     <!-- Workflow Templates -->
-    <ActiveWorkflows @edit-workflow="handleEditWorkflow" />
+    <ActiveWorkflows @edit-workflow="handleEditWorkflow" @panel-action="handlePanelAction" />
 
     <!-- Items for Review -->
     <!-- <ItemsForReview @review-item="handleReviewItem" /> -->
@@ -63,6 +63,10 @@ export default {
       emit('panel-action', 'review-item', data);
     };
 
+    const handlePanelAction = (action, data) => {
+      emit('panel-action', action, data);
+    };
+
     onMounted(() => {
       // Data is pre-loaded by initializeStore in main.js - no redundant fetches needed
     });
@@ -70,6 +74,7 @@ export default {
     return {
       handleEditWorkflow,
       handleReviewItem,
+      handlePanelAction,
     };
   },
 };

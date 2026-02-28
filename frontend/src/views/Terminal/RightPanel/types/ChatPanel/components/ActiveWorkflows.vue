@@ -18,6 +18,12 @@
           <span class="workflow-status">{{ template.status }}</span>
         </div>
       </div>
+      <div v-if="workflowTemplates.length === 0" class="no-workflows">
+        <button class="create-workflow-btn" @click="createWorkflow">
+          <i class="fas fa-plus"></i>
+          <span>Create New Workflow</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -28,7 +34,7 @@ import { useStore } from 'vuex';
 
 export default {
   name: 'ActiveWorkflows',
-  emits: ['edit-workflow'],
+  emits: ['edit-workflow', 'panel-action'],
   setup(props, { emit }) {
     const store = useStore();
     const playSound = inject('playSound', () => {});
@@ -60,7 +66,13 @@ export default {
       emit('edit-workflow', { workflowId: template.id });
     };
 
+    const createWorkflow = () => {
+      playSound('buttonClick');
+      emit('panel-action', 'navigate', 'WorkflowForgeScreen');
+    };
+
     return {
+      createWorkflow,
       workflowTemplates,
       editWorkflow,
       workflowListRef,
@@ -188,5 +200,35 @@ export default {
   text-transform: capitalize;
   flex-shrink: 0;
   margin-left: 8px;
+}
+
+.no-workflows {
+  padding: 8px 0;
+}
+
+.create-workflow-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--color-duller-navy);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s ease;
+}
+
+.create-workflow-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
+}
+
+.create-workflow-btn i {
+  font-size: 0.8em;
 }
 </style>

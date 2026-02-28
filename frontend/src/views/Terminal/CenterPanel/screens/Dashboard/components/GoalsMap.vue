@@ -5,7 +5,7 @@
         <div class="empty-state">
           <i class="fas fa-bullseye"></i>
           <p>No goals defined yet</p>
-          <button class="create-link" @click="navigateToChat"><i class="fas fa-comments"></i> Create via Chat</button>
+          <button class="create-btn" @click="navigateToChat"><i class="fas fa-plus"></i> <span>Create New Goal</span></button>
         </div>
       </div>
       <div v-else>
@@ -109,34 +109,39 @@ export default {
 
 .empty-state i {
   font-size: 2em;
-  margin-bottom: 4px;
+  margin-bottom: 0;
   display: block;
 }
 
 .empty-state p {
-  margin: 0 0 12px 0;
+  margin: 12px 0 12px 0;
   font-size: 0.9em;
 }
 
-.create-link {
-  background: var(--color-primary);
-  color: var(--color-white);
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
+.create-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--color-duller-navy);
+  border-radius: 6px;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 0.85em;
   transition: all 0.2s ease;
 }
 
-.create-link:hover {
-  background: var(--color-primary-hover);
-  transform: translateY(-1px);
+.create-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
-.create-link i {
-  /* margin-right: 4px; */
-  font-size: 0.9em;
+.create-btn i {
+  font-size: 0.8em;
 }
 
 .goal-item {

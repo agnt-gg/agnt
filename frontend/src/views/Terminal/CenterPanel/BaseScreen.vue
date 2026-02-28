@@ -362,6 +362,10 @@ export default {
         isPanelOpen.value = false;
         return;
       }
+      if (action === 'navigate') {
+        handleNavigation(payload);
+        return;
+      }
       emit('panel-action', action, payload);
     };
 
