@@ -53,6 +53,8 @@ export default {
         successRate: agent.successRate || agent.success_rate || null,
         provider: agent.provider || '',
         model: agent.model || '',
+        systemPrompt: agent.systemPrompt || agent.system_prompt || '',
+        assignedSkills: agent.assignedSkills || [],
       }));
       state.lastFetched = Date.now();
     },
@@ -139,6 +141,8 @@ export default {
         category: agentData.category || '',
         assignedTools: agentData.assignedTools || [],
         assignedWorkflows: agentData.assignedWorkflows || [],
+        systemPrompt: agentData.systemPrompt || '',
+        assignedSkills: agentData.assignedSkills || [],
       });
       commit('SET_LOADING', true);
       try {
@@ -160,6 +164,8 @@ export default {
           assignedWorkflows: agentData.assignedWorkflows || [],
           provider: agentData.provider || '',
           model: agentData.model || '',
+          systemPrompt: agentData.systemPrompt || '',
+          assignedSkills: agentData.assignedSkills || [],
         };
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/${agent.id}`, {
           method: 'PUT',
@@ -211,6 +217,8 @@ export default {
           assignedWorkflows: agentData.assignedWorkflows || [],
           provider: agentData.provider || '',
           model: agentData.model || '',
+          systemPrompt: agentData.systemPrompt || '',
+          assignedSkills: agentData.assignedSkills || [],
         };
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/save`, {
           method: 'POST',

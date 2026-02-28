@@ -270,6 +270,7 @@
           :format-uptime="formatUptime"
           :available-tools="availableTools"
           :available-workflows="availableWorkflows"
+          :available-skills="availableSkills"
           :category-options="categoryOptions"
           @toggle-details-expanded="toggleDetailsExpanded"
           @close-details="closeDetails"
@@ -750,8 +751,10 @@ export default {
           avatar: configPayload.avatar,
           provider: configPayload.provider,
           model: configPayload.model,
+          systemPrompt: configPayload.systemPrompt || '',
           assignedTools: configPayload.assignedTools || [],
           assignedWorkflows: configPayload.assignedWorkflows || [],
+          assignedSkills: configPayload.assignedSkills || [],
           config: {
             tickSpeed: configPayload.tickSpeed,
             tokenBudget: configPayload.tokenBudget,
@@ -788,11 +791,16 @@ export default {
 
     const availableTools = ref([]);
     const availableWorkflows = ref([]);
+    const availableSkills = computed(() => store.getters['skills/allSkills'] || []);
 
     // Fetch tools and workflows (like AgentForge)
     const fetchToolsAndWorkflows = async (force = false) => {
       try {
-        await Promise.all([store.dispatch('tools/fetchTools', { force }), store.dispatch('workflows/fetchWorkflows', { force })]);
+        await Promise.all([
+          store.dispatch('tools/fetchTools', { force }),
+          store.dispatch('workflows/fetchWorkflows', { force }),
+          store.dispatch('skills/fetchSkills'),
+        ]);
         availableTools.value = store.getters['tools/allTools'] || [];
         availableWorkflows.value = store.getters['workflows/allWorkflows'] || [];
       } catch (e) {
@@ -1703,6 +1711,7 @@ export default {
       onAgentTabSelect,
       availableTools,
       availableWorkflows,
+      availableSkills,
       onAllSelected,
       onCategorySelected,
       mainAgentCategories,

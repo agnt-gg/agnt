@@ -587,6 +587,29 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`);
 
+      // ==================== SKILLS TABLE ====================
+      db.run(`CREATE TABLE IF NOT EXISTS skills (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        instructions TEXT,
+        license TEXT,
+        compatibility TEXT,
+        metadata TEXT,
+        allowed_tools TEXT,
+        icon TEXT DEFAULT '🧩',
+        category TEXT DEFAULT 'general',
+        is_builtin INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_skills_user_id ON skills(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)`);
+
       // ==================== PERFORMANCE INDEXES ====================
       // Agents - faster lookup by user
       db.run(`CREATE INDEX IF NOT EXISTS idx_agents_created_by ON agents(created_by)`);
@@ -627,6 +650,23 @@ function runMigrations() {
           console.error('Error adding current_version_id column to workflows:', err);
         } else if (!err) {
           console.log('✓ Added current_version_id column to workflows table');
+        }
+      });
+
+      // Migration: Add system_prompt and skills columns to agents table (2026-02-28)
+      db.run(`ALTER TABLE agents ADD COLUMN system_prompt TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding system_prompt column to agents:', err);
+        } else if (!err) {
+          console.log('✓ Added system_prompt column to agents table');
+        }
+      });
+
+      db.run(`ALTER TABLE agents ADD COLUMN skills TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding skills column to agents:', err);
+        } else if (!err) {
+          console.log('✓ Added skills column to agents table');
         }
       });
 

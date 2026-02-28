@@ -133,6 +133,12 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'WidgetForgeScreen' },
     },
     {
+      path: '/skills',
+      name: 'TerminalSkills',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'SkillsScreen' },
+    },
+    {
       path: '/ball-jumper',
       name: 'TerminalBallJumper',
       component: Terminal,

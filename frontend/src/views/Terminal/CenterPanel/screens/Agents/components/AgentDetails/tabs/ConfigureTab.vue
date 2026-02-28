@@ -50,6 +50,18 @@
           <textarea v-model="agentConfig.description" class="input" rows="3" placeholder="Describe the agent's purpose and capabilities"></textarea>
         </div>
 
+        <!-- System Prompt -->
+        <div class="config-item">
+          <label><i class="fas fa-brain" style="color: var(--color-green); margin-right: 4px"></i> System Prompt</label>
+          <textarea
+            v-model="agentConfig.systemPrompt"
+            class="input system-prompt-input"
+            rows="5"
+            placeholder="Custom directives for this agent. These are injected as primary instructions into the LLM context (e.g., tone, constraints, domain expertise)..."
+          ></textarea>
+          <span class="input-description">Custom behavioral directives injected into the agent's system prompt</span>
+        </div>
+
         <!-- Provider and Model Selection Row -->
         <div class="config-row">
           <div class="config-item">
@@ -86,6 +98,15 @@
         </h4>
         <ListWithSearch :items="availableTools" v-model="agentConfig.tools" label-key="title" id-key="id" placeholder="Search tools..." />
       </div>
+      <!-- Assign Skills -->
+      <div class="config-group">
+        <h4 class="section-title">
+          <i class="fas fa-brain"></i>
+          Assign Skills
+        </h4>
+        <ListWithSearch :items="availableSkills" v-model="agentConfig.skills" label-key="name" id-key="id" placeholder="Search skills..." />
+      </div>
+
       <!-- Assign Workflows -->
       <!-- <div class="config-group half-width">
           <h4 class="section-title">
@@ -214,6 +235,10 @@ const props = defineProps({
   //   type: Array,
   //   default: () => [],
   // },
+  availableSkills: {
+    type: Array,
+    default: () => [],
+  },
   categoryOptions: {
     type: Array,
     default: () => [],
@@ -235,8 +260,10 @@ function initializeAgentConfig(agent) {
     category: agent.category || '',
     provider: agent.provider || '',
     model: agent.model || '',
+    systemPrompt: agent.systemPrompt || '',
     tools: agent.assignedTools ? [...agent.assignedTools] : [],
     workflows: agent.assignedWorkflows ? [...agent.assignedWorkflows] : [],
+    skills: agent.assignedSkills ? [...agent.assignedSkills] : [],
   };
 }
 
@@ -274,7 +301,7 @@ watch(
       agentConfig.value = initializeAgentConfig(newAgent);
     }
   },
-  { deep: true, immediate: true }
+  { deep: true, immediate: true },
 );
 
 // Watch for provider changes to fetch models dynamically
@@ -284,7 +311,7 @@ watch(
     if (newProvider) {
       await store.dispatch('aiProvider/fetchProviderModels', { provider: newProvider });
     }
-  }
+  },
 );
 
 const updateTickSpeed = (action) => {
@@ -367,8 +394,10 @@ const saveConfiguration = async () => {
       provider: agentConfig.value.provider,
       model: agentConfig.value.model,
       avatar: agentConfig.value.avatar !== null ? agentConfig.value.avatar : props.selectedAgent.avatar,
+      systemPrompt: agentConfig.value.systemPrompt,
       assignedTools: agentConfig.value.tools,
       assignedWorkflows: agentConfig.value.workflows,
+      assignedSkills: agentConfig.value.skills,
       // Include other config fields if needed by the parent component
       tickSpeed: agentConfig.value.tickSpeed,
       tokenBudget: agentConfig.value.tokenBudget,
@@ -483,19 +512,11 @@ h4.section-title {
   font-size: 0.9em;
 }
 
-/* .input {
-  border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-light-green);
-  padding: 0 6px;
-  border-radius: 4px;
-  width: 100%;
-  font-size: 1em;
-}
 textarea.input {
   font-family: inherit;
   resize: vertical;
   min-height: 80px;
-} */
+}
 
 .input-with-buttons {
   display: flex;
@@ -603,7 +624,9 @@ textarea.input {
   background: var(--color-red);
   color: #fff;
   border: 1px solid var(--color-red);
-  transition: background 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s;
 }
 .action-button.danger:hover {
   background: var(--color-red);
@@ -680,5 +703,10 @@ textarea.input {
 .config-group.half-width {
   flex: 1 1 0;
   min-width: 0;
+}
+
+.system-prompt-input {
+  min-height: 80px;
+  resize: vertical;
 }
 </style>

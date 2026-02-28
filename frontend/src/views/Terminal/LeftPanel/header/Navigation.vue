@@ -187,6 +187,11 @@ export default {
           // disabled: userLevel.value < 7,
           // unlocksAt: 7,
         },
+        {
+          screen: 'SkillsScreen',
+          icon: 'brain',
+          label: 'Skills',
+        },
         // {
         //   screen: 'ResourcesScreen',
         //   icon: 'resources',
@@ -371,6 +376,7 @@ export default {
         territory: 'fas fa-map',
         integrations: 'fas fa-plug',
         settings: 'fas fa-cog',
+        brain: 'fas fa-brain',
       };
       return iconMap[icon] || 'fas fa-circle';
     };

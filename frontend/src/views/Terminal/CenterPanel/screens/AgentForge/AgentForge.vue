@@ -187,7 +187,6 @@
         </div>
       </div>
     </div>
-
   </Teleport>
 
   <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="AgentForgeScreen" @close="onTutorialClose" />
@@ -314,7 +313,7 @@ export default {
           newAgent.value.category = opts[0].value;
         }
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     // Watch for provider changes to fetch models dynamically
@@ -324,7 +323,7 @@ export default {
         if (newProvider) {
           await store.dispatch('aiProvider/fetchProviderModels', { provider: newProvider });
         }
-      }
+      },
     );
 
     // Fetch tools and workflows on mount
@@ -976,7 +975,7 @@ export default {
   background: var(--color-dark-0);
   border: 2px solid var(--terminal-border-color);
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 /* .avatar-preview:hover {

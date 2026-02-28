@@ -65,6 +65,7 @@ const screenComponents = {
   MarketplaceScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Marketplace/Marketplace.vue')),
   WidgetManagerScreen: defineAsyncComponent(() => import('./CenterPanel/screens/WidgetManager/WidgetManager.vue')),
   WidgetForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/WidgetForge/WidgetForge.vue')),
+  SkillsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Skills/Skills.vue')),
 };
 
 export default {
@@ -118,6 +119,7 @@ export default {
         MarketplaceScreen: '/marketplace',
         WidgetManagerScreen: '/widget-manager',
         WidgetForgeScreen: '/widget-forge',
+        SkillsScreen: '/skills',
       };
 
       if (screenName in screenRoutes) {

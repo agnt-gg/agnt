@@ -36,6 +36,7 @@ import SpeechRoutes from './src/routes/SpeechRoutes.js';
 import PluginRoutes from './src/routes/PluginRoutes.js';
 import AsyncToolRoutes from './src/routes/AsyncToolRoutes.js';
 import WidgetDefinitionRoutes from './src/routes/WidgetDefinitionRoutes.js';
+import SkillRoutes from './src/routes/SkillRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
 import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
@@ -127,6 +128,7 @@ app.use('/api/speech', SpeechRoutes);
 app.use('/api/plugins', PluginRoutes);
 app.use('/api/async-tools', AsyncToolRoutes);
 app.use('/api/widget-definitions', WidgetDefinitionRoutes);
+app.use('/api/skills', SkillRoutes);
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
 // Version endpoint - reads dynamically from package.json

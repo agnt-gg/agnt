@@ -204,6 +204,7 @@ const MAIN_SECTIONS = [
     screens: [
       { screen: 'AgentsScreen', label: 'MY AGENTS' },
       { screen: 'AgentForgeScreen', label: 'AGENT FORGE' },
+      { screen: 'SkillsScreen', label: 'SKILLS' },
     ],
   },
   {

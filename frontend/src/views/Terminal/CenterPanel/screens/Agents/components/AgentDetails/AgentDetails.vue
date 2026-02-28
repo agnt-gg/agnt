@@ -71,6 +71,12 @@
         @view-tool-details="emit('view-tool-details', $event)"
       />
 
+      <!-- Skills Tab -->
+      <SkillsTab
+        v-if="activeTab === 'skills'"
+        :selected-agent="selectedAgent"
+      />
+
       <!-- Workflows Tab -->
       <!-- <WorkflowsTab v-if="activeTab === 'workflows'" /> -->
 
@@ -82,6 +88,7 @@
         v-if="activeTab === 'configure'"
         :selected-agent="selectedAgent"
         :available-tools="availableTools"
+        :available-skills="availableSkills"
         :category-options="categoryOptions"
         :save-status="saveStatus"
         @save-configuration="emit('save-configuration', $event)"
@@ -106,6 +113,7 @@ import ToolsTab from './tabs/ToolsTab.vue';
 // import WorkflowsTab from './tabs/WorkflowsTab.vue';
 import ResourcesTab from './tabs/ResourcesTab.vue';
 import ConfigureTab from './tabs/ConfigureTab.vue';
+import SkillsTab from './tabs/SkillsTab.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const props = defineProps({
@@ -122,6 +130,10 @@ const props = defineProps({
     default: () => [],
   },
   availableWorkflows: {
+    type: Array,
+    default: () => [],
+  },
+  availableSkills: {
     type: Array,
     default: () => [],
   },
@@ -176,6 +188,7 @@ const tabs = [
   // { id: 'tasks', name: 'Tasks', icon: 'fas fa-tasks' },
   // { id: 'workflows', name: 'Workflows', icon: 'fas fa-sitemap' },
   { id: 'tools', name: 'Tools', icon: 'fas fa-tools' },
+  { id: 'skills', name: 'Skills', icon: 'fas fa-brain' },
   // { id: 'resources', name: 'Resources', icon: 'fas fa-database' },
   { id: 'configure', name: 'Configure', icon: 'fas fa-cog' },
 ];

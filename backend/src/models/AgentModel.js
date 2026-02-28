@@ -18,13 +18,16 @@ class AgentModel {
         assignedWorkflows = [],
         provider,
         model,
+        systemPrompt = '',
+        assignedSkills = [],
       } = agent;
       const toolsJson = JSON.stringify(assignedTools);
       const workflowsJson = JSON.stringify(assignedWorkflows);
+      const skillsJson = JSON.stringify(assignedSkills);
       db.run(
-        `INSERT OR REPLACE INTO agents (id, name, description, status, icon, category, tools, workflows, provider, model, created_by, last_active, success_rate, updated_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        [id, name, description, status, icon, category, toolsJson, workflowsJson, provider, model, userId, lastActive, successRate],
+        `INSERT OR REPLACE INTO agents (id, name, description, status, icon, category, tools, workflows, provider, model, created_by, last_active, success_rate, system_prompt, skills, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [id, name, description, status, icon, category, toolsJson, workflowsJson, provider, model, userId, lastActive, successRate, systemPrompt, skillsJson],
         function (err) {
           if (err) {
             reject(err);
@@ -56,9 +59,11 @@ class AgentModel {
         (err, agent) => {
           if (err) reject(err);
           else if (agent) {
-            // Parse tools and workflows JSON
+            // Parse tools, workflows, and skills JSON
             agent.assignedTools = agent.tools ? JSON.parse(agent.tools) : [];
             agent.assignedWorkflows = agent.workflows ? JSON.parse(agent.workflows) : [];
+            agent.systemPrompt = agent.system_prompt || '';
+            agent.assignedSkills = agent.skills ? JSON.parse(agent.skills) : [];
             resolve(agent);
           } else resolve(null);
         }
@@ -79,10 +84,12 @@ class AgentModel {
         (err, agents) => {
           if (err) reject(err);
           else {
-            // Parse tools and workflows JSON for each agent
+            // Parse tools, workflows, and skills JSON for each agent
             agents.forEach((agent) => {
               agent.assignedTools = agent.tools ? JSON.parse(agent.tools) : [];
               agent.assignedWorkflows = agent.workflows ? JSON.parse(agent.workflows) : [];
+              agent.systemPrompt = agent.system_prompt || '';
+              agent.assignedSkills = agent.skills ? JSON.parse(agent.skills) : [];
             });
             resolve(agents);
           }

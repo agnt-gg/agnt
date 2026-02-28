@@ -1,4 +1,6 @@
 import AgentModel from '../models/AgentModel.js';
+import SkillModel from '../models/SkillModel.js';
+import SkillService, { buildSkillsContext } from './SkillService.js';
 import UserModel from '../models/UserModel.js';
 import generateUUID from '../utils/generateUUID.js';
 import openai from '../services/ai/providers/OpenAI.js';
@@ -127,6 +129,8 @@ class AgentService {
           model: agent.model,
           assignedTools: agent.assignedTools || [],
           assignedWorkflows: agent.assignedWorkflows || [],
+          systemPrompt: agent.systemPrompt || '',
+          assignedSkills: agent.assignedSkills || [],
           resourceId: resource.id,
           creditsUsed: resource.credits_used || 0,
           creditLimit: resource.credit_limit || 0,
@@ -237,12 +241,30 @@ class AgentService {
             .join('\n')
         : '- No tools assigned to this agent';
 
+    // Build system prompt block from agent's custom system prompt
+    const primaryDirectives = agent.systemPrompt
+      ? `\nPRIMARY DIRECTIVES:\n${agent.systemPrompt}\n`
+      : '';
+
+    // Build skills context from assigned skills
+    let skillsContext = '';
+    if (agent.assignedSkills && agent.assignedSkills.length > 0) {
+      try {
+        const skillRecords = await SkillModel.findByIds(agent.assignedSkills);
+        if (skillRecords.length > 0) {
+          skillsContext = '\n' + buildSkillsContext(skillRecords) + '\n';
+        }
+      } catch (err) {
+        console.warn('Failed to load skills for agent:', err.message);
+      }
+    }
+
     const systemPrompt = `Current date and time: ${currentDate}
 
 You are an AI assistant named '${agent.name}'.
 Your primary function and persona are defined as follows: ${agent.description}.
 You must strictly adhere to this persona and fulfill your designated role while leveraging the operational capabilities described below.
-
+${primaryDirectives}${skillsContext}
 ${CRITICAL_IMAGE_HANDLING}
 
 ${CRITICAL_IMAGE_GENERATION}

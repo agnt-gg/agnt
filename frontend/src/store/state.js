@@ -30,6 +30,7 @@ import goalTemplates from './features/goalTemplates';
 import contentOutputs from './features/contentOutputs';
 import widgetLayout from './features/widgetLayout';
 import widgetDefinitions from './features/widgetDefinitions';
+import skills from './features/skills';
 
 const store = createStore({
   state: {
@@ -89,6 +90,7 @@ const store = createStore({
           dispatch('executionHistory/fetchExecutions'),
           dispatch('widgetLayout/fetchLayouts'),
           dispatch('widgetDefinitions/fetchDefinitions'),
+          dispatch('skills/fetchSkills'),
           dispatch('appAuth/fetchAllProviders'),
         ]).then((results) => {
           results.forEach((result, index) => {
@@ -142,6 +144,7 @@ const store = createStore({
     contentOutputs,
     widgetLayout,
     widgetDefinitions,
+    skills,
   },
 });
 
