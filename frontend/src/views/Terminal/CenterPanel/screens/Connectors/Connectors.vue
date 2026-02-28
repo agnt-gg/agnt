@@ -896,8 +896,11 @@ export default {
       return allProviders.value.map((p) => {
         const isConnected = connectedApps.value.includes(p.id);
         const healthStatus = healthProviders.find((hp) => hp.provider === p.id);
-        let status = healthStatus?.status;
-        let healthMetric = healthStatus?.details?.error || healthStatus?.error;
+
+        // Only use cached health status if the provider is still connected
+        let status = isConnected ? healthStatus?.status : null;
+        let healthMetric = isConnected ? (healthStatus?.details?.error || healthStatus?.error) : null;
+
         // Local-only providers fallback
         if (!healthStatus && isConnected) {
           status = 'healthy';
@@ -1251,9 +1254,43 @@ export default {
       }
     }
 
+    async function disconnectLocalProvider(app, storeAction) {
+      const confirmDisconnect = await modalRef.value?.showModal({
+        title: 'Confirm Disconnection',
+        message: `Are you sure you want to disconnect from ${app.name}?`,
+        confirmText: 'Disconnect',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmDisconnect) return;
+      try {
+        const result = await store.dispatch(storeAction);
+        if (result?.success) {
+          await store.dispatch('appAuth/fetchConnectedApps');
+          await showAlert('Success', `Successfully disconnected from ${app.name}`);
+          terminalLines.value.push(`[Disconnect] Successfully disconnected from ${app.name}`);
+          nextTick(() => baseScreenRef.value?.scrollToBottom());
+        } else {
+          await showAlert('Error', result?.error || 'Failed to disconnect.');
+        }
+      } catch (error) {
+        await showAlert('Disconnection Error', `Failed to disconnect from ${app.name}: ${error.message}`);
+        terminalLines.value.push(`[Disconnect] Failed to disconnect from ${app.name}: ${error.message}`);
+        nextTick(() => baseScreenRef.value?.scrollToBottom());
+      }
+    }
+
     function handleOAuthAppClick(app) {
+      const appId = (app.id || '').toLowerCase();
       if (app.connected) {
-        disconnectApp(app);
+        // Route local-only providers through their dedicated store actions
+        if (appId === 'claude-code') {
+          disconnectLocalProvider(app, 'appAuth/disconnectClaudeCode');
+        } else if (appId === 'openai-codex-cli') {
+          disconnectLocalProvider(app, 'appAuth/logoutCodex');
+        } else {
+          disconnectApp(app);
+        }
       } else if (app.connectionType === 'oauth') {
         connectOAuthApp(app);
       } else if (app.connectionType === 'apikey') {

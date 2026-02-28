@@ -579,7 +579,7 @@ export default {
 }
 
 .cv-pbtn:hover {
-  color: var(--color-light-0, #889);
+  color: var(--color-text);
   border-color: var(--color-dull-navy);
 }
 

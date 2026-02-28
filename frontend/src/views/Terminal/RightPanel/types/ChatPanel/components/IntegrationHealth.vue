@@ -50,7 +50,7 @@
 </template>
 
 <script>
-import { computed, ref, onMounted, onUnmounted, onUpdated, nextTick } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted, onUpdated, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -137,15 +137,17 @@ export default {
 
       return providers
         .map((provider) => {
+          const isConnected = connectedApps.value.includes(provider.id);
           // Find health status for this provider
           const healthStatus = healthProviders.find((hp) => hp.provider === provider.id);
 
+          // Only use cached health status if the provider is still connected
+          let status = isConnected ? healthStatus?.status : null;
+          let metric = isConnected ? (healthStatus?.details?.error || healthStatus?.error) : null;
+
           // For local-only providers (Codex CLI, Claude Code) that aren't in the remote
           // health check, fall back to the connectedApps list to determine status.
-          let status = healthStatus?.status;
-          let metric = healthStatus?.details?.error || healthStatus?.error;
-
-          if (!healthStatus && connectedApps.value.includes(provider.id)) {
+          if (!healthStatus && isConnected) {
             status = 'healthy';
             metric = 'Connected';
           }
@@ -689,6 +691,13 @@ export default {
         await showAlert('OAuth Error', `Failed to complete OAuth: ${error.message}`);
       }
     };
+
+    // Auto-refresh health when connected apps change
+    watch(connectedApps, async (newApps, oldApps) => {
+      if (JSON.stringify(newApps) !== JSON.stringify(oldApps)) {
+        await refreshHealth();
+      }
+    });
 
     // Fetch all providers and connection health on mount
     onMounted(async () => {

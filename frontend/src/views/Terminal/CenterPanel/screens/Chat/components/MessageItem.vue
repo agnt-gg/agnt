@@ -2782,7 +2782,7 @@ span.nodeLabel p {
   margin: 0 0 8px 0;
   font-size: 1.1em;
   font-weight: 600;
-  color: var(--color-white);
+  color: var(--color-text);
 }
 
 .message-text :deep(.step-text p) {
