@@ -43,6 +43,7 @@
 
 <script>
 import { ref, onMounted, computed } from 'vue';
+import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import TerminalHeader from '../../../_components/TerminalHeader.vue';
 import ToolForgePanel from '../../../RightPanel/types/ToolForgePanel/ToolForgePanel.vue';
@@ -66,6 +67,7 @@ export default {
   },
   emits: ['screen-change'],
   setup(props, { emit }) {
+    const store = useStore();
     const baseScreenRef = ref(null);
     const terminalLines = ref([]);
     const isExecuting = ref(false);
@@ -157,6 +159,8 @@ export default {
         const savedTool = await saveToolTemplate(toolData);
         currentTool.value = savedTool;
         terminalLines.value.push(`Tool "${savedTool.name}" saved successfully`);
+        // Refresh Vuex tools store so Tools screen shows the new/updated tool
+        await store.dispatch('tools/refreshAllTools');
       } catch (error) {
         terminalLines.value.push(`Failed to save tool: ${error.message}`);
       }

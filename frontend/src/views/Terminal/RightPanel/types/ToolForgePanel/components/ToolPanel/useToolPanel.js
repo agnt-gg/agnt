@@ -1,4 +1,5 @@
 import { ref, reactive, getCurrentInstance } from 'vue';
+import store from '@/store/state';
 import { handleGenerateClick as handleGenerateClickBase } from '@/views/_components/base/stream';
 import { saveTool, deleteTool, fetchTools, getTool, importTool } from './components/TopMenu/components/ToolActions/toolActionsApi';
 import generateUUID from '@/views/_utils/generateUUID.js';
@@ -273,6 +274,9 @@ export function useToolPanel() {
 
         // Show alert for saving to local database
         proxy.showAlert('Tool saved to database successfully!');
+
+        // Refresh Vuex tools store so Tools screen shows the new/updated tool immediately
+        store.dispatch('tools/refreshAllTools');
 
         // If sharing, update isShareable and save to the remote URL
         if (isSharing === true) {

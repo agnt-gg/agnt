@@ -33,9 +33,14 @@
       </div>
 
       <div class="tool-actions" v-if="isCustomTool">
-        <BaseButton @click="showPublishModal = true" variant="primary" full-width>
-          <i class="fas fa-store"></i>
-          Publish to Marketplace
+        <BaseButton class="action-button edit" @click="handleEditTool">
+          <i class="fas fa-edit"></i> Edit Tool
+        </BaseButton>
+        <BaseButton class="action-button delete" @click="handleDeleteTool">
+          <i class="fas fa-trash"></i> Delete Tool
+        </BaseButton>
+        <BaseButton class="action-button publish" @click="showPublishModal = true">
+          <i class="fas fa-store"></i> Publish to Marketplace
         </BaseButton>
       </div>
     </div>
@@ -72,6 +77,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
+import { deleteTool } from '@/views/Terminal/RightPanel/types/ToolForgePanel/components/ToolPanel/components/TopMenu/components/ToolActions/toolActionsApi.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
@@ -248,6 +254,39 @@ export default {
       }
     };
 
+    const handleEditTool = () => {
+      if (props.selectedTool) {
+        emit('panel-action', 'edit-tool', props.selectedTool.id);
+      }
+    };
+
+    const handleDeleteTool = async () => {
+      if (!props.selectedTool) return;
+
+      const confirmed = await simpleModal.value?.showModal({
+        title: 'Delete Tool',
+        message: `Are you sure you want to delete "${props.selectedTool.title}"? This action cannot be undone.`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+      });
+
+      if (confirmed) {
+        try {
+          await deleteTool(props.selectedTool.id);
+          store.commit('tools/DELETE_TOOL', props.selectedTool.id);
+          emit('panel-action', 'delete-tool', props.selectedTool.id);
+        } catch (error) {
+          console.error('Error deleting tool:', error);
+          await simpleModal.value?.showModal({
+            title: 'Error',
+            message: `Failed to delete tool: ${error.message}`,
+            confirmText: 'OK',
+            showCancel: false,
+          });
+        }
+      }
+    };
+
     const handleOpenBilling = () => {
       // Close the modal first
       showPublishModal.value = false;
@@ -268,6 +307,8 @@ export default {
       showPublishModal,
       stripeConnected,
       toolCategories,
+      handleEditTool,
+      handleDeleteTool,
       handlePublishTool,
       handleSetupStripe,
       handleOpenBilling,
@@ -436,7 +477,42 @@ h3 {
   gap: 10px;
 }
 
-.tool-actions .BaseButton i {
-  margin-right: 6px;
+.action-button {
+  background: transparent;
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  color: var(--color-text);
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.action-button:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+  border-color: var(--color-primary);
+}
+
+.action-button.edit {
+  border-color: rgba(var(--primary-rgb), 0.5);
+  color: var(--color-primary);
+}
+
+.action-button.edit:hover {
+  background: rgba(var(--primary-rgb), 0.15);
+  border-color: var(--color-primary);
+}
+
+.action-button.delete {
+  border-color: rgba(255, 99, 71, 0.3);
+  color: tomato;
+}
+
+.action-button.delete:hover {
+  background: rgba(255, 99, 71, 0.1);
+  border-color: tomato;
 }
 </style>

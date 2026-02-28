@@ -12,7 +12,8 @@
 </template>
 
 <script>
-import { provide, onMounted } from 'vue';
+import { provide, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import TopMenu from './components/ToolPanel/components/TopMenu/TopMenu.vue';
 import FieldsArea from './components/ToolPanel/components/FieldsArea/FieldsArea.vue';
 import { useToolPanel } from './components/ToolPanel/useToolPanel';
@@ -58,6 +59,8 @@ export default {
     },
   },
   setup() {
+    const route = useRoute();
+
     const {
       selectedTool,
       formData,
@@ -97,11 +100,24 @@ export default {
       onTemplateSelected: onToolSelected,
     });
 
-    onMounted(() => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const toolId = urlParams.get('tool-id');
+    // Load tool from query param using Vue Router (reactive, works with SPA navigation)
+    const loadToolFromRoute = () => {
+      const toolId = route.query['tool-id'];
       if (toolId) {
         loadToolById(toolId);
+      }
+    };
+
+    onMounted(() => {
+      // Always refresh the templates list so deleted/new tools are reflected
+      fetchTemplates();
+      loadToolFromRoute();
+    });
+
+    // Also watch for route query changes (e.g. navigating from Tools screen Edit button)
+    watch(() => route.query['tool-id'], (newToolId) => {
+      if (newToolId) {
+        loadToolById(newToolId);
       }
     });
 

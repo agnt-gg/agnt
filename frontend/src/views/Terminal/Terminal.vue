@@ -128,6 +128,8 @@ export default {
 
         if (screenName === 'WorkflowForgeScreen' && options.workflowId) {
           router.push({ path: targetPath, query: { id: options.workflowId } });
+        } else if (screenName === 'ToolForgeScreen' && options.toolId) {
+          router.push({ path: targetPath, query: { 'tool-id': options.toolId } });
         } else if (route.path !== targetPath) {
           router.push(targetPath);
         }

@@ -2193,13 +2193,13 @@ export default {
 
 .empty-state i {
   font-size: 3em;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   display: block;
   opacity: 0.5;
 }
 
 .empty-state p {
-  margin: 0 0 16px 0;
+  margin: 12px 0 16px 0;
   font-size: 1.1em;
 }
 
@@ -2211,48 +2211,52 @@ export default {
 }
 
 .create-button {
-  background: var(--color-primary);
-  color: var(--color-white);
-  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px dashed var(--color-duller-navy);
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: 6px;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 0.95em;
   transition: all 0.2s ease;
-  font-weight: 600;
 }
 
 .create-button:hover {
-  background: var(--color-primary-hover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .create-button i {
-  /* margin-right: 6px; */
-  font-size: 0.9em;
+  font-size: 0.8em;
 }
 
 .marketplace-button {
-  background: var(--color-darker-0);
-  color: var(--color-green);
-  border: 1px solid var(--terminal-border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px dashed var(--color-duller-navy);
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: 6px;
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 0.95em;
   transition: all 0.2s ease;
-  font-weight: 600;
 }
 
 .marketplace-button:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.5);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .marketplace-button i {
-  font-size: 0.9em;
+  font-size: 0.8em;
 }
 </style>
