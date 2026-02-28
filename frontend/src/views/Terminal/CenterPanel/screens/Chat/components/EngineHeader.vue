@@ -170,7 +170,7 @@ export default {
 .node-label {
   font-size: 0.55em;
   font-weight: 500;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -178,7 +178,7 @@ export default {
 .node-value {
   font-size: 0.85em;
   font-weight: 200;
-  color: var(--color-white);
+  color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -219,13 +219,13 @@ export default {
 .metric-value {
   font-size: 0.75em;
   font-weight: 400;
-  color: var(--color-white);
+  color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
 
 .metric-label {
   font-size: 0.55em;
-  color: var(--color-med-navy);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }

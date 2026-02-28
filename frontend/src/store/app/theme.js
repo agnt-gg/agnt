@@ -293,6 +293,7 @@ export default {
     setFontFamily({ commit, dispatch }, fontFamily) {
       commit('SET_FONT_FAMILY', fontFamily);
       dispatch('applyFont');
+      dispatch('applyScale');
     },
     setUiScale({ commit, dispatch }, scale) {
       commit('SET_UI_SCALE', scale);
@@ -316,8 +317,9 @@ export default {
     },
     applyScale({ state }) {
       const scale = state.uiScale / 100;
+      const fontScale = state.fontFamily === 'mono' ? 0.85 : 1;
       document.documentElement.style.setProperty('--scale', scale);
-      document.documentElement.style.setProperty('--base-font-size', `${16 * scale}px`);
+      document.documentElement.style.setProperty('--base-font-size', `${16 * scale * fontScale}px`);
     },
     initGreyscaleMode({ state }) {
       document.documentElement.classList.toggle('greyscale', state.isGreyscaleMode);

@@ -969,7 +969,7 @@ div#saved-outputs {
 
 .output-preview {
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
