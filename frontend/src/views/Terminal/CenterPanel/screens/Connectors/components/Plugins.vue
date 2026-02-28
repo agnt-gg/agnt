@@ -399,7 +399,7 @@ export default {
       () => store.getters['connectors/refreshTrigger'],
       () => {
         refreshPlugins();
-      }
+      },
     );
 
     const filteredInstalledPlugins = computed(() => {
@@ -515,7 +515,10 @@ export default {
         if (data.success) {
           // Sanitize plugin data to remove large base64 strings
           const sanitized = (data.plugins || []).map(sanitizePluginData);
-          console.log('[Plugins] Setting installed plugins:', sanitized.map(p => p.name));
+          console.log(
+            '[Plugins] Setting installed plugins:',
+            sanitized.map((p) => p.name),
+          );
           installedPlugins.value = sanitized;
         } else {
           console.error('[Plugins] API returned success=false:', data.error);
@@ -561,7 +564,7 @@ export default {
                 ...plugin,
                 price: priceMap[plugin.name]?.price || 0,
                 marketplace_item_id: priceMap[plugin.name]?.marketplace_item_id || null,
-              })
+              }),
             );
           } else {
             // No marketplace items yet, use local plugins without price (sanitized)
@@ -981,7 +984,10 @@ export default {
       try {
         await fetchInstalledPlugins();
         await store.dispatch('tools/refreshAllTools');
-        console.log('[Plugins] Refresh complete, installed plugins:', installedPlugins.value.map(p => p.name));
+        console.log(
+          '[Plugins] Refresh complete, installed plugins:',
+          installedPlugins.value.map((p) => p.name),
+        );
       } catch (error) {
         console.error('[Plugins] Error refreshing after plugin install:', error);
       }
@@ -1422,7 +1428,7 @@ button.base-button.primary.refresh {
 .manual-install-section {
   margin-bottom: 8px;
   padding: 20px;
-  background: var(--color-ultra-light-navy);
+  /* background: var(--color-ultra-light-navy); */
   border: 2px dashed var(--color-light-navy);
   border-radius: 12px;
 }

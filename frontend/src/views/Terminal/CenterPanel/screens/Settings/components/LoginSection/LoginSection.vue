@@ -608,7 +608,7 @@ button.magic-link:disabled {
   background: #ffffff;
   border-color: var(--terminal-border-color);
   /* transform: translateY(-1px); */
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
 }
 
 body.dark .google-auth {
