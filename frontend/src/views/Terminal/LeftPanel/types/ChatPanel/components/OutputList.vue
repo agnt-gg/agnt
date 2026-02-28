@@ -24,16 +24,7 @@
           Create New Output
         </button>
       </div> -->
-      <!-- Empty State -->
-      <div v-if="outputs.length === 0" class="no-outputs">
-        <div class="empty-state">
-          <i class="fas fa-file-alt"></i>
-          <p>No saved outputs yet</p>
-          <button class="create-link" @click="createNewOutput"><i class="fas fa-comments"></i> Create via Chat</button>
-        </div>
-      </div>
-
-      <div v-else class="list-container">
+      <div class="list-container">
         <!-- Selection bar -->
         <div v-if="isSelectionMode" class="selection-bar">
           <div class="selection-info">
@@ -73,6 +64,10 @@
             </Tooltip>
           </div>
           <div class="output-list-items">
+            <!-- Empty State -->
+            <div v-if="outputs.length === 0" class="no-outputs">
+              <p>No saved outputs yet. Start a chat to create one.</p>
+            </div>
             <div
               v-for="output in sortedOutputs"
               :key="output.id"
@@ -1105,50 +1100,15 @@ body.dark .create-output-btn {
 
 /* Empty State Styles */
 .no-outputs {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* min-height: 300px; */
-  padding: 40px 20px;
-}
-
-.empty-state {
+  padding: 24px 12px;
   text-align: center;
+}
+
+.no-outputs p {
+  margin: 0;
   color: var(--color-text-muted);
-}
-
-.empty-state i {
-  font-size: 2em;
-  margin-bottom: 8px;
-  display: block;
-  opacity: 0.5;
-}
-
-.empty-state p {
-  margin: 0 0 12px 0;
-  font-size: 0.9em;
-}
-
-.create-link {
-  background: var(--color-primary);
-  color: var(--color-white);
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.85em;
-  transition: all 0.2s ease;
-}
-
-.create-link:hover {
-  background: var(--color-primary-hover);
-  transform: translateY(-1px);
-}
-
-.create-link i {
-  margin-right: 4px;
-  font-size: 0.9em;
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
 }
 
 /* Multi-select styles */
