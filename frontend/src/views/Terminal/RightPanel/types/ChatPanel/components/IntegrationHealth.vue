@@ -835,7 +835,8 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   max-height: 188px;
-  overflow: scroll;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Fix Tooltip container to fill grid cells */

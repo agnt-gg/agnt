@@ -12,7 +12,7 @@
         <!-- NODE ID & TYPE-->
         <div class="form-row">
           <div class="form-group stretch node-id">
-            <label>Id:</label>
+            <!-- <label>Id:</label> -->
             <div class="right-side">
               <Tooltip text="Click to copy" width="auto">
                 <p class="static-value" @click="copyText(getNodeNameById(nodeContent.id), $event)">
@@ -23,7 +23,7 @@
           </div>
           <div class="form-divider"></div>
           <div class="form-group stretch node-type">
-            <label>Type:</label>
+            <!-- <label>Type:</label> -->
             <div class="right-side">
               <SvgIcon v-if="nodeContent.icon && nodeContent.type !== 'label'" :name="nodeContent.icon" class="node-icon" />
               <p class="node-type">{{ nodeContent.type }}</p>
@@ -31,9 +31,9 @@
           </div>
           <div v-if="authRequired" class="form-divider"></div>
           <div v-if="authRequired" class="form-group right-side fit-content node-connection-status">
-            <div class="connection-status" :class="{ connected: isConnected }">
-              {{ isConnected ? 'Connected' : 'Not Connected' }}
-            </div>
+            <button class="connection-status" :class="{ connected: isConnected }" @click="handleConnectionToggle">
+              {{ isConnected ? 'Connected' : 'Connect' }}
+            </button>
           </div>
         </div>
 
@@ -305,18 +305,10 @@
       <!-- Edge content -->
       <template v-if="edgeContent">
         <div class="edge-conditions-wrapper">
-          <div
-            v-for="(cond, index) in localEdgeContent.conditions"
-            :key="index"
-            class="condition-row"
-          >
+          <div v-for="(cond, index) in localEdgeContent.conditions" :key="index" class="condition-row">
             <!-- Logic toggle (AND/OR) for 2nd+ conditions -->
             <div v-if="index > 0" class="logic-toggle-row">
-              <select
-                :value="cond.logic"
-                @change="updateConditionField(index, 'logic', $event.target.value)"
-                class="logic-select"
-              >
+              <select :value="cond.logic" @change="updateConditionField(index, 'logic', $event.target.value)" class="logic-select">
                 <option value="and">AND</option>
                 <option value="or">OR</option>
               </select>
@@ -336,19 +328,11 @@
               </div>
               <div class="form-group">
                 <label>If:</label>
-                <input
-                  type="text"
-                  :value="cond.if"
-                  @input="updateConditionField(index, 'if', $event.target.value)"
-                  spellcheck="false"
-                />
+                <input type="text" :value="cond.if" @input="updateConditionField(index, 'if', $event.target.value)" spellcheck="false" />
               </div>
               <div class="form-group">
                 <label>Condition:</label>
-                <select
-                  :value="cond.condition"
-                  @change="updateConditionField(index, 'condition', $event.target.value)"
-                >
+                <select :value="cond.condition" @change="updateConditionField(index, 'condition', $event.target.value)">
                   <option value="true">True</option>
                   <option value="false">False</option>
                   <option value="contains">Contains</option>
@@ -363,23 +347,13 @@
                   <option value="is_not_empty">Is Not Empty</option>
                 </select>
               </div>
-              <div
-                v-if="conditionNeedsValue(cond.condition)"
-                class="form-group"
-              >
+              <div v-if="conditionNeedsValue(cond.condition)" class="form-group">
                 <label>Value:</label>
-                <input
-                  type="text"
-                  :value="cond.value"
-                  @input="updateConditionField(index, 'value', $event.target.value)"
-                  spellcheck="false"
-                />
+                <input type="text" :value="cond.value" @input="updateConditionField(index, 'value', $event.target.value)" spellcheck="false" />
               </div>
             </div>
           </div>
-          <button class="add-condition-btn" @click="addCondition">
-            <i class="fas fa-plus"></i> Add Condition
-          </button>
+          <button class="add-condition-btn" @click="addCondition"><i class="fas fa-plus"></i> Add Condition</button>
         </div>
         <div class="form-group">
           <label>Max Iterations:</label>
@@ -442,16 +416,14 @@
 
 <script>
 import { ref, onMounted, computed, defineAsyncComponent, shallowRef } from 'vue';
-import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import { API_CONFIG, AI_PROVIDERS_CONFIG, IMAP_EMAIL_DOMAIN } from '@/tt.config';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { useProviderConnection } from '@/composables/useProviderConnection.js';
 
 // Lazy-load CodeMirror and its dependencies only when codearea fields are present
-const Codemirror = defineAsyncComponent(() =>
-  import('vue-codemirror').then((m) => m.Codemirror)
-);
+const Codemirror = defineAsyncComponent(() => import('vue-codemirror').then((m) => m.Codemirror));
 
 // Lazy-load CodeMirror extensions (cached at module level)
 let _cmExtensions = null;
@@ -507,60 +479,49 @@ export default {
     };
   },
   setup(props) {
-    const store = useStore();
-    const connectedApps = ref([]);
+    const modal = ref(null);
 
-    const fetchConnectedApps = async () => {
-      await store.dispatch('appAuth/fetchConnectedApps');
-      connectedApps.value = store.state.appAuth.connectedApps;
-      console.log('Connected apps after fetch:', connectedApps.value);
-    };
+    // Provider connection composable (fetches providers & connectedApps on mount)
+    const { connectedApps, isProviderConnected, handleProviderToggle } = useProviderConnection(modal);
 
     const getProviderName = (nodeType) => {
       if (!nodeType) return '';
-
-      // Search for the node in the toolLibrary
       for (const category in props.toolLibrary) {
         const node = props.toolLibrary[category].find((n) => n.type === nodeType);
         if (node && node.authProvider) {
           return node.authProvider;
         }
       }
-
       return '';
     };
 
+    const currentProviderName = computed(() => getProviderName(props.nodeContent?.type));
+
     const isConnected = computed(() => {
-      console.log('isConnected computed property is being evaluated');
-      if (!connectedApps.value || !props.nodeContent) {
-        console.log('Returning false because connectedApps or nodeContent is falsy');
-        return false;
-      }
-
-      const providerName = getProviderName(props.nodeContent.type);
-      console.log('Provider name:', providerName);
-      console.log('Connected apps:', connectedApps.value);
-
-      const result = connectedApps.value.includes(providerName);
-      console.log('isConnected result:', result);
-      return result;
+      if (!props.nodeContent) return false;
+      return isProviderConnected(currentProviderName.value);
     });
+
+    const handleConnectionToggle = () => {
+      const providerName = currentProviderName.value;
+      if (providerName) {
+        handleProviderToggle(providerName);
+      }
+    };
 
     const cmExtensions = shallowRef(null);
 
     onMounted(() => {
-      console.log('PanelTab mounted');
-      fetchConnectedApps();
-      // Pre-load CodeMirror extensions in background
       loadCodeMirrorExtensions().then((ext) => {
         cmExtensions.value = ext;
       });
     });
 
     return {
+      modal,
       isConnected,
+      handleConnectionToggle,
       cmExtensions,
-      // ... other returned properties and methods
     };
   },
   computed: {
@@ -1184,7 +1145,16 @@ export default {
       this.$emit('update:edgeContent', { ...this.localEdgeContent });
     },
     conditionNeedsValue(condition) {
-      return ['equals', 'not_equals', 'contains', 'not_contains', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'].includes(condition);
+      return [
+        'equals',
+        'not_equals',
+        'contains',
+        'not_contains',
+        'greater_than',
+        'less_than',
+        'greater_than_or_equal',
+        'less_than_or_equal',
+      ].includes(condition);
     },
     updateConditionField(index, field, value) {
       this.localEdgeContent.conditions[index][field] = value;
@@ -2188,7 +2158,9 @@ body.dark .tooltip {
   height: 12px;
   border-radius: 50%;
   background: #ff5f56;
-  box-shadow: 20px 0 0 #ffbd2e, 40px 0 0 #27ca3f;
+  box-shadow:
+    20px 0 0 #ffbd2e,
+    40px 0 0 #27ca3f;
 }
 
 .tool-docs-content pre code {
@@ -2513,13 +2485,23 @@ body.dark .ͼo.cm-focused .cm-nonmatchingBracket {
 
 .controls-panel .connection-status {
   width: fit-content;
-  padding: 4px 16px 2px;
-  border-radius: 4px;
+  padding: 8px 12px 6px;
+  border-radius: 8px;
+  border: none;
   font-weight: 500;
+  font-family: inherit;
+  line-height: 125%;
   background-color: var(--color-red);
   color: white;
-  transition: background-color 0.5 ease-in-out;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease-in-out,
+    filter 0.2s ease-in-out;
   text-wrap-mode: nowrap;
+}
+
+.controls-panel .connection-status:hover {
+  filter: brightness(1.15);
 }
 
 .controls-panel .connection-status.connected {

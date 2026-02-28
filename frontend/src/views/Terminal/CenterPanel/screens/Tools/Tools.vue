@@ -82,6 +82,14 @@
                   <span v-if="tool.isPlugin" class="wm-badge wm-badge-plugin">PLUGIN</span>
                   <span v-if="tool.requiresPro" class="wm-badge wm-badge-pro">PRO</span>
                   <span v-if="tool.source && !tool.isPlugin" class="wm-badge wm-badge-builtin">{{ tool.source }}</span>
+                  <button
+                    v-if="tool.authProvider"
+                    class="tool-auth-badge"
+                    :class="{ connected: isProviderConnected(tool.authProvider) }"
+                    @click.stop="handleProviderToggle(tool.authProvider)"
+                  >
+                    {{ isProviderConnected(tool.authProvider) ? 'Connected' : 'Connect' }}
+                  </button>
                 </div>
                 <span v-if="tool.type" class="wm-list-type">{{ tool.type }}</span>
               </div>
@@ -242,6 +250,14 @@
                             <span v-if="tool.source && !tool.isPlugin" class="tool-source" :class="(tool.source || '').toLowerCase()">{{
                               tool.source
                             }}</span>
+                            <button
+                              v-if="tool.authProvider"
+                              class="tool-auth-badge"
+                              :class="{ connected: isProviderConnected(tool.authProvider) }"
+                              @click.stop="handleProviderToggle(tool.authProvider)"
+                            >
+                              {{ isProviderConnected(tool.authProvider) ? 'Connected' : 'Connect' }}
+                            </button>
                           </div>
                         </div>
 
@@ -280,6 +296,7 @@ import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import { useToolsTutorial } from './useToolsTutorial.js';
+import { useProviderConnection } from '@/composables/useProviderConnection.js';
 // NOTE: Static toolLibrary import removed - now using centralized Vuex store (tools/fetchWorkflowTools)
 
 // Define categories outside setup for clarity
@@ -818,6 +835,9 @@ export default {
     const simpleModalRef = ref(null);
     const { installMarketplaceItem, isInstalling } = useMarketplaceInstall(simpleModalRef);
 
+    // Provider connection composable
+    const { isProviderConnected, handleProviderToggle } = useProviderConnection(simpleModalRef);
+
     // Handle marketplace tool installation with proper feedback
     const handleInstallTool = async (item) => {
       playSound('typewriterKeyPress');
@@ -929,6 +949,9 @@ export default {
       // Marketplace
       handleInstallTool,
       simpleModalRef,
+      // Provider connection
+      isProviderConnected,
+      handleProviderToggle,
       // Tutorial
       tutorialConfig,
       startTutorial,
@@ -1597,6 +1620,32 @@ export default {
 .tool-source.system {
   background: rgba(156, 163, 175, 0.2);
   color: var(--color-secondary);
+}
+
+.tool-auth-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: none;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--color-red);
+  transition: filter 0.15s ease, background 0.15s ease;
+}
+
+.tool-auth-badge:hover {
+  filter: brightness(1.2);
+}
+
+.tool-auth-badge.connected {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-green);
 }
 
 .tool-description {
