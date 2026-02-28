@@ -89,8 +89,8 @@
               </div>
             </div>
 
-            <!-- Step 4: AI Provider Setup (conditional - only if not connected) -->
-            <div v-if="currentStep === 4 && !hasAiProvider" class="step provider-step">
+            <!-- Step 4: AI Provider Setup -->
+            <div v-if="currentStep === 4" class="step provider-step">
               <div class="icon-circle">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
@@ -108,10 +108,12 @@
                   :key="provider.id"
                   type="button"
                   class="provider-tile"
+                  :class="{ connected: isProviderConnected(provider.id) }"
                   :title="provider.name"
                   :aria-label="`Connect to ${provider.name}`"
                   @click="handleProviderClick(provider)"
                 >
+                  <span v-if="isProviderConnected(provider.id)" class="provider-status-dot"></span>
                   <div class="provider-icon">
                     <SvgIcon :name="provider.icon" />
                   </div>
@@ -124,63 +126,8 @@
               <p class="hint" style="margin-top: 16px; text-align: center">Don't have an API key? You can skip this step and configure it later.</p>
             </div>
 
-            <!-- Step 5 (or 4 if provider connected): Feature Tour -->
-            <div v-if="currentStep === (hasAiProvider ? 4 : 5)" class="step features-step">
-              <h2>Explore Key Features</h2>
-              <p class="subtitle">Here's what you can do with AGNT:</p>
-              <div class="features-grid">
-                <div class="feature-card">
-                  <div class="feature-icon">💬</div>
-                  <h3>AI Chat</h3>
-                  <p>Converse with intelligent agents to automate tasks</p>
-                </div>
-                <div class="feature-card">
-                  <div class="feature-icon">⚡</div>
-                  <h3>Workflows</h3>
-                  <p>Build custom automation workflows visually</p>
-                </div>
-                <div class="feature-card">
-                  <div class="feature-icon">🛠️</div>
-                  <h3>Custom Tools</h3>
-                  <p>Create and share your own tools and integrations</p>
-                </div>
-                <div class="feature-card">
-                  <div class="feature-icon">📊</div>
-                  <h3>$AGNT Score</h3>
-                  <p>Track your productivity and earn rewards</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Step 6 (or 5 if provider connected): Quick Start -->
-            <div v-if="currentStep === (hasAiProvider ? 5 : 6)" class="step quickstart-step">
-              <h2>What would you like to do first?</h2>
-              <p class="subtitle">Choose your starting point:</p>
-              <div class="quickstart-options">
-                <button
-                  v-for="option in quickStartOptions"
-                  :key="option.screen"
-                  class="quickstart-option"
-                  :class="{ selected: selectedStartScreen === option.screen }"
-                  @click="selectedStartScreen = option.screen"
-                >
-                  <div class="option-icon">{{ option.icon }}</div>
-                  <div class="option-content">
-                    <h3>{{ option.title }}</h3>
-                    <p>{{ option.description }}</p>
-                  </div>
-                  <div class="option-check">
-                    <svg v-if="selectedStartScreen === option.screen" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" fill="var(--color-primary)" />
-                      <path d="M9 12l2 2 4-4" stroke="var(--color-ultra-dark-navy)" stroke-width="2" stroke-linecap="round" />
-                    </svg>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            <!-- Step 7 (or 6 if provider connected): Referral Bonus (conditional) -->
-            <div v-if="currentStep === (hasAiProvider ? 6 : 7) && hasReferralBonus" class="step referral-step">
+            <!-- Step 5: Referral Bonus (conditional) -->
+            <div v-if="currentStep === 5 && hasReferralBonus" class="step referral-step">
               <div class="celebration-icon">🎉</div>
               <h2>You've Earned a Bonus!</h2>
               <div class="bonus-display">
@@ -212,10 +159,6 @@
                   <span class="summary-label">Theme:</span>
                   <span class="summary-value" style="text-transform: capitalize">{{ currentTheme }}</span>
                 </div>
-                <div class="summary-item">
-                  <span class="summary-label">Starting Point:</span>
-                  <span class="summary-value">{{ selectedStartOption?.title || 'Chat' }}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -244,7 +187,7 @@ import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
-import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
+import { PROVIDER_DISPLAY_NAMES, PROVIDER_FETCH_ACTIONS } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 
 export default {
@@ -290,7 +233,6 @@ export default {
     const currentStep = ref(1);
     const pseudonym = ref('');
     const pseudonymStatus = ref(null); // 'checking', 'available', 'taken', 'current'
-    const selectedStartScreen = ref('ChatScreen');
     const transitionName = ref('slide-left');
     let checkTimeout = null;
 
@@ -313,63 +255,15 @@ export default {
         .sort((a, b) => a.name.localeCompare(b.name));
     });
 
-    // Check if user has any AI provider connected
-    const hasAiProvider = computed(() => {
-      const currentProvider = store.state.aiProvider?.currentProvider;
-      if (currentProvider && currentProvider.toLowerCase() === 'local') {
-        return true; // Local provider is always available
-      }
-
-      // Check if any AI provider is connected
-      const connectedAiProviders = connectedApps.value.filter((app) => {
-        const providerId = typeof app === 'string' ? app : app?.provider_id;
-        if (!providerId) return false;
-        const provider = allProviders.value.find((p) => p.id === providerId);
-        if (!provider) return false;
-        const categories = Array.isArray(provider.categories) ? provider.categories : provider.categories ? JSON.parse(provider.categories) : [];
-        const lowerCategories = categories.map((cat) => cat.toLowerCase());
-        return lowerCategories.includes('ai');
-      });
-
-      return connectedAiProviders.length > 0;
-    });
-
-    // Quick start options
-    const quickStartOptions = [
-      {
-        screen: 'ChatScreen',
-        icon: '💬',
-        title: 'Start a Conversation',
-        description: 'Chat with AI agents to automate your first task',
-      },
-      {
-        screen: 'WorkflowForgeScreen',
-        icon: '⚡',
-        title: 'Build a Workflow',
-        description: 'Create a custom automation workflow visually',
-      },
-      {
-        screen: 'MarketplaceScreen',
-        icon: '🏪',
-        title: 'Explore Marketplace',
-        description: 'Discover pre-built agents, tools, and workflows',
-      },
-      {
-        screen: 'SettingsScreen',
-        icon: '📊',
-        title: 'View Profile',
-        description: 'See your stats, progress, and $AGNT score',
-      },
-    ];
-
-    const selectedStartOption = computed(() => {
-      return quickStartOptions.find((opt) => opt.screen === selectedStartScreen.value);
-    });
+    // Check if a provider is connected
+    const isProviderConnected = (providerId) => {
+      const lower = providerId.toLowerCase();
+      return connectedApps.value.some((app) => app.toLowerCase() === lower);
+    };
 
     // Computed
     const totalSteps = computed(() => {
-      let steps = 6; // Base steps: Welcome, Theme, Profile, Features, Quick Start, Ready
-      if (!hasAiProvider.value) steps++; // Add provider setup step
+      let steps = 5; // Base steps: Welcome, Theme, Profile, Provider, Ready
       if (hasReferralBonus.value) steps++; // Add referral bonus step
       return steps;
     });
@@ -398,7 +292,7 @@ export default {
         console.log('Saving pseudonym:', pseudonym.value);
       }
 
-      emit('complete', selectedStartScreen.value);
+      emit('complete', 'ChatScreen');
     };
 
     const checkPseudonymAvailability = async () => {
@@ -514,14 +408,19 @@ export default {
       return result === null ? null : result || defaultValue;
     };
 
-    const isProviderConnected = (providerId) => {
-      const lower = providerId.toLowerCase();
-      return connectedApps.value.some((app) => app.toLowerCase() === lower);
-    };
-
     const selectProvider = async (provider) => {
       const correctCase = getProviderCase(provider.id);
       await store.dispatch('aiProvider/setProvider', correctCase);
+
+      // Fetch models so the store auto-selects the first one
+      const fetchAction = PROVIDER_FETCH_ACTIONS[correctCase];
+      if (fetchAction) {
+        try {
+          await store.dispatch(fetchAction);
+        } catch (error) {
+          console.error(`Failed to fetch models for ${correctCase}:`, error);
+        }
+      }
     };
 
     const handleProviderClick = async (provider) => {
@@ -708,9 +607,8 @@ export default {
           // Update connected apps
           await store.dispatch('appAuth/fetchConnectedApps');
 
-          // Set this as the selected AI provider with correct case
-          const correctCase = getProviderCase(provider.id);
-          await store.dispatch('aiProvider/setProvider', correctCase);
+          // Set this as the selected AI provider and fetch models
+          await selectProvider(provider);
         } else {
           throw new Error(result.message || 'Failed to save API key');
         }
@@ -764,6 +662,35 @@ export default {
       // Fetch connected apps to check provider status
       await store.dispatch('appAuth/fetchConnectedApps');
 
+      // Auto-select provider and model if connected but not yet selected
+      const currentProvider = store.state.aiProvider.selectedProvider;
+      const currentModel = store.state.aiProvider.selectedModel;
+      if (!currentProvider || !currentModel) {
+        const connected = store.state.appAuth.connectedApps || [];
+        if (connected.length > 0) {
+          // Find the first connected AI provider
+          const providerToSelect = connected.find((appId) => {
+            const correctCase = getProviderCase(appId);
+            return !!PROVIDER_FETCH_ACTIONS[correctCase];
+          });
+          if (providerToSelect) {
+            const correctCase = getProviderCase(providerToSelect);
+            if (!currentProvider) {
+              await store.dispatch('aiProvider/setProvider', correctCase);
+            }
+            // Fetch models to trigger auto-select of first model
+            const fetchAction = PROVIDER_FETCH_ACTIONS[correctCase];
+            if (fetchAction) {
+              try {
+                await store.dispatch(fetchAction);
+              } catch (error) {
+                console.error(`Failed to auto-fetch models for ${correctCase}:`, error);
+              }
+            }
+          }
+        }
+      }
+
       // ALWAYS fetch pseudonym to ensure it's loaded
       await store.dispatch('userAuth/fetchPseudonym');
 
@@ -793,15 +720,11 @@ export default {
       userName,
       pseudonym,
       pseudonymStatus,
-      selectedStartScreen,
-      quickStartOptions,
-      selectedStartOption,
       hasReferralBonus,
       referralBalance,
       referrerName,
       transitionName,
       aiProviders,
-      hasAiProvider,
       currentTheme,
       availableThemes,
       selectTheme,
@@ -810,6 +733,7 @@ export default {
       complete,
       handleSkip,
       handleProviderClick,
+      isProviderConnected,
       checkPseudonymAvailability,
       PROVIDER_DISPLAY_NAMES,
     };
@@ -841,7 +765,7 @@ export default {
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
   position: relative;
 }
 
@@ -1170,110 +1094,33 @@ export default {
   margin-bottom: 3px;
 }
 
+.provider-tile.connected {
+  background: rgba(var(--green-rgb), 0.05);
+  border-color: var(--color-green);
+}
+
+.provider-tile.connected:hover {
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: var(--color-green);
+}
+
+.provider-status-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-green);
+  box-shadow: 0 0 6px var(--color-green);
+}
+
 .provider-name {
   margin-top: 4px;
   font-weight: 500;
   text-align: center;
   font-size: 0.9em;
   color: var(--color-text);
-}
-
-/* Features Step */
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-top: 32px;
-}
-
-.feature-card {
-  background: var(--color-darker-0);
-  border: 1px solid var(--color-darker-1);
-  border-radius: 16px;
-  padding: 24px;
-  transition: all 0.3s ease;
-}
-
-.feature-card:hover {
-  background: var(--color-darker-1);
-  border-color: var(--color-primary);
-  transform: translateY(-2px);
-}
-
-.feature-icon {
-  font-size: 2.5em;
-  margin-bottom: 12px;
-}
-
-.feature-card h3 {
-  font-size: 1.1em;
-  margin-bottom: 8px;
-  color: var(--color-text);
-}
-
-.feature-card p {
-  font-size: 0.9em;
-  color: var(--color-text-muted);
-  opacity: 0.8;
-  line-height: 1.4;
-}
-
-/* Quick Start Step */
-.quickstart-options {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 32px;
-}
-
-.quickstart-option {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px;
-  background: var(--color-darker-0);
-  border: 2px solid var(--color-darker-1);
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-align: left;
-}
-
-.quickstart-option:hover {
-  background: var(--color-darker-1);
-  border-color: rgba(var(--primary-rgb), 0.3);
-}
-
-.quickstart-option.selected {
-  background: rgba(var(--primary-rgb), 0.12);
-  border-color: var(--color-primary);
-}
-
-.option-icon {
-  font-size: 2em;
-  flex-shrink: 0;
-}
-
-.option-content {
-  flex: 1;
-}
-
-.option-content h3 {
-  font-size: 1.1em;
-  margin-bottom: 4px;
-  color: var(--color-text);
-}
-
-.option-content p {
-  font-size: 0.9em;
-  color: var(--color-text-muted);
-  opacity: 0.8;
-}
-
-.option-check {
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
 }
 
 /* Referral Step */

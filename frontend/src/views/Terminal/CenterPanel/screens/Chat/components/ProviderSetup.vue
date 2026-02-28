@@ -27,6 +27,7 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
+import { PROVIDER_FETCH_ACTIONS } from '@/store/app/aiProvider.js';
 
 export default {
   name: 'ProviderSetup',
@@ -124,6 +125,17 @@ export default {
     const selectProvider = async (provider) => {
       const correctCase = getProviderCase(provider.id);
       await store.dispatch('aiProvider/setProvider', correctCase);
+
+      // Fetch models so the store auto-selects the first one
+      const fetchAction = PROVIDER_FETCH_ACTIONS[correctCase];
+      if (fetchAction) {
+        try {
+          await store.dispatch(fetchAction);
+        } catch (error) {
+          console.error(`Failed to fetch models for ${correctCase}:`, error);
+        }
+      }
+
       emit('provider-connected', provider);
     };
 
@@ -404,11 +416,8 @@ export default {
           // Update connected apps
           await store.dispatch('appAuth/fetchConnectedApps');
 
-          // Set this as the selected AI provider with correct case
-          const correctCase = getProviderCase(provider.id);
-          await store.dispatch('aiProvider/setProvider', correctCase);
-
-          emit('provider-connected', provider);
+          // Set this as the selected AI provider and fetch models
+          await selectProvider(provider);
         } else {
           throw new Error(result.message || 'Failed to save API key');
         }

@@ -310,6 +310,27 @@ export default {
       // Check local server status
       await checkLocalServer();
 
+      // Ensure models are loaded for the current provider
+      if (selectedProvider.value && filteredModels.value.length === 0) {
+        const action = PROVIDER_FETCH_ACTIONS[selectedProvider.value];
+        if (action) {
+          try {
+            await store.dispatch(action);
+          } catch (error) {
+            console.error(`Failed to fetch models for ${selectedProvider.value} on mount:`, error);
+          }
+        } else {
+          const isCustom = customProviders.value.some((p) => p.id === selectedProvider.value);
+          if (isCustom) {
+            try {
+              await store.dispatch('aiProvider/fetchCustomProviderModels', selectedProvider.value);
+            } catch (error) {
+              console.error('Failed to fetch custom provider models on mount:', error);
+            }
+          }
+        }
+      }
+
       // Initialize CustomSelect components
       updateCustomSelects();
 
