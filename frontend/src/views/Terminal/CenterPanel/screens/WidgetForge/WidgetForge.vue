@@ -18,6 +18,9 @@
           <span class="wf-toolbar-title">{{ isEditing ? 'EDIT WIDGET' : 'NEW WIDGET' }}</span>
 
           <div class="wf-toolbar-right">
+            <button v-if="isEditing" class="wf-btn wf-btn-export" @click="exportWidget" title="Export widget">
+              <i class="fas fa-file-export"></i> Export
+            </button>
             <button class="wf-btn wf-btn-save" :class="{ 'wf-saved': saveFlash }" @click="saveWidget" :disabled="!canSave || saveFlash">
               <i :class="saveFlash ? 'fas fa-check' : 'fas fa-save'"></i> {{ saveFlash ? 'Saved!' : 'Save' }}
             </button>
@@ -381,6 +384,21 @@ export default {
       }, 800);
     }
 
+    async function exportWidget() {
+      const existing = store.getters['widgetDefinitions/activeDefinition'];
+      if (!existing) return;
+      const data = await store.dispatch('widgetDefinitions/exportDefinition', existing.id);
+      if (data) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(existing.name || 'widget').replace(/\s+/g, '-').toLowerCase()}.agnt-widget.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    }
+
     function goBack() {
       store.dispatch('widgetDefinitions/setActiveDefinition', null);
       emit('screen-change', 'WidgetManagerScreen');
@@ -413,6 +431,7 @@ export default {
       previewDefinition,
       previewFrameStyle,
       saveWidget,
+      exportWidget,
       goBack,
       handlePanelAction,
     };
@@ -476,6 +495,28 @@ export default {
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+}
+
+.wf-btn-export {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: inherit;
+}
+
+.wf-btn-export:hover {
+  color: var(--color-text);
+  border-color: rgba(var(--green-rgb), 0.2);
+  background: rgba(var(--green-rgb), 0.04);
 }
 
 .wf-btn-save {
