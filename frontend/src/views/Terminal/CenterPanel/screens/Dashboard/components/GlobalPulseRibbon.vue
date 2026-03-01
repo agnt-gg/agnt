@@ -197,7 +197,7 @@ export default {
   color: var(--color-primary);
   font-weight: bold;
   font-size: 1.1em;
-  text-shadow: 0 0 8px rgba(var(--primary-rgb), 0.3);
+  /* text-shadow: 0 0 8px rgba(var(--primary-rgb), 0.3); */
   letter-spacing: 0.5px;
   /* Prevent any layout shifts or animations */
   min-width: 60px;

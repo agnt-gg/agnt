@@ -33,7 +33,15 @@
             <h2 class="content-title">Auth Connections</h2>
             <div class="health-summary-inline" v-if="connectionHealth">
               <span class="health-status-text" :class="'status-' + (connectionHealth.overall || 'unknown')">
-                {{ connectionHealth.overall === 'healthy' ? 'All Healthy' : connectionHealth.overall === 'degraded' ? 'Issues Detected' : connectionHealth.overall === 'critical' ? 'Critical' : '' }}
+                {{
+                  connectionHealth.overall === 'healthy'
+                    ? 'All Healthy'
+                    : connectionHealth.overall === 'degraded'
+                      ? 'Issues Detected'
+                      : connectionHealth.overall === 'critical'
+                        ? 'Critical'
+                        : ''
+                }}
               </span>
               <span class="health-count-text">{{ healthyCount }}/{{ totalCount }} connected</span>
               <button class="refresh-health-btn" @click="refreshConnectionHealth" :disabled="refreshingHealth">
@@ -117,10 +125,22 @@
                 <Tooltip
                   v-for="provider in paginatedProviders"
                   :key="provider.id"
-                  :text="provider.healthMetric && provider.healthMetric !== 'Connected' && provider.connected ? `${provider.name}: ${provider.healthMetric}` : provider.name"
+                  :text="
+                    provider.healthMetric && provider.healthMetric !== 'Connected' && provider.connected
+                      ? `${provider.name}: ${provider.healthMetric}`
+                      : provider.name
+                  "
                   width="auto"
                 >
-                  <div class="oauth-app-item" :class="{ connected: provider.connected, healthy: provider.healthStatus === 'healthy', degraded: provider.healthStatus === 'degraded', unhealthy: provider.healthStatus === 'error' }">
+                  <div
+                    class="oauth-app-item"
+                    :class="{
+                      connected: provider.connected,
+                      healthy: provider.healthStatus === 'healthy',
+                      degraded: provider.healthStatus === 'degraded',
+                      unhealthy: provider.healthStatus === 'error',
+                    }"
+                  >
                     <Tooltip text="Edit Provider" width="auto">
                       <button class="edit-provider-btn" @click.stop="editProvider(provider)">
                         <i class="fas fa-edit"></i>
@@ -132,8 +152,23 @@
                         <SvgIcon :name="provider.icon" />
                       </div>
                       <span class="oauth-app-name">{{ provider.name }}</span>
-                      <span class="connection-status" :class="{ connected: provider.connected && provider.healthStatus === 'healthy', degraded: provider.healthStatus === 'degraded', unhealthy: provider.healthStatus === 'error' }">
-                        {{ !provider.connected ? 'Not Connected' : provider.healthStatus === 'error' ? 'Error' : provider.healthStatus === 'degraded' ? 'Degraded' : 'Connected' }}
+                      <span
+                        class="connection-status"
+                        :class="{
+                          connected: provider.connected && provider.healthStatus === 'healthy',
+                          degraded: provider.healthStatus === 'degraded',
+                          unhealthy: provider.healthStatus === 'error',
+                        }"
+                      >
+                        {{
+                          !provider.connected
+                            ? 'Not Connected'
+                            : provider.healthStatus === 'error'
+                              ? 'Error'
+                              : provider.healthStatus === 'degraded'
+                                ? 'Degraded'
+                                : 'Connected'
+                        }}
                       </span>
                     </div>
                   </div>
@@ -142,7 +177,17 @@
 
               <!-- List View -->
               <div v-else class="oauth-app-list">
-                <div v-for="provider in paginatedProviders" :key="provider.id" class="oauth-list-item" :class="{ connected: provider.connected, healthy: provider.healthStatus === 'healthy', degraded: provider.healthStatus === 'degraded', unhealthy: provider.healthStatus === 'error' }">
+                <div
+                  v-for="provider in paginatedProviders"
+                  :key="provider.id"
+                  class="oauth-list-item"
+                  :class="{
+                    connected: provider.connected,
+                    healthy: provider.healthStatus === 'healthy',
+                    degraded: provider.healthStatus === 'degraded',
+                    unhealthy: provider.healthStatus === 'error',
+                  }"
+                >
                   <div class="list-item-icon">
                     <SvgIcon :name="provider.icon" />
                     <span v-if="provider.connected" class="health-dot" :class="provider.healthStatus || 'unknown'"></span>
@@ -159,12 +204,27 @@
                       :text="provider.healthMetric"
                       width="auto"
                     >
-                      <span class="connection-status" :class="{ connected: provider.connected && provider.healthStatus === 'healthy', degraded: provider.healthStatus === 'degraded', unhealthy: provider.healthStatus === 'error' }">
+                      <span
+                        class="connection-status"
+                        :class="{
+                          connected: provider.connected && provider.healthStatus === 'healthy',
+                          degraded: provider.healthStatus === 'degraded',
+                          unhealthy: provider.healthStatus === 'error',
+                        }"
+                      >
                         {{ provider.healthStatus === 'error' ? 'Error' : provider.healthStatus === 'degraded' ? 'Degraded' : 'Connected' }}
                       </span>
                     </Tooltip>
                     <span v-else class="connection-status" :class="{ connected: provider.connected && provider.healthStatus === 'healthy' }">
-                      {{ !provider.connected ? 'Not Connected' : provider.healthStatus === 'error' ? 'Error' : provider.healthStatus === 'degraded' ? 'Degraded' : 'Connected' }}
+                      {{
+                        !provider.connected
+                          ? 'Not Connected'
+                          : provider.healthStatus === 'error'
+                            ? 'Error'
+                            : provider.healthStatus === 'degraded'
+                              ? 'Degraded'
+                              : 'Connected'
+                      }}
                     </span>
                   </div>
                   <div class="list-item-actions">
@@ -899,7 +959,7 @@ export default {
 
         // Only use cached health status if the provider is still connected
         let status = isConnected ? healthStatus?.status : null;
-        let healthMetric = isConnected ? (healthStatus?.details?.error || healthStatus?.error) : null;
+        let healthMetric = isConnected ? healthStatus?.details?.error || healthStatus?.error : null;
 
         // Local-only providers fallback
         if (!healthStatus && isConnected) {
@@ -1082,7 +1142,7 @@ export default {
       availableCategories.value.forEach((cat) => {
         const catLower = cat.toLowerCase();
         counts[cat] = oauthProviders.value.filter(
-          (p) => Array.isArray(p.categories) && p.categories.some((c) => c.toLowerCase() === catLower)
+          (p) => Array.isArray(p.categories) && p.categories.some((c) => c.toLowerCase() === catLower),
         ).length;
       });
       return counts;
@@ -1125,7 +1185,7 @@ export default {
           const popup = window.open(
             data.authUrl,
             `oauth_${app.id}`,
-            `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+            `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`,
           );
 
           if (!popup) {
@@ -1383,11 +1443,11 @@ export default {
       store.dispatch('marketplace/fetchMyInstalls');
 
       // Start tutorial after 2 seconds only if user is logged in
-      if (isLoggedIn.value) {
-        setTimeout(() => {
-          initializeTutorial();
-        }, 2000);
-      }
+      // if (isLoggedIn.value) {
+      //   setTimeout(() => {
+      //     initializeTutorial();
+      //   }, 2000);
+      // }
     }
     function handlePanelAction(action, payload) {
       if (action === 'save') {

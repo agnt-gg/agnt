@@ -397,7 +397,12 @@ export default {
         }
       }
 
+      // Active workflows (running/listening) float to the top
+      const activeStatuses = new Set(['running', 'listening']);
       workflows.sort((a, b) => {
+        const aActive = activeStatuses.has(a.status) ? 0 : 1;
+        const bActive = activeStatuses.has(b.status) ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
         const nameA = (a.name || '').toLowerCase();
         const nameB = (b.name || '').toLowerCase();
         return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);

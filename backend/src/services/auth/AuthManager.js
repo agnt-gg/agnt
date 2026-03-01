@@ -266,12 +266,10 @@ class AuthManager {
       // Add a small delay to ensure the initial message is sent
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Process each provider and send updates
-      for (const providerId of connectedProviderIds) {
+      // Check a single provider's health
+      const checkProvider = async (providerId) => {
         try {
           let healthStatus;
-
-          // Get token from remote using getValidAccessToken
           const token = await this.getValidAccessToken(userId, providerId);
 
           if (!token) {
@@ -282,7 +280,6 @@ class AuthManager {
               error: 'No valid token available',
             };
           } else {
-            // Check health based on provider type
             switch (providerId) {
               case 'github':
                 healthStatus = await checkGitHubHealth(token);
@@ -316,7 +313,6 @@ class AuthManager {
                 healthStatus = await checkDropboxHealth(token);
                 break;
               default:
-                // For other API key based services, just verify we have a token
                 healthStatus = {
                   status: 'healthy',
                   provider: providerId,
@@ -330,7 +326,6 @@ class AuthManager {
           if (healthStatus.status === 'healthy') healthyCount++;
           processedCount++;
 
-          // Send update for this provider
           onUpdate({
             type: 'provider',
             provider: healthStatus,
@@ -340,9 +335,6 @@ class AuthManager {
               healthy: healthyCount,
             },
           });
-
-          // Small delay to ensure updates are sent (optional, remove if not needed)
-          await new Promise((resolve) => setTimeout(resolve, 50));
         } catch (error) {
           const errorStatus = {
             status: 'error',
@@ -353,7 +345,6 @@ class AuthManager {
           results.push(errorStatus);
           processedCount++;
 
-          // Send error update
           onUpdate({
             type: 'provider',
             provider: errorStatus,
@@ -364,7 +355,10 @@ class AuthManager {
             },
           });
         }
-      }
+      };
+
+      // Process all providers in parallel
+      await Promise.all(connectedProviderIds.map((id) => checkProvider(id)));
 
       // Calculate final status
       const totalCount = results.length;

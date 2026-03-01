@@ -404,7 +404,7 @@ export default {
 
       if (!popup.value) {
         console.warn(
-          `PopupTutorial: Popup element ref (popup.value) is null in setPositionRelativeToTarget for step: "${step.title}". Cannot measure.`
+          `PopupTutorial: Popup element ref (popup.value) is null in setPositionRelativeToTarget for step: "${step.title}". Cannot measure.`,
         );
         if (step.enforceStep) {
           console.error('PopupTutorial: Popup element rendering failed for an enforced step (popup.value is null). Not skipping.');
@@ -688,7 +688,7 @@ export default {
             console.error(`playAudio: [${currentStep.value.title}] Error playing audio: ${error.name} - ${error.message}`, error);
             if (error.name === 'NotAllowedError') {
               console.warn(
-                `playAudio: [${currentStep.value.title}] Autoplay was prevented by the browser. User interaction might be required for this step's audio. The speaker icon should still work.`
+                `playAudio: [${currentStep.value.title}] Autoplay was prevented by the browser. User interaction might be required for this step's audio. The speaker icon should still work.`,
               );
             }
             isAudioPlaying.value = false;
@@ -754,7 +754,7 @@ export default {
           closeTutorial();
         }
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     onMounted(() => {
@@ -808,7 +808,10 @@ export default {
   max-width: 360px;
   width: fit-content;
   z-index: 1000;
-  transition: opacity 0.3s ease-in-out, top 0.4s ease-out, left 0.4s ease-out;
+  transition:
+    opacity 0.3s ease-in-out,
+    top 0.4s ease-out,
+    left 0.4s ease-out;
   z-index: 999;
 }
 
@@ -839,9 +842,9 @@ export default {
   background-color: var(--color-darker-2);
 }
 .next-button {
-  background-image: linear-gradient(45deg, var(--color-secondary), var(--color-primary));
-  color: var(--color-white) !important;
-  border: none;
+  /* background-image: linear-gradient(45deg, var(--color-secondary), var(--color-primary)); */
+  color: var(--color-text) !important;
+  border: 2px solid var(--color-primary);
   padding: 8px 15px;
   border-radius: 8px;
   cursor: pointer;
@@ -850,9 +853,9 @@ export default {
   display: inline-block;
   line-height: 100%;
 }
-.next-button:hover {
+/* .next-button:hover {
   background-color: var(--color-primary);
-}
+} */
 .close-button {
   position: absolute;
   top: 0px;
@@ -905,7 +908,12 @@ export default {
   position: fixed;
   border: 4px solid var(--color-primary);
   pointer-events: none;
-  transition: top 0.1s ease-out, left 0.1s ease-out, width 0.1s ease-out, height 0.1s ease-out, border-radius 0.3s ease-in-out;
+  transition:
+    top 0.1s ease-out,
+    left 0.1s ease-out,
+    width 0.1s ease-out,
+    height 0.1s ease-out,
+    border-radius 0.3s ease-in-out;
 }
 
 .progress-bar-container {

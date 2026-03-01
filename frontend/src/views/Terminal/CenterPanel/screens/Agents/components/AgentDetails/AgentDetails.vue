@@ -357,7 +357,7 @@ const refreshGoalTasks = async () => {
   padding: 10px 16px;
   background: none;
   border: none;
-  color: var(--color-white);
+  color: var(--color-text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -372,14 +372,14 @@ const refreshGoalTasks = async () => {
 }
 
 .tab-button.active {
-  color: var(--color-white);
+  color: var(--color-text);
   background: rgba(var(--green-rgb), 0.15);
   border-bottom: 2px solid var(--color-green);
   opacity: 1;
 }
 
 .tab-button:hover:not(.active) {
-  color: var(--color-light-green);
+  color: var(--color-text);
   background: rgba(var(--green-rgb), 0.05);
 }
 
@@ -424,7 +424,7 @@ const refreshGoalTasks = async () => {
 }
 
 .stat-value {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 1.1em;
 }
 
@@ -438,7 +438,7 @@ const refreshGoalTasks = async () => {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -475,7 +475,7 @@ const refreshGoalTasks = async () => {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  color: var(--color-light-green);
+  color: var(--color-text);
 }
 
 .tool-actions {
@@ -489,7 +489,7 @@ const refreshGoalTasks = async () => {
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   background: none;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -525,7 +525,7 @@ const refreshGoalTasks = async () => {
 }
 
 .resource-value {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 1.1em;
 }
 
@@ -579,7 +579,7 @@ const refreshGoalTasks = async () => {
 }
 
 .mission-title {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-weight: bold;
 }
 
@@ -600,7 +600,7 @@ const refreshGoalTasks = async () => {
 }
 
 .reward-item {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 0.9em;
   display: flex;
   align-items: center;
@@ -664,13 +664,13 @@ const refreshGoalTasks = async () => {
 }
 
 .agent-name-display {
-  color: var(--color-white);
+  color: var(--color-text);
   font-size: 1.2em;
   margin: 0;
 }
 
 .agent-description-display {
-  color: var(--color-white);
+  color: var(--color-text);
   margin-bottom: 15px;
   line-height: 1.5;
 }
@@ -727,7 +727,7 @@ const refreshGoalTasks = async () => {
 .input {
   /* background: rgba(var(--green-rgb), 0.1); */
   border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-light-green);
+  color: var(--color-text);
   padding: 10px 12px;
   border-radius: 4px;
   width: 100%;
@@ -771,7 +771,7 @@ select.input {
 }
 
 h3.section-title {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 1em;
   display: flex;
   align-items: center;
@@ -781,7 +781,7 @@ h3.section-title {
 }
 
 h4.section-title {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 0.9em;
   display: flex;
   align-items: center;
@@ -796,7 +796,7 @@ h4.section-title {
 }
 
 .group-title {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 1em;
   margin-bottom: 16px;
   display: flex;
@@ -843,7 +843,7 @@ h4.section-title {
 .adjust-button {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-light-green);
+  color: var(--color-text);
   width: 32px;
   height: 32px;
   border-radius: 4px;
@@ -873,7 +873,7 @@ h4.section-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
 }
 
@@ -974,7 +974,7 @@ h4.section-title {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1089,7 +1089,7 @@ h4.section-title {
 }
 
 .chat-message.user .message-sender {
-  color: var(--color-light-green);
+  color: var(--color-text);
 }
 
 .chat-message.agent .message-sender {
@@ -1112,7 +1112,7 @@ h4.section-title {
 
 .chat-message.agent .message-content {
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-light-green);
+  color: var(--color-text);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-bottom-left-radius: 4px;
 }
@@ -1169,7 +1169,7 @@ h4.section-title {
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 20px;
   background: rgba(0, 0, 0, 0.2);
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 0.9em;
 }
 
@@ -1304,7 +1304,7 @@ h4.section-title {
 }
 
 .task-title {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-weight: bold;
   font-size: 1em;
   line-height: 1.3;
@@ -1373,7 +1373,7 @@ h4.section-title {
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1431,7 +1431,7 @@ h4.section-title {
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.3);
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-family: inherit;
   font-size: 0.95em;
   line-height: 1.5;
@@ -1537,7 +1537,7 @@ h4.section-title {
 }
 
 .goal-title {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-weight: bold;
   font-size: 1.1em;
   line-height: 1.3;
@@ -1662,7 +1662,7 @@ h4.section-title {
   padding: 2px 8px;
   border-radius: 3px;
   font-size: 0.8em;
-  color: var(--color-light-green);
+  color: var(--color-text);
 }
 
 .goal-actions {
@@ -1677,7 +1677,7 @@ h4.section-title {
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1748,7 +1748,7 @@ h4.section-title {
   border-radius: 4px;
   border: 1px solid rgba(var(--green-rgb), 0.25);
   background: rgba(var(--green-rgb), 0.1);
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 0.95em;
   transition: background 0.15s, color 0.15s, border 0.15s;
   margin-left: 8px;
@@ -1772,7 +1772,7 @@ h4.section-title {
 }
 
 .goal-task-title {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 1em;
   margin: 0;
   display: flex;
@@ -1873,7 +1873,7 @@ select option {
 
 .tool-tag {
   background: rgba(var(--green-rgb), 0.15);
-  color: var(--color-light-green);
+  color: var(--color-text);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 0.75em;
@@ -1909,7 +1909,7 @@ select option {
 .close-button {
   background: none;
   border: none;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: flex;
   align-items: center;

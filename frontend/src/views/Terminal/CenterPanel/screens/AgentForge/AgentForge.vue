@@ -482,6 +482,8 @@ export default {
           category: newAgent.value.category,
         });
         terminalLines.value.push(`[AgentForge] Agent "${newAgent.value.name}" created successfully!`);
+        // Navigate back to agents list
+        emit('screen-change', 'AgentsScreen');
         // Reset form
         newAgent.value = {
           name: '',

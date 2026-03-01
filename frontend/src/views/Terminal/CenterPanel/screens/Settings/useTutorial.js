@@ -72,7 +72,7 @@ export function useSettingsTutorial() {
       target: '[data-nav="theme"]',
       position: 'right',
       title: '🎨 Theme Settings',
-      content: 'Customize your visual experience! Choose from different themes to make AGNT look exactly how you want. This is a PRO feature.',
+      content: 'Customize your visual experience! Choose from different themes to make AGNT look exactly how you want.',
       buttonText: 'Next',
       highlightTarget: true,
       enforceStep: false,

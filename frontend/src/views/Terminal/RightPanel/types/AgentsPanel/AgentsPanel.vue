@@ -568,7 +568,7 @@ export default {
 }
 
 .detail-row .label {
-  color: var(--color-white);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -587,7 +587,7 @@ export default {
 
 .detail-row .value.name {
   font-weight: bold;
-  color: var(--color-white);
+  color: var(--color-text);
   font-size: 1.1em;
   text-wrap-mode: nowrap;
 }
@@ -601,7 +601,7 @@ export default {
 }
 
 .tools-list h3 {
-  color: var(--color-white);
+  color: var(--color-text);
   font-size: 0.9em;
   margin-bottom: 8px;
 }
@@ -683,7 +683,7 @@ select.input {
 }
 
 .edit-button-panel {
-  color: var(--color-white);
+  color: var(--color-text-muted);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -733,7 +733,7 @@ select.input {
   font-size: 0.9em;
   white-space: nowrap;
   text-align: right;
-  color: var(--color-white);
+  color: var(--color-text-muted);
   flex-basis: 70%;
   line-height: 1.4;
   text-wrap: auto;

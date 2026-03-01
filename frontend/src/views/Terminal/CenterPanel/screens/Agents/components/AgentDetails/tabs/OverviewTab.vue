@@ -108,13 +108,13 @@ h3.section-title {
 }
 
 .agent-name-display {
-  color: var(--color-white);
+  color: var(--color-text);
   font-size: 1.2em;
   margin: 0;
 }
 
 .agent-description-display {
-  color: var(--color-white);
+  color: var(--color-text-muted);
   margin-bottom: 15px;
   line-height: 1.5;
 }
@@ -148,7 +148,7 @@ h3.section-title {
 }
 
 .stat-value {
-  color: var(--color-light-green);
+  color: var(--color-text);
   font-size: 1.1em;
 }
 
@@ -162,7 +162,7 @@ h3.section-title {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: flex;
   align-items: center;

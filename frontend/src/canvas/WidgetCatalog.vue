@@ -11,12 +11,7 @@
         <!-- Search -->
         <div class="wc-search">
           <i class="fas fa-search"></i>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search widgets..."
-            ref="searchInput"
-          />
+          <input v-model="searchQuery" type="text" placeholder="Search widgets..." ref="searchInput" />
         </div>
 
         <!-- Category tabs -->
@@ -87,7 +82,7 @@ export default {
       const defs = customDefinitions.value;
       const _ = refreshKey.value;
       // Build list from registry (includes both built-in and custom widgets)
-      const widgets = getAllWidgets();
+      const widgets = getAllWidgets().filter((w) => !w.isScreenWidget);
       return widgets;
     });
 
@@ -116,10 +111,7 @@ export default {
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
         widgets = widgets.filter(
-          (w) =>
-            w.name.toLowerCase().includes(q) ||
-            w.description.toLowerCase().includes(q) ||
-            w.category.toLowerCase().includes(q),
+          (w) => w.name.toLowerCase().includes(q) || w.description.toLowerCase().includes(q) || w.category.toLowerCase().includes(q),
         );
       }
 
@@ -343,7 +335,7 @@ export default {
   font-size: var(--font-size-xs, 11px);
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--color-light-0, #aab);
+  color: var(--color-text);
   margin-bottom: 4px;
   font-weight: 600;
 }

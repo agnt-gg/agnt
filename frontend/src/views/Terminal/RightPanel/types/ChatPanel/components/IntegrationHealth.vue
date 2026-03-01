@@ -31,11 +31,7 @@
           :text="`${integration.name}: ${integration.metric}`"
           width="auto"
         >
-          <div
-            class="integration-tile"
-            :class="integration.statusClass"
-            @click="handleIntegrationClick(integration)"
-          >
+          <div class="integration-tile" :class="integration.statusClass" @click="handleIntegrationClick(integration)">
             <div class="integration-icon">
               <SvgIcon :name="integration.icon" />
             </div>
@@ -143,7 +139,7 @@ export default {
 
           // Only use cached health status if the provider is still connected
           let status = isConnected ? healthStatus?.status : null;
-          let metric = isConnected ? (healthStatus?.details?.error || healthStatus?.error) : null;
+          let metric = isConnected ? healthStatus?.details?.error || healthStatus?.error : null;
 
           // For local-only providers (Codex CLI, Claude Code) that aren't in the remote
           // health check, fall back to the connectedApps list to determine status.
@@ -155,7 +151,11 @@ export default {
           return {
             provider: provider.id,
             icon: provider.icon || 'custom',
-            name: PROVIDER_DISPLAY_NAMES[provider.id] || PROVIDER_DISPLAY_NAMES[provider.name] || provider.name || provider.id.charAt(0).toUpperCase() + provider.id.slice(1),
+            name:
+              PROVIDER_DISPLAY_NAMES[provider.id] ||
+              PROVIDER_DISPLAY_NAMES[provider.name] ||
+              provider.name ||
+              provider.id.charAt(0).toUpperCase() + provider.id.slice(1),
             metric: metric || (status === 'healthy' ? 'Connected' : 'Not Connected'),
             statusClass: status || 'error',
             connectionType: provider.connectionType || provider.connection_type,
@@ -220,8 +220,7 @@ export default {
           icon: 'openai',
           categories: ['AI'],
           connectionType: 'oauth',
-          instructions:
-            'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
+          instructions: 'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
           localOnly: true,
         };
       }
@@ -232,8 +231,7 @@ export default {
           icon: 'anthropic',
           categories: ['AI'],
           connectionType: 'oauth',
-          instructions:
-            'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
+          instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
           localOnly: true,
         };
       }
@@ -338,7 +336,7 @@ export default {
           const popup = window.open(
             data.authUrl,
             `oauth_${app.id}`,
-            `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+            `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`,
           );
 
           if (!popup) {
@@ -461,10 +459,7 @@ export default {
         const deviceCode = session.deviceCode || '(code unavailable)';
 
         if (!session.deviceUrl || !session.deviceCode) {
-          await showAlert(
-            'Codex Device Login',
-            session.message || 'Device code was not returned yet. Please try again in a moment.'
-          );
+          await showAlert('Codex Device Login', session.message || 'Device code was not returned yet. Please try again in a moment.');
           return;
         }
 
@@ -532,7 +527,7 @@ export default {
             cancelText: 'Cancel',
             confirmClass: 'btn-primary',
             inputType: 'text',
-          }
+          },
         );
 
         if (!codeState) return;
@@ -565,7 +560,7 @@ export default {
             cancelText: 'Cancel',
             confirmClass: 'btn-primary',
             inputType: 'password',
-          }
+          },
         );
 
         if (!token) return;
@@ -767,7 +762,7 @@ export default {
 
 .meter-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-yellow) 0%, var(--color-green) 100%);
+  background: linear-gradient(90deg, var(--color-blue) 0%, var(--color-green) 100%);
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

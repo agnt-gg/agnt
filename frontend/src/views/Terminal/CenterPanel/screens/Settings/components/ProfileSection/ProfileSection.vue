@@ -406,24 +406,8 @@ export default {
       }, 250);
     };
 
-    // Watch for level changes to trigger confetti
+    // Level up popup disabled — was too noisy on every visit
     const previousLevel = ref(level.value);
-    watch(level, async (newLevel, oldLevel) => {
-      // Only trigger if level actually increased and it's not the initial load
-      if (newLevel > oldLevel && oldLevel > 0) {
-        // Trigger confetti animation
-        triggerConfetti();
-
-        // Show congratulations modal
-        await modal.value.showModal({
-          title: '🎉 Level Up!',
-          message: `Congratulations! You've reached Level ${newLevel}!\n\nKeep earning AGNT XP to unlock more rewards and climb the leaderboard.`,
-          confirmText: 'Awesome!',
-          showCancel: false,
-        });
-      }
-      previousLevel.value = newLevel;
-    });
 
     // Load confetti library on mount
     onMounted(() => {

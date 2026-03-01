@@ -166,7 +166,7 @@ export default {
             });
             console.log('✅ License validated after Google login.');
 
-            router.push('/settings');
+            router.push('/');
           }
         } else if (event.data?.type === 'google-auth-error') {
           window.removeEventListener('message', handleMessage);
@@ -309,7 +309,7 @@ export default {
 
         const newURL = window.location.pathname;
         window.history.replaceState({}, document.title, newURL);
-        router.push('/settings');
+        router.push('/');
       } else {
         await store.dispatch('userAuth/fetchUserData');
 

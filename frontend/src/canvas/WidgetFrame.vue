@@ -243,16 +243,16 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  /* box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05); */
   transition: box-shadow 0.15s;
 }
 
 .widget-frame:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
 }
 
 .widget-frame.is-dragging {
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.1);
   z-index: 999 !important;
   opacity: 0.92;
   cursor: grabbing;

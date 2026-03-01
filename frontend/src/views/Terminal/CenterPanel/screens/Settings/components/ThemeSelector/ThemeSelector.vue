@@ -1,51 +1,48 @@
 <template>
-  <div class="field-group wide-group" :class="{ 'locked-section': !isPro }">
+  <div class="field-group wide-group">
     <SimpleModal ref="simpleModal" />
     <div class="theme-selector-group">
       <h3 style="margin-bottom: 12px">
         Custom Theme
-        <span v-if="!isPro" class="pro-badge-label"> <i class="fas fa-lock"></i> PRO </span>
       </h3>
 
-      <div class="theme-options" :class="{ locked: !isPro }">
+      <div class="theme-options">
         <Tooltip
           v-for="theme in availableThemes"
           :key="theme.id"
-          :text="isPro ? `Switch to ${theme.name} theme` : 'Upgrade to PRO to unlock theme customization'"
+          :text="`Switch to ${theme.name} theme`"
           width="auto"
         >
           <button
-            @click="isPro ? selectTheme(theme.id) : null"
+            @click="selectTheme(theme.id)"
             class="theme-option"
-            :class="{ active: currentTheme === theme.id, disabled: !isPro }"
-            :disabled="!isPro"
+            :class="{ active: currentTheme === theme.id }"
           >
             <i :class="theme.icon"></i>
             <span class="theme-name">{{ theme.name }}</span>
-            <i v-if="!isPro" class="fas fa-lock lock-icon"></i>
           </button>
         </Tooltip>
       </div>
     </div>
 
     <!-- Font Selector -->
-    <div class="sf-row" :class="{ locked: !isPro }">
+    <div class="sf-row">
       <label>Font</label>
       <CustomSelect
         ref="fontSelect"
         :options="fontOptions"
         placeholder="Select font"
-        @option-selected="isPro ? setFontFamily($event.value) : null"
+        @option-selected="setFontFamily($event.value)"
       />
     </div>
 
     <!-- Scale Slider -->
-    <div class="sf-row" :class="{ locked: !isPro }">
+    <div class="sf-row">
       <label
         >Scale <span class="value-badge">{{ uiScale }}%</span></label
       >
       <div class="slider-notched">
-        <input type="range" min="75" max="125" step="25" :value="uiScale" @input="handleScaleInput" :disabled="!isPro" />
+        <input type="range" min="75" max="125" step="25" :value="uiScale" @input="handleScaleInput" />
         <div class="slider-ticks">
           <span class="slider-tick" style="left: 0%">75</span>
           <span class="slider-tick" style="left: 50%">100</span>
@@ -55,40 +52,34 @@
     </div>
 
     <!-- Mode Toggles -->
-    <div class="mode-toggle-group" :class="{ locked: !isPro }">
+    <div class="mode-toggle-group">
       <Tooltip
-        :text="
-          isPro ? (useCustomBackground ? 'Disable Custom Background' : 'Enable Custom Background') : 'Upgrade to PRO to unlock custom backgrounds'
-        "
+        :text="useCustomBackground ? 'Disable Custom Background' : 'Enable Custom Background'"
         width="auto"
       >
         <button
-          @click="isPro ? toggleUseCustomBackground() : null"
+          @click="toggleUseCustomBackground()"
           class="mode-toggle custom-bg-toggle"
-          :class="{ active: useCustomBackground, disabled: !isPro }"
-          :disabled="!isPro"
+          :class="{ active: useCustomBackground }"
         >
           <i class="fas fa-image"></i>
           <span class="toggle-label">Custom Background</span>
-          <i v-if="!isPro" class="fas fa-lock lock-icon"></i>
         </button>
       </Tooltip>
-      <Tooltip :text="isPro ? (isGreyscaleMode ? 'Disable Greyscale' : 'Enable Greyscale') : 'Upgrade to PRO to unlock greyscale mode'" width="auto">
+      <Tooltip :text="isGreyscaleMode ? 'Disable Greyscale' : 'Enable Greyscale'" width="auto">
         <button
-          @click="isPro ? toggleGreyscaleMode() : null"
+          @click="toggleGreyscaleMode()"
           class="mode-toggle greyscale-toggle"
-          :class="{ active: isGreyscaleMode, disabled: !isPro }"
-          :disabled="!isPro"
+          :class="{ active: isGreyscaleMode }"
         >
           <i class="fas fa-adjust"></i>
           <span class="toggle-label">Greyscale</span>
-          <i v-if="!isPro" class="fas fa-lock lock-icon"></i>
         </button>
       </Tooltip>
     </div>
 
     <!-- Background settings (only when custom bg is on) -->
-    <div v-if="useCustomBackground && isPro" class="background-settings">
+    <div v-if="useCustomBackground" class="background-settings">
       <!-- Background Media Upload -->
       <div class="sf-row">
         <label>Background</label>
@@ -126,10 +117,6 @@
       </div>
     </div>
 
-    <div v-if="!isPro" class="locked-overlay">
-      <i class="fas fa-lock"></i>
-      <p>Upgrade to PRO to unlock</p>
-    </div>
   </div>
 </template>
 
@@ -176,10 +163,6 @@ export default {
       'bgOpacity',
       'bgBlur',
     ]),
-    ...mapGetters('userAuth', ['planType']),
-    isPro() {
-      return this.planType !== 'free';
-    },
     isVideoBackground() {
       if (!this.currentThemeBackgroundImage) return false;
       return this.currentThemeBackgroundImage.startsWith('data:video/');
@@ -253,7 +236,6 @@ export default {
       this.bgFileName = 'No file';
     },
     handleScaleInput(event) {
-      if (!this.isPro) return;
       this.setUiScale(parseInt(event.target.value, 10));
     },
   },
@@ -267,13 +249,6 @@ export default {
   gap: 20px;
   margin-left: 2px;
   position: relative;
-}
-
-.field-group.locked-section .theme-selector-group,
-.field-group.locked-section .mode-toggle-group,
-.field-group.locked-section .sf-row {
-  pointer-events: none;
-  user-select: none;
 }
 
 .theme-selector-group {
@@ -296,55 +271,12 @@ body.dark .theme-label {
   color: var(--color-dull-white);
 }
 
-.pro-badge-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-size-xs);
-  color: var(--color-yellow);
-  background: rgba(255, 215, 0, 0.15);
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 215, 0, 0.4);
-  font-weight: 600;
-  margin-left: 8px;
-}
-
 .theme-options {
   display: flex;
   flex-direction: row;
   gap: 8px;
   flex-wrap: wrap;
   position: relative;
-}
-
-.locked-overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 12px 16px;
-  border-radius: 8px;
-  border: 2px solid var(--color-yellow);
-  pointer-events: all;
-  z-index: 10;
-  white-space: nowrap;
-}
-
-.locked-overlay i {
-  font-size: 1.2em;
-  color: var(--color-yellow);
-  margin-right: 6px;
-}
-
-.locked-overlay p {
-  margin: 0;
-  color: #fff;
-  font-weight: 600;
-  font-size: 0.85em;
-  display: inline;
 }
 
 .theme-option {
@@ -363,7 +295,7 @@ body.dark .theme-label {
   position: relative;
 }
 
-.theme-option:hover:not(.disabled) {
+.theme-option:hover {
   border-color: var(--color-med-navy);
   transform: translateY(-1px);
 }
@@ -374,25 +306,9 @@ body.dark .theme-label {
   color: var(--color-white);
 }
 
-.theme-option.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--color-ultra-light-navy);
-}
-
-.theme-option.disabled:hover {
-  transform: none;
-}
-
 .theme-option i {
   font-size: 14px;
   flex-shrink: 0;
-}
-
-.lock-icon {
-  font-size: 10px;
-  margin-left: auto;
-  color: var(--color-yellow);
 }
 
 .theme-name {
@@ -616,7 +532,7 @@ body.dark .theme-label {
   position: relative;
 }
 
-.mode-toggle:hover:not(.disabled) {
+.mode-toggle:hover {
   border-color: var(--color-med-navy);
   transform: translateY(-1px);
 }
@@ -625,15 +541,6 @@ body.dark .theme-label {
   border-color: var(--color-primary);
   background: var(--color-primary);
   color: var(--color-white);
-}
-
-.mode-toggle.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.mode-toggle.disabled:hover {
-  transform: none;
 }
 
 .mode-toggle i {
@@ -661,7 +568,7 @@ body.dark .theme-option {
   color: var(--color-dull-white);
 }
 
-body.dark .theme-option:hover:not(.disabled) {
+body.dark .theme-option:hover {
   border-color: var(--color-med-navy);
 }
 
@@ -671,18 +578,12 @@ body.dark .theme-option.active {
   color: var(--color-white);
 }
 
-body.dark .theme-option.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--color-ultra-dark-navy);
-}
-
 body.dark .mode-toggle {
   border-color: var(--color-dull-navy);
   color: var(--color-dull-white);
 }
 
-body.dark .mode-toggle:hover:not(.disabled) {
+body.dark .mode-toggle:hover {
   background: var(--color-ultra-dark-navy);
 }
 
@@ -690,11 +591,6 @@ body.dark .mode-toggle.active {
   border-color: var(--color-primary);
   background: var(--color-primary);
   color: var(--color-white);
-}
-
-body.dark .mode-toggle.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 body.dark .sf-row label {
@@ -707,7 +603,7 @@ body.dark.cyberpunk .theme-option {
   border-color: var(--color-dull-navy);
 }
 
-body.dark.cyberpunk .theme-option:hover:not(.disabled) {
+body.dark.cyberpunk .theme-option:hover {
   background: rgba(0, 0, 0, 0.5);
   border-color: var(--color-primary);
 }
@@ -717,17 +613,12 @@ body.dark.cyberpunk .theme-option.active {
   background: var(--color-primary);
 }
 
-body.dark.cyberpunk .theme-option.disabled {
-  opacity: 0.5;
-  background: rgba(0, 0, 0, 0.3);
-}
-
 body.dark.cyberpunk .mode-toggle {
   background: rgba(0, 0, 0, 0.3);
   border-color: var(--color-dull-navy);
 }
 
-body.dark.cyberpunk .mode-toggle:hover:not(.disabled) {
+body.dark.cyberpunk .mode-toggle:hover {
   background: rgba(0, 0, 0, 0.3);
 }
 
@@ -736,8 +627,4 @@ body.dark.cyberpunk .mode-toggle.active {
   background: var(--color-primary);
 }
 
-body.dark.cyberpunk .mode-toggle.disabled {
-  opacity: 0.5;
-  background: rgba(0, 0, 0, 0.3);
-}
 </style>

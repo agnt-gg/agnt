@@ -527,7 +527,7 @@ textarea.input {
 .adjust-button {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-light-green);
+  color: var(--color-text);
   width: 32px;
   height: 32px;
   border-radius: 4px;
@@ -555,7 +555,7 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
 }
 .checkbox-label input[type='checkbox'] {
@@ -593,7 +593,7 @@ textarea.input {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -667,7 +667,7 @@ textarea.input {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   border-radius: 4px;
-  color: var(--color-light-green);
+  color: var(--color-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;

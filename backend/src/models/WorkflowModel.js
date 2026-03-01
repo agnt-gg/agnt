@@ -28,7 +28,12 @@ class WorkflowModel {
   static async createOrUpdate(id, workflowData, userId, isShareable) {
     try {
       const existingRow = await this.findOne(id);
-      const { name, description, category, nodeSummary } = this._extractSummaryFields(workflowData);
+      const extracted = this._extractSummaryFields(workflowData);
+      // Preserve existing category if the update sends an empty one
+      const name = extracted.name;
+      const description = extracted.description;
+      const category = (extracted.category || (existingRow && existingRow.category) || '');
+      const nodeSummary = extracted.nodeSummary;
 
       if (!existingRow) {
         return new Promise((resolve, reject) => {

@@ -25,6 +25,9 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
+        <span v-if="globalModelLabel" class="cv-global-model" :title="globalModelLabel">
+          default: {{ globalModelLabel }}
+        </span>
         <button v-if="onCustomPage" class="cv-btn" @click="showCatalog = true" title="Add widget">+</button>
         <button v-if="onCustomPage" class="cv-btn" @click="resetCurrentPage" title="Reset layout">&#8635;</button>
 
@@ -276,6 +279,12 @@ export default {
 
     const isAuthenticated = computed(() => store.getters['userAuth/isAuthenticated']);
 
+    // Global model display
+    const globalModelLabel = computed(() => {
+      const model = store.state.aiProvider?.selectedModel;
+      return model || '';
+    });
+
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
@@ -322,14 +331,44 @@ export default {
 
     // ── Modal (replaces prompt/confirm) ──
     const PAGE_ICONS = [
-      'fas fa-th', 'fas fa-home', 'fas fa-star', 'fas fa-heart', 'fas fa-bolt',
-      'fas fa-rocket', 'fas fa-globe', 'fas fa-chart-bar', 'fas fa-code', 'fas fa-database',
-      'fas fa-server', 'fas fa-shield-alt', 'fas fa-cube', 'fas fa-palette', 'fas fa-terminal',
-      'fas fa-brain', 'fas fa-atom', 'fas fa-fire', 'fas fa-gem', 'fas fa-crown',
-      'fas fa-flask', 'fas fa-leaf', 'fas fa-moon', 'fas fa-sun', 'fas fa-cloud',
+      'fas fa-th',
+      'fas fa-home',
+      'fas fa-star',
+      'fas fa-heart',
+      'fas fa-bolt',
+      'fas fa-rocket',
+      'fas fa-globe',
+      'fas fa-chart-bar',
+      'fas fa-code',
+      'fas fa-database',
+      'fas fa-server',
+      'fas fa-shield-alt',
+      'fas fa-cube',
+      'fas fa-palette',
+      'fas fa-terminal',
+      'fas fa-brain',
+      'fas fa-atom',
+      'fas fa-fire',
+      'fas fa-gem',
+      'fas fa-crown',
+      'fas fa-flask',
+      'fas fa-leaf',
+      'fas fa-moon',
+      'fas fa-sun',
+      'fas fa-cloud',
     ];
 
-    const modal = ref({ show: false, type: 'input', title: '', value: '', icon: 'fas fa-th', showIconPicker: false, message: '', okLabel: 'OK', danger: false });
+    const modal = ref({
+      show: false,
+      type: 'input',
+      title: '',
+      value: '',
+      icon: 'fas fa-th',
+      showIconPicker: false,
+      message: '',
+      okLabel: 'OK',
+      danger: false,
+    });
     let modalResolve = null;
 
     function showModal(opts) {
@@ -345,9 +384,7 @@ export default {
     function submitModal() {
       let result;
       if (modal.value.type === 'input') {
-        result = modal.value.showIconPicker
-          ? { value: modal.value.value, icon: modal.value.icon }
-          : modal.value.value;
+        result = modal.value.showIconPicker ? { value: modal.value.value, icon: modal.value.icon } : modal.value.value;
       } else {
         result = true;
       }
@@ -367,7 +404,14 @@ export default {
       const page = ctxMenu.value.page;
       closeCtx();
       if (!page) return;
-      const result = await showModal({ type: 'input', title: 'Rename Page', value: page.name, icon: page.icon || 'fas fa-th', showIconPicker: true, okLabel: 'Rename' });
+      const result = await showModal({
+        type: 'input',
+        title: 'Rename Page',
+        value: page.name,
+        icon: page.icon || 'fas fa-th',
+        showIconPicker: true,
+        okLabel: 'Rename',
+      });
       if (result && result.value && result.value.trim()) {
         store.dispatch('widgetLayout/renamePage', { pageId: page.id, name: result.value.trim(), icon: result.icon });
       }
@@ -478,6 +522,7 @@ export default {
 
     return {
       isAuthenticated,
+      globalModelLabel,
       showCatalog,
       clock,
       activePageId,
@@ -608,6 +653,23 @@ export default {
 .cv-sep {
   color: var(--terminal-border-color);
   font-size: 14px;
+}
+
+.cv-global-model {
+  font-size: 11px;
+  color: var(--color-text-muted, #667);
+  letter-spacing: 0.5px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.7;
+}
+.cv-global-model i {
+  font-size: 10px;
 }
 
 .cv-clock {
@@ -939,7 +1001,7 @@ export default {
   background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
-  color: var(--color-light-0, #ccd);
+  color: var(--color-text);
   font-family: inherit;
   font-size: 13px;
   outline: none;
