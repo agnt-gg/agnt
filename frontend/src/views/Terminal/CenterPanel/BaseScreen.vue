@@ -52,6 +52,12 @@
         </div>
         <!-- Input line container -->
         <div class="input-container" :class="{ 'input-disabled': isInputDisabled }" v-if="showInputLine">
+          <!-- Disconnected provider notice -->
+          <div v-if="isInputDisabled" class="input-disabled-notice">
+            <i class="fas fa-exclamation-circle"></i>
+            <span>No AI provider connected. Select a provider to start chatting.</span>
+          </div>
+
           <!-- Scrollable content area for file chips -->
           <div class="input-scrollable-area">
             <!-- File preview chips -->
@@ -75,7 +81,7 @@
               ref="textareaRef"
               class="chat-input-textarea"
               v-model="currentUserInput"
-              placeholder="Type a message or command..."
+              :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : 'Type a message or command...'"
               rows="1"
               :disabled="isInputDisabled"
               @input="autoResizeTextarea"
@@ -100,7 +106,6 @@
                 v-if="!isStreaming"
                 ref="providerSelectorButtonRef"
                 @click="toggleProviderSelector"
-                :disabled="isInputDisabled"
                 class="chat-provider-button"
               >
                 <i class="fas fa-robot"></i>
@@ -269,7 +274,7 @@ export default {
     // --- Input State ---
     const currentUserInput = ref('');
     const isInputDisabled = ref(disableInputInitially.value);
-    const showPrompt = ref(!disableInputInitially.value);
+    const showPrompt = ref(true);
     const selectedFiles = ref([]);
     const isTextareaExpanded = ref(false);
 
@@ -313,7 +318,7 @@ export default {
 
     // --- Computed ---
     // Controls visibility based on prop AND disabled state
-    const showInputLine = computed(() => showInput.value && !isInputDisabled.value);
+    const showInputLine = computed(() => showInput.value);
 
     // --- Methods ---
     const scrollToBottom = async () => {
@@ -373,10 +378,14 @@ export default {
       emit('screen-change', targetScreenId);
     };
 
+    // Keep isInputDisabled in sync with parent prop
+    watch(disableInputInitially, (newVal) => {
+      isInputDisabled.value = newVal;
+    });
+
     // Allow parent to control input state
     const setInputDisabled = (disabled) => {
       isInputDisabled.value = disabled;
-      showPrompt.value = !disabled;
       if (!disabled) {
         nextTick(focusInput);
       }
@@ -1713,6 +1722,33 @@ body[data-page='terminal-agents'] .main-panel {
 /* Hide cursor when input is disabled */
 .input-container.input-disabled .cursor {
   opacity: 0;
+}
+
+/* Greyed-out state for disabled input */
+.input-container.input-disabled .input-line {
+  opacity: 0.5;
+}
+
+.input-container.input-disabled .chat-input-textarea {
+  cursor: not-allowed;
+}
+
+.input-disabled-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.25);
+  border-radius: 6px;
+  font-size: 0.8em;
+  color: rgba(255, 107, 107, 0.9);
+}
+
+.input-disabled-notice i {
+  flex-shrink: 0;
+  font-size: 0.9em;
 }
 
 .base-screen-lines-output {

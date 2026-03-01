@@ -96,6 +96,7 @@ import ActivityFeed from './components/ActivityFeed.vue';
 import { useTutorial } from './useTutorial.js';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG } from '@/tt.config.js';
+import { resolveProviderKey } from '@/store/app/aiProvider.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 
 export default {
@@ -274,8 +275,10 @@ export default {
         return true;
       }
 
-      // Check if the selected provider is in the connected apps (case-insensitive)
-      return connectedApps.some((app) => app.toLowerCase() === selectedProvider.toLowerCase());
+      // Check if the selected provider is in the connected apps
+      // resolveProviderKey maps display names like "Z-AI" to keys like "zai"
+      const providerKey = resolveProviderKey(selectedProvider);
+      return connectedApps.some((app) => app.toLowerCase() === providerKey);
     });
 
     // Disable input when no provider connected
@@ -815,6 +818,9 @@ export default {
         await loadSavedOutput(contentId);
       } else if (store.state.chat.messages.length === 0) {
         store.commit('chat/RESET_CHAT');
+
+        // Ensure version is available before building welcome message
+        await versionPromise;
 
         // Determine which message to show based on provider selection AND connection status
         const selectedProvider = store.state.aiProvider?.selectedProvider;

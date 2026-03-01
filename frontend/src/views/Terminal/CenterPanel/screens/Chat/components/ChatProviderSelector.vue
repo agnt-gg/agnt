@@ -97,7 +97,7 @@ import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import CustomProviderDialog from '../../Settings/components/ProviderSelector/CustomProviderDialog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
+import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 
 export default {
@@ -162,8 +162,10 @@ export default {
         return true;
       }
 
-      // Built-in providers check
-      return connectedProvidersLower.value.includes(selectedProvider.value.toLowerCase());
+      // Built-in providers check — resolve display name to key for comparison
+      // e.g. selectedProvider "Z-AI" → key "zai" to match connectedApps ["zai"]
+      const providerKey = resolveProviderKey(selectedProvider.value);
+      return connectedProvidersLower.value.includes(providerKey);
     });
 
     // Check local server status using the actual LM Studio API endpoint
@@ -190,7 +192,7 @@ export default {
       const builtInOptions = providers.value.map((provider) => ({
         label: PROVIDER_DISPLAY_NAMES[provider] || provider,
         value: provider,
-        disabled: provider.toLowerCase() === 'local' ? false : !connectedProvidersLower.value.includes(provider.toLowerCase()),
+        disabled: provider.toLowerCase() === 'local' ? false : !connectedProvidersLower.value.includes(resolveProviderKey(provider)),
       }));
 
       // Custom providers (always enabled)

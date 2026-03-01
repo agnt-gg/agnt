@@ -10,6 +10,22 @@
         </div>
 
         <div class="dialog-content">
+          <!-- Template Picker (only for new providers) -->
+          <div v-if="!isEditing" class="form-group">
+            <label for="template-select">Start from template</label>
+            <select
+              id="template-select"
+              v-model="selectedTemplate"
+              @change="applyTemplate"
+              :disabled="isTesting || isSaving"
+              class="template-select"
+            >
+              <option value="">Custom (blank)</option>
+              <option v-for="t in templates" :key="t.key" :value="t.key">{{ t.name }}</option>
+            </select>
+            <span v-if="selectedTemplateDesc" class="help-text">{{ selectedTemplateDesc }}</span>
+          </div>
+
           <div class="form-group">
             <label for="provider-name">Provider Name *</label>
             <input
@@ -36,7 +52,7 @@
           </div>
 
           <div class="form-group">
-            <label for="api-key">API Key <span class="optional">(Optional)</span></label>
+            <label for="api-key">API Key <span class="optional">({{ apiKeyRequired ? 'Required' : 'Optional' }})</span></label>
             <input
               id="api-key"
               v-model="formData.api_key"
@@ -86,8 +102,9 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useStore } from 'vuex';
+import { API_CONFIG } from '@/tt.config.js';
 
 export default {
   name: 'CustomProviderDialog',
@@ -115,8 +132,22 @@ export default {
     const testResult = ref(null);
     const isTesting = ref(false);
     const isSaving = ref(false);
+    const templates = ref([]);
+    const selectedTemplate = ref('');
 
     const isEditing = computed(() => !!props.editProvider);
+
+    const selectedTemplateDesc = computed(() => {
+      if (!selectedTemplate.value) return '';
+      const t = templates.value.find((t) => t.key === selectedTemplate.value);
+      return t?.description || '';
+    });
+
+    const apiKeyRequired = computed(() => {
+      if (!selectedTemplate.value) return false;
+      const t = templates.value.find((t) => t.key === selectedTemplate.value);
+      return t?.requiresApiKey !== false;
+    });
 
     const canTest = computed(() => {
       return formData.value.base_url;
@@ -125,6 +156,39 @@ export default {
     const canSave = computed(() => {
       return formData.value.provider_name && formData.value.base_url && !Object.keys(errors.value).length;
     });
+
+    // Fetch templates on mount
+    const fetchTemplates = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/custom-providers/templates`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (response.ok) {
+          const data = await response.json();
+          templates.value = data.templates || [];
+        }
+      } catch (error) {
+        console.warn('Failed to fetch provider templates:', error);
+      }
+    };
+
+    onMounted(fetchTemplates);
+
+    const applyTemplate = () => {
+      if (!selectedTemplate.value) {
+        formData.value = { provider_name: '', base_url: '', api_key: '' };
+        testResult.value = null;
+        return;
+      }
+      const t = templates.value.find((t) => t.key === selectedTemplate.value);
+      if (t) {
+        formData.value.provider_name = t.name;
+        formData.value.base_url = t.baseURL;
+        formData.value.api_key = '';
+        testResult.value = null;
+      }
+    };
 
     // Watch for edit provider changes
     watch(
@@ -154,6 +218,7 @@ export default {
           };
           errors.value = {};
           testResult.value = null;
+          selectedTemplate.value = '';
         }
       }
     );
@@ -260,6 +325,11 @@ export default {
       isEditing,
       canTest,
       canSave,
+      templates,
+      selectedTemplate,
+      selectedTemplateDesc,
+      apiKeyRequired,
+      applyTemplate,
       testConnection,
       saveProvider,
       closeDialog,
@@ -346,8 +416,29 @@ export default {
   color: var(--color-light-med-navy);
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
   width: 100%;
+}
+
+.template-select {
+  padding: 10px 12px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  color: var(--color-light-med-navy);
+  font-size: 0.95em;
+  cursor: pointer;
+}
+
+.template-select:hover {
+  border-color: var(--color-green);
+}
+
+.template-select:focus {
+  outline: none;
+  border-color: var(--color-green);
+  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.15);
 }
 
 .help-text {
@@ -458,8 +549,6 @@ export default {
 }
 
 .btn-primary:hover:not(:disabled) {
-  /* background: var(--color-light-green);
-  transform: translateY(-1px); */
   box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
 }
 

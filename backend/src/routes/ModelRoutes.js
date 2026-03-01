@@ -1,47 +1,68 @@
 import express from 'express';
-import openRouterService from '../services/ai/providers/OpenRouter.js';
-import anthropicService from '../services/ai/providers/Anthropic.js';
-import openAIService from '../services/ai/providers/OpenAI.js';
-import openAICodexCliService from '../services/ai/providers/OpenAICodexCli.js';
-import geminiService from '../services/ai/providers/Gemini.js';
-import grokAIService from '../services/ai/providers/GrokAI.js';
-import groqService from '../services/ai/providers/Groq.js';
-import togetherAIService from '../services/ai/providers/TogetherAI.js';
-import cerebrasService from '../services/ai/providers/Cerebras.js';
-import deepSeekService from '../services/ai/providers/DeepSeek.js';
-import kimiService from '../services/ai/providers/Kimi.js';
-import minimaxService from '../services/ai/providers/Minimax.js';
-import zaiService from '../services/ai/providers/ZAI.js';
+import GenericProviderService from '../services/ai/providers/GenericProviderService.js';
+import { getAllProviderConfigs, getModelMetadata, getModelCost, isReasoningModel, getAllModelMetadata } from '../services/ai/providerConfigs.js';
+import providerHealthCheck from '../services/ai/ProviderHealthCheck.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
-import claudeCodeService from '../services/ai/providers/ClaudeCode.js';
 import jwt from 'jsonwebtoken';
 
 const router = express.Router();
 
-// Map provider names to their services
-const providerServices = {
-  openrouter: openRouterService,
-  anthropic: anthropicService,
-  openai: openAIService,
-  gemini: geminiService,
-  grokai: grokAIService,
-  grok: grokAIService, // Alias for grokai
-  groq: groqService,
-  'openai-codex': openAIService,
-  'openai-codex-cli': openAICodexCliService,
-  'claude-code': claudeCodeService,
-  togetherai: togetherAIService,
-  cerebras: cerebrasService,
-  deepseek: deepSeekService,
-  kimi: kimiService,
-  minimax: minimaxService,
-  zai: zaiService,
-};
+// ─────────────────────────── AUTO-INSTANTIATE PROVIDER SERVICES ───────────────────────────
+// Instead of importing 14 individual provider singletons, we auto-create services from config.
+
+const providerServices = {};
+for (const config of getAllProviderConfigs()) {
+  if (config.staticModels) {
+    // Static model list — no API call needed (e.g., openai-codex-cli)
+    providerServices[config.key] = {
+      fetchModels: async () =>
+        config.fallbackModels.map((id) => ({
+          id,
+          name: id,
+          description: '',
+          createdAt: null,
+          ownedBy: config.key,
+        })),
+      getModelNames: async () => config.fallbackModels,
+      isCacheValid: () => true,
+      clearCache: () => {},
+    };
+  } else {
+    providerServices[config.key] = new GenericProviderService({
+      name: config.name,
+      baseURL: config.baseURL,
+      fallbackModels: config.fallbackModels,
+      fallbackModelObjects: config.fallbackModelObjects || null,
+      headers: config.fetchHeaders || {},
+      authScheme:
+        config.authScheme === 'api-key'
+          ? 'api-key'
+          : config.authScheme === 'query-param'
+            ? 'query-param'
+            : config.authScheme === 'claude-code'
+              ? 'claude-code'
+              : 'bearer',
+      modelsPath: config.modelsPath || '/models',
+      responseDataPath: config.responseDataPath || 'data',
+      transformModel: config.modelTransform || undefined,
+      filterModel: config.modelFilter || undefined,
+      supportsPagination: config.pagination?.enabled || false,
+      paginationConfig: config.pagination || {},
+    });
+  }
+}
+
+// Aliases
+providerServices['grok'] = providerServices['grokai'];
 
 // Providers that have hardcoded models and don't require API key for model listing
-const providersWithHardcodedModels = ['openai-codex-cli'];
+const providersWithHardcodedModels = getAllProviderConfigs()
+  .filter((c) => c.staticModels)
+  .map((c) => c.key);
+
+// ─────────────────────────── ROUTES ───────────────────────────
 
 // Generic endpoint for fetching models from any provider
 router.get('/:provider/models', async (req, res) => {
@@ -94,7 +115,7 @@ router.get('/:provider/models', async (req, res) => {
           });
         }
       }
-      // OpenAI Codex: use local Codex CLI auth and allow unauthenticated access to this local route.
+      // OpenAI Codex: use local Codex CLI auth
       else if (providerLower === 'openai-codex') {
         const codexStatus = await CodexAuthManager.checkApiUsable();
         if (!codexStatus.available) {
@@ -118,7 +139,7 @@ router.get('/:provider/models', async (req, res) => {
           });
         }
       } else {
-        // Extract user ID from auth token
+        // Standard providers: extract user ID from auth token
         const authToken = req.headers.authorization;
         if (!authToken || !authToken.startsWith('Bearer ')) {
           return res.status(401).json({
@@ -187,6 +208,7 @@ router.get('/:provider/models', async (req, res) => {
     });
   }
 });
+
 // Generic endpoint for refreshing models cache
 router.post('/:provider/models/refresh', async (req, res) => {
   try {
@@ -290,6 +312,7 @@ router.post('/:provider/models/refresh', async (req, res) => {
     });
   }
 });
+
 // Legacy endpoint for OpenRouter (backward compatibility)
 router.get('/models', async (req, res) => {
   req.params.provider = 'openrouter';
@@ -303,8 +326,6 @@ router.post('/models/refresh', async (req, res) => {
 
 router.get('/models/categories', async (req, res) => {
   try {
-    // For now, return predefined categories
-    // In the future, this could be fetched from OpenRouter API
     const categories = [
       { id: 'all', name: 'All Models', description: 'All available models' },
       { id: 'programming', name: 'Programming', description: 'Models optimized for code generation and programming tasks' },
@@ -321,6 +342,99 @@ router.get('/models/categories', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch model categories',
+      details: error.message,
+    });
+  }
+});
+
+// ─────────────────────────── MODEL METADATA ───────────────────────────
+
+// Get metadata for all models of a provider
+router.get('/:provider/metadata', (req, res) => {
+  const { provider } = req.params;
+  const metadata = getAllModelMetadata(provider.toLowerCase());
+  res.json({ success: true, provider: provider.toLowerCase(), metadata });
+});
+
+// Get metadata for a specific model
+router.get('/:provider/metadata/:modelId', (req, res) => {
+  const { provider, modelId } = req.params;
+  const metadata = getModelMetadata(provider.toLowerCase(), modelId);
+  if (!metadata) {
+    return res.json({ success: true, provider: provider.toLowerCase(), model: modelId, metadata: null });
+  }
+
+  // Include cost estimate if query params provided
+  const { inputTokens, outputTokens } = req.query;
+  let cost = null;
+  if (inputTokens && outputTokens) {
+    cost = getModelCost(provider.toLowerCase(), modelId, parseInt(inputTokens, 10), parseInt(outputTokens, 10));
+  }
+
+  res.json({
+    success: true,
+    provider: provider.toLowerCase(),
+    model: modelId,
+    metadata,
+    reasoning: isReasoningModel(provider.toLowerCase(), modelId),
+    ...(cost && { cost }),
+  });
+});
+
+// ─────────────────────────── PROVIDER HEALTH ───────────────────────────
+
+router.get('/provider-health', async (req, res) => {
+  try {
+    const status = providerHealthCheck.getStatus();
+    const summary = providerHealthCheck.getSummary();
+
+    res.json({
+      success: true,
+      ...summary,
+      providers: status,
+    });
+  } catch (error) {
+    console.error('Error fetching provider health:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch provider health',
+      details: error.message,
+    });
+  }
+});
+
+router.post('/provider-health/check', async (req, res) => {
+  try {
+    const authToken = req.headers.authorization;
+    let userId = null;
+
+    if (authToken && authToken.startsWith('Bearer ')) {
+      try {
+        const token = authToken.split(' ')[1];
+        const payload = jwt.decode(token);
+        userId = payload?.id || payload?.userId || payload?.sub;
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    const results = await providerHealthCheck.checkAll(async (providerKey) => {
+      if (!userId) return null;
+      return AuthManager.getValidAccessToken(userId, providerKey);
+    });
+
+    const summary = providerHealthCheck.getSummary();
+
+    res.json({
+      success: true,
+      ...summary,
+      providers: results,
+    });
+  } catch (error) {
+    console.error('Error running provider health check:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to run provider health check',
       details: error.message,
     });
   }

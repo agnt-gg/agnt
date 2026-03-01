@@ -1,5 +1,6 @@
 import express from 'express';
 import CustomOpenAIProviderService from '../services/ai/CustomOpenAIProviderService.js';
+import { getAllProviderTemplates } from '../services/ai/providerConfigs.js';
 import jwt from 'jsonwebtoken';
 
 const router = express.Router();
@@ -197,6 +198,28 @@ router.delete('/:id', async (req, res) => {
     res.status(statusCode).json({
       success: false,
       error: 'Failed to delete custom provider',
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /custom-providers/templates
+ * Get all pre-configured provider templates
+ */
+router.get('/templates', async (req, res) => {
+  try {
+    const templates = getAllProviderTemplates();
+    res.json({
+      success: true,
+      templates,
+      count: templates.length,
+    });
+  } catch (error) {
+    console.error('Error fetching provider templates:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch provider templates',
       details: error.message,
     });
   }

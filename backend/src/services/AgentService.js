@@ -3,7 +3,7 @@ import SkillModel from '../models/SkillModel.js';
 import SkillService, { buildSkillsContext } from './SkillService.js';
 import UserModel from '../models/UserModel.js';
 import generateUUID from '../utils/generateUUID.js';
-import openai from '../services/ai/providers/OpenAI.js';
+
 import universalChatHandler from './OrchestratorService.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import {
