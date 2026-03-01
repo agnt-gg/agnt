@@ -602,7 +602,9 @@ export default {
   z-index: 2;
   margin: auto;
   text-align: center;
-  transition: width 0.25s ease, stroke 0.25s ease;
+  transition:
+    width 0.25s ease,
+    stroke 0.25s ease;
   will-change: stroke, d;
   backdrop-filter: blur(4px);
 }
@@ -654,7 +656,10 @@ export default {
   flex-wrap: nowrap;
   width: -webkit-fill-available;
   padding: 10px;
-  transition: opacity 0.35s ease, transform 0.35s ease, visibility 0.35s ease;
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease,
+    visibility 0.35s ease;
   opacity: 1;
   transform: scale(1);
   visibility: visible;
@@ -663,7 +668,10 @@ export default {
 }
 
 .node svg.grabber {
-  transition: opacity 0.35s ease, transform 0.35s ease, visibility 0.35s ease;
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease,
+    visibility 0.35s ease;
   opacity: 1;
   transform: scale(1);
   visibility: visible;
@@ -688,8 +696,9 @@ export default {
   font-size: larger;
   font-weight: 600;
   line-height: 120%;
-  background: transparent;
+  background: transparent !important;
   border: none;
+  backdrop-filter: none;
 }
 
 .node.label-node:hover {
@@ -728,7 +737,7 @@ export default {
 
 .label-node {
   justify-content: center;
-  background: transparent;
+  background: transparent !important;
   border: none;
   box-shadow: none;
 }
@@ -836,12 +845,18 @@ export default {
   padding: 0;
   text-align: center;
   align-content: center;
-  transition: width 0.5s ease, height 0.5s ease, padding 0.5s ease;
+  transition:
+    width 0.5s ease,
+    height 0.5s ease,
+    padding 0.5s ease;
 }
 
 .node.tiny-node .node-content,
 .node.tiny-node svg.grabber {
-  transition: opacity 0.5s ease, transform 0.5s ease, visibility 0s linear 0.5s;
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease,
+    visibility 0s linear 0.5s;
   opacity: 0;
   transform: scale(0.5);
   visibility: hidden;
@@ -1028,7 +1043,9 @@ body.dark .node.has-error.has-output {
   border-radius: 50%;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s ease, transform 0.1s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.1s ease;
   z-index: 10;
 }
 
