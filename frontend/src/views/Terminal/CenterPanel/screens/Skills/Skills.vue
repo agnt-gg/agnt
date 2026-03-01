@@ -534,6 +534,7 @@ onMounted(() => {
   padding: 16px;
   overflow-y: auto;
   flex: 1;
+  align-content: start;
 }
 
 /* Card */

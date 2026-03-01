@@ -147,33 +147,41 @@ export default {
 }
 
 .panel-section {
-  display: flex;
-  flex-direction: column;
+  border-radius: 0px;
+  padding: 15px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color-light);
+}
+
+.panel-section h2 {
+  color: var(--color-primary);
+  font-size: 1.1em;
+  margin: 0;
 }
 
 .selected-skill-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
+  padding-bottom: 8px;
 }
 
 .selected-skill-header h2 {
-  font-size: 0.85em;
-  color: var(--color-grey);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   margin: 0;
-  font-weight: 600;
+  padding: 0;
+  border: none;
 }
 
 .edit-button-panel {
   cursor: pointer;
-  color: var(--color-grey);
-  font-size: 0.85em;
-  padding: 4px 6px;
+  color: var(--color-text-muted);
+  font-size: 0.9em;
+  padding: 4px;
   border-radius: 4px;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+  line-height: 1;
 }
 
 .edit-button-panel:hover {
@@ -195,38 +203,52 @@ export default {
 
 .detail-row {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 0.85em;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95em;
 }
 
 .detail-row .label {
-  color: var(--color-grey);
-  white-space: nowrap;
-  min-width: 90px;
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 
 .detail-row .label i {
   width: 14px;
   text-align: center;
-  font-size: 0.9em;
-}
-
-.detail-row .value {
-  color: var(--color-text);
-  word-break: break-word;
-}
-
-.detail-row .value.name {
-  font-weight: 600;
   color: var(--color-primary);
 }
 
-.detail-row .value.description {
+.detail-row .value {
+  color: var(--color-primary);
+  text-align: right;
+}
+
+.detail-row .value.name {
+  font-weight: bold;
+  color: var(--color-text);
+  font-size: 1.1em;
+  text-wrap-mode: nowrap;
+}
+
+.main-detail {
+  margin-bottom: 5px;
+}
+
+.detail-row.description-display .value.description {
+  font-size: 0.9em;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--color-text-muted);
+  flex-basis: 70%;
   line-height: 1.4;
+  text-wrap: auto;
+}
+
+.detail-row.description-display .label {
+  align-self: flex-start;
 }
 
 .instructions-section {
