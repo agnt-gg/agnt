@@ -34,7 +34,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch, defineAsyncComponent, reactive, nextTick } from 'vue';
+import { ref, computed, onMounted, watch, defineAsyncComponent, shallowReactive, markRaw, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -50,10 +50,12 @@ import CanvasScreen from '@/canvas/CanvasScreen.vue';
 import ChatScreen from './CenterPanel/screens/Chat/Chat.vue';
 import SettingsScreen from './CenterPanel/screens/Settings/Settings.vue';
 
-// Reactive screen registry — screens register as they load
-const screenComponents = reactive({
-  ChatScreen,
-  SettingsScreen,
+// Shallow-reactive screen registry — screens register as they load
+// Must be shallowReactive so Vue doesn't deep-proxy component objects
+// (deep proxying breaks Vue internals like emitsOptions/HMR in dev mode)
+const screenComponents = shallowReactive({
+  ChatScreen: markRaw(ChatScreen),
+  SettingsScreen: markRaw(SettingsScreen),
 });
 
 // Screens to preload in background after Chat renders
@@ -79,7 +81,7 @@ const screenLoaders = [
 const preloadScreens = () => {
   for (const [name, loader] of screenLoaders) {
     loader()
-      .then((mod) => { screenComponents[name] = mod.default; })
+      .then((mod) => { screenComponents[name] = markRaw(mod.default); })
       .catch((err) => console.warn(`[preload] Failed to load ${name}:`, err));
   }
 };

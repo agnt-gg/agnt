@@ -6,6 +6,7 @@ export default {
     skills: [],
     isLoading: false,
     error: null,
+    categories: ['general', 'support', 'development', 'marketing', 'productivity', 'communication', 'analytics', 'finance', 'design', 'sales'],
   },
   mutations: {
     SET_SKILLS(state, skills) {
@@ -116,10 +117,58 @@ export default {
         commit('SET_LOADING', false);
       }
     },
+    async importSkillMd({ commit, dispatch }, content) {
+      commit('SET_LOADING', true);
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No authentication token found');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/skills/import`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ content }),
+        });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || `HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.skill) commit('ADD_SKILL', data.skill);
+        return data;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
+    async exportSkillMd(_, skillId) {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No authentication token found');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/skills/${skillId}/export`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return await response.text();
+      } catch (error) {
+        throw error;
+      }
+    },
   },
   getters: {
     allSkills: (state) => state.skills,
     getSkillById: (state) => (id) => state.skills.find((s) => s.id === id),
     isLoading: (state) => state.isLoading,
+    skillCategories: (state) => {
+      // Combine hardcoded categories with any categories found in existing skills
+      const skillCats = state.skills.map((s) => s.category || 'general').filter(Boolean);
+      const allCats = new Set([...state.categories, ...skillCats]);
+      return [...allCats].sort();
+    },
   },
 };

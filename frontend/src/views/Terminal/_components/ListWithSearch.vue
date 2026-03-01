@@ -99,10 +99,11 @@ export default {
 
     // Dynamic label for select all button
     const allLabel = computed(() => {
-      if (props.placeholder && props.placeholder.toLowerCase().includes('tool')) return 'Tools';
-      if (props.placeholder && props.placeholder.toLowerCase().includes('workflow')) return 'Workflows';
-      if (props.labelKey && props.labelKey.toLowerCase().includes('tool')) return 'Tools';
-      if (props.labelKey && props.labelKey.toLowerCase().includes('workflow')) return 'Workflows';
+      const ph = (props.placeholder || '').toLowerCase();
+      const lk = (props.labelKey || '').toLowerCase();
+      if (ph.includes('tool') || lk.includes('tool')) return 'Tools';
+      if (ph.includes('workflow') || lk.includes('workflow')) return 'Workflows';
+      if (ph.includes('skill') || lk.includes('skill')) return 'Skills';
       return 'Items';
     });
 
@@ -110,6 +111,7 @@ export default {
     const chipsPlaceholder = computed(() => {
       if (allLabel.value === 'Tools') return 'Select tools for your agent to use';
       if (allLabel.value === 'Workflows') return 'Select workflows for your agent to use';
+      if (allLabel.value === 'Skills') return 'Select skills for your agent to use';
       return 'Select items for your agent to use';
     });
 

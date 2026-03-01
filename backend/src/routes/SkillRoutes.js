@@ -6,6 +6,8 @@ const SkillRoutes = express.Router();
 
 SkillRoutes.get('/', authenticateToken, SkillService.getAllSkills);
 SkillRoutes.post('/', authenticateToken, SkillService.createSkill);
+SkillRoutes.post('/import', authenticateToken, express.text({ type: 'text/plain' }), SkillService.importSkillMd);
+SkillRoutes.get('/:id/export', authenticateToken, SkillService.exportSkillMd);
 SkillRoutes.get('/:id', authenticateToken, SkillService.getSkill);
 SkillRoutes.put('/:id', authenticateToken, SkillService.updateSkill);
 SkillRoutes.delete('/:id', authenticateToken, SkillService.deleteSkill);

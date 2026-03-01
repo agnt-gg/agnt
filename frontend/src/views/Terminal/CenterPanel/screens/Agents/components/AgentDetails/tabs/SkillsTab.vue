@@ -5,7 +5,7 @@
       <div class="skills-grid">
         <div v-for="skill in assignedSkillRecords" :key="skill.id" class="skill-card">
           <div class="skill-header">
-            <span class="skill-icon">{{ skill.icon || '🧩' }}</span>
+            <span class="skill-icon"><i :class="skill.icon || 'fas fa-puzzle-piece'"></i></span>
             <div class="skill-info">
               <span class="skill-name">{{ skill.name }}</span>
               <span class="skill-category">{{ skill.category || 'general' }}</span>

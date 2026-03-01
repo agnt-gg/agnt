@@ -3,6 +3,10 @@
   <BaseScreen
     ref="baseScreenRef"
     screenId="SkillsScreen"
+    activeRightPanel="SkillsPanel"
+    activeLeftPanel="SkillsPanel"
+    :panelProps="panelProps"
+    :leftPanelProps="leftPanelProps"
     :showInput="false"
     :terminalLines="terminalLines"
     @panel-action="handlePanelAction"
@@ -25,7 +29,13 @@
           createLabel="New Skill"
           @update:searchQuery="(v) => (searchQuery = v)"
           @create="openCreateModal"
-        />
+        >
+          <template #extra-buttons>
+            <button class="import-btn" @click="triggerImport" title="Import SKILL.md"><i class="fas fa-file-import"></i> Import</button>
+          </template>
+        </ScreenToolbar>
+        <!-- Hidden file input for import (outside toolbar) -->
+        <input ref="importFileInput" type="file" accept=".md" style="display: none" @change="handleImportFile" />
 
         <!-- Skills Grid -->
         <div v-if="filteredSkills.length > 0" class="skills-grid">
@@ -65,42 +75,6 @@
             </div>
           </div>
         </div>
-
-        <!-- Skill Detail Panel -->
-        <div v-if="selectedSkill" class="skill-detail-panel">
-          <div class="detail-header">
-            <div class="detail-title-block">
-              <span class="detail-icon"><i :class="selectedSkill.icon || 'fas fa-puzzle-piece'"></i></span>
-              <div>
-                <h3 class="detail-name">{{ selectedSkill.name }}</h3>
-                <span class="detail-category">{{ selectedSkill.category || 'general' }}</span>
-              </div>
-            </div>
-            <button class="close-detail" @click="selectedSkill = null"><i class="fas fa-times"></i></button>
-          </div>
-          <div class="detail-body">
-            <div class="detail-section">
-              <label>Description</label>
-              <p>{{ selectedSkill.description }}</p>
-            </div>
-            <div v-if="selectedSkill.instructions" class="detail-section">
-              <label>Instructions</label>
-              <pre class="detail-instructions">{{ selectedSkill.instructions }}</pre>
-            </div>
-            <div v-if="selectedSkill.allowed_tools" class="detail-section">
-              <label>Allowed Tools</label>
-              <p>{{ selectedSkill.allowed_tools }}</p>
-            </div>
-            <div class="detail-meta">
-              <span v-if="selectedSkill.created_at">Created: {{ formatDate(selectedSkill.created_at) }}</span>
-              <span v-if="selectedSkill.updated_at">Updated: {{ formatDate(selectedSkill.updated_at) }}</span>
-            </div>
-          </div>
-          <div class="detail-actions">
-            <button class="action-btn edit" @click="openEditModal(selectedSkill)"><i class="fas fa-pen"></i> Edit</button>
-            <button class="action-btn delete" @click="confirmDelete(selectedSkill)"><i class="fas fa-trash"></i> Delete</button>
-          </div>
-        </div>
       </div>
 
       <!-- Create/Edit Modal -->
@@ -114,8 +88,7 @@
             <div class="modal-body">
               <div class="form-group">
                 <label>Name <span class="required">*</span></label>
-                <input v-model="form.name" class="form-input" placeholder="my-skill-name (lowercase, hyphens)" />
-                <span class="form-hint">Lowercase letters, numbers, and hyphens only. Max 64 characters.</span>
+                <input v-model="form.name" class="form-input" placeholder="My Skill Name" />
               </div>
               <div class="form-group">
                 <label>Description <span class="required">*</span></label>
@@ -149,9 +122,12 @@
                 </div>
                 <div class="form-group">
                   <label>Category</label>
-                  <input v-model="form.category" class="form-input" placeholder="general" />
+                  <BaseSelect v-model="form.category" :options="categoryOptions" placeholder="Select category" :zIndex="10001" />
                 </div>
               </div>
+            </div>
+            <div v-if="modalError" class="modal-error">
+              <i class="fas fa-exclamation-triangle"></i> {{ modalError }}
             </div>
             <div class="modal-footer">
               <button class="modal-btn cancel" @click="closeModal">Cancel</button>
@@ -174,6 +150,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
+import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
 const SKILL_ICONS = [
@@ -223,14 +200,17 @@ const store = useStore();
 const emit = defineEmits(['screen-change']);
 const baseScreenRef = ref(null);
 const simpleModal = ref(null);
+const importFileInput = ref(null);
 
 const terminalLines = ref(['Skills Manager initialized.']);
 const searchQuery = ref('');
 const selectedSkill = ref(null);
+const selectedCategory = ref(null);
 const showModal = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
 const saving = ref(false);
+const modalError = ref('');
 
 const form = ref({
   name: '',
@@ -242,12 +222,40 @@ const form = ref({
 
 const allSkills = computed(() => store.getters['skills/allSkills'] || []);
 
+const panelProps = computed(() => ({
+  selectedSkill: selectedSkill.value,
+}));
+
+const leftPanelProps = computed(() => ({
+  allSkills: allSkills.value,
+  selectedSkill: selectedSkill.value,
+}));
+
+const categoryOptions = computed(() => {
+  const cats = store.getters['skills/skillCategories'] || [];
+  return cats.map((cat) => ({
+    value: cat,
+    label: cat.charAt(0).toUpperCase() + cat.slice(1),
+  }));
+});
+
 const filteredSkills = computed(() => {
+  let result = allSkills.value;
+
+  // Filter by category
+  if (selectedCategory.value) {
+    result = result.filter((s) => (s.category || 'general') === selectedCategory.value);
+  }
+
+  // Filter by search
   const q = searchQuery.value.toLowerCase();
-  if (!q) return allSkills.value;
-  return allSkills.value.filter(
-    (s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q),
-  );
+  if (q) {
+    result = result.filter(
+      (s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q),
+    );
+  }
+
+  return result;
 });
 
 const initializeScreen = () => {
@@ -257,6 +265,17 @@ const initializeScreen = () => {
 const handlePanelAction = (action, payload) => {
   if (action === 'navigate') {
     emit('screen-change', payload);
+  } else if (action === 'category-filter-changed') {
+    selectedCategory.value = payload?.selectedCategory || null;
+    selectedSkill.value = null;
+  } else if (action === 'open-create-modal') {
+    openCreateModal();
+  } else if (action === 'open-edit-modal') {
+    openEditModal(payload);
+  } else if (action === 'export-skill') {
+    exportSkill(payload);
+  } else if (action === 'delete-skill') {
+    confirmDelete(payload);
   }
 };
 
@@ -267,6 +286,7 @@ const selectSkill = (skill) => {
 const openCreateModal = () => {
   isEditing.value = false;
   editingId.value = null;
+  modalError.value = '';
   form.value = { name: '', description: '', instructions: '', icon: 'fas fa-puzzle-piece', category: 'general' };
   showModal.value = true;
 };
@@ -274,6 +294,7 @@ const openCreateModal = () => {
 const openEditModal = (skill) => {
   isEditing.value = true;
   editingId.value = skill.id;
+  modalError.value = '';
   form.value = {
     name: skill.name || '',
     description: skill.description || '',
@@ -289,22 +310,38 @@ const closeModal = () => {
 };
 
 const saveSkill = async () => {
-  if (!form.value.name || !form.value.description) return;
+  modalError.value = '';
+
+  if (!form.value.name?.trim() || !form.value.description?.trim()) {
+    modalError.value = 'Name and description are required.';
+    return;
+  }
+
   saving.value = true;
   try {
-    if (isEditing.value) {
-      await store.dispatch('skills/updateSkill', { id: editingId.value, skill: form.value });
+    const wasEditing = isEditing.value;
+    const wasEditingId = editingId.value;
+
+    if (wasEditing) {
+      await store.dispatch('skills/updateSkill', { id: wasEditingId, skill: { ...form.value } });
       terminalLines.value.push(`[Skills] Updated skill "${form.value.name}".`);
     } else {
-      await store.dispatch('skills/createSkill', form.value);
+      const result = await store.dispatch('skills/createSkill', { ...form.value });
       terminalLines.value.push(`[Skills] Created skill "${form.value.name}".`);
+      // Select newly created skill
+      if (result?.skill) {
+        selectedSkill.value = result.skill;
+      }
     }
+
     closeModal();
+
     // Refresh selected skill if it was edited
-    if (isEditing.value && selectedSkill.value?.id === editingId.value) {
-      selectedSkill.value = allSkills.value.find((s) => s.id === editingId.value) || null;
+    if (wasEditing && selectedSkill.value?.id === wasEditingId) {
+      selectedSkill.value = allSkills.value.find((s) => s.id === wasEditingId) || null;
     }
   } catch (err) {
+    modalError.value = err.message || 'Failed to save skill.';
     terminalLines.value.push(`[Skills] Error: ${err.message}`);
   } finally {
     saving.value = false;
@@ -330,6 +367,46 @@ const confirmDelete = async (skill) => {
       terminalLines.value.push(`[Skills] Error deleting: ${err.message}`);
     }
   }
+};
+
+// Export skill as SKILL.md
+const exportSkill = async (skill) => {
+  try {
+    const content = await store.dispatch('skills/exportSkillMd', skill.id);
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${skill.name}.SKILL.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    terminalLines.value.push(`[Skills] Exported "${skill.name}" as SKILL.md.`);
+  } catch (err) {
+    terminalLines.value.push(`[Skills] Export error: ${err.message}`);
+  }
+};
+
+// Import SKILL.md
+const triggerImport = () => {
+  importFileInput.value?.click();
+};
+
+const handleImportFile = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const content = await file.text();
+    await store.dispatch('skills/importSkillMd', content);
+    terminalLines.value.push(`[Skills] Imported skill from "${file.name}".`);
+  } catch (err) {
+    terminalLines.value.push(`[Skills] Import error: ${err.message}`);
+  }
+
+  // Reset file input
+  event.target.value = '';
 };
 
 const truncate = (text, maxLen) => {
@@ -560,106 +637,13 @@ onMounted(() => {
   white-space: pre-wrap;
 }
 
-/* Detail Panel */
-.skill-detail-panel {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 380px;
-  background: var(--terminal-bg);
-  border-left: 1px solid var(--terminal-border-color);
-  display: flex;
-  flex-direction: column;
-  z-index: 10;
-  overflow-y: auto;
-}
-.detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  border-bottom: 1px solid var(--terminal-border-color);
-}
-.detail-title-block {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.detail-icon {
-  font-size: 1.6em;
-}
-.detail-name {
-  margin: 0;
-  font-size: 1em;
-  color: var(--color-text);
-}
-.detail-category {
-  font-size: 0.75em;
-  color: var(--color-grey);
-  text-transform: uppercase;
-}
-.close-detail {
-  background: none;
-  border: none;
-  color: var(--color-grey);
-  cursor: pointer;
-  font-size: 1em;
-}
-.close-detail:hover {
-  color: var(--color-text);
-}
-.detail-body {
-  flex: 1;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.detail-section label {
-  display: block;
-  font-size: 0.75em;
-  color: var(--color-green);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
-}
-.detail-section p {
-  margin: 0;
-  font-size: 0.9em;
-  color: var(--color-text);
-  line-height: 1.5;
-}
-.detail-instructions {
-  font-family: 'Courier New', monospace;
-  font-size: 0.8em;
-  color: var(--color-text);
-  background: rgba(0, 0, 0, 0.2);
-  padding: 12px;
-  border-radius: 4px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-  line-height: 1.5;
-  max-height: 300px;
-  overflow-y: auto;
-}
-.detail-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.75em;
-  color: var(--color-grey);
-}
-.detail-actions {
-  display: flex;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--terminal-border-color);
-}
-.action-btn {
+/* Import Button */
+.import-btn {
   padding: 6px 14px;
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
   border-radius: 4px;
+  color: var(--color-primary);
   font-size: 0.85em;
   cursor: pointer;
   display: flex;
@@ -667,21 +651,9 @@ onMounted(() => {
   gap: 6px;
   transition: all 0.15s;
 }
-.action-btn.edit {
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-text);
-}
-.action-btn.edit:hover {
-  background: rgba(var(--green-rgb), 0.2);
-}
-.action-btn.delete {
-  background: rgba(255, 77, 79, 0.1);
-  border: 1px solid rgba(255, 77, 79, 0.3);
-  color: var(--color-red);
-}
-.action-btn.delete:hover {
-  background: rgba(255, 77, 79, 0.2);
+.import-btn:hover {
+  background: rgba(var(--primary-rgb), 0.2);
+  border-color: var(--color-primary);
 }
 
 /* Empty State */
@@ -717,24 +689,28 @@ onMounted(() => {
 }
 
 .create-button {
-  background: var(--color-primary);
-  color: var(--color-white);
-  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px dashed var(--color-duller-navy);
   padding: 10px 20px;
   border-radius: 6px;
+  color: var(--color-text-muted);
   cursor: pointer;
-  font-weight: 600;
+  font-size: 0.95em;
+  transition: all 0.2s ease;
 }
 
 .create-button:hover {
-  background: var(--color-primary-hover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--color-darker-2), 0.3);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .create-button i {
-  font-size: 0.9em;
-  margin-right: 8px;
+  font-size: 0.8em;
 }
 
 /* Icon Grid */
@@ -833,7 +809,7 @@ onMounted(() => {
 }
 .form-input {
   padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color) !important;
   border-radius: 4px !important;
   color: var(--color-text);
@@ -892,5 +868,17 @@ onMounted(() => {
 }
 .modal-btn.save:not(:disabled):hover {
   opacity: 0.85;
+}
+.modal-error {
+  padding: 8px 12px;
+  margin: 0 20px;
+  background: rgba(255, 77, 79, 0.1);
+  border: 1px solid rgba(255, 77, 79, 0.3);
+  border-radius: 4px;
+  color: var(--color-red, #ff4d4f);
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>
