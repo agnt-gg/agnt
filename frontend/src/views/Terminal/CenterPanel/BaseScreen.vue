@@ -188,7 +188,7 @@
 </template>
 
 <script>
-import { ref, onMounted, nextTick, computed, watch, toRefs, defineExpose, onUnmounted, inject } from 'vue';
+import { ref, onMounted, onActivated, nextTick, computed, watch, toRefs, defineExpose, onUnmounted, inject } from 'vue';
 import { useStore } from 'vuex';
 import LeftPanel from '../LeftPanel/LeftPanel.vue';
 import RightPanel from '../RightPanel/RightPanel.vue';
@@ -837,6 +837,14 @@ export default {
       // Ensure scroll to bottom after initial lines and slot content are mounted
       await nextTick();
       scrollToBottom();
+    });
+
+    // KeepAlive re-activation — re-emit base-mounted so screens can restore data-page
+    onActivated(() => {
+      emit('base-mounted');
+      if (props.showInput) {
+        nextTick(focusInput);
+      }
     });
 
     onUnmounted(() => {

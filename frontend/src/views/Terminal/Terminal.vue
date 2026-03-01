@@ -10,11 +10,14 @@
       :screenName="activeScreen"
       @screen-change="changeScreen"
     >
-      <!-- Screen rendered directly (no widget/canvas overhead) -->
-      <component
-        :is="activeScreenComponent"
-        @screen-change="changeScreen"
-      />
+      <!-- KeepAlive caches visited screens so charts/data don't reload on every navigation -->
+      <KeepAlive>
+        <component
+          :is="activeScreenComponent"
+          :key="activeScreen"
+          @screen-change="changeScreen"
+        />
+      </KeepAlive>
     </CanvasScreen>
 
     <!-- BallJumper uses legacy direct rendering (no nav shell) -->
@@ -31,7 +34,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue';
+import { ref, computed, onMounted, watch, defineAsyncComponent, reactive, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -47,25 +50,38 @@ import CanvasScreen from '@/canvas/CanvasScreen.vue';
 import ChatScreen from './CenterPanel/screens/Chat/Chat.vue';
 import SettingsScreen from './CenterPanel/screens/Settings/Settings.vue';
 
-// All other screens lazy-loaded on first navigation
-const screenComponents = {
+// Reactive screen registry — screens register as they load
+const screenComponents = reactive({
   ChatScreen,
   SettingsScreen,
-  AgentsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Agents/Agents.vue')),
-  ToolsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Tools/Tools.vue')),
-  WorkflowsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Workflows/Workflows.vue')),
-  DashboardScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Dashboard/Dashboard.vue')),
-  WorkflowForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/WorkflowForge/WorkflowForge.vue')),
-  ToolForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/ToolForge/ToolForge.vue')),
-  AgentForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/AgentForge/AgentForge.vue')),
-  BallJumperScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Minigames/BallJumper/BallJumper.vue')),
-  ConnectorsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Connectors/Connectors.vue')),
-  GoalsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Goals/Goals.vue')),
-  RunsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Runs/Runs.vue')),
-  MarketplaceScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Marketplace/Marketplace.vue')),
-  WidgetManagerScreen: defineAsyncComponent(() => import('./CenterPanel/screens/WidgetManager/WidgetManager.vue')),
-  WidgetForgeScreen: defineAsyncComponent(() => import('./CenterPanel/screens/WidgetForge/WidgetForge.vue')),
-  SkillsScreen: defineAsyncComponent(() => import('./CenterPanel/screens/Skills/Skills.vue')),
+});
+
+// Screens to preload in background after Chat renders
+const screenLoaders = [
+  ['AgentsScreen', () => import('./CenterPanel/screens/Agents/Agents.vue')],
+  ['ToolsScreen', () => import('./CenterPanel/screens/Tools/Tools.vue')],
+  ['WorkflowsScreen', () => import('./CenterPanel/screens/Workflows/Workflows.vue')],
+  ['DashboardScreen', () => import('./CenterPanel/screens/Dashboard/Dashboard.vue')],
+  ['WorkflowForgeScreen', () => import('./CenterPanel/screens/WorkflowForge/WorkflowForge.vue')],
+  ['ToolForgeScreen', () => import('./CenterPanel/screens/ToolForge/ToolForge.vue')],
+  ['AgentForgeScreen', () => import('./CenterPanel/screens/AgentForge/AgentForge.vue')],
+  ['BallJumperScreen', () => import('./CenterPanel/screens/Minigames/BallJumper/BallJumper.vue')],
+  ['ConnectorsScreen', () => import('./CenterPanel/screens/Connectors/Connectors.vue')],
+  ['GoalsScreen', () => import('./CenterPanel/screens/Goals/Goals.vue')],
+  ['RunsScreen', () => import('./CenterPanel/screens/Runs/Runs.vue')],
+  ['MarketplaceScreen', () => import('./CenterPanel/screens/Marketplace/Marketplace.vue')],
+  ['WidgetManagerScreen', () => import('./CenterPanel/screens/WidgetManager/WidgetManager.vue')],
+  ['WidgetForgeScreen', () => import('./CenterPanel/screens/WidgetForge/WidgetForge.vue')],
+  ['SkillsScreen', () => import('./CenterPanel/screens/Skills/Skills.vue')],
+];
+
+// Preload all screen chunks in parallel, register into reactive map as each resolves
+const preloadScreens = () => {
+  for (const [name, loader] of screenLoaders) {
+    loader()
+      .then((mod) => { screenComponents[name] = mod.default; })
+      .catch((err) => console.warn(`[preload] Failed to load ${name}:`, err));
+  }
 };
 
 export default {
@@ -93,12 +109,14 @@ export default {
     };
     const activeScreen = ref(getScreenFromRoute());
 
+    // Placeholder shown while a screen chunk is still loading
+    const ScreenPlaceholder = { template: '<div style="flex:1;width:100%;height:100%;background:var(--color-background)"></div>' };
+
     const activeScreenComponent = computed(() => {
-      if (!screenComponents[activeScreen.value]) {
-        console.warn(`Screen ${activeScreen.value} not found, defaulting to ChatScreen.`);
-        activeScreen.value = 'ChatScreen';
-      }
-      return screenComponents[activeScreen.value];
+      const component = screenComponents[activeScreen.value];
+      if (component) return component;
+      // Screen not loaded yet — show placeholder (will reactively swap when it loads)
+      return ScreenPlaceholder;
     });
 
     const changeScreen = (screenName, options = {}) => {
@@ -148,7 +166,14 @@ export default {
     };
 
     onMounted(() => {
-      // Screen is already initialized from route in getScreenFromRoute()
+      // After the initial screen (Chat) renders, preload all other screens in background
+      // requestIdleCallback defers until the browser is idle, so Chat loads first
+      const startPreload = () => preloadScreens();
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(startPreload);
+      } else {
+        setTimeout(startPreload, 100);
+      }
     });
 
     watch(

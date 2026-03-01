@@ -578,7 +578,14 @@ export default {
     const { tutorialConfig, startTutorial, onTutorialClose, initializeDashboardTutorial } = useDashboardTutorial();
 
     // --- Initialization ---
+    let screenInitialized = false;
     const initializeScreen = () => {
+      document.body.setAttribute('data-page', 'terminal-dashboard');
+
+      // Skip heavy init on KeepAlive reactivation — only set data-page
+      if (screenInitialized) return;
+      screenInitialized = true;
+
       terminalLines.value.push('Initializing Dashboard...');
       terminalLines.value.push('Dashboard Ready.');
       baseScreenRef.value?.scrollToBottom();
@@ -595,7 +602,6 @@ export default {
 
     // Set up periodic refresh for real-time data
     onMounted(() => {
-      document.body.setAttribute('data-page', 'terminal-dashboard');
       initializeScreen();
 
       // Wait a couple seconds before showing the tutorial

@@ -779,8 +779,13 @@ export default {
       }
     };
 
+    let screenInitialized = false;
     const initializeScreen = async () => {
       document.body.setAttribute('data-page', 'terminal-chat');
+
+      // Skip heavy init on KeepAlive reactivation — only set data-page
+      if (screenInitialized) return;
+      screenInitialized = true;
 
       // Clear agent context so orchestrator chats aren't labeled with old agent names
       store.commit('chat/CLEAR_CURRENT_AGENT');

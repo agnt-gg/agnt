@@ -853,6 +853,7 @@ export default {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  background: var(--color-background);
 }
 
 .cv-dashboard > * {
