@@ -407,9 +407,11 @@
         </div>
       </div>
     </div>
-    <div class="tooltip" ref="tooltip" :class="{ show: showTooltip }">
-      {{ tooltipMessage }}
-    </div>
+    <Teleport to="body">
+      <div class="tooltip" ref="tooltip" :class="{ show: showTooltip }">
+        {{ tooltipMessage }}
+      </div>
+    </Teleport>
     <SimpleModal ref="modal" />
   </div>
 </template>
@@ -2016,27 +2018,6 @@ body.dark .logic-select {
   color: var(--color-ultra-dark-navy) !important;
 }
 
-.tooltip {
-  position: fixed;
-  background-color: var(--color-med-navy);
-  color: var(--color-dull-white);
-  padding: 5px 10px;
-  border-radius: 8px;
-  font-size: 14px;
-  pointer-events: none;
-  opacity: 0;
-  z-index: 1000;
-  transition: opacity 0.1s ease-in-out;
-}
-
-body.dark .tooltip {
-  background-color: var(--color-dull-navy);
-  color: var(--color-white);
-}
-
-.tooltip.show {
-  opacity: 0.75;
-}
 
 /* Tool docs content styling */
 .tool-docs-content {
@@ -2337,6 +2318,28 @@ body.dark .tool-docs-content em {
 </style>
 
 <style>
+.tooltip {
+  position: fixed;
+  background-color: var(--color-med-navy);
+  color: var(--color-dull-white);
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 1000;
+  transition: opacity 0.1s ease-in-out;
+}
+
+body.dark .tooltip {
+  background-color: var(--color-dull-navy);
+  color: var(--color-white);
+}
+
+.tooltip.show {
+  opacity: 0.75;
+}
+
 body.dark .right-side .node-icon svg path[stroke] {
   stroke: var(--color-med-navy) !important;
 }
