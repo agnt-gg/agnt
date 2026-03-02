@@ -1,5 +1,5 @@
 <template>
-  <div class="message-wrapper" :class="message.role" ref="messageRef">
+  <div class="message-wrapper" :class="[message.role, { compact }]" ref="messageRef">
     <img v-if="message.role === 'assistant' && showAvatar" :src="assistantAvatar" alt="Assistant Avatar" class="message-avatar" />
     <div class="message-content">
       <div class="message-card">
@@ -445,6 +445,10 @@ export default {
     dataCache: {
       type: Map,
       default: () => new Map(),
+    },
+    compact: {
+      type: Boolean,
+      default: false,
     },
   },
   emits: ['toggle-tool', 'provider-connected', 'open-html-preview'],
@@ -2013,24 +2017,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   width: -webkit-fill-available;
 }
 
-body[data-page='terminal-agent-forge'] .message-card,
-body[data-page='terminal-workflow-designer'] .message-card,
-body[data-page='terminal-tool-forge'] .message-card {
-  padding: 12px 16px;
-}
-
-body[data-page='terminal-agent-forge'] .message-wrapper.assistant .message-card,
-body[data-page='terminal-workflow-designer'] .message-wrapper.assistant .message-card,
-body[data-page='terminal-tool-forge'] .message-wrapper.assistant .message-card {
-  padding: 0;
-  background: transparent;
-  border: none;
-}
--agent-forge .message-wrapper.user .message-card {
-  background: rgba(var(--green-rgb), 0.05);
-  border-color: rgba(var(--green-rgb), 0.15);
-}
-
 .message-wrapper.assistant .message-card {
   background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
@@ -3534,5 +3520,17 @@ span.nodeLabel p {
 .message-text :deep(.d3-container:hover .viz-action-buttons),
 .message-text :deep(.threejs-container:hover .viz-action-buttons) {
   opacity: 1;
+}
+
+/* ── Compact mode (forge panels) ── */
+.message-wrapper.compact .message-card {
+  padding: 12px 16px;
+}
+
+.message-wrapper.compact.assistant .message-card {
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 </style>

@@ -858,6 +858,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
                 return await executeGoalTool(functionName, args, authToken, conversationContext);
               } else if (chatType === 'tool') {
                 return await executeToolFunction(functionName, args, authToken, conversationContext);
+              } else if (chatType === 'widget') {
+                return await executeWidgetFunction(functionName, args, authToken, conversationContext);
               } else {
                 // Default to orchestrator tools
                 return await executeTool(functionName, args, authToken, conversationContext);
@@ -901,6 +903,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
             rawFunctionResponse = await executeGoalTool(functionName, functionArgs, authToken, conversationContext);
           } else if (chatType === 'tool') {
             rawFunctionResponse = await executeToolFunction(functionName, functionArgs, authToken, conversationContext);
+          } else if (chatType === 'widget') {
+            rawFunctionResponse = await executeWidgetFunction(functionName, functionArgs, authToken, conversationContext);
           } else {
             // Default to orchestrator tools
             rawFunctionResponse = await executeTool(functionName, functionArgs, authToken, conversationContext);
@@ -1802,6 +1806,245 @@ function generateFrontendEvents(toolData, operationType) {
   if (operationType === 'create') {
     events.unshift({
       type: 'tool-fields-cleared',
+      data: {},
+    });
+  }
+
+  return events;
+}
+
+/**
+ * Execute widget functions for widget chat
+ */
+async function executeWidgetFunction(functionName, args, authToken, context) {
+  const { userId, widgetState, provider, model } = context;
+
+  try {
+    let result;
+
+    switch (functionName) {
+      case 'generate_widget_update':
+        try {
+          let enhancedInstruction = args.instruction;
+
+          if (args.currentWidgetState && Object.keys(args.currentWidgetState).length > 0) {
+            enhancedInstruction = `Current widget state: ${JSON.stringify(args.currentWidgetState, null, 2)}\n\nInstruction: ${
+              args.instruction
+            }\n\nPlease modify the existing widget according to the instruction, keeping existing fields that aren't being changed.`;
+          }
+
+          // Generate widget HTML directly via LLM — returns raw HTML, not JSON
+          const client = await createLlmClient(context.provider || 'openai', userId);
+          const adapter = await createLlmAdapter(context.provider || 'openai', client, context.model || 'gpt-4');
+
+          const widgetGenPrompt = `Generate a complete, self-contained HTML document for a dashboard widget.
+
+RULES:
+- Return ONLY the raw HTML document — no markdown fences, no JSON wrapper, no explanation
+- Start with <!DOCTYPE html> and end with </html>
+- Include ALL CSS inside <style> tags
+- Include ALL JavaScript inside <script> tags
+- The HTML must be completely self-contained and render directly in an iframe with srcdoc
+- Use inline/hardcoded data — no template literals, no external variables, no params.*
+- Make it visually polished: modern CSS, gradients, animations, shadows, rounded corners
+- Use system fonts: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
+- Dark theme preferred (dark backgrounds, light text) unless the user specifies otherwise
+
+USER REQUEST: ${enhancedInstruction}`;
+
+          const { responseMessage } = await adapter.call(
+            [
+              { role: 'system', content: 'You generate widget HTML. Return ONLY the raw HTML document. No markdown, no JSON, no explanation — just the HTML starting with <!DOCTYPE html>. IMPORTANT: Output properly formatted, indented HTML with 2-space indentation. Do NOT minify the code.' },
+              { role: 'user', content: widgetGenPrompt },
+            ],
+            []
+          );
+
+          // Extract content from response
+          let content;
+          if (Array.isArray(responseMessage.content)) {
+            const textBlock = responseMessage.content.find((c) => c.type === 'text');
+            content = textBlock ? textBlock.text : '';
+          } else {
+            content = responseMessage.content || '';
+          }
+
+          // Strip markdown fences if the LLM wrapped it anyway
+          content = content.trim();
+          if (content.startsWith('```html')) content = content.substring(7);
+          else if (content.startsWith('```')) content = content.substring(3);
+          if (content.endsWith('```')) content = content.substring(0, content.length - 3);
+          content = content.trim();
+
+          // Extract a name from the <title> tag if present
+          const titleMatch = content.match(/<title>([^<]+)<\/title>/i);
+          const widgetName = titleMatch ? titleMatch[1].trim() : (args.instruction.substring(0, 50) + (args.instruction.length > 50 ? '...' : ''));
+
+          const widgetData = {
+            name: widgetName,
+            description: args.instruction.substring(0, 200),
+            widget_type: 'html',
+            source_code: content,
+          };
+
+          result = {
+            success: true,
+            widgetData: widgetData,
+            operationType: args.operationType || 'update',
+            message: `Successfully ${args.operationType || 'updated'} widget based on instruction: "${args.instruction}"`,
+            frontendEvents: generateWidgetFrontendEvents(widgetData, args.operationType || 'update'),
+          };
+        } catch (generationError) {
+          console.error('Error in widget generation:', generationError);
+          result = {
+            success: false,
+            error: generationError.message,
+            message: 'Failed to generate/update widget. Please try rephrasing your instruction.',
+          };
+        }
+        break;
+
+      case 'save_widget':
+        if (args.widgetData && db) {
+          const widgetId = args.widgetData.id || `widget-def-${Date.now()}`;
+          const widgetData = {
+            ...args.widgetData,
+            id: widgetId,
+            updatedAt: new Date().toISOString(),
+          };
+
+          result = await new Promise((resolve) => {
+            const query = `INSERT OR REPLACE INTO widget_definitions (id, name, description, icon, category, widget_type, source_code, config, default_size, min_size, created_by, created_at, updated_at)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
+
+            db.run(
+              query,
+              [
+                widgetId,
+                widgetData.name || 'Untitled Widget',
+                widgetData.description || '',
+                widgetData.icon || 'fas fa-puzzle-piece',
+                widgetData.category || 'custom',
+                widgetData.widget_type || 'html',
+                widgetData.source_code || null,
+                widgetData.config ? JSON.stringify(widgetData.config) : null,
+                widgetData.default_size ? JSON.stringify(widgetData.default_size) : '{"cols":4,"rows":3}',
+                widgetData.min_size ? JSON.stringify(widgetData.min_size) : '{"cols":2,"rows":2}',
+                userId,
+              ],
+              function (err) {
+                if (err) {
+                  resolve({
+                    success: false,
+                    message: err.message,
+                  });
+                } else {
+                  resolve({
+                    success: true,
+                    widgetId: widgetId,
+                    widgetData: widgetData,
+                    message: 'Widget saved successfully to database',
+                    frontendEvents: [{ type: 'widget-saved', data: { widgetId, widgetData } }],
+                  });
+                }
+              }
+            );
+          });
+        } else {
+          result = {
+            success: false,
+            message: 'Widget data is required for saving',
+          };
+        }
+        break;
+
+      case 'load_widget':
+        if (args.widgetId && db) {
+          result = await new Promise((resolve) => {
+            db.get('SELECT * FROM widget_definitions WHERE id = ?', [args.widgetId], (err, row) => {
+              if (err || !row) {
+                resolve({
+                  success: false,
+                  message: err ? err.message : 'Widget not found',
+                });
+              } else {
+                resolve({
+                  success: true,
+                  widgetData: row,
+                  message: 'Widget loaded successfully',
+                });
+              }
+            });
+          });
+        } else {
+          result = {
+            success: false,
+            message: 'Widget ID required',
+          };
+        }
+        break;
+
+      default:
+        result = {
+          success: false,
+          message: `Unknown function: ${functionName}`,
+        };
+    }
+
+    return JSON.stringify(result);
+  } catch (error) {
+    console.error(`Error executing widget function ${functionName}:`, error);
+    return JSON.stringify({
+      success: false,
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * Generate frontend events for widget updates
+ */
+function generateWidgetFrontendEvents(widgetData, operationType) {
+  const events = [];
+
+  if (widgetData.name) {
+    events.push({
+      type: 'widget-field-updated',
+      data: { field: 'name', value: widgetData.name },
+    });
+  }
+
+  if (widgetData.description) {
+    events.push({
+      type: 'widget-field-updated',
+      data: { field: 'description', value: widgetData.description },
+    });
+  }
+
+  if (widgetData.source_code || widgetData.code) {
+    events.push({
+      type: 'widget-field-updated',
+      data: { field: 'source_code', value: widgetData.source_code || widgetData.code },
+    });
+  }
+
+  if (widgetData.widget_type) {
+    events.push({
+      type: 'widget-field-updated',
+      data: { field: 'widget_type', value: widgetData.widget_type },
+    });
+  }
+
+  if (widgetData.config) {
+    events.push({
+      type: 'widget-field-updated',
+      data: { field: 'config', value: widgetData.config },
+    });
+  }
+
+  if (operationType === 'create') {
+    events.unshift({
+      type: 'widget-fields-cleared',
       data: {},
     });
   }

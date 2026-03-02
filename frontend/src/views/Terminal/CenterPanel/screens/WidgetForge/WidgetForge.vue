@@ -10,6 +10,8 @@
   >
     <template #default>
       <div class="wf-root">
+        <SimpleModal ref="modalRef" />
+
         <!-- Top toolbar -->
         <div class="wf-toolbar">
           <button class="wf-back" @click="goBack" title="Back to Widget Manager">
@@ -18,6 +20,9 @@
           <span class="wf-toolbar-title">{{ isEditing ? 'EDIT WIDGET' : 'NEW WIDGET' }}</span>
 
           <div class="wf-toolbar-right">
+            <button class="wf-btn wf-btn-clear" @click="clearForge" title="Clear all fields">
+              <i class="fas fa-trash-alt"></i> Clear
+            </button>
             <button v-if="isEditing" class="wf-btn wf-btn-export" @click="exportWidget" title="Export widget">
               <i class="fas fa-file-export"></i> Export
             </button>
@@ -57,10 +62,11 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted, reactive, provide } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, reactive, provide } from 'vue';
 import { useStore } from 'vuex';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import BaseScreen from '../../BaseScreen.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
 const WIDGET_ICONS = [
   'fas fa-puzzle-piece',
@@ -189,7 +195,7 @@ const TEMPLATES = [
 
 export default {
   name: 'WidgetForgeScreen',
-  components: { BaseScreen, CustomWidgetRenderer },
+  components: { BaseScreen, CustomWidgetRenderer, SimpleModal },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
@@ -198,6 +204,9 @@ export default {
     const previewKey = ref(0);
     const activeCategory = ref('all');
     const saveFlash = ref(false);
+    const modalRef = ref(null);
+
+    document.body.setAttribute('data-page', 'terminal-widget-forge');
 
     // Form state
     const form = reactive({
@@ -273,8 +282,42 @@ export default {
       { immediate: true },
     );
 
+    // Handle chat SSE events for widget field updates from Annie
+    const handleChatSSEEvent = (event) => {
+      const { eventType, eventData } = event.detail || {};
+      switch (eventType) {
+        case 'widget-field-updated':
+          if (eventData?.field && eventData.value !== undefined) {
+            if (eventData.field in form) {
+              form[eventData.field] = eventData.value;
+              previewKey.value++;
+            }
+          }
+          break;
+        case 'widget-fields-cleared':
+          form.name = '';
+          form.description = '';
+          form.icon = 'fas fa-puzzle-piece';
+          form.category = 'custom';
+          form.widget_type = 'html';
+          form.source_code = '';
+          form.config = {};
+          form.default_size = { cols: 4, rows: 3 };
+          form.min_size = { cols: 2, rows: 2 };
+          configJson.value = '{}';
+          selectedTemplate.value = null;
+          previewKey.value++;
+          break;
+      }
+    };
+
     onMounted(() => {
       document.body.setAttribute('data-page', 'terminal-widget-forge');
+      window.addEventListener('chat-sse-event', handleChatSSEEvent);
+    });
+
+    onUnmounted(() => {
+      window.removeEventListener('chat-sse-event', handleChatSSEEvent);
     });
 
     // Sync configJson ↔ form.config
@@ -338,7 +381,13 @@ export default {
       previewKey.value++;
     }
 
-    // Provide forge state to left panel
+    // Computed widget ID for chat
+    const widgetId = computed(() => {
+      const existing = store.getters['widgetDefinitions/activeDefinition'];
+      return existing ? existing.id : 'widget-forge';
+    });
+
+    // Provide forge state to left and right panels
     provide('widgetForge', {
       form,
       configJson,
@@ -348,6 +397,7 @@ export default {
       selectTemplate,
       WIDGET_ICONS,
       TEMPLATES,
+      widgetId,
     });
 
     async function saveWidget() {
@@ -404,6 +454,38 @@ export default {
       emit('screen-change', 'WidgetManagerScreen');
     }
 
+    async function clearForge() {
+      const confirmed = await modalRef.value?.showModal({
+        title: 'Clear Widget Forge',
+        message: 'This will clear all fields, code, and chat history. Are you sure?',
+        confirmText: 'Clear All',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
+
+      // Reset form
+      form.name = '';
+      form.description = '';
+      form.icon = 'fas fa-puzzle-piece';
+      form.category = 'custom';
+      form.widget_type = 'html';
+      form.source_code = '';
+      form.config = {};
+      form.default_size = { cols: 4, rows: 3 };
+      form.min_size = { cols: 2, rows: 2 };
+      configJson.value = '{}';
+      selectedTemplate.value = null;
+      activePanel.value = 'template';
+      previewKey.value++;
+
+      // Clear active definition
+      store.dispatch('widgetDefinitions/setActiveDefinition', null);
+
+      // Clear widget chat conversation
+      store.dispatch('widgetChat/clearConversation', widgetId.value);
+    }
+
     function handlePanelAction(action, payload) {
       if (action === 'navigate') {
         emit('screen-change', payload);
@@ -428,11 +510,13 @@ export default {
       isEditing,
       canSave,
       saveFlash,
+      modalRef,
       previewDefinition,
       previewFrameStyle,
       saveWidget,
       exportWidget,
       goBack,
+      clearForge,
       handlePanelAction,
     };
   },
@@ -460,10 +544,10 @@ export default {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 0 16px;
+  padding: 0 16px 16px;
   border-bottom: 1px solid var(--terminal-border-color);
   flex-shrink: 0;
-  width: 100%;
+  width: calc(100% - 32px);
 }
 
 .wf-back {
@@ -495,6 +579,28 @@ export default {
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+}
+
+.wf-btn-clear {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: inherit;
+}
+
+.wf-btn-clear:hover {
+  color: var(--color-red, #ff6b6b);
+  border-color: rgba(255, 107, 107, 0.3);
+  background: rgba(255, 107, 107, 0.06);
 }
 
 .wf-btn-export {

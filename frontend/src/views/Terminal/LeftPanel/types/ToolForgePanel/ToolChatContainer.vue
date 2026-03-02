@@ -14,6 +14,7 @@
           :status="getMessageStatus(message)"
           :runningTools="getRunningToolsForMessage(message)"
           :show-avatar="false"
+          compact
           @toggle-tool="toggleToolCallExpansion"
         />
       </TransitionGroup>
@@ -673,23 +674,13 @@ export default {
   flex: 1;
   overflow-y: auto;
   padding: 0 0 16px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(127, 129, 147, 0.2) transparent;
+  scrollbar-width: none;
   display: flex;
   flex-direction: column;
 }
 
 .chat-messages::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-messages::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chat-messages::-webkit-scrollbar-thumb {
-  background: rgba(127, 129, 147, 0.2);
-  border-radius: 3px;
+  display: none;
 }
 
 .empty-state {

@@ -1,170 +1,144 @@
 <template>
-  <div class="widget-forge-panel">
-    <!-- Panel Header -->
+  <div class="widget-editor-panel" :class="{ fullscreen: isFullScreen }">
+    <!-- Add scanline overlay when in fullscreen -->
+    <div v-if="isFullScreen" class="scanline-overlay"></div>
+
+    <!-- Panel header with controls -->
     <div class="panel-header">
-      <h2 class="title">/ Widget Forge</h2>
+      <h2 class="title">/ Widget Builder</h2>
+      <div class="right-tabs">
+        <Tooltip text="Clear Chat History" width="auto" position="bottom">
+          <button class="tab-button clear-chat-button" @click="handleClearChat">
+            <i class="fas fa-trash"></i>
+            <span class="tab-name">Clear</span>
+          </button>
+        </Tooltip>
+        <Tooltip :text="isFullScreen ? 'Contract Panel' : 'Expand Panel'" width="auto" position="bottom">
+          <button class="tab-button" :class="{ active: isFullScreen }" @click="toggleFullScreen">
+            <i :class="isFullScreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+          </button>
+        </Tooltip>
+      </div>
     </div>
 
-    <!-- Panel tabs -->
-    <div class="panel-tabs">
-      <button class="tab-btn" :class="{ active: forge.activePanel.value === 'template' }" @click="forge.activePanel.value = 'template'">
-        <i class="fas fa-th-large"></i> Templates
-      </button>
-      <button class="tab-btn" :class="{ active: forge.activePanel.value === 'code' }" @click="forge.activePanel.value = 'code'">
-        <i class="fas fa-code"></i> Code
-      </button>
-      <button class="tab-btn" :class="{ active: forge.activePanel.value === 'config' }" @click="forge.activePanel.value = 'config'">
-        <i class="fas fa-sliders-h"></i> Config
-      </button>
-    </div>
-
+    <!-- Chat container -->
     <div class="panel-content">
-      <!-- Templates list -->
-      <div v-if="forge.activePanel.value === 'template'" class="forge-templates">
-        <div
-          v-for="tmpl in forge.filteredTemplates.value"
-          :key="tmpl.id"
-          class="tmpl-card"
-          :class="{ active: forge.selectedTemplate.value === tmpl.id }"
-          @click="forge.selectTemplate(tmpl)"
-        >
-          <div class="tmpl-icon"><i :class="tmpl.icon"></i></div>
-          <div class="tmpl-name">{{ tmpl.name }}</div>
-        </div>
-      </div>
-
-      <!-- Code editor -->
-      <div v-if="forge.activePanel.value === 'code'" class="forge-code">
-        <div class="section-title">
-          SOURCE CODE
-          <span class="type-badge">{{ forge.form.widget_type.toUpperCase() }}</span>
-        </div>
-        <textarea
-          v-model="forge.form.source_code"
-          class="code-editor"
-          placeholder="Enter HTML, CSS, and JavaScript code for your widget..."
-          spellcheck="false"
-        ></textarea>
-      </div>
-
-      <!-- Config form -->
-      <div v-if="forge.activePanel.value === 'config'" class="forge-config">
-        <div class="config-form">
-          <label class="field">
-            <span class="field-label">Name</span>
-            <input v-model="forge.form.name" type="text" placeholder="Widget name" />
-          </label>
-          <label class="field">
-            <span class="field-label">Description</span>
-            <input v-model="forge.form.description" type="text" placeholder="Short description" />
-          </label>
-          <div class="field">
-            <span class="field-label">Icon</span>
-            <div class="icon-grid">
-              <button
-                v-for="ico in forge.WIDGET_ICONS"
-                :key="ico"
-                type="button"
-                class="icon-btn"
-                :class="{ active: forge.form.icon === ico }"
-                @click="forge.form.icon = ico"
-              >
-                <i :class="ico"></i>
-              </button>
-            </div>
-          </div>
-          <label class="field">
-            <span class="field-label">Category</span>
-            <select v-model="forge.form.category">
-              <option value="custom">Custom</option>
-              <option value="dashboard">Dashboard</option>
-              <option value="home">Home</option>
-              <option value="assets">Assets</option>
-              <option value="system">System</option>
-            </select>
-          </label>
-          <label class="field">
-            <span class="field-label">Widget Type</span>
-            <select v-model="forge.form.widget_type">
-              <option value="html">HTML (Sandboxed iframe)</option>
-              <option value="template">Template (Pre-built)</option>
-              <option value="iframe">External URL (iframe)</option>
-              <option value="markdown">Markdown</option>
-            </select>
-          </label>
-          <div class="field-row">
-            <label class="field half">
-              <span class="field-label">Default Columns</span>
-              <input v-model.number="forge.form.default_size.cols" type="number" min="1" max="12" />
-            </label>
-            <label class="field half">
-              <span class="field-label">Default Rows</span>
-              <input v-model.number="forge.form.default_size.rows" type="number" min="1" max="8" />
-            </label>
-          </div>
-          <div class="field-row">
-            <label class="field half">
-              <span class="field-label">Min Columns</span>
-              <input v-model.number="forge.form.min_size.cols" type="number" min="1" max="12" />
-            </label>
-            <label class="field half">
-              <span class="field-label">Min Rows</span>
-              <input v-model.number="forge.form.min_size.rows" type="number" min="1" max="8" />
-            </label>
-          </div>
-
-          <!-- Template-specific config (JSON) -->
-          <label v-if="forge.form.widget_type === 'template'" class="field">
-            <span class="field-label">Template Config (JSON)</span>
-            <textarea
-              v-model="forge.configJson.value"
-              class="config-json"
-              rows="6"
-              placeholder='{"template_id":"metric-card","label":"Users","value":"1,234"}'
-              spellcheck="false"
-            ></textarea>
-          </label>
-
-          <!-- iframe URL -->
-          <label v-if="forge.form.widget_type === 'iframe'" class="field">
-            <span class="field-label">External URL</span>
-            <input v-model="forge.form.config.url" type="url" placeholder="https://example.com" />
-          </label>
-        </div>
-      </div>
+      <WidgetChatContainer :key="widgetId" :widgetId="widgetId" />
     </div>
   </div>
 </template>
 
 <script>
-import { inject } from 'vue';
+import { ref, computed, inject } from 'vue';
+import { useStore } from 'vuex';
+import WidgetChatContainer from './WidgetChatContainer.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'WidgetForgePanel',
+  components: {
+    WidgetChatContainer,
+    Tooltip,
+  },
   emits: ['panel-action'],
-  setup() {
+  setup(props, { emit }) {
+    const isFullScreen = ref(false);
+    const store = useStore();
     const forge = inject('widgetForge');
-    return { forge };
+
+    const widgetId = computed(() => {
+      return forge?.widgetId?.value || 'widget-forge';
+    });
+
+    const toggleFullScreen = () => {
+      isFullScreen.value = !isFullScreen.value;
+      emit('panel-action', 'toggle-fullscreen', isFullScreen.value);
+
+      if (isFullScreen.value) {
+        document.body.classList.add('widget-editor-fullscreen');
+      } else {
+        document.body.classList.remove('widget-editor-fullscreen');
+      }
+    };
+
+    const handleClearChat = () => {
+      const widgetIdToUse = widgetId.value || 'widget-forge';
+      store.dispatch('widgetChat/clearConversation', widgetIdToUse);
+      emit('panel-action', 'clear-chat');
+    };
+
+    return {
+      isFullScreen,
+      widgetId,
+      toggleFullScreen,
+      handleClearChat,
+    };
   },
 };
 </script>
 
 <style scoped>
-.widget-forge-panel {
+.widget-editor-panel {
   display: flex;
   flex-direction: column;
+  background: transparent;
+  border: none;
   height: 100%;
-  gap: 0;
+  border-radius: 0 0 8px 0;
+  padding: 0;
+  transition: all 0.3s ease;
+  scrollbar-width: none;
+  overflow: scroll;
+  gap: 16px;
+}
+
+.widget-editor-panel.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: calc(100% - 50px);
+  height: calc(100% - 50px);
+  min-height: calc(100% - 50px);
+  background-color: var(--color-popup);
+  z-index: 9999;
+  padding: 16px;
+  margin: 8px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow-y: auto;
+}
+
+.widget-editor-panel.fullscreen .panel-header {
+  margin-bottom: 16px;
+  padding: 0 0 16px 0;
+  position: relative;
+  z-index: 2;
+}
+
+.panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .panel-header {
   display: flex;
   flex-direction: row;
   justify-content: space-between;
+  flex-wrap: nowrap;
+  align-content: center;
   align-items: center;
+  user-select: none;
   padding: 0 0 12px 0;
   border-bottom: 1px solid var(--terminal-border-color-light);
-  user-select: none;
+  position: relative;
+  z-index: 2;
+}
+
+.widget-editor-panel > *:not(.scanline-overlay) {
+  position: relative;
+  z-index: 2;
 }
 
 .panel-header .title {
@@ -176,255 +150,56 @@ export default {
   margin: 0;
 }
 
-/* ── Tabs ── */
-.panel-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--terminal-border-color-light);
-  flex-shrink: 0;
-}
-
-.tab-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 5px 6px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-  transition: all 0.12s;
-  font-family: inherit;
-}
-
-.tab-btn:hover {
-  color: var(--color-text);
-}
-
-.tab-btn.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.2);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-/* ── Content ── */
-.panel-content {
-  flex: 1;
-  overflow-y: auto;
-  scrollbar-width: none;
-  min-height: 0;
-}
-
-.panel-content::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── Templates ── */
-.forge-templates {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 0;
-}
-
-.tmpl-card {
-  padding: 8px;
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
+.right-tabs {
   display: flex;
   flex-direction: row;
+  flex-wrap: nowrap;
+  align-content: center;
+  justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
 }
 
-.tmpl-card:hover {
-  border-color: rgba(var(--green-rgb), 0.25);
-  background: var(--color-darker-1);
-}
-
-.tmpl-card.active {
-  border-color: rgba(var(--green-rgb), 0.35);
-  background: rgba(var(--green-rgb), 0.04);
-}
-
-.tmpl-icon {
-  font-size: 14px;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-
-.tmpl-card.active .tmpl-icon {
-  color: var(--color-green);
-}
-
-.tmpl-name {
-  font-size: 11px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--color-text);
-  font-weight: 600;
-}
-
-/* ── Code editor ── */
-.forge-code {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.section-title {
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--color-text-muted);
-  padding: 8px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.type-badge {
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(var(--green-rgb), 0.08);
-  color: var(--color-green);
-  letter-spacing: 0.5px;
-}
-
-.code-editor {
-  flex: 1;
-  background: var(--color-darker-1);
-  color: var(--color-text);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 12px;
-  resize: none;
-  outline: none;
-  tab-size: 2;
-  white-space: pre;
-  overflow: auto;
-  min-height: 200px;
-}
-
-.code-editor:focus {
-  border-color: rgba(var(--green-rgb), 0.3);
-}
-
-/* ── Config form ── */
-.forge-config {
-  padding: 8px 0;
-}
-
-.config-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.field-label {
-  font-size: 9px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  font-weight: 600;
-}
-
-.field input,
-.field select {
-  padding: 6px 10px;
-  background: var(--color-darker-1);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 4px;
-  color: var(--color-text);
-  font-family: inherit;
-  font-size: 12px;
-  outline: none;
-}
-
-.field input:focus,
-.field select:focus {
-  border-color: rgba(var(--green-rgb), 0.3);
-}
-
-.field select {
-  cursor: pointer;
-}
-
-.field-row {
-  display: flex;
-  gap: 8px;
-}
-
-.half {
-  flex: 1;
-}
-
-.icon-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 1px;
-}
-
-.icon-btn {
-  aspect-ratio: 1;
+.tab-button {
   background: none;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 3px;
-  color: var(--color-text-muted);
+  border: none;
   cursor: pointer;
-  font-size: 11px;
+  padding: 0;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+  color: var(--color-green);
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.12s;
-  padding: 0;
+  gap: 6px;
 }
 
-.icon-btn:hover {
-  color: var(--color-text);
-  border-color: var(--terminal-border-color);
+.tab-button:hover,
+.tab-button.active {
+  opacity: 1;
 }
 
-.icon-btn.active {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.4);
-  background: rgba(var(--green-rgb), 0.08);
+.tab-name {
+  font-size: 0.9em;
 }
 
-.config-json {
-  width: 100%;
-  background: var(--color-darker-1);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 4px;
-  color: var(--color-text);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  padding: 8px;
-  resize: vertical;
-  outline: none;
-  box-sizing: border-box;
+.clear-chat-button:hover {
+  color: rgba(255, 107, 107, 0.8) !important;
 }
 
-.config-json:focus {
-  border-color: rgba(var(--green-rgb), 0.3);
+.clear-chat-button:hover .tab-name {
+  color: rgba(255, 107, 107, 0.8);
+}
+
+.widget-editor-panel.fullscreen .scanline-overlay {
+  display: none;
+}
+</style>
+
+<style>
+body.widget-editor-fullscreen .widgetforge-panel,
+body.widget-editor-fullscreen .widget-forge-center-panel {
+  z-index: 1 !important;
+  pointer-events: none;
+  opacity: 0;
 }
 </style>

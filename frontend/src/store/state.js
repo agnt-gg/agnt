@@ -30,6 +30,7 @@ import goalTemplates from './features/goalTemplates';
 import contentOutputs from './features/contentOutputs';
 import widgetLayout from './features/widgetLayout';
 import widgetDefinitions from './features/widgetDefinitions';
+import widgetChat from './features/widgetChat';
 import skills from './features/skills';
 
 const store = createStore({
@@ -144,6 +145,7 @@ const store = createStore({
     contentOutputs,
     widgetLayout,
     widgetDefinitions,
+    widgetChat,
     skills,
   },
 });

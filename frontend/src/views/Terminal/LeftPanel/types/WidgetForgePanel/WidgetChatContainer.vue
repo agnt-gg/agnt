@@ -1,9 +1,9 @@
 <template>
-  <div class="workflow-chat-container">
+  <div class="widget-chat-container">
     <div class="chat-messages" ref="chatMessagesRef">
       <div v-if="formattedChatMessages.length === 0" class="empty-state">
-        <i class="fas fa-comments"></i>
-        <p>Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!</p>
+        <i class="fas fa-puzzle-piece"></i>
+        <p>Hi! I'm Annie, your widget assistant. I can help you create, modify, and configure widgets!</p>
       </div>
 
       <TransitionGroup name="message" tag="div" class="message-flow" v-else>
@@ -32,11 +32,21 @@
           v-model="chatInput"
           @keyup.enter="sendChatMessage"
           type="text"
-          placeholder="Ask about workflows, nodes, or get help..."
+          placeholder="Ask about widgets, create new ones, or get help..."
           class="chat-input"
           :disabled="isProcessing"
           ref="chatInputRef"
         />
+        <Tooltip v-if="isSupported" :text="isListening ? 'Stop recording' : 'Start voice input'" width="auto">
+          <button
+            @click="toggleListening"
+            :disabled="isProcessing"
+            class="chat-mic-button"
+            :class="{ 'is-listening': isListening }"
+          >
+            <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
+          </button>
+        </Tooltip>
         <button @click="sendChatMessage" :disabled="!chatInput.trim() || isProcessing" class="chat-send-button">
           <i class="fas fa-paper-plane"></i>
         </button>
@@ -52,66 +62,57 @@ import { API_CONFIG } from '@/tt.config.js';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
 import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/components/ProcessingState.vue';
 import QuickActions from '@/views/Terminal/CenterPanel/screens/Chat/components/QuickActions.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 
 const initialSuggestions = [
-  { id: 'wf-1', text: 'List tools', icon: '📦' },
-  { id: 'wf-2', text: 'Analyze workflow', icon: '🔍' },
-  { id: 'wf-3', text: 'Save workflow', icon: '💾' },
+  { id: 'widget-1', text: 'Create a new widget', icon: '🧩' },
+  { id: 'widget-2', text: 'Help me with HTML widgets', icon: '📦' },
 ];
 
 export default {
-  name: 'WorkflowChatContainer',
+  name: 'WidgetChatContainer',
   components: {
     MessageItem,
     ProcessingState,
     QuickActions,
+    Tooltip,
   },
   props: {
-    workflowId: {
+    widgetId: {
       type: String,
       default: null,
     },
-    nodes: {
-      type: Array,
-      default: () => [],
-    },
-    edges: {
-      type: Array,
-      default: () => [],
-    },
   },
   setup(props) {
-    console.log('WorkflowChatContainer: setup called with workflowId:', props.workflowId);
     const store = useStore();
     const chatMessagesRef = ref(null);
     const chatInputRef = ref(null);
 
-    // Chat input state
+    // Speech Recognition
+    const { isListening, isSupported, transcript, toggleListening } = useSpeechRecognition();
+
     const chatInput = ref('');
 
-    // Suggestions - use store-persisted suggestions or fallback to initial
+    watch(transcript, (newTranscript) => {
+      if (newTranscript) {
+        chatInput.value = newTranscript;
+      }
+    });
+
     const suggestions = computed(() => {
-      const storedSuggestions = store.getters['workflowChat/getSuggestions'](props.workflowId);
+      const storedSuggestions = store.getters['widgetChat/getSuggestions'](props.widgetId);
       return storedSuggestions && storedSuggestions.length > 0 ? storedSuggestions : initialSuggestions;
     });
 
     let localMessageIdCounter = 0;
-    const generateMessageId = () => `wf-msg-${Date.now()}-${localMessageIdCounter++}`;
+    const generateMessageId = () => `widget-msg-${Date.now()}-${localMessageIdCounter++}`;
 
-    // Computed properties using the store
-    const chatMessages = computed(() => {
-      const messages = store.getters['workflowChat/getMessages'](props.workflowId);
-      console.log('WorkflowChatContainer: chatMessages for workflowId', props.workflowId, ':', messages);
-      return messages;
-    });
-    const formattedChatMessages = computed(() => {
-      const messages = store.getters['workflowChat/getFormattedMessages'](props.workflowId);
-      console.log('WorkflowChatContainer: formattedChatMessages for workflowId', props.workflowId, ':', messages);
-      return messages;
-    });
-    const isProcessing = computed(() => store.getters['workflowChat/isStreaming']);
-    const isLoadingSuggestions = computed(() => store.getters['workflowChat/isLoadingSuggestions']);
-    const currentConversationId = computed(() => store.getters['workflowChat/getConversationId'](props.workflowId));
+    const chatMessages = computed(() => store.getters['widgetChat/getMessages'](props.widgetId));
+    const formattedChatMessages = computed(() => store.getters['widgetChat/getFormattedMessages'](props.widgetId));
+    const isProcessing = computed(() => store.getters['widgetChat/isStreaming']);
+    const isLoadingSuggestions = computed(() => store.getters['widgetChat/isLoadingSuggestions']);
+    const currentConversationId = computed(() => store.getters['widgetChat/getConversationId'](props.widgetId));
 
     const scrollToBottom = () => {
       nextTick(() => {
@@ -122,7 +123,7 @@ export default {
     };
 
     const sendChatMessage = async () => {
-      if (!chatInput.value.trim() || !props.workflowId) return;
+      if (!chatInput.value.trim() || !props.widgetId) return;
 
       const userMessage = {
         id: generateMessageId(),
@@ -131,7 +132,7 @@ export default {
         timestamp: Date.now(),
       };
 
-      store.dispatch('workflowChat/addMessage', { workflowId: props.workflowId, message: userMessage });
+      store.dispatch('widgetChat/addMessage', { widgetId: props.widgetId, message: userMessage });
       const messageToSend = chatInput.value.trim();
       chatInput.value = '';
 
@@ -139,48 +140,12 @@ export default {
     };
 
     const processAssistantResponse = async (userInput) => {
-      store.dispatch('workflowChat/setStreaming', true);
+      store.dispatch('widgetChat/setStreaming', true);
       const token = localStorage.getItem('token');
 
-      // Log the workflowId being sent
-      console.log('WorkflowChatContainer: Sending request with workflowId:', props.workflowId);
-
-      // ALWAYS prefer the full cached state when available to ensure we get ALL nodes
-      // Props might only contain partial data, so we prioritize the complete cached state
-      let workflowState = null;
-
-      // First, try to get the full state from the store
-      const cachedState = store.getters['canvas/canvasState'];
-      if (cachedState && cachedState.id === props.workflowId) {
-        console.log('WorkflowChatContainer: Using cached state that matches current workflowId');
-        workflowState = cachedState;
-      } else {
-        // Try localStorage as fallback, but only if ID matches
-        try {
-          const canvasState = localStorage.getItem('canvasState');
-          if (canvasState) {
-            const parsedState = JSON.parse(canvasState);
-            if (parsedState.id === props.workflowId) {
-              console.log('WorkflowChatContainer: Using localStorage state that matches current workflowId');
-              workflowState = parsedState;
-            }
-          }
-        } catch (e) {
-          console.error('Error parsing canvasState from localStorage:', e);
-        }
-      }
-
-      // Only use props as a last resort if we couldn't get cached state
-      if (!workflowState) {
-        console.log('WorkflowChatContainer: No cached state found, using props (may be incomplete)');
-        workflowState = {
-          id: props.workflowId,
-          nodes: props.nodes || [],
-          edges: props.edges || [],
-        };
-      }
-
-      console.log('WorkflowChatContainer: Using workflowState with ID:', workflowState.id, 'nodes:', workflowState.nodes?.length || 0);
+      let widgetState = {
+        id: props.widgetId,
+      };
 
       const chatHistory = chatMessages.value
         .map((msg) => ({
@@ -197,18 +162,18 @@ export default {
       }
 
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/workflow-chat`, {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/widget-chat`, {
           method: 'POST',
           headers: headers,
           body: JSON.stringify({
             messages: chatHistory,
             provider: store.state.aiProvider.selectedProvider,
             model: store.state.aiProvider.selectedModel,
-            workflowId: props.workflowId,
-            workflowContext: {
-              id: props.workflowId,
+            widgetId: props.widgetId,
+            widgetContext: {
+              id: props.widgetId,
             },
-            workflowState: workflowState,
+            widgetState: widgetState,
             conversationId: currentConversationId.value,
           }),
         });
@@ -225,7 +190,7 @@ export default {
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
-              store.dispatch('workflowChat/setStreaming', false);
+              store.dispatch('widgetChat/setStreaming', false);
               break;
             }
 
@@ -252,7 +217,7 @@ export default {
 
         processStream();
       } catch (error) {
-        console.error('Error calling workflow orchestrator API:', error);
+        console.error('Error calling widget orchestrator API:', error);
         const errorMessage = error.message || 'An unexpected error occurred.';
         const errorMsg = {
           id: generateMessageId(),
@@ -260,18 +225,17 @@ export default {
           content: `Sorry, I encountered an error: ${errorMessage}`,
           timestamp: Date.now(),
         };
-        store.dispatch('workflowChat/addMessage', { workflowId: props.workflowId, message: errorMsg });
-        store.dispatch('workflowChat/setStreaming', false);
+        store.dispatch('widgetChat/addMessage', { widgetId: props.widgetId, message: errorMsg });
+        store.dispatch('widgetChat/setStreaming', false);
       } finally {
         focusInput();
-        scrollToBottom();
       }
     };
 
     const handleStreamEvent = (eventName, data) => {
       switch (eventName) {
         case 'conversation_started':
-          store.dispatch('workflowChat/setConversationId', { workflowId: props.workflowId, conversationId: data.conversationId });
+          store.dispatch('widgetChat/setConversationId', { widgetId: props.widgetId, conversationId: data.conversationId });
           break;
 
         case 'assistant_message':
@@ -280,78 +244,75 @@ export default {
             role: 'assistant',
             toolCalls: [],
           };
-          store.dispatch('workflowChat/addMessage', { workflowId: props.workflowId, message: assistantMessage });
-          store.dispatch('workflowChat/setMessageStatus', {
-            workflowId: props.workflowId,
+          store.dispatch('widgetChat/addMessage', { widgetId: props.widgetId, message: assistantMessage });
+          store.dispatch('widgetChat/setMessageStatus', {
+            widgetId: props.widgetId,
             messageId: data.id,
             status: { type: 'thinking', text: 'Annie is thinking...' },
           });
           break;
 
+        case 'content_delta':
+          store.commit('widgetChat/APPEND_MESSAGE_CONTENT', {
+            widgetId: props.widgetId,
+            messageId: data.assistantMessageId,
+            delta: data.delta,
+          });
+          break;
+
         case 'tool_start':
-          store.dispatch('workflowChat/addToolCall', {
-            workflowId: props.workflowId,
+          store.dispatch('widgetChat/addToolCall', {
+            widgetId: props.widgetId,
             messageId: data.assistantMessageId,
             toolCall: { ...data.toolCall },
           });
-          store.dispatch('workflowChat/setRunningTool', {
-            workflowId: props.workflowId,
+          store.dispatch('widgetChat/setRunningTool', {
+            widgetId: props.widgetId,
             messageId: data.assistantMessageId,
             toolCallId: data.toolCall.id,
             running: true,
           });
-          store.dispatch('workflowChat/setMessageStatus', {
-            workflowId: props.workflowId,
+          store.dispatch('widgetChat/setMessageStatus', {
+            widgetId: props.widgetId,
             messageId: data.assistantMessageId,
             status: { type: 'tool', text: `Running ${data.toolCall.name}...` },
           });
           break;
 
         case 'tool_end':
-          store.dispatch('workflowChat/updateToolCall', {
-            workflowId: props.workflowId,
+          store.dispatch('widgetChat/updateToolCall', {
+            widgetId: props.widgetId,
             messageId: data.assistantMessageId,
             toolCallId: data.toolCall.id,
             toolCall: data.toolCall,
           });
-          store.dispatch('workflowChat/setRunningTool', {
-            workflowId: props.workflowId,
+          store.dispatch('widgetChat/setRunningTool', {
+            widgetId: props.widgetId,
             messageId: data.assistantMessageId,
             toolCallId: data.toolCall.id,
             running: false,
           });
 
-          // Check if the tool response contains an updated workflow
-          if (data.toolCall.result) {
-            let toolResult = data.toolCall.result;
-            // If the result is a string, try to parse it as JSON
-            if (typeof toolResult === 'string') {
-              try {
-                toolResult = JSON.parse(toolResult);
-              } catch (e) {
-                console.error('Error parsing tool result:', e);
-              }
-            }
-            // Check if the parsed result contains an updated workflow
-            if (toolResult && toolResult.updatedWorkflow) {
-              // Emit an event to update the canvas with the new workflow state
-              window.dispatchEvent(
-                new CustomEvent('workflow-updated', {
-                  detail: toolResult.updatedWorkflow,
-                })
-              );
-            }
-          }
+          const messages = store.getters['widgetChat/getMessages'](props.widgetId);
+          const message = messages.find((m) => m.id === data.assistantMessageId);
+          const storedToolCall = message?.toolCalls?.find((tc) => tc.id === data.toolCall.id);
+
+          const enhancedToolCall = {
+            ...data.toolCall,
+            name: storedToolCall?.function?.name || storedToolCall?.name || data.toolCall.name,
+          };
+
+          handleToolAction(enhancedToolCall);
+          break;
+
+        case 'frontend_event':
+          handleFrontendEvent(data.eventType, data.eventData);
           break;
 
         case 'final_content':
-          store.dispatch('workflowChat/updateMessageContent', {
-            workflowId: props.workflowId,
-            messageId: data.assistantMessageId,
-            content: data.content,
-          });
-          store.dispatch('workflowChat/clearMessageStatus', {
-            workflowId: props.workflowId,
+          store.commit('widgetChat/PERSIST_CONVERSATIONS');
+          store.dispatch('widgetChat/clearMessageStatus', {
+            widgetId: props.widgetId,
             messageId: data.assistantMessageId,
           });
           updateSuggestions();
@@ -364,33 +325,76 @@ export default {
             content: `An error occurred: ${data.error}`,
             timestamp: Date.now(),
           };
-          store.dispatch('workflowChat/addMessage', { workflowId: props.workflowId, message: errorMsg });
-          store.dispatch('workflowChat/setStreaming', false);
+          store.dispatch('widgetChat/addMessage', { widgetId: props.widgetId, message: errorMsg });
+          store.dispatch('widgetChat/setStreaming', false);
           break;
 
         case 'done':
-          store.dispatch('workflowChat/setStreaming', false);
+          store.dispatch('widgetChat/setStreaming', false);
           focusInput();
-          scrollToBottom();
           break;
       }
 
       scrollToBottom();
     };
 
+    const handleFrontendEvent = (eventType, eventData) => {
+      window.dispatchEvent(
+        new CustomEvent('chat-sse-event', {
+          detail: { eventType, eventData },
+        })
+      );
+    };
+
+    const handleToolAction = (toolCall) => {
+      if (toolCall.result) {
+        let toolResult = toolCall.result;
+        if (typeof toolResult === 'string') {
+          try {
+            toolResult = JSON.parse(toolResult);
+          } catch (e) {
+            console.error('Error parsing tool result:', e);
+          }
+        }
+
+        if (toolCall.name === 'generate_widget_update' && toolResult.success && toolResult.frontendEvents) {
+          toolResult.frontendEvents.forEach((event) => {
+            handleFrontendEvent(event.type, event.data);
+          });
+          return;
+        }
+
+        if (toolCall.name === 'save_widget' && toolResult.success) {
+          window.dispatchEvent(
+            new CustomEvent('widget-saved', {
+              detail: toolResult,
+            })
+          );
+        }
+
+        if (toolCall.name === 'load_widget' && toolResult.success) {
+          window.dispatchEvent(
+            new CustomEvent('widget-loaded', {
+              detail: toolResult.widgetData,
+            })
+          );
+        }
+      }
+    };
+
     const getMessageStatus = (message) => {
       if (!message || message.role !== 'assistant') return null;
-      return store.getters['workflowChat/getMessageStatus'](props.workflowId, message.id);
+      return store.getters['widgetChat/getMessageStatus'](props.widgetId, message.id);
     };
 
     const getRunningToolsForMessage = (message) => {
       if (!message || !message.toolCalls) return [];
-      return store.getters['workflowChat/getRunningToolsForMessage'](props.workflowId, message.id);
+      return store.getters['widgetChat/getRunningToolsForMessage'](props.widgetId, message.id);
     };
 
     const toggleToolCallExpansion = (messageId, toolCallIndex) => {
-      store.dispatch('workflowChat/toggleToolCallExpansion', {
-        workflowId: props.workflowId,
+      store.dispatch('widgetChat/toggleToolCallExpansion', {
+        widgetId: props.widgetId,
         messageId,
         toolCallIndex,
       });
@@ -404,7 +408,7 @@ export default {
     const updateSuggestions = async () => {
       if (isLoadingSuggestions.value || chatMessages.value.length < 2) return;
 
-      store.dispatch('workflowChat/setLoadingSuggestions', true);
+      store.dispatch('widgetChat/setLoadingSuggestions', true);
       const token = localStorage.getItem('token');
 
       try {
@@ -417,7 +421,7 @@ export default {
         const lastAssistantMessage = chatMessages.value.filter((m) => m.role === 'assistant').slice(-1)[0]?.content;
 
         if (!lastUserMessage || !lastAssistantMessage) {
-          store.dispatch('workflowChat/setLoadingSuggestions', false);
+          store.dispatch('widgetChat/setLoadingSuggestions', false);
           return;
         }
 
@@ -435,16 +439,18 @@ export default {
             history: recentHistory,
             lastUserMessage,
             lastAssistantMessage,
+            provider: store.state.aiProvider.selectedProvider,
+            model: store.state.aiProvider.selectedModel,
+            context: 'widget',
           }),
         });
 
         if (response.ok) {
           const data = await response.json();
           if (data.suggestions && Array.isArray(data.suggestions)) {
-            const newSuggestions = data.suggestions.slice(0, 4);
-            // Save suggestions to store for persistence
-            store.dispatch('workflowChat/setSuggestions', {
-              workflowId: props.workflowId,
+            const newSuggestions = data.suggestions.slice(0, 2);
+            store.dispatch('widgetChat/setSuggestions', {
+              widgetId: props.widgetId,
               suggestions: newSuggestions,
             });
           }
@@ -452,16 +458,15 @@ export default {
       } catch (error) {
         console.error('Error fetching AI suggestions:', error);
       } finally {
-        store.dispatch('workflowChat/setLoadingSuggestions', false);
+        store.dispatch('widgetChat/setLoadingSuggestions', false);
       }
     };
 
     const clearChat = () => {
-      if (props.workflowId) {
-        store.dispatch('workflowChat/clearConversation', props.workflowId);
-        // Reset suggestions to initial state in store
-        store.dispatch('workflowChat/setSuggestions', {
-          workflowId: props.workflowId,
+      if (props.widgetId) {
+        store.dispatch('widgetChat/clearConversation', props.widgetId);
+        store.dispatch('widgetChat/setSuggestions', {
+          widgetId: props.widgetId,
           suggestions: [...initialSuggestions],
         });
       }
@@ -476,32 +481,23 @@ export default {
       });
     };
 
-    // Watch for workflowId changes and scroll to bottom
     watch(
-      () => props.workflowId,
-      (newWorkflowId, oldWorkflowId) => {
-        if (newWorkflowId && newWorkflowId !== oldWorkflowId) {
-          console.log('WorkflowChatContainer: workflowId changed from', oldWorkflowId, 'to', newWorkflowId);
-          // Add a small delay to ensure the store has time to update
+      () => props.widgetId,
+      (newWidgetId, oldWidgetId) => {
+        if (newWidgetId && newWidgetId !== oldWidgetId) {
           setTimeout(() => {
-            // Scroll to bottom when workflowId changes to show any existing messages
             scrollToBottom();
           }, 100);
         }
       }
     );
 
-    // Watch for conversation being cleared and reset suggestions
     watch(
       () => chatMessages.value.length,
       (newLength, oldLength) => {
-        // If messages went from more than 1 to exactly 1, it means the conversation was cleared
-        // (the store reinitializes with a welcome message, so length becomes 1)
         if (oldLength > 1 && newLength === 1) {
-          console.log('WorkflowChatContainer: Conversation cleared, resetting suggestions');
-          // Reset suggestions to initial state in store
-          store.dispatch('workflowChat/setSuggestions', {
-            workflowId: props.workflowId,
+          store.dispatch('widgetChat/setSuggestions', {
+            widgetId: props.widgetId,
             suggestions: [...initialSuggestions],
           });
         }
@@ -509,8 +505,11 @@ export default {
     );
 
     onMounted(() => {
+      if (props.widgetId) {
+        store.dispatch('widgetChat/initializeConversation', props.widgetId);
+      }
       focusInput();
-      // scrollToBottom();
+      scrollToBottom();
     });
 
     return {
@@ -528,13 +527,16 @@ export default {
       getMessageStatus,
       getRunningToolsForMessage,
       clearChat,
+      isListening,
+      isSupported,
+      toggleListening,
     };
   },
 };
 </script>
 
 <style scoped>
-.workflow-chat-container {
+.widget-chat-container {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -546,7 +548,7 @@ export default {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 0;
+  padding: 0 0 16px;
   scrollbar-width: none;
   display: flex;
   flex-direction: column;
@@ -606,8 +608,7 @@ export default {
 
 .quick-actions-wrapper {
   padding: 12px 0;
-  border-top: 1px solid rgba(127, 129, 147, 0.1);
-  background: rgba(0, 0, 0, 0.05);
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 .quick-actions-wrapper :deep(.suggestions-bar) {
@@ -617,40 +618,31 @@ export default {
 
 .chat-input-container {
   padding: 16px 0 0 2px;
-  border-top: 1px solid rgba(127, 129, 147, 0.1);
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.workflow-editor-panel.fullscreen .chat-input-container {
-  padding: 16px 0 0 0;
-  background: transparent;
-}
-
-.workflow-editor-panel.fullscreen .quick-actions-wrapper {
-  background: transparent;
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 .chat-input-wrapper {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .chat-input {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 10px 16px;
-  border: 1px solid rgba(127, 129, 147, 0.2);
+  border: 1px solid var(--terminal-border-color);
   border-radius: 24px;
   background: rgba(0, 0, 0, 0.2);
   color: var(--color-light-green);
-  font-size: 0.9em;
+  font-size: var(--font-size-sm);
   transition: all 0.2s ease;
 }
 
 .chat-input:focus {
-  outline: none;
-  border-color: var(--color-green);
-  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.1);
+  outline: none !important;
+  border-color: var(--terminal-border-color) !important;
 }
 
 .chat-input:disabled {
@@ -658,10 +650,51 @@ export default {
   cursor: not-allowed;
 }
 
-.chat-send-button {
+.chat-mic-button {
   width: 40px;
   height: 40px;
   border-radius: 50%;
+  border: none;
+  background: var(--color-darker-2);
+  color: var(--color-light-green);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.chat-mic-button:hover:not(:disabled) {
+  background: var(--color-darker-0);
+}
+
+.chat-mic-button.is-listening {
+  background: var(--color-red);
+  color: white;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.chat-mic-button:disabled {
+  background: rgba(127, 129, 147, 0.3);
+  cursor: not-allowed;
+  transform: none;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
+  }
+}
+
+.chat-send-button {
+  min-width: 40px;
+  height: 40px;
+  border-radius: 20px;
   border: none;
   background: var(--color-green);
   color: var(--color-dark-navy);
@@ -670,6 +703,7 @@ export default {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  flex: 1 0 auto;
 }
 
 .chat-send-button:hover:not(:disabled) {
@@ -683,13 +717,7 @@ export default {
   transform: none;
 }
 
-/* Ensure message items don't have excessive padding */
-.workflow-chat-container :deep(.message-wrapper) {
+.widget-chat-container :deep(.message-wrapper) {
   max-width: 100%;
-}
-
-/* Adjust for fullscreen mode */
-.workflow-editor-panel.fullscreen .workflow-chat-container {
-  height: calc(100% - 60px); /* Account for panel header */
 }
 </style>

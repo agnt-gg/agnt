@@ -1,23 +1,6 @@
 import { API_CONFIG } from '@/tt.config.js';
 import { generateInstanceId, findEmptySlot } from '@/canvas/gridUtils.js';
 
-const STORAGE_KEY = 'agnt-widget-layouts';
-
-function loadFromLocalStorage() {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveToLocalStorage(pages, layouts) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages, layouts }));
-  } catch {}
-}
-
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
   return token
@@ -25,15 +8,12 @@ function getAuthHeaders() {
     : { 'Content-Type': 'application/json' };
 }
 
-// Load from localStorage synchronously at init so the first render is instant
-const _cached = loadFromLocalStorage();
-
 const state = {
-  pages: _cached?.pages || [],
+  pages: [],
   activePageId: null,
-  layouts: _cached?.layouts || {},
+  layouts: {},
   isDirty: false,
-  isLoaded: !!_cached,
+  isLoaded: false,
 };
 
 const getters = {
@@ -119,13 +99,9 @@ const mutations = {
 
 const actions = {
   /**
-   * Load layouts from backend, fallback to localStorage.
+   * Load layouts from backend (single source of truth).
    */
-  async fetchLayouts({ commit, state }) {
-    // State is already pre-loaded from localStorage at init time.
-    // Just sync with backend in background.
-    const hasCache = state.pages.length > 0;
-
+  async fetchLayouts({ commit }) {
     try {
       const response = await fetch(`${API_CONFIG.BASE_URL}/layouts`, {
         headers: getAuthHeaders(),
@@ -134,63 +110,30 @@ const actions = {
       if (response.ok) {
         const data = await response.json();
         if (data.pages && data.pages.length > 0) {
-          const backendPages = data.pages.map((p) => ({
+          const pages = data.pages.map((p) => ({
             id: p.page_id,
             name: p.page_name,
             icon: p.page_icon,
             route: p.route,
             order: p.page_order,
           }));
-          const backendLayouts = {};
+          const layouts = {};
           for (const p of data.pages) {
-            backendLayouts[p.page_id] = JSON.parse(p.layout_data || '[]');
+            layouts[p.page_id] = JSON.parse(p.layout_data || '[]');
           }
 
-          // Preserve local-only custom pages (no route) that aren't in backend yet
-          const backendIds = new Set(backendPages.map((p) => p.id));
-          const localOnlyPages = state.pages.filter((p) => !p.route && !backendIds.has(p.id));
-          const localOnlyLayouts = {};
-          for (const p of localOnlyPages) {
-            if (state.layouts[p.id]) {
-              localOnlyLayouts[p.id] = state.layouts[p.id];
-            }
-          }
-
-          const mergedPages = [...backendPages, ...localOnlyPages];
-          const mergedLayouts = { ...backendLayouts, ...localOnlyLayouts };
-
-          commit('SET_PAGES', mergedPages);
-          commit('SET_ALL_LAYOUTS', mergedLayouts);
-          commit('SET_LOADED', true);
-          saveToLocalStorage(mergedPages, mergedLayouts);
-
-          // Push local-only pages to backend so they persist next time
-          for (const p of localOnlyPages) {
-            try {
-              await fetch(`${API_CONFIG.BASE_URL}/layouts`, {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: JSON.stringify({
-                  page_id: p.id,
-                  page_name: p.name,
-                  page_icon: p.icon,
-                  page_order: p.order || 0,
-                  route: p.route,
-                  layout_data: JSON.stringify(localOnlyLayouts[p.id] || []),
-                }),
-              });
-            } catch {}
-          }
+          commit('SET_PAGES', pages);
+          commit('SET_ALL_LAYOUTS', layouts);
         }
       }
-    } catch {
-      // Backend unavailable - localStorage data is fine
+    } catch (err) {
+      console.error('Failed to fetch layouts:', err);
     }
     commit('SET_LOADED', true);
   },
 
   /**
-   * Save a page's layout to backend + localStorage.
+   * Save a page's layout to backend.
    */
   async saveLayout({ state }) {
     const pageId = state.activePageId;
@@ -198,7 +141,6 @@ const actions = {
     if (!page) return;
 
     const layout = state.layouts[pageId] || [];
-    saveToLocalStorage(state.pages, state.layouts);
 
     try {
       await fetch(`${API_CONFIG.BASE_URL}/layouts/${pageId}`, {
@@ -212,8 +154,8 @@ const actions = {
           layout_data: JSON.stringify(layout),
         }),
       });
-    } catch {
-      // Silently fail - localStorage has the data
+    } catch (err) {
+      console.error('Failed to save layout:', err);
     }
   },
 
@@ -228,7 +170,7 @@ const actions = {
   /**
    * Create a new empty page.
    */
-  async addPage({ commit, dispatch, state }, { name, icon, route }) {
+  async addPage({ commit, state }, { name, icon, route }) {
     const pageId = 'page_' + Math.random().toString(36).slice(2, 8);
     const page = {
       id: pageId,
@@ -240,8 +182,6 @@ const actions = {
     commit('ADD_PAGE', page);
     commit('SET_LAYOUT', { pageId, layout: [] });
     commit('SET_ACTIVE_PAGE', pageId);
-
-    saveToLocalStorage(state.pages, state.layouts);
 
     try {
       await fetch(`${API_CONFIG.BASE_URL}/layouts`, {
@@ -256,7 +196,9 @@ const actions = {
           layout_data: '[]',
         }),
       });
-    } catch {}
+    } catch (err) {
+      console.error('Failed to create page in backend:', err);
+    }
 
     return pageId;
   },
@@ -264,22 +206,25 @@ const actions = {
   /**
    * Delete a page.
    */
-  async deletePage({ commit, dispatch, state }, pageId) {
+  async deletePage({ commit, state }, pageId) {
     if (state.pages.length <= 1) return;
-    commit('REMOVE_PAGE', pageId);
 
-    if (state.activePageId === pageId) {
-      commit('SET_ACTIVE_PAGE', state.pages[0]?.id || null);
-    }
-
-    saveToLocalStorage(state.pages, state.layouts);
-
+    // Delete from backend first
     try {
       await fetch(`${API_CONFIG.BASE_URL}/layouts/${pageId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
-    } catch {}
+    } catch (err) {
+      console.error('Failed to delete page from backend:', err);
+    }
+
+    // Then remove from local state
+    commit('REMOVE_PAGE', pageId);
+
+    if (state.activePageId === pageId) {
+      commit('SET_ACTIVE_PAGE', state.pages[0]?.id || null);
+    }
   },
 
   /**
@@ -289,17 +234,15 @@ const actions = {
     const updates = { name };
     if (icon) updates.icon = icon;
     commit('UPDATE_PAGE', { pageId, updates });
-    saveToLocalStorage(state.pages, state.layouts);
     dispatch('saveLayout');
   },
 
   /**
    * Create page from a default layout.
    */
-  async createPageFromDefault({ commit, dispatch, state }, { screenName, defaultWidgets }) {
+  async createPageFromDefault({ commit, state }, { screenName, defaultWidgets }) {
     const pageId = 'page_' + Math.random().toString(36).slice(2, 8);
 
-    // Map screen names to readable page names
     const nameMap = {
       ChatScreen: 'Chat',
       DashboardScreen: 'Dashboard',
@@ -344,7 +287,6 @@ const actions = {
       order: state.pages.length,
     };
 
-    // Create widget instances from default layout
     const layout = (defaultWidgets || []).map((w) => ({
       instanceId: generateInstanceId(),
       widgetId: w.widgetId,
@@ -361,8 +303,6 @@ const actions = {
     commit('SET_LAYOUT', { pageId, layout });
     commit('SET_ACTIVE_PAGE', pageId);
 
-    saveToLocalStorage(state.pages, state.layouts);
-
     try {
       await fetch(`${API_CONFIG.BASE_URL}/layouts`, {
         method: 'POST',
@@ -376,7 +316,9 @@ const actions = {
           layout_data: JSON.stringify(layout),
         }),
       });
-    } catch {}
+    } catch (err) {
+      console.error('Failed to create page in backend:', err);
+    }
 
     return pageId;
   },
@@ -389,7 +331,6 @@ const actions = {
     const defaultCol = col;
     const defaultRow = row;
 
-    // Find empty slot if position not provided
     let finalCol = defaultCol;
     let finalRow = defaultRow;
     if (finalCol === undefined || finalRow === undefined) {
@@ -411,34 +352,30 @@ const actions = {
     };
 
     commit('ADD_WIDGET', { pageId, widget });
-    saveToLocalStorage(state.pages, state.layouts);
     dispatch('saveLayout');
   },
 
   /**
    * Remove a widget from a page.
    */
-  removeWidget({ commit, dispatch, state }, { pageId, instanceId }) {
+  removeWidget({ commit, dispatch }, { pageId, instanceId }) {
     commit('REMOVE_WIDGET', { pageId, instanceId });
-    saveToLocalStorage(state.pages, state.layouts);
     dispatch('saveLayout');
   },
 
   /**
    * Update a widget's position.
    */
-  updateWidgetPosition({ commit, dispatch, state }, { pageId, instanceId, col, row }) {
+  updateWidgetPosition({ commit, dispatch }, { pageId, instanceId, col, row }) {
     commit('UPDATE_WIDGET', { pageId, instanceId, updates: { col, row } });
-    saveToLocalStorage(state.pages, state.layouts);
     dispatch('saveLayout');
   },
 
   /**
    * Update a widget's size.
    */
-  updateWidgetSize({ commit, dispatch, state }, { pageId, instanceId, cols, rows }) {
+  updateWidgetSize({ commit, dispatch }, { pageId, instanceId, cols, rows }) {
     commit('UPDATE_WIDGET', { pageId, instanceId, updates: { cols, rows } });
-    saveToLocalStorage(state.pages, state.layouts);
     dispatch('saveLayout');
   },
 
@@ -450,7 +387,6 @@ const actions = {
     const widget = layout.find((w) => w.instanceId === instanceId);
     if (widget) {
       commit('UPDATE_WIDGET', { pageId, instanceId, updates: { collapsed: !widget.collapsed } });
-      saveToLocalStorage(state.pages, state.layouts);
       dispatch('saveLayout');
     }
   },
@@ -458,15 +394,14 @@ const actions = {
   /**
    * Update widget z-index.
    */
-  updateWidgetZIndex({ commit, state }, { pageId, instanceId, zIndex }) {
+  updateWidgetZIndex({ commit }, { pageId, instanceId, zIndex }) {
     commit('UPDATE_WIDGET', { pageId, instanceId, updates: { zIndex } });
-    // Don't save on every z-index change (too noisy)
   },
 
   /**
    * Reset a page to its default layout.
    */
-  async resetPageToDefault({ commit, dispatch, state }, { pageId, defaultWidgets }) {
+  async resetPageToDefault({ commit, dispatch }, { pageId, defaultWidgets }) {
     const layout = (defaultWidgets || []).map((w) => ({
       instanceId: generateInstanceId(),
       widgetId: w.widgetId,
@@ -480,7 +415,6 @@ const actions = {
     }));
 
     commit('SET_LAYOUT', { pageId, layout });
-    saveToLocalStorage(state.pages, state.layouts);
     dispatch('saveLayout');
   },
 };

@@ -259,6 +259,98 @@ Always be helpful, creative, and guide users through the tool creation process s
     contextKey: 'toolContext',
   },
 
+  widget: {
+    name: 'widget',
+    async getToolSchemas(context) {
+      return [
+        {
+          type: 'function',
+          function: {
+            name: 'generate_widget_update',
+            description: 'Generate a complete self-contained HTML widget based on natural language instructions. The generated widget will be a full HTML document with embedded CSS and JavaScript that renders in a sandboxed iframe.',
+            parameters: {
+              type: 'object',
+              properties: {
+                instruction: {
+                  type: 'string',
+                  description: 'Natural language instruction describing what to do with the widget',
+                },
+                currentWidgetState: {
+                  type: 'object',
+                  description: 'Current state/configuration of the widget being modified (optional)',
+                },
+                operationType: {
+                  type: 'string',
+                  enum: ['create', 'update', 'modify'],
+                  description: 'Type of operation to perform',
+                },
+              },
+              required: ['instruction'],
+            },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'save_widget',
+            description: 'Save the current widget definition to the database',
+            parameters: {
+              type: 'object',
+              properties: {
+                widgetData: { type: 'object', description: 'The widget data to save' },
+              },
+              required: ['widgetData'],
+            },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'load_widget',
+            description: 'Load a widget definition by its ID',
+            parameters: {
+              type: 'object',
+              properties: {
+                widgetId: { type: 'string', description: 'The ID of the widget to load' },
+              },
+              required: ['widgetId'],
+            },
+          },
+        },
+      ];
+    },
+    buildSystemPrompt(currentDate, context) {
+      const { widgetId, widgetContext, widgetState } = context;
+      return `You are Annie, a helpful AI assistant specialized in creating and managing dashboard widgets.
+You can help users build HTML widgets, template widgets, iframe widgets, and markdown widgets.
+Current date: ${currentDate}
+Widget ID: ${widgetId}
+Widget context: ${JSON.stringify(widgetContext)}
+Widget state: ${JSON.stringify(widgetState)}
+
+AVAILABLE FUNCTIONS:
+1. **generate_widget_update** - Your primary function for all widget creation and modification tasks
+2. **save_widget** - Save a widget definition to the database
+3. **load_widget** - Load an existing widget by ID
+
+WIDGET TYPES:
+- **html** - Custom HTML/CSS/JS in a sandboxed iframe (most common)
+- **template** - Pre-built templates (metric-card, chart, list, etc.)
+- **iframe** - External URL embedded in an iframe
+- **markdown** - Markdown content rendered as a widget
+
+CRITICAL: When using generate_widget_update, the tool will generate a complete self-contained HTML document.
+The source_code field must be a COMPLETE HTML document (<!DOCTYPE html><html>...</html>) that renders directly in an iframe.
+Do NOT generate JavaScript code with variables or return statements - generate pure HTML with embedded <style> and <script> tags.
+Hardcode demo/sample data directly in the HTML.
+
+Always be helpful and guide users through the widget creation process step by step.`;
+    },
+    maxToolRounds: 100,
+    responseType: 'stream',
+    contextKey: 'widgetContext',
+  },
+
   goal: {
     name: 'goal',
     async getToolSchemas(context) {
@@ -329,6 +421,7 @@ export function detectChatType(req, context = {}) {
   if (path.includes('/agent-chat')) return 'agent';
   if (path.includes('/workflow-chat')) return 'workflow';
   if (path.includes('/tool-chat')) return 'tool';
+  if (path.includes('/widget-chat')) return 'widget';
   if (path.includes('/goal-chat')) return 'goal';
   if (path.includes('/suggestions')) return 'suggestions';
 
@@ -337,6 +430,7 @@ export function detectChatType(req, context = {}) {
   if (body.agentId || body.agentContext || body.agentState) return 'agent';
   if (body.workflowId || body.workflowContext || body.workflowState) return 'workflow';
   if (body.toolId || body.toolContext || body.toolState) return 'tool';
+  if (body.widgetId || body.widgetContext || body.widgetState) return 'widget';
   if (body.goalId || body.goalContext) return 'goal';
 
   // Check explicit context parameter
