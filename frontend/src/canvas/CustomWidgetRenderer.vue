@@ -86,40 +86,110 @@ export default {
     const sourceCode = computed(() => props.definition?.source_code || '');
 
     // ── HTML rendering ──
+    // Build theme CSS to inject into widget iframes so all theme variables are available
+    const themeStyleTag = computed(() => {
+      // Grab computed CSS variables from the document root (respects active theme)
+      const rootStyle = getComputedStyle(document.documentElement);
+      const get = (name) => rootStyle.getPropertyValue(name).trim();
+
+      return `<style id="agnt-theme">
+:root {
+  /* Accent colors */
+  --color-red: ${get('--color-red') || '#fe4e4e'};
+  --color-orange: ${get('--color-orange') || '#ff9500'};
+  --color-yellow: ${get('--color-yellow') || '#ffd700'};
+  --color-green: ${get('--color-green') || '#19ef83'};
+  --color-blue: ${get('--color-blue') || '#12e0ff'};
+  --color-indigo: ${get('--color-indigo') || '#7d3de5'};
+  --color-violet: ${get('--color-violet') || '#d13de5'};
+  --color-pink: ${get('--color-pink') || '#e53d8f'};
+
+  /* Semantic colors */
+  --color-primary: ${get('--color-primary') || '#19ef83'};
+  --color-secondary: ${get('--color-secondary') || '#12e0ff'};
+  --color-background: ${get('--color-background') || '#10101f'};
+  --color-text: ${get('--color-text') || '#f7f7f7'};
+  --color-text-muted: ${get('--color-text-muted') || '#7f8193'};
+  --color-text-secondary: ${get('--color-text-secondary') || '#7f8193'};
+  --color-text-dull: ${get('--color-text-dull') || '#1f1f2f'};
+
+  /* Surface colors */
+  --color-darker-0: ${get('--color-darker-0') || 'rgba(0,0,0,0.1)'};
+  --color-darker-1: ${get('--color-darker-1') || 'rgba(0,0,0,0.2)'};
+  --color-darker-2: ${get('--color-darker-2') || 'rgba(0,0,0,0.4)'};
+  --color-darker-3: ${get('--color-darker-3') || 'rgba(0,0,0,0.8)'};
+
+  /* Borders */
+  --terminal-border-color: ${get('--terminal-border-color') || '#1f1f2f'};
+  --terminal-border-color-light: ${get('--terminal-border-color-light') || '#26263a'};
+
+  /* RGB components */
+  --primary-rgb: ${get('--primary-rgb') || '25, 239, 131'};
+  --green-rgb: ${get('--green-rgb') || '25, 239, 131'};
+  --blue-rgb: ${get('--blue-rgb') || '18, 224, 255'};
+  --pink-rgb: ${get('--pink-rgb') || '229, 61, 143'};
+  --red-rgb: ${get('--red-rgb') || '254, 78, 78'};
+  --yellow-rgb: ${get('--yellow-rgb') || '255, 215, 0'};
+  --indigo-rgb: ${get('--indigo-rgb') || '125, 61, 229'};
+
+  /* Typography */
+  --base-font-size: 16px;
+  --font-size-xs: calc(var(--base-font-size) * 0.75);
+  --font-size-sm: calc(var(--base-font-size) * 0.875);
+  --font-size-md: var(--base-font-size);
+  --font-size-lg: calc(var(--base-font-size) * 1.125);
+  --font-size-xl: calc(var(--base-font-size) * 1.25);
+  --font-size-xxl: calc(var(--base-font-size) * 1.5);
+  --font-size-xxxl: calc(var(--base-font-size) * 2);
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Spacing */
+  --spacing-xxs: 2px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+
+  /* Border radius */
+  --border-radius-xs: 2px;
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 16px;
+  --border-radius-xl: 24px;
+  --border-radius-full: 50%;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+
+  /* Transitions */
+  --transition-fast: 150ms ease-in-out;
+  --transition-medium: 300ms ease-in-out;
+  --transition-slow: 500ms ease-in-out;
+}
+</style>`;
+    });
+
     const renderedSource = computed(() => {
-      // HTML widget — user source can contain <style>, <script>, and HTML freely
       const html = sourceCode.value || '';
-      const themeVars = `
-        <style>
-          :root {
-            --color-green: #19ef83;
-            --color-red: #ff4757;
-            --color-yellow: #ffd700;
-            --color-blue: #12e0ff;
-            --color-purple: #7d3de5;
-            --color-pink: #e53d8f;
-            --color-background: #0c0c18;
-            --color-text: #c8c8d4;
-            --color-text-muted: #556;
-            --color-border: #1a1a2e;
-            --font-family: 'JetBrains Mono', 'Fira Code', monospace;
-          }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body {
-            font-family: var(--font-family);
-            background: var(--color-background);
-            color: var(--color-text);
-            overflow: auto;
-            width: 100%;
-            height: 100vh;
-          }
-        </style>
-      `;
-      // If user includes their own <html> or <head>, use their source directly with theme prepended
+      const theme = themeStyleTag.value;
+
       if (html.trim().toLowerCase().startsWith('<!doctype') || html.trim().toLowerCase().startsWith('<html')) {
-        return html;
+        // Inject theme vars into existing <head> (or after <html> if no <head>)
+        if (/<head[^>]*>/i.test(html)) {
+          return html.replace(/<head([^>]*)>/i, `<head$1>${theme}`);
+        }
+        return html.replace(/<html([^>]*)>/i, `<html$1><head>${theme}</head>`);
       }
-      return `<!DOCTYPE html><html><head><meta charset="utf-8">${themeVars}</head><body>${html}</body></html>`;
+      return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}</head><body>${html}</body></html>`;
     });
 
     // ── Markdown rendering (basic) ──

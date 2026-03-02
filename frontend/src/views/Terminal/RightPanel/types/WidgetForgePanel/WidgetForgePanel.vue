@@ -77,25 +77,24 @@
               </button>
             </div>
           </div>
-          <label class="field">
+          <div class="field">
             <span class="field-label">Category</span>
-            <select v-model="forge.form.category">
-              <option value="custom">Custom</option>
-              <option value="dashboard">Dashboard</option>
-              <option value="home">Home</option>
-              <option value="assets">Assets</option>
-              <option value="system">System</option>
-            </select>
-          </label>
-          <label class="field">
+            <CustomSelect
+              ref="categorySelect"
+              :options="categoryOptions"
+              placeholder="Select category"
+              @option-selected="forge.form.category = $event.value"
+            />
+          </div>
+          <div class="field">
             <span class="field-label">Widget Type</span>
-            <select v-model="forge.form.widget_type">
-              <option value="html">HTML (Sandboxed iframe)</option>
-              <option value="template">Template (Pre-built)</option>
-              <option value="iframe">External URL (iframe)</option>
-              <option value="markdown">Markdown</option>
-            </select>
-          </label>
+            <CustomSelect
+              ref="widgetTypeSelect"
+              :options="widgetTypeOptions"
+              placeholder="Select widget type"
+              @option-selected="forge.form.widget_type = $event.value"
+            />
+          </div>
           <div class="field-row">
             <label class="field half">
               <span class="field-label">Default Columns</span>
@@ -141,12 +140,13 @@
 </template>
 
 <script>
-import { inject, computed, watch } from 'vue';
+import { inject, computed, watch, ref, onMounted, nextTick } from 'vue';
 import { Codemirror } from 'vue-codemirror';
 import { html } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorView, keymap } from '@codemirror/view';
 import { html_beautify } from 'js-beautify';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 const beautifyOpts = {
   indent_size: 2,
@@ -177,10 +177,46 @@ function looksMinified(code) {
 
 export default {
   name: 'WidgetForgeRightPanel',
-  components: { Codemirror },
+  components: { Codemirror, CustomSelect },
   emits: ['panel-action'],
   setup() {
     const forge = inject('widgetForge');
+
+    const categorySelect = ref(null);
+    const widgetTypeSelect = ref(null);
+
+    const categoryOptions = [
+      { label: 'Custom', value: 'custom' },
+      { label: 'Dashboard', value: 'dashboard' },
+      { label: 'Home', value: 'home' },
+      { label: 'Assets', value: 'assets' },
+      { label: 'System', value: 'system' },
+    ];
+
+    const widgetTypeOptions = [
+      { label: 'HTML (Sandboxed iframe)', value: 'html' },
+      { label: 'Template (Pre-built)', value: 'template' },
+      { label: 'External URL (iframe)', value: 'iframe' },
+      { label: 'Markdown', value: 'markdown' },
+    ];
+
+    // Sync CustomSelect display when form values change (e.g. from AI generation)
+    const syncSelects = () => {
+      nextTick(() => {
+        if (categorySelect.value) {
+          const cat = categoryOptions.find((o) => o.value === forge.form.category);
+          if (cat) categorySelect.value.setSelectedOption(cat);
+        }
+        if (widgetTypeSelect.value) {
+          const wt = widgetTypeOptions.find((o) => o.value === forge.form.widget_type);
+          if (wt) widgetTypeSelect.value.setSelectedOption(wt);
+        }
+      });
+    };
+
+    onMounted(syncSelects);
+    watch(() => forge.form.category, syncSelects);
+    watch(() => forge.form.widget_type, syncSelects);
 
     // Keyboard shortcut: Shift+Alt+F to format
     const formatKeymap = keymap.of([
@@ -244,7 +280,7 @@ export default {
       }
     );
 
-    return { forge, extensions, lineCount, handleCodeChange, formatCode };
+    return { forge, extensions, lineCount, handleCodeChange, formatCode, categorySelect, widgetTypeSelect, categoryOptions, widgetTypeOptions };
   },
 };
 </script>
@@ -453,8 +489,7 @@ export default {
   font-weight: 600;
 }
 
-.field input,
-.field select {
+.field input {
   padding: 6px 10px;
   background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
@@ -465,13 +500,8 @@ export default {
   outline: none;
 }
 
-.field input:focus,
-.field select:focus {
+.field input:focus {
   border-color: rgba(var(--green-rgb), 0.3);
-}
-
-.field select {
-  cursor: pointer;
 }
 
 .field-row {

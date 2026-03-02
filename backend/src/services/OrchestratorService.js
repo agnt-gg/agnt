@@ -295,6 +295,9 @@ async function universalChatHandler(req, res, context = {}) {
     toolId,
     toolContext,
     toolState,
+    widgetId,
+    widgetContext,
+    widgetState,
     goalId,
     goalContext,
   } = req.body;
@@ -412,6 +415,9 @@ async function universalChatHandler(req, res, context = {}) {
     toolId,
     toolContext,
     toolState,
+    widgetId,
+    widgetContext,
+    widgetState,
     goalId,
     goalContext,
     userId,
@@ -1837,6 +1843,71 @@ async function executeWidgetFunction(functionName, args, authToken, context) {
           const client = await createLlmClient(context.provider || 'openai', userId);
           const adapter = await createLlmAdapter(context.provider || 'openai', client, context.model || 'gpt-4');
 
+          // Build theme styles section if useThemeStyles is enabled (default: true)
+          const useTheme = args.useThemeStyles !== false;
+          let themeSection = '';
+          if (useTheme) {
+            themeSection = `
+THEME STYLING:
+The widget iframe is pre-loaded with CSS custom properties (variables) that match the user's active theme.
+Do NOT define any :root variables yourself — they are already injected automatically.
+Just USE var(--variable-name) references in your CSS. NEVER hardcode hex/rgb color values.
+
+Available semantic variables (use these for all styling):
+- var(--color-text) — normal body text
+- var(--color-text-muted) — secondary/dimmed text
+- var(--color-primary) — accent color for headings, key values, active states, highlights
+- var(--color-secondary) — second accent color
+- var(--color-background) — main widget background
+- var(--color-darker-0) through var(--color-darker-3) — elevated surfaces (cards, panels) with increasing opacity
+- var(--terminal-border-color) — borders
+- var(--terminal-border-color-light) — subtle/lighter borders
+- rgba(var(--primary-rgb), 0.15) — tinted accent backgrounds
+- var(--color-red) — errors
+- var(--color-yellow) — warnings
+
+Layout variables:
+- var(--spacing-xxs) through var(--spacing-xxl) — padding, margins, gaps
+- var(--font-size-xs) through var(--font-size-xxl) — typography sizes
+- var(--font-weight-light|normal|medium|semibold|bold) — font weights
+- var(--border-radius-xs|sm|md|lg|xl|full) — border radius
+- var(--shadow-sm|md|lg|xl) — box shadows
+- var(--transition-fast|medium|slow) — transitions
+
+EXAMPLE — themed widget CSS (no :root block needed):
+\`\`\`css
+body {
+  margin: 0;
+  padding: var(--spacing-md);
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--font-size-sm);
+}
+.card {
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-md);
+  box-shadow: var(--shadow-md);
+}
+.card h2 {
+  color: var(--color-primary);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+.muted { color: var(--color-text-muted); }
+.badge {
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary);
+  padding: var(--spacing-xxs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+}
+\`\`\``;
+          }
+
           const widgetGenPrompt = `Generate a complete, self-contained HTML document for a dashboard widget.
 
 RULES:
@@ -1848,7 +1919,8 @@ RULES:
 - Use inline/hardcoded data — no template literals, no external variables, no params.*
 - Make it visually polished: modern CSS, gradients, animations, shadows, rounded corners
 - Use system fonts: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
-- Dark theme preferred (dark backgrounds, light text) unless the user specifies otherwise
+${useTheme ? '- Use the theme CSS variables provided below for ALL styling — do NOT hardcode colors' : '- Dark theme preferred (dark backgrounds, light text) unless the user specifies otherwise'}
+${themeSection}
 
 USER REQUEST: ${enhancedInstruction}`;
 
@@ -1887,12 +1959,69 @@ USER REQUEST: ${enhancedInstruction}`;
             source_code: content,
           };
 
+          // Auto-save the generated widget to the database
+          const operationType = args.operationType || 'update';
+          const existingId = args.currentWidgetState?.id || widgetState?.id;
+          const isExistingWidget = existingId && existingId !== 'widget-forge';
+
+          let savedWidgetId = existingId;
+          try {
+            if (db) {
+              if (isExistingWidget) {
+                // Update existing widget
+                await new Promise((resolve, reject) => {
+                  db.run(
+                    `UPDATE widget_definitions SET name = ?, description = ?, source_code = ?, widget_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    [widgetData.name, widgetData.description, widgetData.source_code, widgetData.widget_type, existingId],
+                    (err) => (err ? reject(err) : resolve())
+                  );
+                });
+              } else {
+                // Create new widget
+                savedWidgetId = 'cw_' + randomUUID().replace(/-/g, '').slice(0, 12);
+                await new Promise((resolve, reject) => {
+                  db.run(
+                    `INSERT INTO widget_definitions (id, user_id, name, description, icon, category, widget_type, source_code, config, data_bindings, default_size, min_size)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                      savedWidgetId,
+                      userId || 'anonymous',
+                      widgetData.name,
+                      widgetData.description,
+                      'fas fa-puzzle-piece',
+                      'custom',
+                      widgetData.widget_type,
+                      widgetData.source_code,
+                      '{}',
+                      '[]',
+                      '{"cols":4,"rows":3}',
+                      '{"cols":2,"rows":2}',
+                    ],
+                    (err) => (err ? reject(err) : resolve())
+                  );
+                });
+              }
+              widgetData.id = savedWidgetId;
+            }
+          } catch (saveErr) {
+            console.error('Widget auto-save failed:', saveErr.message);
+          }
+
+          const frontendEvents = generateWidgetFrontendEvents(widgetData, operationType);
+          // Notify frontend of the saved widget so it tracks the persisted record
+          if (savedWidgetId && savedWidgetId !== 'widget-forge') {
+            frontendEvents.push({
+              type: 'widget-autosaved',
+              data: { id: savedWidgetId, widgetData },
+            });
+          }
+
           result = {
             success: true,
             widgetData: widgetData,
-            operationType: args.operationType || 'update',
-            message: `Successfully ${args.operationType || 'updated'} widget based on instruction: "${args.instruction}"`,
-            frontendEvents: generateWidgetFrontendEvents(widgetData, args.operationType || 'update'),
+            operationType,
+            message: `Successfully ${operationType} widget based on instruction: "${args.instruction}"`,
+            frontendEvents,
           };
         } catch (generationError) {
           console.error('Error in widget generation:', generationError);

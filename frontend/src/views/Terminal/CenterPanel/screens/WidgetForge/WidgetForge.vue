@@ -20,9 +20,7 @@
           <span class="wf-toolbar-title">{{ isEditing ? 'EDIT WIDGET' : 'NEW WIDGET' }}</span>
 
           <div class="wf-toolbar-right">
-            <button class="wf-btn wf-btn-clear" @click="clearForge" title="Clear all fields">
-              <i class="fas fa-trash-alt"></i> Clear
-            </button>
+            <button class="wf-btn wf-btn-clear" @click="clearForge" title="Clear all fields"><i class="fas fa-trash-alt"></i> Clear</button>
             <button v-if="isEditing" class="wf-btn wf-btn-export" @click="exportWidget" title="Export widget">
               <i class="fas fa-file-export"></i> Export
             </button>
@@ -37,7 +35,7 @@
           <div class="wf-preview-panel">
             <div class="wf-panel-title">
               LIVE PREVIEW
-              <span class="wf-preview-size">{{ form.default_size.cols }}×{{ form.default_size.rows }}</span>
+              <!-- <span class="wf-preview-size">{{ form.default_size.cols }}×{{ form.default_size.rows }}</span> -->
             </div>
             <div class="wf-preview-container">
               <div class="wf-preview-frame" :style="previewFrameStyle">
@@ -700,12 +698,13 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 16px 16px 0;
   overflow: hidden;
 }
 
 .wf-preview-frame {
   width: 100%;
+  height: 100%;
   max-height: 100%;
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
@@ -714,6 +713,7 @@ export default {
   overflow: hidden;
   background: var(--color-darker-0);
   min-height: 200px;
+  aspect-ratio: auto;
 }
 
 .wf-preview-header {

@@ -455,7 +455,8 @@ export default {
     async function startAddPage() {
       const result = await showModal({ type: 'input', title: 'New Page', value: '', icon: 'fas fa-th', showIconPicker: true, okLabel: 'Create' });
       if (result && result.value && result.value.trim()) {
-        store.dispatch('widgetLayout/addPage', { name: result.value.trim(), icon: result.icon || 'fas fa-th' });
+        await store.dispatch('widgetLayout/addPage', { name: result.value.trim(), icon: result.icon || 'fas fa-th' });
+        onCustomPage.value = true;
       }
     }
 

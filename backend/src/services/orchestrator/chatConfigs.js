@@ -284,6 +284,10 @@ Always be helpful, creative, and guide users through the tool creation process s
                   enum: ['create', 'update', 'modify'],
                   description: 'Type of operation to perform',
                 },
+                useThemeStyles: {
+                  type: 'boolean',
+                  description: 'When true, the widget uses the app\'s CSS theme variables (colors, spacing, typography) instead of hardcoded values so it matches the app look and feel. Default to true unless the user explicitly wants custom/standalone styling.',
+                },
               },
               required: ['instruction'],
             },
@@ -321,12 +325,32 @@ Always be helpful, creative, and guide users through the tool creation process s
     },
     buildSystemPrompt(currentDate, context) {
       const { widgetId, widgetContext, widgetState } = context;
+
+      // Build a concise summary of the current widget state for the system prompt
+      let widgetSummary = 'No widget loaded.';
+      if (widgetState && (widgetState.name || widgetState.source_code)) {
+        const meta = [];
+        if (widgetState.name) meta.push(`Name: ${widgetState.name}`);
+        if (widgetState.widget_type) meta.push(`Type: ${widgetState.widget_type}`);
+        if (widgetState.description) meta.push(`Description: ${widgetState.description}`);
+        if (widgetState.category) meta.push(`Category: ${widgetState.category}`);
+        if (widgetState.icon) meta.push(`Icon: ${widgetState.icon}`);
+        if (widgetState.default_size) meta.push(`Default size: ${JSON.stringify(widgetState.default_size)}`);
+        if (widgetState.min_size) meta.push(`Min size: ${JSON.stringify(widgetState.min_size)}`);
+        if (widgetState.config && Object.keys(widgetState.config).length > 0) meta.push(`Config: ${JSON.stringify(widgetState.config)}`);
+        widgetSummary = meta.join('\n');
+        if (widgetState.source_code) {
+          widgetSummary += `\n\nCurrent source code:\n\`\`\`html\n${widgetState.source_code}\n\`\`\``;
+        }
+      }
+
       return `You are Annie, a helpful AI assistant specialized in creating and managing dashboard widgets.
 You can help users build HTML widgets, template widgets, iframe widgets, and markdown widgets.
 Current date: ${currentDate}
 Widget ID: ${widgetId}
-Widget context: ${JSON.stringify(widgetContext)}
-Widget state: ${JSON.stringify(widgetState)}
+
+CURRENT WIDGET STATE:
+${widgetSummary}
 
 AVAILABLE FUNCTIONS:
 1. **generate_widget_update** - Your primary function for all widget creation and modification tasks

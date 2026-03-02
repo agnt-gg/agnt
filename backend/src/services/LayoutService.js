@@ -50,7 +50,7 @@ class LayoutService {
       });
     } catch (error) {
       console.error('Error creating layout:', error);
-      res.status(500).json({ error: 'Failed to create layout' });
+      res.status(500).json({ error: 'Failed to create layout', details: error.message });
     }
   }
 

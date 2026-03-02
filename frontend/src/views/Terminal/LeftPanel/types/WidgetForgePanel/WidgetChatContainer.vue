@@ -56,7 +56,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, watch, inject } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
@@ -86,6 +86,7 @@ export default {
   },
   setup(props) {
     const store = useStore();
+    const forge = inject('widgetForge', null);
     const chatMessagesRef = ref(null);
     const chatInputRef = ref(null);
 
@@ -146,6 +147,22 @@ export default {
       let widgetState = {
         id: props.widgetId,
       };
+
+      // Include full widget form data so the LLM has context of the current widget
+      if (forge && forge.form) {
+        widgetState = {
+          ...widgetState,
+          name: forge.form.name || '',
+          description: forge.form.description || '',
+          icon: forge.form.icon || '',
+          category: forge.form.category || '',
+          widget_type: forge.form.widget_type || 'html',
+          source_code: forge.form.source_code || '',
+          config: forge.form.config || {},
+          default_size: forge.form.default_size || { cols: 4, rows: 3 },
+          min_size: forge.form.min_size || { cols: 2, rows: 2 },
+        };
+      }
 
       const chatHistory = chatMessages.value
         .map((msg) => ({
