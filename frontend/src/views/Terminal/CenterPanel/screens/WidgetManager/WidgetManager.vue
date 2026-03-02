@@ -23,9 +23,9 @@
           :showHideEmpty="false"
           :sortOrder="sortOrder"
           createLabel="New Widget"
-          @update:searchQuery="(v) => searchQuery = v"
+          @update:searchQuery="(v) => (searchQuery = v)"
           @update:layout="setLayout"
-          @update:sortOrder="(v) => sortOrder = v"
+          @update:sortOrder="(v) => (sortOrder = v)"
           @create="createNewWidget"
         >
           <template #extra-buttons>
@@ -53,112 +53,112 @@
         <!-- Widget grid -->
         <div class="wm-content">
           <main class="wm-main-content">
-          <!-- Grid View -->
-          <div v-if="currentLayout === 'grid'" class="wm-grid">
-            <div
-              v-for="widget in filteredWidgets"
-              :key="widget.id"
-              class="wm-card"
-              :class="{ 'wm-custom': widget._isCustom }"
-              @click="widget._isCustom ? openEditor(widget) : null"
-            >
-              <!-- Preview area (custom widgets only) -->
-              <div v-if="widget._isCustom && widget._definition && hasPreview(widget)" class="wm-card-preview">
-                <!-- iframe-type: load external URL (needs scripts to render) -->
-                <iframe
-                  v-if="widget._definition.widget_type === 'iframe' && widget._definition.config?.url"
-                  class="wm-card-preview-iframe"
-                  :src="widget._definition.config.url"
-                  sandbox="allow-scripts allow-same-origin"
-                  frameborder="0"
-                  tabindex="-1"
-                  scrolling="no"
-                ></iframe>
-                <!-- html/markdown: static srcdoc preview -->
-                <iframe
-                  v-else
-                  class="wm-card-preview-iframe"
-                  :srcdoc="getPreviewHtml(widget)"
-                  sandbox=""
-                  frameborder="0"
-                  tabindex="-1"
-                  scrolling="no"
-                ></iframe>
-              </div>
-              <!-- Info area -->
-              <div class="wm-card-info">
-                <div class="wm-card-header">
-                  <div class="wm-card-icon"><i :class="widget.icon"></i></div>
-                  <div class="wm-card-name">{{ widget.name }}</div>
-                  <div class="wm-card-badges">
-                    <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">CUSTOM</span>
-                    <span v-else class="wm-badge wm-badge-builtin">BUILT-IN</span>
-                    <span v-if="widget.is_shared" class="wm-badge wm-badge-shared">SHARED</span>
+            <!-- Grid View -->
+            <div v-if="currentLayout === 'grid'" class="wm-grid">
+              <div
+                v-for="widget in filteredWidgets"
+                :key="widget.id"
+                class="wm-card"
+                :class="{ 'wm-custom': widget._isCustom }"
+                @click="widget._isCustom ? openEditor(widget) : null"
+              >
+                <!-- Preview area (custom widgets only) -->
+                <div v-if="widget._isCustom && widget._definition && hasPreview(widget)" class="wm-card-preview">
+                  <!-- iframe-type: load external URL (needs scripts to render) -->
+                  <iframe
+                    v-if="widget._definition.widget_type === 'iframe' && widget._definition.config?.url"
+                    class="wm-card-preview-iframe"
+                    :src="widget._definition.config.url"
+                    sandbox="allow-scripts allow-same-origin"
+                    frameborder="0"
+                    tabindex="-1"
+                    scrolling="no"
+                  ></iframe>
+                  <!-- html/markdown: static srcdoc preview -->
+                  <iframe
+                    v-else
+                    class="wm-card-preview-iframe"
+                    :srcdoc="getPreviewHtml(widget)"
+                    sandbox=""
+                    frameborder="0"
+                    tabindex="-1"
+                    scrolling="no"
+                  ></iframe>
+                </div>
+                <!-- Info area -->
+                <div class="wm-card-info">
+                  <div class="wm-card-header">
+                    <div class="wm-card-icon"><i :class="widget.icon"></i></div>
+                    <div class="wm-card-name">{{ widget.name }}</div>
+                    <div class="wm-card-badges">
+                      <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">CUSTOM</span>
+                      <span v-else class="wm-badge wm-badge-builtin">BUILT-IN</span>
+                      <span v-if="widget.is_shared" class="wm-badge wm-badge-shared">SHARED</span>
+                    </div>
+                  </div>
+                  <div class="wm-card-desc">{{ widget.description }}</div>
+                  <div class="wm-card-meta">
+                    <span class="wm-card-type">{{ widget.widget_type || widget.category }}</span>
+                    <span class="wm-card-size">{{ formatSize(widget) }}</span>
                   </div>
                 </div>
-                <div class="wm-card-desc">{{ widget.description }}</div>
-                <div class="wm-card-meta">
-                  <span class="wm-card-type">{{ widget.widget_type || widget.category }}</span>
-                  <span class="wm-card-size">{{ formatSize(widget) }}</span>
+                <!-- Actions for custom widgets -->
+                <div v-if="widget._isCustom" class="wm-card-actions" @click.stop>
+                  <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
+                  <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
+                  <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
+                  <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
                 </div>
               </div>
-              <!-- Actions for custom widgets -->
-              <div v-if="widget._isCustom" class="wm-card-actions" @click.stop>
-                <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
-                <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
-                <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
-                <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
+
+              <!-- Empty state -->
+              <div v-if="filteredWidgets.length === 0" class="wm-empty">
+                <div class="wm-empty-icon"><i class="fas fa-puzzle-piece"></i></div>
+                <div class="wm-empty-text">No widgets found</div>
+                <div class="wm-empty-hint">
+                  <span v-if="searchQuery">Try a different search term</span>
+                  <span v-else>Create your first custom widget!</span>
+                </div>
               </div>
             </div>
 
-            <!-- Empty state -->
-            <div v-if="filteredWidgets.length === 0" class="wm-empty">
-              <div class="wm-empty-icon"><i class="fas fa-puzzle-piece"></i></div>
-              <div class="wm-empty-text">No widgets found</div>
-              <div class="wm-empty-hint">
-                <span v-if="searchQuery">Try a different search term</span>
-                <span v-else>Create your first custom widget!</span>
+            <!-- List View -->
+            <div v-else class="wm-list">
+              <div
+                v-for="widget in filteredWidgets"
+                :key="widget.id"
+                class="wm-list-row"
+                :class="{ 'wm-custom': widget._isCustom }"
+                @click="widget._isCustom ? openEditor(widget) : null"
+              >
+                <div class="wm-list-icon"><i :class="widget.icon"></i></div>
+                <div class="wm-list-name">{{ widget.name }}</div>
+                <div class="wm-list-desc">{{ widget.description }}</div>
+                <div class="wm-list-badges">
+                  <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">CUSTOM</span>
+                  <span v-else class="wm-badge wm-badge-builtin">BUILT-IN</span>
+                  <span v-if="widget.is_shared" class="wm-badge wm-badge-shared">SHARED</span>
+                </div>
+                <span class="wm-list-type">{{ widget.widget_type || widget.category }}</span>
+                <span class="wm-list-size">{{ formatSize(widget) }}</span>
+                <div v-if="widget._isCustom" class="wm-list-actions" @click.stop>
+                  <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
+                  <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
+                  <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
+                  <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <!-- List View -->
-          <div v-else class="wm-list">
-            <div
-              v-for="widget in filteredWidgets"
-              :key="widget.id"
-              class="wm-list-row"
-              :class="{ 'wm-custom': widget._isCustom }"
-              @click="widget._isCustom ? openEditor(widget) : null"
-            >
-              <div class="wm-list-icon"><i :class="widget.icon"></i></div>
-              <div class="wm-list-name">{{ widget.name }}</div>
-              <div class="wm-list-desc">{{ widget.description }}</div>
-              <div class="wm-list-badges">
-                <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">CUSTOM</span>
-                <span v-else class="wm-badge wm-badge-builtin">BUILT-IN</span>
-                <span v-if="widget.is_shared" class="wm-badge wm-badge-shared">SHARED</span>
-              </div>
-              <span class="wm-list-type">{{ widget.widget_type || widget.category }}</span>
-              <span class="wm-list-size">{{ formatSize(widget) }}</span>
-              <div v-if="widget._isCustom" class="wm-list-actions" @click.stop>
-                <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
-                <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
-                <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
-                <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
+              <!-- Empty state -->
+              <div v-if="filteredWidgets.length === 0" class="wm-empty">
+                <div class="wm-empty-icon"><i class="fas fa-puzzle-piece"></i></div>
+                <div class="wm-empty-text">No widgets found</div>
+                <div class="wm-empty-hint">
+                  <span v-if="searchQuery">Try a different search term</span>
+                  <span v-else>Create your first custom widget!</span>
+                </div>
               </div>
             </div>
-
-            <!-- Empty state -->
-            <div v-if="filteredWidgets.length === 0" class="wm-empty">
-              <div class="wm-empty-icon"><i class="fas fa-puzzle-piece"></i></div>
-              <div class="wm-empty-text">No widgets found</div>
-              <div class="wm-empty-hint">
-                <span v-if="searchQuery">Try a different search term</span>
-                <span v-else>Create your first custom widget!</span>
-              </div>
-            </div>
-          </div>
           </main>
         </div>
 
@@ -254,14 +254,14 @@ export default {
       currentLayout.value = layout;
     };
 
+    document.body.setAttribute('data-page', 'terminal-widget-manager');
+
     onMounted(async () => {
       // Definitions are fetched at startup (store initializeStore Phase 2).
       // If somehow not yet loaded (e.g. race condition), fetch now as fallback.
       if (!store.getters['widgetDefinitions/isLoaded']) {
         await store.dispatch('widgetDefinitions/fetchDefinitions');
       }
-
-      document.body.setAttribute('data-page', 'terminal-widget-manager');
     });
 
     const customDefinitions = computed(() => store.getters['widgetDefinitions/allDefinitions']);

@@ -266,30 +266,74 @@ Always be helpful, creative, and guide users through the tool creation process s
         {
           type: 'function',
           function: {
-            name: 'generate_widget_update',
-            description: 'Generate a complete self-contained HTML widget based on natural language instructions. The generated widget will be a full HTML document with embedded CSS and JavaScript that renders in a sandboxed iframe.',
+            name: 'edit_widget_code',
+            description: 'Apply surgical search/replace edits to the current widget source code. Use this for bug fixes, style tweaks, adding features, or any targeted modification. You construct the diffs directly from the source code visible in your system prompt. Each edit is a { search, replace } pair applied sequentially.',
+            parameters: {
+              type: 'object',
+              properties: {
+                edits: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      search: { type: 'string', description: 'Exact string to find in the current source code' },
+                      replace: { type: 'string', description: 'Replacement string' },
+                    },
+                    required: ['search', 'replace'],
+                  },
+                  description: 'Array of search/replace pairs to apply sequentially',
+                },
+                description: {
+                  type: 'string',
+                  description: 'Brief summary of what these edits accomplish',
+                },
+              },
+              required: ['edits', 'description'],
+            },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'generate_widget',
+            description: 'Generate a complete self-contained HTML widget from scratch via a specialized code-generation LLM. Use this when creating a brand new widget or doing a complete rewrite. For smaller edits to existing code, prefer edit_widget_code instead.',
             parameters: {
               type: 'object',
               properties: {
                 instruction: {
                   type: 'string',
-                  description: 'Natural language instruction describing what to do with the widget',
-                },
-                currentWidgetState: {
-                  type: 'object',
-                  description: 'Current state/configuration of the widget being modified (optional)',
+                  description: 'Natural language instruction describing what to build',
                 },
                 operationType: {
                   type: 'string',
-                  enum: ['create', 'update', 'modify'],
-                  description: 'Type of operation to perform',
+                  enum: ['create', 'rewrite'],
+                  description: 'Whether this is a new widget or a complete rewrite of an existing one',
                 },
                 useThemeStyles: {
                   type: 'boolean',
-                  description: 'When true, the widget uses the app\'s CSS theme variables (colors, spacing, typography) instead of hardcoded values so it matches the app look and feel. Default to true unless the user explicitly wants custom/standalone styling.',
+                  description: 'When true, the widget uses the app\'s CSS theme variables for styling. Default to true unless the user explicitly wants custom/standalone styling.',
                 },
               },
               required: ['instruction'],
+            },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'update_widget_config',
+            description: 'Update widget metadata/configuration without touching the source code. Use this for renaming, changing icon, category, description, size constraints, or widget type.',
+            parameters: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'New widget name' },
+                description: { type: 'string', description: 'New widget description' },
+                icon: { type: 'string', description: 'New FontAwesome icon class (e.g. "fas fa-chart-bar")' },
+                category: { type: 'string', description: 'New category' },
+                widget_type: { type: 'string', enum: ['html', 'template', 'iframe', 'markdown'], description: 'New widget type' },
+                default_size: { type: 'object', properties: { cols: { type: 'integer' }, rows: { type: 'integer' } }, description: 'New default grid size' },
+                min_size: { type: 'object', properties: { cols: { type: 'integer' }, rows: { type: 'integer' } }, description: 'New minimum grid size' },
+              },
             },
           },
         },
@@ -352,21 +396,36 @@ Widget ID: ${widgetId}
 CURRENT WIDGET STATE:
 ${widgetSummary}
 
-AVAILABLE FUNCTIONS:
-1. **generate_widget_update** - Your primary function for all widget creation and modification tasks
-2. **save_widget** - Save a widget definition to the database
-3. **load_widget** - Load an existing widget by ID
+AVAILABLE TOOLS:
+1. **edit_widget_code** — Apply surgical search/replace edits to the current source code
+2. **generate_widget** — Generate a complete HTML widget from scratch (uses a specialized code LLM)
+3. **update_widget_config** — Update widget metadata (name, icon, category, size, etc.) without touching code
+4. **save_widget** — Save a widget definition to the database
+5. **load_widget** — Load an existing widget by ID
+
+TOOL SELECTION GUIDELINES:
+- **No source code yet** → use \`generate_widget\` to create the initial widget
+- **Small/medium change to existing code** (fix a bug, change a color, add a feature) → use \`edit_widget_code\` with precise search/replace pairs from the source code above
+- **Complete rewrite** (start over, fundamentally different approach) → use \`generate_widget\` with operationType "rewrite"
+- **Metadata only** (rename, change icon, resize, re-categorize) → use \`update_widget_config\`
+- You can combine \`edit_widget_code\` + \`update_widget_config\` in one turn when both code and metadata need changing
+
+USING edit_widget_code:
+- The current source code is shown above — use EXACT strings from it for the "search" field
+- Each { search, replace } pair is applied sequentially to the source
+- If a search string isn't found, that edit is skipped and reported as failed — you can retry with corrected strings
+- Keep search strings unique enough to match exactly one location
+
+USING generate_widget:
+- This calls a specialized code-generation LLM that returns a complete HTML document
+- The source_code must be a COMPLETE HTML document (<!DOCTYPE html><html>...</html>) that renders directly in an iframe
+- Hardcode demo/sample data directly in the HTML
 
 WIDGET TYPES:
-- **html** - Custom HTML/CSS/JS in a sandboxed iframe (most common)
-- **template** - Pre-built templates (metric-card, chart, list, etc.)
-- **iframe** - External URL embedded in an iframe
-- **markdown** - Markdown content rendered as a widget
-
-CRITICAL: When using generate_widget_update, the tool will generate a complete self-contained HTML document.
-The source_code field must be a COMPLETE HTML document (<!DOCTYPE html><html>...</html>) that renders directly in an iframe.
-Do NOT generate JavaScript code with variables or return statements - generate pure HTML with embedded <style> and <script> tags.
-Hardcode demo/sample data directly in the HTML.
+- **html** — Custom HTML/CSS/JS in a sandboxed iframe (most common)
+- **template** — Pre-built templates (metric-card, chart, list, etc.)
+- **iframe** — External URL embedded in an iframe
+- **markdown** — Markdown content rendered as a widget
 
 Always be helpful and guide users through the widget creation process step by step.`;
     },

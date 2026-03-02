@@ -1829,21 +1829,104 @@ async function executeWidgetFunction(functionName, args, authToken, context) {
     let result;
 
     switch (functionName) {
-      case 'generate_widget_update':
+      case 'edit_widget_code': {
+        try {
+          const currentSource = widgetState?.source_code || '';
+          if (!currentSource) {
+            result = {
+              success: false,
+              error: 'No source code exists yet. Use generate_widget to create the initial widget first.',
+              message: 'Cannot apply edits — no source code found.',
+            };
+            break;
+          }
+
+          let updatedSource = currentSource;
+          const applied = [];
+          const failed = [];
+
+          for (let i = 0; i < args.edits.length; i++) {
+            const edit = args.edits[i];
+            if (updatedSource.includes(edit.search)) {
+              updatedSource = updatedSource.replace(edit.search, edit.replace);
+              applied.push({ index: i, search: edit.search.substring(0, 80) });
+            } else {
+              failed.push({ index: i, search: edit.search.substring(0, 80), reason: 'Search string not found in source code' });
+            }
+          }
+
+          if (applied.length === 0) {
+            result = {
+              success: false,
+              error: 'None of the search strings were found in the current source code.',
+              failed,
+              message: 'No edits could be applied. Check that your search strings exactly match the current source code.',
+            };
+            break;
+          }
+
+          // Build widget data with updated source
+          const widgetData = { source_code: updatedSource };
+          const existingId = widgetState?.id;
+          const isExistingWidget = existingId && existingId !== 'widget-forge';
+
+          // Auto-save to DB
+          let savedWidgetId = existingId;
+          try {
+            if (db && isExistingWidget) {
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `UPDATE widget_definitions SET source_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                  [updatedSource, existingId],
+                  (err) => (err ? reject(err) : resolve())
+                );
+              });
+              widgetData.id = savedWidgetId;
+            }
+          } catch (saveErr) {
+            console.error('Widget auto-save failed:', saveErr.message);
+          }
+
+          const frontendEvents = generateWidgetFrontendEvents(widgetData, 'update');
+          if (savedWidgetId && savedWidgetId !== 'widget-forge') {
+            frontendEvents.push({
+              type: 'widget-autosaved',
+              data: { id: savedWidgetId, widgetData: { ...widgetState, source_code: updatedSource } },
+            });
+          }
+
+          result = {
+            success: true,
+            applied,
+            failed: failed.length > 0 ? failed : undefined,
+            description: args.description,
+            message: `Applied ${applied.length}/${args.edits.length} edits: ${args.description}`,
+            frontendEvents,
+          };
+        } catch (editError) {
+          console.error('Error in edit_widget_code:', editError);
+          result = {
+            success: false,
+            error: editError.message,
+            message: 'Failed to apply edits to widget code.',
+          };
+        }
+        break;
+      }
+
+      case 'generate_widget': {
         try {
           let enhancedInstruction = args.instruction;
 
-          if (args.currentWidgetState && Object.keys(args.currentWidgetState).length > 0) {
-            enhancedInstruction = `Current widget state: ${JSON.stringify(args.currentWidgetState, null, 2)}\n\nInstruction: ${
-              args.instruction
-            }\n\nPlease modify the existing widget according to the instruction, keeping existing fields that aren't being changed.`;
+          // If rewriting, include current source for context
+          if (args.operationType === 'rewrite' && widgetState?.source_code) {
+            enhancedInstruction = `Current widget source code:\n${widgetState.source_code}\n\nInstruction: ${args.instruction}\n\nCompletely rewrite the widget according to the instruction.`;
           }
 
-          // Generate widget HTML directly via LLM — returns raw HTML, not JSON
+          // Generate widget HTML via second LLM call
           const client = await createLlmClient(context.provider || 'openai', userId);
           const adapter = await createLlmAdapter(context.provider || 'openai', client, context.model || 'gpt-4');
 
-          // Build theme styles section if useThemeStyles is enabled (default: true)
           const useTheme = args.useThemeStyles !== false;
           let themeSection = '';
           if (useTheme) {
@@ -1960,15 +2043,14 @@ USER REQUEST: ${enhancedInstruction}`;
           };
 
           // Auto-save the generated widget to the database
-          const operationType = args.operationType || 'update';
-          const existingId = args.currentWidgetState?.id || widgetState?.id;
+          const operationType = args.operationType || 'create';
+          const existingId = widgetState?.id;
           const isExistingWidget = existingId && existingId !== 'widget-forge';
 
           let savedWidgetId = existingId;
           try {
             if (db) {
               if (isExistingWidget) {
-                // Update existing widget
                 await new Promise((resolve, reject) => {
                   db.run(
                     `UPDATE widget_definitions SET name = ?, description = ?, source_code = ?, widget_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
@@ -1977,7 +2059,6 @@ USER REQUEST: ${enhancedInstruction}`;
                   );
                 });
               } else {
-                // Create new widget
                 savedWidgetId = 'cw_' + randomUUID().replace(/-/g, '').slice(0, 12);
                 await new Promise((resolve, reject) => {
                   db.run(
@@ -2008,7 +2089,6 @@ USER REQUEST: ${enhancedInstruction}`;
           }
 
           const frontendEvents = generateWidgetFrontendEvents(widgetData, operationType);
-          // Notify frontend of the saved widget so it tracks the persisted record
           if (savedWidgetId && savedWidgetId !== 'widget-forge') {
             frontendEvents.push({
               type: 'widget-autosaved',
@@ -2018,20 +2098,99 @@ USER REQUEST: ${enhancedInstruction}`;
 
           result = {
             success: true,
-            widgetData: widgetData,
+            widgetData,
             operationType,
-            message: `Successfully ${operationType} widget based on instruction: "${args.instruction}"`,
+            message: `Successfully generated widget: "${widgetData.name}"`,
             frontendEvents,
           };
         } catch (generationError) {
-          console.error('Error in widget generation:', generationError);
+          console.error('Error in generate_widget:', generationError);
           result = {
             success: false,
             error: generationError.message,
-            message: 'Failed to generate/update widget. Please try rephrasing your instruction.',
+            message: 'Failed to generate widget. Please try rephrasing your instruction.',
           };
         }
         break;
+      }
+
+      case 'update_widget_config': {
+        try {
+          const configFields = ['name', 'description', 'icon', 'category', 'widget_type', 'default_size', 'min_size'];
+          const updates = {};
+          for (const field of configFields) {
+            if (args[field] !== undefined) {
+              updates[field] = args[field];
+            }
+          }
+
+          if (Object.keys(updates).length === 0) {
+            result = {
+              success: false,
+              error: 'No fields provided to update.',
+              message: 'Please specify at least one field to update (name, description, icon, category, widget_type, default_size, min_size).',
+            };
+            break;
+          }
+
+          const existingId = widgetState?.id;
+          const isExistingWidget = existingId && existingId !== 'widget-forge';
+
+          // Auto-save to DB
+          if (db && isExistingWidget) {
+            const setClauses = [];
+            const params = [];
+            for (const [field, value] of Object.entries(updates)) {
+              setClauses.push(`${field} = ?`);
+              params.push(typeof value === 'object' ? JSON.stringify(value) : value);
+            }
+            setClauses.push('updated_at = CURRENT_TIMESTAMP');
+            params.push(existingId);
+
+            try {
+              await new Promise((resolve, reject) => {
+                db.run(
+                  `UPDATE widget_definitions SET ${setClauses.join(', ')} WHERE id = ?`,
+                  params,
+                  (err) => (err ? reject(err) : resolve())
+                );
+              });
+            } catch (saveErr) {
+              console.error('Widget config auto-save failed:', saveErr.message);
+            }
+          }
+
+          // Generate frontend events for each changed field
+          const frontendEvents = [];
+          for (const [field, value] of Object.entries(updates)) {
+            frontendEvents.push({
+              type: 'widget-field-updated',
+              data: { field, value },
+            });
+          }
+          if (isExistingWidget) {
+            frontendEvents.push({
+              type: 'widget-autosaved',
+              data: { id: existingId, widgetData: { ...widgetState, ...updates } },
+            });
+          }
+
+          result = {
+            success: true,
+            updated: updates,
+            message: `Updated widget config: ${Object.keys(updates).join(', ')}`,
+            frontendEvents,
+          };
+        } catch (configError) {
+          console.error('Error in update_widget_config:', configError);
+          result = {
+            success: false,
+            error: configError.message,
+            message: 'Failed to update widget configuration.',
+          };
+        }
+        break;
+      }
 
       case 'save_widget':
         if (args.widgetData && db) {
@@ -2136,38 +2295,20 @@ USER REQUEST: ${enhancedInstruction}`;
 function generateWidgetFrontendEvents(widgetData, operationType) {
   const events = [];
 
-  if (widgetData.name) {
-    events.push({
-      type: 'widget-field-updated',
-      data: { field: 'name', value: widgetData.name },
-    });
-  }
-
-  if (widgetData.description) {
-    events.push({
-      type: 'widget-field-updated',
-      data: { field: 'description', value: widgetData.description },
-    });
+  const fieldsToPush = ['name', 'description', 'widget_type', 'icon', 'category', 'config', 'default_size', 'min_size'];
+  for (const field of fieldsToPush) {
+    if (widgetData[field] !== undefined) {
+      events.push({
+        type: 'widget-field-updated',
+        data: { field, value: widgetData[field] },
+      });
+    }
   }
 
   if (widgetData.source_code || widgetData.code) {
     events.push({
       type: 'widget-field-updated',
       data: { field: 'source_code', value: widgetData.source_code || widgetData.code },
-    });
-  }
-
-  if (widgetData.widget_type) {
-    events.push({
-      type: 'widget-field-updated',
-      data: { field: 'widget_type', value: widgetData.widget_type },
-    });
-  }
-
-  if (widgetData.config) {
-    events.push({
-      type: 'widget-field-updated',
-      data: { field: 'config', value: widgetData.config },
     });
   }
 

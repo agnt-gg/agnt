@@ -287,7 +287,13 @@ export default {
         case 'widget-field-updated':
           if (eventData?.field && eventData.value !== undefined) {
             if (eventData.field in form) {
-              form[eventData.field] = eventData.value;
+              const value = eventData.value;
+              // Deep-assign object fields (default_size, min_size) to preserve reactivity
+              if (typeof value === 'object' && value !== null && !Array.isArray(value) && typeof form[eventData.field] === 'object' && form[eventData.field] !== null) {
+                Object.assign(form[eventData.field], value);
+              } else {
+                form[eventData.field] = value;
+              }
               previewKey.value++;
             }
           }

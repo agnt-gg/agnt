@@ -374,7 +374,8 @@ export default {
           }
         }
 
-        if (toolCall.name === 'generate_widget_update' && toolResult.success && toolResult.frontendEvents) {
+        const widgetTools = ['edit_widget_code', 'generate_widget', 'update_widget_config'];
+        if (widgetTools.includes(toolCall.name) && toolResult.success && toolResult.frontendEvents) {
           toolResult.frontendEvents.forEach((event) => {
             handleFrontendEvent(event.type, event.data);
           });

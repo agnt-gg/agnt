@@ -102,12 +102,7 @@
               </button>
             </Tooltip>
             <Tooltip text="AI Provider Settings" width="auto">
-              <button
-                v-if="!isStreaming"
-                ref="providerSelectorButtonRef"
-                @click="toggleProviderSelector"
-                class="chat-provider-button"
-              >
+              <button v-if="!isStreaming" ref="providerSelectorButtonRef" @click="toggleProviderSelector" class="chat-provider-button">
                 <i class="fas fa-robot"></i>
               </button>
             </Tooltip>
@@ -1121,6 +1116,10 @@ body[data-page='terminal-marketplace'] .main-panel {
 }
 
 body[data-page='terminal-widget-manager'] .main-panel {
+  padding: 16px 0;
+}
+
+body[data-page='terminal-widget-forge'] .main-panel {
   padding: 16px 0;
 }
 
