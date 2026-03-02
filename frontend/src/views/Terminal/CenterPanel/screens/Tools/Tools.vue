@@ -55,7 +55,7 @@
         </div>
 
         <!-- Main Content (Sidebar moved to LeftPanel) -->
-        <div class="tools-content">
+        <div class="tools-content" @click="onContentClick">
           <main class="tools-main-content fade-in">
             <!-- List View -->
             <div v-if="currentLayout === 'table'" class="wm-list">
@@ -610,6 +610,12 @@ export default {
     });
 
     // --- Methods ---
+    const onContentClick = (e) => {
+      if (!e.target.closest('.tool-card, .wm-list-row')) {
+        selectedTool.value = null;
+      }
+    };
+
     const selectTool = (tool) => {
       // Play sound when selecting a tool
       if (playSound) {
@@ -916,6 +922,7 @@ export default {
       activeTab,
       tableColumns,
       selectTab,
+      onContentClick,
       selectTool,
       handleSearch,
       handlePanelAction,

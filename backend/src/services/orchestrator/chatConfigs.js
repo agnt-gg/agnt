@@ -365,6 +365,23 @@ Always be helpful, creative, and guide users through the tool creation process s
             },
           },
         },
+        {
+          type: 'function',
+          function: {
+            name: 'get_agnt_api',
+            description: 'Look up AGNT backend API endpoints so you can build widgets that fetch live data. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements.',
+            parameters: {
+              type: 'object',
+              properties: {
+                section: {
+                  type: 'string',
+                  description: 'API section to get details for. Omit for a full overview of all endpoints.',
+                  enum: ['agents', 'executions', 'workflows', 'goals', 'tools', 'custom-tools', 'content-outputs', 'user', 'models', 'plugins', 'webhooks', 'custom-providers', 'widget-definitions', 'mcp', 'tool-schemas', 'speech', 'streams', 'npm'],
+                },
+              },
+            },
+          },
+        },
       ];
     },
     buildSystemPrompt(currentDate, context) {
@@ -402,6 +419,7 @@ AVAILABLE TOOLS:
 3. **update_widget_config** — Update widget metadata (name, icon, category, size, etc.) without touching code
 4. **save_widget** — Save a widget definition to the database
 5. **load_widget** — Load an existing widget by ID
+6. **get_agnt_api** — Look up AGNT backend API endpoints (call without args for overview, with section name for details)
 
 TOOL SELECTION GUIDELINES:
 - **No source code yet** → use \`generate_widget\` to create the initial widget
@@ -426,6 +444,12 @@ WIDGET TYPES:
 - **template** — Pre-built templates (metric-card, chart, list, etc.)
 - **iframe** — External URL embedded in an iframe
 - **markdown** — Markdown content rendered as a widget
+
+USING get_agnt_api:
+- When building widgets that display live data from AGNT (agents, workflows, executions, goals, etc.), use \`get_agnt_api\` to look up the available endpoints
+- Call with no args first to see the full overview, then call with a section name for details
+- Widgets run in iframes with allow-same-origin, so \`localStorage.getItem('token')\` works for auth
+- Use \`window.location.origin + '/api'\` as the base URL (works in both dev and production)
 
 Always be helpful and guide users through the widget creation process step by step.`;
     },

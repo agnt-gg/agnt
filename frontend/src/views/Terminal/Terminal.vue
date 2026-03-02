@@ -168,8 +168,19 @@ export default {
     };
 
     onMounted(() => {
-      // After the initial screen (Chat) renders, preload all other screens in background
-      // requestIdleCallback defers until the browser is idle, so Chat loads first
+      // Eagerly load the active screen if it's not already available
+      // This ensures reloading on /workflows (etc.) shows content immediately
+      const currentScreen = activeScreen.value;
+      if (!screenComponents[currentScreen]) {
+        const entry = screenLoaders.find(([name]) => name === currentScreen);
+        if (entry) {
+          entry[1]()
+            .then((mod) => { screenComponents[currentScreen] = markRaw(mod.default); })
+            .catch((err) => console.warn(`[eager] Failed to load ${currentScreen}:`, err));
+        }
+      }
+
+      // Preload remaining screens in background after the active screen renders
       const startPreload = () => preloadScreens();
       if (typeof requestIdleCallback === 'function') {
         requestIdleCallback(startPreload);

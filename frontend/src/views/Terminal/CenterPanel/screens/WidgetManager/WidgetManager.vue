@@ -5,6 +5,7 @@
     activeRightPanel="WidgetManagerPanel"
     screenId="WidgetManagerScreen"
     :showInput="false"
+    :panelProps="panelProps"
     @screen-change="(screenName) => $emit('screen-change', screenName)"
     @panel-action="handlePanelAction"
   >
@@ -51,7 +52,7 @@
         </div>
 
         <!-- Widget grid -->
-        <div class="wm-content">
+        <div class="wm-content" @click="onContentClick">
           <main class="wm-main-content">
             <!-- Grid View -->
             <div v-if="currentLayout === 'grid'" class="wm-grid">
@@ -59,8 +60,8 @@
                 v-for="widget in filteredWidgets"
                 :key="widget.id"
                 class="wm-card"
-                :class="{ 'wm-custom': widget._isCustom }"
-                @click="widget._isCustom ? openEditor(widget) : null"
+                :class="{ 'wm-custom': widget._isCustom, 'wm-selected': selectedWidget?.id === widget.id }"
+                @click="selectWidget(widget)"
               >
                 <!-- Preview area (custom widgets only) -->
                 <div v-if="widget._isCustom && widget._definition && hasPreview(widget)" class="wm-card-preview">
@@ -128,8 +129,8 @@
                 v-for="widget in filteredWidgets"
                 :key="widget.id"
                 class="wm-list-row"
-                :class="{ 'wm-custom': widget._isCustom }"
-                @click="widget._isCustom ? openEditor(widget) : null"
+                :class="{ 'wm-custom': widget._isCustom, 'wm-selected': selectedWidget?.id === widget.id }"
+                @click="selectWidget(widget)"
               >
                 <div class="wm-list-icon"><i :class="widget.icon"></i></div>
                 <div class="wm-list-name">{{ widget.name }}</div>
@@ -227,7 +228,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 import { getAllWidgets } from '@/canvas/widgetRegistry.js';
 import BaseScreen from '../../BaseScreen.vue';
@@ -240,6 +241,7 @@ export default {
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
+    const playSound = inject('playSound', () => {});
     const searchQuery = ref('');
     const activeCategory = ref('all');
     const showImportModal = ref(false);
@@ -249,10 +251,31 @@ export default {
     const deleteTarget = ref(null);
     const currentLayout = ref('grid');
     const sortOrder = ref('az');
+    const selectedWidget = ref(null);
 
     const setLayout = (layout) => {
       currentLayout.value = layout;
     };
+
+    function onContentClick(e) {
+      if (!e.target.closest('.wm-card, .wm-list-row')) {
+        selectedWidget.value = null;
+      }
+    }
+
+    function selectWidget(widget) {
+      if (playSound) playSound('typewriterKeyPress');
+      if (selectedWidget.value?.id === widget.id) {
+        selectedWidget.value = null;
+        nextTick(() => { selectedWidget.value = widget; });
+      } else {
+        selectedWidget.value = widget;
+      }
+    }
+
+    const panelProps = computed(() => ({
+      selectedWidget: selectedWidget.value,
+    }));
 
     document.body.setAttribute('data-page', 'terminal-widget-manager');
 
@@ -470,8 +493,12 @@ export default {
 
     async function doDelete() {
       if (deleteTarget.value) {
-        await store.dispatch('widgetDefinitions/deleteDefinition', deleteTarget.value.id);
+        const deletedId = deleteTarget.value.id;
+        await store.dispatch('widgetDefinitions/deleteDefinition', deletedId);
         deleteTarget.value = null;
+        if (selectedWidget.value?.id === deletedId) {
+          selectedWidget.value = null;
+        }
       }
     }
 
@@ -521,11 +548,19 @@ export default {
       } else if (action === 'category-filter-changed' && payload) {
         activeCategory.value = payload.selectedCategory || 'all';
       } else if (action === 'select-widget' && payload) {
-        if (payload._isCustom || payload._definition) {
-          openEditor(payload);
-        }
+        selectWidget(payload);
       } else if (action === 'import-widget') {
         showImportModal.value = true;
+      } else if (action === 'edit-widget' && payload) {
+        openEditor(payload);
+      } else if (action === 'delete-widget' && payload) {
+        confirmDelete(payload);
+      } else if (action === 'duplicate-widget' && payload) {
+        duplicateWidget(payload);
+      } else if (action === 'export-widget' && payload) {
+        exportWidget(payload);
+      } else if (action === 'clear-selection' || action === 'close-panel') {
+        selectedWidget.value = null;
       }
     }
 
@@ -539,12 +574,16 @@ export default {
       isDragOver,
       deleteTarget,
       currentLayout,
+      selectedWidget,
+      panelProps,
       setLayout,
       categoryTabs,
       filteredWidgets,
       formatSize,
       hasPreview,
       getPreviewHtml,
+      onContentClick,
+      selectWidget,
       createNewWidget,
       openEditor,
       duplicateWidget,
@@ -751,13 +790,21 @@ export default {
   transition: all 0.15s;
 }
 
-.wm-list-row.wm-custom {
+.wm-list-row {
   cursor: pointer;
+}
+
+.wm-list-row.wm-custom {
   border-left: 3px solid var(--color-green);
 }
 
 .wm-list-row:not(.wm-custom) {
   border-left: 3px solid var(--color-blue);
+}
+
+.wm-list-row.wm-selected {
+  border-color: rgba(var(--green-rgb), 0.4);
+  background: rgba(var(--green-rgb), 0.06);
 }
 
 .wm-list-row:hover {
@@ -852,8 +899,13 @@ export default {
   overflow: hidden;
 }
 
-.wm-card.wm-custom {
+.wm-card {
   cursor: pointer;
+}
+
+.wm-card.wm-selected {
+  border-color: rgba(var(--green-rgb), 0.4);
+  box-shadow: 0 0 0 1px rgba(var(--green-rgb), 0.2), 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .wm-card:hover {

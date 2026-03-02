@@ -25,9 +25,7 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
-        <span v-if="globalModelLabel" class="cv-global-model" :title="globalModelLabel">
-          default: {{ globalModelLabel }}
-        </span>
+        <span v-if="globalModelLabel" class="cv-global-model" :title="globalModelLabel"> default: {{ globalModelLabel }} </span>
         <button v-if="onCustomPage" class="cv-btn" @click="showCatalog = true" title="Add widget">+</button>
         <button v-if="onCustomPage" class="cv-btn" @click="resetCurrentPage" title="Reset layout">&#8635;</button>
 
@@ -510,7 +508,10 @@ export default {
 
       if (!store.getters['widgetLayout/isLoaded']) {
         // Fire and forget - don't block render. Store already has localStorage data.
-        store.dispatch('widgetLayout/fetchLayouts');
+        // Once layouts finish loading, re-ensure current screen page exists
+        store.dispatch('widgetLayout/fetchLayouts').then(() => {
+          ensurePageForScreen(props.screenName);
+        });
       }
       // Synchronous - commits happen immediately, API calls are background
       ensurePageForScreen(props.screenName);
@@ -658,7 +659,7 @@ export default {
 
 .cv-global-model {
   font-size: 11px;
-  color: var(--color-text-muted, #667);
+  color: var(--color-primary);
   letter-spacing: 0.5px;
   max-width: 200px;
   overflow: hidden;

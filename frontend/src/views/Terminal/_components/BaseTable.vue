@@ -341,22 +341,8 @@ export default {
         }
       });
 
-      // Set up interval to check periodically (handles dynamic content changes)
-      cleanup.setInterval(checkForScrollbars, 500);
-
-      // Add resize listener
+      // Add resize listener (covers window size changes)
       cleanup.addEventListener(window, 'resize', checkForScrollbars);
-
-      // Apply a manual fix immediately when component mounts
-      cleanup.setTimeout(() => {
-        const tableContainer = document.querySelector('.table-container');
-        if (tableContainer && tableContainer.scrollHeight > tableContainer.clientHeight) {
-          document.body.setAttribute('data-has-scroll', 'true');
-          if (baseTableRef.value) {
-            baseTableRef.value.setAttribute('data-has-scroll', 'true');
-          }
-        }
-      }, 100);
     });
 
     onUnmounted(() => {

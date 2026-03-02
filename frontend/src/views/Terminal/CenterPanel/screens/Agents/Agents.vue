@@ -18,7 +18,7 @@
     @base-mounted="initializeScreen"
   >
     <template #default="{ terminalLines }">
-      <div class="agents-panel" :class="{ 'has-details': selectedAgent, expanded: isDetailsExpanded }">
+      <div class="agents-panel" :class="{ 'has-details': selectedAgent, expanded: isDetailsExpanded }" @click="onContentClick">
         <!-- Header bar -->
         <ScreenToolbar
           title="AGENTS"
@@ -470,6 +470,12 @@ export default {
 
     const handleSearch = (query) => {
       searchQuery.value = query;
+    };
+
+    const onContentClick = (e) => {
+      if (!e.target.closest('.agent-card, .table-row, .screen-toolbar, .wm-tabs')) {
+        selectedAgent.value = null;
+      }
     };
 
     const selectAgent = (agent) => {
@@ -1684,6 +1690,7 @@ export default {
       criticalDataReady,
       selectedAgent,
       handlePanelAction,
+      onContentClick,
       selectAgent,
       formatUptime,
       emit,

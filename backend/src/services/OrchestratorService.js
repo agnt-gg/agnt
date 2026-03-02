@@ -18,6 +18,7 @@ import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer } from '../stream/uti
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
+import { getOverview, getSectionDetail } from './orchestrator/apiReference.js';
 import conversationManager from './ConversationManager.js';
 import autonomousMessageService from './AutonomousMessageService.js';
 
@@ -2341,6 +2342,19 @@ USER REQUEST: ${enhancedInstruction}`;
           };
         }
         break;
+
+      case 'get_agnt_api': {
+        const section = args.section;
+        const reference = section ? getSectionDetail(section) : getOverview();
+        result = {
+          success: true,
+          reference,
+          message: section
+            ? `API details for "${section}" section returned.`
+            : 'Full API overview returned. Call again with a section name for endpoint details.',
+        };
+        break;
+      }
 
       default:
         result = {

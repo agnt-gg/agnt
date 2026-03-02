@@ -25,7 +25,7 @@
         subtitle="Browse, monitor, and control your active workflows." 
       /> -->
 
-      <div class="workflows-panel">
+      <div class="workflows-panel" @click="onContentClick">
         <!-- Header bar -->
         <ScreenToolbar
           title="WORKFLOWS"
@@ -597,6 +597,12 @@ export default {
     const clearInput = () => baseScreenRef.value?.clearInput();
     const setInputDisabled = (disabled) => baseScreenRef.value?.setInputDisabled(disabled);
 
+    const onContentClick = (e) => {
+      if (!e.target.closest('.workflow-card, .table-row, .screen-toolbar, .wm-tabs')) {
+        selectedWorkflowId.value = null;
+      }
+    };
+
     const handleWorkflowClick = (workflow) => {
       playSound('typewriterKeyPress');
       selectedWorkflowId.value = workflow.id;
@@ -1112,6 +1118,7 @@ export default {
       selectTab,
       filteredWorkflows,
       selectedWorkflowId,
+      onContentClick,
       handleWorkflowClick,
       handleWorkflowDoubleClick,
       getToolsDisplay,
