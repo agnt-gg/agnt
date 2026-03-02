@@ -1845,10 +1845,61 @@ async function executeWidgetFunction(functionName, args, authToken, context) {
           const applied = [];
           const failed = [];
 
+          // Normalize whitespace for fuzzy matching: collapse runs of whitespace to single space
+          const normalizeWS = (s) => s.replace(/\s+/g, ' ').trim();
+
+          // Find the actual substring in source that matches the search string with normalized whitespace
+          function fuzzyFind(source, search) {
+            // Try exact match first
+            const exactIdx = source.indexOf(search);
+            if (exactIdx !== -1) return { start: exactIdx, end: exactIdx + search.length };
+
+            // Fuzzy: normalize both and find the match, then map back to original positions
+            const normSearch = normalizeWS(search);
+            if (!normSearch) return null;
+
+            // Slide through source, building normalized windows
+            let srcPos = 0;
+            const srcLen = source.length;
+            while (srcPos < srcLen) {
+              // Skip to next non-space or start
+              let windowStart = srcPos;
+              let normWindow = '';
+              let windowEnd = srcPos;
+
+              // Build normalized window character by character
+              while (windowEnd < srcLen) {
+                const ch = source[windowEnd];
+                if (/\s/.test(ch)) {
+                  // Collapse whitespace
+                  if (!normWindow.endsWith(' ') && normWindow.length > 0) {
+                    normWindow += ' ';
+                  }
+                  windowEnd++;
+                } else {
+                  normWindow += ch;
+                  windowEnd++;
+                }
+
+                // Check if we have a match
+                const trimmedWindow = normWindow.trim();
+                if (trimmedWindow === normSearch) {
+                  return { start: windowStart, end: windowEnd };
+                }
+
+                // If window is already longer than search, bail
+                if (trimmedWindow.length > normSearch.length + 10) break;
+              }
+              srcPos++;
+            }
+            return null;
+          }
+
           for (let i = 0; i < args.edits.length; i++) {
             const edit = args.edits[i];
-            if (updatedSource.includes(edit.search)) {
-              updatedSource = updatedSource.replace(edit.search, edit.replace);
+            const match = fuzzyFind(updatedSource, edit.search);
+            if (match) {
+              updatedSource = updatedSource.substring(0, match.start) + edit.replace + updatedSource.substring(match.end);
               applied.push({ index: i, search: edit.search.substring(0, 80) });
             } else {
               failed.push({ index: i, search: edit.search.substring(0, 80), reason: 'Search string not found in source code' });
@@ -1885,6 +1936,11 @@ async function executeWidgetFunction(functionName, args, authToken, context) {
             }
           } catch (saveErr) {
             console.error('Widget auto-save failed:', saveErr.message);
+          }
+
+          // Update context so subsequent tool calls in the same turn see the updated source
+          if (widgetState) {
+            widgetState.source_code = updatedSource;
           }
 
           const frontendEvents = generateWidgetFrontendEvents(widgetData, 'update');
@@ -2088,6 +2144,15 @@ USER REQUEST: ${enhancedInstruction}`;
             console.error('Widget auto-save failed:', saveErr.message);
           }
 
+          // Update context so subsequent tool calls in the same turn see the updated source
+          if (widgetState) {
+            widgetState.source_code = content;
+            widgetState.name = widgetData.name;
+            widgetState.description = widgetData.description;
+            widgetState.widget_type = widgetData.widget_type;
+            if (savedWidgetId) widgetState.id = savedWidgetId;
+          }
+
           const frontendEvents = generateWidgetFrontendEvents(widgetData, operationType);
           if (savedWidgetId && savedWidgetId !== 'widget-forge') {
             frontendEvents.push({
@@ -2158,6 +2223,11 @@ USER REQUEST: ${enhancedInstruction}`;
             } catch (saveErr) {
               console.error('Widget config auto-save failed:', saveErr.message);
             }
+          }
+
+          // Update context so subsequent tool calls in the same turn see the updated config
+          if (widgetState) {
+            Object.assign(widgetState, updates);
           }
 
           // Generate frontend events for each changed field

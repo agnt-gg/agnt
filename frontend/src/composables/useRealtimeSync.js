@@ -223,9 +223,12 @@ export function useRealtimeSync() {
     });
 
     // Chat events (real-time message sync across tabs)
+    // Only forward events from main chat types (orchestrator, agent) — not widget/workflow/tool/goal chats
+    const isMainChatEvent = (data) => !data.chatType || data.chatType === 'orchestrator' || data.chatType === 'agent';
+
     socket.on('chat:user_message', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] User message from another tab:', data);
-      // Store will handle updating the UI
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'user_message',
         ...data,
@@ -233,6 +236,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:message_start', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Assistant message started:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'message_start',
@@ -241,7 +245,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:content_delta', (data) => {
-      console.log('[Realtime] Content delta:', data.delta);
+      if (!isMainChatEvent(data)) return;
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'content_delta',
         ...data,
@@ -249,6 +253,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:tool_start', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Tool started:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'tool_start',
@@ -257,6 +262,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:tool_end', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Tool ended:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'tool_end',
@@ -265,6 +271,7 @@ export function useRealtimeSync() {
     });
 
     socket.on('chat:message_end', (data) => {
+      if (!isMainChatEvent(data)) return;
       console.log('[Realtime] Message ended:', data);
       store.dispatch('chat/handleRealtimeChatEvent', {
         type: 'message_end',

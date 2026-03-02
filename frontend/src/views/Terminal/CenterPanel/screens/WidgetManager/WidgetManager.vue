@@ -679,10 +679,17 @@ export default {
 
 .wm-main-content {
   flex: 1;
-  min-height: 0;
+  height: 100%;
   overflow-y: scroll !important;
   scrollbar-width: thin !important;
-  padding: 0 16px 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.wm-main-content > * {
+  width: 100%;
+  max-width: 1048px;
+  margin-right: -10px;
 }
 
 .wm-main-content::-webkit-scrollbar {

@@ -20,6 +20,10 @@
           <span class="wf-toolbar-title">{{ isEditing ? 'EDIT WIDGET' : 'NEW WIDGET' }}</span>
 
           <div class="wf-toolbar-right">
+            <span v-if="autosaveStatus" class="wf-autosave-status" :class="'wf-autosave-' + autosaveStatus">
+              <i :class="autosaveStatus === 'saving' ? 'fas fa-circle-notch fa-spin' : autosaveStatus === 'saved' ? 'fas fa-check' : 'fas fa-exclamation-triangle'"></i>
+              {{ autosaveStatus === 'saving' ? 'Saving...' : autosaveStatus === 'saved' ? 'Saved' : 'Save failed' }}
+            </span>
             <button class="wf-btn wf-btn-clear" @click="clearForge" title="Clear all fields"><i class="fas fa-trash-alt"></i> Clear</button>
             <button v-if="isEditing" class="wf-btn wf-btn-export" @click="exportWidget" title="Export widget">
               <i class="fas fa-file-export"></i> Export
@@ -62,6 +66,7 @@
 <script>
 import { ref, computed, watch, onMounted, onUnmounted, reactive, provide } from 'vue';
 import { useStore } from 'vuex';
+import { API_CONFIG } from '@/tt.config.js';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
@@ -283,6 +288,7 @@ export default {
     // Handle chat SSE events for widget field updates from Annie
     const handleChatSSEEvent = (event) => {
       const { eventType, eventData } = event.detail || {};
+      chatUpdating = true; // guard: prevent autosave (backend already saved)
       switch (eventType) {
         case 'widget-field-updated':
           if (eventData?.field && eventData.value !== undefined) {
@@ -313,6 +319,7 @@ export default {
           previewKey.value++;
           break;
       }
+      chatUpdating = false;
     };
 
     onMounted(() => {
@@ -322,6 +329,7 @@ export default {
 
     onUnmounted(() => {
       window.removeEventListener('chat-sse-event', handleChatSSEEvent);
+      clearTimeout(autosaveTimer);
     });
 
     // Sync configJson ↔ form.config
@@ -353,6 +361,91 @@ export default {
         }, 500);
       },
     );
+
+    // ── Autosave ──
+    let chatUpdating = false; // guard: skip autosave when chat SSE updates the form
+    let autosaveTimer = null;
+    const autosaveStatus = ref(''); // '', 'saving', 'saved', 'error'
+
+    function getAuthHeaders() {
+      const token = localStorage.getItem('token');
+      return token
+        ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+        : { 'Content-Type': 'application/json' };
+    }
+
+    async function doAutosave() {
+      const existing = store.getters['widgetDefinitions/activeDefinition'];
+      if (!existing) return; // only autosave existing widgets
+      if (!form.name.trim() && !form.source_code.trim()) return; // don't save empty state
+
+      autosaveStatus.value = 'saving';
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${existing.id}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            name: form.name,
+            description: form.description,
+            icon: form.icon,
+            category: form.category,
+            widget_type: form.widget_type,
+            source_code: form.source_code,
+            config: form.config,
+            default_size: form.default_size,
+            min_size: form.min_size,
+          }),
+        });
+
+        if (response.ok) {
+          // Update store silently (no re-render of form, just keeps store in sync)
+          store.commit('widgetDefinitions/UPDATE_DEFINITION', {
+            id: existing.id,
+            updates: {
+              name: form.name,
+              description: form.description,
+              icon: form.icon,
+              category: form.category,
+              widget_type: form.widget_type,
+              source_code: form.source_code,
+              config: form.config,
+              default_size: form.default_size,
+              min_size: form.min_size,
+            },
+          });
+          autosaveStatus.value = 'saved';
+        } else {
+          autosaveStatus.value = 'error';
+        }
+      } catch {
+        autosaveStatus.value = 'error';
+      }
+
+      // Clear status after 3s
+      setTimeout(() => {
+        if (autosaveStatus.value === 'saved' || autosaveStatus.value === 'error') {
+          autosaveStatus.value = '';
+        }
+      }, 3000);
+    }
+
+    function scheduleAutosave() {
+      if (chatUpdating) return; // backend already saved via tool
+      if (!store.getters['widgetDefinitions/activeDefinition']) return;
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(doAutosave, 2000);
+    }
+
+    // Watch form fields individually (no deep watcher on the whole object)
+    watch(() => form.name, scheduleAutosave);
+    watch(() => form.description, scheduleAutosave);
+    watch(() => form.icon, scheduleAutosave);
+    watch(() => form.category, scheduleAutosave);
+    watch(() => form.widget_type, scheduleAutosave);
+    watch(() => form.source_code, scheduleAutosave);
+    watch(() => JSON.stringify(form.config), scheduleAutosave);
+    watch(() => JSON.stringify(form.default_size), scheduleAutosave);
+    watch(() => JSON.stringify(form.min_size), scheduleAutosave);
 
     const previewFrameStyle = computed(() => {
       // Scale preview to fit
@@ -454,6 +547,7 @@ export default {
     }
 
     function goBack() {
+      clearTimeout(autosaveTimer);
       store.dispatch('widgetDefinitions/setActiveDefinition', null);
       emit('screen-change', 'WidgetManagerScreen');
     }
@@ -467,6 +561,9 @@ export default {
         confirmClass: 'btn-danger',
       });
       if (!confirmed) return;
+
+      // Kill any pending autosave BEFORE clearing fields
+      clearTimeout(autosaveTimer);
 
       // Reset form
       form.name = '';
@@ -514,6 +611,7 @@ export default {
       isEditing,
       canSave,
       saveFlash,
+      autosaveStatus,
       modalRef,
       previewDefinition,
       previewFrameStyle,
@@ -583,6 +681,33 @@ export default {
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+}
+
+.wf-autosave-status {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  color: var(--color-text-muted);
+  transition: opacity 0.2s;
+}
+
+.wf-autosave-status i {
+  font-size: 9px;
+}
+
+.wf-autosave-saving {
+  color: var(--color-text-muted);
+}
+
+.wf-autosave-saved {
+  color: var(--color-green);
+}
+
+.wf-autosave-error {
+  color: var(--color-red, #ff6b6b);
 }
 
 .wf-btn-clear {

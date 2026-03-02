@@ -47,9 +47,18 @@
             <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
           </button>
         </Tooltip>
-        <button @click="sendChatMessage" :disabled="!chatInput.trim() || isProcessing" class="chat-send-button">
-          <i class="fas fa-paper-plane"></i>
-        </button>
+        <template v-if="isProcessing">
+          <Tooltip text="Stop generating" width="auto">
+            <button @click="stopStream" class="chat-stop-button">
+              <i class="fas fa-stop"></i>
+            </button>
+          </Tooltip>
+        </template>
+        <template v-else>
+          <button @click="sendChatMessage" :disabled="!chatInput.trim()" class="chat-send-button">
+            <i class="fas fa-paper-plane"></i>
+          </button>
+        </template>
       </div>
     </div>
   </div>
@@ -94,6 +103,7 @@ export default {
     const { isListening, isSupported, transcript, toggleListening } = useSpeechRecognition();
 
     const chatInput = ref('');
+    let abortController = null;
 
     watch(transcript, (newTranscript) => {
       if (newTranscript) {
@@ -140,8 +150,18 @@ export default {
       await processAssistantResponse(messageToSend);
     };
 
+    const stopStream = () => {
+      if (abortController) {
+        abortController.abort();
+        abortController = null;
+      }
+      store.dispatch('widgetChat/setStreaming', false);
+      focusInput();
+    };
+
     const processAssistantResponse = async (userInput) => {
       store.dispatch('widgetChat/setStreaming', true);
+      abortController = new AbortController();
       const token = localStorage.getItem('token');
 
       let widgetState = {
@@ -182,6 +202,7 @@ export default {
         const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/widget-chat`, {
           method: 'POST',
           headers: headers,
+          signal: abortController.signal,
           body: JSON.stringify({
             messages: chatHistory,
             provider: store.state.aiProvider.selectedProvider,
@@ -203,48 +224,49 @@ export default {
         const decoder = new TextDecoder();
         let buffer = '';
 
-        const processStream = async () => {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              store.dispatch('widgetChat/setStreaming', false);
-              break;
-            }
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            store.dispatch('widgetChat/setStreaming', false);
+            break;
+          }
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n\n');
-            buffer = lines.pop() || '';
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
 
-            for (const line of lines) {
-              if (line.startsWith('event: ')) {
-                const eventLine = line.substring(7);
-                const dataLine = eventLine.substring(eventLine.indexOf('\n') + 6);
-                const eventName = eventLine.split('\n')[0].trim();
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              const eventLine = line.substring(7);
+              const dataLine = eventLine.substring(eventLine.indexOf('\n') + 6);
+              const eventName = eventLine.split('\n')[0].trim();
 
-                try {
-                  const data = JSON.parse(dataLine);
-                  handleStreamEvent(eventName, data);
-                } catch (e) {
-                  console.error('Error parsing stream data:', e, 'Raw data:', dataLine);
-                }
+              try {
+                const data = JSON.parse(dataLine);
+                handleStreamEvent(eventName, data);
+              } catch (e) {
+                console.error('Error parsing stream data:', e, 'Raw data:', dataLine);
               }
             }
           }
-        };
-
-        processStream();
+        }
       } catch (error) {
-        console.error('Error calling widget orchestrator API:', error);
-        const errorMessage = error.message || 'An unexpected error occurred.';
-        const errorMsg = {
-          id: generateMessageId(),
-          role: 'assistant',
-          content: `Sorry, I encountered an error: ${errorMessage}`,
-          timestamp: Date.now(),
-        };
-        store.dispatch('widgetChat/addMessage', { widgetId: props.widgetId, message: errorMsg });
+        if (error.name === 'AbortError') {
+          console.log('Widget chat stream aborted by user');
+        } else {
+          console.error('Error calling widget orchestrator API:', error);
+          const errorMessage = error.message || 'An unexpected error occurred.';
+          const errorMsg = {
+            id: generateMessageId(),
+            role: 'assistant',
+            content: `Sorry, I encountered an error: ${errorMessage}`,
+            timestamp: Date.now(),
+          };
+          store.dispatch('widgetChat/addMessage', { widgetId: props.widgetId, message: errorMsg });
+        }
         store.dispatch('widgetChat/setStreaming', false);
       } finally {
+        abortController = null;
         focusInput();
       }
     };
@@ -540,6 +562,7 @@ export default {
       suggestions,
       isLoadingSuggestions,
       sendChatMessage,
+      stopStream,
       executeSuggestion,
       toggleToolCallExpansion,
       getMessageStatus,
@@ -707,6 +730,26 @@ export default {
   50% {
     box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
   }
+}
+
+.chat-stop-button {
+  min-width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  border: none;
+  background: var(--color-red, #ff6b6b);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.chat-stop-button:hover {
+  background: rgba(255, 107, 107, 0.8);
+  transform: scale(1.05);
 }
 
 .chat-send-button {
