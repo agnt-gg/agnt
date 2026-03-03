@@ -1,16 +1,19 @@
 <template>
   <div class="file-tree-panel">
     <div class="panel-header">
-      <h2 class="title">/ Projects</h2>
+      <h2 class="title" @click="setActiveDir('')" :class="{ clickable: activeDir }">
+        <span v-if="activeDir" class="title-back"><i class="fas fa-chevron-left"></i></span>
+        / {{ activeDir || 'Projects' }}
+      </h2>
       <div class="right-tabs">
-        <Tooltip text="New File" width="auto" position="bottom">
-          <button class="tab-button new-file-btn" @click="showNewFileInput('')">
+        <Tooltip :text="activeDir ? `New File in ${activeDir}` : 'New File'" width="auto" position="bottom">
+          <button class="tab-button new-file-btn" @click="showNewFileInput(activeDir)">
             <i class="fas fa-plus"></i>
             <i class="fas fa-file"></i>
           </button>
         </Tooltip>
-        <Tooltip text="New Folder" width="auto" position="bottom">
-          <button class="tab-button" @click="showNewFolderInput('')">
+        <Tooltip :text="activeDir ? `New Folder in ${activeDir}` : 'New Folder'" width="auto" position="bottom">
+          <button class="tab-button" @click="showNewFolderInput(activeDir)">
             <i class="fas fa-plus"></i>
             <i class="fas fa-folder"></i>
           </button>
@@ -18,6 +21,11 @@
         <Tooltip text="Refresh" width="auto" position="bottom">
           <button class="tab-button" @click="refreshTree">
             <i class="fas fa-sync-alt"></i>
+          </button>
+        </Tooltip>
+        <Tooltip text="Workspace Settings" width="auto" position="bottom">
+          <button class="tab-button" @click="openSettings">
+            <i class="fas fa-cog"></i>
           </button>
         </Tooltip>
       </div>
@@ -50,8 +58,9 @@
         :item="item"
         :expanded-dirs="expandedDirs"
         :children-map="childrenMap"
-        @toggle-dir="toggleDir"
-        @select-file="selectFile"
+        :active-dir="activeDir"
+        @toggle-dir="handleDirClick"
+        @select-file="handleFileClick"
         @rename-item="renameItem"
         @delete-item="deleteItem"
         @move-item="moveItem"
@@ -77,12 +86,39 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Settings dialog -->
+    <Teleport to="body">
+      <div v-if="settingsDialog.show" class="delete-overlay" @click.self="cancelSettings">
+        <div class="settings-dialog">
+          <h3 class="settings-title"><i class="fas fa-cog"></i> Workspace Settings</h3>
+          <label class="settings-label">Root Directory</label>
+          <input
+            ref="settingsInputRef"
+            v-model="settingsDialog.workspaceRoot"
+            class="settings-input"
+            placeholder="/path/to/workspace"
+            @keyup.enter="saveSettings"
+            @keyup.escape="cancelSettings"
+          />
+          <p class="settings-hint">Default: {{ settingsDialog.defaultRoot }}</p>
+          <div v-if="settingsDialog.error" class="settings-error">{{ settingsDialog.error }}</div>
+          <div class="delete-actions">
+            <button class="delete-cancel-btn" @click="resetToDefault">Reset Default</button>
+            <button class="delete-cancel-btn" @click="cancelSettings">Cancel</button>
+            <button class="settings-save-btn" @click="saveSettings" :disabled="settingsDialog.saving">
+              {{ settingsDialog.saving ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script>
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue';
-import { getTree, saveFile, createDirectory, deleteFile, renameFile } from '@/services/fileSystemService.js';
+import { getTree, saveFile, createDirectory, deleteFile, renameFile, getSettings, updateSettings } from '@/services/fileSystemService.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import TreeNode from './TreeNode.vue';
 
@@ -96,6 +132,8 @@ export default {
     const expandedDirs = reactive({});
     const childrenMap = reactive({});
     const newItemInputRef = ref(null);
+    const settingsInputRef = ref(null);
+    const activeDir = ref('');
 
     const newItemInput = reactive({
       show: false,
@@ -109,6 +147,14 @@ export default {
       path: '',
       name: '',
       type: '',
+    });
+
+    const settingsDialog = reactive({
+      show: false,
+      workspaceRoot: '',
+      defaultRoot: '',
+      error: '',
+      saving: false,
     });
 
     const fetchRootTree = async () => {
@@ -164,6 +210,22 @@ export default {
 
     const selectFile = (filePath) => {
       emit('panel-action', 'open-file', { path: filePath });
+    };
+
+    const setActiveDir = (dir) => {
+      activeDir.value = dir;
+    };
+
+    const handleDirClick = (dirPath) => {
+      activeDir.value = dirPath;
+      toggleDir(dirPath);
+    };
+
+    const handleFileClick = (filePath) => {
+      // Set active dir to file's parent folder
+      const parent = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
+      activeDir.value = parent;
+      selectFile(filePath);
     };
 
     // ── New File / Folder ──
@@ -327,6 +389,52 @@ export default {
       }
     };
 
+    // ── Settings ──
+    const openSettings = async () => {
+      try {
+        const data = await getSettings();
+        settingsDialog.workspaceRoot = data.workspaceRoot;
+        settingsDialog.defaultRoot = data.defaultRoot;
+      } catch {
+        settingsDialog.workspaceRoot = '';
+        settingsDialog.defaultRoot = '';
+      }
+      settingsDialog.error = '';
+      settingsDialog.saving = false;
+      settingsDialog.show = true;
+      nextTick(() => settingsInputRef.value?.focus());
+    };
+
+    const saveSettings = async () => {
+      if (!settingsDialog.workspaceRoot.trim()) {
+        settingsDialog.error = 'Path cannot be empty';
+        return;
+      }
+      settingsDialog.saving = true;
+      settingsDialog.error = '';
+      try {
+        await updateSettings(settingsDialog.workspaceRoot.trim());
+        settingsDialog.show = false;
+        // Clear tree cache and reload from new root
+        Object.keys(childrenMap).forEach((key) => delete childrenMap[key]);
+        Object.keys(expandedDirs).forEach((key) => delete expandedDirs[key]);
+        await fetchRootTree();
+      } catch (err) {
+        settingsDialog.error = err.message || 'Failed to save settings';
+      } finally {
+        settingsDialog.saving = false;
+      }
+    };
+
+    const resetToDefault = async () => {
+      settingsDialog.workspaceRoot = settingsDialog.defaultRoot;
+    };
+
+    const cancelSettings = () => {
+      settingsDialog.show = false;
+      settingsDialog.error = '';
+    };
+
     const refreshTree = async () => {
       Object.keys(childrenMap).forEach((key) => delete childrenMap[key]);
       await fetchRootTree();
@@ -350,11 +458,17 @@ export default {
       loading,
       expandedDirs,
       childrenMap,
+      activeDir,
       newItemInput,
       newItemInputRef,
+      settingsInputRef,
       deleteConfirm,
+      settingsDialog,
       toggleDir,
       selectFile,
+      setActiveDir,
+      handleDirClick,
+      handleFileClick,
       showNewFileInput,
       showNewFolderInput,
       createNewItem,
@@ -364,6 +478,10 @@ export default {
       confirmDelete,
       cancelDelete,
       moveItem,
+      openSettings,
+      saveSettings,
+      resetToDefault,
+      cancelSettings,
       refreshTree,
     };
   },
@@ -391,12 +509,32 @@ export default {
 }
 
 .panel-header .title {
-  color: var(--color-green);
+  color: var(--color-primary);
   font-family: var(--font-family-primary);
   font-size: 16px;
   font-weight: 400;
   letter-spacing: 0.48px;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.panel-header .title.clickable {
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.panel-header .title.clickable:hover {
+  opacity: 1;
+}
+
+.title-back {
+  font-size: 11px;
+  margin-right: 4px;
+  opacity: 0.6;
 }
 
 .right-tabs {
@@ -412,7 +550,7 @@ export default {
   padding: 0;
   opacity: 0.5;
   transition: opacity 0.3s ease;
-  color: var(--color-green);
+  color: var(--color-primary);
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -457,7 +595,7 @@ export default {
 }
 
 .item-name-input:focus {
-  border-color: rgba(var(--green-rgb), 0.4);
+  border-color: rgba(var(--primary-rgb), 0.4);
 }
 
 .item-create-btn,
@@ -471,7 +609,7 @@ export default {
 }
 
 .item-create-btn:hover {
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .item-cancel-btn:hover {
@@ -502,11 +640,11 @@ export default {
 .empty-state i {
   font-size: 2em;
   opacity: 0.5;
-  color: var(--color-green);
+  color: var(--color-primary);
 }
 
 .empty-state p {
-  color: var(--color-light-green);
+  color: var(--color-text-muted);
   max-width: 250px;
   line-height: 1.4;
   font-size: 12px;
@@ -590,5 +728,90 @@ export default {
 
 .delete-confirm-btn:hover {
   background: rgba(255, 80, 80, 0.25);
+}
+
+/* Settings dialog */
+.settings-dialog {
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  padding: 20px 24px;
+  min-width: 360px;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.settings-title {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-title i {
+  font-size: 13px;
+}
+
+.settings-label {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  color: var(--color-text);
+  font-size: 12px;
+  font-family: var(--font-family-mono, monospace);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.settings-input:focus {
+  border-color: rgba(var(--primary-rgb), 0.4);
+}
+
+.settings-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+.settings-error {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--color-red);
+}
+
+.settings-save-btn {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.settings-save-btn:hover:not(:disabled) {
+  background: rgba(var(--primary-rgb), 0.25);
+}
+
+.settings-save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 </style>

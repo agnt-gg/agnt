@@ -58,3 +58,19 @@ export async function deleteFile(path) {
   if (!res.ok) throw new Error(`Failed to delete: ${res.statusText}`);
   return res.json();
 }
+
+export async function getSettings() {
+  const res = await fetch(`${API_CONFIG.BASE_URL}/filesystem/settings`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(`Failed to get settings: ${res.statusText}`);
+  return res.json();
+}
+
+export async function updateSettings(workspaceRoot) {
+  const res = await fetch(`${API_CONFIG.BASE_URL}/filesystem/settings`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ workspaceRoot }),
+  });
+  if (!res.ok) throw new Error(`Failed to update settings: ${res.statusText}`);
+  return res.json();
+}

@@ -1,15 +1,39 @@
 import fs from 'fs/promises';
 import path from 'path';
-import os from 'os';
+import PathManager from '../../utils/PathManager.js';
 
-const WORKSPACE_ROOT = path.join(os.homedir(), '.agnt', 'projects');
+const DEFAULT_WORKSPACE_ROOT = PathManager.getPath('projects');
+const SETTINGS_FILE = PathManager.getPath('code-settings.json');
 
 /**
- * Validate that a resolved path is within WORKSPACE_ROOT
+ * Get the current workspace root path (exported for system prompt)
  */
-function validatePath(relPath) {
-  const resolved = path.resolve(WORKSPACE_ROOT, relPath || '');
-  if (!resolved.startsWith(WORKSPACE_ROOT)) {
+export async function getWorkspaceRootPath() {
+  return await getWorkspaceRoot();
+}
+
+/**
+ * Get the current workspace root from settings
+ */
+async function getWorkspaceRoot() {
+  try {
+    const raw = await fs.readFile(SETTINGS_FILE, 'utf-8');
+    const settings = JSON.parse(raw);
+    if (settings.workspaceRoot) {
+      return path.resolve(settings.workspaceRoot);
+    }
+  } catch {
+    // Settings file doesn't exist or is invalid — use default
+  }
+  return DEFAULT_WORKSPACE_ROOT;
+}
+
+/**
+ * Validate that a resolved path is within the workspace root
+ */
+function validatePath(relPath, workspaceRoot) {
+  const resolved = path.resolve(workspaceRoot, relPath || '');
+  if (!resolved.startsWith(workspaceRoot)) {
     throw new Error('Path traversal not allowed');
   }
   return resolved;
@@ -115,13 +139,14 @@ export function getCodeToolSchemas() {
  */
 export async function executeCodeFunction(name, args) {
   // Ensure workspace exists
+  const WORKSPACE_ROOT = await getWorkspaceRoot();
   await fs.mkdir(WORKSPACE_ROOT, { recursive: true });
 
   let result;
 
   switch (name) {
     case 'read_file': {
-      const absPath = validatePath(args.path);
+      const absPath = validatePath(args.path, WORKSPACE_ROOT);
       try {
         const content = await fs.readFile(absPath, 'utf-8');
         result = { success: true, content, path: args.path };
@@ -136,7 +161,7 @@ export async function executeCodeFunction(name, args) {
     }
 
     case 'write_file': {
-      const absPath = validatePath(args.path);
+      const absPath = validatePath(args.path, WORKSPACE_ROOT);
       await fs.mkdir(path.dirname(absPath), { recursive: true });
       await fs.writeFile(absPath, args.content || '', 'utf-8');
       result = {
@@ -148,7 +173,7 @@ export async function executeCodeFunction(name, args) {
     }
 
     case 'edit_file': {
-      const absPath = validatePath(args.path);
+      const absPath = validatePath(args.path, WORKSPACE_ROOT);
       let currentContent;
       try {
         currentContent = await fs.readFile(absPath, 'utf-8');
@@ -243,7 +268,7 @@ export async function executeCodeFunction(name, args) {
 
     case 'list_files': {
       const relDir = args.path || '';
-      const absDir = validatePath(relDir);
+      const absDir = validatePath(relDir, WORKSPACE_ROOT);
       try {
         const entries = await fs.readdir(absDir, { withFileTypes: true });
         const items = entries
@@ -279,6 +304,7 @@ export async function executeCodeFunction(name, args) {
  * List all files in the workspace (for system prompt context)
  */
 export async function listWorkspaceFiles() {
+  const WORKSPACE_ROOT = await getWorkspaceRoot();
   await fs.mkdir(WORKSPACE_ROOT, { recursive: true });
 
   const items = [];

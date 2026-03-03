@@ -4,6 +4,7 @@
       class="tree-item"
       :class="{
         'is-dir': item.type === 'directory',
+        'is-active-dir': item.type === 'directory' && activeDir === item.path,
         'drag-over': isDragOver,
       }"
       draggable="true"
@@ -60,6 +61,7 @@
         :item="child"
         :expanded-dirs="expandedDirs"
         :children-map="childrenMap"
+        :active-dir="activeDir"
         @toggle-dir="$emit('toggle-dir', $event)"
         @select-file="$emit('select-file', $event)"
         @rename-item="$emit('rename-item', $event)"
@@ -103,6 +105,7 @@ export default {
     item: { type: Object, required: true },
     expandedDirs: { type: Object, required: true },
     childrenMap: { type: Object, required: true },
+    activeDir: { type: String, default: '' },
   },
   emits: ['toggle-dir', 'select-file', 'rename-item', 'delete-item', 'move-item', 'new-file-in-dir', 'new-folder-in-dir'],
   setup(props, { emit }) {
@@ -305,6 +308,11 @@ export default {
   color: var(--color-text);
 }
 
+.tree-item.is-active-dir {
+  background: rgba(var(--primary-rgb), 0.08);
+  color: var(--color-primary);
+}
+
 .tree-item.drag-over {
   background: rgba(var(--primary-rgb), 0.15);
   outline: 1px dashed var(--color-primary);
@@ -337,7 +345,7 @@ export default {
   min-width: 0;
   padding: 1px 4px;
   background: var(--color-darker-1);
-  border: 1px solid rgba(var(--green-rgb), 0.4);
+  border: 1px solid rgba(var(--primary-rgb), 0.4);
   border-radius: 2px;
   color: var(--color-text);
   font-size: 12px;

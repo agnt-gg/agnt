@@ -1,4 +1,4 @@
-import { listWorkspaceFiles } from '../codeTools.js';
+import { listWorkspaceFiles, getWorkspaceRootPath } from '../codeTools.js';
 
 /**
  * System prompt for code chat context
@@ -8,6 +8,12 @@ export async function getCodeSystemContent(currentDate, context = {}) {
   const openFilePath = codeContext?.openFilePath || null;
   const openFileContent = codeContext?.openFileContent || null;
 
+  // Get current workspace root for system prompt
+  let workspaceRootDisplay = '~/.agnt/projects/';
+  try {
+    workspaceRootDisplay = await getWorkspaceRootPath();
+  } catch { /* use default */ }
+
   // Build workspace file listing
   let workspaceSection = '';
   try {
@@ -16,7 +22,7 @@ export async function getCodeSystemContent(currentDate, context = {}) {
       const tree = files
         .map((f) => `  ${f.type === 'directory' ? '📁' : '📄'} ${f.path}`)
         .join('\n');
-      workspaceSection = `\n\nWORKSPACE FILES (~/.agnt/projects/):\n${tree}`;
+      workspaceSection = `\n\nWORKSPACE FILES (${workspaceRootDisplay}):\n${tree}`;
     } else {
       workspaceSection = '\n\nWORKSPACE: Empty — no files or folders yet.';
     }
@@ -34,7 +40,7 @@ export async function getCodeSystemContent(currentDate, context = {}) {
   return `You are Annie, a helpful AI coding assistant within AGNT's Code Editor.
 Current date: ${currentDate}
 
-You help users write, edit, and understand code in their workspace (~/.agnt/projects/).
+You help users write, edit, and understand code in their workspace (${workspaceRootDisplay}).
 ${workspaceSection}
 ${fileSection}
 
