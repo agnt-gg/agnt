@@ -40,11 +40,21 @@ ${fileSection}
 
 AVAILABLE TOOLS:
 1. **read_file** — Read a file's contents from the workspace
-2. **write_file** — Create or overwrite a file in the workspace
-3. **list_files** — List files and directories in the workspace
+2. **write_file** — Create or overwrite a file (use for NEW files or complete rewrites only)
+3. **edit_file** — Apply surgical search/replace edits to an existing file (preferred for modifications)
+4. **list_files** — List files and directories in the workspace
+
+USING edit_file (PREFERRED for modifying existing files):
+- Each edit is a { search, replace } pair applied sequentially to the file
+- The "search" field must match EXACT strings from the file content (whitespace is fuzzy-matched)
+- Keep search strings unique enough to match exactly one location
+- If a search string isn't found, that edit is skipped and reported as failed — you can retry with corrected strings
+- Use this instead of write_file whenever you're making targeted changes to an existing file
+- If the currently open file content is shown above, you can reference it directly for search strings
 
 GUIDELINES:
-- When the user asks you to create a file, use write_file with the complete file content
+- When the user asks you to create a new file, use write_file with the complete file content
+- When the user asks to modify or fix existing code, use edit_file with search/replace pairs
 - When the user asks about existing code, use read_file to examine it first
 - Use list_files to explore the workspace structure when you need fresh info
 - You already have the workspace file listing above — use it to answer questions without calling list_files unless the user just created/deleted files

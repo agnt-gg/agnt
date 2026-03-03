@@ -41,7 +41,7 @@ export function getCodeToolSchemas() {
       type: 'function',
       function: {
         name: 'write_file',
-        description: 'Write content to a file in the workspace. Creates the file and any parent directories if they do not exist.',
+        description: 'Write content to a file in the workspace. Creates the file and any parent directories if they do not exist. Use this only for creating NEW files or complete rewrites.',
         parameters: {
           type: 'object',
           properties: {
@@ -55,6 +55,39 @@ export function getCodeToolSchemas() {
             },
           },
           required: ['path', 'content'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'edit_file',
+        description: 'Apply surgical search/replace edits to an existing file. Use this for bug fixes, style tweaks, adding features, or any targeted modification instead of rewriting the entire file. Each edit is a { search, replace } pair applied sequentially.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'string',
+              description: 'Relative path to the file within the workspace (e.g. "my-project/index.js")',
+            },
+            edits: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  search: { type: 'string', description: 'Exact string to find in the current file content' },
+                  replace: { type: 'string', description: 'Replacement string' },
+                },
+                required: ['search', 'replace'],
+              },
+              description: 'Array of search/replace pairs to apply sequentially',
+            },
+            description: {
+              type: 'string',
+              description: 'Brief summary of what these edits accomplish',
+            },
+          },
+          required: ['path', 'edits', 'description'],
         },
       },
     },
@@ -110,6 +143,100 @@ export async function executeCodeFunction(name, args) {
         success: true,
         path: args.path,
         frontendEvents: [{ type: 'file_written', data: { path: args.path, content: args.content } }],
+      };
+      break;
+    }
+
+    case 'edit_file': {
+      const absPath = validatePath(args.path);
+      let currentContent;
+      try {
+        currentContent = await fs.readFile(absPath, 'utf-8');
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          result = { success: false, error: `File not found: ${args.path}. Use write_file to create new files.` };
+          break;
+        }
+        throw err;
+      }
+
+      let updatedContent = currentContent;
+      const applied = [];
+      const failed = [];
+
+      // Normalize whitespace for fuzzy matching
+      const normalizeWS = (s) => s.replace(/\s+/g, ' ').trim();
+
+      function fuzzyFind(source, search) {
+        // Try exact match first
+        const exactIdx = source.indexOf(search);
+        if (exactIdx !== -1) return { start: exactIdx, end: exactIdx + search.length };
+
+        // Fuzzy: normalize whitespace and slide through source
+        const normSearch = normalizeWS(search);
+        if (!normSearch) return null;
+
+        let srcPos = 0;
+        const srcLen = source.length;
+        while (srcPos < srcLen) {
+          let normWindow = '';
+          let windowEnd = srcPos;
+
+          while (windowEnd < srcLen) {
+            const ch = source[windowEnd];
+            if (/\s/.test(ch)) {
+              if (!normWindow.endsWith(' ') && normWindow.length > 0) {
+                normWindow += ' ';
+              }
+              windowEnd++;
+            } else {
+              normWindow += ch;
+              windowEnd++;
+            }
+
+            const trimmedWindow = normWindow.trim();
+            if (trimmedWindow === normSearch) {
+              return { start: srcPos, end: windowEnd };
+            }
+            if (trimmedWindow.length > normSearch.length + 10) break;
+          }
+          srcPos++;
+        }
+        return null;
+      }
+
+      for (let i = 0; i < args.edits.length; i++) {
+        const edit = args.edits[i];
+        const match = fuzzyFind(updatedContent, edit.search);
+        if (match) {
+          updatedContent = updatedContent.substring(0, match.start) + edit.replace + updatedContent.substring(match.end);
+          applied.push({ index: i, search: edit.search.substring(0, 80) });
+        } else {
+          failed.push({ index: i, search: edit.search.substring(0, 80), reason: 'Search string not found' });
+        }
+      }
+
+      if (applied.length === 0) {
+        result = {
+          success: false,
+          error: 'None of the search strings were found in the file.',
+          failed,
+          message: 'No edits could be applied. Check that your search strings match the current file content.',
+        };
+        break;
+      }
+
+      // Write the updated content back
+      await fs.writeFile(absPath, updatedContent, 'utf-8');
+
+      result = {
+        success: true,
+        applied,
+        failed: failed.length > 0 ? failed : undefined,
+        description: args.description,
+        path: args.path,
+        message: `Applied ${applied.length}/${args.edits.length} edits to ${args.path}: ${args.description}`,
+        frontendEvents: [{ type: 'file_written', data: { path: args.path, content: updatedContent } }],
       };
       break;
     }
