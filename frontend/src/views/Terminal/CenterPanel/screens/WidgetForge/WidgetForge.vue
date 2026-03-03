@@ -257,8 +257,6 @@ export default {
         form.min_size = existing.min_size || { cols: 2, rows: 2 };
         form.useThemeStyles = existing.useThemeStyles !== false;
         configJson.value = JSON.stringify(existing.config || {}, null, 2);
-
-        activePanel.value = 'config';
       } else {
         form.name = '';
         form.description = '';
