@@ -459,6 +459,24 @@ export default {
           signal: abortController.signal,
         });
 
+        if (!response.ok) {
+          let errorText;
+          try {
+            const text = await response.text();
+            // Try to parse as JSON first
+            try {
+              const json = JSON.parse(text);
+              errorText = json.error || json.message || text;
+            } catch {
+              // Strip HTML tags if the response is an HTML error page
+              errorText = text.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+            }
+          } catch {
+            errorText = response.statusText || 'Unknown error';
+          }
+          throw new Error(`Server error (${response.status}): ${errorText}`);
+        }
+
         if (!response.body) {
           throw new Error('No response body from server');
         }
@@ -507,6 +525,12 @@ export default {
                     handleStreamEventInStore({ commit, state, dispatch }, eventName, data);
                   } catch (e) {
                     console.error('Error parsing stream data:', e, 'Raw data:', dataLine);
+                    // Show parse error to user instead of silently swallowing
+                    if (eventName === 'error') {
+                      handleStreamEventInStore({ commit, state, dispatch }, 'error', {
+                        error: `Stream error (unparseable response): ${dataLine?.substring(0, 200) || 'No data'}`,
+                      });
+                    }
                   }
                 }
               }
@@ -946,6 +970,22 @@ export default {
           signal: abortController.signal,
         });
 
+        if (!response.ok) {
+          let errorText;
+          try {
+            const text = await response.text();
+            try {
+              const json = JSON.parse(text);
+              errorText = json.error || json.message || text;
+            } catch {
+              errorText = text.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+            }
+          } catch {
+            errorText = response.statusText || 'Unknown error';
+          }
+          throw new Error(`Server error (${response.status}): ${errorText}`);
+        }
+
         if (!response.body) {
           throw new Error('No response body from server');
         }
@@ -994,6 +1034,12 @@ export default {
                     handleStreamEventInStore({ commit, state, dispatch }, eventName, data);
                   } catch (e) {
                     console.error('Error parsing stream data:', e, 'Raw data:', dataLine);
+                    // Show parse error to user instead of silently swallowing
+                    if (eventName === 'error') {
+                      handleStreamEventInStore({ commit, state, dispatch }, 'error', {
+                        error: `Stream error (unparseable response): ${dataLine?.substring(0, 200) || 'No data'}`,
+                      });
+                    }
                   }
                 }
               }

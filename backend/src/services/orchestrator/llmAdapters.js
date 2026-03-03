@@ -14,6 +14,19 @@ import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
 function parseApiErrorMessage(error) {
   const rawMessage = error.message || '';
 
+  // If the error message contains HTML (e.g., 403 error pages), strip it and extract useful info
+  if (rawMessage.includes('<!DOCTYPE') || rawMessage.includes('<html') || rawMessage.includes('<HTML')) {
+    // Extract status code if present at the start (e.g., "403 <!DOCTYPE html>...")
+    const statusMatch = rawMessage.match(/^(\d{3})\s/);
+    const statusCode = statusMatch ? statusMatch[1] : (error.status || 'Unknown');
+    // Try to extract a <title> from the HTML
+    const titleMatch = rawMessage.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : '';
+    return title
+      ? `HTTP ${statusCode}: ${title}`
+      : `HTTP ${statusCode} error from API. The server returned an HTML error page instead of JSON.`;
+  }
+
   // Try to extract JSON error from the message (common pattern: "400 {...}")
   try {
     const jsonMatch = rawMessage.match(/\{[\s\S]*\}/);
