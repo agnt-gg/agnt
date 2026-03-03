@@ -486,9 +486,13 @@ export default {
       form.description = form.description || tmpl.description;
       form.widget_type = tmpl.type;
 
+      // Provide sensible defaults only when fields are empty — never overwrite existing data
       if (tmpl.type === 'template') {
-        form.config = { ...tmpl.defaultConfig };
-        configJson.value = JSON.stringify(tmpl.defaultConfig, null, 2);
+        const hasConfig = form.config && Object.keys(form.config).length > 0 && !form.config.url;
+        if (!hasConfig) {
+          form.config = { ...tmpl.defaultConfig };
+          configJson.value = JSON.stringify(tmpl.defaultConfig, null, 2);
+        }
       } else if (tmpl.type === 'html') {
         form.source_code =
           form.source_code ||
@@ -496,7 +500,9 @@ export default {
   Hello Widget!
 </div>`;
       } else if (tmpl.type === 'iframe') {
-        form.config = { url: '' };
+        if (!form.config?.url) {
+          form.config = { ...form.config, url: '' };
+        }
       }
 
       previewKey.value++;
