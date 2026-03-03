@@ -24,6 +24,7 @@ class WidgetDefinitionService {
         data_bindings: JSON.parse(row.data_bindings || '[]'),
         default_size: JSON.parse(row.default_size || '{"cols":4,"rows":3}'),
         min_size: JSON.parse(row.min_size || '{"cols":2,"rows":2}'),
+        useThemeStyles: row.use_theme_styles !== 0,
       }));
 
       res.json({ widgets });
@@ -55,6 +56,7 @@ class WidgetDefinitionService {
         data_bindings: JSON.parse(row.data_bindings || '[]'),
         default_size: JSON.parse(row.default_size || '{"cols":4,"rows":3}'),
         min_size: JSON.parse(row.min_size || '{"cols":2,"rows":2}'),
+        useThemeStyles: row.use_theme_styles !== 0,
       };
 
       res.json({ widget });
@@ -82,6 +84,7 @@ class WidgetDefinitionService {
         default_size,
         min_size,
         thumbnail,
+        useThemeStyles,
       } = req.body;
 
       if (!name) {
@@ -114,6 +117,17 @@ class WidgetDefinitionService {
         );
       });
 
+      // Set use_theme_styles separately (column may not exist on older DBs)
+      if (useThemeStyles !== undefined) {
+        await new Promise((resolve) => {
+          db.run(
+            `UPDATE widget_definitions SET use_theme_styles = ? WHERE id = ?`,
+            [useThemeStyles ? 1 : 0, id],
+            () => resolve(),
+          );
+        });
+      }
+
       res.status(201).json({
         message: 'Widget definition created',
         id,
@@ -130,6 +144,7 @@ class WidgetDefinitionService {
           data_bindings: data_bindings || [],
           default_size: default_size || { cols: 4, rows: 3 },
           min_size: min_size || { cols: 2, rows: 2 },
+          useThemeStyles: useThemeStyles !== false,
           is_shared: 0,
           is_published: 0,
           version: '1.0.0',
@@ -160,6 +175,7 @@ class WidgetDefinitionService {
         min_size,
         is_shared,
         thumbnail,
+        useThemeStyles,
       } = req.body;
 
       // Check existence
@@ -208,6 +224,17 @@ class WidgetDefinitionService {
           (err) => (err ? reject(err) : resolve()),
         );
       });
+
+      // Update use_theme_styles separately (column may not exist on older DBs)
+      if (useThemeStyles !== undefined) {
+        await new Promise((resolve) => {
+          db.run(
+            `UPDATE widget_definitions SET use_theme_styles = ? WHERE id = ?`,
+            [useThemeStyles ? 1 : 0, widgetId],
+            () => resolve(), // Ignore error if column doesn't exist
+          );
+        });
+      }
 
       res.json({ message: 'Widget definition updated', id: widgetId });
     } catch (error) {

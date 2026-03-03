@@ -473,7 +473,7 @@ export default {
     };
 
     const onContentClick = (e) => {
-      if (!e.target.closest('.agent-card, .table-row, .screen-toolbar, .wm-tabs')) {
+      if (!e.target.closest('.agent-card, .table-row, .screen-toolbar, .wm-tabs, .agent-details-section')) {
         selectedAgent.value = null;
       }
     };

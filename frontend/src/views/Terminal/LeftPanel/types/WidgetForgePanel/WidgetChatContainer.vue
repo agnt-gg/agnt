@@ -181,6 +181,7 @@ export default {
           config: forge.form.config || {},
           default_size: forge.form.default_size || { cols: 4, rows: 3 },
           min_size: forge.form.min_size || { cols: 2, rows: 2 },
+          useThemeStyles: forge.form.useThemeStyles !== false,
         };
       }
 

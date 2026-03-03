@@ -22,6 +22,7 @@ const state = {
   isLoaded: false,
   isLoading: false,
   activeDefinitionId: null,
+  forgeResetKey: 0,
 };
 
 const getters = {
@@ -29,6 +30,7 @@ const getters = {
   isLoaded: (state) => state.isLoaded,
   isLoading: (state) => state.isLoading,
   activeDefinition: (state) => state.definitions.find((d) => d.id === state.activeDefinitionId) || null,
+  forgeResetKey: (state) => state.forgeResetKey,
   getDefinitionById: (state) => (id) => state.definitions.find((d) => d.id === id) || null,
 
   definitionsByCategory: (state) => (category) => {
@@ -64,6 +66,10 @@ const mutations = {
 
   SET_ACTIVE_DEFINITION(state, id) {
     state.activeDefinitionId = id;
+  },
+
+  INCREMENT_FORGE_RESET_KEY(state) {
+    state.forgeResetKey++;
   },
 
   ADD_DEFINITION(state, definition) {

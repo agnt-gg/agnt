@@ -457,6 +457,7 @@ export default {
 
     function createNewWidget() {
       store.dispatch('widgetDefinitions/setActiveDefinition', null);
+      store.commit('widgetDefinitions/INCREMENT_FORGE_RESET_KEY');
       emit('screen-change', 'WidgetForgeScreen');
     }
 
@@ -543,6 +544,7 @@ export default {
       if (action === 'navigate') {
         if (payload === 'WidgetForgeScreen') {
           store.dispatch('widgetDefinitions/setActiveDefinition', null);
+          store.commit('widgetDefinitions/INCREMENT_FORGE_RESET_KEY');
         }
         emit('screen-change', payload);
       } else if (action === 'category-filter-changed' && payload) {

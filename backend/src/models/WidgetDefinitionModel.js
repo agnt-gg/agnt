@@ -45,7 +45,11 @@ class WidgetDefinitionModel {
                 if (indexErr) {
                   console.error('Error creating widget_definitions index:', indexErr);
                 }
-                resolve();
+                // Add useThemeStyles column if it doesn't exist
+                db.run(
+                  `ALTER TABLE widget_definitions ADD COLUMN use_theme_styles INTEGER DEFAULT 1`,
+                  () => resolve(), // Ignore error (column already exists)
+                );
               },
             );
           }

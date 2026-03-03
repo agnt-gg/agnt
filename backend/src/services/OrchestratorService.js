@@ -1984,7 +1984,7 @@ async function executeWidgetFunction(functionName, args, authToken, context) {
           const client = await createLlmClient(context.provider || 'openai', userId);
           const adapter = await createLlmAdapter(context.provider || 'openai', client, context.model || 'gpt-4');
 
-          const useTheme = args.useThemeStyles !== false;
+          const useTheme = args.useThemeStyles !== undefined ? args.useThemeStyles !== false : widgetState?.useThemeStyles !== false;
           let themeSection = '';
           if (useTheme) {
             themeSection = `

@@ -116,6 +116,21 @@
             </label>
           </div>
 
+          <label class="field toggle-field">
+            <span class="field-label">Use Theme Styles</span>
+            <div class="toggle-row">
+              <button
+                type="button"
+                class="toggle-switch"
+                :class="{ active: forge.form.useThemeStyles }"
+                @click="forge.form.useThemeStyles = !forge.form.useThemeStyles"
+              >
+                <span class="toggle-knob"></span>
+              </button>
+              <span class="toggle-desc">{{ forge.form.useThemeStyles ? 'Uses --color-text, --color-primary, etc.' : 'Standalone styling (no theme vars)' }}</span>
+            </div>
+          </label>
+
           <!-- Template-specific config (JSON) -->
           <label v-if="forge.form.widget_type === 'template'" class="field">
             <span class="field-label">Template Config (JSON)</span>
@@ -561,6 +576,56 @@ export default {
 
 .config-json:focus {
   border-color: rgba(var(--green-rgb), 0.3);
+}
+
+.toggle-field {
+  gap: 5px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  border: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-1);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.toggle-switch.active {
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.4);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  transition: all 0.2s;
+}
+
+.toggle-switch.active .toggle-knob {
+  left: 16px;
+  background: var(--color-green);
+}
+
+.toggle-desc {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.3px;
 }
 </style>
 

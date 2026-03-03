@@ -222,6 +222,7 @@ export default {
       config: {},
       default_size: { cols: 4, rows: 3 },
       min_size: { cols: 2, rows: 2 },
+      useThemeStyles: true,
     });
 
     const configJson = ref('{}');
@@ -254,6 +255,7 @@ export default {
         form.config = existing.config || {};
         form.default_size = existing.default_size || { cols: 4, rows: 3 };
         form.min_size = existing.min_size || { cols: 2, rows: 2 };
+        form.useThemeStyles = existing.useThemeStyles !== false;
         configJson.value = JSON.stringify(existing.config || {}, null, 2);
 
         if (form.widget_type === 'html' || form.widget_type === 'markdown') {
@@ -271,6 +273,7 @@ export default {
         form.config = {};
         form.default_size = { cols: 4, rows: 3 };
         form.min_size = { cols: 2, rows: 2 };
+        form.useThemeStyles = true;
         configJson.value = '{}';
         activePanel.value = 'template';
         selectedTemplate.value = null;
@@ -314,6 +317,7 @@ export default {
           form.config = {};
           form.default_size = { cols: 4, rows: 3 };
           form.min_size = { cols: 2, rows: 2 };
+          form.useThemeStyles = true;
           configJson.value = '{}';
           selectedTemplate.value = null;
           previewKey.value++;
@@ -321,6 +325,29 @@ export default {
       }
       chatUpdating = false;
     };
+
+    // Watch the forge reset key — fires every time "Create New Widget" is clicked (Vuex reactive, works through KeepAlive)
+    watch(
+      () => store.getters['widgetDefinitions/forgeResetKey'],
+      (newVal) => {
+        clearTimeout(autosaveTimer);
+        form.name = '';
+        form.description = '';
+        form.icon = 'fas fa-puzzle-piece';
+        form.category = 'custom';
+        form.widget_type = 'html';
+        form.source_code = '';
+        form.config = {};
+        form.default_size = { cols: 4, rows: 3 };
+        form.min_size = { cols: 2, rows: 2 };
+        form.useThemeStyles = true;
+        configJson.value = '{}';
+        activePanel.value = 'template';
+        selectedTemplate.value = null;
+        previewKey.value++;
+        store.dispatch('widgetChat/clearConversation', 'widget-forge');
+      },
+    );
 
     onMounted(() => {
       document.body.setAttribute('data-page', 'terminal-widget-forge');
@@ -394,6 +421,7 @@ export default {
             config: form.config,
             default_size: form.default_size,
             min_size: form.min_size,
+            useThemeStyles: form.useThemeStyles,
           }),
         });
 
@@ -411,6 +439,7 @@ export default {
               config: form.config,
               default_size: form.default_size,
               min_size: form.min_size,
+              useThemeStyles: form.useThemeStyles,
             },
           });
           autosaveStatus.value = 'saved';
@@ -446,6 +475,7 @@ export default {
     watch(() => JSON.stringify(form.config), scheduleAutosave);
     watch(() => JSON.stringify(form.default_size), scheduleAutosave);
     watch(() => JSON.stringify(form.min_size), scheduleAutosave);
+    watch(() => form.useThemeStyles, scheduleAutosave);
 
     const previewFrameStyle = computed(() => {
       // Scale preview to fit
@@ -510,6 +540,7 @@ export default {
         config: form.config,
         default_size: form.default_size,
         min_size: form.min_size,
+        useThemeStyles: form.useThemeStyles,
       };
 
       const existing = store.getters['widgetDefinitions/activeDefinition'];
@@ -575,6 +606,7 @@ export default {
       form.config = {};
       form.default_size = { cols: 4, rows: 3 };
       form.min_size = { cols: 2, rows: 2 };
+      form.useThemeStyles = true;
       configJson.value = '{}';
       selectedTemplate.value = null;
       activePanel.value = 'template';

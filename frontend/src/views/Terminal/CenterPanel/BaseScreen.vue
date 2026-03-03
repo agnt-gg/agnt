@@ -362,15 +362,8 @@ export default {
         isPanelOpen.value = false;
         return;
       }
-      if (action === 'navigate') {
-        handleNavigation(payload);
-        return;
-      }
+      // Always pass through to parent so screen-specific handlers run (e.g. clearing widget activeDefinition)
       emit('panel-action', action, payload);
-    };
-
-    const handleNavigation = (targetScreenId) => {
-      emit('screen-change', targetScreenId);
     };
 
     // Keep isInputDisabled in sync with parent prop
@@ -541,10 +534,7 @@ export default {
         store.dispatch('theme/setShowLeftPanel', false);
         return;
       }
-      if (action === 'navigate') {
-        handleNavigation(payload);
-        return;
-      }
+      // Always pass through to parent so screen-specific handlers run
       emit('panel-action', action, payload);
     };
 
@@ -993,7 +983,6 @@ export default {
       triggerSubmit,
       handlePanelAction,
       handleLeftPanelAction,
-      handleNavigation,
       handleTutorialNavigate,
       scrollToBottom,
       autoResizeTextarea,
