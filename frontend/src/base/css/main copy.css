@@ -125,9 +125,9 @@ em {
   /* margin: 12px; */
 }
 
-body.dark hr {
+/* body.dark hr {
   border-color: var(--color-dull-navy);
-}
+} */
 
 inner-editor-area ol,
 inner-editor-area ul {
@@ -298,7 +298,9 @@ input[type='file'] {
 
 input:-webkit-autofill,
 input:-webkit-autofill:focus {
-  transition: background-color 0s 600000s, color 0s 600000s !important;
+  transition:
+    background-color 0s 600000s,
+    color 0s 600000s !important;
 }
 
 table {

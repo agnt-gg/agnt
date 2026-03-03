@@ -162,7 +162,7 @@ blockquote p:last-child {
 hr {
   margin: var(--spacing-lg) 0;
   border: 0;
-  border-top: 1px solid var(--color-med-navy);
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 /* LISTS */

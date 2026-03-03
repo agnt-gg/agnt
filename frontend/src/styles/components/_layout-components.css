@@ -239,7 +239,7 @@ inner-editor-area .placeholder-text .placeholder {
 
 inner-editor-area .placeholder-text hr {
   width: 100%;
-  border-color: var(--color-ultra-light-navy);
+  border-color: var(--terminal-border-color);
   opacity: 0.5;
   margin: 0;
 }

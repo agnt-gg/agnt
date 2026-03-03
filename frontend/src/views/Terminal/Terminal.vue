@@ -78,6 +78,7 @@ const screenLoaders = [
   ['WidgetManagerScreen', () => import('./CenterPanel/screens/WidgetManager/WidgetManager.vue')],
   ['WidgetForgeScreen', () => import('./CenterPanel/screens/WidgetForge/WidgetForge.vue')],
   ['SkillsScreen', () => import('./CenterPanel/screens/Skills/Skills.vue')],
+  ['CodeEditorScreen', () => import('./CenterPanel/screens/CodeEditor/CodeEditor.vue')],
 ];
 
 // Preload all screen chunks in parallel, register into reactive map as each resolves
@@ -142,6 +143,7 @@ export default {
         WidgetManagerScreen: '/widget-manager',
         WidgetForgeScreen: '/widget-forge',
         SkillsScreen: '/skills',
+        CodeEditorScreen: '/code-editor',
       };
 
       if (screenName in screenRoutes) {

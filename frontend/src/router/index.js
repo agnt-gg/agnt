@@ -139,6 +139,12 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'SkillsScreen' },
     },
     {
+      path: '/code-editor',
+      name: 'TerminalCodeEditor',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'CodeEditorScreen' },
+    },
+    {
       path: '/ball-jumper',
       name: 'TerminalBallJumper',
       component: Terminal,

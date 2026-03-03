@@ -3,6 +3,7 @@ import { executeTool } from './orchestrator/tools.js';
 import { executeAgentTool } from './orchestrator/agentTools.js';
 import { executeWorkflowTool } from './orchestrator/workflowTools.js';
 import { executeGoalTool } from './orchestrator/goalTools.js';
+import { executeCodeFunction } from './orchestrator/codeTools.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { createLlmClient } from './ai/LlmService.js';
@@ -867,6 +868,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
                 return await executeToolFunction(functionName, args, authToken, conversationContext);
               } else if (chatType === 'widget') {
                 return await executeWidgetFunction(functionName, args, authToken, conversationContext);
+              } else if (chatType === 'code') {
+                return await executeCodeFunction(functionName, args);
               } else {
                 // Default to orchestrator tools
                 return await executeTool(functionName, args, authToken, conversationContext);
@@ -912,6 +915,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
             rawFunctionResponse = await executeToolFunction(functionName, functionArgs, authToken, conversationContext);
           } else if (chatType === 'widget') {
             rawFunctionResponse = await executeWidgetFunction(functionName, functionArgs, authToken, conversationContext);
+          } else if (chatType === 'code') {
+            rawFunctionResponse = await executeCodeFunction(functionName, functionArgs);
           } else {
             // Default to orchestrator tools
             rawFunctionResponse = await executeTool(functionName, functionArgs, authToken, conversationContext);

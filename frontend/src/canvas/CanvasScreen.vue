@@ -226,6 +226,7 @@ const MAIN_SECTIONS = [
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE' },
     ],
   },
+  { id: 'code', icon: 'fas fa-code', label: 'Code Editor', screens: [{ screen: 'CodeEditorScreen', label: 'CODE EDITOR' }] },
 ];
 
 const SETTINGS_SECTIONS = [

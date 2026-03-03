@@ -1132,6 +1132,23 @@ body[data-page='terminal-agents'] .main-panel {
   padding: 16px 0;
 }
 
+body[data-page='terminal-code-editor'] .main-panel {
+  padding: 0;
+  align-items: stretch;
+}
+
+body[data-page='terminal-code-editor'] .scrollable-content {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+body[data-page='terminal-code-editor'] .scrollable-content > * {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
 .main-panel.centered-content .scrollable-content {
   align-content: center;
   justify-content: center;
