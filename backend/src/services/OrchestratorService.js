@@ -805,6 +805,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         delete cleanArgs._stopAfter;
         delete cleanArgs._duration;
 
+        // Preserved before offloading to avoid DATA_REF placeholders in frontend events
+        let preservedFrontendEvents = null;
+
         if (shouldExecuteAsync) {
           console.log(`[AsyncTool] ${chatType === 'agent' ? 'Agent' : 'Orchestrator'} requested async execution for: ${functionName}`);
 
@@ -944,6 +947,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
           functionResponseContent = rawFunctionResponse;
           console.log(`NO TRUNCATION - using full content for ${functionName} (${rawFunctionResponse.length} chars)`);
+
+          // Preserve frontend events before any offloading/truncation mangles the content
+          try {
+            const rawParsed = JSON.parse(rawFunctionResponse);
+            if (rawParsed && rawParsed.frontendEvents) {
+              preservedFrontendEvents = rawParsed.frontendEvents;
+            }
+          } catch { /* ignore parse errors — will be handled later */ }
 
           // Extract and replace images to prevent context window overflow
           const { modifiedResult, images } = extractAndReplaceImages(functionResponseContent, toolCall.id);
@@ -1159,8 +1170,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
 
         // Send frontend events if they exist (for tool chat)
-        if (toolCallResult && toolCallResult.frontendEvents) {
-          toolCallResult.frontendEvents.forEach((event) => {
+        // Use preserved events (captured before offloading) to avoid DATA_REF placeholders
+        const frontendEventsToSend = preservedFrontendEvents || (toolCallResult && toolCallResult.frontendEvents);
+        if (frontendEventsToSend) {
+          frontendEventsToSend.forEach((event) => {
             sendEvent('frontend_event', {
               assistantMessageId,
               eventType: event.type,
