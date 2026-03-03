@@ -438,7 +438,7 @@ USING generate_widget:
 - This calls a specialized code-generation LLM that returns a complete HTML document
 - The source_code must be a COMPLETE HTML document (<!DOCTYPE html><html>...</html>) that renders directly in an iframe
 - Hardcode demo/sample data directly in the HTML
-- Theme styles setting: ${widgetState?.useThemeStyles !== false ? 'ENABLED — use var(--color-text), var(--color-primary), var(--color-text-muted), var(--color-background), var(--color-popup) for dropdowns/selects/option menus, etc. for all styling. Always pass useThemeStyles: true.' : 'DISABLED — use standalone/custom styling with hardcoded colors. Always pass useThemeStyles: false.'}
+- Theme styles setting: ${widgetState?.useThemeStyles !== false ? 'ENABLED — use var(--color-text), var(--color-primary), var(--color-text-muted), var(--color-background), var(--color-popup) for dropdowns/selects/option menus, var(--terminal-border-color) for borders, etc. for all styling. Always pass useThemeStyles: true.' : 'DISABLED — use standalone/custom styling with hardcoded colors. Always pass useThemeStyles: false.'}
 
 WIDGET TYPES:
 - **html** — Custom HTML/CSS/JS in a sandboxed iframe (most common)

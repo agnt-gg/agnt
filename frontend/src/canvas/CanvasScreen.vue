@@ -631,15 +631,15 @@ export default {
 }
 
 .cv-pbtn.on {
-  color: var(--color-green);
-  border-color: rgba(var(--green-rgb), 0.15);
-  background: rgba(var(--green-rgb), 0.04);
+  color: var(--color-primary);
+  border-color: rgba(var(--primary-rgb), 0.15);
+  background: rgba(var(--primary-rgb), 0.04);
 }
 
 .cv-page-title {
   font-size: 10px;
   letter-spacing: 1.5px;
-  color: var(--color-green);
+  color: var(--color-primary);
   white-space: nowrap;
   text-transform: uppercase;
 }
