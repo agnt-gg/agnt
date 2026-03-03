@@ -2022,7 +2022,7 @@ body {
   padding: var(--spacing-md);
   background: var(--color-background);
   color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-family-primary);
   font-size: var(--font-size-sm);
 }
 .card {
@@ -2059,7 +2059,7 @@ RULES:
 - The HTML must be completely self-contained and render directly in an iframe with srcdoc
 - Use inline/hardcoded data — no template literals, no external variables, no params.*
 - Make it visually polished: modern CSS, gradients, animations, shadows, rounded corners
-- Use system fonts: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
+- Use the app's font variables: var(--font-family-primary) for all UI text, var(--font-family-mono) for code/monospace text. Do NOT use system font stacks like -apple-system or 'Segoe UI'.
 ${useTheme ? '- Use the theme CSS variables provided below for ALL styling — do NOT hardcode colors' : '- Dark theme preferred (dark backgrounds, light text) unless the user specifies otherwise'}
 ${themeSection}
 
