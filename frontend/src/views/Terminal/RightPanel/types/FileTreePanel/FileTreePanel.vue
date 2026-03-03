@@ -301,12 +301,21 @@ export default {
         if (oldParent && childrenMap[oldParent]) delete childrenMap[oldParent];
         if (childrenMap[targetDir]) delete childrenMap[targetDir];
 
+        // Expand target folder so user sees the moved item
+        expandedDirs[targetDir] = true;
+
         await refreshDirAndAncestors(oldParent);
         await refreshDirAndAncestors(targetDir);
 
-        // Re-fetch expanded dirs
+        // Fetch children for the target dir (now expanded)
+        try {
+          const data = await getTree(targetDir);
+          childrenMap[targetDir] = data.items;
+        } catch { /* ignore */ }
+
+        // Re-fetch other expanded dirs
         for (const dirPath of Object.keys(expandedDirs)) {
-          if (!childrenMap[dirPath]) {
+          if (dirPath !== targetDir && !childrenMap[dirPath]) {
             try {
               const data = await getTree(dirPath);
               childrenMap[dirPath] = data.items;

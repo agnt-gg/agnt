@@ -10,6 +10,7 @@
       @click="handleClick"
       @contextmenu.prevent="showContextMenu"
       @dragstart="onDragStart"
+      @dragenter="onDragEnter"
       @dragover="onDragOver"
       @dragleave="onDragLeave"
       @drop="onDrop"
@@ -192,26 +193,44 @@ export default {
 
     // ── Drag & Drop ──
     const isDragOver = ref(false);
+    let dragEnterCount = 0;
 
     const onDragStart = (e) => {
+      e.stopPropagation();
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', props.item.path);
     };
 
     const onDragOver = (e) => {
       if (props.item.type !== 'directory') return;
+      e.stopPropagation();
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
+    };
+
+    const onDragEnter = (e) => {
+      if (props.item.type !== 'directory') return;
+      e.stopPropagation();
+      e.preventDefault();
+      dragEnterCount++;
       isDragOver.value = true;
     };
 
-    const onDragLeave = () => {
-      isDragOver.value = false;
+    const onDragLeave = (e) => {
+      if (props.item.type !== 'directory') return;
+      e.stopPropagation();
+      dragEnterCount--;
+      if (dragEnterCount <= 0) {
+        dragEnterCount = 0;
+        isDragOver.value = false;
+      }
     };
 
     const onDrop = (e) => {
+      dragEnterCount = 0;
       isDragOver.value = false;
       if (props.item.type !== 'directory') return;
+      e.stopPropagation();
       e.preventDefault();
       const sourcePath = e.dataTransfer.getData('text/plain');
       if (!sourcePath || sourcePath === props.item.path) return;
@@ -255,6 +274,7 @@ export default {
       // Drag & drop
       isDragOver,
       onDragStart,
+      onDragEnter,
       onDragOver,
       onDragLeave,
       onDrop,
