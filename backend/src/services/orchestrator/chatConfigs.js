@@ -438,7 +438,7 @@ USING generate_widget:
 - This calls a specialized code-generation LLM that returns a complete HTML document
 - The source_code must be a COMPLETE HTML document (<!DOCTYPE html><html>...</html>) that renders directly in an iframe
 - Hardcode demo/sample data directly in the HTML
-- Theme styles setting: ${widgetState?.useThemeStyles !== false ? 'ENABLED — use var(--color-text), var(--color-primary), var(--color-text-muted), etc. for all styling. Always pass useThemeStyles: true.' : 'DISABLED — use standalone/custom styling with hardcoded colors. Always pass useThemeStyles: false.'}
+- Theme styles setting: ${widgetState?.useThemeStyles !== false ? 'ENABLED — use var(--color-text), var(--color-primary), var(--color-text-muted), var(--color-background), var(--color-popup) for dropdowns/selects/option menus, etc. for all styling. Always pass useThemeStyles: true.' : 'DISABLED — use standalone/custom styling with hardcoded colors. Always pass useThemeStyles: false.'}
 
 WIDGET TYPES:
 - **html** — Custom HTML/CSS/JS in a sandboxed iframe (most common)
@@ -450,7 +450,7 @@ USING get_agnt_api:
 - When building widgets that display live data from AGNT (agents, workflows, executions, goals, etc.), use \`get_agnt_api\` to look up the available endpoints
 - Call with no args first to see the full overview, then call with a section name for details
 - Widgets run in iframes with allow-same-origin, so \`localStorage.getItem('token')\` works for auth
-- Use \`window.location.origin + '/api'\` as the base URL (works in both dev and production)
+- Use \`http://localhost:${process.env.PORT || 3333}/api\` as the API base URL — this points directly to the AGNT backend server (NOT the frontend dev server)
 
 Always be helpful and guide users through the widget creation process step by step.`;
     },

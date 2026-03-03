@@ -2003,6 +2003,7 @@ Available semantic variables (use these for all styling):
 - var(--terminal-border-color) — borders
 - var(--terminal-border-color-light) — subtle/lighter borders
 - rgba(var(--primary-rgb), 0.15) — tinted accent backgrounds
+- var(--color-popup) — background for dropdowns, selects, option menus, modals, and popover overlays
 - var(--color-red) — errors
 - var(--color-yellow) — warnings
 
@@ -2088,6 +2089,10 @@ USER REQUEST: ${enhancedInstruction}`;
           if (content.endsWith('```')) content = content.substring(0, content.length - 3);
           content = content.trim();
 
+          // Sanitize control characters that break JSON serialization
+          // Keep \n, \r, \t (valid in strings) but remove other control chars (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F)
+          content = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
           // Extract a name from the <title> tag if present
           const titleMatch = content.match(/<title>([^<]+)<\/title>/i);
           const widgetName = titleMatch ? titleMatch[1].trim() : (args.instruction.substring(0, 50) + (args.instruction.length > 50 ? '...' : ''));
@@ -2162,9 +2167,12 @@ USER REQUEST: ${enhancedInstruction}`;
             });
           }
 
+          // Return result without source_code — it's already sent to the frontend via events
+          // and stored in widgetState. Including it bloats the tool response and risks JSON parse errors.
+          const { source_code: _sc, ...widgetDataSummary } = widgetData;
           result = {
             success: true,
-            widgetData,
+            widgetData: { ...widgetDataSummary, source_code_length: content.length },
             operationType,
             message: `Successfully generated widget: "${widgetData.name}"`,
             frontendEvents,

@@ -303,6 +303,33 @@ export default {
             }
           }
           break;
+        case 'widget-autosaved': {
+          // Backend created/updated a widget — set it as the active definition
+          // so subsequent generate calls UPDATE instead of INSERT
+          const savedId = eventData?.id;
+          if (savedId && savedId !== 'widget-forge') {
+            const existing = store.getters['widgetDefinitions/activeDefinition'];
+            if (!existing || existing.id !== savedId) {
+              // Add to store if it's a brand-new widget
+              const def = {
+                id: savedId,
+                name: form.name || eventData?.widgetData?.name || '',
+                description: form.description || eventData?.widgetData?.description || '',
+                icon: form.icon || 'fas fa-puzzle-piece',
+                category: form.category || 'custom',
+                widget_type: form.widget_type || 'html',
+                source_code: form.source_code || '',
+                config: form.config || {},
+                default_size: form.default_size || { cols: 4, rows: 3 },
+                min_size: form.min_size || { cols: 2, rows: 2 },
+                useThemeStyles: form.useThemeStyles !== false,
+              };
+              store.commit('widgetDefinitions/ADD_DEFINITION', def);
+              store.dispatch('widgetDefinitions/setActiveDefinition', savedId);
+            }
+          }
+          break;
+        }
         case 'widget-fields-cleared':
           form.name = '';
           form.description = '';
@@ -553,12 +580,10 @@ export default {
         await store.dispatch('widgetDefinitions/createDefinition', widgetData);
       }
 
-      // Flash "Saved!" then navigate back
+      // Flash "Saved!" confirmation
       saveFlash.value = true;
       setTimeout(() => {
         saveFlash.value = false;
-        store.dispatch('widgetDefinitions/setActiveDefinition', null);
-        emit('screen-change', 'WidgetManagerScreen');
       }, 800);
     }
 

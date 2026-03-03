@@ -7,7 +7,7 @@
 
 const BOILERPLATE = `// ── AGNT API Helper ──
 // Drop this into your widget <script> to call any AGNT endpoint.
-const API = window.location.origin + '/api';
+const API = 'http://localhost:${process.env.PORT || 3333}/api';
 function getToken() { try { return localStorage.getItem('token') || null; } catch(e) { return null; } }
 function headers() { return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json', 'Accept': 'application/json' }; }
 
@@ -677,7 +677,7 @@ const SECTION_NAMES = Object.keys(SECTIONS);
  */
 function getOverview() {
   let out = `AGNT API Reference — Overview
-Base URL: (use window.location.origin + '/api' in widgets)
+Base URL: http://localhost:${process.env.PORT || 3333}/api
 Auth: Bearer token — get from localStorage.getItem('token')
 
 ${BOILERPLATE}
