@@ -224,6 +224,10 @@ body.dark .editor-footer {
   border: none;
 }
 
+.cm-gutterElement {
+  text-align: left !important;
+}
+
 .ͼ1 .cm-foldGutter span {
   opacity: 0;
 }

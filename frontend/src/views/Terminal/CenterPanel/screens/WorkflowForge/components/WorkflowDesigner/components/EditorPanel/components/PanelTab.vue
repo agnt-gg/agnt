@@ -2374,6 +2374,10 @@ body.dark .right-side .node-icon svg rect[fill] {
   border: none;
 }
 
+.cm-gutterElement {
+  text-align: left !important;
+}
+
 .ͼ1 .cm-foldGutter span {
   opacity: 0;
 }
