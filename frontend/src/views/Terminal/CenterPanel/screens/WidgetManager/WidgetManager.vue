@@ -267,7 +267,9 @@ export default {
       if (playSound) playSound('typewriterKeyPress');
       if (selectedWidget.value?.id === widget.id) {
         selectedWidget.value = null;
-        nextTick(() => { selectedWidget.value = widget; });
+        nextTick(() => {
+          selectedWidget.value = widget;
+        });
       } else {
         selectedWidget.value = widget;
       }
@@ -827,8 +829,7 @@ export default {
 }
 
 .wm-list-name {
-  font-size: 11px;
-  letter-spacing: 0.5px;
+  font-size: var(--font-size-md);
   color: var(--color-text);
   font-weight: 600;
   white-space: nowrap;
@@ -837,8 +838,9 @@ export default {
 
 .wm-list-desc {
   flex: 1;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-text-muted);
+  line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -853,9 +855,8 @@ export default {
 
 .wm-list-type,
 .wm-list-size {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--color-text-muted);
-  letter-spacing: 0.5px;
   flex-shrink: 0;
   min-width: 50px;
   text-align: right;
@@ -907,7 +908,9 @@ export default {
 
 .wm-card.wm-selected {
   border-color: rgba(var(--green-rgb), 0.4);
-  box-shadow: 0 0 0 1px rgba(var(--green-rgb), 0.2), 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow:
+    0 0 0 1px rgba(var(--green-rgb), 0.2),
+    0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .wm-card:hover {
@@ -1000,8 +1003,7 @@ export default {
 }
 
 .wm-card-name {
-  font-size: 11px;
-  letter-spacing: 0.5px;
+  font-size: var(--font-size-md);
   color: var(--color-text);
   font-weight: 600;
   white-space: nowrap;
@@ -1011,9 +1013,9 @@ export default {
 }
 
 .wm-card-desc {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-text-muted);
-  line-height: 1.3;
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -1028,16 +1030,15 @@ export default {
 
 .wm-card-type,
 .wm-card-size {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--color-text-muted);
-  letter-spacing: 0.5px;
 }
 
 .wm-card-actions {
   display: flex;
   gap: 2px;
   padding: 6px 14px 10px;
-  border-top: 1px solid var(--color-darker-1);
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 .wm-card-actions button {

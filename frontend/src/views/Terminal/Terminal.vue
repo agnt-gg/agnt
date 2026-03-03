@@ -13,11 +13,14 @@
       <!-- KeepAlive caches visited screens so charts/data don't reload on every navigation -->
       <KeepAlive>
         <component
+          v-if="isScreenReady"
           :is="activeScreenComponent"
           :key="activeScreen"
           @screen-change="changeScreen"
         />
       </KeepAlive>
+      <!-- Placeholder while screen chunk is loading (outside KeepAlive to avoid lifecycle crash) -->
+      <div v-if="!isScreenReady" style="flex:1;width:100%;height:100%;background:var(--color-background)"></div>
     </CanvasScreen>
 
     <!-- BallJumper uses legacy direct rendering (no nav shell) -->
@@ -114,11 +117,10 @@ export default {
     // Placeholder shown while a screen chunk is still loading
     const ScreenPlaceholder = { template: '<div style="flex:1;width:100%;height:100%;background:var(--color-background)"></div>' };
 
+    const isScreenReady = computed(() => !!screenComponents[activeScreen.value]);
+
     const activeScreenComponent = computed(() => {
-      const component = screenComponents[activeScreen.value];
-      if (component) return component;
-      // Screen not loaded yet — show placeholder (will reactively swap when it loads)
-      return ScreenPlaceholder;
+      return screenComponents[activeScreen.value] || null;
     });
 
     const changeScreen = (screenName, options = {}) => {
@@ -205,6 +207,7 @@ export default {
     return {
       activeScreen,
       activeScreenComponent,
+      isScreenReady,
       changeScreen,
       shouldShowOnboarding,
       handleOnboardingComplete,
