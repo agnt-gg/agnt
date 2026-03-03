@@ -2,41 +2,26 @@
   <div class="widget-forge-right-panel">
     <!-- Panel tabs -->
     <div class="panel-tabs">
-      <button class="tab-btn" :class="{ active: forge.activePanel.value === 'template' }" @click="forge.activePanel.value = 'template'">
-        <i class="fas fa-th-large"></i> Templates
+      <button
+        class="tab-btn"
+        :class="{ active: forge.activePanel.value === 'config' || forge.activePanel.value === 'template' }"
+        @click="forge.activePanel.value = 'config'"
+      >
+        <i class="fas fa-sliders-h"></i> Config
       </button>
       <button class="tab-btn" :class="{ active: forge.activePanel.value === 'code' }" @click="forge.activePanel.value = 'code'">
         <i class="fas fa-code"></i> Code
       </button>
-      <button class="tab-btn" :class="{ active: forge.activePanel.value === 'config' }" @click="forge.activePanel.value = 'config'">
-        <i class="fas fa-sliders-h"></i> Config
-      </button>
     </div>
 
     <div class="panel-content">
-      <!-- Templates list -->
-      <div v-if="forge.activePanel.value === 'template'" class="forge-templates">
-        <div
-          v-for="tmpl in forge.filteredTemplates.value"
-          :key="tmpl.id"
-          class="tmpl-card"
-          :class="{ active: forge.selectedTemplate.value === tmpl.id }"
-          @click="forge.selectTemplate(tmpl)"
-        >
-          <div class="tmpl-icon"><i :class="tmpl.icon"></i></div>
-          <div class="tmpl-name">{{ tmpl.name }}</div>
-        </div>
-      </div>
-
       <!-- Code editor -->
       <div v-if="forge.activePanel.value === 'code'" class="forge-code">
         <div class="section-title">
           SOURCE CODE
           <span class="type-badge">{{ forge.form.widget_type.toUpperCase() }}</span>
           <span class="line-count">{{ lineCount }} lines</span>
-          <button class="format-btn" title="Format Code (Shift+Alt+F)" @click="formatCode">
-            <i class="fas fa-magic"></i> Format
-          </button>
+          <button class="format-btn" title="Format Code (Shift+Alt+F)" @click="formatCode"><i class="fas fa-magic"></i> Format</button>
         </div>
         <div class="codemirror-wrapper">
           <codemirror
@@ -52,7 +37,24 @@
       </div>
 
       <!-- Config form -->
-      <div v-if="forge.activePanel.value === 'config'" class="forge-config">
+      <div v-if="forge.activePanel.value === 'config' || forge.activePanel.value === 'template'" class="forge-config">
+        <!-- Templates -->
+        <div class="forge-templates">
+          <span class="field-label">Template</span>
+          <div class="tmpl-grid">
+            <div
+              v-for="tmpl in forge.filteredTemplates.value"
+              :key="tmpl.id"
+              class="tmpl-card"
+              :class="{ active: forge.selectedTemplate.value === tmpl.id }"
+              @click="forge.selectTemplate(tmpl)"
+            >
+              <div class="tmpl-icon"><i :class="tmpl.icon"></i></div>
+              <div class="tmpl-name">{{ tmpl.name }}</div>
+            </div>
+          </div>
+        </div>
+
         <div class="config-form">
           <label class="field">
             <span class="field-label">Name</span>
@@ -127,7 +129,9 @@
               >
                 <span class="toggle-knob"></span>
               </button>
-              <span class="toggle-desc">{{ forge.form.useThemeStyles ? 'Uses --color-text, --color-primary, etc.' : 'Standalone styling (no theme vars)' }}</span>
+              <span class="toggle-desc">{{
+                forge.form.useThemeStyles ? 'Uses --color-text, --color-primary, etc.' : 'Standalone styling (no theme vars)'
+              }}</span>
             </div>
           </label>
 
@@ -292,7 +296,7 @@ export default {
             forge.form.source_code = formatted;
           }
         }
-      }
+      },
     );
 
     return { forge, extensions, lineCount, handleCodeChange, formatCode, categorySelect, widgetTypeSelect, categoryOptions, widgetTypeOptions };
@@ -367,20 +371,28 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 0;
+  padding: 0 0 10px 0;
+  border-bottom: 1px solid var(--terminal-border-color-light);
+  margin-bottom: 8px;
+}
+
+.tmpl-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
 }
 
 .tmpl-card {
-  padding: 8px;
+  padding: 6px 8px;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tmpl-card:hover {

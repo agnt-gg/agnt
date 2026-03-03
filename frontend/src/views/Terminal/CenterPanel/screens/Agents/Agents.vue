@@ -38,7 +38,7 @@
           @update:layout="setLayout"
           @toggleCollapseAll="toggleCollapseAll"
           @toggleHideEmpty="toggleHideEmptyCategories"
-          @update:sortOrder="(v) => sortOrder = v"
+          @update:sortOrder="(v) => (sortOrder = v)"
           @create="handlePanelAction('navigate', 'AgentForgeScreen')"
         />
 
@@ -212,7 +212,9 @@
                       >
                         <div class="agent-header">
                           <div class="agent-avatar-name">
-                            <div :class="['agent-avatar', (agent.status || 'inactive').toLowerCase() === 'active' ? 'status-active' : 'status-inactive']">
+                            <div
+                              :class="['agent-avatar', (agent.status || 'inactive').toLowerCase() === 'active' ? 'status-active' : 'status-inactive']"
+                            >
                               <img
                                 v-if="agent.avatar"
                                 :src="agent.avatar"
@@ -2221,7 +2223,7 @@ export default {
   align-items: center;
   justify-content: center;
   padding: 2px;
-  border: 2px solid var(--color-text-muted);
+  border: 3px solid var(--color-text-muted);
 }
 
 .agent-avatar.status-active {

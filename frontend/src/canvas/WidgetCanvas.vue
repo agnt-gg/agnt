@@ -31,6 +31,7 @@
       @close="onWidgetClose"
       @collapse="onWidgetCollapse"
       @bring-to-front="onBringToFront"
+      @edit="onWidgetEdit"
     >
       <component
         :is="getWidgetComponent(instance.widgetId)"
@@ -184,6 +185,14 @@ export default {
       });
     }
 
+    function onWidgetEdit(widget) {
+      const def = getWidget(widget.widgetId);
+      if (def?.isCustomWidget && def.customDefinition) {
+        store.dispatch('widgetDefinitions/setActiveDefinition', def.customDefinition.id);
+        emit('screen-change', 'WidgetForgeScreen');
+      }
+    }
+
     function onDoubleClick(e) {
       // Only open catalog when clicking empty canvas area
       if (e.target === canvasRef.value || e.target.classList.contains('grid-overlay')) {
@@ -226,6 +235,7 @@ export default {
       onResizeEnd,
       onWidgetClose,
       onWidgetCollapse,
+      onWidgetEdit,
       onBringToFront,
       onDoubleClick,
     };

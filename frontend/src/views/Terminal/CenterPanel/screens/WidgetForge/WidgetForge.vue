@@ -202,7 +202,7 @@ export default {
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
-    const activePanel = ref('template');
+    const activePanel = ref('config');
     const selectedTemplate = ref(null);
     const previewKey = ref(0);
     const activeCategory = ref('all');
@@ -258,11 +258,7 @@ export default {
         form.useThemeStyles = existing.useThemeStyles !== false;
         configJson.value = JSON.stringify(existing.config || {}, null, 2);
 
-        if (form.widget_type === 'html' || form.widget_type === 'markdown') {
-          activePanel.value = 'code';
-        } else {
-          activePanel.value = 'config';
-        }
+        activePanel.value = 'config';
       } else {
         form.name = '';
         form.description = '';
@@ -275,7 +271,7 @@ export default {
         form.min_size = { cols: 2, rows: 2 };
         form.useThemeStyles = true;
         configJson.value = '{}';
-        activePanel.value = 'template';
+        activePanel.value = 'config';
         selectedTemplate.value = null;
         previewKey.value++;
       }
@@ -342,7 +338,7 @@ export default {
         form.min_size = { cols: 2, rows: 2 };
         form.useThemeStyles = true;
         configJson.value = '{}';
-        activePanel.value = 'template';
+        activePanel.value = 'config';
         selectedTemplate.value = null;
         previewKey.value++;
         store.dispatch('widgetChat/clearConversation', 'widget-forge');
@@ -499,10 +495,8 @@ export default {
           `<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#19ef83;font-size:20px;font-family:monospace;">
   Hello Widget!
 </div>`;
-        activePanel.value = 'code';
       } else if (tmpl.type === 'iframe') {
         form.config = { url: '' };
-        activePanel.value = 'config';
       }
 
       previewKey.value++;

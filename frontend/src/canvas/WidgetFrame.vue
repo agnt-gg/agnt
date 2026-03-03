@@ -17,6 +17,7 @@
       <span class="wf-icon"><i :class="widgetDef?.icon"></i></span>
       <span class="wf-title">{{ widgetDef?.name }}</span>
       <div class="wf-ctrl">
+        <button v-if="widgetDef?.isCustomWidget" @mousedown.stop @click="$emit('edit', widget)" title="Edit widget"><i class="fas fa-pen" style="font-size: 9px;"></i></button>
         <button @mousedown.stop @click="$emit('collapse', widget.instanceId)">{{ widget.collapsed ? '&#43;' : '&#9472;' }}</button>
         <button @mousedown.stop @click="$emit('close', widget.instanceId)">&#10005;</button>
       </div>
@@ -45,7 +46,7 @@ export default {
     cellHeight: { type: Number, required: true },
     isCustomPage: { type: Boolean, default: false },
   },
-  emits: ['drag-start', 'drag-end', 'resize-start', 'resize-end', 'close', 'collapse', 'bring-to-front'],
+  emits: ['drag-start', 'drag-end', 'resize-start', 'resize-end', 'close', 'collapse', 'bring-to-front', 'edit'],
   setup(props, { emit }) {
     const frameRef = ref(null);
     const isDragging = ref(false);

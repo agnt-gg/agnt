@@ -119,7 +119,7 @@
           :pageId="activePageId"
           :isCustomPage="true"
           @open-catalog="showCatalog = true"
-          @screen-change="(screen, opts) => $emit('screen-change', screen, opts)"
+          @screen-change="(screen, opts) => { onCustomPage = false; $emit('screen-change', screen, opts); }"
         />
 
         <!-- Section screens: render directly via slot (fast, no widget overhead) -->
