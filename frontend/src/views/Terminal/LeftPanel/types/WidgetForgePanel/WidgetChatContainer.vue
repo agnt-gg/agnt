@@ -371,6 +371,7 @@ export default {
 
         case 'done':
           store.dispatch('widgetChat/setStreaming', false);
+          handleFrontendEvent('widget-stream-done', {});
           focusInput();
           break;
       }

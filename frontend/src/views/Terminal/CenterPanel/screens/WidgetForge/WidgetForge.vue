@@ -282,6 +282,22 @@ export default {
       { immediate: true },
     );
 
+    // Pending autosave — deferred until streaming ends to avoid remounting the chat mid-response
+    let pendingAutosave = null;
+
+    function applyPendingAutosave() {
+      if (!pendingAutosave) return;
+      const { savedId, def } = pendingAutosave;
+      pendingAutosave = null;
+
+      const existing = store.getters['widgetDefinitions/activeDefinition'];
+      if (!existing || existing.id !== savedId) {
+        store.commit('widgetChat/MIGRATE_CONVERSATION', { fromId: 'widget-forge', toId: savedId });
+        store.commit('widgetDefinitions/ADD_DEFINITION', def);
+        store.dispatch('widgetDefinitions/setActiveDefinition', savedId);
+      }
+    }
+
     // Handle chat SSE events for widget field updates from Annie
     const handleChatSSEEvent = (event) => {
       const { eventType, eventData } = event.detail || {};
@@ -302,14 +318,12 @@ export default {
           }
           break;
         case 'widget-autosaved': {
-          // Backend created/updated a widget — set it as the active definition
-          // so subsequent generate calls UPDATE instead of INSERT
+          // Stash for later — don't switch widgetId mid-stream or the chat remounts and loses the response
           const savedId = eventData?.id;
           if (savedId && savedId !== 'widget-forge') {
-            const existing = store.getters['widgetDefinitions/activeDefinition'];
-            if (!existing || existing.id !== savedId) {
-              // Add to store if it's a brand-new widget
-              const def = {
+            pendingAutosave = {
+              savedId,
+              def: {
                 id: savedId,
                 name: form.name || eventData?.widgetData?.name || '',
                 description: form.description || eventData?.widgetData?.description || '',
@@ -321,13 +335,15 @@ export default {
                 default_size: form.default_size || { cols: 4, rows: 3 },
                 min_size: form.min_size || { cols: 2, rows: 2 },
                 useThemeStyles: form.useThemeStyles !== false,
-              };
-              store.commit('widgetDefinitions/ADD_DEFINITION', def);
-              store.dispatch('widgetDefinitions/setActiveDefinition', savedId);
-            }
+              },
+            };
           }
           break;
         }
+        case 'widget-stream-done':
+          // Stream finished — safe to apply the pending autosave now
+          applyPendingAutosave();
+          break;
         case 'widget-fields-cleared':
           form.name = '';
           form.description = '';

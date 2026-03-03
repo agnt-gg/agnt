@@ -143,6 +143,25 @@ export default {
       delete state.messageStates[widgetId];
       saveConversations(state.conversations);
     },
+    MIGRATE_CONVERSATION(state, { fromId, toId }) {
+      if (state.conversations[fromId]) {
+        state.conversations[toId] = state.conversations[fromId];
+        delete state.conversations[fromId];
+      }
+      if (state.expandedToolCalls[fromId]) {
+        state.expandedToolCalls[toId] = state.expandedToolCalls[fromId];
+        delete state.expandedToolCalls[fromId];
+      }
+      if (state.runningToolCalls[fromId]) {
+        state.runningToolCalls[toId] = state.runningToolCalls[fromId];
+        delete state.runningToolCalls[fromId];
+      }
+      if (state.messageStates[fromId]) {
+        state.messageStates[toId] = state.messageStates[fromId];
+        delete state.messageStates[fromId];
+      }
+      saveConversations(state.conversations);
+    },
     SET_ACTIVE_CONVERSATION(state, widgetId) {
       state.activeConversationId = widgetId;
     },
