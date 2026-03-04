@@ -308,7 +308,7 @@ export default {
       commit('SET_LOADING_MODELS', { provider, loading: true });
 
       try {
-        const providerLower = provider.toLowerCase();
+        const providerLower = resolveProviderKey(provider);
         const token = localStorage.getItem('token');
         const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'openai-codex-cli' || providerLower === 'claude-code';
         if (!token && !isLocalProvider) {
