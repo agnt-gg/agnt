@@ -77,7 +77,10 @@
     <Teleport to="body">
       <div v-if="deleteConfirm.show" class="delete-overlay" @click.self="cancelDelete">
         <div class="delete-dialog">
-          <p>Delete <strong>{{ deleteConfirm.name }}</strong>?</p>
+          <p>
+            Delete <strong>{{ deleteConfirm.name }}</strong
+            >?
+          </p>
           <p class="delete-warning" v-if="deleteConfirm.type === 'directory'">This will delete the folder and all its contents.</p>
           <div class="delete-actions">
             <button class="delete-cancel-btn" @click="cancelDelete">Cancel</button>
@@ -248,9 +251,7 @@ export default {
     const createNewItem = async () => {
       if (!newItemInput.name.trim()) return;
 
-      const fullPath = newItemInput.parentDir
-        ? `${newItemInput.parentDir}/${newItemInput.name.trim()}`
-        : newItemInput.name.trim();
+      const fullPath = newItemInput.parentDir ? `${newItemInput.parentDir}/${newItemInput.name.trim()}` : newItemInput.name.trim();
 
       try {
         if (newItemInput.type === 'file') {
@@ -296,7 +297,9 @@ export default {
             try {
               const data = await getTree(dirPath);
               childrenMap[dirPath] = data.items;
-            } catch { /* dir may no longer exist */ }
+            } catch {
+              /* dir may no longer exist */
+            }
           }
         }
       } catch (err) {
@@ -373,7 +376,9 @@ export default {
         try {
           const data = await getTree(targetDir);
           childrenMap[targetDir] = data.items;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
 
         // Re-fetch other expanded dirs
         for (const dirPath of Object.keys(expandedDirs)) {
@@ -381,7 +386,9 @@ export default {
             try {
               const data = await getTree(dirPath);
               childrenMap[dirPath] = data.items;
-            } catch { /* dir may no longer exist */ }
+            } catch {
+              /* dir may no longer exist */
+            }
           }
         }
       } catch (err) {
@@ -732,7 +739,7 @@ export default {
 
 /* Settings dialog */
 .settings-dialog {
-  background: var(--color-darker-0);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 20px 24px;

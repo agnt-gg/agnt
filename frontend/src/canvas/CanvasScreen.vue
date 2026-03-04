@@ -119,7 +119,12 @@
           :pageId="activePageId"
           :isCustomPage="true"
           @open-catalog="showCatalog = true"
-          @screen-change="(screen, opts) => { onCustomPage = false; $emit('screen-change', screen, opts); }"
+          @screen-change="
+            (screen, opts) => {
+              onCustomPage = false;
+              $emit('screen-change', screen, opts);
+            }
+          "
         />
 
         <!-- Section screens: render directly via slot (fast, no widget overhead) -->
@@ -971,7 +976,7 @@ export default {
   position: fixed;
   inset: 0;
   z-index: 4000;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--color-background);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
@@ -980,7 +985,7 @@ export default {
 }
 
 .cv-modal {
-  background: var(--color-background);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 16px 20px;

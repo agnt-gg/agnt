@@ -38,6 +38,7 @@ class GenericProviderService extends EventEmitter {
     this.responseDataPath = config.responseDataPath || 'data';
     this.transformModel = config.transformModel || this._defaultTransform;
     this.filterModel = config.filterModel || ((m) => !!m.id);
+    this.recommendedModels = config.recommendedModels || [];
     this.supportsPagination = config.supportsPagination || false;
     this.paginationConfig = config.paginationConfig || {};
 
@@ -86,9 +87,19 @@ class GenericProviderService extends EventEmitter {
     console.log(`[${this.name}] Raw models from API: ${allRawModels.length}`);
     const filtered = allRawModels.filter(this.filterModel);
     console.log(`[${this.name}] After filter: ${filtered.length} (removed ${allRawModels.length - filtered.length})`);
+    const recSet = new Set(this.recommendedModels);
     const models = filtered
       .map(this.transformModel)
-      .sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || ''));
+      .sort((a, b) => {
+        const aRec = recSet.has(a.id);
+        const bRec = recSet.has(b.id);
+        if (aRec && bRec) {
+          return this.recommendedModels.indexOf(a.id) - this.recommendedModels.indexOf(b.id);
+        }
+        if (aRec) return -1;
+        if (bRec) return 1;
+        return (a.name || a.id || '').localeCompare(b.name || b.id || '');
+      });
 
     // Detect model changes before updating cache
     this._detectChanges(models);

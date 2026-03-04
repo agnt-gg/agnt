@@ -14,18 +14,25 @@ const router = express.Router();
 
 const providerServices = {};
 for (const config of getAllProviderConfigs()) {
+  const recommended = config.recommendedModels || config.fallbackModels.slice(0, 3);
   if (config.staticModels) {
     // Static model list — no API call needed (e.g., openai-codex-cli)
+    // Order fallback models with recommended first
+    const recSet = new Set(recommended);
+    const orderedModels = [
+      ...recommended.filter((id) => config.fallbackModels.includes(id)),
+      ...config.fallbackModels.filter((id) => !recSet.has(id)),
+    ];
     providerServices[config.key] = {
       fetchModels: async () =>
-        config.fallbackModels.map((id) => ({
+        orderedModels.map((id) => ({
           id,
           name: id,
           description: '',
           createdAt: null,
           ownedBy: config.key,
         })),
-      getModelNames: async () => config.fallbackModels,
+      getModelNames: async () => orderedModels,
       isCacheValid: () => true,
       clearCache: () => {},
     };
@@ -34,6 +41,7 @@ for (const config of getAllProviderConfigs()) {
       name: config.name,
       baseURL: config.baseURL,
       fallbackModels: config.fallbackModels,
+      recommendedModels: recommended,
       fallbackModelObjects: config.fallbackModelObjects || null,
       headers: config.fetchHeaders || {},
       authScheme:

@@ -34,6 +34,7 @@ const PROVIDER_CONFIGS = [
         supportsStyle: true,
       },
     },
+    recommendedModels: ['gpt-5.2', 'o4-mini', 'gpt-4.1'],
     fallbackModels: ['gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
     fallbackVisionModels: ['gpt-5.2', 'gpt-4.1'],
     modelMetadata: {
@@ -79,6 +80,7 @@ const PROVIDER_CONFIGS = [
         supportsStyle: true,
       },
     },
+    recommendedModels: ['gpt-4.1'],
     fallbackModels: ['gpt-4.1'],
     compat: {},
     sdkOptions: {},
@@ -95,6 +97,7 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
+    recommendedModels: ['gpt-5.2-codex', 'gpt-5.1-codex'],
     fallbackModels: ['gpt-5.2-codex', 'gpt-5.1-codex', 'gpt-5.2'],
     compat: {},
     sdkOptions: {},
@@ -118,6 +121,7 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    recommendedModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
     fallbackModels: [
       'claude-opus-4-6',
       'claude-sonnet-4-6',
@@ -182,6 +186,7 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    recommendedModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
     fallbackModels: [
       'claude-opus-4-6',
       'claude-sonnet-4-6',
@@ -229,6 +234,7 @@ const PROVIDER_CONFIGS = [
         supportsGoogleSearch: true,
       },
     },
+    recommendedModels: ['gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash'],
     fallbackModels: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
     fallbackVisionModels: ['gemini-3.1-pro-preview', 'gemini-2.5-pro'],
     modelMetadata: {
@@ -269,6 +275,7 @@ const PROVIDER_CONFIGS = [
         supportsRevisedPrompt: true,
       },
     },
+    recommendedModels: ['grok-4-0709', 'grok-4-1-fast-reasoning'],
     fallbackModels: ['grok-4-0709', 'grok-4-1-fast-reasoning', 'grok-code-fast-1', 'grok-3', 'grok-3-mini'],
     fallbackVisionModels: ['grok-4-0709'],
     modelMetadata: {
@@ -292,6 +299,7 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
+    recommendedModels: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'],
     fallbackModels: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'qwen/qwen3-32b', 'meta-llama/llama-4-scout-17b-16e-instruct'],
     modelMetadata: {
       'openai/gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: false, supportsTools: true, reasoning: false },
@@ -325,6 +333,7 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
+    recommendedModels: ['deepseek-chat', 'deepseek-reasoner'],
     fallbackModels: ['deepseek-chat', 'deepseek-reasoner'],
     modelMetadata: {
       'deepseek-chat': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 0.28, outputCostPer1M: 0.42, supportsVision: false, supportsTools: true, reasoning: false },
@@ -351,6 +360,7 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    recommendedModels: ['openai/gpt-5.2', 'anthropic/claude-sonnet-4-6', 'google/gemini-2.5-pro'],
     fallbackModels: [
       'openai/gpt-5.2',
       'openai/gpt-4.1',
@@ -394,6 +404,7 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
+    recommendedModels: ['deepseek-ai/DeepSeek-V3', 'moonshotai/Kimi-K2.5'],
     fallbackModels: [
       'deepseek-ai/DeepSeek-V3',
       'moonshotai/Kimi-K2.5',
@@ -416,6 +427,7 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
+    recommendedModels: ['gpt-oss-120b', 'qwen-3-235b-a22b-instruct-2507'],
     fallbackModels: ['gpt-oss-120b', 'llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507', 'zai-glm-4.7'],
     modelMetadata: {
       'gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.35, outputCostPer1M: 0.75, supportsVision: false, supportsTools: true, reasoning: false },
@@ -438,6 +450,7 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    recommendedModels: ['kimi-k2.5', 'kimi-k2-thinking'],
     fallbackModels: ['kimi-k2.5', 'kimi-k2-thinking', 'kimi-k2', 'moonshot-v1-128k', 'moonshot-v1-32k'],
     fallbackVisionModels: ['kimi-k2.5'],
     modelMetadata: {
@@ -462,6 +475,7 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
+    recommendedModels: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
     fallbackModels: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed', 'MiniMax-M2.1', 'MiniMax-M2.1-highspeed'],
     modelMetadata: {
       'MiniMax-M2.5': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: true },
@@ -485,6 +499,7 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    recommendedModels: ['glm-5', 'glm-4.7'],
     fallbackModels: ['glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.6v', 'glm-4.6v-flash', 'glm-4.5-flash'],
     fallbackVisionModels: ['glm-4.6v', 'glm-4.6v-flash'],
     modelMetadata: {
@@ -699,6 +714,12 @@ export function getAllProviderTemplates() {
 /** Get a specific provider template by key */
 export function getProviderTemplate(key) {
   return PROVIDER_TEMPLATES.find((t) => t.key === key.toLowerCase());
+}
+
+/** Get recommended models for a provider (top models to show first in dropdowns) */
+export function getRecommendedModels(providerKey) {
+  const config = getProviderConfig(providerKey);
+  return config?.recommendedModels || config?.fallbackModels?.slice(0, 3) || [];
 }
 
 /** Build a PROVIDER_CAPABILITIES object (for backward compat with ProviderRegistry) */
