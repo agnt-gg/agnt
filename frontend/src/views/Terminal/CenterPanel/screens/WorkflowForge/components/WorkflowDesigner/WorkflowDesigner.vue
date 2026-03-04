@@ -884,6 +884,20 @@ export default {
           body: JSON.stringify({ workflow: serverState }),
         });
 
+        // Update the workflows Vuex store so the right panel list reflects the save
+        const existingWf = this.$store.getters['workflows/getWorkflowById'](workflowId);
+        if (existingWf) {
+          this.$store.commit('workflows/UPDATE_WORKFLOW', { ...existingWf, name: newWorkflowName });
+        } else {
+          this.$store.commit('workflows/ADD_WORKFLOW', {
+            id: workflowId,
+            name: newWorkflowName,
+            status: this.workflowStatus || 'stopped',
+            category: '',
+            nodes: [],
+          });
+        }
+
         // Only save to the remote endpoint if isSharing is true
         if (isSharing) {
           const remoteEndpoint = this.getEndpoint('share');
@@ -1361,7 +1375,11 @@ export default {
         isActive: false,
       }));
 
-      // this.activeWorkflowId = localStorage.getItem('activeWorkflow');
+      // Update Vuex store so right panel reflects the change immediately
+      const wfId = this.activeWorkflowId || localStorage.getItem('activeWorkflow');
+      if (wfId) {
+        this.$store.commit('workflows/UPDATE_WORKFLOW_STATUS', { id: wfId, status: 'running' });
+      }
 
       this.pollWorkflowStatus();
     },
@@ -1388,6 +1406,12 @@ export default {
       this.workflowStatus = 'stopped';
       this.nodeOutputs = {};
       this.nodeErrors = {};
+
+      // Update Vuex store so right panel reflects the change immediately
+      const wfId = this.activeWorkflowId || localStorage.getItem('activeWorkflow');
+      if (wfId) {
+        this.$store.commit('workflows/UPDATE_WORKFLOW_STATUS', { id: wfId, status: 'stopped' });
+      }
 
       // Stop the animation
       this.updateAnimationState(false);
@@ -1511,6 +1535,14 @@ export default {
       this.nodeErrors = data.errors || {};
       this.nodeOutputs = data.outputs || {};
       this.currentNodeId = data.currentNodeId;
+
+      // Sync status to Vuex store so right panel updates immediately
+      if (statusChanged) {
+        const wfId = this.activeWorkflowId || localStorage.getItem('activeWorkflow');
+        if (wfId) {
+          this.$store.commit('workflows/UPDATE_WORKFLOW_STATUS', { id: wfId, status: this.workflowStatus });
+        }
+      }
 
       // Calculate if animation should be active
       const shouldBeAnimating = this.workflowStatus === 'running' || this.workflowStatus === 'error' || this.workflowStatus === 'listening';
