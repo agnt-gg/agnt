@@ -2120,8 +2120,15 @@ class GeminiAdapter extends BaseAdapter {
       for (const [key, prop] of Object.entries(fixed.properties)) {
         // Fix enum - only allowed for string type in Gemini
         if (prop.enum && prop.type !== 'string') {
-          console.warn(`Removing enum from non-string property: ${key} (type: ${prop.type})`);
           delete prop.enum;
+        }
+
+        // Fix enum - filter out empty strings (Gemini rejects empty enum values)
+        if (prop.enum && Array.isArray(prop.enum)) {
+          prop.enum = prop.enum.filter((v) => v !== '');
+          if (prop.enum.length === 0) {
+            delete prop.enum;
+          }
         }
 
         // Recursively fix nested objects
@@ -2129,15 +2136,25 @@ class GeminiAdapter extends BaseAdapter {
           prop.properties = this._fixSchemaForGemini({ properties: prop.properties }).properties;
         }
 
-        // Recursively fix array items
-        if (prop.type === 'array' && prop.items) {
+        // Fix array type - must have items field (Gemini requires it)
+        if (prop.type === 'array') {
+          if (!prop.items) {
+            prop.items = { type: 'string' };
+          }
+          // Recursively fix array items
           if (prop.items.properties) {
             prop.items = this._fixSchemaForGemini(prop.items);
           }
           // Fix enum in array items
-          if (prop.items.enum && prop.items.type !== 'string') {
-            console.warn(`Removing enum from non-string array items: ${key} (type: ${prop.items.type})`);
-            delete prop.items.enum;
+          if (prop.items.enum) {
+            if (prop.items.type !== 'string') {
+              delete prop.items.enum;
+            } else {
+              prop.items.enum = prop.items.enum.filter((v) => v !== '');
+              if (prop.items.enum.length === 0) {
+                delete prop.items.enum;
+              }
+            }
           }
         }
       }
@@ -3378,3 +3395,6 @@ export async function createLlmAdapter(provider, client, model) {
       throw new Error(`Unsupported provider for LLM adapter: ${provider}`);
   }
 }
+
+// Export adapters for testing
+export { GeminiAdapter };

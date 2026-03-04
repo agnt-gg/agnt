@@ -48,29 +48,34 @@ class GenericProviderService extends EventEmitter {
 
   /**
    * Fetch models from the provider API with caching, error recovery, and fallbacks.
+   * On first load (no cache), returns fallback models immediately and fetches from API in background.
    */
   async fetchModels(apiKey, options = {}) {
     const { useCache = true } = options;
 
     if (useCache && this.isCacheValid()) {
-      console.log(`Returning cached ${this.name} models`);
       return this.modelsCache;
     }
 
+    // If we have no cache yet, return fallbacks immediately and fetch in background
+    if (!this.modelsCache && !this._backgroundFetchInProgress) {
+      this._backgroundFetchInProgress = true;
+      this._fetchAndCache(apiKey)
+        .catch((err) => console.error(`[${this.name}] Background model fetch failed:`, err.message))
+        .finally(() => {
+          this._backgroundFetchInProgress = false;
+        });
+      return this.getFallbackModels();
+    }
+
+    // If a background fetch is already running, return what we have
+    if (this._backgroundFetchInProgress) {
+      return this.modelsCache || this.getFallbackModels();
+    }
+
+    // Cache expired — try to fetch fresh models
     try {
-      const allRawModels = await this._fetchAllPages(apiKey);
-      const models = allRawModels
-        .filter(this.filterModel)
-        .map(this.transformModel)
-        .sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || ''));
-
-      // Detect model changes before updating cache
-      this._detectChanges(models);
-
-      this.modelsCache = models;
-      this.cacheTimestamp = Date.now();
-      console.log(`Fetched ${models.length} models from ${this.name} API`);
-      return models;
+      return await this._fetchAndCache(apiKey);
     } catch (error) {
       console.error(`Failed to fetch ${this.name} models:`, error.message);
 
@@ -81,6 +86,25 @@ class GenericProviderService extends EventEmitter {
 
       return this.getFallbackModels();
     }
+  }
+
+  /**
+   * Internal: fetch models from API and update cache.
+   */
+  async _fetchAndCache(apiKey) {
+    const allRawModels = await this._fetchAllPages(apiKey);
+    const models = allRawModels
+      .filter(this.filterModel)
+      .map(this.transformModel)
+      .sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || ''));
+
+    // Detect model changes before updating cache
+    this._detectChanges(models);
+
+    this.modelsCache = models;
+    this.cacheTimestamp = Date.now();
+    console.log(`Fetched ${models.length} models from ${this.name} API`);
+    return models;
   }
 
   /**
