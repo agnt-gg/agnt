@@ -26,7 +26,7 @@
           <CustomSelect
             ref="providerSelect"
             :options="providerOptions"
-            :placeholder="PROVIDER_DISPLAY_NAMES[selectedProvider] || selectedProvider || 'Select Provider'"
+            :placeholder="selectedProviderDisplayName || 'Select Provider'"
             :zIndex="10001"
             maxHeight="156px"
             @option-selected="handleProviderSelected"
@@ -247,6 +247,11 @@ export default {
         }
       }
     };
+
+    // Sync selects immediately when dropdown opens
+    watch(() => props.isOpen, (open) => {
+      if (open) updateCustomSelects();
+    });
 
     // Watch for provider changes to fetch models
     watch(selectedProvider, async (newProvider, oldProvider) => {
