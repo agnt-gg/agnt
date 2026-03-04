@@ -19,7 +19,6 @@ import { getProviderConfig } from './providerConfigs.js';
  * @throws {Error} If the provider is unsupported or the access token is missing.
  */
 export async function createLlmClient(provider, userId, options = {}) {
-  const lowerCaseProvider = provider.toLowerCase();
   const { conversationId = null, cwd = process.cwd(), codexFullAuto = true, authToken = null } = options;
 
   // 1. Check if this is a custom DB-backed provider (unchanged)
@@ -28,12 +27,15 @@ export async function createLlmClient(provider, userId, options = {}) {
     return _createCustomProviderClient(provider, userId);
   }
 
+  // Resolve provider key (handles display names like "Z-AI" → "zai")
+  const config = getProviderConfig(provider);
+  const lowerCaseProvider = config ? config.key : provider.toLowerCase();
+
   // 2. Check for special auth providers that don't use the standard AuthManager flow
   const specialClient = await _createSpecialAuthClient(lowerCaseProvider, options);
   if (specialClient) return specialClient;
 
-  // 3. Config-driven client construction (replaces the entire switch statement)
-  const config = getProviderConfig(lowerCaseProvider);
+  // 3. Config-driven client construction
   if (!config) {
     throw new Error(`Unsupported provider for LLM client factory: ${provider}`);
   }

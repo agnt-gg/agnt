@@ -57,23 +57,12 @@ class GenericProviderService extends EventEmitter {
       return this.modelsCache;
     }
 
-    // If we have no cache yet, return fallbacks immediately and fetch in background
-    if (!this.modelsCache && !this._backgroundFetchInProgress) {
-      this._backgroundFetchInProgress = true;
-      this._fetchAndCache(apiKey)
-        .catch((err) => console.error(`[${this.name}] Background model fetch failed:`, err.message))
-        .finally(() => {
-          this._backgroundFetchInProgress = false;
-        });
-      return this.getFallbackModels();
-    }
-
     // If a background fetch is already running, return what we have
     if (this._backgroundFetchInProgress) {
       return this.modelsCache || this.getFallbackModels();
     }
 
-    // Cache expired — try to fetch fresh models
+    // Fetch from API (first load or cache expired) — wait for real models
     try {
       return await this._fetchAndCache(apiKey);
     } catch (error) {
@@ -84,6 +73,7 @@ class GenericProviderService extends EventEmitter {
         return this.modelsCache;
       }
 
+      console.log(`Returning fallback models for ${this.name}`);
       return this.getFallbackModels();
     }
   }
@@ -93,8 +83,10 @@ class GenericProviderService extends EventEmitter {
    */
   async _fetchAndCache(apiKey) {
     const allRawModels = await this._fetchAllPages(apiKey);
-    const models = allRawModels
-      .filter(this.filterModel)
+    console.log(`[${this.name}] Raw models from API: ${allRawModels.length}`);
+    const filtered = allRawModels.filter(this.filterModel);
+    console.log(`[${this.name}] After filter: ${filtered.length} (removed ${allRawModels.length - filtered.length})`);
+    const models = filtered
       .map(this.transformModel)
       .sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || ''));
 
@@ -103,7 +95,7 @@ class GenericProviderService extends EventEmitter {
 
     this.modelsCache = models;
     this.cacheTimestamp = Date.now();
-    console.log(`Fetched ${models.length} models from ${this.name} API`);
+    console.log(`[${this.name}] Cached ${models.length} models from API`);
     return models;
   }
 
@@ -159,10 +151,13 @@ class GenericProviderService extends EventEmitter {
     const url = this._buildUrl(apiKey);
     const headers = this._buildHeaders(apiKey);
 
-    const response = await fetch(url, { headers });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(url, { headers, signal: controller.signal }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
-      throw new Error(`${this.name} API error: ${response.status} ${response.statusText}`);
+      const errBody = await response.text().catch(() => '');
+      throw new Error(`${this.name} API error: ${response.status} ${response.statusText} - ${errBody.slice(0, 200)}`);
     }
 
     const data = await response.json();
@@ -174,7 +169,8 @@ class GenericProviderService extends EventEmitter {
    */
   async _fetchPaginatedPage(apiKey, afterId) {
     const url = new URL(`${this.baseURL}${this.modelsPath}`);
-    url.searchParams.set('limit', String(this.paginationConfig.pageSize || 100));
+    const limitParam = this.paginationConfig.limitParam || 'limit';
+    url.searchParams.set(limitParam, String(this.paginationConfig.pageSize || 100));
     if (afterId) {
       url.searchParams.set(this.paginationConfig.cursorParam || 'after_id', afterId);
     }
@@ -185,16 +181,25 @@ class GenericProviderService extends EventEmitter {
     }
 
     const headers = this._buildHeaders(apiKey);
-    const response = await fetch(url.toString(), { headers });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(url.toString(), { headers, signal: controller.signal }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
-      throw new Error(`${this.name} API error: ${response.status} ${response.statusText}`);
+      const errBody = await response.text().catch(() => '');
+      throw new Error(`${this.name} API error: ${response.status} ${response.statusText} - ${errBody.slice(0, 200)}`);
     }
 
     const data = await response.json();
     const models = this._extractModels(data);
-    const hasMorePages = data[this.paginationConfig.hasMoreField || 'has_more'] === true;
-    const nextCursor = hasMorePages && models.length > 0 ? models[models.length - 1].id : null;
+    const hasMoreField = this.paginationConfig.hasMoreField || 'has_more';
+    const hasMoreValue = data[hasMoreField];
+    // Support both boolean (Anthropic: has_more: true) and string tokens (Gemini: nextPageToken: "abc")
+    const hasMorePages = hasMoreValue === true || (typeof hasMoreValue === 'string' && hasMoreValue.length > 0);
+    // Use token value as cursor if it's a string, otherwise use last model ID (Anthropic-style)
+    const nextCursor = hasMorePages
+      ? (typeof hasMoreValue === 'string' ? hasMoreValue : (models.length > 0 ? models[models.length - 1].id : null))
+      : null;
 
     return { models, nextCursor, hasMorePages };
   }

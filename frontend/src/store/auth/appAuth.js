@@ -1,5 +1,6 @@
 import { API_CONFIG } from '@/tt.config.js';
 import axios from 'axios';
+import { resolveProviderKey } from '@/store/app/aiProvider.js';
 
 // In-flight promise for deduplicating concurrent fetchConnectedApps calls
 let _fetchConnectedAppsPromise = null;
@@ -141,10 +142,12 @@ const actions = {
         const remoteResult = await remotePromise;
         if (remoteResult && Array.isArray(remoteResult.data)) {
           const normalizeProviderId = (app) => {
-            if (typeof app === 'string') return app.toLowerCase();
-            if (app?.provider_id) return String(app.provider_id).toLowerCase();
-            if (app?.id) return String(app.id).toLowerCase();
-            return null;
+            let raw;
+            if (typeof app === 'string') raw = app;
+            else if (app?.provider_id) raw = String(app.provider_id);
+            else if (app?.id) raw = String(app.id);
+            else return null;
+            return resolveProviderKey(raw) || raw.toLowerCase();
           };
           const remoteApps = remoteResult.data.map(normalizeProviderId).filter(Boolean);
           const merged = Array.from(new Set([...remoteApps, ...connectedApps]));

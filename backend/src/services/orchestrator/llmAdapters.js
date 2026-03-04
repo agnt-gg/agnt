@@ -5,6 +5,7 @@ import { manageContext } from '../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
+import { getProviderConfig } from '../ai/providerConfigs.js';
 
 /**
  * Parse API error messages to extract user-friendly error details
@@ -3342,14 +3343,16 @@ function requiresResponsesApi(model) {
  * @returns {Promise<BaseAdapter>} An instance of a provider-specific adapter.
  */
 export async function createLlmAdapter(provider, client, model) {
-  const lowerCaseProvider = provider.toLowerCase();
-
   // Check if this is a custom provider (UUID format)
   const isCustom = await CustomOpenAIProviderService.isCustomProvider(provider);
   if (isCustom) {
     console.log(`[LLM Adapter] Using OpenAI-like adapter for custom provider: ${provider}`);
     return new OpenAiLikeAdapter(client, model);
   }
+
+  // Resolve provider key (handles display names like "Z-AI" → "zai")
+  const config = getProviderConfig(provider);
+  const lowerCaseProvider = config ? config.key : provider.toLowerCase();
 
   switch (lowerCaseProvider) {
     case 'claude-code':

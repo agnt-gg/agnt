@@ -1,6 +1,6 @@
 import express from 'express';
 import GenericProviderService from '../services/ai/providers/GenericProviderService.js';
-import { getAllProviderConfigs, getModelMetadata, getModelCost, isReasoningModel, getAllModelMetadata } from '../services/ai/providerConfigs.js';
+import { getAllProviderConfigs, getProviderConfig, getModelMetadata, getModelCost, isReasoningModel, getAllModelMetadata } from '../services/ai/providerConfigs.js';
 import providerHealthCheck from '../services/ai/ProviderHealthCheck.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
@@ -68,7 +68,9 @@ const providersWithHardcodedModels = getAllProviderConfigs()
 router.get('/:provider/models', async (req, res) => {
   try {
     const { provider } = req.params;
-    const providerLower = provider.toLowerCase();
+    // Resolve display names (e.g., "Z-AI" → "zai", "Grok AI" → "grokai")
+    const resolved = getProviderConfig(provider);
+    const providerLower = resolved ? resolved.key : provider.toLowerCase();
 
     // Get the service for this provider
     const service = providerServices[providerLower];
@@ -213,7 +215,8 @@ router.get('/:provider/models', async (req, res) => {
 router.post('/:provider/models/refresh', async (req, res) => {
   try {
     const { provider } = req.params;
-    const providerLower = provider.toLowerCase();
+    const resolved = getProviderConfig(provider);
+    const providerLower = resolved ? resolved.key : provider.toLowerCase();
 
     // Get the service for this provider
     const service = providerServices[providerLower];

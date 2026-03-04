@@ -4,6 +4,22 @@ import { API_CONFIG } from '@/tt.config.js';
 // Single source of truth for all built-in provider metadata on the frontend.
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
 
+// Cache version — bump this to invalidate all provider model caches
+const MODEL_CACHE_VERSION = 3;
+(() => {
+  const storedVersion = localStorage.getItem('model_cache_version');
+  if (storedVersion !== String(MODEL_CACHE_VERSION)) {
+    // Clear all provider model caches when version changes
+    for (const key of Object.keys(localStorage)) {
+      if (key.endsWith('_models')) {
+        localStorage.removeItem(key);
+      }
+    }
+    localStorage.setItem('model_cache_version', String(MODEL_CACHE_VERSION));
+    console.log('[aiProvider] Cleared stale model caches (version upgrade)');
+  }
+})();
+
 const BUILT_IN_PROVIDERS = [
   { key: 'anthropic', displayName: 'Anthropic' },
   { key: 'cerebras', displayName: 'Cerebras' },
@@ -20,7 +36,7 @@ const BUILT_IN_PROVIDERS = [
   { key: 'openai-codex-cli', displayName: 'OpenAI-Codex-CLI' },
   { key: 'openrouter', displayName: 'OpenRouter' },
   { key: 'togetherai', displayName: 'TogetherAI' },
-  { key: 'zai', displayName: 'Z-AI' },
+  { key: 'zai', displayName: 'Z.AI' },
 ];
 
 // ─────────────────────────── DERIVED EXPORTS ───────────────────────────
@@ -37,7 +53,7 @@ for (const p of BUILT_IN_PROVIDERS) {
 }
 
 // Resolve any provider identifier (display name, key, or mixed case) to its canonical key.
-// e.g. "Z-AI" → "zai", "GrokAI" → "grokai", "openai" → "openai"
+// e.g. "Z.AI" → "zai", "Z-AI" → "zai", "GrokAI" → "grokai", "openai" → "openai"
 export function resolveProviderKey(identifier) {
   if (!identifier) return null;
   const lower = identifier.toLowerCase();
@@ -47,6 +63,12 @@ export function resolveProviderKey(identifier) {
   // Display name match (case-insensitive)
   const byDisplay = BUILT_IN_PROVIDERS.find((p) => p.displayName.toLowerCase() === lower);
   if (byDisplay) return byDisplay.key;
+  // Fuzzy match: strip non-alphanumeric chars (e.g. "Z-AI", "Z.AI" → "zai")
+  const stripped = lower.replace(/[^a-z0-9]/g, '');
+  const byFuzzy = BUILT_IN_PROVIDERS.find(
+    (p) => p.key === stripped || p.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') === stripped,
+  );
+  if (byFuzzy) return byFuzzy.key;
   // Not a built-in provider — return as-is (custom provider ID)
   return identifier;
 }
@@ -57,7 +79,7 @@ export const AI_PROVIDERS_WITH_API = BUILT_IN_PROVIDERS.filter((p) => p.key !== 
 // Mapping of provider display names to their fetch action names (auto-generated)
 export const PROVIDER_FETCH_ACTIONS = {};
 for (const p of BUILT_IN_PROVIDERS) {
-  const actionSuffix = p.displayName.replace(/-/g, '');
+  const actionSuffix = p.displayName.replace(/[-.]/g, '');
   PROVIDER_FETCH_ACTIONS[p.displayName] = `aiProvider/fetch${actionSuffix}Models`;
 }
 
@@ -413,7 +435,7 @@ export default {
       return dispatch('fetchProviderModels', { provider: 'MiniMax', forceRefresh });
     },
     async fetchZAIModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'Z-AI', forceRefresh });
+      return dispatch('fetchProviderModels', { provider: 'Z.AI', forceRefresh });
     },
 
     async fetchLocalModels({ commit, state }, { forceRefresh = false } = {}) {
