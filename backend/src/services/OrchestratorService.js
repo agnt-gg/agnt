@@ -959,10 +959,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
           console.log(`NO TRUNCATION - using full content for ${functionName} (${rawFunctionResponse.length} chars)`);
 
           // Preserve frontend events before any offloading/truncation mangles the content
+          // Then strip them from functionResponseContent — they contain full source_code
+          // which bloats LLM context and gets corrupted by DATA_REF offloading
           try {
             const rawParsed = JSON.parse(rawFunctionResponse);
             if (rawParsed && rawParsed.frontendEvents) {
               preservedFrontendEvents = rawParsed.frontendEvents;
+              delete rawParsed.frontendEvents;
+              functionResponseContent = JSON.stringify(rawParsed);
             }
           } catch { /* ignore parse errors — will be handled later */ }
 
@@ -1190,6 +1194,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
               eventData: event.data,
             });
           });
+        }
+
+        // Strip frontendEvents from toolCallResult before tool_end — they are already
+        // dispatched via frontend_event SSEs above. Keeping them in tool_end causes
+        // double-processing in handleToolAction, and the offloaded/DATA_REF'd versions
+        // would overwrite the widget with placeholder strings instead of actual source code.
+        if (toolCallResult && toolCallResult.frontendEvents) {
+          delete toolCallResult.frontendEvents;
         }
 
         sendEvent('tool_end', { assistantMessageId, toolCall: { id: toolCall.id, result: toolCallResult, error: toolCallError } });
