@@ -687,8 +687,10 @@ export default {
       }
     };
 
-    // Auto-refresh health when connected apps change
+    // Auto-refresh health when connected apps change (skip initial mount)
+    let watchReady = false;
     watch(connectedApps, async (newApps, oldApps) => {
+      if (!watchReady) return;
       if (JSON.stringify(newApps) !== JSON.stringify(oldApps)) {
         await refreshHealth();
       }
@@ -708,6 +710,10 @@ export default {
       if (store.getters['appAuth/needsHealthCheck']) {
         await refreshHealth();
       }
+
+      // Enable watcher after initial data is loaded
+      watchReady = true;
+
       nextTick(checkGridScroll);
 
       // Listen for OAuth completion messages
