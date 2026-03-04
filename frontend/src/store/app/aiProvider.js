@@ -5,7 +5,7 @@ import { API_CONFIG } from '@/tt.config.js';
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
 
 // Cache version — bump this to invalidate all provider model caches
-const MODEL_CACHE_VERSION = 3;
+const MODEL_CACHE_VERSION = 4;
 (() => {
   const storedVersion = localStorage.getItem('model_cache_version');
   if (storedVersion !== String(MODEL_CACHE_VERSION)) {
@@ -100,6 +100,7 @@ export default {
     allModels: { ...INITIAL_ALL_MODELS },
     selectedProvider: localStorage.getItem('selectedProvider') || null,
     selectedModel: localStorage.getItem('selectedModel') || null,
+    reasoningEnabled: localStorage.getItem('reasoningEnabled') === 'true',
     loadingModels: {},
     modelCache: {},
   },
@@ -135,6 +136,14 @@ export default {
 
       localStorage.setItem('selectedModel', newModel);
     },
+    SET_REASONING_ENABLED(state, enabled) {
+      state.reasoningEnabled = enabled;
+      if (enabled) {
+        localStorage.setItem('reasoningEnabled', 'true');
+      } else {
+        localStorage.removeItem('reasoningEnabled');
+      }
+    },
     ENSURE_VALID_MODEL(state) {
       const availableModels = state.allModels[state.selectedProvider] || [];
       if (!state.selectedModel || !availableModels.includes(state.selectedModel)) {
@@ -148,9 +157,14 @@ export default {
     SET_PROVIDER_MODELS(state, { provider, models }) {
       state.allModels[provider] = models;
 
-      if (state.selectedProvider === provider && !state.selectedModel && models.length > 0) {
-        state.selectedModel = models[0];
-        localStorage.setItem('selectedModel', models[0]);
+      // Auto-select the first (recommended) model when:
+      // - This is the currently selected provider, AND
+      // - No model is selected, OR the current model isn't in the new model list
+      if (state.selectedProvider === provider && models.length > 0) {
+        if (!state.selectedModel || !models.includes(state.selectedModel)) {
+          state.selectedModel = models[0];
+          localStorage.setItem('selectedModel', models[0]);
+        }
       }
     },
     SET_LOADING_MODELS(state, { provider, loading }) {

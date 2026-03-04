@@ -130,6 +130,12 @@ export default {
         message.content = (message.content || '') + delta;
       }
     },
+    APPEND_MESSAGE_REASONING(state, { messageId, delta }) {
+      const message = state.messages.find((m) => m.id === messageId);
+      if (message) {
+        message.reasoning = (message.reasoning || '') + delta;
+      }
+    },
     ADD_TOOL_CALL(state, { messageId, toolCall }) {
       const message = state.messages.find((m) => m.id === messageId);
       if (message) {
@@ -382,7 +388,7 @@ export default {
     /**
      * Start a streaming conversation that persists across screen changes
      */
-    async startStreamingConversation({ commit, state, dispatch, rootState }, { userInput, files = [], provider, model }) {
+    async startStreamingConversation({ commit, state, dispatch, rootState }, { userInput, files = [], provider, model, reasoningEnabled = false }) {
       // If already streaming, don't start another
       if (state.isStreaming) {
         console.warn('[Chat] Already streaming, ignoring new request');
@@ -428,6 +434,9 @@ export default {
           }
           formData.append('provider', provider);
           formData.append('model', model);
+          if (reasoningEnabled) {
+            formData.append('reasoningEnabled', 'true');
+          }
 
           // Append all files
           files.forEach((file) => {
@@ -449,6 +458,7 @@ export default {
             conversationId: state.currentConversationId,
             provider: provider,
             model: model,
+            reasoningEnabled: reasoningEnabled || undefined,
           });
         }
 
@@ -1145,6 +1155,14 @@ export default {
           });
           break;
 
+        case 'reasoning_delta':
+          // Reasoning/thinking chunk from another tab
+          commit('APPEND_MESSAGE_REASONING', {
+            messageId: assistantMessageId,
+            delta: eventData.delta,
+          });
+          break;
+
         case 'tool_start':
           // Tool execution started in another tab
           if (eventData.toolCall) {
@@ -1324,6 +1342,12 @@ function handleStreamEventInStore({ commit, state, dispatch }, eventName, data) 
       break;
     case 'content_delta':
       commit('APPEND_MESSAGE_CONTENT', {
+        messageId: data.assistantMessageId,
+        delta: data.delta,
+      });
+      break;
+    case 'reasoning_delta':
+      commit('APPEND_MESSAGE_REASONING', {
         messageId: data.assistantMessageId,
         delta: data.delta,
       });

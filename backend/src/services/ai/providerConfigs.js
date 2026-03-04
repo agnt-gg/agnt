@@ -511,7 +511,10 @@ const PROVIDER_CONFIGS = [
       'glm-4.5-flash': { contextWindow: 128000, maxOutputTokens: 96000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: false, supportsTools: true, reasoning: false },
     },
     compat: {},
-    sdkOptions: {},
+    sdkOptions: {
+      timeout: 300000, // 5 min — GLM-5 reasoning mode can have long TTFB
+      defaultHeaders: { 'Accept-Language': 'en-US,en' }, // Required per Z.AI docs
+    },
   },
 ];
 

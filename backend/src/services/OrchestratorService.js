@@ -302,7 +302,11 @@ async function universalChatHandler(req, res, context = {}) {
     widgetState,
     goalId,
     goalContext,
+    reasoningEnabled: rawReasoningEnabled,
   } = req.body;
+
+  // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
+  const reasoningEnabled = rawReasoningEnabled === true || rawReasoningEnabled === 'true';
 
   // Validate required parameters
   if (!provider || !inputModel) {
@@ -479,7 +483,7 @@ async function universalChatHandler(req, res, context = {}) {
     }
 
     const client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-    const adapter = await createLlmAdapter(normalizedProvider, client, model);
+    const adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled });
 
     // Store client in context
     conversationContext.llmClient = client;
@@ -664,6 +668,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // Handle streaming chunks
         if (chunk.type === 'content') {
           sendEvent('content_delta', {
+            assistantMessageId,
+            delta: chunk.delta,
+            accumulated: chunk.accumulated,
+          });
+        } else if (chunk.type === 'reasoning') {
+          sendEvent('reasoning_delta', {
             assistantMessageId,
             delta: chunk.delta,
             accumulated: chunk.accumulated,
@@ -1224,6 +1234,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
               delta: chunk.delta,
               accumulated: chunk.accumulated,
             });
+          } else if (chunk.type === 'reasoning') {
+            sendEvent('reasoning_delta', {
+              assistantMessageId,
+              delta: chunk.delta,
+              accumulated: chunk.accumulated,
+            });
           }
         },
         conversationContext
@@ -1275,6 +1291,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
           (chunk) => {
             if (chunk.type === 'content') {
               sendEvent('content_delta', {
+                assistantMessageId,
+                delta: chunk.delta,
+                accumulated: chunk.accumulated,
+              });
+            } else if (chunk.type === 'reasoning') {
+              sendEvent('reasoning_delta', {
                 assistantMessageId,
                 delta: chunk.delta,
                 accumulated: chunk.accumulated,

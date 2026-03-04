@@ -5,7 +5,7 @@ import { manageContext } from '../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
-import { getProviderConfig } from '../ai/providerConfigs.js';
+import { getProviderConfig, getModelMetadata } from '../ai/providerConfigs.js';
 
 /**
  * Parse API error messages to extract user-friendly error details
@@ -128,11 +128,13 @@ class BaseAdapter {
  * Adapter for OpenAI and compatible APIs (Groq, TogetherAI, etc.).
  */
 class OpenAiLikeAdapter extends BaseAdapter {
-  constructor(client, model) {
+  constructor(client, model, options = {}) {
     super(client, model);
     this.maxRetries = 3;
     this.baseDelay = 1000; // 1 second
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
+    // Extra body params for providers that need custom parameters (e.g., Z.AI thinking mode)
+    this.extraBody = options.extraBody || null;
   }
 
   /**
@@ -159,8 +161,14 @@ class OpenAiLikeAdapter extends BaseAdapter {
       return true;
     }
 
-    // Check for network errors
+    // Check for network errors (code-based)
     if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+      return true;
+    }
+
+    // Check for network errors (message-based, e.g., Z.AI "Connection error.")
+    const errMsg = (error.message || '').toLowerCase();
+    if (errMsg.includes('connection error') || errMsg.includes('network error') || errMsg.includes('econnrefused')) {
       return true;
     }
 
@@ -209,12 +217,17 @@ class OpenAiLikeAdapter extends BaseAdapter {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const response = await this.client.chat.completions.create({
+        const requestParams = {
           model: this.model,
           messages: currentMessages,
           tools: tools.length > 0 ? tools : undefined,
           tool_choice: tools.length > 0 ? 'auto' : undefined,
-        });
+        };
+        // Pass extra body params for providers that need them (e.g., Z.AI thinking)
+        if (this.extraBody) {
+          Object.assign(requestParams, this.extraBody);
+        }
+        const response = await this.client.chat.completions.create(requestParams);
 
         const message = response.choices[0].message;
 
@@ -388,6 +401,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
       let accumulatedToolCalls = [];
       let role = 'assistant';
       let streamError = null;
+      let finishReason = null;
 
       try {
         // DEBUG: Log message structure before sending to OpenAI
@@ -400,13 +414,39 @@ Please carefully check the tool schema and ensure all parameters match the expec
         });
 
         const abortSignal = context.abortSignal;
-        const stream = await this.client.chat.completions.create({
+
+        // Z.AI GLM-5 network_error workaround: large tool payloads (121KB+) cause
+        // Z.AI's server to abort during inference. Limit tools to reduce payload size.
+        // TODO: Remove this cap once Z.AI fixes GLM-5 tool handling
+        let effectiveTools = tools;
+        if (this.model === 'glm-5' && tools.length > 20) {
+          console.warn(`[GLM-5 Workaround] Reducing tools from ${tools.length} to 20 to avoid Z.AI network_error`);
+          effectiveTools = tools.slice(0, 20);
+        }
+
+        const requestParams = {
           model: this.model,
           messages: currentMessages,
-          tools: tools.length > 0 ? tools : undefined,
-          tool_choice: tools.length > 0 ? 'auto' : undefined,
+          tools: effectiveTools.length > 0 ? effectiveTools : undefined,
+          tool_choice: effectiveTools.length > 0 ? 'auto' : undefined,
           stream: true,
+        };
+        // Pass extra body params for providers that need them (e.g., Z.AI thinking)
+        if (this.extraBody) {
+          Object.assign(requestParams, this.extraBody);
+          console.log('[OpenAI Debug] Extra body params merged:', JSON.stringify(this.extraBody));
+        }
+        // Log key request params (excluding message content for brevity)
+        const requestBodySize = JSON.stringify(requestParams).length;
+        console.log('[OpenAI Debug] Request params:', {
+          model: requestParams.model,
+          toolCount: requestParams.tools?.length || 0,
+          stream: requestParams.stream,
+          thinking: requestParams.thinking || 'not set',
+          max_tokens: requestParams.max_tokens || 'not set',
+          requestBodySizeKB: Math.round(requestBodySize / 1024),
         });
+        const stream = await this.client.chat.completions.create(requestParams);
 
         try {
           for await (const chunk of stream) {
@@ -416,7 +456,14 @@ Please carefully check the tool schema and ensure all parameters match the expec
               break;
             }
 
-            const delta = chunk.choices[0]?.delta;
+            const choice = chunk.choices[0];
+            const delta = choice?.delta;
+
+            // Track finish_reason
+            if (choice?.finish_reason) {
+              finishReason = choice.finish_reason;
+              console.log('[Stream Debug] finish_reason:', finishReason);
+            }
 
             if (!delta) continue;
 
@@ -437,9 +484,17 @@ Please carefully check the tool schema and ensure all parameters match the expec
               }
             }
 
-            // Handle reasoning_content for providers like Kimi Code that use thinking mode
+            // Handle reasoning_content for providers that use thinking mode (Z.AI GLM-5, Kimi, etc.)
+            // Stream reasoning chunks to frontend to show thinking progress and keep connection alive
             if (delta.reasoning_content) {
               accumulatedReasoningContent += delta.reasoning_content;
+              if (onChunk) {
+                onChunk({
+                  type: 'reasoning',
+                  delta: delta.reasoning_content,
+                  accumulated: accumulatedReasoningContent,
+                });
+              }
             }
 
             // Handle tool calls streaming
@@ -484,8 +539,43 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
           console.log('[Stream Complete] Successfully processed stream:', {
             contentLength: accumulatedContent.length,
+            reasoningContentLength: accumulatedReasoningContent.length,
             toolCallsCount: accumulatedToolCalls.length,
           });
+
+          // Debug: log actual content when suspiciously short (helps diagnose truncated responses)
+          if (accumulatedContent.length < 20 || accumulatedReasoningContent.length < 20) {
+            console.log('[Stream Debug] Short response detected:', {
+              content: JSON.stringify(accumulatedContent),
+              reasoningContent: JSON.stringify(accumulatedReasoningContent),
+            });
+          }
+
+          // Retry on server-side network_error (e.g., Z.AI GLM-5 inference failures)
+          if (finishReason === 'network_error') {
+            if (attempt < this.maxRetries) {
+              const delay = this.calculateDelay(attempt);
+              console.warn(`[Stream Retry] Server returned finish_reason: network_error (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms`);
+              await this.sleep(delay);
+              continue; // retry the request
+            } else {
+              console.error(`[Stream Error] Server returned network_error after ${this.maxRetries + 1} attempts. Z.AI may be experiencing issues with model: ${this.model}`);
+            }
+          }
+
+          // Fallback: if reasoning model returned reasoning_content but no content,
+          // use the reasoning content as the response (e.g., Z.AI GLM-5 thinking mode)
+          if (!accumulatedContent && accumulatedReasoningContent && accumulatedToolCalls.length === 0) {
+            console.warn(`[Stream Fallback] No content received but reasoning_content available (${accumulatedReasoningContent.length} chars). Using as response content.`);
+            accumulatedContent = accumulatedReasoningContent;
+            if (onChunk) {
+              onChunk({
+                type: 'content',
+                delta: accumulatedContent,
+                accumulated: accumulatedContent,
+              });
+            }
+          }
         } catch (streamIteratorError) {
           // CRITICAL: Catch errors from the stream iterator itself
           streamError = streamIteratorError;
@@ -3342,7 +3432,7 @@ function requiresResponsesApi(model) {
  * @param {string} model The model name.
  * @returns {Promise<BaseAdapter>} An instance of a provider-specific adapter.
  */
-export async function createLlmAdapter(provider, client, model) {
+export async function createLlmAdapter(provider, client, model, options = {}) {
   // Check if this is a custom provider (UUID format)
   const isCustom = await CustomOpenAIProviderService.isCustomProvider(provider);
   if (isCustom) {
@@ -3391,8 +3481,24 @@ export async function createLlmAdapter(provider, client, model) {
     case 'minimax':
     case 'openrouter':
     case 'togetherai':
-    case 'zai':
       return new OpenAiLikeAdapter(client, model);
+
+    case 'zai': {
+      // Z.AI GLM-5 and GLM-4.7 have thinking enabled by default.
+      // Per official docs: thinking: { type: 'disabled' } is valid to turn it off.
+      // See: https://docs.z.ai/guides/capabilities/thinking-mode
+      const modelMeta = getModelMetadata('zai', model);
+      const supportsReasoning = modelMeta?.reasoning === true;
+      const useThinking = supportsReasoning && options.reasoningEnabled;
+      if (supportsReasoning) {
+        console.log(`[LLM Adapter] Z.AI reasoning model: ${model}, thinking: ${useThinking ? 'enabled' : 'disabled'}`);
+      }
+      return new OpenAiLikeAdapter(client, model, {
+        extraBody: supportsReasoning
+          ? { thinking: { type: useThinking ? 'enabled' : 'disabled' } }
+          : null,
+      });
+    }
 
     default:
       throw new Error(`Unsupported provider for LLM adapter: ${provider}`);

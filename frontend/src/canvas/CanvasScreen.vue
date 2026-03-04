@@ -25,7 +25,7 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
-        <span v-if="globalModelLabel" class="cv-global-model" :title="globalModelLabel"> default: {{ globalModelLabel }} </span>
+        <span v-if="globalModelLabel" class="cv-global-model" :title="globalModelLabel"> {{ globalProviderLabel }}/{{ globalModelLabel }} </span>
         <button v-if="onCustomPage" class="cv-btn" @click="showCatalog = true" title="Add widget">+</button>
         <button v-if="onCustomPage" class="cv-btn" @click="resetCurrentPage" title="Reset layout">&#8635;</button>
 
@@ -289,6 +289,12 @@ export default {
       return model || '';
     });
 
+    const globalProviderLabel = computed(() => {
+      const provider = store.state.aiProvider?.selectedProvider;
+      const providerClean = provider.replace(/\./g, '-').toLowerCase(); // fixes BS for z-ai
+      return providerClean || '';
+    });
+
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
     const allPages = computed(() => store.getters['widgetLayout/allPages']);
@@ -531,6 +537,7 @@ export default {
     return {
       isAuthenticated,
       globalModelLabel,
+      globalProviderLabel,
       showCatalog,
       clock,
       activePageId,

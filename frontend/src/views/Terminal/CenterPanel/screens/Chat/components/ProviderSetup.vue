@@ -27,7 +27,7 @@ import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
-import { PROVIDER_FETCH_ACTIONS } from '@/store/app/aiProvider.js';
+import { PROVIDER_FETCH_ACTIONS, resolveProviderKey } from '@/store/app/aiProvider.js';
 
 export default {
   name: 'ProviderSetup',
@@ -118,8 +118,8 @@ export default {
     };
 
     const isProviderConnected = (providerId) => {
-      const lower = providerId.toLowerCase();
-      return connectedApps.value.some((app) => app.toLowerCase() === lower);
+      const providerKey = resolveProviderKey(providerId);
+      return connectedApps.value.some((app) => app.toLowerCase() === providerKey);
     };
 
     const selectProvider = async (provider) => {

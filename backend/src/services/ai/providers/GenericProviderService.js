@@ -294,7 +294,13 @@ class GenericProviderService extends EventEmitter {
    */
   getFallbackModels() {
     if (this.fallbackModelObjects) return this.fallbackModelObjects;
-    return this.fallbackModels.map((id) => ({
+    // Sort fallback models with recommended first
+    const recSet = new Set(this.recommendedModels);
+    const sorted = [
+      ...this.recommendedModels.filter((id) => this.fallbackModels.includes(id)),
+      ...this.fallbackModels.filter((id) => !recSet.has(id)),
+    ];
+    return sorted.map((id) => ({
       id,
       name: id,
       description: 'Fallback model (API unavailable)',

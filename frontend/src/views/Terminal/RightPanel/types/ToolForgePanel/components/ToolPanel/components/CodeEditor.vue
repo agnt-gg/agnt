@@ -220,16 +220,32 @@ body.dark .editor-footer {
 .ͼo .cm-gutters {
   background-color: transparent;
   color: var(--color-light-navy);
-  margin-left: 4px;
+  margin-left: 0;
   border: none;
+  user-select: none !important;
 }
 
 .cm-gutterElement {
-  text-align: left !important;
+  text-align: right !important;
 }
 
+.ͼ1.cm-focused {
+  outline: none !important;
+  border: none !important;
+}
+
+.ͼ1.cm-focused {
+  outline: none !important;
+  border: none !important;
+}
+
+/* .cm-gutter.cm-foldGutter {
+  width: 2px;
+} */
+
 .ͼ1 .cm-foldGutter span {
-  opacity: 0;
+  /* opacity: 0; */
+  user-select: none;
 }
 
 .cm-content {
