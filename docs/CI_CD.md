@@ -27,9 +27,9 @@ Builds and publishes Docker images to GitHub Container Registry (GHCR).
 ghcr.io/agnt-gg/agnt:latest        # Full variant (main branch)
 ghcr.io/agnt-gg/agnt:full          # Full variant (main branch)
 ghcr.io/agnt-gg/agnt:lite          # Lite variant (main branch)
-ghcr.io/agnt-gg/agnt:0.3.7         # Version (Full)
-ghcr.io/agnt-gg/agnt:0.3.7-full    # Version (Full)
-ghcr.io/agnt-gg/agnt:0.3.7-lite    # Version (Lite)
+ghcr.io/agnt-gg/agnt:0.4.9         # Version (Full)
+ghcr.io/agnt-gg/agnt:0.4.9-full    # Version (Full)
+ghcr.io/agnt-gg/agnt:0.4.9-lite    # Version (Lite)
 ghcr.io/agnt-gg/agnt:sha-abc1234   # Git SHA (Full)
 ghcr.io/agnt-gg/agnt:sha-lite-abc1234  # Git SHA (Lite)
 ```
@@ -46,8 +46,8 @@ ghcr.io/agnt-gg/agnt:sha-lite-abc1234  # Git SHA (Lite)
 Builds native desktop applications for all platforms.
 
 **Variants:**
-- **Full** (~150-200MB) - With browser automation
-- **Lite** (~80-120MB) - Without browser automation
+- **Full** (~348MB AppImage) - With browser automation
+- **Lite** (~344MB AppImage) - Without browser automation
 
 **Triggers:**
 - Git tags matching `v*.*.*` or `*.*.*` (with or without 'v' prefix)
@@ -84,7 +84,7 @@ Builds native desktop applications for all platforms.
 
 **Tagged Release (v*.*.* or *.*.*):**
 - Builds and pushes to GitHub Container Registry (GHCR)
-- Tags with version numbers (e.g., `v0.3.7`, `0.3.7`, `v0.3.7-full`, `0.3.7-lite`)
+- Tags with version numbers (e.g., `v0.4.9`, `0.4.9`, `v0.4.9-full`, `0.4.9-lite`)
 - Also tags `latest`, `full`, and `lite` for the newest version
 
 **Available at:**
@@ -92,10 +92,10 @@ Builds native desktop applications for all platforms.
 ghcr.io/agnt-gg/agnt:latest        # Latest Full variant
 ghcr.io/agnt-gg/agnt:full          # Latest Full variant
 ghcr.io/agnt-gg/agnt:lite          # Latest Lite variant
-ghcr.io/agnt-gg/agnt:v0.3.7        # Specific version (Full)
-ghcr.io/agnt-gg/agnt:0.3.7         # Specific version without 'v' (Full)
-ghcr.io/agnt-gg/agnt:v0.3.7-lite   # Specific version (Lite)
-ghcr.io/agnt-gg/agnt:0.3.7-lite    # Specific version without 'v' (Lite)
+ghcr.io/agnt-gg/agnt:v0.4.9        # Specific version (Full)
+ghcr.io/agnt-gg/agnt:0.4.9         # Specific version without 'v' (Full)
+ghcr.io/agnt-gg/agnt:v0.4.9-lite   # Specific version (Lite)
+ghcr.io/agnt-gg/agnt:0.4.9-lite    # Specific version without 'v' (Lite)
 ```
 
 ### Electron Builds
@@ -192,8 +192,8 @@ When you push a tag:
 
 ```bash
 # Tag a release
-git tag v0.3.8
-git push origin v0.3.8
+git tag v0.4.9
+git push origin v0.4.9
 ```
 
 Triggers:
@@ -213,8 +213,8 @@ Users can then:
 - Download installers from GitHub Releases
 - Pull Docker images from Docker Hub:
   ```bash
-  docker pull ghcr.io/agnt-gg/agnt:0.3.8      # Full
-  docker pull ghcr.io/agnt-gg/agnt:0.3.8-lite # Lite
+  docker pull ghcr.io/agnt-gg/agnt:0.4.9      # Full
+  docker pull ghcr.io/agnt-gg/agnt:0.4.9-lite # Lite
   ```
 
 ## Monitoring Builds
@@ -286,8 +286,8 @@ gh run download <run-id>
 
 | Variant        | Docker | Electron | Platforms/Architectures          | Size        |
 |----------------|--------|----------|----------------------------------|-------------|
-| Full           | ✅     | ✅       | All                              | 1.5GB / 150-200MB |
-| Lite           | ✅     | ✅       | All                              | 715MB / 80-120MB |
+| Full           | ✅     | ✅       | All                              | 1.5GB / ~348MB |
+| Lite           | ✅     | ✅       | All                              | 715MB / ~344MB |
 | **Docker**     | ✅     | -        | Any OS with Docker (amd64, arm64) | -          |
 | **Electron**   | -      | ✅       | Windows, macOS, GNU/Linux (native)   | -           |
 

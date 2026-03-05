@@ -58,13 +58,13 @@ make DOCKERHUB_USER=yourname build-full
 make build-full
 # Creates tags:
 #   yourname/agnt:latest
-#   yourname/agnt:0.3.7
+#   yourname/agnt:0.4.9
 
 # Build lite image (without Chromium)
 make build-lite
 # Creates tags:
 #   yourname/agnt:lite
-#   yourname/agnt:0.3.7-lite
+#   yourname/agnt:0.4.9-lite
 
 # Build both variants
 make build-all
@@ -426,10 +426,10 @@ AGNT also supports building desktop installers with Full and Lite variants.
 
 | Variant | Size | Browser Automation | Use Case |
 |---------|------|-------------------|----------|
-| **Full** | ~150-200MB | ✅ Yes (Puppeteer/Playwright) | Full-featured desktop app |
-| **Lite** | ~80-120MB | ❌ No | Smaller downloads, faster installs |
+| **Full** | ~348MB (AppImage) / ~253MB (DEB) | ✅ Yes (Puppeteer/Playwright) | Full-featured desktop app |
+| **Lite** | ~344MB (AppImage) / ~251MB (DEB) | ❌ No | No browser automation |
 
-**Size reduction**: ~50% smaller Lite builds across all platforms.
+> **Note:** Lite removes ~16MB of browser automation source code (compressed to ~2-4MB difference in installers). Chromium binaries are already excluded from both variants.
 
 ### Building Desktop Installers
 
@@ -468,19 +468,19 @@ make electron-build-all-both         # All platforms both variants
 
 Installers are saved to `dist/` directory:
 
-**Full Version:**
-- `dist/AGNT-0.3.7-win-x64.exe` (~150MB)
-- `dist/AGNT-0.3.7-mac-x64.dmg` (~200MB)
-- `dist/AGNT-0.3.7-mac-arm64.dmg` (~200MB)
-- `dist/AGNT-0.3.7-linux-x64.AppImage` (~180MB)
-- Plus `.deb` and `.rpm` packages for GNU/Linux
+**Full Version (measured on v0.4.9, GNU/Linux):**
+- `dist/AGNT-0.4.9-win-x64.exe`
+- `dist/AGNT-0.4.9-mac-x64.dmg` / `dist/AGNT-0.4.9-mac-arm64.dmg`
+- `dist/AGNT-0.4.9-linux-x86_64.AppImage` (348MB)
+- `dist/AGNT-0.4.9-linux-amd64.deb` (253MB)
+- Plus `.rpm` packages for GNU/Linux
 
 **Lite Version:**
-- `dist/AGNT-Lite-0.3.7-win-x64.exe` (~80MB)
-- `dist/AGNT-Lite-0.3.7-mac-x64.dmg` (~120MB)
-- `dist/AGNT-Lite-0.3.7-mac-arm64.dmg` (~120MB)
-- `dist/AGNT-Lite-0.3.7-linux-x64.AppImage` (~100MB)
-- Plus `.deb` and `.rpm` packages for GNU/Linux
+- `dist/AGNT-Lite-0.4.9-win-x64.exe`
+- `dist/AGNT-Lite-0.4.9-mac-x64.dmg` / `dist/AGNT-Lite-0.4.9-mac-arm64.dmg`
+- `dist/AGNT-Lite-0.4.9-linux-x86_64.AppImage` (344MB)
+- `dist/AGNT-Lite-0.4.9-linux-amd64.deb` (251MB)
+- Plus `.rpm` packages for GNU/Linux
 
 ### Desktop Build Workflow
 
@@ -521,7 +521,7 @@ ls -lh dist/
 ### What's Different in Lite Mode?
 
 **Lite Mode removes:**
-- ❌ Puppeteer/Playwright packages (~80-100MB)
+- ❌ Puppeteer/Playwright packages (~16MB uncompressed)
 - ❌ Browser automation capabilities
 - ❌ Web scraping tools
 - ❌ Screenshot capture via browser
@@ -640,4 +640,4 @@ For issues or questions:
 ---
 
 **Last Updated**: 2026-01-20
-**AGNT Version**: 0.3.7
+**AGNT Version**: 0.4.9

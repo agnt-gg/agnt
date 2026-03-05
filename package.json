@@ -95,6 +95,13 @@
       "node_modules/@xenova/transformers/**/*",
       "node_modules/sqlite3/**/*",
       "node_modules/better-sqlite3/**/*",
+      "node_modules/puppeteer/**/*",
+      "node_modules/puppeteer-extra/**/*",
+      "node_modules/puppeteer-extra-plugin-stealth/**/*",
+      "node_modules/puppeteer-core/**/*",
+      "node_modules/@puppeteer/**/*",
+      "node_modules/playwright/**/*",
+      "node_modules/playwright-core/**/*",
       "backend/plugins/plugin-builds/**/*"
     ],
     "npmRebuild": false,

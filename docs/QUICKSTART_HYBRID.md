@@ -72,7 +72,7 @@ http://your-domain.com:3333
 
 #### Access Method 2: Native Desktop App (Optional)
 
-**Option A: Use Electron Full** (~150-200MB)
+**Option A: Use Electron Full** (~348MB AppImage)
 1. Download from [agnt.gg/downloads](https://agnt.gg/downloads)
 2. Install on user's desktop
 3. Configure to use external backend:
@@ -82,7 +82,7 @@ http://your-domain.com:3333
    ```
 4. Launch AGNT
 
-**Option B: Use Electron Lite** (~80-120MB)
+**Option B: Use Electron Lite** (~344MB AppImage)
 1. Download Lite version
 2. Install on user's desktop
 3. Configure external backend (same as above)

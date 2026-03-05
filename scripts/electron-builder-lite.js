@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const isLiteBuild = process.env.AGNT_BUILD_VARIANT === 'lite';
+const isLiteBuild = process.env.AGNT_BUILD_VARIANT === '-Lite';
 
 if (isLiteBuild) {
   console.log('');
@@ -22,7 +22,7 @@ if (isLiteBuild) {
   console.log('║   🪶 BUILDING AGNT LITE VARIANT      ║');
   console.log('╟────────────────────────────────────────╢');
   console.log('║  Excluding browser automation packages ║');
-  console.log('║  Expected size reduction: ~80-100MB    ║');
+  console.log('║  Expected size reduction: ~16MB        ║');
   console.log('╚════════════════════════════════════════╝');
   console.log('');
 }
@@ -56,7 +56,11 @@ export async function afterPack(context) {
     'puppeteer',
     'puppeteer-extra',
     'puppeteer-extra-plugin-stealth',
+    'puppeteer-extra-plugin-user-data-dir',
+    'puppeteer-extra-plugin-user-preferences',
+    'puppeteer-extra-plugin',
     'puppeteer-core',
+    '@puppeteer',
     'playwright',
     'playwright-core',
     '@playwright/test'

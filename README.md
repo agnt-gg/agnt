@@ -334,8 +334,8 @@ See `.env.example` for all available configuration options including AI provider
 
 **Desktop installers available:**
 
-- 💻 **Electron Full** (~150-200MB): Portable desktop app with browser automation
-- 📦 **Electron Lite** (~80-120MB): Lightweight desktop app, ~50% smaller
+- 💻 **Electron Full** (~348MB AppImage / ~253MB DEB): Portable desktop app with browser automation
+- 📦 **Electron Lite** (~344MB AppImage / ~251MB DEB): Lightweight desktop app, no browser automation
 
 📖 See the [Self-Hosting Guide](docs/SELF_HOSTING.md) for complete Docker setup, networking, and configuration.
 
@@ -444,10 +444,10 @@ npm run build:all
 
 ### 🪶 Lite Mode - Smaller Desktop Builds
 
-Build **AGNT Lite** variants that exclude browser automation for ~50% smaller installers:
+Build **AGNT Lite** variants that exclude browser automation libraries:
 
 ```bash
-# Build Lite variant (~80-120MB vs ~150-200MB)
+# Build Lite variant (no browser automation)
 npm run build:lite
 npm run build:lite:win      # Windows
 npm run build:lite:mac      # macOS
@@ -478,11 +478,13 @@ Build outputs are saved to the `dist/` directory:
 
 ### Build Artifacts
 
-| Platform  | Full                            | Lite                                 | Size Reduction |
-| --------- | ------------------------------- | ------------------------------------ | -------------- |
-| Windows   | AGNT-0.4.9-win-x64.exe (~150MB) | AGNT-Lite-0.4.9-win-x64.exe (~80MB)  | ~47%           |
-| macOS     | AGNT-0.4.9-mac-x64.dmg (~200MB) | AGNT-Lite-0.4.9-mac-x64.dmg (~120MB) | ~40%           |
-| GNU/Linux | AppImage (~180MB), DEB, RPM     | AppImage (~100MB), DEB, RPM          | ~44%           |
+| Platform  | Full                                | Lite                                     | Savings |
+| --------- | ----------------------------------- | ---------------------------------------- | ------- |
+| GNU/Linux | AppImage (348MB), DEB (253MB), RPM  | AppImage (344MB), DEB (251MB), RPM       | ~4MB    |
+| Windows   | AGNT-0.4.9-win-x64.exe             | AGNT-Lite-0.4.9-win-x64.exe             | ~4MB    |
+| macOS     | AGNT-0.4.9-mac-{arch}.dmg          | AGNT-Lite-0.4.9-mac-{arch}.dmg          | ~4MB    |
+
+> **Note:** Chromium browser binaries are already excluded from all builds. Lite removes browser automation source code (~16MB uncompressed, ~2-4MB compressed).
 
 ---
 
@@ -618,7 +620,7 @@ See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md) for more details.
 | [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup           |
 | [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                 | Docker deployment & hosting        |
 | [🪶 Docker Lite Mode](docs/LITE_MODE.md)                      | Docker without browser automation  |
-| [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)           | Smaller desktop builds (~50% size) |
+| [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)           | Desktop builds without browser automation |
 | [🔌 Plugin Development](backend/plugins/README.md)            | Creating custom plugins            |
 | [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)             | Native module rebuilding           |
 | [🚀 CI/CD Pipelines](docs/CI_CD.md)                           | GitHub Actions workflows           |
