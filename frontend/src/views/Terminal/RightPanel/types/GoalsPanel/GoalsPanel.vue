@@ -73,15 +73,18 @@
             </div>
 
             <!-- Output -->
-            <div v-if="task.output" class="task-io-section">
-              <div class="io-toggle" @click="toggleNodeSection(task.id, 'output')">
-                <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'output') }"></i>
-                <span>Output</span>
-                <span class="io-size">({{ getDataSize(task.output) }})</span>
+            <div v-if="task.output" class="task-output-section">
+              <div class="output-header">
+                <span class="output-label">Output</span>
+                <button class="raw-toggle" @click="toggleRawView(task.id)" :title="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
+                  <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
+                  {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
+                </button>
               </div>
-              <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-body">
+              <div v-if="isRawView(task.id)" class="output-raw">
                 <pre class="io-data">{{ formatJSON(task.output) }}</pre>
               </div>
+              <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
             </div>
 
             <!-- Error -->
@@ -100,8 +103,17 @@
 
       <!-- Evaluation -->
       <div v-if="selectedGoal.evaluation" class="goal-evaluation">
-        <h3>Evaluation</h3>
-        <pre class="eval-log">{{ formatJSON(selectedGoal.evaluation) }}</pre>
+        <div class="output-header">
+          <h3 style="margin: 0">Evaluation</h3>
+          <button class="raw-toggle" @click="toggleRawView('eval')" :title="isRawView('eval') ? 'View Rendered' : 'View Raw'">
+            <i :class="isRawView('eval') ? 'fas fa-eye' : 'fas fa-code'"></i>
+            {{ isRawView('eval') ? 'Rendered' : 'Raw' }}
+          </button>
+        </div>
+        <div v-if="isRawView('eval')" class="output-raw">
+          <pre class="eval-log">{{ formatJSON(selectedGoal.evaluation) }}</pre>
+        </div>
+        <div v-else class="output-rendered" v-html="renderOutput(selectedGoal.evaluation)"></div>
       </div>
 
       <!-- AGI Loop: Iteration Timeline -->
@@ -205,9 +217,18 @@
 <script>
 import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
+import showdown from 'showdown';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+
+const mdConverter = new showdown.Converter({
+  tables: true,
+  strikethrough: true,
+  literalMidWordUnderscores: true,
+  simpleLineBreaks: true,
+  ghCodeBlocks: true,
+});
 
 export default {
   name: 'GoalsPanel',
@@ -232,9 +253,68 @@ export default {
 
     // Node section expansion state
     const expandedNodeSections = ref({});
+    const rawViewTasks = ref({});
     const selectedGoal = ref(null);
     const showCopiedMessage = ref(false);
     const isStartingAutonomous = ref(false);
+
+    const toggleRawView = (taskId) => {
+      rawViewTasks.value[taskId] = !rawViewTasks.value[taskId];
+    };
+
+    const isRawView = (taskId) => {
+      return rawViewTasks.value[taskId] || false;
+    };
+
+    const renderOutput = (data) => {
+      if (!data) return '';
+
+      // Parse if it's a JSON string
+      let parsed = data;
+      if (typeof parsed === 'string') {
+        try {
+          const trimmed = parsed.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            parsed = JSON.parse(trimmed);
+          }
+        } catch (e) {
+          // Not JSON — treat as plain text/markdown
+          return mdConverter.makeHtml(parsed);
+        }
+      }
+
+      // If it's still a plain string after parsing attempt, render as markdown
+      if (typeof parsed === 'string') {
+        return mdConverter.makeHtml(parsed);
+      }
+
+      // Extract renderable text from structured output objects
+      const extractText = (obj) => {
+        if (typeof obj === 'string') return obj;
+        if (!obj || typeof obj !== 'object') return String(obj);
+
+        // Task output shape: { content, toolExecutions, files, timestamp }
+        // Evaluation shape: { score, passed, summary, ... }
+        for (const key of ['content', 'summary', 'text', 'message', 'result', 'report', 'output', 'description', 'body', 'response']) {
+          if (obj[key] && typeof obj[key] === 'string') return obj[key];
+        }
+
+        if (Array.isArray(obj)) {
+          const items = obj.map((item) => extractText(item)).filter(Boolean);
+          if (items.length) return items.join('\n\n');
+        }
+
+        return null;
+      };
+
+      const text = extractText(parsed);
+      if (!text) {
+        const json = JSON.stringify(parsed, null, 2);
+        return `<pre><code>${json.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
+      }
+
+      return mdConverter.makeHtml(text);
+    };
 
     const goalProgress = computed(() => {
       if (!selectedGoal.value) return 0;
@@ -520,6 +600,9 @@ ${goal.tasks
       goalProgress,
       toggleNodeSection,
       isNodeSectionExpanded,
+      toggleRawView,
+      isRawView,
+      renderOutput,
       formatTime,
       getDataSize,
       formatJSON,
@@ -821,6 +904,149 @@ h3 {
   border: 1px solid rgba(var(--primary-rgb), 0.1);
   border-radius: 4px;
   overflow: hidden;
+}
+
+/* Rendered output section */
+.task-output-section {
+  margin-top: 8px;
+  border: 1px solid rgba(var(--primary-rgb), 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(var(--primary-rgb), 0.05);
+  font-size: 0.85em;
+}
+
+.output-label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.raw-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s;
+}
+
+.raw-toggle:hover {
+  border-color: rgba(var(--primary-rgb), 0.5);
+  color: var(--color-text);
+}
+
+.raw-toggle i {
+  font-size: 0.8em;
+}
+
+.output-rendered {
+  padding: 12px;
+  color: var(--color-text);
+  font-size: 0.9em;
+  line-height: 1.6;
+  overflow-y: auto;
+  max-height: 400px;
+  word-break: break-word;
+}
+
+.output-rendered :deep(h1),
+.output-rendered :deep(h2),
+.output-rendered :deep(h3),
+.output-rendered :deep(h4) {
+  color: var(--color-text);
+  margin: 12px 0 6px 0;
+}
+
+.output-rendered :deep(h1) { font-size: 1.3em; }
+.output-rendered :deep(h2) { font-size: 1.15em; }
+.output-rendered :deep(h3) { font-size: 1.05em; }
+
+.output-rendered :deep(p) {
+  margin: 6px 0;
+}
+
+.output-rendered :deep(ul),
+.output-rendered :deep(ol) {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.output-rendered :deep(li) {
+  margin: 3px 0;
+}
+
+.output-rendered :deep(pre) {
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  padding: 10px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.output-rendered :deep(code) {
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+}
+
+.output-rendered :deep(p code) {
+  background: var(--color-darker-0);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--terminal-border-color);
+}
+
+.output-rendered :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 0.9em;
+}
+
+.output-rendered :deep(th),
+.output-rendered :deep(td) {
+  border: 1px solid var(--terminal-border-color);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.output-rendered :deep(th) {
+  background: var(--color-darker-0);
+  font-weight: 600;
+}
+
+.output-rendered :deep(blockquote) {
+  border-left: 3px solid rgba(var(--primary-rgb), 0.4);
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: var(--color-text-muted);
+}
+
+.output-rendered :deep(a) {
+  color: var(--color-primary);
+}
+
+.output-rendered :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--terminal-border-color);
+  margin: 12px 0;
+}
+
+.output-raw {
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .task-io-section.error {
