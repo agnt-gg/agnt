@@ -1,9 +1,19 @@
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
+import GoalIterationModel from '../../models/GoalIterationModel.js';
 import AgentTaskMatcher from './AgentTaskMatcher.js';
 import LlmExecutionService from '../ai/LlmExecutionService.js';
 import { getAvailableToolSchemas } from '../orchestrator/tools.js';
 import GoalEvaluator from './GoalEvaluator.js';
+import StreamEngine from '../../stream/StreamEngine.js';
+import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
+import db from '../../models/database/index.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs/promises';
+import path from 'path';
+
+const execAsync = promisify(exec);
 
 class TaskOrchestrator {
   static runningGoals = new Map(); // Track active goals
@@ -470,12 +480,421 @@ Begin working on this task now.`;
   static async storeTaskResults(taskId, results) {
     // For now, just log the results. Later you might want to store these in a task_results table
     console.log(`Storing results for task ${taskId}:`, JSON.stringify(results, null, 2));
+  }
 
-    // You could add a method to TaskModel to store results
-    // await TaskModel.storeResults(taskId, results);
+  // ==================== AGI LOOP: Autonomous Goal Execution ====================
 
-    // Or store in a separate results table
-    // await TaskResultsModel.create(taskId, results);
+  /**
+   * Execute a goal autonomously with iterative feedback loop.
+   * Evaluate → Re-plan failed tasks → Re-execute → Repeat until pass or max iterations.
+   */
+  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50 } = {}) {
+    try {
+      console.log(`[AGI Loop] Starting autonomous execution for goal ${goalId} (max ${maxIterations} iterations)`);
+
+      await GoalModel.updateMaxIterations(goalId, maxIterations);
+      await GoalModel.updateLoopStatus(goalId, 'starting');
+      await GoalModel.updateStatus(goalId, 'executing');
+
+      this.runningGoals.set(goalId, {
+        userId,
+        startTime: Date.now(),
+        status: 'executing',
+        autonomous: true,
+      });
+
+      let identicalReplanCount = 0;
+      let lastReplanHash = null;
+
+      for (let iteration = 1; iteration <= maxIterations; iteration++) {
+        const iterationStart = Date.now();
+
+        // Check if goal was paused/stopped
+        if (!this.runningGoals.has(goalId)) {
+          console.log(`[AGI Loop] Goal ${goalId} was stopped, ending loop at iteration ${iteration}`);
+          await GoalModel.updateLoopStatus(goalId, 'stopped');
+          return { goalId, status: 'stopped', iteration };
+        }
+
+        console.log(`[AGI Loop] === Iteration ${iteration}/${maxIterations} for goal ${goalId} ===`);
+        await GoalModel.updateIteration(goalId, iteration);
+        await GoalModel.updateLoopStatus(goalId, 'executing');
+
+        broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_START, {
+          goalId,
+          iteration,
+          maxIterations,
+          phase: 'executing',
+        });
+
+        // Phase 1: Execute tasks
+        try {
+          await this.executeGoalTasks(goalId, userId);
+        } catch (error) {
+          console.error(`[AGI Loop] Task execution error at iteration ${iteration}:`, error);
+          // Don't break — evaluate what we have
+        }
+
+        // Phase 2: Evaluate
+        broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_EVALUATE, {
+          goalId,
+          iteration,
+          phase: 'evaluating',
+        });
+
+        let evaluation;
+        try {
+          evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic');
+        } catch (error) {
+          console.error(`[AGI Loop] Evaluation error at iteration ${iteration}:`, error);
+          evaluation = { passed: false, scores: { overall: 0 }, feedback: error.message };
+        }
+
+        const iterationDuration = Date.now() - iterationStart;
+
+        // Phase 3: Check if passed
+        if (evaluation.passed) {
+          console.log(`[AGI Loop] Goal ${goalId} PASSED at iteration ${iteration} (${evaluation.scores.overall}%)`);
+
+          await GoalModel.updateLoopStatus(goalId, 'completed');
+          await GoalModel.updateStatus(goalId, 'validated');
+
+          // Record iteration
+          const gitHash = await this._gitCheckpoint(goalId, iteration, evaluation.scores.overall, userId);
+          await GoalIterationModel.create(
+            goalId, iteration, evaluation.scores.overall, true,
+            await GoalModel.getWorldState(goalId), [], gitHash, iterationDuration
+          );
+
+          broadcastToUser(userId, RealtimeEvents.GOAL_LOOP_COMPLETED, {
+            goalId,
+            iteration,
+            score: evaluation.scores.overall,
+            passed: true,
+          });
+
+          this.runningGoals.delete(goalId);
+          return { goalId, status: 'completed', iteration, score: evaluation.scores.overall };
+        }
+
+        // Phase 4: Re-plan failed tasks
+        console.log(`[AGI Loop] Goal ${goalId} needs improvement (${evaluation.scores.overall}%) — re-planning`);
+        await GoalModel.updateLoopStatus(goalId, 'replanning');
+
+        broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_REPLAN, {
+          goalId,
+          iteration,
+          score: evaluation.scores.overall,
+          phase: 'replanning',
+        });
+
+        const replannedTasks = await this._replanFailedTasks(goalId, evaluation, userId);
+
+        // Guard: detect identical re-plans
+        const replanHash = JSON.stringify(replannedTasks.map((t) => t.title + t.description).sort());
+        if (replanHash === lastReplanHash) {
+          identicalReplanCount++;
+          if (identicalReplanCount >= 3) {
+            console.error(`[AGI Loop] Identical re-plan detected 3x for goal ${goalId} — stopping`);
+            await GoalModel.updateLoopStatus(goalId, 'stuck');
+            await GoalModel.updateStatus(goalId, 'needs_review');
+            broadcastToUser(userId, RealtimeEvents.GOAL_LOOP_ERROR, {
+              goalId,
+              iteration,
+              error: 'Identical re-plan detected 3 times — stopping to prevent infinite loop',
+            });
+            this.runningGoals.delete(goalId);
+            return { goalId, status: 'stuck', iteration, reason: 'identical_replan' };
+          }
+        } else {
+          identicalReplanCount = 0;
+          lastReplanHash = replanHash;
+        }
+
+        // Phase 5: Update world state
+        const worldState = await this._updateWorldState(goalId, iteration, evaluation);
+
+        // Phase 6: Git checkpoint
+        const gitHash = await this._gitCheckpoint(goalId, iteration, evaluation.scores.overall, userId);
+
+        broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_CHECKPOINT, {
+          goalId,
+          iteration,
+          gitHash,
+        });
+
+        // Record iteration
+        await GoalIterationModel.create(
+          goalId, iteration, evaluation.scores.overall, false,
+          worldState, replannedTasks, gitHash, iterationDuration
+        );
+
+        broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_END, {
+          goalId,
+          iteration,
+          score: evaluation.scores.overall,
+          replannedCount: replannedTasks.length,
+          duration: iterationDuration,
+        });
+      }
+
+      // Max iterations reached
+      console.log(`[AGI Loop] Max iterations (${maxIterations}) reached for goal ${goalId}`);
+      await GoalModel.updateLoopStatus(goalId, 'max_iterations');
+      await GoalModel.updateStatus(goalId, 'needs_review');
+      broadcastToUser(userId, RealtimeEvents.GOAL_LOOP_ERROR, {
+        goalId,
+        iteration: maxIterations,
+        error: 'Max iterations reached',
+      });
+      this.runningGoals.delete(goalId);
+      return { goalId, status: 'max_iterations', iteration: maxIterations };
+    } catch (error) {
+      console.error(`[AGI Loop] Fatal error for goal ${goalId}:`, error);
+      await GoalModel.updateLoopStatus(goalId, 'error');
+      await this.handleGoalError(goalId, error);
+      broadcastToUser(userId, RealtimeEvents.GOAL_LOOP_ERROR, {
+        goalId,
+        error: error.message,
+      });
+      return { goalId, status: 'error', error: error.message };
+    }
+  }
+
+  /**
+   * Re-plan failed/low-scoring tasks using LLM analysis.
+   * Resets failed tasks to pending with updated descriptions.
+   */
+  static async _replanFailedTasks(goalId, evaluation, userId) {
+    const goal = await GoalModel.findOne(goalId);
+    const tasks = await TaskModel.findByGoalId(goalId);
+    const worldState = await GoalModel.getWorldState(goalId);
+
+    // Identify tasks needing re-work
+    const taskEvaluations = evaluation.taskEvaluations || [];
+    const failedTasks = tasks.filter((task) => {
+      const taskEval = taskEvaluations.find((te) => te.taskId === task.id);
+      return task.status === 'failed' || (taskEval && taskEval.score < 70);
+    });
+
+    if (failedTasks.length === 0) {
+      // If no specific failures, reset all non-completed tasks
+      const incompleteTasks = tasks.filter((t) => t.status !== 'completed' || t.status === 'needs_review');
+      for (const task of incompleteTasks) {
+        await TaskModel.updateStatus(task.id, 'pending', 0);
+      }
+      return incompleteTasks.map((t) => ({ id: t.id, title: t.title, description: t.description }));
+    }
+
+    // Use LLM to generate improved task descriptions
+    const streamEngine = new StreamEngine(userId);
+    const prompt = `You are re-planning failed tasks for an autonomous goal execution system.
+
+GOAL: ${goal.title}
+DESCRIPTION: ${goal.description}
+
+SUCCESS CRITERIA:
+${JSON.stringify(goal.success_criteria, null, 2)}
+
+CURRENT WORLD STATE (what has been accomplished so far):
+${JSON.stringify(worldState, null, 2)}
+
+EVALUATION FEEDBACK:
+Score: ${evaluation.scores?.overall || 0}%
+Feedback: ${evaluation.feedback || 'No feedback available'}
+
+FAILED/LOW-SCORING TASKS:
+${failedTasks
+  .map((task) => {
+    const taskEval = taskEvaluations.find((te) => te.taskId === task.id);
+    const taskOutput = task.output ? (typeof task.output === 'string' ? JSON.parse(task.output) : task.output) : null;
+    return `- Task: ${task.title}
+  Description: ${task.description}
+  Score: ${taskEval?.score || 0}%
+  Feedback: ${taskEval?.feedback || 'No feedback'}
+  Previous Output: ${taskOutput ? JSON.stringify(taskOutput.content || taskOutput, null, 2).substring(0, 500) : 'None'}
+  Error: ${task.error || 'None'}`;
+  })
+  .join('\n\n')}
+
+ALL TASKS (for context):
+${tasks.map((t) => `- [${t.status}] ${t.title}`).join('\n')}
+
+Respond with ONLY a valid JSON array of improved task objects:
+[
+  {
+    "taskId": "existing-task-id-to-update",
+    "title": "Updated task title (max 50 chars)",
+    "description": "Improved, more specific description based on what went wrong"
+  }
+]
+
+Rules:
+- Keep the same task IDs — you are updating existing tasks, not creating new ones
+- Make descriptions more specific based on what failed
+- Incorporate feedback from the evaluation
+- Build upon what was already accomplished (world state)
+- Return ONLY the JSON array`;
+
+    try {
+      let evalProvider, evalModel;
+      const UserModel = (await import('../../models/UserModel.js')).default;
+      const userSettings = await UserModel.getUserSettings(userId);
+      evalProvider = userSettings?.selectedProvider;
+      evalModel = userSettings?.selectedModel;
+
+      if (!evalProvider || !evalModel) {
+        throw new Error('No provider/model configured for re-planning');
+      }
+
+      const result = await streamEngine.generateCompletion(prompt, evalProvider, evalModel);
+
+      let cleanedResult = result;
+      if (typeof result === 'string') {
+        cleanedResult = result
+          .replace(/<think>[\s\S]*?<\/think>/gi, '')
+          .replace(/```json\s*/g, '')
+          .replace(/```\s*/g, '')
+          .trim();
+      }
+
+      const updatedTasks = JSON.parse(cleanedResult);
+
+      // Apply updates and reset tasks to pending
+      for (const update of updatedTasks) {
+        const existingTask = failedTasks.find((t) => t.id === update.taskId);
+        if (existingTask) {
+          // Reset to pending with updated description
+          await TaskModel.updateStatus(update.taskId, 'pending', 0);
+          // Update description if the model suggested one
+          if (update.description) {
+            await new Promise((resolve, reject) => {
+              db.run(
+                'UPDATE tasks SET title = ?, description = ?, updated_at = ? WHERE id = ?',
+                [update.title || existingTask.title, update.description, new Date().toISOString(), update.taskId],
+                (err) => (err ? reject(err) : resolve())
+              );
+            });
+          }
+        }
+      }
+
+      console.log(`[AGI Loop] Re-planned ${updatedTasks.length} tasks for goal ${goalId}`);
+      return updatedTasks;
+    } catch (error) {
+      console.error(`[AGI Loop] Re-plan LLM failed, doing simple reset:`, error);
+
+      // Fallback: just reset failed tasks to pending
+      for (const task of failedTasks) {
+        await TaskModel.updateStatus(task.id, 'pending', 0);
+      }
+      return failedTasks.map((t) => ({ id: t.id, title: t.title, description: t.description }));
+    }
+  }
+
+  /**
+   * Update world state with what's been accomplished so far.
+   */
+  static async _updateWorldState(goalId, iteration, evaluation) {
+    const tasks = await TaskModel.findByGoalId(goalId);
+    const existingState = await GoalModel.getWorldState(goalId);
+
+    const worldState = {
+      ...existingState,
+      lastIteration: iteration,
+      lastScore: evaluation.scores?.overall || 0,
+      lastEvaluatedAt: new Date().toISOString(),
+      completedTasks: tasks
+        .filter((t) => t.status === 'completed')
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          output: t.output
+            ? typeof t.output === 'string'
+              ? JSON.parse(t.output).content?.substring(0, 200)
+              : t.output.content?.substring(0, 200)
+            : null,
+        })),
+      failedTasks: tasks
+        .filter((t) => t.status === 'failed')
+        .map((t) => ({ id: t.id, title: t.title, error: t.error })),
+      pendingTasks: tasks.filter((t) => t.status === 'pending').map((t) => ({ id: t.id, title: t.title })),
+      iterationHistory: [
+        ...(existingState.iterationHistory || []),
+        {
+          iteration,
+          score: evaluation.scores?.overall || 0,
+          passed: evaluation.passed,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+
+    await GoalModel.updateWorldState(goalId, worldState);
+    return worldState;
+  }
+
+  /**
+   * Create a git checkpoint for the current iteration.
+   * Writes world state to a file and commits on an isolated branch.
+   */
+  static async _gitCheckpoint(goalId, iteration, score, userId) {
+    try {
+      // Determine a safe working directory for git operations
+      const cwd = process.cwd();
+
+      // Check if we're in a git repo
+      try {
+        await execAsync('git rev-parse --git-dir', { cwd });
+      } catch {
+        console.log(`[AGI Loop] Not in a git repo, skipping checkpoint`);
+        return null;
+      }
+
+      const branchName = `goal/${goalId}`;
+      const worldState = await GoalModel.getWorldState(goalId);
+
+      // Create/switch to goal branch (from current HEAD)
+      try {
+        await execAsync(`git checkout -b ${branchName}`, { cwd });
+      } catch {
+        // Branch may already exist, switch to it
+        try {
+          await execAsync(`git checkout ${branchName}`, { cwd });
+        } catch {
+          console.log(`[AGI Loop] Could not switch to branch ${branchName}, skipping checkpoint`);
+          return null;
+        }
+      }
+
+      // Write world state file
+      const stateDir = path.join(cwd, '.agnt', 'goals');
+      await fs.mkdir(stateDir, { recursive: true });
+      const stateFile = path.join(stateDir, `${goalId}.json`);
+      await fs.writeFile(stateFile, JSON.stringify(worldState, null, 2));
+
+      // Stage and commit
+      await execAsync(`git add "${stateFile}"`, { cwd });
+      const commitMessage = `checkpoint: goal ${goalId} iteration ${iteration} - score ${Math.round(score)}%`;
+      const { stdout } = await execAsync(`git commit -m "${commitMessage}"`, { cwd });
+
+      // Extract commit hash
+      const hashMatch = stdout.match(/\[[\w/]+ ([a-f0-9]+)\]/);
+      const commitHash = hashMatch ? hashMatch[1] : null;
+
+      // Switch back to previous branch
+      await execAsync('git checkout -', { cwd });
+
+      console.log(`[AGI Loop] Git checkpoint: ${commitHash} on branch ${branchName}`);
+      return commitHash;
+    } catch (error) {
+      console.error(`[AGI Loop] Git checkpoint failed (non-fatal):`, error.message);
+      // Try to switch back to previous branch
+      try {
+        await execAsync('git checkout -', { cwd: process.cwd() });
+      } catch { /* ignore */ }
+      return null;
+    }
   }
 }
 

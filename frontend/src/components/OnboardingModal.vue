@@ -187,7 +187,7 @@ import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
-import { PROVIDER_DISPLAY_NAMES, PROVIDER_FETCH_ACTIONS } from '@/store/app/aiProvider.js';
+import { PROVIDER_DISPLAY_NAMES, PROVIDER_FETCH_ACTIONS, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 
 export default {
@@ -257,8 +257,8 @@ export default {
 
     // Check if a provider is connected
     const isProviderConnected = (providerId) => {
-      const lower = providerId.toLowerCase();
-      return connectedApps.value.some((app) => app.toLowerCase() === lower);
+      const providerKey = resolveProviderKey(providerId);
+      return connectedApps.value.some((app) => app.toLowerCase() === providerKey);
     };
 
     // Computed

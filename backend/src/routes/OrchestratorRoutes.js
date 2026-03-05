@@ -31,5 +31,6 @@ router.post('/tool-chat', authenticateToken, upload.array('files'), universalCha
 router.post('/widget-chat', authenticateToken, upload.array('files'), universalChatHandler);
 router.post('/goal-chat', authenticateToken, upload.array('files'), universalChatHandler);
 router.post('/suggestions', authenticateToken, universalChatHandler);
+router.post('/code-chat', authenticateToken, upload.array('files'), universalChatHandler);
 
 export default router;

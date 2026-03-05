@@ -511,7 +511,7 @@ body.dark .content-actions button.icon svg path[fill] {
 }
 
 body.dark inner-editor-area .placeholder-text hr {
-  border-color: var(--color-dull-navy);
+  border-color: var(--terminal-border-color);
   opacity: 0.25;
 }
 

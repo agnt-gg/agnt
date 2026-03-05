@@ -79,6 +79,13 @@ export default {
         state.lastUpdate = new Date();
       }
     },
+    UPDATE_WORKFLOW_STATUS(state, { id, status }) {
+      const workflow = state.workflows.find((w) => w.id === id);
+      if (workflow) {
+        workflow.status = status;
+        state.lastUpdate = new Date();
+      }
+    },
     DELETE_WORKFLOW(state, workflowId) {
       state.workflows = state.workflows.filter((workflow) => workflow.id !== workflowId);
       state.lastUpdate = new Date();

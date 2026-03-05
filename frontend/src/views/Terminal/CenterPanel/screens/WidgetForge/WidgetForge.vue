@@ -21,7 +21,15 @@
 
           <div class="wf-toolbar-right">
             <span v-if="autosaveStatus" class="wf-autosave-status" :class="'wf-autosave-' + autosaveStatus">
-              <i :class="autosaveStatus === 'saving' ? 'fas fa-circle-notch fa-spin' : autosaveStatus === 'saved' ? 'fas fa-check' : 'fas fa-exclamation-triangle'"></i>
+              <i
+                :class="
+                  autosaveStatus === 'saving'
+                    ? 'fas fa-circle-notch fa-spin'
+                    : autosaveStatus === 'saved'
+                      ? 'fas fa-check'
+                      : 'fas fa-exclamation-triangle'
+                "
+              ></i>
               {{ autosaveStatus === 'saving' ? 'Saving...' : autosaveStatus === 'saved' ? 'Saved' : 'Save failed' }}
             </span>
             <button class="wf-btn wf-btn-clear" @click="clearForge" title="Clear all fields"><i class="fas fa-trash-alt"></i> Clear</button>
@@ -308,7 +316,13 @@ export default {
             if (eventData.field in form) {
               const value = eventData.value;
               // Deep-assign object fields (default_size, min_size) to preserve reactivity
-              if (typeof value === 'object' && value !== null && !Array.isArray(value) && typeof form[eventData.field] === 'object' && form[eventData.field] !== null) {
+              if (
+                typeof value === 'object' &&
+                value !== null &&
+                !Array.isArray(value) &&
+                typeof form[eventData.field] === 'object' &&
+                form[eventData.field] !== null
+              ) {
                 Object.assign(form[eventData.field], value);
               } else {
                 form[eventData.field] = value;
@@ -433,9 +447,7 @@ export default {
 
     function getAuthHeaders() {
       const token = localStorage.getItem('token');
-      return token
-        ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-        : { 'Content-Type': 'application/json' };
+      return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
     }
 
     async function doAutosave() {

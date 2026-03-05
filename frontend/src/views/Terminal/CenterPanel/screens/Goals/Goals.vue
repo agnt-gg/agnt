@@ -30,13 +30,18 @@
         </div>
 
         <!-- Real content with staggered fade -->
-        <div v-else class="kanban-board fade-in">
+        <div v-else class="kanban-board fade-in" @click.self="deselectGoal">
           <div v-for="column in columns" :key="column.id" class="kanban-column">
             <div class="column-header">
               <h3>{{ column.title }}</h3>
-              <span class="count">{{ column.goals.length }}</span>
+              <div class="column-header-right">
+                <button v-if="column.id === 'standby'" class="add-goal-btn" @click="showCreateModal = true" title="Create new goal">
+                  <i class="fas fa-plus"></i>
+                </button>
+                <span class="count">{{ column.goals.length }}</span>
+              </div>
             </div>
-            <div class="column-content fade-in-stagger">
+            <div class="column-content fade-in-stagger" @click.self="deselectGoal">
               <GoalCard
                 v-for="goal in column.goals"
                 :key="goal.id"
@@ -51,12 +56,49 @@
           </div>
         </div>
       </div>
+
+      <!-- Create Goal Modal -->
+      <Teleport to="body">
+        <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
+          <div class="modal-container">
+            <div class="modal-header">
+              <h3>Create New Goal</h3>
+              <button class="modal-close-btn" @click="showCreateModal = false">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <div class="modal-body">
+              <textarea
+                ref="goalInputRef"
+                v-model="goalInput"
+                class="goal-input"
+                placeholder="Describe what you want to accomplish..."
+                rows="4"
+                @keydown.ctrl.enter="handleCreateGoal"
+                @keydown.escape="showCreateModal = false"
+                :disabled="isCreatingGoal"
+              ></textarea>
+            </div>
+            <div class="modal-footer">
+              <span class="modal-hint">Ctrl+Enter to create</span>
+              <div class="modal-actions">
+                <button class="modal-btn modal-cancel" @click="showCreateModal = false">Cancel</button>
+                <button class="modal-btn create" @click="handleCreateGoal" :disabled="!goalInput.trim() || isCreatingGoal">
+                  <i v-if="isCreatingGoal" class="fas fa-spinner fa-spin"></i>
+                  <i v-else class="fas fa-plus"></i>
+                  {{ isCreatingGoal ? 'Creating...' : 'Create Goal' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Teleport>
     </template>
   </BaseScreen>
 </template>
 
 <script>
-import { ref, computed } from 'vue';
+import { ref, computed, inject } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import GoalCard from './components/GoalCard.vue';
@@ -70,9 +112,16 @@ export default {
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();
+    const playSound = inject('playSound', () => {});
     const baseScreenRef = ref(null);
     const terminalLines = ref([]);
     const selectedGoalId = ref(null);
+
+    // Create goal modal state
+    const showCreateModal = ref(false);
+    const goalInput = ref('');
+    const goalInputRef = ref(null);
+    const isCreatingGoal = computed(() => store.getters['goals/isCreatingGoal']);
 
     document.body.setAttribute('data-page', 'terminal-goals');
 
@@ -83,24 +132,19 @@ export default {
       const goals = allGoals.value || [];
       return [
         {
+          id: 'standby',
+          title: 'Standby',
+          goals: goals.filter((g) => ['planning', 'queued', 'needs_review'].includes(g.status)),
+        },
+        {
           id: 'active',
           title: 'Active',
           goals: goals.filter((g) => ['executing', 'paused'].includes(g.status)),
         },
-        // {
-        //   id: 'review',
-        //   title: 'Review',
-        //   goals: goals.filter((g) => ['needs_review', 'validated'].includes(g.status)),
-        // },
         {
           id: 'done',
           title: 'Done',
-          goals: goals.filter((g) => ['completed', 'validated'].includes(g.status)),
-        },
-        {
-          id: 'failed',
-          title: 'Failed',
-          goals: goals.filter((g) => ['failed', 'error', 'stopped'].includes(g.status)),
+          goals: goals.filter((g) => ['completed', 'validated', 'failed', 'error', 'stopped'].includes(g.status)),
         },
       ];
     });
@@ -171,6 +215,28 @@ export default {
       baseScreenRef.value?.scrollToBottom();
     };
 
+    const deselectGoal = () => {
+      selectedGoalId.value = null;
+    };
+
+    const handleCreateGoal = async () => {
+      if (!goalInput.value.trim()) return;
+      const goalText = goalInput.value.trim();
+      try {
+        await store.dispatch('goals/createGoal', {
+          text: goalText,
+          priority: 'medium',
+        });
+        goalInput.value = '';
+        showCreateModal.value = false;
+        terminalLines.value.push(`Created goal: ${goalText.substring(0, 50)}...`);
+        baseScreenRef.value?.scrollToBottom();
+      } catch (error) {
+        terminalLines.value.push(`Error creating goal: ${error.message}`);
+        baseScreenRef.value?.scrollToBottom();
+      }
+    };
+
     const handlePanelAction = (action, payload) => {
       if (action === 'navigate') {
         emit('screen-change', payload);
@@ -180,6 +246,8 @@ export default {
         store.dispatch('goals/fetchGoals');
       } else if (action === 'close-panel') {
         selectedGoalId.value = null;
+      } else if (action === 'create-goal') {
+        showCreateModal.value = true;
       }
     };
 
@@ -193,10 +261,16 @@ export default {
       resumeGoal,
       deleteGoal,
       handlePanelAction,
+      handleCreateGoal,
+      deselectGoal,
       emit,
       selectedGoalId,
       allGoals,
       isLoading,
+      showCreateModal,
+      goalInput,
+      goalInputRef,
+      isCreatingGoal,
     };
   },
 };
@@ -252,6 +326,34 @@ body[data-page='goals-page'] .scrollable-content {
   font-weight: 600;
 }
 
+.column-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-goal-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.75em;
+  padding: 0;
+}
+
+.add-goal-btn:hover {
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: rgba(var(--green-rgb), 0.5);
+  color: var(--color-green);
+}
+
 .count {
   background: var(--color-darker-2);
   padding: 2px 8px;
@@ -275,5 +377,143 @@ body[data-page='goals-page'] .scrollable-content {
   font-style: italic;
   padding: 20px;
   font-size: 0.9em;
+}
+
+/* Create Goal Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.modal-container {
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  width: 500px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 0.9em;
+  transition: color 0.2s;
+}
+
+.modal-close-btn:hover {
+  color: var(--color-text);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.goal-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 0.95em;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s ease;
+}
+
+.goal-input:focus {
+  outline: none;
+  border-color: rgba(var(--green-rgb), 0.5);
+}
+
+.goal-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+.modal-hint {
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-btn {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-btn.modal-cancel {
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-text-muted);
+}
+
+.modal-btn.modal-cancel:hover {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
+.modal-btn.create {
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  color: var(--color-green);
+}
+
+.modal-btn.create:hover:not(:disabled) {
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: rgba(var(--green-rgb), 0.5);
+}
+
+.modal-btn.create:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

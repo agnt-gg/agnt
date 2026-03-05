@@ -345,6 +345,24 @@ export function useRealtimeSync() {
       });
     });
 
+    // AGI Loop events - goal iteration progress
+    const agiLoopEvents = [
+      'goal:iteration_start',
+      'goal:iteration_evaluate',
+      'goal:iteration_replan',
+      'goal:iteration_checkpoint',
+      'goal:iteration_end',
+      'goal:loop_completed',
+      'goal:loop_error',
+    ];
+
+    agiLoopEvents.forEach((event) => {
+      socket.on(event, (data) => {
+        console.log(`[Realtime] ${event}:`, data);
+        store.dispatch('goals/handleIterationEvent', { event, data });
+      });
+    });
+
     // Plugin events - notify components when plugins change
     // Note: We don't call refreshAllTools here to avoid race conditions during batch installs
     // The calling code (marketplace install flow) handles the refresh after all plugins are installed

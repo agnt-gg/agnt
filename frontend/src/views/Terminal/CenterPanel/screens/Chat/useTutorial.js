@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import { useStore } from 'vuex';
+import { resolveProviderKey } from '@/store/app/aiProvider.js';
 
 export function useTutorial(emitFunction) {
   const store = useStore();
@@ -13,15 +14,13 @@ export function useTutorial(emitFunction) {
     if (!selectedProvider) return false;
 
     // Local provider doesn't appear in connectedApps - it's available when the server is running
-    // This check should match the logic in Chat.vue's hasConnectedAIProvider
     if (selectedProvider.toLowerCase() === 'local') {
-      // We can't directly check isLocalServerRunning here, but if Local is selected,
-      // assume it's available (the Chat.vue logic will handle the actual check)
       return true;
     }
 
-    // Check if the selected provider is in the connected apps (case-insensitive)
-    return connectedApps.some((app) => app.toLowerCase() === selectedProvider.toLowerCase());
+    // Normalize provider key for comparison (e.g. "Z.AI" → "zai")
+    const providerKey = resolveProviderKey(selectedProvider);
+    return connectedApps.some((app) => app.toLowerCase() === providerKey);
   });
 
   const tutorialConfig = ref([

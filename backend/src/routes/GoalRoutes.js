@@ -14,6 +14,12 @@ GoalRoutes.post('/:id/pause', authenticateToken, GoalService.pauseGoal);
 GoalRoutes.post('/:id/resume', authenticateToken, GoalService.resumeGoal);
 GoalRoutes.delete('/:id', authenticateToken, GoalService.deleteGoal);
 
+// AGI Loop endpoints
+GoalRoutes.post('/:goalId/execute-autonomous', authenticateToken, GoalService.executeGoalAutonomous);
+GoalRoutes.get('/:goalId/iterations', authenticateToken, GoalService.getIterations);
+GoalRoutes.get('/:goalId/world-state', authenticateToken, GoalService.getWorldState);
+GoalRoutes.post('/:goalId/revert/:iteration', authenticateToken, GoalService.revertToIteration);
+
 // Evaluation endpoints
 GoalRoutes.post('/:id/evaluate', authenticateToken, GoalService.evaluateGoal);
 GoalRoutes.get('/:id/evaluation', authenticateToken, GoalService.getEvaluationReport);

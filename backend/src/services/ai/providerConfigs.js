@@ -34,14 +34,23 @@ const PROVIDER_CONFIGS = [
         supportsStyle: true,
       },
     },
-    fallbackModels: ['gpt-5-pro', 'gpt-5', 'o3', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    fallbackVisionModels: ['gpt-4.1'],
+    recommendedModels: ['gpt-5.2', 'o4-mini', 'gpt-4.1'],
+    fallbackModels: ['gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
+    fallbackVisionModels: ['gpt-5.2', 'gpt-4.1'],
     modelMetadata: {
-      'gpt-4.1': { contextWindow: 1047576, maxOutputTokens: 32768, inputCostPer1M: 2.0, outputCostPer1M: 8.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-5.2': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.75, outputCostPer1M: 14.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gpt-5.1': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-5': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-5-mini': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 0.25, outputCostPer1M: 2.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-5-nano': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 0.05, outputCostPer1M: 0.4, supportsVision: true, supportsTools: true, reasoning: false },
+      'o4-mini': { contextWindow: 200000, maxOutputTokens: 100000, inputCostPer1M: 1.1, outputCostPer1M: 4.4, supportsVision: true, supportsTools: true, reasoning: true },
+      'o3': { contextWindow: 200000, maxOutputTokens: 100000, inputCostPer1M: 2.0, outputCostPer1M: 8.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'o3-mini': { contextWindow: 200000, maxOutputTokens: 100000, inputCostPer1M: 1.1, outputCostPer1M: 4.4, supportsVision: true, supportsTools: true, reasoning: true },
+      'gpt-4.1': { contextWindow: 1000000, maxOutputTokens: 32768, inputCostPer1M: 2.0, outputCostPer1M: 8.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-4.1-mini': { contextWindow: 1000000, maxOutputTokens: 32768, inputCostPer1M: 0.4, outputCostPer1M: 1.6, supportsVision: true, supportsTools: true, reasoning: false },
+      'gpt-4.1-nano': { contextWindow: 1000000, maxOutputTokens: 32768, inputCostPer1M: 0.1, outputCostPer1M: 0.4, supportsVision: true, supportsTools: true, reasoning: false },
       'gpt-4o': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 2.5, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: false },
       'gpt-4o-mini': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: true, supportsTools: true, reasoning: false },
-      'o3': { contextWindow: 200000, maxOutputTokens: 100000, inputCostPer1M: 10.0, outputCostPer1M: 40.0, supportsVision: true, supportsTools: true, reasoning: true },
-      'gpt-3.5-turbo': { contextWindow: 16385, maxOutputTokens: 4096, inputCostPer1M: 0.5, outputCostPer1M: 1.5, supportsVision: false, supportsTools: true, reasoning: false },
     },
     compat: {},
     sdkOptions: {},
@@ -71,6 +80,7 @@ const PROVIDER_CONFIGS = [
         supportsStyle: true,
       },
     },
+    recommendedModels: ['gpt-4.1'],
     fallbackModels: ['gpt-4.1'],
     compat: {},
     sdkOptions: {},
@@ -87,7 +97,8 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
-    fallbackModels: ['gpt-5-codex', 'gpt-5'],
+    recommendedModels: ['gpt-5.2-codex', 'gpt-5.1-codex'],
+    fallbackModels: ['gpt-5.2-codex', 'gpt-5.1-codex', 'gpt-5.2'],
     compat: {},
     sdkOptions: {},
   },
@@ -100,23 +111,35 @@ const PROVIDER_CONFIGS = [
     sdkType: 'anthropic',
     authScheme: 'api-key',
     fetchHeaders: { 'anthropic-version': '2023-06-01' },
+    pagination: {
+      enabled: true,
+      pageSize: 100,
+      cursorParam: 'after_id',
+      hasMoreField: 'has_more',
+    },
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    recommendedModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
     fallbackModels: [
-      'claude-sonnet-4-5',
-      'claude-haiku-4-5',
-      'claude-3-5-sonnet-20241022',
-      'claude-3-5-haiku-20241022',
-      'claude-3-opus-20240229',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
+      'claude-opus-4-5-20251101',
+      'claude-sonnet-4-5-20250929',
+      'claude-haiku-4-5-20251001',
+      'claude-sonnet-4-20250514',
+      'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-sonnet-4-5-20250929'],
+    fallbackVisionModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
     modelMetadata: {
-      'claude-sonnet-4-5': { contextWindow: 200000, maxOutputTokens: 16384, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: false },
-      'claude-haiku-4-5': { contextWindow: 200000, maxOutputTokens: 8192, inputCostPer1M: 0.8, outputCostPer1M: 4.0, supportsVision: true, supportsTools: true, reasoning: false },
-      'claude-3-5-sonnet-20241022': { contextWindow: 200000, maxOutputTokens: 8192, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: false },
-      'claude-3-opus-20240229': { contextWindow: 200000, maxOutputTokens: 4096, inputCostPer1M: 15.0, outputCostPer1M: 75.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'claude-opus-4-6': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-sonnet-4-6': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-opus-4-5-20251101': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-sonnet-4-5-20250929': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-haiku-4-5-20251001': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 1.0, outputCostPer1M: 5.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'claude-sonnet-4-20250514': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: false },
+      'claude-opus-4-20250514': { contextWindow: 200000, maxOutputTokens: 32000, inputCostPer1M: 15.0, outputCostPer1M: 75.0, supportsVision: true, supportsTools: true, reasoning: false },
     },
     modelTransform: (raw) => ({
       id: raw.id,
@@ -163,15 +186,17 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    recommendedModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
     fallbackModels: [
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-5-20250929',
       'claude-haiku-4-5-20251001',
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
-      'claude-3-5-sonnet-20241022',
     ],
-    fallbackVisionModels: ['claude-sonnet-4-5-20250929'],
+    fallbackVisionModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
     modelTransform: (raw) => ({
       id: raw.id,
       name: raw.display_name || raw.id,
@@ -190,25 +215,34 @@ const PROVIDER_CONFIGS = [
     sdkType: 'gemini',
     authScheme: 'query-param',
     responseDataPath: 'models',
+    pagination: {
+      enabled: true,
+      pageSize: 100,
+      limitParam: 'pageSize',
+      cursorParam: 'pageToken',
+      hasMoreField: 'nextPageToken',
+    },
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
       imageGen: {
-        models: ['gemini-3-pro-image-preview', 'nano-banana-pro-preview'],
+        models: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
         operations: ['generate'],
-        defaultModel: 'nano-banana-pro-preview',
+        defaultModel: 'gemini-3.1-flash-image-preview',
         supportedAspectRatios: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
         supportedResolutions: ['1K', '2K', '4K'],
         supportsGoogleSearch: true,
       },
     },
-    fallbackModels: ['gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-    fallbackVisionModels: ['gemini-3-pro-preview'],
+    recommendedModels: ['gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash'],
+    fallbackModels: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+    fallbackVisionModels: ['gemini-3.1-pro-preview', 'gemini-2.5-pro'],
     modelMetadata: {
+      'gemini-3.1-pro-preview': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 2.0, outputCostPer1M: 12.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3-flash-preview': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.5, outputCostPer1M: 3.0, supportsVision: true, supportsTools: true, reasoning: false },
       'gemini-2.5-pro': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: true },
-      'gemini-2.0-flash-exp': { contextWindow: 1048576, maxOutputTokens: 8192, inputCostPer1M: 0.1, outputCostPer1M: 0.4, supportsVision: true, supportsTools: true, reasoning: false },
-      'gemini-1.5-pro': { contextWindow: 2097152, maxOutputTokens: 8192, inputCostPer1M: 1.25, outputCostPer1M: 5.0, supportsVision: true, supportsTools: true, reasoning: false },
-      'gemini-1.5-flash': { contextWindow: 1048576, maxOutputTokens: 8192, inputCostPer1M: 0.075, outputCostPer1M: 0.3, supportsVision: true, supportsTools: true, reasoning: false },
+      'gemini-2.5-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.3, outputCostPer1M: 2.5, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-2.5-flash-lite': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0.1, outputCostPer1M: 0.4, supportsVision: true, supportsTools: true, reasoning: false },
     },
     modelTransform: (raw) => ({
       id: raw.name?.replace('models/', '') || raw.id,
@@ -233,17 +267,21 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
       imageGen: {
-        models: ['grok-4-1-fast-reasoning'],
+        models: ['grok-imagine-image-pro', 'grok-imagine-image'],
         operations: ['generate'],
-        defaultModel: 'grok-4-1-fast-reasoning',
+        defaultModel: 'grok-imagine-image-pro',
         supportedFormats: ['url', 'b64_json'],
         maxImages: 10,
         supportsRevisedPrompt: true,
       },
     },
-    fallbackModels: ['grok-4', 'grok-4-0709', 'grok-3', 'grok-3-mini', 'grok-2-vision-1212', 'grok-code-fast-1'],
-    fallbackVisionModels: ['grok-4-1-fast-reasoning'],
+    recommendedModels: ['grok-4-0709', 'grok-4-1-fast-reasoning'],
+    fallbackModels: ['grok-4-0709', 'grok-4-1-fast-reasoning', 'grok-code-fast-1', 'grok-3', 'grok-3-mini'],
+    fallbackVisionModels: ['grok-4-0709'],
     modelMetadata: {
+      'grok-4-0709': { contextWindow: 256000, maxOutputTokens: 131072, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'grok-4-1-fast-reasoning': { contextWindow: 2000000, maxOutputTokens: 131072, inputCostPer1M: 0.2, outputCostPer1M: 0.5, supportsVision: false, supportsTools: true, reasoning: true },
+      'grok-code-fast-1': { contextWindow: 256000, maxOutputTokens: 131072, inputCostPer1M: 0.2, outputCostPer1M: 1.5, supportsVision: false, supportsTools: true, reasoning: true },
       'grok-3': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: false, supportsTools: true, reasoning: false },
       'grok-3-mini': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 0.5, supportsVision: false, supportsTools: true, reasoning: true },
     },
@@ -261,11 +299,15 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
-    fallbackModels: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+    recommendedModels: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'],
+    fallbackModels: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'qwen/qwen3-32b', 'meta-llama/llama-4-scout-17b-16e-instruct'],
     modelMetadata: {
-      'llama-3.3-70b-versatile': { contextWindow: 128000, maxOutputTokens: 32768, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true, reasoning: false },
-      'llama-3.1-8b-instant': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 0.05, outputCostPer1M: 0.08, supportsVision: false, supportsTools: true, reasoning: false },
-      'mixtral-8x7b-32768': { contextWindow: 32768, maxOutputTokens: 32768, inputCostPer1M: 0.24, outputCostPer1M: 0.24, supportsVision: false, supportsTools: true, reasoning: false },
+      'openai/gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: false, supportsTools: true, reasoning: false },
+      'openai/gpt-oss-20b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.075, outputCostPer1M: 0.3, supportsVision: false, supportsTools: true, reasoning: false },
+      'llama-3.3-70b-versatile': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true, reasoning: false },
+      'llama-3.1-8b-instant': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.05, outputCostPer1M: 0.08, supportsVision: false, supportsTools: true, reasoning: false },
+      'qwen/qwen3-32b': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.29, outputCostPer1M: 0.59, supportsVision: false, supportsTools: true, reasoning: false },
+      'meta-llama/llama-4-scout-17b-16e-instruct': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.11, outputCostPer1M: 0.34, supportsVision: false, supportsTools: true, reasoning: false },
     },
     modelTransform: (raw) => ({
       id: raw.id,
@@ -291,10 +333,11 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
+    recommendedModels: ['deepseek-chat', 'deepseek-reasoner'],
     fallbackModels: ['deepseek-chat', 'deepseek-reasoner'],
     modelMetadata: {
-      'deepseek-chat': { contextWindow: 64000, maxOutputTokens: 8192, inputCostPer1M: 0.14, outputCostPer1M: 0.28, supportsVision: false, supportsTools: true, reasoning: false },
-      'deepseek-reasoner': { contextWindow: 64000, maxOutputTokens: 8192, inputCostPer1M: 0.55, outputCostPer1M: 2.19, supportsVision: false, supportsTools: false, reasoning: true },
+      'deepseek-chat': { contextWindow: 128000, maxOutputTokens: 8192, inputCostPer1M: 0.28, outputCostPer1M: 0.42, supportsVision: false, supportsTools: true, reasoning: false },
+      'deepseek-reasoner': { contextWindow: 128000, maxOutputTokens: 64000, inputCostPer1M: 0.28, outputCostPer1M: 0.42, supportsVision: false, supportsTools: true, reasoning: true },
     },
     compat: {},
     sdkOptions: {},
@@ -317,20 +360,24 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
+    recommendedModels: ['openai/gpt-5.2', 'anthropic/claude-sonnet-4-6', 'google/gemini-2.5-pro'],
     fallbackModels: [
-      'openai/gpt-4o',
-      'openai/gpt-4o-mini',
-      'anthropic/claude-3-5-sonnet-20241022',
-      'anthropic/claude-3-haiku-20240307',
-      'google/gemini-pro-1.5',
-      'meta-llama/llama-3.1-70b-instruct',
-      'mistralai/mixtral-8x7b-instruct',
+      'openai/gpt-5.2',
+      'openai/gpt-4.1',
+      'openai/o4-mini',
+      'anthropic/claude-sonnet-4-6',
+      'anthropic/claude-haiku-4-5-20251001',
+      'google/gemini-2.5-pro',
+      'google/gemini-2.5-flash',
+      'x-ai/grok-4-1-fast-reasoning',
+      'deepseek/deepseek-chat',
+      'meta-llama/llama-3.3-70b-instruct',
     ],
     fallbackVisionModels: [
-      'openai/gpt-4-turbo',
-      'openai/gpt-4o',
-      'anthropic/claude-3.5-sonnet',
-      'google/gemini-pro-1.5-vision',
+      'openai/gpt-5.2',
+      'openai/gpt-4.1',
+      'anthropic/claude-sonnet-4-6',
+      'google/gemini-2.5-pro',
     ],
     modelTransform: (raw) => ({
       id: raw.id,
@@ -357,12 +404,13 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
+    recommendedModels: ['deepseek-ai/DeepSeek-V3', 'moonshotai/Kimi-K2.5'],
     fallbackModels: [
       'deepseek-ai/DeepSeek-V3',
-      'moonshotai/Kimi-K2-Instruct',
+      'moonshotai/Kimi-K2.5',
+      'MiniMaxAI/MiniMax-M2.5',
       'Qwen/Qwen3-235B-A22B-Thinking-2507',
       'meta-llama/Llama-3.3-70B-Instruct-Turbo',
-      'mistralai/Mixtral-8x7B-Instruct-v0.1',
     ],
     modelFilter: (m) => m.id && m.type === 'chat',
     compat: {},
@@ -379,7 +427,14 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
-    fallbackModels: ['llama3.1-8b', 'llama-3.3-70b', 'gpt-oss-120b', 'qwen-3-32b', 'qwen-3-235b-a22b-instruct-2507', 'zai-glm-4.6'],
+    recommendedModels: ['gpt-oss-120b', 'qwen-3-235b-a22b-instruct-2507'],
+    fallbackModels: ['gpt-oss-120b', 'llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507', 'zai-glm-4.7'],
+    modelMetadata: {
+      'gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.35, outputCostPer1M: 0.75, supportsVision: false, supportsTools: true, reasoning: false },
+      'llama3.1-8b': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.1, outputCostPer1M: 0.1, supportsVision: false, supportsTools: true, reasoning: false },
+      'qwen-3-235b-a22b-instruct-2507': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.6, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: false },
+      'zai-glm-4.7': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 2.25, outputCostPer1M: 2.75, supportsVision: false, supportsTools: true, reasoning: false },
+    },
     compat: {},
     sdkOptions: { warmTCPConnection: false },
   },
@@ -395,12 +450,15 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    fallbackModels: ['kimi-k2.5', 'kimi-k2-thinking', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+    recommendedModels: ['kimi-k2.5', 'kimi-k2-thinking'],
+    fallbackModels: ['kimi-k2.5', 'kimi-k2-thinking', 'kimi-k2', 'moonshot-v1-128k', 'moonshot-v1-32k'],
     fallbackVisionModels: ['kimi-k2.5'],
     modelMetadata: {
-      'moonshot-v1-8k': { contextWindow: 8192, maxOutputTokens: 4096, inputCostPer1M: 0.85, outputCostPer1M: 0.85, supportsVision: false, supportsTools: true, reasoning: false },
-      'moonshot-v1-32k': { contextWindow: 32768, maxOutputTokens: 4096, inputCostPer1M: 1.7, outputCostPer1M: 1.7, supportsVision: false, supportsTools: true, reasoning: false },
+      'kimi-k2.5': { contextWindow: 256000, maxOutputTokens: 16384, inputCostPer1M: 0.6, outputCostPer1M: 2.5, supportsVision: true, supportsTools: true, reasoning: true },
+      'kimi-k2-thinking': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 0.6, outputCostPer1M: 2.5, supportsVision: false, supportsTools: true, reasoning: true },
+      'kimi-k2': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 0.5, outputCostPer1M: 2.0, supportsVision: false, supportsTools: true, reasoning: false },
       'moonshot-v1-128k': { contextWindow: 131072, maxOutputTokens: 4096, inputCostPer1M: 8.5, outputCostPer1M: 8.5, supportsVision: false, supportsTools: true, reasoning: false },
+      'moonshot-v1-32k': { contextWindow: 32768, maxOutputTokens: 4096, inputCostPer1M: 1.7, outputCostPer1M: 1.7, supportsVision: false, supportsTools: true, reasoning: false },
     },
     compat: {},
     sdkOptions: {},
@@ -413,10 +471,18 @@ const PROVIDER_CONFIGS = [
     baseURL: 'https://api.minimax.io/v1',
     sdkType: 'openai',
     authScheme: 'bearer',
+    staticModels: true, // MiniMax has no /models endpoint (GitHub issue #60)
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
-    fallbackModels: ['MiniMax-M2.1', 'MiniMax-M2'],
+    recommendedModels: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
+    fallbackModels: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed', 'MiniMax-M2.1', 'MiniMax-M2.1-highspeed'],
+    modelMetadata: {
+      'MiniMax-M2.5': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: true },
+      'MiniMax-M2.5-highspeed': { contextWindow: 200000, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 2.4, supportsVision: false, supportsTools: true, reasoning: true },
+      'MiniMax-M2.1': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 0.3, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: false },
+      'MiniMax-M2.1-highspeed': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: false, supportsTools: true, reasoning: false },
+    },
     compat: {},
     sdkOptions: {},
   },
@@ -428,14 +494,27 @@ const PROVIDER_CONFIGS = [
     baseURL: 'https://api.z.ai/api/paas/v4',
     sdkType: 'openai',
     authScheme: 'bearer',
+    staticModels: true, // Z.AI has no /models endpoint
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    fallbackModels: ['GLM-4.7', 'GLM-4.6', 'GLM-4.5'],
-    fallbackVisionModels: ['GLM-4.7', 'GLM-4.6', 'GLM-4.5'],
+    recommendedModels: ['glm-5', 'glm-4.7'],
+    fallbackModels: ['glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.6v', 'glm-4.6v-flash', 'glm-4.5-flash'],
+    fallbackVisionModels: ['glm-4.6v', 'glm-4.6v-flash'],
+    modelMetadata: {
+      'glm-5': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 1.0, outputCostPer1M: 3.2, supportsVision: false, supportsTools: true, reasoning: true },
+      'glm-4.7': { contextWindow: 128000, maxOutputTokens: 128000, inputCostPer1M: 0.6, outputCostPer1M: 2.2, supportsVision: false, supportsTools: true, reasoning: false },
+      'glm-4.7-flash': { contextWindow: 128000, maxOutputTokens: 128000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: false, supportsTools: true, reasoning: false },
+      'glm-4.6v': { contextWindow: 128000, maxOutputTokens: 32000, inputCostPer1M: 0.3, outputCostPer1M: 0.9, supportsVision: true, supportsTools: true, reasoning: false },
+      'glm-4.6v-flash': { contextWindow: 128000, maxOutputTokens: 32000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: false },
+      'glm-4.5-flash': { contextWindow: 128000, maxOutputTokens: 96000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: false, supportsTools: true, reasoning: false },
+    },
     compat: {},
-    sdkOptions: {},
+    sdkOptions: {
+      timeout: 300000, // 5 min — GLM-5 reasoning mode can have long TTFB
+      defaultHeaders: { 'Accept-Language': 'en-US,en' }, // Required per Z.AI docs
+    },
   },
 ];
 
@@ -609,9 +688,15 @@ export function getAllProviderConfigs() {
   return PROVIDER_CONFIGS;
 }
 
-/** Get a provider config by key */
+/** Get a provider config by key or name (display name, slug, etc.) */
 export function getProviderConfig(key) {
-  return PROVIDER_CONFIGS.find((p) => p.key === key.toLowerCase());
+  const lower = key.toLowerCase();
+  // Direct key match
+  const byKey = PROVIDER_CONFIGS.find((p) => p.key === lower);
+  if (byKey) return byKey;
+  // Fuzzy match: strip non-alphanumeric and compare
+  const stripped = lower.replace(/[^a-z0-9]/g, '');
+  return PROVIDER_CONFIGS.find((p) => p.key === stripped || p.name.toLowerCase().replace(/[^a-z0-9]/g, '') === stripped);
 }
 
 /** Get all provider keys */
@@ -632,6 +717,12 @@ export function getAllProviderTemplates() {
 /** Get a specific provider template by key */
 export function getProviderTemplate(key) {
   return PROVIDER_TEMPLATES.find((t) => t.key === key.toLowerCase());
+}
+
+/** Get recommended models for a provider (top models to show first in dropdowns) */
+export function getRecommendedModels(providerKey) {
+  const config = getProviderConfig(providerKey);
+  return config?.recommendedModels || config?.fallbackModels?.slice(0, 3) || [];
 }
 
 /** Build a PROVIDER_CAPABILITIES object (for backward compat with ProviderRegistry) */

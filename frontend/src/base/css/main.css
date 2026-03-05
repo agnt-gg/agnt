@@ -950,11 +950,11 @@ mjx-container {
    ======================================== */
 
 body.dark hr {
-  border-color: var(--color-dull-navy);
+  border-color: var(--terminal-border-color);
 }
 
 body.dark inner-editor-area#response-area h2 {
-  border-top: 1px solid var(--color-dull-navy);
+  border-top: 1px solid var(--terminal-border-color);
 }
 
 inner-editor-area#response-area h2 {

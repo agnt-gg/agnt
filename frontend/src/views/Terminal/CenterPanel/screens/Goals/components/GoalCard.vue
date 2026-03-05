@@ -107,7 +107,8 @@ export default {
 .goal-card.executing {
   border-left: 3px solid var(--color-blue);
 }
-.goal-card.completed {
+.goal-card.completed,
+.goal-card.validated {
   border-left: 3px solid var(--color-green);
 }
 .goal-card.failed {
@@ -144,7 +145,8 @@ export default {
   background: rgba(59, 130, 246, 0.2);
   color: var(--color-blue);
 }
-.goal-status.completed {
+.goal-status.completed,
+.goal-status.validated {
   background: rgba(34, 197, 94, 0.2);
   color: var(--color-green);
 }

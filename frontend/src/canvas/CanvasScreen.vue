@@ -25,7 +25,7 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
-        <span v-if="globalModelLabel" class="cv-global-model" :title="globalModelLabel"> default: {{ globalModelLabel }} </span>
+        <span v-if="globalModelLabel" class="cv-global-model" :title="globalModelLabel"> {{ globalProviderLabel }}/{{ globalModelLabel }} </span>
         <button v-if="onCustomPage" class="cv-btn" @click="showCatalog = true" title="Add widget">+</button>
         <button v-if="onCustomPage" class="cv-btn" @click="resetCurrentPage" title="Reset layout">&#8635;</button>
 
@@ -119,7 +119,12 @@
           :pageId="activePageId"
           :isCustomPage="true"
           @open-catalog="showCatalog = true"
-          @screen-change="(screen, opts) => { onCustomPage = false; $emit('screen-change', screen, opts); }"
+          @screen-change="
+            (screen, opts) => {
+              onCustomPage = false;
+              $emit('screen-change', screen, opts);
+            }
+          "
         />
 
         <!-- Section screens: render directly via slot (fast, no widget overhead) -->
@@ -226,6 +231,7 @@ const MAIN_SECTIONS = [
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE' },
     ],
   },
+  { id: 'code', icon: 'fas fa-code', label: 'Code Editor', screens: [{ screen: 'CodeEditorScreen', label: 'CODE EDITOR' }] },
 ];
 
 const SETTINGS_SECTIONS = [
@@ -281,6 +287,12 @@ export default {
     const globalModelLabel = computed(() => {
       const model = store.state.aiProvider?.selectedModel;
       return model || '';
+    });
+
+    const globalProviderLabel = computed(() => {
+      const provider = store.state.aiProvider?.selectedProvider;
+      const providerClean = provider.replace(/\./g, '-').toLowerCase(); // fixes BS for z-ai
+      return providerClean || '';
     });
 
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
@@ -525,6 +537,7 @@ export default {
     return {
       isAuthenticated,
       globalModelLabel,
+      globalProviderLabel,
       showCatalog,
       clock,
       activePageId,
@@ -970,7 +983,7 @@ export default {
   position: fixed;
   inset: 0;
   z-index: 4000;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--color-background);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
@@ -979,7 +992,7 @@ export default {
 }
 
 .cv-modal {
-  background: var(--color-background);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 16px 20px;

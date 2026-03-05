@@ -96,7 +96,7 @@ import ActivityFeed from './components/ActivityFeed.vue';
 import { useTutorial } from './useTutorial.js';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
-import { resolveProviderKey } from '@/store/app/aiProvider.js';
+import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 
 export default {
@@ -233,8 +233,8 @@ export default {
 
       // Check if any non-Local AI provider is connected
       const connectedAIProviders = connectedApps.filter((app) => {
-        const appLower = app.toLowerCase();
-        return ['anthropic', 'openai', 'openai-codex', 'openai-codex-cli', 'gemini', 'grokai', 'groq', 'openrouter', 'togetherai'].includes(appLower);
+        const appKey = resolveProviderKey(app);
+        return appKey !== 'local' && AI_PROVIDERS_WITH_API.includes(appKey);
       });
 
       // ONLY auto-switch to Local if:
@@ -396,6 +396,7 @@ export default {
         files: files, // Pass files to the store action
         provider: store.state.aiProvider.selectedProvider,
         model: store.state.aiProvider.selectedModel,
+        reasoningEnabled: store.state.aiProvider.reasoningEnabled,
       });
     };
 
@@ -415,6 +416,13 @@ export default {
           messageStates.value[data.id] = {
             type: 'thinking',
             text: 'Annie is thinking...',
+          };
+          break;
+        case 'reasoning_delta':
+          // Update thinking status to show model is actively reasoning
+          messageStates.value[data.assistantMessageId] = {
+            type: 'thinking',
+            text: 'Annie is reasoning...',
           };
           break;
         case 'tool_start':
@@ -844,7 +852,8 @@ export default {
           if (selectedProvider.toLowerCase() === 'local') {
             isProviderActuallyConnected = isLocalServerRunning.value;
           } else {
-            isProviderActuallyConnected = connectedApps.some((app) => app.toLowerCase() === selectedProvider.toLowerCase());
+            const providerKey = resolveProviderKey(selectedProvider);
+            isProviderActuallyConnected = connectedApps.some((app) => app.toLowerCase() === providerKey);
           }
         }
 
@@ -981,7 +990,8 @@ export default {
                 isProviderActuallyConnected = true;
               } else {
                 // Check built-in providers
-                isProviderActuallyConnected = connectedApps.some((app) => app.toLowerCase() === selectedProvider.toLowerCase());
+                const providerKey = resolveProviderKey(selectedProvider);
+                isProviderActuallyConnected = connectedApps.some((app) => app.toLowerCase() === providerKey);
               }
             }
           }

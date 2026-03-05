@@ -19,6 +19,9 @@ const state = {
   lastFetchTime: null, // Add caching timestamp
   requestCache: new Map(), // Cache for API responses
   isFetchingGoals: false, // Request deduplication flag
+  // AGI Loop state
+  iterations: {}, // goalId -> iteration[]
+  liveIteration: {}, // goalId -> { iteration, phase, score }
 };
 
 const getters = {
@@ -71,6 +74,10 @@ const getters = {
   },
 
   goalStatusSubscriptions: (state) => state.goalStatusSubscriptions,
+
+  // AGI Loop getters
+  getIterations: (state) => (goalId) => state.iterations[goalId] || [],
+  getLiveIteration: (state) => (goalId) => state.liveIteration[goalId] || null,
 };
 
 const mutations = {
@@ -159,6 +166,20 @@ const mutations = {
   },
   SET_FETCHING_GOALS(state, isFetching) {
     state.isFetchingGoals = isFetching;
+  },
+
+  // AGI Loop mutations
+  SET_ITERATIONS(state, { goalId, iterations }) {
+    state.iterations = { ...state.iterations, [goalId]: iterations };
+  },
+
+  SET_LIVE_ITERATION(state, { goalId, data }) {
+    state.liveIteration = { ...state.liveIteration, [goalId]: data };
+  },
+
+  CLEAR_LIVE_ITERATION(state, goalId) {
+    const { [goalId]: _, ...rest } = state.liveIteration;
+    state.liveIteration = rest;
   },
 };
 
@@ -966,6 +987,182 @@ const actions = {
     } catch (error) {
       console.error('Error saving golden standard:', error);
       throw error;
+    }
+  },
+
+  // ==================== AGI Loop Actions ====================
+
+  async executeGoalAutonomous({ commit, dispatch, rootState }, { goalId, maxIterations = 50 }) {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/execute-autonomous`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ maxIterations }),
+      });
+
+      if (!response.ok) throw new Error('Failed to start autonomous execution');
+
+      commit('UPDATE_GOAL', {
+        id: goalId,
+        status: 'executing',
+        loop_status: 'starting',
+        max_iterations: maxIterations,
+      });
+
+      // Start monitoring
+      dispatch('monitorGoalProgress', goalId);
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error starting autonomous execution:', error);
+      commit('SET_ERROR', error.message);
+      throw error;
+    }
+  },
+
+  async fetchIterations({ commit }, goalId) {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/iterations`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch iterations');
+
+      const data = await response.json();
+      commit('SET_ITERATIONS', { goalId, iterations: data.iterations || [] });
+      return data.iterations;
+    } catch (error) {
+      console.error('Error fetching iterations:', error);
+      return [];
+    }
+  },
+
+  async fetchWorldState({ commit }, goalId) {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/world-state`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch world state');
+
+      const data = await response.json();
+      commit('UPDATE_GOAL', {
+        id: goalId,
+        world_state: data.worldState,
+        current_iteration: data.currentIteration,
+        max_iterations: data.maxIterations,
+        loop_status: data.loopStatus,
+      });
+      return data;
+    } catch (error) {
+      console.error('Error fetching world state:', error);
+      return null;
+    }
+  },
+
+  async revertToIteration({ commit, dispatch }, { goalId, iteration }) {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/revert/${iteration}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) throw new Error('Failed to revert to iteration');
+
+      const data = await response.json();
+      commit('UPDATE_GOAL', {
+        id: goalId,
+        status: 'paused',
+        loop_status: 'reverted',
+        current_iteration: data.iteration,
+        world_state: data.worldState,
+      });
+
+      // Refresh iterations list
+      dispatch('fetchIterations', goalId);
+
+      return data;
+    } catch (error) {
+      console.error('Error reverting iteration:', error);
+      throw error;
+    }
+  },
+
+  // Handle real-time AGI loop events from Socket.IO
+  handleIterationEvent({ commit }, { event, data }) {
+    const { goalId } = data;
+
+    switch (event) {
+      case 'goal:iteration_start':
+        commit('SET_LIVE_ITERATION', {
+          goalId,
+          data: { iteration: data.iteration, phase: 'executing', maxIterations: data.maxIterations },
+        });
+        commit('UPDATE_GOAL', { id: goalId, current_iteration: data.iteration, loop_status: 'executing' });
+        break;
+
+      case 'goal:iteration_evaluate':
+        commit('SET_LIVE_ITERATION', {
+          goalId,
+          data: { iteration: data.iteration, phase: 'evaluating' },
+        });
+        commit('UPDATE_GOAL', { id: goalId, loop_status: 'evaluating' });
+        break;
+
+      case 'goal:iteration_replan':
+        commit('SET_LIVE_ITERATION', {
+          goalId,
+          data: { iteration: data.iteration, phase: 'replanning', score: data.score },
+        });
+        commit('UPDATE_GOAL', { id: goalId, loop_status: 'replanning' });
+        break;
+
+      case 'goal:iteration_checkpoint':
+        commit('SET_LIVE_ITERATION', {
+          goalId,
+          data: { iteration: data.iteration, phase: 'checkpointing', gitHash: data.gitHash },
+        });
+        break;
+
+      case 'goal:iteration_end':
+        commit('SET_LIVE_ITERATION', {
+          goalId,
+          data: {
+            iteration: data.iteration,
+            phase: 'completed',
+            score: data.score,
+            replannedCount: data.replannedCount,
+            duration: data.duration,
+          },
+        });
+        break;
+
+      case 'goal:loop_completed':
+        commit('UPDATE_GOAL', { id: goalId, status: 'validated', loop_status: 'completed' });
+        commit('CLEAR_LIVE_ITERATION', goalId);
+        break;
+
+      case 'goal:loop_error':
+        commit('UPDATE_GOAL', { id: goalId, loop_status: 'error' });
+        commit('CLEAR_LIVE_ITERATION', goalId);
+        break;
     }
   },
 

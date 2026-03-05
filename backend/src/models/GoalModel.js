@@ -23,6 +23,7 @@ class GoalModel {
         if (err) reject(err);
         else if (goal) {
           goal.success_criteria = JSON.parse(goal.success_criteria || '{}');
+          goal.world_state = JSON.parse(goal.world_state || '{}');
           resolve(goal);
         } else {
           resolve(null);
@@ -47,6 +48,9 @@ class GoalModel {
           else {
             goals.forEach((goal) => {
               goal.success_criteria = JSON.parse(goal.success_criteria || '{}');
+              goal.progress = goal.task_count > 0
+                ? Math.round((goal.completed_tasks / goal.task_count) * 100)
+                : 0;
             });
             resolve(goals);
           }
@@ -72,6 +76,70 @@ class GoalModel {
       });
     });
   }
+  static updateWorldState(id, worldState) {
+    const updatedAt = new Date().toISOString();
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE goals SET world_state = ?, updated_at = ? WHERE id = ?`,
+        [JSON.stringify(worldState), updatedAt, id],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  static updateIteration(id, iteration) {
+    const updatedAt = new Date().toISOString();
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE goals SET current_iteration = ?, updated_at = ? WHERE id = ?`,
+        [iteration, updatedAt, id],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  static updateLoopStatus(id, loopStatus) {
+    const updatedAt = new Date().toISOString();
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE goals SET loop_status = ?, updated_at = ? WHERE id = ?`,
+        [loopStatus, updatedAt, id],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  static getWorldState(id) {
+    return new Promise((resolve, reject) => {
+      db.get(`SELECT world_state FROM goals WHERE id = ?`, [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row ? JSON.parse(row.world_state || '{}') : {});
+      });
+    });
+  }
+
+  static updateMaxIterations(id, maxIterations) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE goals SET max_iterations = ? WHERE id = ?`,
+        [maxIterations, id],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
   static delete(id, userId) {
     return new Promise((resolve, reject) => {
       db.run('DELETE FROM goals WHERE id = ? AND user_id = ?', [id, userId], function (err) {

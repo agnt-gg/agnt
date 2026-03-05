@@ -7,7 +7,7 @@
 import { computed, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
-import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
+import { PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 
 export function useProviderConnection(modalRef) {
@@ -20,7 +20,8 @@ export function useProviderConnection(modalRef) {
 
   const isProviderConnected = (providerId) => {
     if (!providerId) return false;
-    return connectedApps.value.includes(providerId);
+    const normalized = resolveProviderKey(providerId) || providerId.toLowerCase();
+    return connectedApps.value.includes(normalized) || connectedApps.value.includes(providerId);
   };
 
   const refreshHealth = async () => {
@@ -62,8 +63,12 @@ export function useProviderConnection(modalRef) {
 
   const fetchProviderDetails = async (providerId) => {
     const normalizedId = String(providerId || '').toLowerCase();
+    const strippedId = normalizedId.replace(/[^a-z0-9]/g, '');
 
-    const cached = allProviders.value.find((p) => String(p?.id || '').toLowerCase() === normalizedId);
+    const cached = allProviders.value.find((p) => {
+      const pid = String(p?.id || '').toLowerCase();
+      return pid === normalizedId || pid.replace(/[^a-z0-9]/g, '') === strippedId;
+    });
     if (cached) return cached;
 
     // Hardcoded fallbacks for local-only providers
@@ -98,7 +103,10 @@ export function useProviderConnection(modalRef) {
       });
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const providers = await response.json();
-      return providers.find((p) => String(p?.id || '').toLowerCase() === normalizedId);
+      return providers.find((p) => {
+        const pid = String(p?.id || '').toLowerCase();
+        return pid === normalizedId || pid.replace(/[^a-z0-9]/g, '') === strippedId;
+      });
     } catch (error) {
       console.error('Error fetching provider details:', error);
       return null;
@@ -121,8 +129,9 @@ export function useProviderConnection(modalRef) {
 
     try {
       const token = localStorage.getItem('token');
+      const normalizedId = resolveProviderKey(app.id) || app.id;
       const response = await fetch(
-        `${API_CONFIG.REMOTE_URL}/auth/connect/${app.id}?origin=${encodeURIComponent(window.location.origin)}`,
+        `${API_CONFIG.REMOTE_URL}/auth/connect/${normalizedId}?origin=${encodeURIComponent(window.location.origin)}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -166,7 +175,8 @@ export function useProviderConnection(modalRef) {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${app.id}`, {
+      const normalizedId = resolveProviderKey(app.id) || app.id;
+      const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/disconnect/${normalizedId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -200,7 +210,8 @@ export function useProviderConnection(modalRef) {
     try {
       const token = localStorage.getItem('token');
       const encryptedApiKey = encrypt(apiKey);
-      const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${app.id}`, {
+      const normalizedId = resolveProviderKey(app.id) || app.id;
+      const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/apikeys/${normalizedId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ apiKey: encryptedApiKey }),

@@ -3,6 +3,8 @@ import { getAgentToolSchemas } from './agentTools.js';
 import { getWorkflowToolSchemas } from './workflowTools.js';
 import { getGoalToolSchemas } from './goalTools.js';
 import { getOrchestratorSystemContent } from './system-prompts/orchestrator-chat.js';
+import { getCodeToolSchemas } from './codeTools.js';
+import { getCodeSystemContent } from './system-prompts/code-chat.js';
 import { getAgentSystemContent } from './system-prompts/agent-chat.js';
 import { getWorkflowSystemContent } from './system-prompts/workflow-chat.js';
 import { ASYNC_EXECUTION_GUIDANCE } from './system-prompts/async-execution.js';
@@ -481,6 +483,19 @@ Always be proactive in helping users achieve their goals through structured task
     contextKey: 'goalContext',
   },
 
+  code: {
+    name: 'code',
+    async getToolSchemas(context) {
+      return getCodeToolSchemas();
+    },
+    async buildSystemPrompt(currentDate, context) {
+      return await getCodeSystemContent(currentDate, context);
+    },
+    maxToolRounds: 25,
+    responseType: 'stream',
+    contextKey: 'codeContext',
+  },
+
   suggestions: {
     name: 'suggestions',
     async getToolSchemas(context) {
@@ -531,6 +546,7 @@ export function detectChatType(req, context = {}) {
   if (path.includes('/tool-chat')) return 'tool';
   if (path.includes('/widget-chat')) return 'widget';
   if (path.includes('/goal-chat')) return 'goal';
+  if (path.includes('/code-chat')) return 'code';
   if (path.includes('/suggestions')) return 'suggestions';
 
   // Check request body for context clues
@@ -540,6 +556,7 @@ export function detectChatType(req, context = {}) {
   if (body.toolId || body.toolContext || body.toolState) return 'tool';
   if (body.widgetId || body.widgetContext || body.widgetState) return 'widget';
   if (body.goalId || body.goalContext) return 'goal';
+  if (body.codeId || body.codeContext) return 'code';
 
   // Check explicit context parameter
   if (context.type) return context.type;

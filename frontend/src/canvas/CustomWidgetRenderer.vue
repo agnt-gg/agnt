@@ -133,18 +133,20 @@ export default {
       { immediate: true },
     );
 
+    const noScrollbarCSS = '<style>html,body{scrollbar-width:none;-ms-overflow-style:none;}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}</style>';
+
     const renderedSource = computed(() => {
       const html = sourceCode.value || '';
       const theme = themeStyleTag.value;
 
       if (html.trim().toLowerCase().startsWith('<!doctype') || html.trim().toLowerCase().startsWith('<html')) {
-        // Inject theme vars into existing <head> (or after <html> if no <head>)
+        // Inject theme vars + scrollbar hide into existing <head> (or after <html> if no <head>)
         if (/<head[^>]*>/i.test(html)) {
-          return html.replace(/<head([^>]*)>/i, `<head$1>${theme}`);
+          return html.replace(/<head([^>]*)>/i, `<head$1>${theme}${noScrollbarCSS}`);
         }
-        return html.replace(/<html([^>]*)>/i, `<html$1><head>${theme}</head>`);
+        return html.replace(/<html([^>]*)>/i, `<html$1><head>${theme}${noScrollbarCSS}</head>`);
       }
-      return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}</head><body>${html}</body></html>`;
+      return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}<style>html,body{scrollbar-width:none;-ms-overflow-style:none;}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}</style></head><body>${html}</body></html>`;
     });
 
     // ── Markdown rendering (basic) ──

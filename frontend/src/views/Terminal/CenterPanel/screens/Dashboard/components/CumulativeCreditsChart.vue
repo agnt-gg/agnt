@@ -12,10 +12,10 @@
           <i class="fas fa-info-circle info-icon"></i>
         </Tooltip>
         <Tooltip text="Your current automation streak!" width="auto" position="bottom">
-        <div class="streak-badge clickable">
-          <span class="streak-count">{{ daysStreak }} day streak</span>
-          <span v-if="daysStreak > 0" class="streak-icon">🔥</span>
-        </div>
+          <div class="streak-badge clickable">
+            <span class="streak-count">{{ daysStreak }} day streak</span>
+            <span v-if="daysStreak > 0" class="streak-icon">🔥</span>
+          </div>
         </Tooltip>
       </div>
       <div class="chart-controls">
@@ -29,19 +29,15 @@
           <option :value="365">Last 365 Days</option>
         </select>
         <Tooltip :text="isCumulativeView ? 'Show Daily' : 'Show Cumulative'" width="auto" position="bottom">
-        <button
-          class="chart-type-toggle clickable"
-          :class="{ active: isCumulativeView }"
-          @click="toggleView"
-        >
-          <i :class="isCumulativeView ? 'fas fa-chart-line' : 'fas fa-chart-bar'"></i>
-          <span class="toggle-label">{{ isCumulativeView ? 'Cumulative' : 'Daily' }}</span>
-        </button>
+          <button class="chart-type-toggle clickable" :class="{ active: isCumulativeView }" @click="toggleView">
+            <i :class="isCumulativeView ? 'fas fa-chart-line' : 'fas fa-chart-bar'"></i>
+            <span class="toggle-label">{{ isCumulativeView ? 'Cumulative' : 'Daily' }}</span>
+          </button>
         </Tooltip>
       </div>
     </div>
     <div class="chart-container" :class="{ loading: isLoading }">
-      <div v-if="isLoading" class="loading-overlay">Loading credits data...</div>
+      <div v-if="isLoading" class="loading-overlay">Loading data...</div>
       <canvas ref="chartCanvas"></canvas>
     </div>
   </div>
@@ -286,7 +282,7 @@ export default {
           });
         }
       },
-      { deep: true }
+      { deep: true },
     );
 
     // Watch for changes in creditsActivity from store
@@ -299,7 +295,7 @@ export default {
           });
         }
       },
-      { deep: true }
+      { deep: true },
     );
 
     // Re-render chart when theme changes (body class changes update CSS variables)

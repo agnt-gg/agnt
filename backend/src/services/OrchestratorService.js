@@ -3,6 +3,7 @@ import { executeTool } from './orchestrator/tools.js';
 import { executeAgentTool } from './orchestrator/agentTools.js';
 import { executeWorkflowTool } from './orchestrator/workflowTools.js';
 import { executeGoalTool } from './orchestrator/goalTools.js';
+import { executeCodeFunction } from './orchestrator/codeTools.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { createLlmClient } from './ai/LlmService.js';
@@ -301,7 +302,11 @@ async function universalChatHandler(req, res, context = {}) {
     widgetState,
     goalId,
     goalContext,
+    reasoningEnabled: rawReasoningEnabled,
   } = req.body;
+
+  // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
+  const reasoningEnabled = rawReasoningEnabled === true || rawReasoningEnabled === 'true';
 
   // Validate required parameters
   if (!provider || !inputModel) {
@@ -478,7 +483,7 @@ async function universalChatHandler(req, res, context = {}) {
     }
 
     const client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-    const adapter = await createLlmAdapter(normalizedProvider, client, model);
+    const adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled });
 
     // Store client in context
     conversationContext.llmClient = client;
@@ -667,6 +672,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
             delta: chunk.delta,
             accumulated: chunk.accumulated,
           });
+        } else if (chunk.type === 'reasoning') {
+          sendEvent('reasoning_delta', {
+            assistantMessageId,
+            delta: chunk.delta,
+            accumulated: chunk.accumulated,
+          });
         } else if (chunk.type === 'tool_call_delta') {
           // Optionally send tool call progress updates
           // For now, we'll wait until tool calls are complete
@@ -804,6 +815,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         delete cleanArgs._stopAfter;
         delete cleanArgs._duration;
 
+        // Preserved before offloading to avoid DATA_REF placeholders in frontend events
+        let preservedFrontendEvents = null;
+
         if (shouldExecuteAsync) {
           console.log(`[AsyncTool] ${chatType === 'agent' ? 'Agent' : 'Orchestrator'} requested async execution for: ${functionName}`);
 
@@ -867,6 +881,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
                 return await executeToolFunction(functionName, args, authToken, conversationContext);
               } else if (chatType === 'widget') {
                 return await executeWidgetFunction(functionName, args, authToken, conversationContext);
+              } else if (chatType === 'code') {
+                return await executeCodeFunction(functionName, args);
               } else {
                 // Default to orchestrator tools
                 return await executeTool(functionName, args, authToken, conversationContext);
@@ -912,6 +928,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
             rawFunctionResponse = await executeToolFunction(functionName, functionArgs, authToken, conversationContext);
           } else if (chatType === 'widget') {
             rawFunctionResponse = await executeWidgetFunction(functionName, functionArgs, authToken, conversationContext);
+          } else if (chatType === 'code') {
+            rawFunctionResponse = await executeCodeFunction(functionName, functionArgs);
           } else {
             // Default to orchestrator tools
             rawFunctionResponse = await executeTool(functionName, functionArgs, authToken, conversationContext);
@@ -939,6 +957,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
           functionResponseContent = rawFunctionResponse;
           console.log(`NO TRUNCATION - using full content for ${functionName} (${rawFunctionResponse.length} chars)`);
+
+          // Preserve frontend events before any offloading/truncation mangles the content
+          // Then strip them from functionResponseContent — they contain full source_code
+          // which bloats LLM context and gets corrupted by DATA_REF offloading
+          try {
+            const rawParsed = JSON.parse(rawFunctionResponse);
+            if (rawParsed && rawParsed.frontendEvents) {
+              preservedFrontendEvents = rawParsed.frontendEvents;
+              delete rawParsed.frontendEvents;
+              functionResponseContent = JSON.stringify(rawParsed);
+            }
+          } catch { /* ignore parse errors — will be handled later */ }
 
           // Extract and replace images to prevent context window overflow
           const { modifiedResult, images } = extractAndReplaceImages(functionResponseContent, toolCall.id);
@@ -1154,14 +1184,24 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
 
         // Send frontend events if they exist (for tool chat)
-        if (toolCallResult && toolCallResult.frontendEvents) {
-          toolCallResult.frontendEvents.forEach((event) => {
+        // Use preserved events (captured before offloading) to avoid DATA_REF placeholders
+        const frontendEventsToSend = preservedFrontendEvents || (toolCallResult && toolCallResult.frontendEvents);
+        if (frontendEventsToSend) {
+          frontendEventsToSend.forEach((event) => {
             sendEvent('frontend_event', {
               assistantMessageId,
               eventType: event.type,
               eventData: event.data,
             });
           });
+        }
+
+        // Strip frontendEvents from toolCallResult before tool_end — they are already
+        // dispatched via frontend_event SSEs above. Keeping them in tool_end causes
+        // double-processing in handleToolAction, and the offloaded/DATA_REF'd versions
+        // would overwrite the widget with placeholder strings instead of actual source code.
+        if (toolCallResult && toolCallResult.frontendEvents) {
+          delete toolCallResult.frontendEvents;
         }
 
         sendEvent('tool_end', { assistantMessageId, toolCall: { id: toolCall.id, result: toolCallResult, error: toolCallError } });
@@ -1202,6 +1242,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
           // Stream content and tool calls in real-time
           if (chunk.type === 'content') {
             sendEvent('content_delta', {
+              assistantMessageId,
+              delta: chunk.delta,
+              accumulated: chunk.accumulated,
+            });
+          } else if (chunk.type === 'reasoning') {
+            sendEvent('reasoning_delta', {
               assistantMessageId,
               delta: chunk.delta,
               accumulated: chunk.accumulated,
@@ -1257,6 +1303,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
           (chunk) => {
             if (chunk.type === 'content') {
               sendEvent('content_delta', {
+                assistantMessageId,
+                delta: chunk.delta,
+                accumulated: chunk.accumulated,
+              });
+            } else if (chunk.type === 'reasoning') {
+              sendEvent('reasoning_delta', {
                 assistantMessageId,
                 delta: chunk.delta,
                 accumulated: chunk.accumulated,

@@ -1,192 +1,212 @@
 <template>
-  <div class="ui-panel runs-panel">
-    <!-- Selected Goal Details -->
-    <div v-if="selectedGoal" class="panel-section selected-execution-section">
-      <div class="selected-execution-header">
-        <h2>Goal Details</h2>
-        <div class="header-actions">
-          <Tooltip text="Copy Details" width="auto">
-          <button @click="copyGoalDetails" class="copy-btn">
-            <i v-if="!showCopiedMessage" class="fas fa-copy"></i>
-            <span v-if="showCopiedMessage">Copied!</span>
-          </button>
-          </Tooltip>
-          <Tooltip text="Close Panel" width="auto">
-          <button @click="closePanel" class="close-btn">
-            <i class="fas fa-times"></i>
-          </button>
-          </Tooltip>
+  <div class="goal-panel">
+    <div v-if="selectedGoal" class="goal-details">
+      <!-- Header: title + close -->
+      <div class="goal-header">
+        <div class="goal-header-left">
+          <h2 class="goal-title">{{ selectedGoal.title || 'Untitled Goal' }}</h2>
+          <div class="goal-status" :class="(selectedGoal.status || '').toLowerCase()">
+            <i :class="getStatusIcon(selectedGoal.status)"></i>
+            [{{ selectedGoal.status }}]
+          </div>
+        </div>
+        <button class="close-btn" @click="closePanel" title="Close">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Description -->
+      <div v-if="selectedGoal.description" class="goal-description">
+        {{ selectedGoal.description }}
+      </div>
+
+      <!-- Info rows -->
+      <div class="goal-info">
+        <div class="info-item">
+          <span class="info-label">Created:</span>
+          <span class="info-value">{{ formatDate(selectedGoal.created_at) }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Tasks:</span>
+          <span class="info-value">{{ selectedGoal.completed_tasks || 0 }}/{{ selectedGoal.task_count || 0 }}</span>
+        </div>
+        <div v-if="selectedGoal.priority" class="info-item">
+          <span class="info-label">Priority:</span>
+          <span class="info-value">{{ selectedGoal.priority }}</span>
         </div>
       </div>
 
-      <div class="selected-execution-content">
-        <div class="detail-section">
-          <h4>Basic Information</h4>
-          <div class="detail-grid">
-            <div class="detail-item">
-              <label>Goal:</label>
-              <span>{{ selectedGoal.title || 'Untitled Goal' }}</span>
-            </div>
-            <div class="detail-item">
-              <label>Status:</label>
-              <span :class="['status-badge', (selectedGoal.status || '').toLowerCase()]">
-                <i :class="getStatusIcon(selectedGoal.status)"></i>
-                {{ selectedGoal.status }}
+      <!-- Progress bar -->
+      <div class="goal-progress" v-if="goalProgress > 0 || selectedGoal.status === 'executing'">
+        <h3>Progress</h3>
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: `${goalProgress}%` }"></div>
+          <span class="progress-text">{{ goalProgress }}%</span>
+        </div>
+      </div>
+
+      <!-- Tasks list -->
+      <div v-if="selectedGoal.tasks && selectedGoal.tasks.length > 0" class="goal-tasks">
+        <h3>Tasks ({{ selectedGoal.tasks.length }})</h3>
+        <div class="tasks-list">
+          <div v-for="(task, index) in selectedGoal.tasks" :key="task.id" class="task-card" :class="(task.status || '').toLowerCase()">
+            <div class="task-header">
+              <div class="task-info">
+                <span class="task-name">{{ task.title || 'Untitled Task' }}</span>
+                <span class="task-index">Task {{ index + 1 }}</span>
+              </div>
+              <span :class="['task-status', (task.status || '').toLowerCase()]">
+                <i :class="getStatusIcon(task.status)"></i>
+                {{ task.status }}
               </span>
             </div>
-            <div class="detail-item">
-              <label>Created At:</label>
-              <span>{{ formatDate(selectedGoal.created_at) }}</span>
+
+            <div v-if="task.agent_name" class="task-agent">
+              <i class="fas fa-robot"></i> {{ task.agent_name }}
             </div>
-            <div class="detail-item">
-              <label>Progress:</label>
-              <span>{{ selectedGoal.progress || 0 }}%</span>
+
+            <div v-if="task.description" class="task-desc">{{ task.description }}</div>
+
+            <div class="task-timing">
+              <span v-if="task.started_at">Started: {{ formatTime(task.started_at) }}</span>
+              <span v-if="task.completed_at">Done: {{ formatTime(task.completed_at) }}</span>
             </div>
-            <div class="detail-item">
-              <label>Tasks:</label>
-              <span>{{ selectedGoal.completed_tasks || 0 }}/{{ selectedGoal.task_count || 0 }}</span>
+
+            <!-- Output -->
+            <div v-if="task.output" class="task-output-section">
+              <div class="output-header">
+                <span class="output-label">Output</span>
+                <button class="raw-toggle" @click="toggleRawView(task.id)" :title="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
+                  <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
+                  {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
+                </button>
+              </div>
+              <div v-if="isRawView(task.id)" class="output-raw">
+                <pre class="io-data">{{ formatJSON(task.output) }}</pre>
+              </div>
+              <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
             </div>
-          </div>
-        </div>
 
-        <div v-if="selectedGoal.description" class="detail-section">
-          <h4>Description</h4>
-          <p class="goal-description">{{ selectedGoal.description }}</p>
-        </div>
-
-        <!-- Goal Tasks: Show Tasks -->
-        <div v-if="selectedGoal.tasks && selectedGoal.tasks.length > 0" class="detail-section">
-          <h4>Tasks ({{ selectedGoal.tasks.length }})</h4>
-          <div class="execution-chain">
-            <div v-for="(task, index) in selectedGoal.tasks" :key="task.id" class="chain-node">
-              <div class="node-card task-card" :class="(task.status || '').toLowerCase()">
-                <div class="node-header">
-                  <div class="node-info">
-                    <span class="node-id">{{ task.title || 'Untitled Task' }}</span>
-                    <span class="node-type">Task {{ index + 1 }}</span>
-                  </div>
-                  <span :class="['node-status', (task.status || '').toLowerCase()]">
-                    <i :class="getStatusIcon(task.status)"></i>
-                    {{ task.status }}
-                  </span>
-                </div>
-
-                <!-- Agent Assignment -->
-                <div v-if="task.agent_name" class="task-agent-info">
-                  <i class="fas fa-robot"></i>
-                  <span class="agent-label">Agent:</span>
-                  <span class="agent-name">{{ task.agent_name }}</span>
-                </div>
-
-                <!-- Task Description -->
-                <div v-if="task.description" class="task-description">
-                  {{ task.description }}
-                </div>
-
-                <!-- Task Timing -->
-                <div class="node-timing">
-                  <span v-if="task.started_at">Started: {{ formatTime(task.started_at) }}</span>
-                  <span v-if="task.completed_at">Completed: {{ formatTime(task.completed_at) }}</span>
-                  <span v-if="task.progress !== undefined">Progress: {{ task.progress }}%</span>
-                </div>
-
-                <!-- Output Section -->
-                <div v-if="task.output" class="node-io-section">
-                  <div class="io-header" @click="toggleNodeSection(task.id, 'output')">
-                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'output') }"></i>
-                    <span>Output</span>
-                    <span class="io-size">({{ getDataSize(task.output) }})</span>
-                  </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-content">
-                    <pre class="io-data">{{ formatJSON(task.output) }}</pre>
-                  </div>
-                </div>
-
-                <!-- Error Section -->
-                <div v-if="task.error" class="node-io-section error-section">
-                  <div class="io-header" @click="toggleNodeSection(task.id, 'error')">
-                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'error') }"></i>
-                    <span>Error</span>
-                  </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'error')" class="io-content">
-                    <pre class="error-data">{{ task.error }}</pre>
-                  </div>
-                </div>
+            <!-- Error -->
+            <div v-if="task.error" class="task-io-section error">
+              <div class="io-toggle" @click="toggleNodeSection(task.id, 'error')">
+                <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'error') }"></i>
+                <span>Error</span>
+              </div>
+              <div v-show="isNodeSectionExpanded(task.id, 'error')" class="io-body">
+                <pre class="io-data error-text">{{ task.error }}</pre>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <div v-if="selectedGoal.evaluation" class="detail-section">
-          <h4>Evaluation</h4>
-          <pre class="execution-log">{{ formatJSON(selectedGoal.evaluation) }}</pre>
+      <!-- Evaluation -->
+      <div v-if="selectedGoal.evaluation" class="goal-evaluation">
+        <div class="output-header">
+          <h3 style="margin: 0">Evaluation</h3>
+          <button class="raw-toggle" @click="toggleRawView('eval')" :title="isRawView('eval') ? 'View Rendered' : 'View Raw'">
+            <i :class="isRawView('eval') ? 'fas fa-eye' : 'fas fa-code'"></i>
+            {{ isRawView('eval') ? 'Rendered' : 'Raw' }}
+          </button>
         </div>
+        <div v-if="isRawView('eval')" class="output-raw">
+          <pre class="eval-log">{{ formatJSON(selectedGoal.evaluation) }}</pre>
+        </div>
+        <div v-else class="output-rendered" v-html="renderOutput(selectedGoal.evaluation)"></div>
+      </div>
+
+      <!-- AGI Loop: Iteration Timeline -->
+      <div v-if="goalIterations.length > 0" class="goal-iterations">
+        <h3><i class="fas fa-sync-alt"></i> Iterations ({{ goalIterations.length }})</h3>
+        <div class="iteration-timeline">
+          <div
+            v-for="iter in goalIterations"
+            :key="iter.iteration_number"
+            class="iteration-item"
+            :class="{ passed: iter.evaluation_passed, failed: !iter.evaluation_passed }"
+          >
+            <div class="iteration-header">
+              <span class="iteration-number">#{{ iter.iteration_number }}</span>
+              <span class="iteration-score" :class="iter.evaluation_passed ? 'score-pass' : 'score-fail'">
+                {{ iter.evaluation_score ? Math.round(iter.evaluation_score) : 0 }}%
+              </span>
+              <span v-if="iter.git_commit_hash" class="iteration-hash" :title="iter.git_commit_hash">
+                <i class="fas fa-code-branch"></i> {{ iter.git_commit_hash.substring(0, 7) }}
+              </span>
+            </div>
+            <div class="iteration-meta">
+              <span v-if="iter.duration_ms"><i class="fas fa-clock"></i> {{ (iter.duration_ms / 1000).toFixed(1) }}s</span>
+              <span v-if="iter.replanned_tasks && iter.replanned_tasks.length">
+                <i class="fas fa-redo"></i> {{ iter.replanned_tasks.length }} re-planned
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AGI Loop: Live iteration indicator -->
+      <div v-if="liveIteration" class="goal-live-iteration">
+        <h3><i class="fas fa-cog fa-spin"></i> Live Iteration #{{ liveIteration.iteration }}</h3>
+        <div class="live-phase">
+          <span class="phase-badge" :class="liveIteration.phase">{{ formatPhase(liveIteration.phase) }}</span>
+          <span v-if="liveIteration.score" class="live-score">{{ Math.round(liveIteration.score) }}%</span>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="goal-actions">
+        <Tooltip text="Copy Details" width="auto">
+          <button class="action-button edit" @click="copyGoalDetails">
+            <i :class="showCopiedMessage ? 'fas fa-check' : 'fas fa-copy'"></i>
+            {{ showCopiedMessage ? 'Copied!' : 'Copy Details' }}
+          </button>
+        </Tooltip>
+
+        <!-- Standby actions -->
+        <template v-if="canStartAutonomous">
+          <button class="action-button start" @click="startAutonomous" :disabled="isStartingAutonomous">
+            <i :class="isStartingAutonomous ? 'fas fa-spinner fa-spin' : 'fas fa-infinity'"></i>
+            {{ isStartingAutonomous ? 'Starting...' : 'Start Autonomous' }}
+          </button>
+          <button class="action-button" @click="executeSinglePass">
+            <i class="fas fa-play"></i> Execute Once
+          </button>
+        </template>
+
+        <!-- Active actions -->
+        <template v-else-if="selectedGoal.status === 'executing' || selectedGoal.status === 'paused'">
+          <button v-if="selectedGoal.status === 'executing'" class="action-button stop" @click="pauseGoal">
+            <i class="fas fa-pause"></i> Pause
+          </button>
+          <button v-if="selectedGoal.status === 'paused'" class="action-button start" @click="resumeGoal">
+            <i class="fas fa-play"></i> Resume
+          </button>
+        </template>
+
+        <!-- Done actions -->
+        <template v-else-if="isGoalDone">
+          <button class="action-button edit" @click="reviewOutputs">
+            <i class="fas fa-file-alt"></i> Review Outputs
+          </button>
+          <button class="action-button" @click="evaluateGoal">
+            <i class="fas fa-chart-bar"></i> Evaluate
+          </button>
+          <button class="action-button" @click="startAutonomous">
+            <i class="fas fa-redo"></i> Retry
+          </button>
+        </template>
+
       </div>
     </div>
 
-    <!-- Default content when no goal selected -->
-    <div v-else class="default-content">
-      <!-- Goal Creation Section -->
-      <div class="panel-section goal-input-section">
-        <h4 class="section-title">
-          <i class="fas fa-plus"></i>
-          Create New Multi Agent Goal
-        </h4>
-        <div class="goal-input-container">
-          <textarea
-            ref="goalInputRef"
-            v-model="goalInput"
-            class="goal-input"
-            placeholder="Describe what you want to accomplish... (e.g., 'Research renewable energy trends and create a summary report')"
-            rows="3"
-            @keydown.ctrl.enter="createGoal"
-            @keydown.escape="clearGoalInput"
-            :disabled="isCreatingGoal"
-          ></textarea>
-          <button class="create-goal-button" :class="{ loading: isCreatingGoal }" @click="createGoal" :disabled="!goalInput.trim() || isCreatingGoal">
-            <i v-if="isCreatingGoal" class="fas fa-spinner fa-spin"></i>
-            <i v-else class="fas fa-plus"></i>
-            {{ isCreatingGoal ? 'Creating...' : 'Create Goal' }}
-          </button>
-        </div>
-        <div class="input-hint">
-          <i class="fas fa-info-circle"></i>
-          Press Ctrl+Enter to create, or Escape to clear
-        </div>
-      </div>
-
-      <!-- Recent Goals -->
-      <div class="panel-section recent-runs-section">
-        <h4 class="section-title">
-          <i class="fas fa-history"></i>
-          Recent Goals
-        </h4>
-        <div class="recent-runs-list">
-          <div v-for="goal in recentGoalsList" :key="goal.id" class="recent-run-item" @click="selectGoal(goal)">
-            <div class="run-info">
-              <div class="run-name">{{ goal.title || 'Untitled Goal' }}</div>
-              <div class="run-meta">
-                <span class="run-status" :class="(goal.status || '').toLowerCase()">
-                  <i :class="getStatusIcon(goal.status)"></i>
-                  {{ goal.status }}
-                </span>
-                <span class="run-duration" v-if="goal.progress">{{ goal.progress }}%</span>
-              </div>
-            </div>
-            <div class="run-date">{{ formatRelativeDate(goal.created_at) }}</div>
-          </div>
-
-          <div v-if="recentGoalsList.length === 0" class="no-runs">
-            <i class="fas fa-bullseye"></i>
-            <span>No goals yet</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Placeholder message -->
-      <div class="panel-section placeholder-section">
-        <p>Select a goal to view details.</p>
-      </div>
+    <!-- No goal selected -->
+    <div v-else class="no-goal-selected">
+      <p>Select a goal to view details.</p>
+      <BaseButton variant="primary" class="create-goal-button" @click="$emit('panel-action', 'create-goal')">
+        <i class="fas fa-plus"></i>
+        Create New Goal
+      </BaseButton>
     </div>
 
     <!-- Resources Section -->
@@ -195,16 +215,27 @@
 </template>
 
 <script>
-import { ref, computed, watch, inject } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
+import showdown from 'showdown';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
+
+const mdConverter = new showdown.Converter({
+  tables: true,
+  strikethrough: true,
+  literalMidWordUnderscores: true,
+  simpleLineBreaks: true,
+  ghCodeBlocks: true,
+});
 
 export default {
   name: 'GoalsPanel',
   components: {
     ResourcesSection,
     Tooltip,
+    BaseButton,
   },
   props: {
     selectedGoalId: {
@@ -219,17 +250,202 @@ export default {
   emits: ['panel-action'],
   setup(props, { emit, expose }) {
     const store = useStore();
-    const playSound = inject('playSound', () => {});
 
     // Node section expansion state
     const expandedNodeSections = ref({});
+    const rawViewTasks = ref({});
     const selectedGoal = ref(null);
     const showCopiedMessage = ref(false);
+    const isStartingAutonomous = ref(false);
 
-    // Goal creation state
-    const goalInput = ref('');
-    const goalInputRef = ref(null);
-    const isCreatingGoal = computed(() => store.getters['goals/isCreatingGoal']);
+    const toggleRawView = (taskId) => {
+      rawViewTasks.value[taskId] = !rawViewTasks.value[taskId];
+    };
+
+    const isRawView = (taskId) => {
+      return rawViewTasks.value[taskId] || false;
+    };
+
+    const renderOutput = (data) => {
+      if (!data) return '';
+
+      // Parse if it's a JSON string
+      let parsed = data;
+      if (typeof parsed === 'string') {
+        try {
+          const trimmed = parsed.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            parsed = JSON.parse(trimmed);
+          }
+        } catch (e) {
+          // Not JSON — treat as plain text/markdown
+          return mdConverter.makeHtml(parsed);
+        }
+      }
+
+      // If it's still a plain string after parsing attempt, render as markdown
+      if (typeof parsed === 'string') {
+        return mdConverter.makeHtml(parsed);
+      }
+
+      // Extract renderable text from structured output objects
+      const extractText = (obj) => {
+        if (typeof obj === 'string') return obj;
+        if (!obj || typeof obj !== 'object') return String(obj);
+
+        // Task output shape: { content, toolExecutions, files, timestamp }
+        // Evaluation shape: { score, passed, summary, ... }
+        for (const key of ['content', 'summary', 'text', 'message', 'result', 'report', 'output', 'description', 'body', 'response']) {
+          if (obj[key] && typeof obj[key] === 'string') return obj[key];
+        }
+
+        if (Array.isArray(obj)) {
+          const items = obj.map((item) => extractText(item)).filter(Boolean);
+          if (items.length) return items.join('\n\n');
+        }
+
+        return null;
+      };
+
+      const text = extractText(parsed);
+      if (!text) {
+        const json = JSON.stringify(parsed, null, 2);
+        return `<pre><code>${json.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
+      }
+
+      return mdConverter.makeHtml(text);
+    };
+
+    const goalProgress = computed(() => {
+      if (!selectedGoal.value) return 0;
+      return store.getters['goals/getGoalProgress']?.(selectedGoal.value) || selectedGoal.value.progress || 0;
+    });
+
+    // AGI Loop computed
+    const goalIterations = computed(() => {
+      if (!selectedGoal.value) return [];
+      return store.getters['goals/getIterations'](selectedGoal.value.id);
+    });
+
+    const liveIteration = computed(() => {
+      if (!selectedGoal.value) return null;
+      return store.getters['goals/getLiveIteration'](selectedGoal.value.id);
+    });
+
+    const canStartAutonomous = computed(() => {
+      if (!selectedGoal.value) return false;
+      const s = selectedGoal.value.status;
+      return ['planning', 'queued', 'needs_review'].includes(s);
+    });
+
+    const isGoalDone = computed(() => {
+      if (!selectedGoal.value) return false;
+      return ['completed', 'validated', 'failed', 'error', 'stopped'].includes(selectedGoal.value.status);
+    });
+
+    // Fetch iterations when a goal is selected
+    watch(selectedGoal, (goal) => {
+      if (goal) {
+        store.dispatch('goals/fetchIterations', goal.id);
+      }
+    });
+
+    const startAutonomous = async () => {
+      if (!selectedGoal.value) return;
+      isStartingAutonomous.value = true;
+      try {
+        await store.dispatch('goals/executeGoalAutonomous', {
+          goalId: selectedGoal.value.id,
+          maxIterations: 50,
+        });
+        emit('panel-action', 'show-feedback', {
+          type: 'success',
+          message: '[AGI Loop] Autonomous execution started',
+        });
+      } catch (error) {
+        emit('panel-action', 'show-feedback', {
+          type: 'error',
+          message: `[AGI Loop] Error: ${error.message}`,
+        });
+      } finally {
+        isStartingAutonomous.value = false;
+      }
+    };
+
+    const pauseGoal = async () => {
+      if (!selectedGoal.value) return;
+      await store.dispatch('goals/pauseGoal', selectedGoal.value.id);
+    };
+
+    const resumeGoal = async () => {
+      if (!selectedGoal.value) return;
+      await store.dispatch('goals/resumeGoal', selectedGoal.value.id);
+    };
+
+    const executeSinglePass = async () => {
+      if (!selectedGoal.value) return;
+      try {
+        await store.dispatch('goals/executeGoal', selectedGoal.value.id);
+        emit('panel-action', 'show-feedback', {
+          type: 'success',
+          message: '[Goals] Single-pass execution started',
+        });
+      } catch (error) {
+        emit('panel-action', 'show-feedback', {
+          type: 'error',
+          message: `[Goals] Error: ${error.message}`,
+        });
+      }
+    };
+
+    const reviewOutputs = async () => {
+      if (!selectedGoal.value) return;
+      // Fetch full goal with tasks to show outputs
+      await store.dispatch('goals/fetchGoalTasks', selectedGoal.value.id);
+      const updated = store.getters['goals/getGoalById'](selectedGoal.value.id);
+      if (updated) selectedGoal.value = updated;
+      // Expand all output sections
+      if (updated?.tasks) {
+        updated.tasks.forEach((task) => {
+          if (task.output) {
+            expandedNodeSections.value[`${task.id}-output`] = true;
+          }
+        });
+      }
+    };
+
+    const evaluateGoal = async () => {
+      if (!selectedGoal.value) return;
+      try {
+        await store.dispatch('goals/evaluateGoal', {
+          goalId: selectedGoal.value.id,
+          evaluationType: 'automatic',
+        });
+        // Refresh to show evaluation
+        const updated = store.getters['goals/getGoalById'](selectedGoal.value.id);
+        if (updated) selectedGoal.value = updated;
+        emit('panel-action', 'show-feedback', {
+          type: 'success',
+          message: '[Goals] Evaluation complete',
+        });
+      } catch (error) {
+        emit('panel-action', 'show-feedback', {
+          type: 'error',
+          message: `[Goals] Evaluation error: ${error.message}`,
+        });
+      }
+    };
+
+    const formatPhase = (phase) => {
+      const labels = {
+        executing: 'Executing Tasks',
+        evaluating: 'Evaluating Results',
+        replanning: 'Re-planning Tasks',
+        checkpointing: 'Git Checkpoint',
+        completed: 'Iteration Done',
+      };
+      return labels[phase] || phase;
+    };
 
     // Watch for selectedGoalId changes
     watch(
@@ -327,44 +543,6 @@ export default {
       return new Date(dateString).toLocaleString();
     };
 
-    // Recent goals (last 5)
-    const recentGoalsList = computed(() => {
-      return [...props.goals]
-        .sort((a, b) => {
-          const dateA = new Date(a.created_at || 0);
-          const dateB = new Date(b.created_at || 0);
-          return dateB - dateA;
-        })
-        .slice(0, 5);
-    });
-
-    // Helper methods for Recent Goals and Quick Actions
-    const selectGoal = (goal) => {
-      emit('panel-action', 'goal-selected', goal);
-    };
-
-    const refreshGoals = () => {
-      emit('panel-action', 'refresh-goals');
-    };
-
-    const formatRelativeDate = (dateString) => {
-      if (!dateString) return 'Unknown';
-
-      const date = new Date(dateString);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays < 7) return `${diffDays}d ago`;
-
-      return date.toLocaleDateString();
-    };
-
     const copyGoalDetails = () => {
       if (!selectedGoal.value) return;
 
@@ -411,44 +589,6 @@ ${goal.tasks
       });
     };
 
-    // Goal creation methods
-    const createGoal = async () => {
-      if (!goalInput.value.trim()) return;
-
-      const goalText = goalInput.value.trim();
-      emit('panel-action', 'show-feedback', {
-        type: 'info',
-        message: `[Goals] Creating goal: ${goalText.substring(0, 50)}...`,
-      });
-
-      try {
-        await store.dispatch('goals/createGoal', {
-          text: goalText,
-          priority: 'medium',
-        });
-
-        goalInput.value = '';
-
-        // Refresh executions to show the new goal immediately
-        emit('panel-action', 'refresh-goals');
-
-        emit('panel-action', 'show-feedback', {
-          type: 'success',
-          message: '[Goals] Goal created successfully',
-        });
-      } catch (error) {
-        emit('panel-action', 'show-feedback', {
-          type: 'error',
-          message: `[Goals] Error creating goal: ${error.message}`,
-        });
-      }
-    };
-
-    const clearGoalInput = () => {
-      goalInput.value = '';
-      goalInputRef.value?.blur();
-    };
-
     const closePanel = () => {
       selectedGoal.value = null;
       emit('panel-action', 'close-panel');
@@ -457,8 +597,12 @@ ${goal.tasks
     return {
       selectedGoal,
       showCopiedMessage,
+      goalProgress,
       toggleNodeSection,
       isNodeSectionExpanded,
+      toggleRawView,
+      isRawView,
+      renderOutput,
       formatTime,
       getDataSize,
       formatJSON,
@@ -467,76 +611,62 @@ ${goal.tasks
       copyGoalDetails,
       updateSelectedGoal,
       handlePanelAction,
-      recentGoalsList,
-      selectGoal,
-      refreshGoals,
-      formatRelativeDate,
-      // Goal creation
-      goalInput,
-      goalInputRef,
-      isCreatingGoal,
-      createGoal,
-      clearGoalInput,
       closePanel,
+      // AGI Loop
+      goalIterations,
+      liveIteration,
+      canStartAutonomous,
+      isGoalDone,
+      isStartingAutonomous,
+      startAutonomous,
+      pauseGoal,
+      resumeGoal,
+      executeSinglePass,
+      reviewOutputs,
+      evaluateGoal,
+      formatPhase,
     };
   },
 };
 </script>
 
 <style scoped>
-.ui-panel.runs-panel {
+/* Panel layout — matches WorkflowsPanel */
+.goal-panel {
   display: flex;
   flex-direction: column;
   gap: 16px;
   height: 100%;
-  background: var(--color-background-soft);
-  color: var(--color-text);
   overflow-y: auto;
+  min-height: 0;
 }
 
-.selected-execution-header {
+/* Header */
+.goal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 15px;
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
+  border-bottom: 1px solid rgba(var(--primary-rgb), 0.1);
   padding-bottom: 8px;
-}
-
-.selected-execution-header h2 {
-  color: var(--color-green);
-  font-size: 1.1em;
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
   gap: 8px;
-  align-items: center;
 }
 
-.copy-btn,
+.goal-header-left {
+  flex: 1;
+  min-width: 0;
+}
+
 .close-btn {
-  background: rgba(var(--green-rgb), 0.1);
-  border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-light-green);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--color-red);
   padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
   font-size: 0.9em;
-}
-
-.copy-btn:hover,
-.close-btn:hover {
-  background: rgba(var(--green-rgb), 0.2);
-  border-color: rgba(var(--green-rgb), 0.5);
-}
-
-.close-btn {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: var(--color-red);
+  flex-shrink: 0;
 }
 
 .close-btn:hover {
@@ -544,331 +674,413 @@ ${goal.tasks
   border-color: rgba(239, 68, 68, 0.5);
 }
 
-.detail-section {
-  margin-bottom: 24px;
-}
-
-.detail-section h4 {
-  color: var(--color-green);
-  margin: 0 0 12px 0;
+.goal-title {
+  color: var(--color-text);
   font-size: 1.1em;
-  border-bottom: 1px solid rgba(var(--green-rgb), 0.2);
-  padding-bottom: 4px;
+  margin: 0 0 5px 0;
 }
 
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px;
+.goal-status {
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.detail-item {
+.goal-status.executing,
+.goal-status.running { color: var(--color-primary); }
+.goal-status.completed,
+.goal-status.validated { color: var(--color-green); }
+.goal-status.failed,
+.goal-status.error { color: var(--color-red); }
+.goal-status.paused,
+.goal-status.needs_review { color: var(--color-yellow); }
+.goal-status.planning,
+.goal-status.queued { color: var(--color-text-muted); }
+
+/* Description */
+.goal-description {
+  margin-bottom: 18px;
+  line-height: 1.4;
+  color: var(--color-white);
+}
+
+/* Info rows */
+.goal-info {
+  margin-top: 15px;
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
+  padding-top: 15px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
-.detail-item label {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.detail-item span {
+.info-label {
+  color: var(--color-grey);
+}
+
+.info-value {
   color: var(--color-text);
 }
 
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  text-transform: uppercase;
+/* Progress */
+.goal-progress {
+  margin-top: 15px;
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
+  padding-top: 15px;
 }
 
-.status-badge.running,
-.status-badge.started,
-.status-badge.executing {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
-}
-
-.status-badge.completed {
-  background: rgba(34, 197, 94, 0.2);
-  color: var(--color-green);
-}
-
-.status-badge.failed,
-.status-badge.error {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--color-red);
-}
-
-.status-badge.stopped {
-  background: rgba(127, 129, 147, 0.2);
-  color: var(--color-text-muted);
-}
-
-.status-badge.planning {
-  background: rgba(127, 129, 147, 0.2);
-  color: var(--color-text-muted);
-}
-
-.status-badge.needs_review,
-.status-badge.paused {
-  background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
-}
-
-.goal-description {
-  color: var(--color-text-muted);
+h3 {
+  color: var(--color-grey);
   font-size: 0.9em;
-  line-height: 1.5;
-  background: var(--color-darker-0);
-  padding: 12px;
-  border-radius: 6px;
-  border-left: 2px solid var(--color-blue);
+  margin-bottom: 10px;
 }
 
-/* Enhanced Execution Chain Styles */
-.execution-chain {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-height: 600px;
-  overflow-y: auto;
-  padding: 8px 0;
-}
-
-.chain-node {
-  display: flex;
-  gap: 16px;
+.progress-bar {
+  height: 20px;
+  background: rgba(var(--primary-rgb), 0.1);
+  border-radius: 10px;
+  overflow: hidden;
   position: relative;
 }
 
-.node-card {
-  flex: 1;
+.progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--color-white);
+  font-size: 0.8em;
+}
+
+/* Tasks list */
+.goal-tasks {
+  margin-top: 15px;
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
+  padding-top: 15px;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.task-card {
   border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  padding: 16px;
+  border-left: 3px solid var(--color-green);
+  border-radius: 6px;
+  padding: 12px;
   transition: all 0.2s ease;
 }
 
-.node-card:hover {
+.task-card:hover {
   background: rgba(0, 0, 0, 0.1);
 }
 
-/* Task Card Specific Styles */
-.task-card {
-  border-left: 3px solid var(--color-green);
-}
-
 .task-card.executing,
-.task-card.running,
-.task-card.started {
-  border-left-color: var(--color-blue);
-}
-
-.task-card.completed {
-  border-left-color: var(--color-green);
-}
-
+.task-card.running { border-left-color: var(--color-blue); }
+.task-card.completed { border-left-color: var(--color-green); }
 .task-card.failed,
-.task-card.error {
-  border-left-color: var(--color-red);
-}
-
-.task-card.paused {
-  border-left-color: var(--color-yellow);
-}
-
-.task-card.stopped {
-  border-left-color: var(--color-text-muted);
-}
-
+.task-card.error { border-left-color: var(--color-red); }
+.task-card.paused { border-left-color: var(--color-yellow); }
+.task-card.stopped { border-left-color: var(--color-text-muted); }
 .task-card.pending,
-.task-card.queued {
-  border-left-color: var(--color-grey);
-}
+.task-card.queued { border-left-color: var(--color-grey); }
 
-.task-agent-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: rgba(59, 130, 246, 0.1);
-  border-radius: 6px;
-  margin-bottom: 12px;
-  font-size: 0.9em;
-}
-
-.task-agent-info i {
-  color: var(--color-blue);
-  font-size: 0.9em;
-}
-
-.agent-label {
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-.agent-name {
-  color: var(--color-blue);
-  font-weight: 600;
-}
-
-.task-description {
-  color: var(--color-text-muted);
-  font-size: 0.9em;
-  line-height: 1.4;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: var(--color-darker-0);
-  border-radius: 6px;
-  border-left: 2px solid rgba(var(--green-rgb), 0.3);
-}
-
-.node-header {
+.task-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 12px;
-  gap: 12px;
+  margin-bottom: 8px;
+  gap: 8px;
 }
 
-.node-info {
+.task-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
 
-.node-id {
+.task-name {
   font-weight: 600;
   color: var(--color-text);
-  font-size: 1em;
+  font-size: 0.95em;
 }
 
-.node-type {
-  font-size: 0.85em;
+.task-index {
+  font-size: 0.8em;
   color: var(--color-grey);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.node-status {
+.task-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 4px 10px;
   border-radius: 12px;
-  font-size: 0.85em;
+  font-size: 0.8em;
   font-weight: 500;
   flex-shrink: 0;
 }
 
-.node-status.running,
-.node-status.started,
-.node-status.executing {
+.task-status.executing,
+.task-status.running {
   background: rgba(59, 130, 246, 0.2);
   color: var(--color-blue);
 }
 
-.node-status.completed {
+.task-status.completed {
   background: rgba(34, 197, 94, 0.2);
   color: var(--color-green);
 }
 
-.node-status.failed,
-.node-status.error {
+.task-status.failed,
+.task-status.error {
   background: rgba(239, 68, 68, 0.2);
   color: var(--color-red);
 }
 
-.node-status.stopped {
+.task-status.queued,
+.task-status.pending {
   background: rgba(127, 129, 147, 0.2);
   color: var(--color-text-muted);
 }
 
-.node-status.queued {
-  background: rgba(255, 193, 7, 0.2);
-  color: var(--color-yellow);
-}
-
-.node-timing {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
-  font-size: 0.9em;
-  color: var(--color-grey);
-  flex-wrap: wrap;
-}
-
-.node-timing span {
+.task-agent {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 0.85em;
+  color: var(--color-blue);
 }
 
-.node-io-section {
-  margin-top: 12px;
-  border: 1px solid rgba(var(--green-rgb), 0.1);
-  border-radius: 6px;
+.task-desc {
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+  line-height: 1.4;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: var(--color-darker-0);
+  border-radius: 4px;
+  border-left: 2px solid rgba(var(--primary-rgb), 0.3);
+}
+
+.task-timing {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8em;
+  color: var(--color-grey);
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+/* IO sections */
+.task-io-section {
+  margin-top: 8px;
+  border: 1px solid rgba(var(--primary-rgb), 0.1);
+  border-radius: 4px;
   overflow: hidden;
 }
 
-.node-io-section.error-section {
-  border-color: rgba(239, 68, 68, 0.3);
+/* Rendered output section */
+.task-output-section {
+  margin-top: 8px;
+  border: 1px solid rgba(var(--primary-rgb), 0.1);
+  border-radius: 4px;
+  overflow: hidden;
 }
 
-.io-header {
+.output-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(var(--green-rgb), 0.05);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  user-select: none;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(var(--primary-rgb), 0.05);
+  font-size: 0.85em;
 }
 
-.error-section .io-header {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.io-header:hover {
-  background: rgba(var(--green-rgb), 0.1);
-}
-
-.error-section .io-header:hover {
-  background: rgba(239, 68, 68, 0.15);
-}
-
-.io-header i {
-  font-size: 0.8em;
-  color: var(--color-primary);
-  transition: transform 0.2s ease;
-}
-
-.error-section .io-header i {
-  color: var(--color-red);
-}
-
-.io-header i.rotated {
-  transform: rotate(90deg);
-}
-
-.io-header span:first-of-type {
+.output-label {
   font-weight: 600;
   color: var(--color-text);
 }
 
-.error-section .io-header span:first-of-type {
-  color: var(--color-red);
+.raw-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s;
+}
+
+.raw-toggle:hover {
+  border-color: rgba(var(--primary-rgb), 0.5);
+  color: var(--color-text);
+}
+
+.raw-toggle i {
+  font-size: 0.8em;
+}
+
+.output-rendered {
+  padding: 12px;
+  color: var(--color-text);
+  font-size: 0.9em;
+  line-height: 1.6;
+  overflow-y: auto;
+  max-height: 400px;
+  word-break: break-word;
+}
+
+.output-rendered :deep(h1),
+.output-rendered :deep(h2),
+.output-rendered :deep(h3),
+.output-rendered :deep(h4) {
+  color: var(--color-text);
+  margin: 12px 0 6px 0;
+}
+
+.output-rendered :deep(h1) { font-size: 1.3em; }
+.output-rendered :deep(h2) { font-size: 1.15em; }
+.output-rendered :deep(h3) { font-size: 1.05em; }
+
+.output-rendered :deep(p) {
+  margin: 6px 0;
+}
+
+.output-rendered :deep(ul),
+.output-rendered :deep(ol) {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.output-rendered :deep(li) {
+  margin: 3px 0;
+}
+
+.output-rendered :deep(pre) {
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  padding: 10px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.output-rendered :deep(code) {
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+}
+
+.output-rendered :deep(p code) {
+  background: var(--color-darker-0);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--terminal-border-color);
+}
+
+.output-rendered :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 0.9em;
+}
+
+.output-rendered :deep(th),
+.output-rendered :deep(td) {
+  border: 1px solid var(--terminal-border-color);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.output-rendered :deep(th) {
+  background: var(--color-darker-0);
+  font-weight: 600;
+}
+
+.output-rendered :deep(blockquote) {
+  border-left: 3px solid rgba(var(--primary-rgb), 0.4);
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: var(--color-text-muted);
+}
+
+.output-rendered :deep(a) {
+  color: var(--color-primary);
+}
+
+.output-rendered :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--terminal-border-color);
+  margin: 12px 0;
+}
+
+.output-raw {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.task-io-section.error {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.io-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(var(--primary-rgb), 0.05);
+  cursor: pointer;
+  transition: background 0.2s;
+  user-select: none;
+  font-size: 0.85em;
+}
+
+.task-io-section.error .io-toggle {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.io-toggle:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.io-toggle i {
+  font-size: 0.75em;
+  color: var(--color-primary);
+  transition: transform 0.2s ease;
+}
+
+.io-toggle i.rotated {
+  transform: rotate(90deg);
 }
 
 .io-size {
@@ -877,44 +1089,42 @@ ${goal.tasks
   margin-left: auto;
 }
 
-.io-content {
-  padding: 0;
-  border-top: 1px solid rgba(var(--green-rgb), 0.1);
+.io-body {
+  border-top: 1px solid rgba(var(--primary-rgb), 0.1);
 }
 
-.error-section .io-content {
-  border-top-color: rgba(239, 68, 68, 0.2);
-}
-
-.io-data,
-.error-data {
+.io-data {
   background: var(--color-darker-0);
-  padding: 12px;
+  padding: 10px;
   font-size: var(--font-size-xs);
   color: var(--color-text);
-  max-height: 300px;
+  max-height: 250px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
   font-family: var(--font-family-mono);
   line-height: 1.4;
-  border: none;
-  width: 100%;
-  border-radius: 0;
 }
 
-.error-data {
+.io-data.error-text {
   color: var(--color-red);
   background: rgba(239, 68, 68, 0.05);
 }
 
-.execution-log {
+/* Evaluation */
+.goal-evaluation {
+  margin-top: 15px;
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
+  padding-top: 15px;
+}
+
+.eval-log {
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
-  padding: 12px;
-  font-size: 0.9em;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 0.85em;
   color: var(--color-text);
   max-height: 200px;
   overflow-y: auto;
@@ -922,320 +1132,130 @@ ${goal.tasks
   word-break: break-word;
 }
 
-.io-data::-webkit-scrollbar,
-.error-data::-webkit-scrollbar,
-.execution-log::-webkit-scrollbar {
-  width: 4px;
+/* Iterations */
+.goal-iterations {
+  margin-top: 15px;
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
+  padding-top: 15px;
 }
 
-.io-data::-webkit-scrollbar-track,
-.error-data::-webkit-scrollbar-track,
-.execution-log::-webkit-scrollbar-track {
-  background: var(--color-darker-0);
-}
-
-.io-data::-webkit-scrollbar-thumb {
-  background: rgba(var(--green-rgb), 0.3);
-  border-radius: 2px;
-}
-
-.error-data::-webkit-scrollbar-thumb {
-  background: rgba(239, 68, 68, 0.3);
-  border-radius: 2px;
-}
-
-.execution-log::-webkit-scrollbar-thumb {
-  background: rgba(var(--green-rgb), 0.3);
-  border-radius: 2px;
-}
-
-.placeholder-section {
-  text-align: center;
-  color: var(--color-grey);
-  padding: 30px 15px;
-  border: 1px dashed rgba(var(--green-rgb), 0.2);
-  border-radius: 4px;
-}
-
-.placeholder-section p {
-  font-style: italic;
-  margin: 0;
-}
-
-/* Default content sections */
-.default-content {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  height: 100%;
-  min-height: 0;
-}
-
-.panel-section {
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  padding: 16px;
-  border-radius: 8px;
-}
-
-.section-title {
-  color: var(--color-text-muted);
-  font-size: 0.9em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 16px 0;
-  font-weight: 600;
-  opacity: 0.95;
-}
-
-.section-title i {
-  color: var(--color-green);
-}
-
-/* Recent Runs */
-.recent-runs-list {
+.iteration-timeline {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 300px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(var(--green-rgb), 0.3) transparent;
 }
 
-.recent-run-item {
+.iteration-item {
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--terminal-border-color);
+  border-left: 3px solid var(--color-grey);
+}
+
+.iteration-item.passed {
+  border-left-color: var(--color-green);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.iteration-item.failed {
+  border-left-color: var(--color-yellow);
+  background: rgba(255, 193, 7, 0.05);
+}
+
+.iteration-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-}
-
-.recent-run-item:hover {
-  background: rgba(var(--green-rgb), 0.08);
-  border-color: rgba(var(--green-rgb), 0.2);
-}
-
-.run-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.run-name {
-  font-size: 0.85em;
-  font-weight: 500;
-  color: var(--color-text);
+  align-items: center;
+  gap: 10px;
   margin-bottom: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.run-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.75em;
+.iteration-number {
+  font-weight: 700;
+  font-size: 0.9em;
+  color: var(--color-text);
 }
 
-.run-status {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 4px;
-  border-radius: 8px;
-  font-weight: 500;
-  text-transform: uppercase;
+.iteration-score {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  font-weight: 600;
 }
 
-.run-status.running,
-.run-status.executing {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
-}
-
-.run-status.completed,
-.run-status.validated {
+.iteration-score.score-pass {
   background: rgba(34, 197, 94, 0.2);
   color: var(--color-green);
 }
 
-.run-status.failed,
-.run-status.error {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--color-red);
+.iteration-score.score-fail {
+  background: rgba(255, 193, 7, 0.2);
+  color: var(--color-yellow);
 }
 
-.run-status.stopped {
-  background: rgba(127, 129, 147, 0.2);
-  color: var(--color-text-muted);
-}
-
-.run-status.pending,
-.run-status.planning,
-.run-status.queued {
-  background: rgba(127, 129, 147, 0.2);
-  color: var(--color-text-muted);
-}
-
-.run-status i {
-  font-size: 0.8em;
-}
-
-.run-duration {
-  color: var(--color-green);
-  font-weight: 600;
-}
-
-.run-date {
+.iteration-hash {
   font-size: 0.75em;
   color: var(--color-text-muted);
-  white-space: nowrap;
-  opacity: 0.8;
+  font-family: var(--font-family-mono);
+  margin-left: auto;
 }
 
-.no-runs {
+.iteration-meta {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 20px;
-  color: var(--color-text-muted);
-  opacity: 0.7;
-}
-
-.no-runs i {
-  font-size: 1.5em;
-  color: rgba(127, 129, 147, 0.3);
-}
-
-.no-runs span {
-  font-size: 0.85em;
-}
-
-/* Action Buttons */
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.action-button {
-  padding: 8px 16px;
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 4px;
-  color: var(--color-text);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: all 0.2s;
-  font-size: 0.9em;
-  justify-content: flex-start;
-  width: 100%;
-}
-
-.action-button:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.5);
-}
-
-.action-button i {
-  width: 16px;
-  text-align: center;
-}
-
-/* Goal Input Section */
-.goal-input-container {
-  display: flex;
-  flex-direction: column;
   gap: 12px;
-  margin-bottom: 12px;
-}
-
-.goal-input {
-  width: 100%;
-  padding: 12px 16px;
-  background: transparent;
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  color: var(--color-text);
-  font-size: 0.95em;
-  font-family: inherit;
-  resize: vertical;
-  min-height: 80px;
-  transition: all 0.2s ease;
-}
-
-.goal-input:focus {
-  outline: none;
-  border-color: rgba(var(--green-rgb), 0.5);
-  box-shadow: 0 0 0 2px rgba(var(--green-rgb), 0.1);
-}
-
-.goal-input::placeholder {
-  color: var(--color-text-muted);
-  opacity: 0.7;
-}
-
-.create-goal-button {
-  padding: 12px 20px;
-  background: var(--color-darker-0);
-  color: var(--color-text);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  align-self: flex-start;
-}
-
-.create-goal-button:hover:not(:disabled) {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.5);
-  transform: translateY(-1px);
-}
-
-.create-goal-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.create-goal-button.loading {
-  opacity: 0.8;
-}
-
-.input-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 0.8em;
   color: var(--color-text-muted);
-  opacity: 0.7;
 }
 
-.input-hint i {
-  color: var(--color-green);
-  font-size: 0.9em;
+.iteration-meta i {
+  margin-right: 4px;
 }
 
-/* Workflow Actions Section */
-.workflow-actions-section {
-  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
+/* Live iteration */
+.goal-live-iteration {
+  margin-top: 15px;
+  border-top: 1px dashed rgba(59, 130, 246, 0.3);
   padding-top: 15px;
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 4px;
+  padding: 12px;
 }
 
-.workflow-actions {
+.goal-live-iteration h3 {
+  color: var(--color-blue);
+}
+
+.live-phase {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.phase-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.phase-badge.executing { background: rgba(59, 130, 246, 0.2); color: var(--color-blue); }
+.phase-badge.evaluating { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+.phase-badge.replanning { background: rgba(255, 193, 7, 0.2); color: var(--color-yellow); }
+.phase-badge.checkpointing,
+.phase-badge.completed { background: rgba(34, 197, 94, 0.2); color: var(--color-green); }
+
+.live-score {
+  font-weight: 700;
+  font-size: 1.1em;
+  color: var(--color-text);
+}
+
+/* Actions — matches WorkflowsPanel */
+.goal-actions {
+  margin-top: 15px;
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
+  padding-top: 15px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1243,8 +1263,8 @@ ${goal.tasks
 
 .action-button {
   background: transparent;
-  border: 1px solid rgba(var(--green-rgb), 0.3);
-  color: var(--color-light-green);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  color: var(--color-text);
   padding: 10px;
   border-radius: 4px;
   cursor: pointer;
@@ -1256,43 +1276,80 @@ ${goal.tasks
 }
 
 .action-button:hover {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: var(--color-green);
+  background: rgba(var(--primary-rgb), 0.1);
+  border-color: var(--color-primary);
 }
 
 .action-button.edit {
-  border-color: rgba(var(--green-rgb), 0.5);
-  color: var(--color-green);
+  border-color: rgba(var(--primary-rgb), 0.5);
+  color: var(--color-primary);
 }
 
 .action-button.edit:hover {
-  background: rgba(var(--green-rgb), 0.15);
+  background: rgba(var(--primary-rgb), 0.15);
+  border-color: var(--color-primary);
+}
+
+.action-button.start {
+  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--color-green);
+}
+
+.action-button.start:hover {
+  background: rgba(34, 197, 94, 0.1);
   border-color: var(--color-green);
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .chain-node {
-    gap: 12px;
-  }
+.action-button.stop {
+  border-color: rgba(255, 99, 71, 0.3);
+  color: tomato;
+}
 
-  .node-card {
-    padding: 12px;
-  }
+.action-button.stop:hover {
+  background: rgba(255, 99, 71, 0.1);
+  border-color: tomato;
+}
 
-  .node-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
+.action-button.delete {
+  border-color: rgba(255, 99, 71, 0.3);
+  color: tomato;
+}
 
-  .node-timing {
-    flex-direction: column;
-    gap: 8px;
-  }
+.action-button.delete:hover {
+  background: rgba(255, 99, 71, 0.1);
+  border-color: tomato;
+}
 
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* No goal selected */
+.no-goal-selected {
+  text-align: center;
+  color: var(--color-text);
+  padding: 30px 15px;
+  border: 1px dashed var(--terminal-border-color-light);
+  background: var(--color-darker-0);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+}
+
+.no-goal-selected p {
+  font-style: italic;
+  margin: 0;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.create-goal-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 </style>
