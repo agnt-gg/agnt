@@ -48,6 +48,9 @@ class GoalModel {
           else {
             goals.forEach((goal) => {
               goal.success_criteria = JSON.parse(goal.success_criteria || '{}');
+              goal.progress = goal.task_count > 0
+                ? Math.round((goal.completed_tasks / goal.task_count) * 100)
+                : 0;
             });
             resolve(goals);
           }

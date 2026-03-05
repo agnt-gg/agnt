@@ -46,7 +46,7 @@
       <div class="action-buttons">
         <button @click="createGoal" class="action-button">
           <i class="fas fa-plus"></i>
-          New Goal (Chat)
+          New Goal
         </button>
         <button @click="refreshGoals" class="action-button">
           <i class="fas fa-sync"></i>
@@ -77,7 +77,7 @@ export default {
 
     const createGoal = () => {
       playSound('typewriterKeyPress');
-      emit('panel-action', 'navigate', 'ChatScreen');
+      emit('panel-action', 'create-goal');
     };
 
     const refreshGoals = () => {
