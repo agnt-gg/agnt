@@ -288,6 +288,11 @@ export default {
     const renderOutput = (data) => {
       if (!data) return '';
 
+      // Guard against bad serialization like "[object Object]"
+      if (typeof data === 'string' && data.includes('[object Object]')) {
+        return '<p><em>Raw object data — use Raw view to inspect</em></p>';
+      }
+
       // Parse if it's a JSON string
       let parsed = data;
       if (typeof parsed === 'string') {
@@ -308,9 +313,10 @@ export default {
       }
 
       // Extract renderable text from structured output objects
-      const extractText = (obj) => {
+      const extractText = (obj, depth = 0) => {
+        if (depth > 5) return null;
         if (typeof obj === 'string') return obj;
-        if (!obj || typeof obj !== 'object') return String(obj);
+        if (!obj || typeof obj !== 'object') return null;
 
         // Task output shape: { content, toolExecutions, files, timestamp }
         // Evaluation shape: { score, passed, summary, ... }
@@ -323,10 +329,15 @@ export default {
               .map(item => item.text);
             if (texts.length) return texts.join('\n\n');
           }
+          // Recurse into nested objects
+          if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+            const nested = extractText(obj[key], depth + 1);
+            if (nested) return nested;
+          }
         }
 
         if (Array.isArray(obj)) {
-          const items = obj.map((item) => extractText(item)).filter(Boolean);
+          const items = obj.map((item) => extractText(item, depth + 1)).filter(Boolean);
           if (items.length) return items.join('\n\n');
         }
 

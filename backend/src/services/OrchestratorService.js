@@ -1277,12 +1277,20 @@ IMPORTANT: The image data is already available in the system context. You don't 
       });
     }
 
-    // Extract final content
-    if (normalizedProvider === 'anthropic') {
-      const textBlock = responseMessage.content?.find((c) => c.type === 'text');
-      finalContentForLogging = textBlock ? textBlock.text : '';
+    // Extract final content — always extract text from content arrays
+    const rawContent = responseMessage.content;
+    if (typeof rawContent === 'string') {
+      finalContentForLogging = rawContent;
+    } else if (Array.isArray(rawContent)) {
+      // Handle Anthropic-style [{type: "text", text: "..."}] arrays (all providers)
+      const textParts = rawContent
+        .filter((c) => c.type === 'text' && c.text)
+        .map((c) => c.text);
+      finalContentForLogging = textParts.join('\n\n') || JSON.stringify(rawContent);
+    } else if (rawContent && typeof rawContent === 'object') {
+      finalContentForLogging = rawContent.text || rawContent.message || JSON.stringify(rawContent);
     } else {
-      finalContentForLogging = responseMessage.content || '';
+      finalContentForLogging = rawContent || '';
     }
 
     // Safety net: if tool loop ran but final response has no text content,
@@ -1387,8 +1395,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
       try {
         const finalStatus = streamErrorForLogging ? 'failed' : 'completed';
         const finalResponseText = typeof finalContentForLogging === 'string'
-          ? finalContentForLogging.substring(0, 2000)
-          : String(finalContentForLogging || '').substring(0, 2000);
+          ? finalContentForLogging
+          : String(finalContentForLogging || '');
 
         await AgentExecutionModel.update(
           agentExecutionId,

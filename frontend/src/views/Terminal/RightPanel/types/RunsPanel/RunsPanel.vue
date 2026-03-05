@@ -79,24 +79,38 @@
           </div>
 
           <!-- Initial Prompt -->
-          <div v-if="selectedExecution.initialPrompt" class="agent-prompt-section">
+          <div v-if="selectedExecution.initialPrompt" class="agent-prompt-section node-io-section">
             <div class="io-header" @click="toggleNodeSection('agent-prompt', 'input')">
               <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded('agent-prompt', 'input') }"></i>
               <span>Initial Prompt</span>
+              <button class="raw-toggle" @click.stop="toggleRawView('agent-prompt')">
+                <i :class="isRawView('agent-prompt') ? 'fas fa-eye' : 'fas fa-code'"></i>
+                {{ isRawView('agent-prompt') ? 'Rendered' : 'Raw' }}
+              </button>
             </div>
             <div v-show="isNodeSectionExpanded('agent-prompt', 'input')" class="io-content">
-              <pre class="io-data">{{ selectedExecution.initialPrompt }}</pre>
+              <div v-if="isRawView('agent-prompt')" class="output-raw">
+                <pre class="io-data">{{ selectedExecution.initialPrompt }}</pre>
+              </div>
+              <div v-else class="output-rendered" v-html="renderOutput(selectedExecution.initialPrompt)"></div>
             </div>
           </div>
 
           <!-- Final Response -->
-          <div v-if="selectedExecution.finalResponse" class="agent-response-section">
+          <div v-if="selectedExecution.finalResponse" class="agent-response-section node-io-section">
             <div class="io-header" @click="toggleNodeSection('agent-response', 'output')">
               <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded('agent-response', 'output') }"></i>
               <span>Final Response</span>
+              <button class="raw-toggle" @click.stop="toggleRawView('agent-response')">
+                <i :class="isRawView('agent-response') ? 'fas fa-eye' : 'fas fa-code'"></i>
+                {{ isRawView('agent-response') ? 'Rendered' : 'Raw' }}
+              </button>
             </div>
             <div v-show="isNodeSectionExpanded('agent-response', 'output')" class="io-content">
-              <pre class="io-data">{{ selectedExecution.finalResponse }}</pre>
+              <div v-if="isRawView('agent-response')" class="output-raw">
+                <pre class="io-data">{{ typeof selectedExecution.finalResponse === 'object' ? JSON.stringify(selectedExecution.finalResponse, null, 2) : selectedExecution.finalResponse }}</pre>
+              </div>
+              <div v-else class="output-rendered" v-html="renderOutput(selectedExecution.finalResponse)"></div>
             </div>
           </div>
         </div>
@@ -141,9 +155,16 @@
                     <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(toolExec.id, 'input') }"></i>
                     <span>Input</span>
                     <span class="io-size">({{ getDataSize(toolExec.input) }})</span>
+                    <button class="raw-toggle" @click.stop="toggleRawView(toolExec.id + '-input')">
+                      <i :class="isRawView(toolExec.id + '-input') ? 'fas fa-eye' : 'fas fa-code'"></i>
+                      {{ isRawView(toolExec.id + '-input') ? 'Rendered' : 'Raw' }}
+                    </button>
                   </div>
                   <div v-show="isNodeSectionExpanded(toolExec.id, 'input')" class="io-content">
-                    <pre class="io-data">{{ formatJSON(toolExec.input) }}</pre>
+                    <div v-if="isRawView(toolExec.id + '-input')" class="output-raw">
+                      <pre class="io-data">{{ formatJSON(toolExec.input) }}</pre>
+                    </div>
+                    <div v-else class="output-rendered" v-html="renderOutput(toolExec.input)"></div>
                   </div>
                 </div>
 
@@ -153,9 +174,16 @@
                     <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(toolExec.id, 'output') }"></i>
                     <span>Output</span>
                     <span class="io-size">({{ getDataSize(toolExec.output) }})</span>
+                    <button class="raw-toggle" @click.stop="toggleRawView(toolExec.id + '-output')">
+                      <i :class="isRawView(toolExec.id + '-output') ? 'fas fa-eye' : 'fas fa-code'"></i>
+                      {{ isRawView(toolExec.id + '-output') ? 'Rendered' : 'Raw' }}
+                    </button>
                   </div>
                   <div v-show="isNodeSectionExpanded(toolExec.id, 'output')" class="io-content">
-                    <pre class="io-data">{{ formatJSON(toolExec.output) }}</pre>
+                    <div v-if="isRawView(toolExec.id + '-output')" class="output-raw">
+                      <pre class="io-data">{{ formatJSON(toolExec.output) }}</pre>
+                    </div>
+                    <div v-else class="output-rendered" v-html="renderOutput(toolExec.output)"></div>
                   </div>
                 </div>
 
@@ -211,33 +239,41 @@
                 </div>
 
                 <!-- Input Section -->
-                <div v-if="task.input" class="node-io-section task-output-rendered">
-                  <div class="output-header">
-                    <span class="output-label">Input</span>
-                    <button class="raw-toggle" @click="toggleRawView(task.id + '-input')" :title="isRawView(task.id + '-input') ? 'View Rendered' : 'View Raw'">
+                <div v-if="task.input" class="node-io-section">
+                  <div class="io-header" @click="toggleNodeSection(task.id, 'input')">
+                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'input') }"></i>
+                    <span>Input</span>
+                    <span class="io-size">({{ getDataSize(task.input) }})</span>
+                    <button class="raw-toggle" @click.stop="toggleRawView(task.id + '-input')">
                       <i :class="isRawView(task.id + '-input') ? 'fas fa-eye' : 'fas fa-code'"></i>
                       {{ isRawView(task.id + '-input') ? 'Rendered' : 'Raw' }}
                     </button>
                   </div>
-                  <div v-if="isRawView(task.id + '-input')" class="output-raw">
-                    <pre class="io-data">{{ formatJSON(task.input) }}</pre>
+                  <div v-show="isNodeSectionExpanded(task.id, 'input')" class="io-content">
+                    <div v-if="isRawView(task.id + '-input')" class="output-raw">
+                      <pre class="io-data">{{ formatJSON(task.input) }}</pre>
+                    </div>
+                    <div v-else class="output-rendered" v-html="renderOutput(task.input)"></div>
                   </div>
-                  <div v-else class="output-rendered" v-html="renderOutput(task.input)"></div>
                 </div>
 
                 <!-- Output Section -->
-                <div v-if="task.output" class="node-io-section task-output-rendered">
-                  <div class="output-header">
-                    <span class="output-label">Output</span>
-                    <button class="raw-toggle" @click="toggleRawView(task.id)" :title="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
+                <div v-if="task.output" class="node-io-section">
+                  <div class="io-header" @click="toggleNodeSection(task.id, 'output')">
+                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'output') }"></i>
+                    <span>Output</span>
+                    <span class="io-size">({{ getDataSize(task.output) }})</span>
+                    <button class="raw-toggle" @click.stop="toggleRawView(task.id)">
                       <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
                       {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
                     </button>
                   </div>
-                  <div v-if="isRawView(task.id)" class="output-raw">
-                    <pre class="io-data">{{ formatJSON(task.output) }}</pre>
+                  <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-content">
+                    <div v-if="isRawView(task.id)" class="output-raw">
+                      <pre class="io-data">{{ formatJSON(task.output) }}</pre>
+                    </div>
+                    <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
                   </div>
-                  <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
                 </div>
 
                 <!-- Tool Executions -->
@@ -327,9 +363,16 @@
                     <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(nodeExecution.id, 'input') }"></i>
                     <span>Input</span>
                     <span class="io-size">({{ getDataSize(nodeExecution.input) }})</span>
+                    <button class="raw-toggle" @click.stop="toggleRawView(nodeExecution.id + '-input')">
+                      <i :class="isRawView(nodeExecution.id + '-input') ? 'fas fa-eye' : 'fas fa-code'"></i>
+                      {{ isRawView(nodeExecution.id + '-input') ? 'Rendered' : 'Raw' }}
+                    </button>
                   </div>
                   <div v-show="isNodeSectionExpanded(nodeExecution.id, 'input')" class="io-content">
-                    <pre class="io-data">{{ formatJSON(nodeExecution.input) }}</pre>
+                    <div v-if="isRawView(nodeExecution.id + '-input')" class="output-raw">
+                      <pre class="io-data">{{ formatJSON(nodeExecution.input) }}</pre>
+                    </div>
+                    <div v-else class="output-rendered" v-html="renderOutput(nodeExecution.input)"></div>
                   </div>
                 </div>
 
@@ -339,9 +382,16 @@
                     <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(nodeExecution.id, 'output') }"></i>
                     <span>Output</span>
                     <span class="io-size">({{ getDataSize(nodeExecution.output) }})</span>
+                    <button class="raw-toggle" @click.stop="toggleRawView(nodeExecution.id + '-output')">
+                      <i :class="isRawView(nodeExecution.id + '-output') ? 'fas fa-eye' : 'fas fa-code'"></i>
+                      {{ isRawView(nodeExecution.id + '-output') ? 'Rendered' : 'Raw' }}
+                    </button>
                   </div>
                   <div v-show="isNodeSectionExpanded(nodeExecution.id, 'output')" class="io-content">
-                    <pre class="io-data">{{ formatJSON(nodeExecution.output) }}</pre>
+                    <div v-if="isRawView(nodeExecution.id + '-output')" class="output-raw">
+                      <pre class="io-data">{{ formatJSON(nodeExecution.output) }}</pre>
+                    </div>
+                    <div v-else class="output-rendered" v-html="renderOutput(nodeExecution.output)"></div>
                   </div>
                 </div>
 
@@ -1115,6 +1165,11 @@ ${execution.log}
     const renderOutput = (data) => {
       if (!data) return '';
 
+      // Guard against bad serialization like "[object Object]"
+      if (typeof data === 'string' && data.includes('[object Object]')) {
+        return '<p><em>Raw object data — use Raw view to inspect</em></p>';
+      }
+
       let parsed = data;
       if (typeof parsed === 'string') {
         try {
@@ -1131,22 +1186,29 @@ ${execution.log}
         return mdConverter.makeHtml(parsed);
       }
 
-      const extractText = (obj) => {
+      const extractText = (obj, depth = 0) => {
+        if (depth > 5) return null;
         if (typeof obj === 'string') return obj;
-        if (!obj || typeof obj !== 'object') return String(obj);
+        if (!obj || typeof obj !== 'object') return null;
 
         for (const key of ['content', 'summary', 'text', 'message', 'result', 'report', 'output', 'description', 'body', 'response']) {
           if (obj[key] && typeof obj[key] === 'string') return obj[key];
+          // Handle arrays of {type: "text", text: "..."} objects
           if (obj[key] && Array.isArray(obj[key])) {
             const texts = obj[key]
               .filter(item => item && typeof item === 'object' && item.text)
               .map(item => item.text);
             if (texts.length) return texts.join('\n\n');
           }
+          // Recurse into nested objects
+          if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+            const nested = extractText(obj[key], depth + 1);
+            if (nested) return nested;
+          }
         }
 
         if (Array.isArray(obj)) {
-          const items = obj.map((item) => extractText(item)).filter(Boolean);
+          const items = obj.map((item) => extractText(item, depth + 1)).filter(Boolean);
           if (items.length) return items.join('\n\n');
         }
 
@@ -1736,6 +1798,9 @@ ${execution.log}
 .io-size {
   font-size: 0.8em;
   color: var(--color-grey);
+}
+
+.io-header .raw-toggle {
   margin-left: auto;
 }
 
