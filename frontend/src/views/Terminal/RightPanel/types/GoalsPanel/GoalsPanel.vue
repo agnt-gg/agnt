@@ -121,6 +121,73 @@
           <h4>Evaluation</h4>
           <pre class="execution-log">{{ formatJSON(selectedGoal.evaluation) }}</pre>
         </div>
+
+        <!-- AGI Loop: Iteration Timeline -->
+        <div v-if="goalIterations.length > 0" class="detail-section">
+          <h4>
+            <i class="fas fa-sync-alt"></i> AGI Loop Iterations ({{ goalIterations.length }})
+          </h4>
+          <div class="iteration-timeline">
+            <div
+              v-for="iter in goalIterations"
+              :key="iter.iteration_number"
+              class="iteration-item"
+              :class="{ passed: iter.evaluation_passed, failed: !iter.evaluation_passed }"
+            >
+              <div class="iteration-header">
+                <span class="iteration-number">#{{ iter.iteration_number }}</span>
+                <span class="iteration-score" :class="iter.evaluation_passed ? 'score-pass' : 'score-fail'">
+                  {{ iter.evaluation_score ? Math.round(iter.evaluation_score) : 0 }}%
+                </span>
+                <span v-if="iter.git_commit_hash" class="iteration-hash" :title="iter.git_commit_hash">
+                  <i class="fas fa-code-branch"></i> {{ iter.git_commit_hash.substring(0, 7) }}
+                </span>
+              </div>
+              <div class="iteration-meta">
+                <span v-if="iter.duration_ms"><i class="fas fa-clock"></i> {{ (iter.duration_ms / 1000).toFixed(1) }}s</span>
+                <span v-if="iter.replanned_tasks && iter.replanned_tasks.length">
+                  <i class="fas fa-redo"></i> {{ iter.replanned_tasks.length }} re-planned
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AGI Loop: Live iteration indicator -->
+        <div v-if="liveIteration" class="detail-section live-iteration-section">
+          <h4>
+            <i class="fas fa-cog fa-spin"></i> Live Iteration #{{ liveIteration.iteration }}
+          </h4>
+          <div class="live-phase">
+            <span class="phase-badge" :class="liveIteration.phase">
+              {{ formatPhase(liveIteration.phase) }}
+            </span>
+            <span v-if="liveIteration.score" class="live-score">{{ Math.round(liveIteration.score) }}%</span>
+          </div>
+        </div>
+
+        <!-- AGI Loop: Action buttons -->
+        <div class="detail-section goal-actions-section">
+          <h4>Actions</h4>
+          <div class="goal-action-buttons">
+            <button
+              v-if="canStartAutonomous"
+              class="action-button autonomous-btn"
+              @click="startAutonomous"
+              :disabled="isStartingAutonomous"
+            >
+              <i :class="isStartingAutonomous ? 'fas fa-spinner fa-spin' : 'fas fa-infinity'"></i>
+              {{ isStartingAutonomous ? 'Starting...' : 'Start Autonomous' }}
+            </button>
+            <button
+              v-if="selectedGoal.loop_status === 'executing' || selectedGoal.loop_status === 'replanning'"
+              class="action-button pause-btn"
+              @click="pauseGoal"
+            >
+              <i class="fas fa-pause"></i> Pause Loop
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -230,6 +297,69 @@ export default {
     const goalInput = ref('');
     const goalInputRef = ref(null);
     const isCreatingGoal = computed(() => store.getters['goals/isCreatingGoal']);
+    const isStartingAutonomous = ref(false);
+
+    // AGI Loop computed
+    const goalIterations = computed(() => {
+      if (!selectedGoal.value) return [];
+      return store.getters['goals/getIterations'](selectedGoal.value.id);
+    });
+
+    const liveIteration = computed(() => {
+      if (!selectedGoal.value) return null;
+      return store.getters['goals/getLiveIteration'](selectedGoal.value.id);
+    });
+
+    const canStartAutonomous = computed(() => {
+      if (!selectedGoal.value) return false;
+      const s = selectedGoal.value.status;
+      return ['completed', 'needs_review', 'validated', 'failed', 'paused', 'planning'].includes(s);
+    });
+
+    // Fetch iterations when a goal is selected
+    watch(selectedGoal, (goal) => {
+      if (goal) {
+        store.dispatch('goals/fetchIterations', goal.id);
+      }
+    });
+
+    const startAutonomous = async () => {
+      if (!selectedGoal.value) return;
+      isStartingAutonomous.value = true;
+      try {
+        await store.dispatch('goals/executeGoalAutonomous', {
+          goalId: selectedGoal.value.id,
+          maxIterations: 50,
+        });
+        emit('panel-action', 'show-feedback', {
+          type: 'success',
+          message: '[AGI Loop] Autonomous execution started',
+        });
+      } catch (error) {
+        emit('panel-action', 'show-feedback', {
+          type: 'error',
+          message: `[AGI Loop] Error: ${error.message}`,
+        });
+      } finally {
+        isStartingAutonomous.value = false;
+      }
+    };
+
+    const pauseGoal = async () => {
+      if (!selectedGoal.value) return;
+      await store.dispatch('goals/pauseGoal', selectedGoal.value.id);
+    };
+
+    const formatPhase = (phase) => {
+      const labels = {
+        executing: 'Executing Tasks',
+        evaluating: 'Evaluating Results',
+        replanning: 'Re-planning Tasks',
+        checkpointing: 'Git Checkpoint',
+        completed: 'Iteration Done',
+      };
+      return labels[phase] || phase;
+    };
 
     // Watch for selectedGoalId changes
     watch(
@@ -478,6 +608,14 @@ ${goal.tasks
       createGoal,
       clearGoalInput,
       closePanel,
+      // AGI Loop
+      goalIterations,
+      liveIteration,
+      canStartAutonomous,
+      isStartingAutonomous,
+      startAutonomous,
+      pauseGoal,
+      formatPhase,
     };
   },
 };
@@ -1268,6 +1406,169 @@ ${goal.tasks
 .action-button.edit:hover {
   background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
+}
+
+/* AGI Loop: Iteration Timeline */
+.iteration-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.iteration-item {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--terminal-border-color);
+  border-left: 3px solid var(--color-grey);
+  transition: all 0.2s ease;
+}
+
+.iteration-item.passed {
+  border-left-color: var(--color-green);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.iteration-item.failed {
+  border-left-color: var(--color-yellow);
+  background: rgba(255, 193, 7, 0.05);
+}
+
+.iteration-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.iteration-number {
+  font-weight: 700;
+  font-size: 0.9em;
+  color: var(--color-text);
+}
+
+.iteration-score {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.iteration-score.score-pass {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-green);
+}
+
+.iteration-score.score-fail {
+  background: rgba(255, 193, 7, 0.2);
+  color: var(--color-yellow);
+}
+
+.iteration-hash {
+  font-size: 0.75em;
+  color: var(--color-text-muted);
+  font-family: var(--font-family-mono);
+  margin-left: auto;
+}
+
+.iteration-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+}
+
+.iteration-meta i {
+  margin-right: 4px;
+}
+
+/* AGI Loop: Live Iteration */
+.live-iteration-section {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.live-iteration-section h4 {
+  color: var(--color-blue);
+}
+
+.live-phase {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.phase-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.phase-badge.executing {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--color-blue);
+}
+
+.phase-badge.evaluating {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.phase-badge.replanning {
+  background: rgba(255, 193, 7, 0.2);
+  color: var(--color-yellow);
+}
+
+.phase-badge.checkpointing {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-green);
+}
+
+.phase-badge.completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-green);
+}
+
+.live-score {
+  font-weight: 700;
+  font-size: 1.1em;
+  color: var(--color-text);
+}
+
+/* AGI Loop: Action Buttons */
+.goal-actions-section {
+  border-top: 1px dashed rgba(var(--green-rgb), 0.2);
+  padding-top: 16px;
+}
+
+.goal-action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.autonomous-btn {
+  background: rgba(168, 85, 247, 0.1) !important;
+  border-color: rgba(168, 85, 247, 0.3) !important;
+  color: #a855f7 !important;
+}
+
+.autonomous-btn:hover:not(:disabled) {
+  background: rgba(168, 85, 247, 0.2) !important;
+  border-color: rgba(168, 85, 247, 0.5) !important;
+}
+
+.pause-btn {
+  background: rgba(255, 193, 7, 0.1) !important;
+  border-color: rgba(255, 193, 7, 0.3) !important;
+  color: var(--color-yellow) !important;
+}
+
+.pause-btn:hover {
+  background: rgba(255, 193, 7, 0.2) !important;
+  border-color: rgba(255, 193, 7, 0.5) !important;
 }
 
 /* Responsive adjustments */

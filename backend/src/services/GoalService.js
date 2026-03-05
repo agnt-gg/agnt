@@ -1,5 +1,6 @@
 import GoalModel from '../models/GoalModel.js';
 import TaskModel from '../models/TaskModel.js';
+import GoalIterationModel from '../models/GoalIterationModel.js';
 import GoalProcessor from '../services/goal/GoalProcessor.js';
 import TaskOrchestrator from '../services/goal/TaskOrchestrator.js';
 import GoalEvaluator from '../services/goal/GoalEvaluator.js';
@@ -318,6 +319,99 @@ class GoalService {
         error: 'Failed to get golden standards',
         details: error.message,
       });
+    }
+  }
+  // ==================== AGI Loop Endpoints ====================
+
+  async executeGoalAutonomous(req, res) {
+    try {
+      const { goalId } = req.params;
+      const userId = req.user.userId;
+      const { maxIterations = 50 } = req.body;
+
+      console.log(`Starting autonomous goal execution: ${goalId} (max ${maxIterations} iterations)`);
+
+      // Start autonomous execution (non-blocking — runs in background)
+      TaskOrchestrator.executeGoalAutonomous(goalId, userId, { maxIterations });
+
+      res.status(200).json({
+        message: 'Autonomous goal execution started',
+        goalId,
+        maxIterations,
+      });
+    } catch (error) {
+      console.error('Error starting autonomous execution:', error);
+      res.status(500).json({
+        error: 'Failed to start autonomous execution',
+        details: error.message,
+      });
+    }
+  }
+
+  async getIterations(req, res) {
+    try {
+      const { goalId } = req.params;
+      const iterations = await GoalIterationModel.findByGoalId(goalId);
+      res.json({ iterations });
+    } catch (error) {
+      console.error('Error getting iterations:', error);
+      res.status(500).json({ error: 'Failed to get iterations' });
+    }
+  }
+
+  async getWorldState(req, res) {
+    try {
+      const { goalId } = req.params;
+      const worldState = await GoalModel.getWorldState(goalId);
+      const goal = await GoalModel.findOne(goalId);
+      res.json({
+        worldState,
+        currentIteration: goal?.current_iteration || 0,
+        maxIterations: goal?.max_iterations || 50,
+        loopStatus: goal?.loop_status || null,
+      });
+    } catch (error) {
+      console.error('Error getting world state:', error);
+      res.status(500).json({ error: 'Failed to get world state' });
+    }
+  }
+
+  async revertToIteration(req, res) {
+    try {
+      const { goalId, iteration } = req.params;
+      const iterationRecord = await GoalIterationModel.findOne(goalId, parseInt(iteration));
+
+      if (!iterationRecord) {
+        return res.status(404).json({ error: 'Iteration not found' });
+      }
+
+      // Restore world state from snapshot
+      await GoalModel.updateWorldState(goalId, iterationRecord.world_state_snapshot);
+      await GoalModel.updateIteration(goalId, iterationRecord.iteration_number);
+      await GoalModel.updateLoopStatus(goalId, 'reverted');
+      await GoalModel.updateStatus(goalId, 'paused');
+
+      // If there's a git hash, try to checkout that state
+      if (iterationRecord.git_commit_hash) {
+        try {
+          const { exec } = await import('child_process');
+          const { promisify } = await import('util');
+          const execAsync = promisify(exec);
+          const branchName = `goal/${goalId}`;
+          await execAsync(`git checkout ${branchName} -- .agnt/goals/${goalId}.json`, { cwd: process.cwd() });
+        } catch (gitError) {
+          console.warn(`[AGI Loop] Git revert failed (non-fatal):`, gitError.message);
+        }
+      }
+
+      res.json({
+        message: `Reverted to iteration ${iteration}`,
+        worldState: iterationRecord.world_state_snapshot,
+        iteration: iterationRecord.iteration_number,
+      });
+    } catch (error) {
+      console.error('Error reverting iteration:', error);
+      res.status(500).json({ error: 'Failed to revert to iteration' });
     }
   }
 }

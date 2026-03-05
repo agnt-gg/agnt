@@ -610,6 +610,23 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)`);
 
+      // Goal iteration history for AGI loop
+      db.run(`CREATE TABLE IF NOT EXISTS goal_iterations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        goal_id TEXT NOT NULL,
+        iteration_number INTEGER NOT NULL,
+        evaluation_score REAL,
+        evaluation_passed INTEGER DEFAULT 0,
+        world_state_snapshot JSON,
+        replanned_tasks JSON,
+        git_commit_hash TEXT,
+        duration_ms INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_goal_iterations_goal_id ON goal_iterations(goal_id)`);
+
       // ==================== PERFORMANCE INDEXES ====================
       // Agents - faster lookup by user
       db.run(`CREATE INDEX IF NOT EXISTS idx_agents_created_by ON agents(created_by)`);
@@ -668,6 +685,24 @@ function runMigrations() {
         } else if (!err) {
           console.log('✓ Added skills column to agents table');
         }
+      });
+
+      // Migration: Add AGI loop columns to goals table (2026-03-04)
+      const agiLoopColumns = [
+        { name: 'world_state', type: "JSON DEFAULT '{}'" },
+        { name: 'current_iteration', type: 'INTEGER DEFAULT 0' },
+        { name: 'max_iterations', type: 'INTEGER DEFAULT 50' },
+        { name: 'loop_status', type: 'TEXT DEFAULT NULL' },
+      ];
+
+      agiLoopColumns.forEach((col) => {
+        db.run(`ALTER TABLE goals ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to goals:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to goals table`);
+          }
+        });
       });
 
       // Migration: Add denormalized metadata columns to workflows for fast summary queries (2026-02-26)
