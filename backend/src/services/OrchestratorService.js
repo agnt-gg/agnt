@@ -628,13 +628,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
 
     // Apply context management
-    const contextResult = manageContext(messages, model, finalToolSchemas);
+    const contextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
 
     // Send context status
     sendEvent('context_status', {
       currentTokens: contextResult.managedTokens,
-      tokenLimit: contextResult.tokenLimit,
-      utilizationPercent: (contextResult.managedTokens / contextResult.tokenLimit) * 100,
+      tokenLimit: contextResult.contextWindow,
+      utilizationPercent: (contextResult.managedTokens / contextResult.contextWindow) * 100,
       model: model,
       messagesCount: contextResult.messages.length,
     });
@@ -1222,7 +1222,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       sendEvent('tool_executions', { assistantMessageId, tool_executions: toolExecutionDetails, round: currentRound });
 
       // Apply context management before next LLM call
-      const loopContextResult = manageContext(messages, model, finalToolSchemas);
+      const loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
       if (loopContextResult.wasManaged) {
         console.log(`[Tool Loop] Context managed: ${loopContextResult.originalTokens} -> ${loopContextResult.managedTokens} tokens`);
         sendEvent('context_managed', {
@@ -1296,7 +1296,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           content: '[System: Your previous response contained only tool calls with no text. Please provide a brief summary of what you found/did based on the tool results above.]',
         });
 
-        const followUpContext = manageContext(messages, model, finalToolSchemas);
+        const followUpContext = manageContext(messages, model, finalToolSchemas, normalizedProvider);
         const followUpResponse = await adapter.callStream(
           followUpContext.messages,
           [], // No tools - force a text-only response

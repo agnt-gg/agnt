@@ -98,6 +98,7 @@ export default {
     providers: [...PROVIDER_DISPLAY_LIST],
     customProviders: [],
     allModels: { ...INITIAL_ALL_MODELS },
+    modelMetadata: {},
     selectedProvider: localStorage.getItem('selectedProvider') || null,
     selectedModel: localStorage.getItem('selectedModel') || null,
     reasoningEnabled: localStorage.getItem('reasoningEnabled') === 'true',
@@ -167,6 +168,9 @@ export default {
         }
       }
     },
+    SET_MODEL_METADATA(state, { provider, metadata }) {
+      state.modelMetadata = { ...state.modelMetadata, [provider]: metadata };
+    },
     SET_LOADING_MODELS(state, { provider, loading }) {
       if (!state.loadingModels) {
         state.loadingModels = {};
@@ -194,6 +198,10 @@ export default {
   getters: {
     filteredModels(state) {
       return state.allModels[state.selectedProvider] || [];
+    },
+    selectedModelMetadata(state) {
+      if (!state.selectedProvider || !state.selectedModel) return null;
+      return state.modelMetadata[state.selectedProvider]?.[state.selectedModel] || null;
     },
     filteredProviders(state, _getters, rootState) {
       const codexStatus = rootState?.appAuth?.codexStatus || {};
@@ -325,6 +333,7 @@ export default {
       }
 
       const cacheKey = `${provider}_models`;
+      const metaCacheKey = `${provider}_metadata`;
       const cached = localStorage.getItem(cacheKey);
       if (!forceRefresh && cached) {
         try {
@@ -334,6 +343,25 @@ export default {
 
           if (cacheAge < cacheExpiry) {
             commit('SET_PROVIDER_MODELS', { provider, models });
+            // Restore cached metadata too
+            const cachedMeta = localStorage.getItem(metaCacheKey);
+            if (cachedMeta) {
+              try {
+                commit('SET_MODEL_METADATA', { provider, metadata: JSON.parse(cachedMeta) });
+              } catch (e) { /* ignore */ }
+            } else {
+              // Metadata not cached yet — fetch it in background
+              const providerLower = resolveProviderKey(provider);
+              fetch(`${API_CONFIG.BASE_URL}/models/${providerLower}/metadata`)
+                .then((r) => r.ok ? r.json() : null)
+                .then((data) => {
+                  if (data?.success && data.metadata) {
+                    commit('SET_MODEL_METADATA', { provider, metadata: data.metadata });
+                    localStorage.setItem(metaCacheKey, JSON.stringify(data.metadata));
+                  }
+                })
+                .catch(() => {});
+            }
             return models;
           }
         } catch (e) {
@@ -379,6 +407,20 @@ export default {
             timestamp: Date.now(),
           }),
         );
+
+        // Fetch model metadata (context windows, costs, etc.) alongside models
+        try {
+          const metaRes = await fetch(`${API_CONFIG.BASE_URL}/models/${providerLower}/metadata`);
+          if (metaRes.ok) {
+            const metaData = await metaRes.json();
+            if (metaData.success && metaData.metadata) {
+              commit('SET_MODEL_METADATA', { provider, metadata: metaData.metadata });
+              localStorage.setItem(metaCacheKey, JSON.stringify(metaData.metadata));
+            }
+          }
+        } catch (metaErr) {
+          // Non-critical — context monitor just won't show pre-chat values
+        }
 
         console.log(`Fetched ${models.length} ${provider} models`);
         return models;

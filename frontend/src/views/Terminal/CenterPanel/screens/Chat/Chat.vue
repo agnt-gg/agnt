@@ -300,9 +300,9 @@ export default {
     // Context Monitoring State
     const contextStatus = ref({
       currentTokens: 0,
-      tokenLimit: 16000,
+      tokenLimit: 0,
       utilizationPercent: 0,
-      model: 'N/A',
+      model: store.state.aiProvider?.selectedModel || 'N/A',
       messagesCount: 0,
     });
     const lastContextManaged = ref(null);
@@ -316,6 +316,56 @@ export default {
     const errorsCaught = ref(0);
     const toolTruncations = ref(0);
     const systemActivities = ref([]);
+
+    // Known context windows for common models (static data, no API call needed)
+    const MODEL_CONTEXT_WINDOWS = {
+      // OpenAI
+      'gpt-5.2': 400000, 'gpt-5.1': 400000, 'gpt-5': 400000, 'gpt-5-mini': 400000, 'gpt-5-nano': 400000,
+      'o4-mini': 200000, 'o3': 200000, 'o3-mini': 200000,
+      'gpt-4.1': 1000000, 'gpt-4.1-mini': 1000000, 'gpt-4.1-nano': 1000000,
+      'gpt-4o': 128000, 'gpt-4o-mini': 128000,
+      // Anthropic
+      'claude-opus-4-6': 200000, 'claude-sonnet-4-6': 200000,
+      'claude-opus-4-5-20251101': 200000, 'claude-sonnet-4-5-20250929': 200000, 'claude-haiku-4-5-20251001': 200000,
+      'claude-sonnet-4-20250514': 200000, 'claude-opus-4-20250514': 200000,
+      'claude-3-5-sonnet-20241022': 200000, 'claude-3-5-haiku-20241022': 200000,
+      // Google
+      'gemini-3.1-pro-preview': 1048576, 'gemini-3-flash-preview': 1048576,
+      'gemini-2.5-pro': 1048576, 'gemini-2.5-flash': 1048576, 'gemini-2.5-flash-lite': 1048576,
+      // Grok
+      'grok-4-0709': 256000, 'grok-3': 131072, 'grok-3-mini': 131072,
+      // Groq
+      'llama-3.3-70b-versatile': 131072, 'llama-3.1-8b-instant': 131072,
+      // DeepSeek
+      'deepseek-chat': 128000, 'deepseek-reasoner': 128000,
+      // Cerebras
+      'llama3.1-8b': 131072,
+    };
+
+    const getContextWindowForModel = (model) => {
+      if (!model) return 0;
+      // Exact match first
+      if (MODEL_CONTEXT_WINDOWS[model]) return MODEL_CONTEXT_WINDOWS[model];
+      // Prefix match for versioned model IDs (e.g. claude-sonnet-4-6-20250101)
+      for (const [key, val] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
+        if (model.startsWith(key)) return val;
+      }
+      return 0;
+    };
+
+    const updateContextWindow = () => {
+      const model = store.state.aiProvider?.selectedModel;
+      if (!model) return;
+      const contextWindow = getContextWindowForModel(model);
+      contextStatus.value = {
+        ...contextStatus.value,
+        model,
+        tokenLimit: contextWindow || contextStatus.value.tokenLimit,
+      };
+    };
+
+    // Update immediately and whenever model changes
+    updateContextWindow();
 
     // Quick Actions
     const initialSuggestions = [
@@ -964,6 +1014,16 @@ export default {
       terminalLines.value = ['Chat cleared by user.'];
       clearInput();
       focusInput();
+
+      // Reset context monitor to show model's full context window with 0 tokens used
+      const model = store.state.aiProvider?.selectedModel;
+      contextStatus.value = {
+        currentTokens: 0,
+        tokenLimit: getContextWindowForModel(model),
+        utilizationPercent: 0,
+        model: model || 'N/A',
+        messagesCount: 0,
+      };
       suggestions.value = [...initialSuggestions];
 
       // Remove content-id query param to allow reloading the same conversation
@@ -1202,6 +1262,21 @@ export default {
         }
       }
     });
+
+    // Reset context monitor when user switches provider or model
+    watch(
+      () => [store.state.aiProvider?.selectedProvider, store.state.aiProvider?.selectedModel],
+      () => {
+        const model = store.state.aiProvider?.selectedModel;
+        contextStatus.value = {
+          currentTokens: 0,
+          tokenLimit: getContextWindowForModel(model),
+          utilizationPercent: 0,
+          model: model || 'N/A',
+          messagesCount: 0,
+        };
+      },
+    );
 
     // Watch for provider connection changes and update input state
     watch(

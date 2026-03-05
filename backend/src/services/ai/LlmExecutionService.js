@@ -170,7 +170,7 @@ class LlmExecutionService {
     const finalToolSchemas = Array.from(uniqueToolMap.values());
 
     // Apply context management
-    const contextResult = manageContext(messages, model, finalToolSchemas);
+    const contextResult = manageContext(messages, model, finalToolSchemas, provider);
     messages = contextResult.messages;
 
     // Store client in context for tool execution
@@ -259,7 +259,7 @@ class LlmExecutionService {
       messages.push(...formattedToolResponses);
 
       // Apply context management before next LLM call
-      const loopContextResult = manageContext(messages, model, finalToolSchemas);
+      const loopContextResult = manageContext(messages, model, finalToolSchemas, provider);
       messages = loopContextResult.messages;
 
       // Get next response
@@ -344,7 +344,7 @@ class LlmExecutionService {
     const finalToolSchemas = Array.from(uniqueToolMap.values());
 
     // Apply context management
-    const contextResult = manageContext(messages, model, finalToolSchemas);
+    const contextResult = manageContext(messages, model, finalToolSchemas, provider);
     messages = contextResult.messages;
 
     // Store client in context for tool execution
@@ -433,7 +433,7 @@ class LlmExecutionService {
       messages.push(...formattedToolResponses);
 
       // Apply context management before next LLM call
-      const loopContextResult = manageContext(messages, model, finalToolSchemas);
+      const loopContextResult = manageContext(messages, model, finalToolSchemas, provider);
       messages = loopContextResult.messages;
 
       // Get next response with streaming

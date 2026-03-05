@@ -1,79 +1,79 @@
 <template>
   <div class="dashboard-screen-root">
-  <BaseScreen
-    ref="baseScreenRef"
-    activeRightPanel="DashboardPanel"
-    :panelProps="{
-      missionId: selectedMissionId,
-      showChart: true,
-    }"
-    screenId="DashboardScreen"
-    :showInput="false"
-    :terminalLines="terminalLines"
-    @submit-input="handleUserInputSubmit"
-    @panel-action="handlePanelAction"
-    @screen-change="(screenName) => handleScreenChange(screenName)"
-    @base-mounted="initializeScreen"
-  >
-    <!-- Default slot content: Main content for the Dashboard -->
-    <template #default>
-      <div class="dashboard-content">
-        <div class="dashboard-inner-content">
-          <!-- Loading skeleton while critical data loads -->
-          <template v-if="!dataReady">
-            <div class="dashboard-loading">
-              <div class="skeleton-block" style="height: 120px; width: 100%; border-radius: 8px"></div>
-              <div class="skeleton-block" style="height: 36px; width: 100%; border-radius: 6px"></div>
-              <div class="dashboard-grid">
-                <div class="grid-row top-row">
-                  <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
-                  <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
-                  <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
+    <BaseScreen
+      ref="baseScreenRef"
+      activeRightPanel="DashboardPanel"
+      :panelProps="{
+        missionId: selectedMissionId,
+        showChart: true,
+      }"
+      screenId="DashboardScreen"
+      :showInput="false"
+      :terminalLines="terminalLines"
+      @submit-input="handleUserInputSubmit"
+      @panel-action="handlePanelAction"
+      @screen-change="(screenName) => handleScreenChange(screenName)"
+      @base-mounted="initializeScreen"
+    >
+      <!-- Default slot content: Main content for the Dashboard -->
+      <template #default>
+        <div class="dashboard-content">
+          <div class="dashboard-inner-content">
+            <!-- Loading skeleton while critical data loads -->
+            <template v-if="!dataReady">
+              <div class="dashboard-loading">
+                <div class="skeleton-block" style="height: 120px; width: 100%; border-radius: 8px"></div>
+                <div class="skeleton-block" style="height: 36px; width: 100%; border-radius: 6px"></div>
+                <div class="dashboard-grid">
+                  <div class="grid-row top-row">
+                    <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
+                    <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
+                    <div class="skeleton-block" style="height: 250px; border-radius: 8px"></div>
+                  </div>
+                  <div class="grid-row middle-row">
+                    <div class="skeleton-block" style="height: 200px; border-radius: 8px"></div>
+                    <div class="skeleton-block" style="height: 200px; border-radius: 8px"></div>
+                  </div>
                 </div>
-                <div class="grid-row middle-row">
-                  <div class="skeleton-block" style="height: 200px; border-radius: 8px"></div>
-                  <div class="skeleton-block" style="height: 200px; border-radius: 8px"></div>
+              </div>
+            </template>
+
+            <template v-else>
+              <!-- <TerminalHeader title="AGNT BIRDS-EYE TERMINAL" subtitle="Time: 17:04 CDT | Mode: LIVE | License: ACTIVE | Uptime: 3d 14h 22m" /> -->
+
+              <!-- Cumulative Credits Usage Chart - Full Width -->
+              <CumulativeCreditsChart class="fade-in" />
+
+              <!-- Global Pulse Ribbon -->
+              <GlobalPulseRibbon
+                class="fade-in"
+                :agntScoreData="agntScoreData"
+                :goalsData="goalsData"
+                :agentsData="agentsData"
+                :workflowsData="workflowsData"
+                :toolsData="toolsData"
+                :runsData="runsData"
+                :integrationsData="integrationsData"
+                :statusData="statusData"
+              />
+
+              <!-- Main Dashboard Grid -->
+              <div class="dashboard-grid fade-in" style="animation-delay: 0.05s">
+                <!-- Top Row -->
+                <div class="grid-row top-row fade-in-stagger">
+                  <GoalsMap :goalsData="goalsMapData" @navigate="handleScreenChange" />
+                  <AgentsSwarm :agentsData="agentsSwarmData" @navigate="handleScreenChange" />
+                  <WorkflowPipelines :pipelineData="pipelineData" @navigate="handleScreenChange" />
                 </div>
-              </div>
-            </div>
-          </template>
 
-          <template v-else>
-            <!-- <TerminalHeader title="AGNT BIRDS-EYE TERMINAL" subtitle="Time: 17:04 CDT | Mode: LIVE | License: ACTIVE | Uptime: 3d 14h 22m" /> -->
+                <!-- Middle Row -->
+                <div class="grid-row middle-row fade-in-stagger">
+                  <ToolsInventory :toolsData="toolsInventoryData" />
+                  <RunsQueue :runsData="runsQueueData" />
+                </div>
 
-            <!-- Cumulative Credits Usage Chart - Full Width -->
-            <CumulativeCreditsChart class="fade-in" />
-
-            <!-- Global Pulse Ribbon -->
-            <GlobalPulseRibbon
-              class="fade-in"
-              :agntScoreData="agntScoreData"
-              :goalsData="goalsData"
-              :agentsData="agentsData"
-              :workflowsData="workflowsData"
-              :toolsData="toolsData"
-              :runsData="runsData"
-              :integrationsData="integrationsData"
-              :statusData="statusData"
-            />
-
-            <!-- Main Dashboard Grid -->
-            <div class="dashboard-grid fade-in" style="animation-delay: 0.05s">
-              <!-- Top Row -->
-              <div class="grid-row top-row fade-in-stagger">
-                <GoalsMap :goalsData="goalsMapData" @navigate="handleScreenChange" />
-                <AgentsSwarm :agentsData="agentsSwarmData" @navigate="handleScreenChange" />
-                <WorkflowPipelines :pipelineData="pipelineData" @navigate="handleScreenChange" />
-              </div>
-
-              <!-- Middle Row -->
-              <div class="grid-row middle-row fade-in-stagger">
-                <ToolsInventory :toolsData="toolsInventoryData" />
-                <RunsQueue :runsData="runsQueueData" />
-              </div>
-
-              <!-- Bottom Row -->
-              <!-- <div class="grid-row bottom-row">
+                <!-- Bottom Row -->
+                <!-- <div class="grid-row bottom-row">
               <StatusIncidents :incidentsData="incidentsData" />
               <BaseDashboardCard title="CAPACITY & COST">
                 <div class="capacity-metrics">
@@ -82,25 +82,25 @@
                 </div>
               </BaseDashboardCard>
             </div> -->
-            </div>
+              </div>
 
-            <!-- Mission Details Component -->
-            <MissionDetails
-              v-if="selectedMissionId && selectedMission"
-              :mission="selectedMission"
-              @close="selectedMissionId = null"
-              @log-message="handleLogMessage"
-              ref="missionDetailsRef"
-            />
+              <!-- Mission Details Component -->
+              <MissionDetails
+                v-if="selectedMissionId && selectedMission"
+                :mission="selectedMission"
+                @close="selectedMissionId = null"
+                @log-message="handleLogMessage"
+                ref="missionDetailsRef"
+              />
 
-            <!-- <div ref="scrollAnchorRef" class="scroll-anchor"></div> -->
-          </template>
+              <!-- <div ref="scrollAnchorRef" class="scroll-anchor"></div> -->
+            </template>
+          </div>
         </div>
-      </div>
-    </template>
-  </BaseScreen>
+      </template>
+    </BaseScreen>
 
-  <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="dashboard" @close="onTutorialClose" />
+    <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="dashboard" @close="onTutorialClose" />
   </div>
 </template>
 
@@ -688,7 +688,7 @@ export default {
 .dashboard-inner-content {
   display: flex;
   flex-direction: column;
-  height: calc(100% - 2px);
+  height: calc(100% - 3px);
   box-sizing: border-box;
   gap: 16px;
   min-height: 0;

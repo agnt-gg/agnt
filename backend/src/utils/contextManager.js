@@ -3,10 +3,12 @@
  * Ensures conversations never pause due to token limits
  */
 
+import { getModelMetadata } from '../services/ai/providerConfigs.js';
+
 // Rough token estimation (1 token ≈ 3.5 characters for more accurate estimation)
 const CHARS_PER_TOKEN = 3.5;
 
-// Single default token limit for all models (leaving buffer for response)
+// Fallback token limit when model metadata isn't available
 const DEFAULT_TOKEN_LIMIT = 128000;
 const RESPONSE_BUFFER = 4000;
 
@@ -22,10 +24,16 @@ function estimateTokens(text) {
 }
 
 /**
- * Get effective token limit for a model
+ * Get effective token limit for a model using provider metadata.
+ * Falls back to DEFAULT_TOKEN_LIMIT if metadata is unavailable.
  */
-function getTokenLimit(model) {
-  // Use single default limit for all models
+function getTokenLimit(model, provider) {
+  if (provider && model) {
+    const meta = getModelMetadata(provider, model);
+    if (meta?.contextWindow) {
+      return meta.contextWindow - RESPONSE_BUFFER;
+    }
+  }
   return DEFAULT_TOKEN_LIMIT - RESPONSE_BUFFER;
 }
 
@@ -114,8 +122,8 @@ function summarizeMessages(messages, maxSummaryTokens = 500) {
 /**
  * Manage context size to fit within token limits
  */
-function manageContext(messages, model, tools = []) {
-  const tokenLimit = getTokenLimit(model);
+function manageContext(messages, model, tools = [], provider = null) {
+  const tokenLimit = getTokenLimit(model, provider);
 
   // Estimate tokens for tools
   const toolTokens = estimateTokens(JSON.stringify(tools));
@@ -229,6 +237,7 @@ function manageContext(messages, model, tools = []) {
     originalTokens: estimateMessagesTokens(messages),
     managedTokens: currentTokens,
     tokenLimit: availableTokens,
+    contextWindow: tokenLimit + RESPONSE_BUFFER,
     wasManaged: currentTokens < estimateMessagesTokens(messages),
   };
 }

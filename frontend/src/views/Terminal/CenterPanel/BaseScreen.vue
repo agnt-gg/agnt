@@ -824,6 +824,17 @@ export default {
       scrollToBottom();
     });
 
+    // When onboarding completes, the tutorial was suppressed during mount.
+    // Watch for onboarding to finish and re-trigger the tutorial.
+    const shouldShowOnboarding = computed(() => store.getters['userAuth/shouldShowOnboarding']);
+    watch(shouldShowOnboarding, (showing, wasShowing) => {
+      if (wasShowing && !showing && tutorial.tutorialConfig.value) {
+        setTimeout(() => {
+          tutorial.startTutorial.value = true;
+        }, 1500);
+      }
+    });
+
     // KeepAlive re-activation — re-emit base-mounted so screens can restore data-page
     onActivated(() => {
       emit('base-mounted');
