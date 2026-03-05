@@ -577,6 +577,7 @@ function createTables() {
       // Widget layouts for dynamic canvas system
       db.run(`CREATE TABLE IF NOT EXISTS widget_layouts (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         page_id TEXT NOT NULL,
         page_name TEXT NOT NULL,
         page_icon TEXT DEFAULT 'fas fa-th',
@@ -584,8 +585,11 @@ function createTables() {
         route TEXT,
         layout_data TEXT NOT NULL DEFAULT '[]',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_widget_layouts_user_id ON widget_layouts(user_id)`);
 
       // ==================== SKILLS TABLE ====================
       db.run(`CREATE TABLE IF NOT EXISTS skills (
@@ -703,6 +707,23 @@ function runMigrations() {
             console.log(`✓ Added ${col.name} column to goals table`);
           }
         });
+      });
+
+      // Migration: Add user_id to widget_layouts for per-user page isolation (2026-03-05)
+      db.run(`ALTER TABLE widget_layouts ADD COLUMN user_id TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding user_id column to widget_layouts:', err);
+        } else if (!err) {
+          console.log('✓ Added user_id column to widget_layouts table');
+          // Backfill: assign existing layouts to the first user (owner of the system)
+          db.get('SELECT id FROM users ORDER BY created_at ASC LIMIT 1', (err, row) => {
+            if (!err && row) {
+              db.run('UPDATE widget_layouts SET user_id = ? WHERE user_id IS NULL', [row.id], (err) => {
+                if (!err) console.log('✓ Backfilled widget_layouts with default user_id');
+              });
+            }
+          });
+        }
       });
 
       // Migration: Add denormalized metadata columns to workflows for fast summary queries (2026-02-26)

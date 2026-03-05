@@ -3,14 +3,22 @@ import { v4 as uuidv4 } from 'uuid';
 
 class LayoutService {
   /**
-   * Get all layout pages.
+   * Get the authenticated user's ID from request.
+   */
+  _getUserId(req) {
+    return req.user?.id || req.user?.userId || null;
+  }
+
+  /**
+   * Get all layout pages for the authenticated user.
    */
   async getAllLayouts(req, res) {
     try {
+      const userId = this._getUserId(req);
       const pages = await new Promise((resolve, reject) => {
         db.all(
-          'SELECT * FROM widget_layouts ORDER BY page_order ASC, created_at ASC',
-          [],
+          'SELECT * FROM widget_layouts WHERE user_id = ? ORDER BY page_order ASC, created_at ASC',
+          [userId],
           (err, rows) => (err ? reject(err) : resolve(rows || [])),
         );
       });
@@ -27,6 +35,7 @@ class LayoutService {
    */
   async createLayout(req, res) {
     try {
+      const userId = this._getUserId(req);
       const { page_id, page_name, page_icon, page_order, route, layout_data } = req.body;
 
       if (!page_id || !page_name) {
@@ -36,9 +45,9 @@ class LayoutService {
       const id = uuidv4();
       await new Promise((resolve, reject) => {
         db.run(
-          `INSERT INTO widget_layouts (id, page_id, page_name, page_icon, page_order, route, layout_data)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [id, page_id, page_name, page_icon || 'fas fa-th', page_order || 0, route || null, layout_data || '[]'],
+          `INSERT INTO widget_layouts (id, user_id, page_id, page_name, page_icon, page_order, route, layout_data)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, userId, page_id, page_name, page_icon || 'fas fa-th', page_order || 0, route || null, layout_data || '[]'],
           (err) => (err ? reject(err) : resolve()),
         );
       });
@@ -55,16 +64,17 @@ class LayoutService {
   }
 
   /**
-   * Update a page layout.
+   * Update a page layout (scoped to authenticated user).
    */
   async updateLayout(req, res) {
     try {
+      const userId = this._getUserId(req);
       const { pageId } = req.params;
       const { page_name, page_icon, page_order, route, layout_data } = req.body;
 
-      // Check if page exists
+      // Check if page exists for this user
       const existing = await new Promise((resolve, reject) => {
-        db.get('SELECT id FROM widget_layouts WHERE page_id = ?', [pageId], (err, row) =>
+        db.get('SELECT id FROM widget_layouts WHERE page_id = ? AND user_id = ?', [pageId, userId], (err, row) =>
           err ? reject(err) : resolve(row),
         );
       });
@@ -80,8 +90,8 @@ class LayoutService {
                  route = COALESCE(?, route),
                  layout_data = COALESCE(?, layout_data),
                  updated_at = CURRENT_TIMESTAMP
-             WHERE page_id = ?`,
-            [page_name, page_icon, page_order, route, layout_data, pageId],
+             WHERE page_id = ? AND user_id = ?`,
+            [page_name, page_icon, page_order, route, layout_data, pageId, userId],
             (err) => (err ? reject(err) : resolve()),
           );
         });
@@ -90,9 +100,9 @@ class LayoutService {
         const id = uuidv4();
         await new Promise((resolve, reject) => {
           db.run(
-            `INSERT INTO widget_layouts (id, page_id, page_name, page_icon, page_order, route, layout_data)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [id, pageId, page_name || 'Page', page_icon || 'fas fa-th', page_order || 0, route || null, layout_data || '[]'],
+            `INSERT INTO widget_layouts (id, user_id, page_id, page_name, page_icon, page_order, route, layout_data)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [id, userId, pageId, page_name || 'Page', page_icon || 'fas fa-th', page_order || 0, route || null, layout_data || '[]'],
             (err) => (err ? reject(err) : resolve()),
           );
         });
@@ -106,14 +116,15 @@ class LayoutService {
   }
 
   /**
-   * Delete a page layout.
+   * Delete a page layout (scoped to authenticated user).
    */
   async deleteLayout(req, res) {
     try {
+      const userId = this._getUserId(req);
       const { pageId } = req.params;
 
       await new Promise((resolve, reject) => {
-        db.run('DELETE FROM widget_layouts WHERE page_id = ?', [pageId], (err) =>
+        db.run('DELETE FROM widget_layouts WHERE page_id = ? AND user_id = ?', [pageId, userId], (err) =>
           err ? reject(err) : resolve(),
         );
       });
@@ -126,17 +137,18 @@ class LayoutService {
   }
 
   /**
-   * Reset a page to default layout.
+   * Reset a page to default layout (scoped to authenticated user).
    */
   async resetLayout(req, res) {
     try {
+      const userId = this._getUserId(req);
       const { pageId } = req.params;
       const { layout_data } = req.body;
 
       await new Promise((resolve, reject) => {
         db.run(
-          `UPDATE widget_layouts SET layout_data = ?, updated_at = CURRENT_TIMESTAMP WHERE page_id = ?`,
-          [layout_data || '[]', pageId],
+          `UPDATE widget_layouts SET layout_data = ?, updated_at = CURRENT_TIMESTAMP WHERE page_id = ? AND user_id = ?`,
+          [layout_data || '[]', pageId, userId],
           (err) => (err ? reject(err) : resolve()),
         );
       });
