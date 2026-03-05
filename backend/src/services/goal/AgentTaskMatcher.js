@@ -138,9 +138,9 @@ class AgentTaskMatcher {
    * @returns {Promise<Object>} Built-in agent object
    */
   static async getBuiltInTaskExecutor(userId = null) {
-    // Default provider/model (fallback if user settings not available)
-    let provider = 'OpenAI';
-    let model = 'gpt-4o-mini';
+    // Use user's configured provider/model — no hardcoded defaults
+    let provider = null;
+    let model = null;
 
     // Try to get user's default provider/model settings
     if (userId) {
@@ -158,10 +158,12 @@ class AgentTaskMatcher {
         console.log(`[AgentTaskMatcher] Built-in agent using user's settings: ${provider}/${model}`);
         console.log(`[AgentTaskMatcher] User settings retrieved:`, JSON.stringify(userSettings, null, 2));
       } catch (error) {
-        console.warn(`[AgentTaskMatcher] Could not load user settings, using defaults: ${error.message}`);
+        console.warn(`[AgentTaskMatcher] Could not load user settings: ${error.message}`);
       }
-    } else {
-      console.log(`[AgentTaskMatcher] No userId provided, using default: ${provider}/${model}`);
+    }
+
+    if (!provider || !model) {
+      throw new Error('No provider/model configured. Please set your default provider and model in settings.');
     }
 
     return {

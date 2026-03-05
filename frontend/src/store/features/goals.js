@@ -247,8 +247,8 @@ const actions = {
       }
 
       // Get user's configured provider and model from aiProvider store
-      const provider = rootState.aiProvider?.selectedProvider?.toLowerCase() || 'openai';
-      const model = rootState.aiProvider?.selectedModel || 'gpt-4o-mini';
+      const provider = rootState.aiProvider?.selectedProvider || null;
+      const model = rootState.aiProvider?.selectedModel || null;
 
       const response = await fetch(`${API_CONFIG.BASE_URL}/goals/create`, {
         method: 'POST',
@@ -307,8 +307,8 @@ const actions = {
       }
 
       // Get user's configured provider and model from aiProvider store
-      const provider = rootState.aiProvider?.selectedProvider?.toLowerCase() || 'openai';
-      const model = rootState.aiProvider?.selectedModel || 'gpt-4o-mini';
+      const provider = rootState.aiProvider?.selectedProvider || null;
+      const model = rootState.aiProvider?.selectedModel || null;
 
       const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/execute`, {
         method: 'POST',
@@ -922,8 +922,8 @@ const actions = {
       }
 
       // Get user's configured provider and model
-      const provider = rootState.aiProvider?.selectedProvider?.toLowerCase() || 'openai';
-      const model = rootState.aiProvider?.selectedModel || 'gpt-4o-mini';
+      const provider = rootState.aiProvider?.selectedProvider || null;
+      const model = rootState.aiProvider?.selectedModel || null;
 
       const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/evaluate`, {
         method: 'POST',

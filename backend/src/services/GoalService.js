@@ -15,7 +15,7 @@ class GoalService {
   }
   async createGoal(req, res) {
     try {
-      const { text, title, description, priority = 'medium', success_criteria } = req.body;
+      const { text, title, description, priority = 'medium', success_criteria, provider, model } = req.body;
       const userId = req.user.userId;
 
       // Handle both old format (text) and new format (title + description)
@@ -30,7 +30,7 @@ class GoalService {
       console.log('Processing goal:', goalText);
 
       // Use GoalProcessor to analyze and create plan
-      const goalPlan = await GoalProcessor.processGoal(goalText, userId);
+      const goalPlan = await GoalProcessor.processGoal(goalText, userId, provider, model);
 
       res.status(201).json({
         message: 'Goal created and analyzed',

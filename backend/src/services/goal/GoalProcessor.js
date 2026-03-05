@@ -16,13 +16,13 @@ class GoalProcessor {
    * @param {string|number} userId - The ID of the user who owns the goal.
    * @returns {Promise<Object>} An object containing the goal ID, title, description, estimated duration, tasks array, and success criteria.
    */
-  static async processGoal(goalText, userId) {
+  static async processGoal(goalText, userId, provider = null, model = null) {
     try {
       console.log(`[GoalProcessor] Processing goal for user ${userId}: ${goalText.substring(0, 100)}...`);
 
       // Step 1: Analyze the goal using AI
       console.log(`[GoalProcessor] Step 1: Starting AI analysis of goal`);
-      const analysis = await this._analyzeGoal(goalText, userId);
+      const analysis = await this._analyzeGoal(goalText, userId, provider, model);
       console.log(`[GoalProcessor] Step 1 Complete: Goal analysis completed`);
       console.log(`[GoalProcessor] Analysis result: ${analysis.title} (${analysis.priority} priority)`);
       console.log(`[GoalProcessor] Task breakdown: ${analysis.taskBreakdown.length} tasks generated`);
@@ -144,7 +144,7 @@ class GoalProcessor {
    * @returns {Promise<Object>} An analysis object containing title, priority, estimatedDuration, successCriteria, and taskBreakdown array.
    * @private
    */
-  static async _analyzeGoal(goalText, userId) {
+  static async _analyzeGoal(goalText, userId, provider = null, model = null) {
     const streamEngine = new StreamEngine(userId);
 
     // Load the actual tool library
@@ -194,8 +194,20 @@ Rules:
       console.log('Sending goal analysis request to AI...');
       console.log(`[GoalProcessor] Available tool types: ${availableToolTypes.join(', ')}`);
 
-      // Use OpenAI with a reliable model for JSON generation
-      const analysisResult = await streamEngine.generateCompletion(prompt, 'openai', 'gpt-4o-mini');
+      // Use user's configured provider/model, fall back to user settings
+      let analysisProvider = provider;
+      let analysisModel = model;
+      if (!analysisProvider || !analysisModel) {
+        const UserModel = (await import('../../models/UserModel.js')).default;
+        const userSettings = await UserModel.getUserSettings(userId);
+        if (!analysisProvider) analysisProvider = userSettings?.selectedProvider;
+        if (!analysisModel) analysisModel = userSettings?.selectedModel;
+      }
+      if (!analysisProvider || !analysisModel) {
+        throw new Error('No provider/model configured. Please set your default provider and model in settings.');
+      }
+      console.log(`[GoalProcessor] Using provider: ${analysisProvider}, model: ${analysisModel}`);
+      const analysisResult = await streamEngine.generateCompletion(prompt, analysisProvider, analysisModel);
       console.log('Raw AI response:', analysisResult);
 
       // Clean up the response (remove any markdown formatting)
