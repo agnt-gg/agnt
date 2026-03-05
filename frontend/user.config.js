@@ -9,23 +9,21 @@ export const IMAP_EMAIL_DOMAIN = {
   BASE_DOMAIN: 'agnt.gg', // CHANGE THIS TO YOUR EMAIL DOMAIN!
 };
 
+// *** DEPLOYMENT CONFIG ***
+// Set DISABLE_LOCAL_LLM=true in hosted environments to prevent CORS errors
+// from polling localhost:1234 for LM Studio
+export const DEPLOYMENT_CONFIG = {
+  DISABLE_LOCAL_LLM: typeof window !== 'undefined' && localStorage.getItem('AGNT_DISABLE_LOCAL_LLM') === 'true',
+};
+
 // ADD LLM PROVIDERS / MODELS TO FRONT END
 // NOTE: Models are now fetched dynamically from the backend API endpoints
 // This config only defines the available providers
+const baseProviders = ['Anthropic', 'Cerebras', 'DeepSeek', 'Gemini', 'GrokAI', 'Groq', 'OpenAI', 'OpenAI-Codex-CLI', 'OpenRouter', 'TogetherAI'];
+const providers = DEPLOYMENT_CONFIG.DISABLE_LOCAL_LLM ? baseProviders : [...baseProviders, 'Local'];
+
 export const AI_PROVIDERS_CONFIG = {
-  providers: [
-    'Anthropic',
-    'Cerebras',
-    'DeepSeek',
-    'Gemini',
-    'GrokAI',
-    'Groq',
-    'Local',
-    'OpenAI',
-    'OpenAI-Codex-CLI',
-    'OpenRouter',
-    'TogetherAI',
-  ],
+  providers,
   // Models are fetched dynamically from API - no hardcoded models!
   modelsByProvider: {
     Anthropic: [], // Fetched from /api/models/anthropic/models

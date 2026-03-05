@@ -15,8 +15,8 @@ Choose your installation method and get AGNT running in under 5 minutes.
 
 | Guide | Size | Browser | Best For |
 |-------|------|---------|----------|
-| **[Electron Full](QUICKSTART_ELECTRON_FULL.md)** | ~150-200MB | ✅ Yes | Single device + browser automation |
-| **[Electron Lite](QUICKSTART_ELECTRON_LITE.md)** | ~80-120MB | ❌ No | Single device, lightweight |
+| **[Electron Full](QUICKSTART_ELECTRON_FULL.md)** | ~348MB AppImage / ~253MB DEB | ✅ Yes | Single device + browser automation |
+| **[Electron Lite](QUICKSTART_ELECTRON_LITE.md)** | ~344MB AppImage / ~251MB DEB | ❌ No | Single device, no browser automation |
 
 ### 🔀 Hybrid Mode (Best of Both Worlds)
 

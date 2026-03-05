@@ -2070,11 +2070,12 @@ export const TOOLS = {
       }
 
       // Extract user ID from auth token
+      // Supports multiple JWT field names: id, userId, user_id, sub (standard JWT)
       let userId = null;
       try {
         const token = authToken.replace('Bearer ', '');
         const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-        userId = payload.id || payload.userId || payload.sub;
+        userId = payload.id || payload.userId || payload.user_id || payload.sub || null;
       } catch (e) {
         console.error('Could not decode auth token for agnt_chat:', e);
         return JSON.stringify({ success: false, error: 'Invalid authentication token.' });
@@ -2509,11 +2510,12 @@ export const TOOLS = {
         }
 
         // Get userId from context
+        // Supports multiple JWT field names: id, userId, user_id, sub
         let userId = context?.userId;
         if (!userId && authToken) {
           try {
             const decodedToken = jwt.decode(authToken.replace('Bearer ', ''));
-            userId = decodedToken?.userId || decodedToken?.id || decodedToken?.sub;
+            userId = decodedToken?.id || decodedToken?.userId || decodedToken?.user_id || decodedToken?.sub || null;
           } catch (e) {
             console.warn('Could not decode auth token to get userId:', e.message);
           }
@@ -2720,11 +2722,12 @@ export const TOOLS = {
         }
 
         // Get userId from context
+        // Supports multiple JWT field names: id, userId, user_id, sub
         let userId = context?.userId;
         if (!userId && authToken) {
           try {
             const decodedToken = jwt.decode(authToken.replace('Bearer ', ''));
-            userId = decodedToken?.userId || decodedToken?.id || decodedToken?.sub;
+            userId = decodedToken?.id || decodedToken?.userId || decodedToken?.user_id || decodedToken?.sub || null;
           } catch (e) {
             console.warn('Could not decode auth token to get userId:', e.message);
           }
@@ -3027,12 +3030,13 @@ export async function executeTool(toolName, args, authToken, context) {
       const params = { ...args };
 
       // Get userId from context first (passed from agnt-agent.js), fallback to decoding authToken
+      // Supports multiple JWT field names: id, userId, user_id, sub
       let userId = context?.userId || null;
 
       if (!userId && authToken) {
         try {
           const decodedToken = jwt.decode(authToken.replace('Bearer ', ''));
-          userId = decodedToken?.userId || decodedToken?.id || decodedToken?.sub;
+          userId = decodedToken?.id || decodedToken?.userId || decodedToken?.user_id || decodedToken?.sub || null;
         } catch (e) {
           console.warn('Could not decode auth token to get userId.', e.message);
         }

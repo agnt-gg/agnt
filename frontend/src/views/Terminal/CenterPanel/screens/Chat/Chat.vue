@@ -95,7 +95,7 @@ import SystemHealthPanel from './components/SystemHealthPanel.vue';
 import ActivityFeed from './components/ActivityFeed.vue';
 import { useTutorial } from './useTutorial.js';
 import { useAppVersion } from '@/composables/useAppVersion.js';
-import { API_CONFIG } from '@/tt.config.js';
+import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 
@@ -192,7 +192,14 @@ export default {
     // Check if local server is running
     // Note: Browser console may show ERR_CONNECTION_REFUSED when server is not running.
     // This is expected behavior and the errors are handled silently.
+    // Disabled in hosted environments to prevent CORS errors.
     const checkLocalServer = async () => {
+      // Skip in hosted mode to prevent CORS errors
+      if (DEPLOYMENT_CONFIG.DISABLE_LOCAL_LLM) {
+        isLocalServerRunning.value = false;
+        return;
+      }
+
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 1000);

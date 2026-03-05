@@ -32,8 +32,8 @@ AGNT offers **4 installation types** plus a **hybrid mode** to match your deploy
 |------|------|---------|----------|----------|
 | **🐳 Docker Full** | ~1.5GB | ✅ Yes | Server | Self-hosted, multi-device, browser automation |
 | **🐳 Docker Lite** | ~715MB | ❌ No | Server | Self-hosted, multi-device, lightweight |
-| **💻 Electron Full** | ~150-200MB | ✅ Yes | Desktop | Single device, native app, all features |
-| **💻 Electron Lite** | ~80-120MB | ❌ No | Desktop | Single device, native app, smaller |
+| **💻 Electron Full** | ~348MB (AppImage) | ✅ Yes | Desktop | Single device, native app, all features |
+| **💻 Electron Lite** | ~344MB (AppImage) | ❌ No | Desktop | Single device, native app |
 | **🔀 Hybrid Mode** | Docker + Electron | ✅/❌ | Both | Native apps + web app + shared backend |
 
 ### 🐳 Docker Installations (Server/Self-Hosted)
@@ -57,7 +57,7 @@ AGNT offers **4 installation types** plus a **hybrid mode** to match your deploy
 
 ### 💻 Electron Installations (Desktop Apps)
 
-**Electron Full (~150-200MB)**
+**Electron Full (~348MB AppImage / ~253MB DEB)**
 - ✅ Native desktop application (Windows/macOS/GNU/Linux)
 - ✅ Browser automation included
 - ✅ Portable installer, easy updates
@@ -65,12 +65,11 @@ AGNT offers **4 installation types** plus a **hybrid mode** to match your deploy
 - ✅ Single-device, single-user
 - 🎯 **Use when:** Single device use, want native app experience
 
-**Electron Lite (~80-120MB, ~50% smaller)**
+**Electron Lite (~344MB AppImage / ~251MB DEB)**
 - ✅ All core AGNT features
-- ✅ Smaller download and faster install
 - ✅ Single-device, single-user
 - ❌ No browser automation
-- 🎯 **Use when:** Single device use, limited bandwidth/storage
+- 🎯 **Use when:** Single device use, don't need browser automation
 
 ### 🔀 Hybrid Mode (Electron + Web + Docker Backend)
 
@@ -337,11 +336,11 @@ docker run -d \
 - `ghcr.io/agnt-gg/agnt:latest` - Latest Full variant (main branch)
 - `ghcr.io/agnt-gg/agnt:full` - Latest Full variant (main branch)
 - `ghcr.io/agnt-gg/agnt:lite` - Latest Lite variant (main branch)
-- `ghcr.io/agnt-gg/agnt:v0.3.7` - Specific version (Full)
-- `ghcr.io/agnt-gg/agnt:v0.3.7-full` - Specific version (Full)
-- `ghcr.io/agnt-gg/agnt:v0.3.7-lite` - Specific version (Lite)
-- `ghcr.io/agnt-gg/agnt:0.3.7` - Specific version without 'v' prefix (Full)
-- `ghcr.io/agnt-gg/agnt:0.3.7-lite` - Specific version without 'v' prefix (Lite)
+- `ghcr.io/agnt-gg/agnt:v0.4.9` - Specific version (Full)
+- `ghcr.io/agnt-gg/agnt:v0.4.9-full` - Specific version (Full)
+- `ghcr.io/agnt-gg/agnt:v0.4.9-lite` - Specific version (Lite)
+- `ghcr.io/agnt-gg/agnt:0.4.9` - Specific version without 'v' prefix (Full)
+- `ghcr.io/agnt-gg/agnt:0.4.9-lite` - Specific version without 'v' prefix (Lite)
 
 ### Option 2: Build from Source (Advanced)
 
@@ -942,7 +941,7 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 | **Data Sharing** | Yes (2-10 users) | No (single user) | Yes (2-10 users) |
 | **Devices** | Multi-device | Single device | Multi-device + mixed access |
 | **Platform** | Server (GNU/Linux/Mac/Win) | Desktop (Win/Mac/GNU/Linux) | Server + Any client |
-| **Size** | 1.5GB (full), 715MB (lite) | 150-200MB (full), 80-120MB (lite) | Docker + optional Electron |
+| **Size** | 1.5GB (full), 715MB (lite) | ~348MB (full), ~344MB (lite) | Docker + optional Electron |
 | **Updates** | Pull new image | Auto-update or reinstall | Update backend + clients |
 | **Network** | Requires open port | Runs locally | Requires network to backend |
 | **Best For** | Multi-device, sharing, always-on | Single device, native app | Flexibility: mix browsers + native apps |
@@ -952,7 +951,7 @@ DOCKER_BUILDKIT=1 docker build --cache-from agnt:latest -t agnt:latest .
 | Feature | Full | Lite |
 |---------|------|------|
 | **Image Size (Docker)** | ~1.5GB | ~715MB |
-| **Image Size (Electron)** | ~150-200MB | ~80-120MB |
+| **Image Size (Electron)** | ~348MB (AppImage) | ~344MB (AppImage) |
 | **Browser Automation** | ✅ Puppeteer/Playwright | ❌ Disabled |
 | **Web Scraping** | ✅ Full support | ❌ Disabled |
 | **Screenshot Capture** | ✅ Browser-based | ❌ Disabled |
@@ -980,8 +979,8 @@ Want to share data with others (family/team)?
 │
 └─ No (just me, single device) → Choose Electron
     └─ Need browser automation?
-        ├─ Yes → Electron Full (~150-200MB)
-        └─ No  → Electron Lite (~80-120MB)
+        ├─ Yes → Electron Full (~348MB)
+        └─ No  → Electron Lite (~344MB)
 ```
 
 **Key Questions:**
@@ -994,8 +993,8 @@ Want to share data with others (family/team)?
 
 ## 🤔 Why Are Electron Installers So Much Smaller?
 
-**Electron Full: ~150-200MB vs Docker Full: ~1.5GB**
-**Electron Lite: ~80-120MB vs Docker Lite: ~715MB**
+**Electron Full: ~348MB vs Docker Full: ~1.5GB**
+**Electron Lite: ~344MB vs Docker Lite: ~715MB**
 
 ### No Downloads on First Run
 
@@ -1022,28 +1021,29 @@ Electron installers benefit from:
 
 ### Electron Full vs Lite Difference
 
-**Electron Full (~150-200MB):**
-- Includes `puppeteer-extra` (~15MB)
-- Includes Playwright packages (~25MB)
+**Electron Full (~348MB AppImage / ~253MB DEB):**
+- Includes puppeteer, puppeteer-extra, playwright packages
 - Browser automation capabilities
 
-**Electron Lite (~80-120MB, ~50% smaller):**
-- No puppeteer/playwright packages (~40MB saved)
+**Electron Lite (~344MB AppImage / ~251MB DEB):**
+- No puppeteer/playwright packages (~16MB uncompressed removed)
 - Still has Electron's built-in Chromium for the UI
 - Just can't use it for automation/scraping
 
-### Size Breakdown Example (Electron Full on Windows)
+> **Note:** The size difference between Full and Lite is modest (~2-4MB compressed) because Chromium browser binaries are already excluded from both builds. Lite only removes the browser automation source code and libraries.
+
+### Size Breakdown Example (Electron Full on GNU/Linux)
 
 ```
-Electron runtime + Chromium:  ~85MB (ASAR compressed)
-Node modules (production):    ~50MB (ASAR compressed)
+Electron runtime + Chromium:  ~250MB (AppImage)
+Node modules (production):    ~80MB
 Backend code:                 ~8MB
-Frontend (built):             ~12MB
-Puppeteer-extra packages:     ~15MB
+Frontend (built):             ~6MB
+Browser automation libs:      ~16MB (removed in Lite)
 Application code:             ~5MB
-Installer compression:        ~25MB saved
 ────────────────────────────────────
-Final .exe installer:         ~150MB
+Final AppImage:               ~348MB (Full) / ~344MB (Lite)
+Final DEB:                    ~253MB (Full) / ~251MB (Lite)
 ```
 
 ### Docker Can't Do This Because

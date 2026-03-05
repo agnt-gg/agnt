@@ -99,9 +99,7 @@ npm run build:win
 
 Creates:
 
-- `dist/AGNT-0.3.1-win-x64.exe` (NSIS installer)
-- `dist/AGNT-0.3.1-win-ia32.exe` (32-bit installer)
-- `dist/AGNT-0.3.1-win-x64-portable.exe` (Portable version)
+- `dist/AGNT-0.4.9-win-x64.exe` (NSIS installer)
 
 #### macOS
 
@@ -111,10 +109,10 @@ npm run build:mac
 
 Creates:
 
-- `dist/AGNT-0.3.1-mac-x64.dmg` (Intel Macs)
-- `dist/AGNT-0.3.1-mac-arm64.dmg` (Apple Silicon)
-- `dist/AGNT-0.3.1-mac-x64.zip` (Intel Macs - zip)
-- `dist/AGNT-0.3.1-mac-arm64.zip` (Apple Silicon - zip)
+- `dist/AGNT-0.4.9-mac-x64.dmg` (Intel Macs)
+- `dist/AGNT-0.4.9-mac-arm64.dmg` (Apple Silicon)
+- `dist/AGNT-0.4.9-mac-x64.zip` (Intel Macs - zip)
+- `dist/AGNT-0.4.9-mac-arm64.zip` (Apple Silicon - zip)
 
 **Note:** Building for macOS requires a Mac. For code signing, set these environment variables:
 
@@ -133,9 +131,9 @@ npm run build:linux
 
 Creates:
 
-- `dist/AGNT-0.3.1-linux-x64.AppImage` (Universal GNU/Linux)
-- `dist/AGNT-0.3.1-linux-x64.deb` (Debian/Ubuntu)
-- `dist/AGNT-0.3.1-linux-x64.rpm` (Fedora/RHEL)
+- `dist/AGNT-0.4.9-linux-x86_64.AppImage` (Universal GNU/Linux)
+- `dist/AGNT-0.4.9-linux-amd64.deb` (Debian/Ubuntu)
+- `dist/AGNT-0.4.9-linux-x86_64.rpm` (Fedora/RHEL)
 
 ### Build for All Platforms
 
@@ -151,10 +149,10 @@ npm run build:all
 
 ### Build Lite Mode (Smaller Installers)
 
-AGNT supports building **Lite variants** that exclude browser automation packages for ~50% smaller installers.
+AGNT supports building **Lite variants** that exclude browser automation packages.
 
 **What's removed in Lite:**
-- ❌ Puppeteer/Playwright (~80-100MB)
+- ❌ Puppeteer/Playwright libraries (~16MB uncompressed)
 - ❌ Browser automation features
 - ❌ Web scraping tools
 
@@ -184,17 +182,17 @@ npm run build:both:mac      # macOS both
 npm run build:both:linux    # GNU/Linux both
 ```
 
-**Build outputs:**
+**Build outputs (measured on v0.4.9, GNU/Linux):**
 
 **Full:**
-- `dist/AGNT-0.3.7-win-x64.exe` (~150MB)
-- `dist/AGNT-0.3.7-mac-x64.dmg` (~200MB)
-- `dist/AGNT-0.3.7-linux-x64.AppImage` (~180MB)
+- `dist/AGNT-0.4.9-linux-x86_64.AppImage` (348MB)
+- `dist/AGNT-0.4.9-linux-amd64.deb` (253MB)
 
 **Lite:**
-- `dist/AGNT-Lite-0.3.7-win-x64.exe` (~80MB)
-- `dist/AGNT-Lite-0.3.7-mac-x64.dmg` (~120MB)
-- `dist/AGNT-Lite-0.3.7-linux-x64.AppImage` (~100MB)
+- `dist/AGNT-Lite-0.4.9-linux-x86_64.AppImage` (344MB)
+- `dist/AGNT-Lite-0.4.9-linux-amd64.deb` (251MB)
+
+> **Note:** Size difference is modest (~2-4MB) because Chromium binaries are already excluded from both variants. Lite removes browser automation source code only.
 
 **Using Makefile (recommended):**
 

@@ -62,6 +62,7 @@ import CustomProviderDialog from './CustomProviderDialog.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
 
 export default {
   components: {
@@ -86,6 +87,11 @@ export default {
 
     // Check if local server is running using the actual LM Studio API endpoint
     const checkLocalServer = async () => {
+      // Skip polling in hosted mode to avoid CORS errors
+      if (DEPLOYMENT_CONFIG.DISABLE_LOCAL_LLM) {
+        isLocalServerRunning.value = false;
+        return;
+      }
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000);

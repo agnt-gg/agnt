@@ -137,6 +137,8 @@ export default {
       }
     },
     ADD_TOOL_CALL(state, { messageId, toolCall }) {
+      console.log('[ADD_TOOL_CALL] Called with messageId:', messageId, 'toolCall:', toolCall);
+      console.log('[ADD_TOOL_CALL] Current messages:', state.messages.map(m => ({ id: m.id, role: m.role })));
       const message = state.messages.find((m) => m.id === messageId);
       if (message) {
         if (!message.toolCalls) {
@@ -145,7 +147,10 @@ export default {
         // Avoid adding duplicates
         if (!message.toolCalls.some((tc) => tc.id === toolCall.id)) {
           message.toolCalls.push(toolCall);
+          console.log('[ADD_TOOL_CALL] Added tool call, message.toolCalls now:', message.toolCalls);
         }
+      } else {
+        console.warn('[ADD_TOOL_CALL] Message not found for id:', messageId);
       }
     },
     UPDATE_TOOL_CALL_RESULT(state, { messageId, toolCallId, result, error, status }) {

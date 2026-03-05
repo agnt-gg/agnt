@@ -7,15 +7,33 @@ dotenv.config();
 
 class Middleware {
   constructor() {
+    // Determine cookie security based on environment
+    // TRUST_PROXY=true means we're behind a reverse proxy that handles HTTPS
+    const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.TRUST_REMOTE_AUTH === 'true';
+    const isProduction = process.env.NODE_ENV === "production";
+
     this.sessionMiddleware = session({
       secret: process.env.SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
-      cookie: { 
-        secure: process.env.NODE_ENV === "production", // set to true if using https
+      proxy: trustProxy, // Trust the reverse proxy
+      cookie: {
+        // Only require secure cookies in production when NOT behind a trusted proxy
+        // Behind a proxy, the proxy handles HTTPS and talks to us over HTTP
+        secure: isProduction && !trustProxy,
+        sameSite: trustProxy ? 'none' : 'lax', // Allow cross-site cookies behind proxy
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
       }
     });
+  }
+
+  /**
+   * Extract user ID from JWT token payload
+   * Supports multiple field names: id, userId, user_id, sub (standard JWT)
+   */
+  extractUserId(payload) {
+    if (!payload) return null;
+    return payload.id || payload.userId || payload.user_id || payload.sub || null;
   }
   getSessionMiddleware() {
     return this.sessionMiddleware;
@@ -26,7 +44,11 @@ class Middleware {
    * Creates or updates user record when using TRUST_REMOTE_AUTH mode
    */
   async syncRemoteUserToLocal(decoded) {
-    if (!decoded || !decoded.id) return;
+    const userId = this.extractUserId(decoded);
+    if (!decoded || !userId) return;
+
+    // Normalize decoded object to always have 'id' field
+    decoded.id = userId;
 
     return new Promise((resolve, reject) => {
       // Check if user exists
@@ -83,22 +105,23 @@ class Middleware {
     }
 
     // If TRUST_REMOTE_AUTH is enabled, decode token without verification
-    // This is used in "semi-local" mode where tokens are issued by remote auth server
+    // This is used in hosted/proxy mode where tokens are issued by remote auth server
     if (process.env.TRUST_REMOTE_AUTH === 'true') {
       try {
         // Decode without verification (just parse the JWT)
         const decoded = jwt.decode(token);
+        const userId = this.extractUserId(decoded);
 
-        if (decoded && decoded.id) {
+        if (decoded && userId) {
           // Sync user to local database (create or update)
           await this.syncRemoteUserToLocal(decoded);
 
           req.user = {
             isAuthenticated: true,
-            id: decoded.id,
-            userId: decoded.id,
+            id: userId,
+            userId: userId,
             email: decoded.email,
-            auth_type: decoded.auth_type
+            auth_type: decoded.auth_type || 'remote'
           };
 
           // Store token and user data in session for backend operations
@@ -118,12 +141,13 @@ class Middleware {
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const userId = this.extractUserId(decoded);
       req.user = {
         isAuthenticated: true,
-        id: decoded.id,
-        userId: decoded.id,
+        id: userId,
+        userId: userId,
         email: decoded.email,
-        auth_type: decoded.auth_type
+        auth_type: decoded.auth_type || 'local'
       };
 
       // Store token and user data in session for backend operations

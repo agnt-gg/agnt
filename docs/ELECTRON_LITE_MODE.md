@@ -2,25 +2,27 @@
 
 AGNT supports building two Electron variants:
 
-1. **AGNT Full** (~150-200MB) - Includes all features including browser automation
-2. **AGNT Lite** (~80-120MB) - Excludes browser automation packages for smaller size
+1. **AGNT Full** (~348MB AppImage / ~253MB DEB) - Includes all features including browser automation
+2. **AGNT Lite** (~344MB AppImage / ~251MB DEB) - Excludes browser automation packages for smaller size
 
 ## Why Lite Mode?
 
 **Desktop apps have TWO Chromiums:**
 - **Electron's Chromium** - The app UI itself (can't be removed)
-- **Puppeteer/Playwright Chromium** - For browser automation tools (can be removed)
+- **Puppeteer/Playwright Chromium** - For browser automation tools (already excluded from builds)
 
-**Lite Mode removes the second Chromium**, saving 80-100MB without affecting the core app.
+**Lite Mode removes the browser automation libraries** (puppeteer, playwright, and their dependencies), saving ~16MB uncompressed. The Chromium binaries used by these tools are already excluded from all builds by the `files` filter in `package.json`.
 
 ## Size Comparison
 
+Measured on v0.4.9 (GNU/Linux, March 2025):
+
 | Platform | Full | Lite | Savings |
 |----------|------|------|---------|
-| **Windows (NSIS)** | ~150MB | ~80MB | ~70MB (47%) |
-| **macOS (DMG)** | ~200MB | ~120MB | ~80MB (40%) |
-| **macOS (Installed)** | ~500MB | ~300MB | ~200MB (40%) |
-| **GNU/Linux (AppImage)** | ~180MB | ~100MB | ~80MB (44%) |
+| **GNU/Linux (AppImage)** | 348MB | 344MB | ~4MB (1.2%) |
+| **GNU/Linux (DEB)** | 253MB | 251MB | ~2MB (0.9%) |
+
+> **Note:** Chromium browser binaries are already excluded from both variants by the build config. Lite mode removes the browser automation **source code and libraries** (~16MB uncompressed), which compresses down to ~2-4MB in the final installers. The savings are modest because the large browser binaries were never bundled.
 
 ## What's Disabled in Lite Mode
 
@@ -68,14 +70,16 @@ npm run build:both:linux
 ### Build Outputs
 
 **Full Version:**
-- `dist/AGNT-0.3.7-win-x64.exe`
-- `dist/AGNT-0.3.7-mac-x64.dmg`
-- `dist/AGNT-0.3.7-linux-x64.AppImage`
+- `dist/AGNT-0.4.9-win-x64.exe`
+- `dist/AGNT-0.4.9-mac-x64.dmg`
+- `dist/AGNT-0.4.9-linux-x86_64.AppImage` (348MB)
+- `dist/AGNT-0.4.9-linux-amd64.deb` (253MB)
 
 **Lite Version:**
-- `dist/AGNT-Lite-0.3.7-win-x64.exe`
-- `dist/AGNT-Lite-0.3.7-mac-x64.dmg`
-- `dist/AGNT-Lite-0.3.7-linux-x64.AppImage`
+- `dist/AGNT-Lite-0.4.9-win-x64.exe`
+- `dist/AGNT-Lite-0.4.9-mac-x64.dmg`
+- `dist/AGNT-Lite-0.4.9-linux-x86_64.AppImage` (344MB)
+- `dist/AGNT-Lite-0.4.9-linux-amd64.deb` (251MB)
 
 Notice the **"-Lite"** suffix in filenames.
 
@@ -101,7 +105,7 @@ This allows npm to skip them during installation if they fail, but they're still
 The `scripts/electron-builder-lite.js` hook runs during the build process:
 
 ```javascript
-// When AGNT_BUILD_VARIANT=lite is set
+// When AGNT_BUILD_VARIANT=-Lite is set
 export async function afterPack(context) {
   if (isLiteBuild) {
     // Remove browser automation packages
@@ -171,7 +175,7 @@ This sets `AGNT_LITE_MODE=true` and starts Electron normally.
 
 After building, check the installer:
 
-1. **File size** - Should be ~50% smaller than Full
+1. **File size** - Should be ~2-4MB smaller than Full (browser automation libs removed)
 2. **Marker file** - Extract the app and check for `.agnt-lite-mode`
 3. **Browser tools** - Try web scraping → should show Lite mode error
 
@@ -229,15 +233,14 @@ export function requiresBrowser(featureName) {
 ┌─────────────────────────────────────┐
 │ Download AGNT for Windows           │
 ├─────────────────────────────────────┤
-│ ⚡ AGNT Full (150MB)                │
+│ ⚡ AGNT Full (348MB)                │
 │    All features including browser   │
 │    automation, web scraping         │
-│    [Download .exe]                  │
+│    [Download]                       │
 │                                     │
-│ 🪶 AGNT Lite (80MB)                 │
-│    Faster download, smaller size    │
+│ 🪶 AGNT Lite (344MB)                │
 │    No browser automation            │
-│    [Download .exe]                  │
+│    [Download]                       │
 └─────────────────────────────────────┘
 ```
 
@@ -269,12 +272,15 @@ Check if the afterPack hook ran:
 ```bash
 # Should see this during build:
 [Lite Build] Removing browser automation packages...
-[Lite Build] ✓ Removed puppeteer (45.2 MB)
-[Lite Build] ✓ Removed playwright (52.8 MB)
+[Lite Build] ✓ Removed puppeteer (54.91 KB)
+[Lite Build] ✓ Removed puppeteer-core (6.57 MB)
+[Lite Build] ✓ Removed playwright (3.27 MB)
+[Lite Build] ✓ Removed playwright-core (6.28 MB)
+[Lite Build] Total space saved: 16.48 MB
 ```
 
 If not visible, check:
-- `AGNT_BUILD_VARIANT=lite` is set
+- `AGNT_BUILD_VARIANT=-Lite` is set
 - `scripts/electron-builder-lite.js` exists
 - `package.json` has `"afterPack": "./scripts/electron-builder-lite.js"`
 
@@ -306,11 +312,11 @@ Marking as optional allows:
 
 ### ASAR Considerations
 
-Browser packages are excluded from ASAR (not unpacked) because:
+Browser packages are listed in `asarUnpack` in `package.json` so they're extracted to `app.asar.unpacked/node_modules/`. This is required because:
 
-1. They're large and slow to unpack
-2. We're removing them anyway in Lite builds
-3. Better compression in ASAR format
+1. The `afterPack` hook can only remove files from the unpacked directory
+2. Packages inside the ASAR archive can't be selectively removed at build time
+3. In Full builds, having them unpacked has no functional impact
 
 ## See Also
 
@@ -322,8 +328,8 @@ Browser packages are excluded from ASAR (not unpacked) because:
 
 **Summary:**
 
-- **Full**: ~150-200MB, all features
-- **Lite**: ~80-120MB, no browser automation
+- **Full**: ~348MB AppImage / ~253MB DEB, all features
+- **Lite**: ~344MB AppImage / ~251MB DEB, no browser automation (~16MB uncompressed savings)
 - **Both**: Use `npm run build:both` to create both variants
 - **Detection**: Automatic via marker file
 - **Degradation**: Graceful error messages for disabled features

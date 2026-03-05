@@ -1,4 +1,4 @@
-import { API_CONFIG } from '@/tt.config.js';
+import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 
 // ─────────────────────────── PROVIDER REGISTRY ───────────────────────────
 // Single source of truth for all built-in provider metadata on the frontend.
@@ -455,6 +455,13 @@ export default {
     async fetchLocalModels({ commit, state }, { forceRefresh = false } = {}) {
       const provider = 'Local';
 
+      // Skip if local LLM is disabled (hosted environments)
+      if (DEPLOYMENT_CONFIG.DISABLE_LOCAL_LLM) {
+        console.log('Local LLM polling disabled (hosted mode)');
+        return [];
+      }
+
+      // Check if already loading
       if (state.loadingModels[provider]) {
         return state.allModels[provider];
       }
