@@ -61,9 +61,7 @@
               </span>
             </div>
 
-            <div v-if="task.agent_name" class="task-agent">
-              <i class="fas fa-robot"></i> {{ task.agent_name }}
-            </div>
+            <div v-if="task.agent_name" class="task-agent"><i class="fas fa-robot"></i> {{ task.agent_name }}</div>
 
             <div v-if="task.description" class="task-desc">{{ task.description }}</div>
 
@@ -169,34 +167,21 @@
             <i :class="isStartingAutonomous ? 'fas fa-spinner fa-spin' : 'fas fa-infinity'"></i>
             {{ isStartingAutonomous ? 'Starting...' : 'Start Autonomous' }}
           </button>
-          <button class="action-button" @click="executeSinglePass">
-            <i class="fas fa-play"></i> Execute Once
-          </button>
+          <button class="action-button" @click="executeSinglePass"><i class="fas fa-play"></i> Execute Once</button>
         </template>
 
         <!-- Active actions -->
         <template v-else-if="selectedGoal.status === 'executing' || selectedGoal.status === 'paused'">
-          <button v-if="selectedGoal.status === 'executing'" class="action-button stop" @click="pauseGoal">
-            <i class="fas fa-pause"></i> Pause
-          </button>
-          <button v-if="selectedGoal.status === 'paused'" class="action-button start" @click="resumeGoal">
-            <i class="fas fa-play"></i> Resume
-          </button>
+          <button v-if="selectedGoal.status === 'executing'" class="action-button stop" @click="pauseGoal"><i class="fas fa-pause"></i> Pause</button>
+          <button v-if="selectedGoal.status === 'paused'" class="action-button start" @click="resumeGoal"><i class="fas fa-play"></i> Resume</button>
         </template>
 
         <!-- Done actions -->
         <template v-else-if="isGoalDone">
-          <button class="action-button edit" @click="reviewOutputs">
-            <i class="fas fa-file-alt"></i> Review Outputs
-          </button>
-          <button class="action-button" @click="evaluateGoal">
-            <i class="fas fa-chart-bar"></i> Evaluate
-          </button>
-          <button class="action-button" @click="startAutonomous">
-            <i class="fas fa-redo"></i> Retry
-          </button>
+          <button class="action-button edit" @click="reviewOutputs"><i class="fas fa-file-alt"></i> Review Outputs</button>
+          <button class="action-button" @click="evaluateGoal"><i class="fas fa-chart-bar"></i> Evaluate</button>
+          <button class="action-button" @click="startAutonomous"><i class="fas fa-redo"></i> Retry</button>
         </template>
-
       </div>
     </div>
 
@@ -461,7 +446,7 @@ export default {
           }
         }
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     // Method to update selected goal from parent
@@ -570,7 +555,7 @@ ${goal.tasks
   Status: ${task.status}
   Started: ${task.started_at ? formatDate(task.started_at) : '-'}
   Completed: ${task.completed_at ? formatDate(task.completed_at) : '-'}
-`
+`,
   )
   .join('')}
 `
@@ -639,6 +624,7 @@ ${goal.tasks
   height: 100%;
   overflow-y: auto;
   min-height: 0;
+  scrollbar-width: none;
 }
 
 /* Header */
@@ -689,15 +675,25 @@ ${goal.tasks
 }
 
 .goal-status.executing,
-.goal-status.running { color: var(--color-primary); }
+.goal-status.running {
+  color: var(--color-primary);
+}
 .goal-status.completed,
-.goal-status.validated { color: var(--color-green); }
+.goal-status.validated {
+  color: var(--color-green);
+}
 .goal-status.failed,
-.goal-status.error { color: var(--color-red); }
+.goal-status.error {
+  color: var(--color-red);
+}
 .goal-status.paused,
-.goal-status.needs_review { color: var(--color-yellow); }
+.goal-status.needs_review {
+  color: var(--color-yellow);
+}
 .goal-status.planning,
-.goal-status.queued { color: var(--color-text-muted); }
+.goal-status.queued {
+  color: var(--color-text-muted);
+}
 
 /* Description */
 .goal-description {
@@ -794,14 +790,26 @@ h3 {
 }
 
 .task-card.executing,
-.task-card.running { border-left-color: var(--color-blue); }
-.task-card.completed { border-left-color: var(--color-green); }
+.task-card.running {
+  border-left-color: var(--color-blue);
+}
+.task-card.completed {
+  border-left-color: var(--color-green);
+}
 .task-card.failed,
-.task-card.error { border-left-color: var(--color-red); }
-.task-card.paused { border-left-color: var(--color-yellow); }
-.task-card.stopped { border-left-color: var(--color-text-muted); }
+.task-card.error {
+  border-left-color: var(--color-red);
+}
+.task-card.paused {
+  border-left-color: var(--color-yellow);
+}
+.task-card.stopped {
+  border-left-color: var(--color-text-muted);
+}
 .task-card.pending,
-.task-card.queued { border-left-color: var(--color-grey); }
+.task-card.queued {
+  border-left-color: var(--color-grey);
+}
 
 .task-header {
   display: flex;
@@ -969,9 +977,15 @@ h3 {
   margin: 12px 0 6px 0;
 }
 
-.output-rendered :deep(h1) { font-size: 1.3em; }
-.output-rendered :deep(h2) { font-size: 1.15em; }
-.output-rendered :deep(h3) { font-size: 1.05em; }
+.output-rendered :deep(h1) {
+  font-size: 1.3em;
+}
+.output-rendered :deep(h2) {
+  font-size: 1.15em;
+}
+.output-rendered :deep(h3) {
+  font-size: 1.05em;
+}
 
 .output-rendered :deep(p) {
   margin: 6px 0;
@@ -1239,11 +1253,23 @@ h3 {
   font-weight: 500;
 }
 
-.phase-badge.executing { background: rgba(59, 130, 246, 0.2); color: var(--color-blue); }
-.phase-badge.evaluating { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
-.phase-badge.replanning { background: rgba(255, 193, 7, 0.2); color: var(--color-yellow); }
+.phase-badge.executing {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--color-blue);
+}
+.phase-badge.evaluating {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+.phase-badge.replanning {
+  background: rgba(255, 193, 7, 0.2);
+  color: var(--color-yellow);
+}
 .phase-badge.checkpointing,
-.phase-badge.completed { background: rgba(34, 197, 94, 0.2); color: var(--color-green); }
+.phase-badge.completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-green);
+}
 
 .live-score {
   font-weight: 700;
