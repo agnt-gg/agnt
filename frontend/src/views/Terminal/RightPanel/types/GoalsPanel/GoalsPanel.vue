@@ -85,6 +85,40 @@
               <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
             </div>
 
+            <!-- Tool Executions -->
+            <div v-if="getToolExecutions(task.output).length > 0" class="task-io-section tool-executions-section">
+              <div class="io-toggle" @click="toggleNodeSection(task.id, 'tools')">
+                <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tools') }"></i>
+                <span>Tool Executions ({{ getToolExecutions(task.output).length }})</span>
+              </div>
+              <div v-show="isNodeSectionExpanded(task.id, 'tools')" class="io-body">
+                <div
+                  v-for="(tool, tIdx) in getToolExecutions(task.output)"
+                  :key="tIdx"
+                  class="tool-exec-item"
+                  :class="{ 'tool-error': toolHasError(tool) }"
+                >
+                  <div class="tool-exec-header" @click="toggleNodeSection(task.id, 'tool-' + tIdx)">
+                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tool-' + tIdx) }"></i>
+                    <span class="tool-exec-name">{{ formatToolName(tool.name || tool.toolName || 'unknown') }}</span>
+                    <span class="tool-exec-badge" :class="toolHasError(tool) ? 'badge-error' : 'badge-ok'">
+                      {{ toolHasError(tool) ? 'error' : 'ok' }}
+                    </span>
+                  </div>
+                  <div v-show="isNodeSectionExpanded(task.id, 'tool-' + tIdx)" class="tool-exec-details">
+                    <div v-if="tool.arguments || tool.args || tool.input" class="tool-exec-block">
+                      <div class="tool-exec-block-label">Input</div>
+                      <pre class="io-data">{{ formatToolResponse(tool.arguments || tool.args || tool.input) }}</pre>
+                    </div>
+                    <div v-if="tool.response || tool.output || tool.result" class="tool-exec-block">
+                      <div class="tool-exec-block-label">Output</div>
+                      <pre class="io-data" :class="{ 'error-text': toolHasError(tool) }">{{ formatToolResponse(tool.response || tool.output || tool.result) }}</pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Error -->
             <div v-if="task.error" class="task-io-section error">
               <div class="io-toggle" @click="toggleNodeSection(task.id, 'error')">
@@ -282,6 +316,13 @@ export default {
         // Evaluation shape: { score, passed, summary, ... }
         for (const key of ['content', 'summary', 'text', 'message', 'result', 'report', 'output', 'description', 'body', 'response']) {
           if (obj[key] && typeof obj[key] === 'string') return obj[key];
+          // Handle content as array of {type: "text", text: "..."} objects
+          if (obj[key] && Array.isArray(obj[key])) {
+            const texts = obj[key]
+              .filter(item => item && typeof item === 'object' && item.text)
+              .map(item => item.text);
+            if (texts.length) return texts.join('\n\n');
+          }
         }
 
         if (Array.isArray(obj)) {
@@ -579,6 +620,53 @@ ${goal.tasks
       emit('panel-action', 'close-panel');
     };
 
+    // Tool execution helpers
+    const getToolExecutions = (output) => {
+      if (!output) return [];
+      let parsed = output;
+      if (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed);
+        } catch (e) {
+          return [];
+        }
+      }
+      if (parsed && Array.isArray(parsed.toolExecutions)) return parsed.toolExecutions;
+      return [];
+    };
+
+    const toolHasError = (tool) => {
+      const resp = tool.response || tool.output || tool.result || '';
+      const str = typeof resp === 'string' ? resp : JSON.stringify(resp);
+      try {
+        const parsed = JSON.parse(str);
+        if (parsed && (parsed.error || parsed.status === 'error')) return true;
+      } catch (e) {
+        // not JSON
+      }
+      return false;
+    };
+
+    const formatToolName = (name) => {
+      return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    };
+
+    const formatToolResponse = (data) => {
+      if (!data) return '';
+      if (typeof data === 'string') {
+        try {
+          return JSON.stringify(JSON.parse(data), null, 2);
+        } catch (e) {
+          return data;
+        }
+      }
+      try {
+        return JSON.stringify(data, null, 2);
+      } catch (e) {
+        return String(data);
+      }
+    };
+
     return {
       selectedGoal,
       showCopiedMessage,
@@ -597,6 +685,11 @@ ${goal.tasks
       updateSelectedGoal,
       handlePanelAction,
       closePanel,
+      // Tool execution helpers
+      getToolExecutions,
+      toolHasError,
+      formatToolName,
+      formatToolResponse,
       // AGI Loop
       goalIterations,
       liveIteration,
@@ -1377,5 +1470,91 @@ h3 {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+/* Tool Executions */
+.tool-executions-section {
+  border-color: rgba(var(--primary-rgb), 0.15);
+}
+
+.tool-exec-item {
+  border-left: 3px solid var(--color-green);
+  margin: 6px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.tool-exec-item.tool-error {
+  border-left-color: var(--color-red);
+}
+
+.tool-exec-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.85em;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.tool-exec-header:hover {
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.tool-exec-header i {
+  font-size: 0.75em;
+  color: var(--color-primary);
+  transition: transform 0.2s ease;
+}
+
+.tool-exec-header i.rotated {
+  transform: rotate(90deg);
+}
+
+.tool-exec-name {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.tool-exec-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.tool-exec-badge.badge-ok {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-green);
+}
+
+.tool-exec-badge.badge-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--color-red);
+}
+
+.tool-exec-details {
+  border-top: 1px solid rgba(var(--primary-rgb), 0.1);
+}
+
+.tool-exec-block {
+  border-top: 1px solid rgba(var(--primary-rgb), 0.05);
+}
+
+.tool-exec-block:first-child {
+  border-top: none;
+}
+
+.tool-exec-block-label {
+  padding: 4px 10px;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--color-grey);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 </style>

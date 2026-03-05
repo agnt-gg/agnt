@@ -210,41 +210,67 @@
                   <span v-if="task.progress !== undefined">Progress: {{ task.progress }}%</span>
                 </div>
 
-                <!-- Executed Tools (from output) -->
-                <div v-if="getExecutedTools(task).length > 0" class="task-tools executed-tools">
-                  <div class="tools-header">
-                    <i class="fas fa-check-circle"></i>
-                    <span>Tools Executed:</span>
-                  </div>
-                  <div class="tools-list">
-                    <span v-for="(toolExec, idx) in getExecutedTools(task)" :key="idx" class="tool-badge executed">
-                      <i class="fas fa-play-circle"></i>
-                      {{ toolExec.name }}
-                    </span>
-                  </div>
-                </div>
-
                 <!-- Input Section -->
-                <div v-if="task.input" class="node-io-section">
-                  <div class="io-header" @click="toggleNodeSection(task.id, 'input')">
-                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'input') }"></i>
-                    <span>Input</span>
-                    <span class="io-size">({{ getDataSize(task.input) }})</span>
+                <div v-if="task.input" class="node-io-section task-output-rendered">
+                  <div class="output-header">
+                    <span class="output-label">Input</span>
+                    <button class="raw-toggle" @click="toggleRawView(task.id + '-input')" :title="isRawView(task.id + '-input') ? 'View Rendered' : 'View Raw'">
+                      <i :class="isRawView(task.id + '-input') ? 'fas fa-eye' : 'fas fa-code'"></i>
+                      {{ isRawView(task.id + '-input') ? 'Rendered' : 'Raw' }}
+                    </button>
                   </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'input')" class="io-content">
+                  <div v-if="isRawView(task.id + '-input')" class="output-raw">
                     <pre class="io-data">{{ formatJSON(task.input) }}</pre>
                   </div>
+                  <div v-else class="output-rendered" v-html="renderOutput(task.input)"></div>
                 </div>
 
                 <!-- Output Section -->
-                <div v-if="task.output" class="node-io-section">
-                  <div class="io-header" @click="toggleNodeSection(task.id, 'output')">
-                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'output') }"></i>
-                    <span>Output</span>
-                    <span class="io-size">({{ getDataSize(task.output) }})</span>
+                <div v-if="task.output" class="node-io-section task-output-rendered">
+                  <div class="output-header">
+                    <span class="output-label">Output</span>
+                    <button class="raw-toggle" @click="toggleRawView(task.id)" :title="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
+                      <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
+                      {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
+                    </button>
                   </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-content">
+                  <div v-if="isRawView(task.id)" class="output-raw">
                     <pre class="io-data">{{ formatJSON(task.output) }}</pre>
+                  </div>
+                  <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
+                </div>
+
+                <!-- Tool Executions -->
+                <div v-if="getExecutedTools(task).length > 0" class="node-io-section tool-executions-section">
+                  <div class="io-header" @click="toggleNodeSection(task.id, 'tools')">
+                    <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tools') }"></i>
+                    <span>Tool Executions ({{ getExecutedTools(task).length }})</span>
+                  </div>
+                  <div v-show="isNodeSectionExpanded(task.id, 'tools')" class="io-content">
+                    <div
+                      v-for="(toolExecItem, tIdx) in getExecutedTools(task)"
+                      :key="tIdx"
+                      class="tool-exec-detail-item"
+                      :class="{ 'tool-error': toolHasError(toolExecItem) }"
+                    >
+                      <div class="tool-exec-detail-header" @click="toggleNodeSection(task.id, 'tool-' + tIdx)">
+                        <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tool-' + tIdx) }"></i>
+                        <span class="tool-exec-detail-name">{{ formatToolName(toolExecItem.name || toolExecItem.toolName || 'unknown') }}</span>
+                        <span class="tool-exec-detail-badge" :class="toolHasError(toolExecItem) ? 'badge-error' : 'badge-ok'">
+                          {{ toolHasError(toolExecItem) ? 'error' : 'ok' }}
+                        </span>
+                      </div>
+                      <div v-show="isNodeSectionExpanded(task.id, 'tool-' + tIdx)" class="tool-exec-detail-body">
+                        <div v-if="toolExecItem.arguments || toolExecItem.args || toolExecItem.input" class="tool-exec-detail-block">
+                          <div class="tool-exec-detail-block-label">Input</div>
+                          <pre class="io-data">{{ formatToolResponse(toolExecItem.arguments || toolExecItem.args || toolExecItem.input) }}</pre>
+                        </div>
+                        <div v-if="toolExecItem.response || toolExecItem.output || toolExecItem.result" class="tool-exec-detail-block">
+                          <div class="tool-exec-detail-block-label">Output</div>
+                          <pre class="io-data" :class="{ 'error-data': toolHasError(toolExecItem) }">{{ formatToolResponse(toolExecItem.response || toolExecItem.output || toolExecItem.result) }}</pre>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -414,8 +440,17 @@
 <script>
 import { ref, computed, watch } from 'vue';
 import { useStore } from 'vuex';
+import showdown from 'showdown';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
+const mdConverter = new showdown.Converter({
+  tables: true,
+  strikethrough: true,
+  literalMidWordUnderscores: true,
+  simpleLineBreaks: true,
+  ghCodeBlocks: true,
+});
 
 export default {
   name: 'RunsPanel',
@@ -439,6 +474,7 @@ export default {
 
     // Node section expansion state
     const expandedNodeSections = ref({});
+    const rawViewTasks = ref({});
     const selectedExecution = ref(null);
     const showCopiedMessage = ref(false);
 
@@ -1067,6 +1103,98 @@ ${execution.log}
       goalInputRef.value?.blur();
     };
 
+    // Rendered/Raw toggle
+    const toggleRawView = (taskId) => {
+      rawViewTasks.value[taskId] = !rawViewTasks.value[taskId];
+    };
+
+    const isRawView = (taskId) => {
+      return rawViewTasks.value[taskId] || false;
+    };
+
+    const renderOutput = (data) => {
+      if (!data) return '';
+
+      let parsed = data;
+      if (typeof parsed === 'string') {
+        try {
+          const trimmed = parsed.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            parsed = JSON.parse(trimmed);
+          }
+        } catch (e) {
+          return mdConverter.makeHtml(parsed);
+        }
+      }
+
+      if (typeof parsed === 'string') {
+        return mdConverter.makeHtml(parsed);
+      }
+
+      const extractText = (obj) => {
+        if (typeof obj === 'string') return obj;
+        if (!obj || typeof obj !== 'object') return String(obj);
+
+        for (const key of ['content', 'summary', 'text', 'message', 'result', 'report', 'output', 'description', 'body', 'response']) {
+          if (obj[key] && typeof obj[key] === 'string') return obj[key];
+          if (obj[key] && Array.isArray(obj[key])) {
+            const texts = obj[key]
+              .filter(item => item && typeof item === 'object' && item.text)
+              .map(item => item.text);
+            if (texts.length) return texts.join('\n\n');
+          }
+        }
+
+        if (Array.isArray(obj)) {
+          const items = obj.map((item) => extractText(item)).filter(Boolean);
+          if (items.length) return items.join('\n\n');
+        }
+
+        return null;
+      };
+
+      const text = extractText(parsed);
+      if (!text) {
+        const json = JSON.stringify(parsed, null, 2);
+        return `<pre><code>${json.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
+      }
+
+      return mdConverter.makeHtml(text);
+    };
+
+    // Tool execution helpers
+    const toolHasError = (tool) => {
+      const resp = tool.response || tool.output || tool.result || '';
+      const str = typeof resp === 'string' ? resp : JSON.stringify(resp);
+      try {
+        const parsed = JSON.parse(str);
+        if (parsed && (parsed.error || parsed.status === 'error')) return true;
+      } catch (e) {
+        // not JSON
+      }
+      return false;
+    };
+
+    const formatToolName = (name) => {
+      return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    };
+
+    const formatToolResponse = (data) => {
+      if (!data) return '';
+      if (typeof data === 'string') {
+        try {
+          return JSON.stringify(JSON.parse(data), null, 2);
+        } catch (e) {
+          return data;
+        }
+      }
+      try {
+        return JSON.stringify(data, null, 2);
+      } catch (e) {
+        return String(data);
+      }
+    };
+
     const closePanel = () => {
       selectedExecution.value = null;
       emit('panel-action', 'close-panel');
@@ -1103,6 +1231,13 @@ ${execution.log}
       formatDuration,
       formatRelativeDate,
       getExecutedTools,
+      // Rendered output + tool execution helpers
+      toggleRawView,
+      isRawView,
+      renderOutput,
+      toolHasError,
+      formatToolName,
+      formatToolResponse,
       // Goal creation
       goalInput,
       goalInputRef,
@@ -1996,6 +2131,226 @@ ${execution.log}
 .action-button.edit:hover {
   background: rgba(var(--green-rgb), 0.15);
   border-color: var(--color-green);
+}
+
+/* Rendered Output */
+.task-output-rendered {
+  overflow: hidden;
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(var(--green-rgb), 0.05);
+  font-size: 0.85em;
+}
+
+.output-label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.raw-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s;
+}
+
+.raw-toggle:hover {
+  border-color: rgba(var(--green-rgb), 0.5);
+  color: var(--color-text);
+}
+
+.raw-toggle i {
+  font-size: 0.8em;
+}
+
+.output-rendered {
+  padding: 12px;
+  color: var(--color-text);
+  font-size: 0.9em;
+  line-height: 1.6;
+  overflow-y: auto;
+  max-height: 400px;
+  word-break: break-word;
+}
+
+.output-rendered :deep(h1),
+.output-rendered :deep(h2),
+.output-rendered :deep(h3),
+.output-rendered :deep(h4) {
+  color: var(--color-text);
+  margin: 12px 0 6px 0;
+}
+
+.output-rendered :deep(h1) { font-size: 1.3em; }
+.output-rendered :deep(h2) { font-size: 1.15em; }
+.output-rendered :deep(h3) { font-size: 1.05em; }
+
+.output-rendered :deep(p) { margin: 6px 0; }
+
+.output-rendered :deep(ul),
+.output-rendered :deep(ol) {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.output-rendered :deep(li) { margin: 3px 0; }
+
+.output-rendered :deep(pre) {
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  padding: 10px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.output-rendered :deep(code) {
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+}
+
+.output-rendered :deep(p code) {
+  background: var(--color-darker-0);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--terminal-border-color);
+}
+
+.output-rendered :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 0.9em;
+}
+
+.output-rendered :deep(th),
+.output-rendered :deep(td) {
+  border: 1px solid var(--terminal-border-color);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.output-rendered :deep(th) {
+  background: var(--color-darker-0);
+  font-weight: 600;
+}
+
+.output-rendered :deep(blockquote) {
+  border-left: 3px solid rgba(var(--green-rgb), 0.4);
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: var(--color-text-muted);
+}
+
+.output-rendered :deep(a) { color: var(--color-green); }
+
+.output-rendered :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--terminal-border-color);
+  margin: 12px 0;
+}
+
+.output-raw {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Tool Executions Detail */
+.tool-executions-section {
+  border-color: rgba(var(--green-rgb), 0.15);
+}
+
+.tool-exec-detail-item {
+  border-left: 3px solid var(--color-green);
+  margin: 6px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.tool-exec-detail-item.tool-error {
+  border-left-color: var(--color-red);
+}
+
+.tool-exec-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.85em;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.tool-exec-detail-header:hover {
+  background: rgba(var(--green-rgb), 0.08);
+}
+
+.tool-exec-detail-header i {
+  font-size: 0.75em;
+  color: var(--color-green);
+  transition: transform 0.2s ease;
+}
+
+.tool-exec-detail-header i.rotated {
+  transform: rotate(90deg);
+}
+
+.tool-exec-detail-name {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.tool-exec-detail-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.tool-exec-detail-badge.badge-ok {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-green);
+}
+
+.tool-exec-detail-badge.badge-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--color-red);
+}
+
+.tool-exec-detail-body {
+  border-top: 1px solid rgba(var(--green-rgb), 0.1);
+}
+
+.tool-exec-detail-block {
+  border-top: 1px solid rgba(var(--green-rgb), 0.05);
+}
+
+.tool-exec-detail-block:first-child {
+  border-top: none;
+}
+
+.tool-exec-detail-block-label {
+  padding: 4px 10px;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--color-grey);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Responsive adjustments */
