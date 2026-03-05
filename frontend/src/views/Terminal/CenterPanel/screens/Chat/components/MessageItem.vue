@@ -1953,7 +1953,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   object-fit: cover;
   margin-top: 4px;
   align-self: flex-start;
-  border: 2px solid var(--color-green);
+  border: 3px solid var(--color-green);
   padding: 2px;
 }
 
