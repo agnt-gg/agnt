@@ -676,6 +676,11 @@ export default {
         return;
       }
 
+      // Don't autosave agent chats - only the main Annie chat saves to content_outputs
+      if (state.currentAgentId) {
+        return;
+      }
+
       // Don't autosave empty conversations or setup messages
       const meaningfulMessages = state.messages.filter((msg) => msg.role === 'user' || (msg.role === 'assistant' && !msg.showProviderSetup));
       if (meaningfulMessages.length === 0) {

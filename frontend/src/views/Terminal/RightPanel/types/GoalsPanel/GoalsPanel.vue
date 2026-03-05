@@ -71,18 +71,21 @@
             </div>
 
             <!-- Output -->
-            <div v-if="task.output" class="task-output-section">
-              <div class="output-header">
-                <span class="output-label">Output</span>
-                <button class="raw-toggle" @click="toggleRawView(task.id)" :title="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
+            <div v-if="task.output" class="task-io-section">
+              <div class="io-toggle" @click="toggleNodeSection(task.id, 'output')">
+                <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'output') }"></i>
+                <span>Output</span>
+                <button class="raw-toggle" @click.stop="toggleRawView(task.id)" :title="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
                   <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
                   {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
                 </button>
               </div>
-              <div v-if="isRawView(task.id)" class="output-raw">
-                <pre class="io-data">{{ formatJSON(task.output) }}</pre>
+              <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-body">
+                <div v-if="isRawView(task.id)" class="output-raw">
+                  <pre class="io-data">{{ formatJSON(task.output) }}</pre>
+                </div>
+                <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
               </div>
-              <div v-else class="output-rendered" v-html="renderOutput(task.output)"></div>
             </div>
 
             <!-- Tool Executions -->
@@ -134,18 +137,21 @@
       </div>
 
       <!-- Evaluation -->
-      <div v-if="selectedGoal.evaluation" class="goal-evaluation">
-        <div class="output-header">
-          <h3 style="margin: 0">Evaluation</h3>
-          <button class="raw-toggle" @click="toggleRawView('eval')" :title="isRawView('eval') ? 'View Rendered' : 'View Raw'">
+      <div v-if="selectedGoal.evaluation" class="goal-evaluation task-io-section">
+        <div class="io-toggle" @click="toggleNodeSection('eval', 'output')">
+          <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded('eval', 'output') }"></i>
+          <span>Evaluation</span>
+          <button class="raw-toggle" @click.stop="toggleRawView('eval')" :title="isRawView('eval') ? 'View Rendered' : 'View Raw'">
             <i :class="isRawView('eval') ? 'fas fa-eye' : 'fas fa-code'"></i>
             {{ isRawView('eval') ? 'Rendered' : 'Raw' }}
           </button>
         </div>
-        <div v-if="isRawView('eval')" class="output-raw">
-          <pre class="eval-log">{{ formatJSON(selectedGoal.evaluation) }}</pre>
+        <div v-show="isNodeSectionExpanded('eval', 'output')" class="io-body">
+          <div v-if="isRawView('eval')" class="output-raw">
+            <pre class="eval-log">{{ formatJSON(selectedGoal.evaluation) }}</pre>
+          </div>
+          <div v-else class="output-rendered" v-html="renderOutput(selectedGoal.evaluation)"></div>
         </div>
-        <div v-else class="output-rendered" v-html="renderOutput(selectedGoal.evaluation)"></div>
       </div>
 
       <!-- AGI Loop: Iteration Timeline -->
@@ -1018,28 +1024,6 @@ h3 {
   overflow: hidden;
 }
 
-/* Rendered output section */
-.task-output-section {
-  margin-top: 8px;
-  border: 1px solid rgba(var(--primary-rgb), 0.1);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.output-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  background: rgba(var(--primary-rgb), 0.05);
-  font-size: 0.85em;
-}
-
-.output-label {
-  font-weight: 600;
-  color: var(--color-text);
-}
-
 .raw-toggle {
   display: flex;
   align-items: center;
@@ -1199,6 +1183,10 @@ h3 {
 
 .io-toggle i.rotated {
   transform: rotate(90deg);
+}
+
+.io-toggle .raw-toggle {
+  margin-left: auto;
 }
 
 .io-size {
