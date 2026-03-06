@@ -2824,6 +2824,37 @@ export const TOOLS = {
       }
     },
   },
+
+  get_agnt_api: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'get_agnt_api',
+        description:
+          'Look up AGNT backend API endpoints. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements.',
+        parameters: {
+          type: 'object',
+          properties: {
+            section: {
+              type: 'string',
+              description: 'API section to get details for. Omit for a full overview of all endpoints.',
+            },
+          },
+        },
+      },
+    },
+    execute: async ({ section }) => {
+      const { getOverview, getSectionDetail } = await import('./apiReference.js');
+      const reference = section ? getSectionDetail(section) : getOverview();
+      return JSON.stringify({
+        success: true,
+        reference,
+        message: section
+          ? `API details for "${section}" section returned.`
+          : 'Full API overview returned. Call again with a section name for endpoint details.',
+      });
+    },
+  },
 };
 
 /**
