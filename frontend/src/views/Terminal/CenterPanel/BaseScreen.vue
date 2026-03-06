@@ -279,14 +279,8 @@ export default {
     const providerSelectorStyle = ref({});
 
     // --- Streaming State ---
-    // Show streaming UI when the ACTIVE conversation is streaming
-    const isStreaming = computed(() => {
-      const activeId = store.state.chat.activeConversationId;
-      if (activeId && store.state.chat.conversations[activeId]) {
-        return store.state.chat.conversations[activeId].isStreaming;
-      }
-      return store.state.chat.isStreaming;
-    });
+    // Mirror property (state.isStreaming) is kept in sync by SCOPED_SET_STREAMING
+    const isStreaming = computed(() => store.state.chat.isStreaming);
 
     // --- 3-Panel System State ---
     const actualLeftPanelWidth = ref(store.getters['theme/actualLeftPanelWidth'] || 384);
@@ -478,8 +472,7 @@ export default {
     };
 
     const stopStreaming = () => {
-      // Stop the active conversation's stream
-      store.dispatch('chat/stopStreamingConversation', store.state.chat.activeConversationId);
+      store.dispatch('chat/stopStreamingConversation');
       setInputDisabled(false);
       focusInput();
     };

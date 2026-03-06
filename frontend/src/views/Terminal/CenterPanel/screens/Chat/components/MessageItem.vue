@@ -1109,6 +1109,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       };
       try {
         return markdownConverter.makeHtml(text);
+      } catch (e) {
+        // Showdown can stack-overflow on pathological content (deeply nested spans, etc.)
+        console.warn('[MessageItem] Markdown rendering failed, falling back to escaped text:', e.message);
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
       } finally {
         console.error = origError;
       }
@@ -2022,9 +2026,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   padding: 20px 24px;
-  width: 100%;
-  width: -webkit-fill-available;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .message-wrapper.assistant .message-card {
@@ -2037,6 +2043,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   /* border-right: 3px solid var(--color-blue); */
+  margin-left: auto;
 }
 
 .message-text {
@@ -2045,7 +2052,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   color: var(--color-bright-light-navy);
   margin: 0;
   overflow-wrap: anywhere;
-  width: inherit;
+  width: 100%;
   min-width: 0;
 }
 

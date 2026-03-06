@@ -471,7 +471,8 @@ export default {
             delete state.conversations[evictable[0]];
           }
         }
-        state.conversations[conversationId] = createConversationState(conversationId);
+        // Use spread to ensure Vue reactivity tracks the new key
+        state.conversations = { ...state.conversations, [conversationId]: createConversationState(conversationId) };
       }
     },
 
@@ -487,8 +488,10 @@ export default {
       const conv = state.conversations[oldId];
       if (!conv) return;
       conv.conversationId = newId;
-      state.conversations[newId] = conv;
-      delete state.conversations[oldId];
+      // Replace the whole object so Vue picks up the key change
+      const updated = { ...state.conversations, [newId]: conv };
+      delete updated[oldId];
+      state.conversations = updated;
       if (state.activeConversationId === oldId) {
         state.activeConversationId = newId;
         state.currentConversationId = newId;
@@ -992,10 +995,10 @@ export default {
       const convId = conversationId || state.activeConversationId;
       const conv = convId ? state.conversations[convId] : null;
 
-      // Use conversation-scoped state if available, fall back to global
-      const abortController = conv ? conv.streamAbortController : state.streamAbortController;
-      const streamReader = conv ? conv.streamReader : state.streamReader;
-      const asyncTools = conv ? conv.activeAsyncTools : state.activeAsyncTools;
+      // Gather abort resources from conversation slot AND global mirror (belt and suspenders)
+      const abortController = (conv && conv.streamAbortController) || state.streamAbortController;
+      const streamReader = (conv && conv.streamReader) || state.streamReader;
+      const asyncTools = (conv && conv.activeAsyncTools) || state.activeAsyncTools;
 
       if (abortController) {
         abortController.abort();
@@ -1063,9 +1066,9 @@ export default {
 
       if (conv) {
         commit('SCOPED_SET_STREAMING', { conversationId: convId, value: false });
-      } else {
-        commit('SET_STREAMING', false);
       }
+      // Always clear the global mirror so the UI stop button disappears
+      state.isStreaming = false;
 
       // Add a system message indicating the stream was stopped
       const stoppedCount = asyncToolsToStop.length;
