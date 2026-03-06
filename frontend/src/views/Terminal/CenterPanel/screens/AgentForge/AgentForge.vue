@@ -158,6 +158,30 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Row 4: Skills (Full Width) -->
+              <div class="capabilities-card full-width">
+                <div class="card-header">
+                  <h3 class="card-title">Skills</h3>
+                </div>
+
+                <div class="capabilities-content">
+                  <div class="capability-section">
+                    <div class="capability-header">
+                      <i class="fas fa-brain"></i>
+                      <span>Assigned Skills</span>
+                      <span class="add-more-btn" @click="showSkillsModal = true">+ Add more</span>
+                    </div>
+                    <div class="capability-tags">
+                      <div v-for="skill in newAgent.skills.slice(0, 6)" :key="skill" class="capability-tag">
+                        {{ getSkillName(skill) }}
+                        <i class="fas fa-times" @click="removeFromArray(newAgent.skills, skill)"></i>
+                      </div>
+                      <div v-if="newAgent.skills.length > 6" class="more-count">+{{ newAgent.skills.length - 6 }} more</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </BaseForm>
         </div>
@@ -183,6 +207,27 @@
             idKey="id"
             placeholder="Search and select tools..."
             :empty-message="availableTools.length === 0 ? 'No tools available' : 'No tools selected'"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showSkillsModal" class="modal-overlay" @click="showSkillsModal = false">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>Select Skills</h3>
+          <button class="modal-close" @click="showSkillsModal = false">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <ListWithSearch
+            :items="availableSkills"
+            v-model="newAgent.skills"
+            labelKey="name"
+            idKey="id"
+            placeholder="Search and select skills..."
+            :empty-message="availableSkills.length === 0 ? 'No skills available' : 'No skills selected'"
           />
         </div>
       </div>
@@ -228,6 +273,7 @@ export default {
     const terminalLines = ref(['Welcome to the Agent Forge!', 'Fill out the form below to create a new agent.']);
     const availableTools = ref([]);
     const availableWorkflows = ref([]);
+    const availableSkills = ref([]);
     const isLoading = ref(false);
     const error = ref(null);
     const defaultAvatarUrl =
@@ -238,6 +284,7 @@ export default {
       description: '',
       tools: [],
       workflows: [],
+      skills: [],
       avatar: null,
       memory: 'vector-db',
       category: '',
@@ -253,6 +300,7 @@ export default {
 
     const showToolsModal = ref(false);
     const showWorkflowsModal = ref(false);
+    const showSkillsModal = ref(false);
 
     const isFormValid = computed(() => {
       return newAgent.value.name.trim() !== '';
@@ -332,10 +380,11 @@ export default {
       terminalLines.value.push(force ? '[AgentForge] Refreshing tools and workflows...' : '[AgentForge] Loading tools and workflows...');
 
       try {
-        await Promise.all([store.dispatch('tools/fetchTools', { force }), store.dispatch('workflows/fetchWorkflows', { force })]);
+        await Promise.all([store.dispatch('tools/fetchTools', { force }), store.dispatch('workflows/fetchWorkflows', { force }), store.dispatch('skills/fetchSkills')]);
 
         availableTools.value = store.getters['tools/allTools'] || [];
         availableWorkflows.value = store.getters['workflows/allWorkflows'] || [];
+        availableSkills.value = store.getters['skills/allSkills'] || [];
 
         if (force) {
           terminalLines.value.push('[AgentForge] Refreshed data successfully.');
@@ -443,6 +492,11 @@ export default {
       return workflow ? workflow.name : workflowId;
     };
 
+    const getSkillName = (skillId) => {
+      const skill = availableSkills.value.find((s) => s.id === skillId);
+      return skill ? skill.name : skillId;
+    };
+
     const removeFromArray = (array, item) => {
       const index = array.indexOf(item);
       if (index > -1) {
@@ -479,6 +533,7 @@ export default {
           ...newAgent.value,
           assignedTools: newAgent.value.tools,
           assignedWorkflows: newAgent.value.workflows,
+          assignedSkills: newAgent.value.skills,
           category: newAgent.value.category,
         });
         terminalLines.value.push(`[AgentForge] Agent "${newAgent.value.name}" created successfully!`);
@@ -490,6 +545,7 @@ export default {
           description: '',
           tools: [],
           workflows: [],
+          skills: [],
           avatar: null,
           memory: 'vector-db',
           category: categoryOptions.value.length > 0 ? categoryOptions.value[0].value : '',
@@ -581,6 +637,7 @@ export default {
           instructions: agentData.instructions || '',
           tools: agentData.assignedTools || agentData.tools || [],
           workflows: agentData.assignedWorkflows || agentData.workflows || [],
+          skills: agentData.assignedSkills || agentData.skills || [],
           avatar: agentData.avatar || null,
           memory: agentData.memory || 'vector-db',
           category: agentData.category || (categoryOptions.value.length > 0 ? categoryOptions.value[0].value : ''),
@@ -626,6 +683,7 @@ export default {
         description: '',
         tools: [],
         workflows: [],
+        skills: [],
         avatar: null,
         memory: 'vector-db',
         category: categoryOptions.value.length > 0 ? categoryOptions.value[0].value : '',
@@ -698,6 +756,7 @@ export default {
       terminalLines,
       availableTools,
       availableWorkflows,
+      availableSkills,
       isLoading,
       newAgent,
       isFormValid,
@@ -715,8 +774,10 @@ export default {
       modelOptions,
       showToolsModal,
       showWorkflowsModal,
+      showSkillsModal,
       getToolName,
       getWorkflowName,
+      getSkillName,
       removeFromArray,
       updateTickSpeed,
       handlePanelAction,

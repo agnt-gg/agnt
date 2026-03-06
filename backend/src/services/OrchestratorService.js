@@ -688,7 +688,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Handle API errors that the adapter recovered from (401, 429, etc.)
     if (recoveredFromError) {
       console.warn(`[OrchestratorService] LLM adapter recovered from error: ${recoveredError}`);
-      const errorContent = responseMessage?.content || `API Error: ${recoveredError}`;
+      const rawContent = responseMessage?.content;
+      const errorContent = (typeof rawContent === 'string' && rawContent)
+        || `API Error: ${typeof recoveredError === 'string' ? recoveredError : String(recoveredError)}`;
       // Send as content_delta to fill the existing empty assistant message bubble
       sendEvent('content_delta', {
         assistantMessageId,

@@ -101,6 +101,7 @@ export default {
     // Per-conversation state map for concurrent conversations
     conversations: {}, // { conversationId: ConversationState }
     activeConversationId: null, // ID of the conversation currently displayed in the UI
+    savedMainConversationId: null, // Saved main conversation ID when switching to agent chat
   },
   mutations: {
     SET_PAGE(state, page) {
@@ -1338,6 +1339,11 @@ export default {
     switchToAgentChat({ commit, state, dispatch }, { agentId, agentName, agentAvatar }) {
       if (state.currentAgentId === agentId) return;
 
+      // Save the current main conversation ID before switching to agent chat
+      if (!state.currentAgentId && state.activeConversationId) {
+        state.savedMainConversationId = state.activeConversationId;
+      }
+
       // Use a stable conversation ID for each agent
       const agentConvId = `agent-${agentId}`;
 
@@ -1388,8 +1394,9 @@ export default {
 
       commit('CLEAR_CURRENT_AGENT');
 
-      // Switch to a "main" conversation slot
-      const mainConvId = state.currentConversationId || 'main';
+      // Restore the saved main conversation, or start a fresh 'main' slot
+      const mainConvId = state.savedMainConversationId || 'main';
+      state.savedMainConversationId = null;
       commit('ENSURE_CONVERSATION', mainConvId);
       commit('SET_ACTIVE_CONVERSATION', mainConvId);
 

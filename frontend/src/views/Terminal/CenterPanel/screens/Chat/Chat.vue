@@ -129,7 +129,19 @@ export default {
     // Core State
     const terminalLines = ref([]);
     const currentConversationId = ref(null);
-    const messagesFromStore = computed(() => store.state.chat.messages);
+    const messagesFromStore = computed(() => {
+      // Never show agent conversation messages in the main chat.
+      // Check both the mirror flag (currentAgentId) and the conversation slot's
+      // own agentId — the latter survives MIGRATE_CONVERSATION_ID which renames
+      // agent-<id> to a server UUID after the first streamed message.
+      if (store.state.chat.currentAgentId) return [];
+      const activeId = store.state.chat.activeConversationId;
+      if (activeId) {
+        const conv = store.state.chat.conversations[activeId];
+        if (conv && conv.agentId) return [];
+      }
+      return store.state.chat.messages;
+    });
     const expandedToolCalls = ref({});
     const runningToolCalls = ref({});
     const messageStates = ref({});
@@ -865,7 +877,20 @@ export default {
     const initializeScreen = async () => {
       document.body.setAttribute('data-page', 'terminal-chat');
 
-      // Skip heavy init on KeepAlive reactivation — only set data-page
+      // Always switch back to the main conversation when entering main chat.
+      // This handles returning from agent chat where the active conversation
+      // and mirror state are still pointing at the agent's conversation.
+      if (store.state.chat.currentAgentId) {
+        store.dispatch('chat/switchToMainChat');
+      } else {
+        const activeId = store.state.chat.activeConversationId;
+        const activeConv = activeId ? store.state.chat.conversations[activeId] : null;
+        if (activeConv && activeConv.agentId) {
+          store.dispatch('chat/switchToMainChat');
+        }
+      }
+
+      // Skip heavy init on KeepAlive reactivation — only set data-page + conversation switch
       if (screenInitialized) return;
       screenInitialized = true;
 

@@ -319,8 +319,7 @@ Remember: You are ${agent.name} with specialized expertise. Use your assigned to
 
     // Add agent context and ID to request body for universal handler
     req.body.agentId = id;
-    req.body.agentContext = agentContext.agentContext;
-    req.body.agentState = agentContext.agentState;
+    req.body.agentContext = agentContext;
 
     return universalChatHandler(req, res, { type: 'agent' });
   };
@@ -339,8 +338,7 @@ Remember: You are ${agent.name} with specialized expertise. Use your assigned to
 
     // Add agent context and ID to request body for universal handler
     req.body.agentId = id;
-    req.body.agentContext = agentContext.agentContext;
-    req.body.agentState = agentContext.agentState;
+    req.body.agentContext = agentContext;
 
     return universalChatHandler(req, res, { type: 'agent' });
   };
@@ -358,7 +356,7 @@ Remember: You are ${agent.name} with specialized expertise. Use your assigned to
     if (model) req.body.model = model;
 
     // Add agent context for suggestions
-    req.body.agentContext = agentContext.agentContext;
+    req.body.agentContext = agentContext;
 
     return universalChatHandler(req, res, { type: 'suggestions' });
   };
