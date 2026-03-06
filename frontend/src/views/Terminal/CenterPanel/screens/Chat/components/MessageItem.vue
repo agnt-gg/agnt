@@ -1590,6 +1590,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           return '';
         });
 
+        // Wrap tables in a scrollable container so wide tables don't bleed
+        renderedHtml = renderedHtml.replace(/<table\b/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
+
         // Add target="_blank" to all links in markdown-generated HTML
         return addTargetBlankToLinks(renderedHtml);
       }
@@ -1960,6 +1963,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 .message-wrapper {
   display: flex;
   gap: 16px;
+  min-width: 0;
   animation: message-appear 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -2001,6 +2005,12 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   border-radius: 16px 16px 16px 0;
 }
 
+.message-content {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+}
+
 .message-card {
   display: flex;
   flex-direction: column;
@@ -2012,9 +2022,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   background: var(--color-darker-1);
   border: 1px solid var(--terminal-border-color);
   padding: 20px 24px;
-  /* overflow: scroll; */
   width: 100%;
   width: -webkit-fill-available;
+  min-width: 0;
 }
 
 .message-wrapper.assistant .message-card {
@@ -2036,6 +2046,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   margin: 0;
   overflow-wrap: anywhere;
   width: inherit;
+  min-width: 0;
 }
 
 .message-text :deep(img) {
@@ -2140,13 +2151,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 }
 
 .message-text :deep(table) {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
-  margin: 1.5em 0;
   font-size: 0.9em;
   border: 1px solid rgba(127, 129, 147, 0.15);
   border-radius: 6px;
-  overflow: hidden;
+}
+
+.message-text :deep(.table-wrapper) {
+  overflow-x: auto;
+  margin: 1.5em 0;
+  border-radius: 6px;
 }
 
 .message-text :deep(th),

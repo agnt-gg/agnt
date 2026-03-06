@@ -1538,6 +1538,7 @@ export default {
   flex-direction: column;
   gap: 16px;
   margin-left: -44px;
+  min-width: 0;
 }
 
 .message-enter-active {
