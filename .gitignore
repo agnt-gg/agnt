@@ -64,8 +64,11 @@ frontend/.cache/
 
 # Database files
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+data/
 
 # Package manager lock files (optional - uncomment if needed)
 # package-lock.json

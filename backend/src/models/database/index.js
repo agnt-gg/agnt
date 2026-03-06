@@ -86,38 +86,43 @@ try {
 const dbPath = path.join(dbDir, 'agnt.db');
 console.log('Final database path:', dbPath);
 
-// Initialize database with error handling
+// Initialize database
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Database initialization error:', err);
   } else {
     console.log('Database successfully initialized at:', dbPath);
+  }
+});
 
-    // WAL mode for better concurrency (optional, disabled by default)
-    // Enable with SQLITE_WAL_MODE=true environment variable
-    // WARNING: WAL mode may cause issues with single-user scenarios or networked filesystems
-    const enableWAL = process.env.SQLITE_WAL_MODE === 'true';
-    if (enableWAL) {
-      db.run('PRAGMA journal_mode = WAL', (err) => {
-        if (err) {
-          console.error('Failed to enable WAL mode:', err);
-        } else {
-          console.log('✓ WAL mode enabled (multi-client concurrency support)');
-        }
-      });
-    } else {
-      console.log('WAL mode disabled (default). Set SQLITE_WAL_MODE=true to enable multi-client support.');
-    }
-
-    // Set busy timeout to 5 seconds to handle concurrent access
-    db.run('PRAGMA busy_timeout = 5000', (err) => {
+// CRITICAL: PRAGMAs must be queued BEFORE createTables() below.
+// sqlite3 queues operations in call order, so these will execute first.
+db.serialize(() => {
+  // WAL mode is required for multi-process access (main server + workflow process).
+  // Without WAL, concurrent writes cause SQLITE_BUSY: database is locked.
+  // Disable with SQLITE_WAL_MODE=false only for networked/NFS filesystems.
+  const disableWAL = process.env.SQLITE_WAL_MODE === 'false';
+  if (!disableWAL) {
+    db.run('PRAGMA journal_mode = WAL', (err) => {
       if (err) {
-        console.error('Failed to set busy_timeout:', err);
+        console.error('Failed to enable WAL mode:', err);
       } else {
-        console.log('Busy timeout set to 5000ms');
+        console.log('WAL mode enabled (multi-process concurrency)');
       }
     });
+  } else {
+    console.log('WAL mode disabled via SQLITE_WAL_MODE=false');
   }
+
+  // Busy timeout: retry for up to 10s when the DB is locked.
+  // Covers startup race between main process migrations and workflow process queries.
+  db.run('PRAGMA busy_timeout = 10000', (err) => {
+    if (err) {
+      console.error('Failed to set busy_timeout:', err);
+    } else {
+      console.log('Busy timeout set to 10000ms');
+    }
+  });
 });
 
 // Function to create tables
