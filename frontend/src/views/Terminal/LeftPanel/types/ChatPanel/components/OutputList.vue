@@ -72,10 +72,11 @@
               v-for="output in sortedOutputs"
               :key="output.id"
               class="output-item"
-              :class="{ selected: isSelected(output.id), active: isActive(output.id) }"
+              :class="{ selected: isSelected(output.id), active: isActive(output.id), streaming: isOutputStreaming(output.id) }"
             >
               <div class="output-content" @click="handleOutputClick(output.id, $event)">
                 <div class="output-date">
+                  <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
                   {{ formatDate(output.created_at) }}
                 </div>
                 <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
@@ -168,6 +169,9 @@ export default {
 
     // Active/current conversation (the one being viewed)
     const activeOutputId = ref(null);
+
+    // Streaming output IDs from the chat store
+    const streamingOutputIds = computed(() => store.getters['chat/streamingOutputIds'] || new Set());
 
     // Get outputs from store
     const outputs = computed(() => store.getters['contentOutputs/outputs']);
@@ -369,6 +373,11 @@ export default {
     // Check if output is active/current
     function isActive(outputId) {
       return activeOutputId.value === outputId;
+    }
+
+    // Check if output has an active stream
+    function isOutputStreaming(outputId) {
+      return streamingOutputIds.value.has(outputId);
     }
 
     // Batch delete selected outputs
@@ -692,6 +701,8 @@ export default {
       // Active/current
       activeOutputId,
       isActive,
+      // Streaming
+      isOutputStreaming,
     };
   },
 };
@@ -1194,6 +1205,24 @@ body.dark .create-output-btn {
 
 .output-item.active:hover {
   background: rgba(var(--primary-rgb), 0.12);
+}
+
+/* Streaming item styling */
+.output-item.streaming {
+  border-color: var(--color-primary);
+}
+
+.streaming-indicator {
+  font-size: 0.5em;
+  color: var(--color-primary);
+  animation: pulse-streaming 1.5s ease-in-out infinite;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+@keyframes pulse-streaming {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 /* Selected item styling (for batch operations) */

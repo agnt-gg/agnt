@@ -392,6 +392,13 @@ export default {
         return;
       }
 
+      // Ensure a conversation slot exists for the active conversation
+      const convId = store.state.chat.activeConversationId || currentConversationId.value || `temp-${Date.now()}`;
+      store.commit('chat/ENSURE_CONVERSATION', convId);
+      if (!store.state.chat.activeConversationId) {
+        store.commit('chat/SET_ACTIVE_CONVERSATION', convId);
+      }
+
       // Create user message with file attachments if present
       const userMessage = {
         id: generateMessageId(),
@@ -402,7 +409,6 @@ export default {
 
       // Add file metadata to message if files are attached
       if (files && files.length > 0) {
-        // Convert files to data URLs for preview (especially images)
         const filePromises = files.map(async (file) => {
           const fileData = {
             name: file.name,
@@ -410,7 +416,6 @@ export default {
             size: file.size,
           };
 
-          // For images, create data URL for preview
           if (file.type.startsWith('image/')) {
             return new Promise((resolve) => {
               const reader = new FileReader();
@@ -420,7 +425,7 @@ export default {
               };
               reader.onerror = () => {
                 console.error('Error reading file:', file.name);
-                resolve(fileData); // Resolve without dataUrl on error
+                resolve(fileData);
               };
               reader.readAsDataURL(file);
             });
@@ -432,18 +437,17 @@ export default {
         userMessage.files = await Promise.all(filePromises);
       }
 
-      store.commit('chat/ADD_MESSAGE', userMessage);
+      // Add to the scoped conversation (mirror sync keeps flat state in sync)
+      store.commit('chat/SCOPED_ADD_MESSAGE', { conversationId: convId, message: userMessage });
       terminalLines.value.push(`> ${input}${files && files.length > 0 ? ` [${files.length} file(s) attached]` : ''}`);
 
-      // Scroll to bottom when user sends a message
       nextTick(() => scrollToBottom());
 
       clearInput();
 
-      // Use store-based streaming instead of component-based
       await store.dispatch('chat/startStreamingConversation', {
         userInput: input,
-        files: files, // Pass files to the store action
+        files: files,
         provider: store.state.aiProvider.selectedProvider,
         model: store.state.aiProvider.selectedModel,
         reasoningEnabled: store.state.aiProvider.reasoningEnabled,
@@ -778,6 +782,22 @@ export default {
         return;
       }
 
+      // Check if this conversation already exists in memory (by savedOutputId).
+      // If so, just switch to it — don't re-fetch from DB, which would overwrite
+      // any in-flight or unsaved messages (e.g. an assistant response still streaming).
+      const conversations = store.state.chat.conversations;
+      for (const [convId, conv] of Object.entries(conversations)) {
+        if (conv.savedOutputId === contentId) {
+          store.commit('chat/SET_ACTIVE_CONVERSATION', convId);
+          currentConversationId.value = convId;
+          terminalLines.value.push(`Switched to conversation (${conv.messages.length} messages)`);
+          scrollToTop();
+          await nextTick();
+          scrollToTop();
+          return;
+        }
+      }
+
       try {
         const response = await fetch(`${API_CONFIG.BASE_URL}/content-outputs/${contentId}`, {
           credentials: 'include',
@@ -790,33 +810,31 @@ export default {
 
         const data = await response.json();
 
-        // Check if this is a conversation-type output
         if (data.content_type === 'conversation') {
           const conversationData = JSON.parse(data.content);
 
-          // Clear existing chat
-          store.commit('chat/RESET_CHAT');
+          // Use the saved conversation's ID as the slot key
+          const convId = conversationData.conversationId || `saved-${contentId}`;
 
-          // Restore conversation ID
-          currentConversationId.value = conversationData.conversationId;
+          // Create or switch to the conversation slot
+          store.commit('chat/ENSURE_CONVERSATION', convId);
+          store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: convId, messages: conversationData.messages });
+          store.commit('chat/SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: contentId });
+          store.commit('chat/SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId: convId, title: conversationData.title || null });
+          store.commit('chat/SET_ACTIVE_CONVERSATION', convId);
 
-          // IMPORTANT: Set the savedOutputId and cached title so autosave updates this conversation instead of creating a new one
-          store.commit('chat/SET_SAVED_OUTPUT_ID', contentId);
-          store.commit('chat/SET_SAVED_OUTPUT_TITLE', conversationData.title || null);
-
-          // Restore all messages in a single batch commit (avoids N re-renders)
-          store.commit('chat/SET_MESSAGES', conversationData.messages);
+          // Also update legacy flat state for components that read it directly
+          currentConversationId.value = convId;
 
           terminalLines.value.push(
             `Loaded conversation from ${new Date(conversationData.createdAt).toLocaleDateString()} (${conversationData.messages.length} messages)`
           );
         } else {
-          // Legacy HTML format - handle as before
+          // Legacy HTML format
           const output = data.output || data;
           const content = output.content || '';
           const createdAt = output.created_at ? new Date(output.created_at) : new Date();
 
-          // Add the saved output as an assistant message
           store.commit('chat/ADD_MESSAGE', {
             id: generateMessageId(),
             role: 'assistant',
@@ -828,7 +846,6 @@ export default {
           terminalLines.value.push(`Loaded saved output from ${createdAt.toLocaleDateString()}`);
         }
 
-        // Scroll to top immediately and after render to prevent scroll position carry-over
         scrollToTop();
         await nextTick();
         scrollToTop();
@@ -878,12 +895,18 @@ export default {
         await autoSwitchToLocalIfNeeded();
       }
 
+      // Ensure a conversation slot exists on startup
+      if (!store.state.chat.activeConversationId) {
+        const initConvId = `temp-${Date.now()}`;
+        store.commit('chat/ENSURE_CONVERSATION', initConvId);
+        store.commit('chat/SET_ACTIVE_CONVERSATION', initConvId);
+      }
+
       // Check if we're loading a saved output
       const contentId = route.query['content-id'];
 
       if (contentId) {
-        // Clear existing chat and load the saved output
-        store.commit('chat/RESET_CHAT');
+        // Load or switch to the saved output (loadSavedOutput handles slot switching)
         terminalLines.value = ['Loading saved output...'];
         await loadSavedOutput(contentId);
       } else if (store.state.chat.messages.length === 0) {
@@ -1010,6 +1033,11 @@ export default {
 
       // Reset store (this will clear image cache)
       store.commit('chat/RESET_CHAT');
+
+      // Create a fresh conversation slot
+      const newConvId = `temp-${Date.now()}`;
+      store.commit('chat/ENSURE_CONVERSATION', newConvId);
+      store.commit('chat/SET_ACTIVE_CONVERSATION', newConvId);
       currentConversationId.value = null;
       terminalLines.value = ['Chat cleared by user.'];
       clearInput();
@@ -1133,13 +1161,9 @@ export default {
       () => route.query['content-id'],
       async (newContentId, oldContentId) => {
         if (newContentId && newContentId !== oldContentId) {
-          // Force scroll to top FIRST
           scrollToTop();
-          // Clear existing chat and load the saved output
-          store.commit('chat/RESET_CHAT');
           terminalLines.value = ['Loading saved output...'];
           await loadSavedOutput(newContentId);
-          // Scroll to top again after loading
           await nextTick();
           scrollToTop();
         }

@@ -214,11 +214,17 @@ export function useRealtimeSync() {
       // Directly remove the deleted item from the store (instant UI update)
       store.commit('contentOutputs/REMOVE_OUTPUT', data.id);
 
-      // If the deleted content is the current chat conversation, reset the chat
+      // If the deleted content is the current chat conversation, stop streaming and reset
       const currentSavedOutputId = store.state.chat?.savedOutputId;
       if (currentSavedOutputId && data.id === currentSavedOutputId) {
-        console.log('[Realtime] Current conversation was deleted, resetting chat');
-        store.commit('chat/RESET_CHAT');
+        console.log('[Realtime] Current conversation was deleted, stopping stream and resetting chat');
+        if (store.state.chat?.isStreaming) {
+          store.dispatch('chat/stopStreamingConversation').then(() => {
+            store.commit('chat/RESET_CHAT');
+          });
+        } else {
+          store.commit('chat/RESET_CHAT');
+        }
       }
     });
 
