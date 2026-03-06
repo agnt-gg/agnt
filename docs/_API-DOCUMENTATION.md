@@ -8,22 +8,30 @@ This document provides comprehensive documentation for all API endpoints in the 
 
 - [Authentication](#authentication)
 - [Agent Routes](#agent-routes)
+- [Async Tool Routes](#async-tool-routes)
+- [Claude Code Auth Routes](#claude-code-auth-routes)
+- [Codex Auth Routes](#codex-auth-routes)
 - [Content Output Routes](#content-output-routes)
 - [Custom Provider Routes](#custom-provider-routes)
 - [Custom Tool Routes](#custom-tool-routes)
+- [Email Listener Routes](#email-listener-routes)
 - [Execution Routes](#execution-routes)
+- [FileSystem Routes](#filesystem-routes)
 - [Goal Routes](#goal-routes)
+- [Layout Routes](#layout-routes)
 - [MCP Routes](#mcp-routes)
 - [Model Routes](#model-routes)
 - [NPM Routes](#npm-routes)
 - [Orchestrator Routes](#orchestrator-routes)
 - [Plugin Routes](#plugin-routes)
+- [Skill Routes](#skill-routes)
 - [Speech Routes](#speech-routes)
 - [Stream Routes](#stream-routes)
 - [Tool Schema Routes](#tool-schema-routes)
 - [Tools Routes](#tools-routes)
 - [User Routes](#user-routes)
 - [Webhook Routes](#webhook-routes)
+- [Widget Definition Routes](#widget-definition-routes)
 - [Workflow Routes](#workflow-routes)
 
 ---
@@ -268,6 +276,326 @@ Base path: `/api/agents`
 ```json
 {
   "suggestions": ["Suggestion 1", "Suggestion 2"]
+}
+```
+
+---
+
+## Async Tool Routes
+
+Base path: `/api/async-tools`
+
+### Get Queue Status
+
+**GET** `/status`
+
+- **Authentication**: Required
+- **Description**: Get async tool queue statistics
+- **Response**:
+
+```json
+{
+  "success": true,
+  "stats": {
+    "pending": 0,
+    "running": 2,
+    "completed": 15,
+    "failed": 1
+  }
+}
+```
+
+### Get Executions by Conversation
+
+**GET** `/executions/:conversationId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `conversationId` (path): Conversation ID
+- **Description**: Get all async tool executions for a conversation
+- **Response**:
+
+```json
+{
+  "success": true,
+  "executions": [
+    {
+      "executionId": "exec-id",
+      "toolName": "tool-name",
+      "status": "running|completed|failed|cancelled",
+      "startedAt": "2024-01-01T00:00:00Z",
+      "completedAt": null
+    }
+  ]
+}
+```
+
+### Get Running Executions
+
+**GET** `/executions/:conversationId/running`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `conversationId` (path): Conversation ID
+- **Description**: Get only running async tool executions for a conversation
+- **Response**:
+
+```json
+{
+  "success": true,
+  "executions": []
+}
+```
+
+### Get Execution Details
+
+**GET** `/execution/:executionId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `executionId` (path): Execution ID
+- **Description**: Get details of a specific async tool execution
+- **Response**:
+
+```json
+{
+  "success": true,
+  "execution": {
+    "executionId": "exec-id",
+    "toolName": "tool-name",
+    "status": "completed",
+    "result": {}
+  }
+}
+```
+
+- **Error** (404): Execution not found
+
+### Cancel Execution
+
+**POST** `/cancel/:executionId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `executionId` (path): Execution ID
+- **Description**: Cancel a running async tool execution
+- **Response**:
+
+```json
+{
+  "success": true,
+  "message": "Async tool execution cancelled successfully"
+}
+```
+
+### Cancel All Executions for Conversation
+
+**POST** `/cancel-all/:conversationId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `conversationId` (path): Conversation ID
+- **Description**: Cancel all running async tools for a conversation (global stop)
+- **Response**:
+
+```json
+{
+  "success": true,
+  "cancelled": 3
+}
+```
+
+---
+
+## Claude Code Auth Routes
+
+Base path: `/api/claude-code`
+
+### Get Status
+
+**GET** `/status`
+
+- **Authentication**: None
+- **Description**: Check whether Claude Code credentials exist locally and whether the Anthropic API is usable
+- **Response**:
+
+```json
+{
+  "success": true,
+  "available": true,
+  "apiUsable": true,
+  "hint": "Claude Code is connected and the Anthropic API is usable."
+}
+```
+
+### Start OAuth Flow
+
+**GET** `/oauth/start`
+
+- **Authentication**: None
+- **Description**: Initiate the Anthropic OAuth flow. Returns an `authUrl` the frontend opens in the system browser. No localhost callback needed.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "authUrl": "https://console.anthropic.com/oauth/authorize?...",
+  "sessionId": "session-uuid"
+}
+```
+
+### Exchange OAuth Code
+
+**POST** `/oauth/exchange`
+
+- **Authentication**: None
+- **Description**: Receive the code#state string the user copied from Anthropic's callback page. Parses it, exchanges the code for tokens, and saves credentials.
+- **Body**:
+
+```json
+{
+  "sessionId": "session-uuid",
+  "codeState": "auth-code#state-value"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Connect with Manual Token
+
+**POST** `/connect`
+
+- **Authentication**: None
+- **Description**: Save a manually provided OAuth token
+- **Body**:
+
+```json
+{
+  "token": "sk-ant-..."
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Refresh Token
+
+**POST** `/refresh`
+
+- **Authentication**: None
+- **Description**: Refresh the Claude Code access token using the stored refresh token
+- **Response** (success):
+
+```json
+{
+  "success": true,
+  "refreshed": true,
+  "available": true,
+  "apiUsable": true
+}
+```
+
+- **Error** (401): `{ "code": "REAUTH_REQUIRED" }` if refresh token is revoked
+
+### Disconnect
+
+**POST** `/disconnect`
+
+- **Authentication**: None
+- **Description**: Remove Claude Code credentials
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
+## Codex Auth Routes
+
+Base path: `/api/codex`
+
+### Get Status
+
+**GET** `/status`
+
+- **Authentication**: None
+- **Description**: Check whether Codex CLI auth exists locally and whether it can call the OpenAI API
+- **Response**:
+
+```json
+{
+  "success": true,
+  "available": true,
+  "apiUsable": true,
+  "codexWorkdir": "/path/to/workdir",
+  "toolRunner": "/path/to/tool-runner",
+  "hint": "Codex auth is available and the OpenAI API is usable."
+}
+```
+
+### Start Device Login
+
+**POST** `/device/start`
+
+- **Authentication**: None
+- **Description**: Start Codex CLI device login flow. Returns a URL and code the user must enter in a browser.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "sessionId": "session-uuid",
+  "deviceUrl": "https://auth.openai.com/device",
+  "deviceCode": "ABCD-1234",
+  "state": "pending",
+  "startedAt": "2024-01-01T00:00:00Z",
+  "expiresAt": "2024-01-01T00:15:00Z",
+  "hint": "Open the URL, enter the code, then return here. We will poll for completion."
+}
+```
+
+### Poll Device Login Status
+
+**GET** `/device/status?sessionId=...`
+
+- **Authentication**: None
+- **Parameters**:
+  - `sessionId` (query, required): The session ID from the start endpoint
+- **Description**: Poll the current device login session state
+- **Response**:
+
+```json
+{
+  "success": true,
+  "state": "pending|completed|expired|error"
+}
+```
+
+### Logout
+
+**POST** `/logout`
+
+- **Authentication**: None
+- **Description**: Log out of the Codex CLI
+- **Response**:
+
+```json
+{
+  "success": true
 }
 ```
 
@@ -847,6 +1175,38 @@ Base path: `/api/custom-tools`
 
 ---
 
+## Email Listener Routes
+
+Base path: `/api/email-listeners`
+
+### Get Email Listeners
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Get all workflows with `receive-email` trigger nodes for the authenticated user
+- **Response**:
+
+```json
+{
+  "success": true,
+  "listeners": [
+    {
+      "id": "workflow-id",
+      "workflow_id": "workflow-id",
+      "workflow_name": "Email Handler Workflow",
+      "workflow_status": "active",
+      "email_address": "workflow-123@agnt.gg",
+      "email_config": "Built-in Email",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
 ## Execution Routes
 
 Base path: `/api/executions`
@@ -936,6 +1296,182 @@ Base path: `/api/executions`
   "metadata": {}
 }
 ```
+
+---
+
+## FileSystem Routes
+
+Base path: `/api/filesystem`
+
+Provides a sandboxed file system for the built-in code editor. All file paths are relative to the configured workspace root. Path traversal outside the workspace is blocked (403).
+
+### Get Settings
+
+**GET** `/settings`
+
+- **Authentication**: Required
+- **Description**: Returns the current workspace root directory and default root
+- **Response**:
+
+```json
+{
+  "workspaceRoot": "/home/user/.agnt/data/projects",
+  "defaultRoot": "/home/user/.agnt/data/projects"
+}
+```
+
+### Update Settings
+
+**PUT** `/settings`
+
+- **Authentication**: Required
+- **Description**: Update the workspace root directory
+- **Body**:
+
+```json
+{
+  "workspaceRoot": "/path/to/new/workspace"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "workspaceRoot": "/path/to/new/workspace"
+}
+```
+
+### Get Directory Tree
+
+**GET** `/tree?dir=<relPath>`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `dir` (query, optional): Relative path within workspace (default: root)
+- **Description**: Returns directory listing for the given relative path. Hidden files (dot-prefixed) are excluded. Directories are listed first.
+- **Response**:
+
+```json
+{
+  "items": [
+    { "name": "src", "type": "directory", "path": "src" },
+    { "name": "index.js", "type": "file", "path": "index.js" }
+  ],
+  "root": "/"
+}
+```
+
+### Read File
+
+**GET** `/file?path=<relPath>`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `path` (query, required): Relative file path within workspace
+- **Description**: Returns the content of a file as UTF-8 text
+- **Response**:
+
+```json
+{
+  "content": "file contents here...",
+  "path": "src/index.js"
+}
+```
+
+- **Error** (404): File not found
+
+### Write File
+
+**POST** `/file`
+
+- **Authentication**: Required
+- **Description**: Create or overwrite a file. Parent directories are created automatically.
+- **Body**:
+
+```json
+{
+  "path": "src/index.js",
+  "content": "console.log('hello');"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "path": "src/index.js"
+}
+```
+
+### Create Directory
+
+**POST** `/mkdir`
+
+- **Authentication**: Required
+- **Description**: Create a directory (recursive)
+- **Body**:
+
+```json
+{
+  "path": "src/components"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "path": "src/components"
+}
+```
+
+### Rename / Move
+
+**POST** `/rename`
+
+- **Authentication**: Required
+- **Description**: Rename or move a file or directory
+- **Body**:
+
+```json
+{
+  "oldPath": "src/old-name.js",
+  "newPath": "src/new-name.js"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "oldPath": "src/old-name.js",
+  "newPath": "src/new-name.js"
+}
+```
+
+### Delete File or Directory
+
+**DELETE** `/file?path=<relPath>`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `path` (query, required): Relative path within workspace
+- **Description**: Delete a file or directory (recursive for directories)
+- **Response**:
+
+```json
+{
+  "success": true,
+  "path": "src/old-file.js"
+}
+```
+
+- **Error** (404): File not found
 
 ---
 
@@ -1234,6 +1770,141 @@ Base path: `/api/goals`
       "createdAt": "2024-01-01T00:00:00Z"
     }
   ]
+}
+```
+
+---
+
+## Layout Routes
+
+Base path: `/api/layouts`
+
+Manages per-user widget layout pages for the dashboard. Each page stores a grid layout of widgets.
+
+### Get All Layouts
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Get all layout pages for the authenticated user
+- **Response**:
+
+```json
+{
+  "pages": [
+    {
+      "id": "uuid",
+      "user_id": "user-id",
+      "page_id": "dashboard",
+      "page_name": "Dashboard",
+      "page_icon": "fas fa-th",
+      "page_order": 0,
+      "route": "/dashboard",
+      "layout_data": "[...]",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Create Layout
+
+**POST** `/`
+
+- **Authentication**: Required
+- **Description**: Create a new layout page
+- **Body**:
+
+```json
+{
+  "page_id": "my-page",
+  "page_name": "My Page",
+  "page_icon": "fas fa-th",
+  "page_order": 1,
+  "route": "/my-page",
+  "layout_data": "[]"
+}
+```
+
+- **Response** (201):
+
+```json
+{
+  "message": "Layout created",
+  "id": "uuid",
+  "page_id": "my-page"
+}
+```
+
+### Update Layout
+
+**PUT** `/:pageId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `pageId` (path): Page identifier
+- **Description**: Update a layout page (upserts if not found)
+- **Body**:
+
+```json
+{
+  "page_name": "Updated Name",
+  "page_icon": "fas fa-chart-bar",
+  "page_order": 2,
+  "route": "/updated-page",
+  "layout_data": "[...]"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "message": "Layout updated",
+  "page_id": "my-page"
+}
+```
+
+### Delete Layout
+
+**DELETE** `/:pageId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `pageId` (path): Page identifier
+- **Description**: Delete a layout page
+- **Response**:
+
+```json
+{
+  "message": "Layout deleted",
+  "page_id": "my-page"
+}
+```
+
+### Reset Layout
+
+**POST** `/reset/:pageId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `pageId` (path): Page identifier
+- **Description**: Reset a page to default layout
+- **Body**:
+
+```json
+{
+  "layout_data": "[]"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "message": "Layout reset",
+  "page_id": "my-page"
 }
 ```
 
@@ -2047,6 +2718,175 @@ Base path: `/api/plugins`
 
 ---
 
+## Skill Routes
+
+Base path: `/api/skills`
+
+Manage reusable agent skills — named instruction sets that can be assigned to agents.
+
+### Get All Skills
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Get all skills for the authenticated user
+- **Response**:
+
+```json
+{
+  "skills": [
+    {
+      "id": "skill-uuid",
+      "name": "Code Reviewer",
+      "description": "Reviews code for quality and security",
+      "instructions": "When reviewing code...",
+      "icon": "fas fa-code",
+      "category": "development",
+      "allowed_tools": "[\"code-search\",\"file-read\"]",
+      "license": "",
+      "compatibility": "",
+      "metadata": "",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Skill by ID
+
+**GET** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Skill ID
+- **Response**:
+
+```json
+{
+  "skill": { ... }
+}
+```
+
+- **Error** (404): Skill not found
+
+### Create Skill
+
+**POST** `/`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "skill": {
+    "name": "Code Reviewer",
+    "description": "Reviews code for quality and security",
+    "instructions": "When reviewing code, focus on...",
+    "icon": "fas fa-code",
+    "category": "development",
+    "allowedTools": ["code-search", "file-read"]
+  }
+}
+```
+
+- **Response** (201):
+
+```json
+{
+  "skill": { ... },
+  "skillId": "skill-uuid"
+}
+```
+
+### Update Skill
+
+**PUT** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Skill ID
+- **Body**:
+
+```json
+{
+  "skill": {
+    "name": "Updated Name",
+    "description": "Updated description",
+    "instructions": "Updated instructions..."
+  }
+}
+```
+
+- **Response**:
+
+```json
+{
+  "skill": { ... }
+}
+```
+
+### Delete Skill
+
+**DELETE** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Skill ID
+- **Response**:
+
+```json
+{
+  "message": "Skill deleted"
+}
+```
+
+- **Error** (404): Skill not found
+
+### Export Skill as Markdown
+
+**GET** `/:id/export`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Skill ID
+- **Description**: Export a skill as a `.SKILL.md` file with YAML frontmatter and markdown body
+- **Response**: `text/markdown` file download
+
+### Import Skill from Markdown
+
+**POST** `/import`
+
+- **Authentication**: Required
+- **Content-Type**: `text/plain`
+- **Description**: Import a skill from SKILL.md content (YAML frontmatter + markdown body)
+- **Body**: Raw text content of a `.SKILL.md` file
+
+```
+---
+name: "My Skill"
+description: "Skill description"
+category: "general"
+icon: "fas fa-puzzle-piece"
+allowed-tools:
+  - code-search
+  - file-read
+---
+
+Instructions for the skill go here...
+```
+
+- **Response** (201):
+
+```json
+{
+  "skill": { ... },
+  "skillId": "skill-uuid"
+}
+```
+
+---
+
 ## Speech Routes
 
 Base path: `/api/speech`
@@ -2811,6 +3651,212 @@ Base path: `/api/webhooks`
 
 ---
 
+## Widget Definition Routes
+
+Base path: `/api/widget-definitions`
+
+Manage custom widget definitions for the dashboard. Widgets are user-created HTML/JS components that can be placed on layout pages.
+
+### Get All Widget Definitions
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Get all widget definitions for the user (including shared ones)
+- **Response**:
+
+```json
+{
+  "widgets": [
+    {
+      "id": "cw_abc123def456",
+      "user_id": "user-id",
+      "name": "System Monitor",
+      "description": "Displays system metrics",
+      "icon": "fas fa-chart-line",
+      "category": "monitoring",
+      "widget_type": "html",
+      "source_code": "<div>...</div>",
+      "config": {},
+      "data_bindings": [],
+      "default_size": { "cols": 4, "rows": 3 },
+      "min_size": { "cols": 2, "rows": 2 },
+      "useThemeStyles": true,
+      "is_shared": 0,
+      "is_published": 0,
+      "version": "1.0.0",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Widget Definition by ID
+
+**GET** `/:widgetId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `widgetId` (path): Widget definition ID
+- **Response**:
+
+```json
+{
+  "widget": { ... }
+}
+```
+
+- **Error** (404): Widget definition not found
+
+### Create Widget Definition
+
+**POST** `/`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "name": "My Widget",
+  "description": "A custom widget",
+  "icon": "fas fa-puzzle-piece",
+  "category": "custom",
+  "widget_type": "html",
+  "source_code": "<div>Hello World</div>",
+  "config": {},
+  "data_bindings": [],
+  "default_size": { "cols": 4, "rows": 3 },
+  "min_size": { "cols": 2, "rows": 2 },
+  "useThemeStyles": true
+}
+```
+
+- **Response** (201):
+
+```json
+{
+  "message": "Widget definition created",
+  "id": "cw_abc123def456",
+  "widget": { ... }
+}
+```
+
+### Update Widget Definition
+
+**PUT** `/:widgetId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `widgetId` (path): Widget definition ID
+- **Description**: Partial update — only provided fields are changed
+- **Body**:
+
+```json
+{
+  "name": "Updated Name",
+  "source_code": "<div>Updated</div>",
+  "is_shared": true,
+  "useThemeStyles": false
+}
+```
+
+- **Response**:
+
+```json
+{
+  "message": "Widget definition updated",
+  "id": "cw_abc123def456"
+}
+```
+
+### Delete Widget Definition
+
+**DELETE** `/:widgetId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `widgetId` (path): Widget definition ID
+- **Response**:
+
+```json
+{
+  "message": "Widget definition deleted",
+  "id": "cw_abc123def456"
+}
+```
+
+### Duplicate Widget Definition
+
+**POST** `/:widgetId/duplicate`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `widgetId` (path): Widget definition ID to duplicate
+- **Description**: Create a copy of an existing widget definition with " (copy)" appended to the name
+- **Response** (201):
+
+```json
+{
+  "message": "Widget duplicated",
+  "id": "cw_newid123456"
+}
+```
+
+### Export Widget Definition
+
+**GET** `/:widgetId/export`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `widgetId` (path): Widget definition ID
+- **Description**: Export a widget definition as a portable JSON object
+- **Response**:
+
+```json
+{
+  "export": {
+    "_format": "agnt-widget",
+    "_version": "1.0.0",
+    "name": "My Widget",
+    "description": "A custom widget",
+    "icon": "fas fa-puzzle-piece",
+    "category": "custom",
+    "widget_type": "html",
+    "source_code": "<div>Hello World</div>",
+    "config": {},
+    "data_bindings": [],
+    "default_size": { "cols": 4, "rows": 3 },
+    "min_size": { "cols": 2, "rows": 2 },
+    "exported_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### Import Widget Definition
+
+**POST** `/import`
+
+- **Authentication**: Required
+- **Description**: Import a widget definition from an exported JSON object
+- **Body**:
+
+```json
+{
+  "widget_data": {
+    "_format": "agnt-widget",
+    "_version": "1.0.0",
+    "name": "Imported Widget",
+    "source_code": "<div>Imported</div>",
+    ...
+  }
+}
+```
+
+- **Response** (201): Same as Create Widget Definition
+
+---
+
 ## Workflow Routes
 
 Base path: `/api/workflows`
@@ -3055,6 +4101,193 @@ Base path: `/api/workflows`
   "success": true,
   "message": "Workflow deactivated successfully",
   "workflowId": "workflow-id"
+}
+```
+
+### Get All Workflows Summary
+
+**GET** `/summary`
+
+- **Authentication**: Required
+- **Description**: Retrieve a lightweight summary of all workflows for the authenticated user (no full workflow_data)
+- **Response**:
+
+```json
+[
+  {
+    "id": "workflow-id",
+    "name": "Workflow Name",
+    "status": "active",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
+### Analyze Dependencies
+
+**POST** `/analyze-dependencies`
+
+- **Authentication**: Required
+- **Description**: Analyze node dependencies within a workflow
+- **Body**: Workflow data with nodes and edges
+- **Response**: Dependency analysis result
+
+### List Workflow Versions
+
+**GET** `/:workflowId/versions`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `workflowId` (path): Workflow ID
+  - `limit` (query, optional): Max versions to return (default: 50)
+  - `offset` (query, optional): Pagination offset (default: 0)
+  - `checkpointsOnly` (query, optional): If `"true"`, only return checkpoint versions
+- **Description**: List the version history for a workflow
+- **Response**:
+
+```json
+{
+  "success": true,
+  "versions": [
+    {
+      "version_number": 5,
+      "source": "chat",
+      "change_description": "Added new API node",
+      "is_checkpoint": false,
+      "checkpoint_name": null,
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Specific Version
+
+**GET** `/:workflowId/versions/:versionId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `workflowId` (path): Workflow ID
+  - `versionId` (path): Version number
+- **Description**: Get the full data for a specific workflow version
+- **Response**:
+
+```json
+{
+  "success": true,
+  "version": {
+    "version_number": 3,
+    "workflow_state": { ... },
+    "source": "manual",
+    "change_description": "Checkpoint before refactor",
+    "is_checkpoint": true,
+    "checkpoint_name": "Pre-refactor",
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+- **Error** (404): Version not found
+
+### Revert to Version
+
+**POST** `/:workflowId/revert`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `workflowId` (path): Workflow ID
+- **Description**: Revert a workflow to a previous version. Broadcasts `workflow:reverted` via WebSocket.
+- **Body**:
+
+```json
+{
+  "versionId": 3
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "revertedToVersion": 3,
+  "workflowState": { ... }
+}
+```
+
+### Create Checkpoint
+
+**POST** `/:workflowId/checkpoint`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `workflowId` (path): Workflow ID
+- **Description**: Save a named checkpoint of the current workflow state
+- **Body**:
+
+```json
+{
+  "name": "Before big changes",
+  "currentWorkflowState": { ... }
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "versionNumber": 6,
+  "checkpointName": "Before big changes"
+}
+```
+
+### Compare Versions
+
+**GET** `/:workflowId/versions/compare?versionA=1&versionB=3`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `workflowId` (path): Workflow ID
+  - `versionA` (query, required): First version number
+  - `versionB` (query, required): Second version number
+- **Description**: Get a diff between two workflow versions
+- **Response**:
+
+```json
+{
+  "success": true,
+  "diff": {
+    "nodesAdded": [],
+    "nodesRemoved": [],
+    "nodesModified": [],
+    "edgesAdded": [],
+    "edgesRemoved": []
+  }
+}
+```
+
+### Version Storage Stats
+
+**GET** `/:workflowId/versions/stats`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `workflowId` (path): Workflow ID
+- **Description**: Get storage statistics for a workflow's version history
+- **Response**:
+
+```json
+{
+  "success": true,
+  "stats": {
+    "totalVersions": 12,
+    "checkpoints": 3,
+    "totalSizeBytes": 45678,
+    "oldestVersion": "2024-01-01T00:00:00Z",
+    "newestVersion": "2024-03-01T00:00:00Z"
+  }
 }
 ```
 

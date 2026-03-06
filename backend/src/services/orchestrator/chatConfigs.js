@@ -8,6 +8,7 @@ import { getCodeSystemContent } from './system-prompts/code-chat.js';
 import { getAgentSystemContent } from './system-prompts/agent-chat.js';
 import { getWorkflowSystemContent } from './system-prompts/workflow-chat.js';
 import { ASYNC_EXECUTION_GUIDANCE } from './system-prompts/async-execution.js';
+import { SECTION_NAMES } from './apiReference.js';
 
 /**
  * Configuration for different chat types in the universal handler
@@ -378,7 +379,7 @@ Always be helpful, creative, and guide users through the tool creation process s
                 section: {
                   type: 'string',
                   description: 'API section to get details for. Omit for a full overview of all endpoints.',
-                  enum: ['agents', 'executions', 'workflows', 'goals', 'tools', 'custom-tools', 'content-outputs', 'user', 'models', 'plugins', 'webhooks', 'custom-providers', 'widget-definitions', 'mcp', 'tool-schemas', 'speech', 'streams', 'npm'],
+                  enum: [...SECTION_NAMES],
                 },
               },
             },
