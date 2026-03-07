@@ -1,5 +1,55 @@
 import db from '../models/database/index.js';
 import { v4 as uuidv4 } from 'uuid';
+import { getBestChromePath } from '../utils/chrome-detector.js';
+
+// --- Persistent Puppeteer browser for thumbnail captures ---
+// Lazy-launched on first capture, auto-closes after 60s of inactivity.
+let _browser = null;
+let _browserIdleTimer = null;
+const BROWSER_IDLE_MS = 60000;
+
+async function getThumbnailBrowser() {
+  // Reset idle timer on every use
+  clearTimeout(_browserIdleTimer);
+  _browserIdleTimer = setTimeout(closeThumbnailBrowser, BROWSER_IDLE_MS);
+
+  if (_browser && _browser.connected) return _browser;
+
+  const chromePath = getBestChromePath();
+  if (!chromePath) throw new Error('No Chrome/Chromium browser found on this system');
+
+  const puppeteer = await import('puppeteer-core');
+  _browser = await puppeteer.default.launch({
+    headless: 'new',
+    executablePath: chromePath,
+    protocolTimeout: 60000,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-web-security',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--use-fake-device-for-media-stream',
+      '--use-fake-ui-for-media-stream',
+      '--allow-file-access-from-files',
+      '--autoplay-policy=no-user-gesture-required',
+      '--enable-experimental-web-platform-features',
+      '--enable-webgl',
+      '--use-gl=angle',
+      '--use-angle=swiftshader',
+      '--enable-gpu-rasterization',
+    ],
+  });
+
+  _browser.on('disconnected', () => { _browser = null; });
+  return _browser;
+}
+
+function closeThumbnailBrowser() {
+  if (_browser) {
+    _browser.close().catch(() => {});
+    _browser = null;
+  }
+}
 
 class WidgetDefinitionService {
   /**
@@ -383,6 +433,81 @@ class WidgetDefinitionService {
     } catch (error) {
       console.error('Error importing widget:', error);
       res.status(500).json({ error: 'Failed to import widget' });
+    }
+  }
+
+  /**
+   * Capture a widget thumbnail using Puppeteer (server-side screenshot).
+   *
+   * Uses a PERSISTENT browser instance (lazy-launched, auto-closes after 60s
+   * idle) so we don't pay the Chrome+SwiftShader startup cost on every capture.
+   * Auto-dismisses alert/confirm/prompt dialogs so widgets with popups don't block.
+   */
+  async captureThumbnail(req, res) {
+    const { html, storageData } = req.body;
+    if (!html) {
+      return res.status(400).json({ error: 'html is required' });
+    }
+
+    let page = null;
+
+    try {
+      const browser = await getThumbnailBrowser();
+      page = await browser.newPage();
+      await page.setViewport({ width: 1200, height: 630 });
+
+      // Auto-dismiss any alert/confirm/prompt dialogs
+      page.on('dialog', (dialog) => dialog.dismiss().catch(() => {}));
+
+      // Navigate to a lightweight endpoint to establish the localhost origin
+      const port = process.env.PORT || 3333;
+      try {
+        await page.goto(`http://localhost:${port}/api/health`, {
+          waitUntil: 'load',
+          timeout: 8000,
+        });
+      } catch {
+        // Origin is likely established even on timeout — continue
+      }
+
+      // Inject ALL of localStorage (same keys/values as the real app)
+      if (storageData && typeof storageData === 'object') {
+        await page.evaluate((data) => {
+          for (const [key, value] of Object.entries(data)) {
+            localStorage.setItem(key, value);
+          }
+        }, storageData);
+      }
+
+      // Load the widget HTML. Race with a fallback timer so complex widgets
+      // with blocking scripts (Three.js, canvas, etc.) don't hang forever.
+      await Promise.race([
+        page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 }),
+        new Promise((r) => setTimeout(r, 8000)),
+      ]);
+
+      // Give canvas/WebGL/Three.js/API-fetching apps time to render
+      await new Promise((r) => setTimeout(r, 3000));
+
+      const screenshotBuffer = await page.screenshot({
+        type: 'jpeg',
+        quality: 85,
+      });
+
+      const base64 = 'data:image/jpeg;base64,' + screenshotBuffer.toString('base64');
+      res.json({ thumbnail: base64 });
+    } catch (error) {
+      console.error('Error capturing widget thumbnail:', error);
+      if (page) {
+        try {
+          const fallback = await page.screenshot({ type: 'jpeg', quality: 85 });
+          const base64 = 'data:image/jpeg;base64,' + fallback.toString('base64');
+          return res.json({ thumbnail: base64 });
+        } catch {}
+      }
+      res.status(500).json({ error: 'Failed to capture thumbnail' });
+    } finally {
+      if (page) await page.close().catch(() => {});
     }
   }
 }

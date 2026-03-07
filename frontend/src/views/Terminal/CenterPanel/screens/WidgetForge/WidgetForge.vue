@@ -33,6 +33,15 @@
               {{ autosaveStatus === 'saving' ? 'Saving...' : autosaveStatus === 'saved' ? 'Saved' : 'Save failed' }}
             </span>
             <button class="wf-btn wf-btn-clear" @click="clearForge" title="Clear all fields"><i class="fas fa-trash-alt"></i> Clear</button>
+            <button
+              class="wf-btn wf-btn-capture"
+              @click="manualCapture"
+              :disabled="capturingThumbnail || !form.source_code"
+              title="Capture preview thumbnail"
+            >
+              <i :class="capturingThumbnail ? 'fas fa-circle-notch fa-spin' : 'fas fa-camera'"></i>
+              {{ capturingThumbnail ? 'Capturing...' : 'Capture' }}
+            </button>
             <button v-if="isEditing" class="wf-btn wf-btn-export" @click="exportWidget" title="Export widget">
               <i class="fas fa-file-export"></i> Export
             </button>
@@ -78,6 +87,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import { captureWidgetThumbnail } from '@/utils/widgetThumbnail.js';
 
 const WIDGET_ICONS = [
   'fas fa-puzzle-piece',
@@ -455,41 +465,34 @@ export default {
       if (!existing) return; // only autosave existing widgets
       if (!form.name.trim() && !form.source_code.trim()) return; // don't save empty state
 
+      // Snapshot form data NOW — before any async work.
+      const widgetId = existing.id;
+      const payload = {
+        name: form.name,
+        description: form.description,
+        icon: form.icon,
+        category: form.category,
+        widget_type: form.widget_type,
+        source_code: form.source_code,
+        config: form.config,
+        default_size: form.default_size,
+        min_size: form.min_size,
+        useThemeStyles: form.useThemeStyles,
+      };
+
       autosaveStatus.value = 'saving';
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${existing.id}`, {
+        // Save IMMEDIATELY — never wait for thumbnail
+        const response = await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${widgetId}`, {
           method: 'PUT',
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            name: form.name,
-            description: form.description,
-            icon: form.icon,
-            category: form.category,
-            widget_type: form.widget_type,
-            source_code: form.source_code,
-            config: form.config,
-            default_size: form.default_size,
-            min_size: form.min_size,
-            useThemeStyles: form.useThemeStyles,
-          }),
+          body: JSON.stringify(payload),
         });
 
         if (response.ok) {
-          // Update store silently (no re-render of form, just keeps store in sync)
           store.commit('widgetDefinitions/UPDATE_DEFINITION', {
-            id: existing.id,
-            updates: {
-              name: form.name,
-              description: form.description,
-              icon: form.icon,
-              category: form.category,
-              widget_type: form.widget_type,
-              source_code: form.source_code,
-              config: form.config,
-              default_size: form.default_size,
-              min_size: form.min_size,
-              useThemeStyles: form.useThemeStyles,
-            },
+            id: widgetId,
+            updates: { ...payload },
           });
           autosaveStatus.value = 'saved';
         } else {
@@ -505,6 +508,28 @@ export default {
           autosaveStatus.value = '';
         }
       }, 3000);
+
+      // Capture thumbnail in background — completely decoupled from the save
+      captureWidgetThumbnail(payload.source_code, payload.widget_type)
+        .then((thumbnail) => {
+          if (!thumbnail) return;
+          const current = store.getters['widgetDefinitions/activeDefinition'];
+          if (!current || current.id !== widgetId) return;
+          // Update thumbnail separately
+          fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${widgetId}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ thumbnail }),
+          }).then((r) => {
+            if (r.ok) {
+              store.commit('widgetDefinitions/UPDATE_DEFINITION', {
+                id: widgetId,
+                updates: { thumbnail },
+              });
+            }
+          }).catch(() => {});
+        })
+        .catch(() => {});
     }
 
     function scheduleAutosave() {
@@ -525,6 +550,22 @@ export default {
     watch(() => JSON.stringify(form.default_size), scheduleAutosave);
     watch(() => JSON.stringify(form.min_size), scheduleAutosave);
     watch(() => form.useThemeStyles, scheduleAutosave);
+
+    const capturingThumbnail = ref(false);
+
+    async function captureThumbnail() {
+      if (capturingThumbnail.value) return null;
+      if (form.widget_type !== 'html' && form.widget_type !== 'markdown') return null;
+      if (!form.source_code?.trim()) return null;
+
+      capturingThumbnail.value = true;
+      try {
+        const thumbnail = await captureWidgetThumbnail(form.source_code, form.widget_type);
+        return thumbnail;
+      } finally {
+        capturingThumbnail.value = false;
+      }
+    }
 
     const previewFrameStyle = computed(() => {
       // Scale preview to fit
@@ -583,6 +624,9 @@ export default {
     async function saveWidget() {
       if (!canSave.value || saveFlash.value) return;
 
+      // Capture thumbnail in parallel with save prep
+      const thumbnail = await captureThumbnail();
+
       const widgetData = {
         name: form.name,
         description: form.description,
@@ -595,6 +639,8 @@ export default {
         min_size: form.min_size,
         useThemeStyles: form.useThemeStyles,
       };
+
+      if (thumbnail) widgetData.thumbnail = thumbnail;
 
       const existing = store.getters['widgetDefinitions/activeDefinition'];
       if (existing) {
@@ -670,6 +716,25 @@ export default {
       store.dispatch('widgetChat/clearConversation', widgetId.value);
     }
 
+    async function manualCapture() {
+      const thumbnail = await captureThumbnail();
+      if (!thumbnail) return;
+
+      const existing = store.getters['widgetDefinitions/activeDefinition'];
+      if (existing) {
+        // Save thumbnail to backend
+        await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${existing.id}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ thumbnail }),
+        });
+        store.commit('widgetDefinitions/UPDATE_DEFINITION', {
+          id: existing.id,
+          updates: { thumbnail },
+        });
+      }
+    }
+
     function handlePanelAction(action, payload) {
       if (action === 'navigate') {
         emit('screen-change', payload);
@@ -695,11 +760,13 @@ export default {
       canSave,
       saveFlash,
       autosaveStatus,
+      capturingThumbnail,
       modalRef,
       previewDefinition,
       previewFrameStyle,
       saveWidget,
       exportWidget,
+      manualCapture,
       goBack,
       clearForge,
       handlePanelAction,
@@ -813,6 +880,33 @@ export default {
   color: var(--color-red, #ff6b6b);
   border-color: rgba(255, 107, 107, 0.3);
   background: rgba(255, 107, 107, 0.06);
+}
+
+.wf-btn-capture {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid rgba(var(--green-rgb), 0.15);
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: inherit;
+}
+
+.wf-btn-capture:hover {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--green-rgb), 0.04);
+}
+
+.wf-btn-capture:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .wf-btn-export {

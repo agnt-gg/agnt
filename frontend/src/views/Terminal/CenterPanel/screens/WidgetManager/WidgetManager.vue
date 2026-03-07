@@ -65,9 +65,18 @@
               >
                 <!-- Preview area (custom widgets only) -->
                 <div v-if="widget._isCustom && widget._definition && hasPreview(widget)" class="wm-card-preview">
-                  <!-- iframe-type: load external URL (needs scripts to render) -->
+                  <!-- Thumbnail image (captured screenshot) -->
+                  <img
+                    v-if="widget._definition.thumbnail"
+                    class="wm-card-preview-img"
+                    :src="widget._definition.thumbnail"
+                    :alt="widget.name"
+                    loading="lazy"
+                    draggable="false"
+                  />
+                  <!-- Fallback: live iframe preview when no thumbnail exists -->
                   <iframe
-                    v-if="widget._definition.widget_type === 'iframe' && widget._definition.config?.url"
+                    v-else-if="widget._definition.widget_type === 'iframe' && widget._definition.config?.url"
                     class="wm-card-preview-iframe"
                     :src="widget._definition.config.url"
                     sandbox="allow-scripts allow-same-origin"
@@ -75,7 +84,6 @@
                     tabindex="-1"
                     scrolling="no"
                   ></iframe>
-                  <!-- html/markdown: static srcdoc preview -->
                   <iframe
                     v-else
                     class="wm-card-preview-iframe"
@@ -92,20 +100,19 @@
                     <div class="wm-card-icon"><i :class="widget.icon"></i></div>
                     <div class="wm-card-name">{{ widget.name }}</div>
                     <div class="wm-card-badges">
-                      <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">CUSTOM</span>
+                      <span v-if="widget._isCustom" class="wm-badge wm-badge-custom">{{ widget.widget_type || widget.category }}</span>
                       <span v-else class="wm-badge wm-badge-builtin">BUILT-IN</span>
                       <span v-if="widget.is_shared" class="wm-badge wm-badge-shared">SHARED</span>
                     </div>
                   </div>
                   <div class="wm-card-desc">{{ widget.description }}</div>
-                  <div class="wm-card-meta">
-                    <span class="wm-card-type">{{ widget.widget_type || widget.category }}</span>
-                    <span class="wm-card-size">{{ formatSize(widget) }}</span>
-                  </div>
                 </div>
                 <!-- Actions for custom widgets -->
                 <div v-if="widget._isCustom" class="wm-card-actions" @click.stop>
                   <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
+                  <button @click="captureWidgetPreview(widget)" title="Capture preview" :disabled="capturingId === widget.id">
+                    <i :class="capturingId === widget.id ? 'fas fa-circle-notch fa-spin' : 'fas fa-camera'"></i>
+                  </button>
                   <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
                   <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
                   <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
@@ -144,6 +151,9 @@
                 <span class="wm-list-size">{{ formatSize(widget) }}</span>
                 <div v-if="widget._isCustom" class="wm-list-actions" @click.stop>
                   <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
+                  <button @click="captureWidgetPreview(widget)" title="Capture preview" :disabled="capturingId === widget.id">
+                    <i :class="capturingId === widget.id ? 'fas fa-circle-notch fa-spin' : 'fas fa-camera'"></i>
+                  </button>
                   <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
                   <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
                   <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
@@ -231,6 +241,8 @@
 import { ref, computed, onMounted, nextTick, inject } from 'vue';
 import { useStore } from 'vuex';
 import { getAllWidgets } from '@/canvas/widgetRegistry.js';
+import { captureWidgetThumbnail } from '@/utils/widgetThumbnail.js';
+import { API_CONFIG } from '@/tt.config.js';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
@@ -388,6 +400,7 @@ export default {
     function hasPreview(widget) {
       const def = widget._definition;
       if (!def) return false;
+      if (def.thumbnail) return true;
       const type = def.widget_type || '';
       if (type === 'iframe') return !!def.config?.url;
       if (type === 'html' || type === 'markdown') return !!def.source_code;
@@ -455,6 +468,39 @@ export default {
       }
 
       return '';
+    }
+
+    const capturingId = ref(null);
+
+    function getAuthHeaders() {
+      const token = localStorage.getItem('token');
+      return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+    }
+
+    async function captureWidgetPreview(widget) {
+      if (!widget._isCustom || !widget._definition) return;
+      const def = widget._definition;
+      if (!def.source_code) return;
+
+      capturingId.value = widget.id;
+      try {
+        const thumbnail = await captureWidgetThumbnail(def.source_code, def.widget_type);
+        if (thumbnail) {
+          // Save to backend
+          await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${widget.id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ thumbnail }),
+          });
+          // Update store so the UI refreshes
+          store.commit('widgetDefinitions/UPDATE_DEFINITION', {
+            id: widget.id,
+            updates: { thumbnail },
+          });
+        }
+      } finally {
+        capturingId.value = null;
+      }
     }
 
     function createNewWidget() {
@@ -563,6 +609,8 @@ export default {
         duplicateWidget(payload);
       } else if (action === 'export-widget' && payload) {
         exportWidget(payload);
+      } else if (action === 'capture-widget' && payload) {
+        captureWidgetPreview(payload);
       } else if (action === 'clear-selection' || action === 'close-panel') {
         selectedWidget.value = null;
       }
@@ -579,6 +627,7 @@ export default {
       deleteTarget,
       currentLayout,
       selectedWidget,
+      capturingId,
       panelProps,
       setLayout,
       categoryTabs,
@@ -588,6 +637,7 @@ export default {
       getPreviewHtml,
       onContentClick,
       selectWidget,
+      captureWidgetPreview,
       createNewWidget,
       openEditor,
       duplicateWidget,
@@ -758,7 +808,7 @@ export default {
 .wm-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  grid-auto-rows: 72px;
+  grid-auto-rows: 65px;
   grid-auto-flow: dense;
   gap: 12px;
   width: 100%;
@@ -767,12 +817,6 @@ export default {
 /* Preview cards span 3 rows */
 .wm-card:has(.wm-card-preview) {
   grid-row: span 3;
-}
-
-/* Non-preview cards clamp to 1 row */
-.wm-card:not(:has(.wm-card-preview)) {
-  grid-row: span 1;
-  overflow: hidden;
 }
 
 /* ── List View ── */
@@ -900,6 +944,7 @@ export default {
   transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
+  align-self: start;
 }
 
 .wm-card {
@@ -935,6 +980,18 @@ export default {
   border-bottom: 1px solid var(--terminal-border-color);
 }
 
+.wm-card-preview-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+  pointer-events: none;
+  display: block;
+}
+
 .wm-card-preview-iframe {
   position: absolute;
   top: 0;
@@ -951,10 +1008,9 @@ export default {
 /* ── Info area ── */
 .wm-card-info {
   padding: 10px 14px;
-  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .wm-card-header {
@@ -1017,7 +1073,7 @@ export default {
   color: var(--color-text-muted);
   line-height: 1.4;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

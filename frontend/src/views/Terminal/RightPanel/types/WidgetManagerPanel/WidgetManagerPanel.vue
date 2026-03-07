@@ -43,6 +43,9 @@
           <BaseButton variant="secondary" @click="$emit('panel-action', 'export-widget', selectedWidget)">
             <i class="fas fa-file-export"></i> Export
           </BaseButton>
+          <BaseButton variant="secondary" @click="$emit('panel-action', 'capture-widget', selectedWidget)">
+            <i class="fas fa-camera"></i> Capture Preview
+          </BaseButton>
           <BaseButton variant="danger" @click="$emit('panel-action', 'delete-widget', selectedWidget)">
             <i class="fas fa-trash"></i> Delete
           </BaseButton>
