@@ -216,8 +216,12 @@ export function useProviderConnection(modalRef) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ apiKey: encryptedApiKey }),
       });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = result.error || result.message || result.details || `HTTP ${response.status}`;
+        console.error(`[saveApiKey] ${app.name} (${normalizedId}) failed:`, { status: response.status, result });
+        throw new Error(detail);
+      }
       if (result.success) {
         await showAlert('Success', `API key for ${app.name} saved successfully!`);
         await refreshHealth();
