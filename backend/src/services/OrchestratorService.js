@@ -21,6 +21,8 @@ import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
 import conversationManager from './ConversationManager.js';
 import autonomousMessageService from './AutonomousMessageService.js';
+import UserModel from '../models/UserModel.js';
+import AgentModel from '../models/AgentModel.js';
 
 /**
  * Extract images from tool results and replace with references
@@ -307,15 +309,44 @@ async function universalChatHandler(req, res, context = {}) {
   // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
   const reasoningEnabled = rawReasoningEnabled === true || rawReasoningEnabled === 'true';
 
-  // Validate required parameters
-  if (!provider || !inputModel) {
+  // Resolve provider/model: request body → agent config → user defaults
+  let resolvedProvider = provider;
+  let resolvedModel = inputModel;
+
+  if (!resolvedProvider || !resolvedModel) {
+    // Try agent's own config (when chatting with a specific agent)
+    if (agentId && agentId !== 'agent-chat') {
+      try {
+        const agent = await AgentModel.findOne(agentId);
+        if (agent) {
+          resolvedProvider = resolvedProvider || agent.provider;
+          resolvedModel = resolvedModel || agent.model;
+        }
+      } catch (e) {
+        console.warn(`[Chat] Could not load agent ${agentId} for provider/model fallback:`, e.message);
+      }
+    }
+
+    // Fall back to user's default settings
+    if (!resolvedProvider || !resolvedModel) {
+      try {
+        const userSettings = await UserModel.getUserSettings(userId);
+        resolvedProvider = resolvedProvider || userSettings.selectedProvider;
+        resolvedModel = resolvedModel || userSettings.selectedModel;
+      } catch (e) {
+        console.warn('[Chat] Could not load user settings for provider/model fallback:', e.message);
+      }
+    }
+  }
+
+  if (!resolvedProvider || !resolvedModel) {
     res.setHeader('Content-Type', 'application/json');
-    return res.status(400).json({ error: 'Provider and model are required in the request body.' });
+    return res.status(400).json({ error: 'Could not determine AI provider/model. Please select a provider in settings.' });
   }
 
   // CRITICAL: Normalize provider to lowercase to ensure consistent handling
-  const normalizedProvider = provider.toLowerCase();
-  let model = inputModel;
+  const normalizedProvider = resolvedProvider.toLowerCase();
+  let model = resolvedModel;
 
   // Guardrail: Codex CLI accounts do not support every OpenAI model name.
   if (normalizedProvider === 'openai-codex-cli') {
@@ -428,7 +459,7 @@ async function universalChatHandler(req, res, context = {}) {
     userId,
     conversationId,
     // AI provider settings
-    provider,
+    provider: resolvedProvider,
     model,
     normalizedProvider,
     // Abort signal for cancelling LLM streams
@@ -461,7 +492,7 @@ async function universalChatHandler(req, res, context = {}) {
           agentNameForExecution,
           conversationId,
           typeof initialPromptText === 'string' ? initialPromptText.substring(0, 500) : String(initialPromptText).substring(0, 500),
-          provider,
+          resolvedProvider,
           model
         );
 
