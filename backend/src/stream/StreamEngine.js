@@ -172,6 +172,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'cerebras':
         case 'deepseek':
         case 'gemini':
+        case 'gemini-cli':
         case 'grokai':
         case 'groq':
         case 'kimi':
@@ -735,6 +736,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         gemini: 'gemini-2.5-pro-exp-03-25',
+        'gemini-cli': 'gemini-2.5-pro-exp-03-25',
         grokai: 'grok-4',
         groq: 'llama-3.3-70b-versatile',
         kimi: 'kimi-k2.5',
@@ -814,6 +816,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
         case 'gemini':
+        case 'gemini-cli':
           response = await client.models.generateContent({
             model: selectedModel,
             config: {
@@ -1208,6 +1211,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
         gemini: 'gemini-pro',
+        'gemini-cli': 'gemini-pro',
         grokai: 'grok-4',
         groq: 'mixtral-8x7b-32768',
         kimi: 'kimi-k2.5',
@@ -1301,6 +1305,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
         case 'gemini':
+        case 'gemini-cli':
           completion = await client.models.generateContent({
             model: selectedModel,
             config: {
@@ -1494,6 +1499,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         gemini: 'gemini-2.5-pro-exp-03-25',
+        'gemini-cli': 'gemini-2.5-pro-exp-03-25',
         grokai: 'grok-4',
         groq: 'llama-3.3-70b-versatile',
         kimi: 'kimi-k2.5',
@@ -1573,6 +1579,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
         case 'gemini':
+        case 'gemini-cli':
           response = await client.models.generateContent({
             model: selectedModel,
             config: {
@@ -1716,6 +1723,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
         gemini: 'gemini-pro',
+        'gemini-cli': 'gemini-pro',
         grokai: 'grok-4',
         groq: 'mixtral-8x7b-32768',
         kimi: 'kimi-k2.5',
@@ -1822,6 +1830,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return completion.choices[0].message.content;
 
         case 'gemini':
+        case 'gemini-cli':
           completion = await client.models.generateContent({
             model: selectedModel,
             config: {

@@ -5,6 +5,7 @@ import providerHealthCheck from '../services/ai/ProviderHealthCheck.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
+import GeminiCliAuthManager from '../services/auth/GeminiCliAuthManager.js';
 import jwt from 'jsonwebtoken';
 
 const router = express.Router();
@@ -123,6 +124,56 @@ router.get('/:provider/models', async (req, res) => {
             success: false,
             error: 'Claude Code token not found.',
           });
+        }
+      }
+      // Gemini CLI: uses GeminiCliAuthManager (OAuth or manual API key)
+      // Only triggered for 'gemini-cli' — regular 'gemini' uses standard API key flow below
+      else if (providerLower === 'gemini-cli') {
+        const gcStatus = await GeminiCliAuthManager.checkApiUsable();
+        if (!gcStatus.available) {
+          return res.status(400).json({
+            success: false,
+            error: 'Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.',
+          });
+        }
+        apiKey = await GeminiCliAuthManager.getAccessToken();
+        if (!apiKey) {
+          return res.status(400).json({
+            success: false,
+            error: 'Gemini CLI token not found.',
+          });
+        }
+
+        if (GeminiCliAuthManager.isUsingApiKey()) {
+          // API key → fetch models dynamically via the standard gemini provider service
+          const geminiService = providerServices['gemini'];
+          if (geminiService) {
+            const { category, useCache = 'true', format = 'names' } = req.query;
+            const options = { category, useCache: useCache === 'true' };
+            let models;
+            if (format === 'full') {
+              models = await geminiService.fetchModels(apiKey, options);
+            } else {
+              models = await geminiService.getModelNames(apiKey, options);
+            }
+            return res.json({ success: true, models, cached: geminiService.isCacheValid(), count: models.length });
+          }
+        } else {
+          // OAuth → Code Assist endpoint has no /models listing, use curated list
+          // Ensure onboarding has run so tier info is populated (no-ops if already done)
+          await GeminiCliAuthManager.ensureOnboarded();
+
+          const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
+          const cfg = getProviderConfig('gemini-cli');
+          const models = [...(cfg?.fallbackModels || [])];
+
+          // gemini-3.1-pro-preview is only available to paid/standard tier users
+          if (GeminiCliAuthManager.hasPaidTier() && !models.includes('gemini-3.1-pro-preview')) {
+            const idx = models.indexOf('gemini-3-pro-preview');
+            models.splice(idx >= 0 ? idx + 1 : 1, 0, 'gemini-3.1-pro-preview');
+          }
+
+          return res.json({ success: true, models, cached: false, count: models.length });
         }
       }
       // OpenAI Codex: use local Codex CLI auth
@@ -249,6 +300,15 @@ router.post('/:provider/models/refresh', async (req, res) => {
         });
       }
       apiKey = await ClaudeCodeAuthManager.getAccessToken();
+    } else if (providerLower === 'gemini-cli') {
+      const gcStatus = await GeminiCliAuthManager.checkApiUsable({ forceRefresh: true });
+      if (!gcStatus.available) {
+        return res.status(400).json({
+          success: false,
+          error: 'Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.',
+        });
+      }
+      apiKey = await GeminiCliAuthManager.getAccessToken();
     } else if (providerLower === 'openai-codex') {
       const codexStatus = await CodexAuthManager.checkApiUsable({ forceRefresh: true });
       if (!codexStatus.available) {

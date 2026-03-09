@@ -1340,6 +1340,132 @@ export default {
       }
     }
 
+    async function connectGeminiCli(app) {
+      // Let user choose auth method explicitly
+      const method = await modalRef.value?.showModal({
+        title: 'Connect Gemini',
+        message: `<div style="text-align:left">
+          <p><strong>Choose your authentication method:</strong></p>
+          <p><strong>Login with Google</strong> — Use your Google account (AI Pro/Ultra subscription)</p>
+          <p><strong>API Key</strong> — Use a Gemini API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-color)">AI Studio</a> (recommended for higher rate limits)</p>
+        </div>`,
+        confirmText: 'Login with Google',
+        cancelText: 'Use API Key',
+        showCancel: true,
+        confirmClass: 'btn-primary',
+      });
+
+      if (method === true) {
+        // OAuth flow
+        await connectGeminiCliOAuth(app);
+      } else if (method === false) {
+        // API key flow
+        await connectGeminiCliApiKey(app);
+      }
+      // null = closed modal, do nothing
+    }
+
+    async function connectGeminiCliOAuth(app) {
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/oauth/start`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!data.authUrl) throw new Error('No authUrl returned');
+
+        if (window.electron?.openExternalUrl) {
+          window.electron.openExternalUrl(data.authUrl);
+        } else {
+          window.open(data.authUrl, '_blank');
+        }
+
+        const confirmed = await modalRef.value?.showModal({
+          title: 'Gemini CLI Authentication',
+          message: `<div style="text-align:left">
+            <p>A browser window has opened for Google authentication.</p>
+            <p><strong>1.</strong> Sign in to your Google account</p>
+            <p><strong>2.</strong> Click <strong>Allow</strong> to grant access</p>
+            <p><strong>3.</strong> Return here and click <strong>I have signed in</strong></p>
+            <p style="margin-top:8px;opacity:0.7;font-size:0.9em"><strong>Workspace accounts:</strong> You may also need to set your Google Cloud Project in Settings.</p>
+          </div>`,
+          confirmText: 'I have signed in',
+          cancelText: 'Cancel',
+          showCancel: true,
+          confirmClass: 'btn-primary',
+        });
+        if (!confirmed) return;
+
+        const maxAttempts = 20;
+        for (let i = 0; i < maxAttempts; i++) {
+          const statusResponse = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/oauth/status?sessionId=${data.sessionId}`);
+          const status = await statusResponse.json();
+
+          if (status.status === 'success') {
+            localStorage.removeItem('Gemini_models');
+            localStorage.removeItem('Gemini-CLI_models');
+            await store.dispatch('appAuth/fetchConnectedApps');
+
+            // Fetch tier info to show the user
+            const tierInfo = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/status`).then(r => r.json()).catch(() => ({}));
+            const tierMsg = tierInfo.tier ? ` (Tier: ${tierInfo.tier})` : '';
+            await showAlert('Success', `Gemini CLI connected via Google account.${tierMsg}`);
+            terminalLines.value.push(`[Connect] Gemini CLI connected via Google account${tierMsg}`);
+            nextTick(() => baseScreenRef.value?.scrollToBottom());
+            return;
+          }
+          if (status.status === 'error') {
+            await showAlert('Connection Failed', status.error || 'Google OAuth failed.');
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        await showAlert('Connection Failed', 'OAuth timed out. Please try again.');
+      } catch (error) {
+        console.warn('Gemini CLI OAuth failed:', error.message);
+        await showAlert('Connection Failed', `OAuth error: ${error.message}. Try using an API key instead.`);
+      }
+    }
+
+    async function connectGeminiCliApiKey(app) {
+      const apiKey = await modalRef.value?.showModal({
+        title: 'Connect Gemini with API Key',
+        message: `<div style="text-align:left">
+          <p>Paste your Gemini API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-color)">Google AI Studio</a>.</p>
+          <p style="opacity:0.7;font-size:0.9em">API keys with billing enabled have higher rate limits than OAuth.</p>
+        </div>`,
+        isPrompt: true,
+        inputType: 'password',
+        confirmText: 'Connect',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-primary',
+      });
+      if (!apiKey) return;
+      try {
+        // Switch to API key mode (removes OAuth creds)
+        await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/set-auth-method`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'api-key' }),
+        });
+
+        const result = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/connect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey }),
+        });
+        const respData = await result.json();
+        if (respData.success) {
+          localStorage.removeItem('Gemini_models');
+          localStorage.removeItem('Gemini-CLI_models');
+          await showAlert('Success', 'Gemini CLI connected with API key.');
+          await store.dispatch('appAuth/fetchConnectedApps');
+        } else {
+          await showAlert('Connection Failed', respData.error || 'Failed to save API key.');
+        }
+      } catch (manualError) {
+        await showAlert('Error', `Failed to connect Gemini CLI: ${manualError.message}`);
+      }
+    }
+
     function handleOAuthAppClick(app) {
       const appId = (app.id || '').toLowerCase();
       if (app.connected) {
@@ -1348,9 +1474,13 @@ export default {
           disconnectLocalProvider(app, 'appAuth/disconnectClaudeCode');
         } else if (appId === 'openai-codex-cli') {
           disconnectLocalProvider(app, 'appAuth/logoutCodex');
+        } else if (appId === 'gemini-cli') {
+          disconnectLocalProvider(app, 'appAuth/disconnectGeminiCli');
         } else {
           disconnectApp(app);
         }
+      } else if (appId === 'gemini-cli') {
+        connectGeminiCli(app);
       } else if (app.connectionType === 'oauth') {
         connectOAuthApp(app);
       } else if (app.connectionType === 'apikey') {

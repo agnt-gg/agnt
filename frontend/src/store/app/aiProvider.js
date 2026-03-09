@@ -5,7 +5,7 @@ import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
 
 // Cache version — bump this to invalidate all provider model caches
-const MODEL_CACHE_VERSION = 4;
+const MODEL_CACHE_VERSION = 5;
 (() => {
   const storedVersion = localStorage.getItem('model_cache_version');
   if (storedVersion !== String(MODEL_CACHE_VERSION)) {
@@ -26,6 +26,7 @@ const BUILT_IN_PROVIDERS = [
   { key: 'claude-code', displayName: 'Claude-Code' },
   { key: 'deepseek', displayName: 'DeepSeek' },
   { key: 'gemini', displayName: 'Gemini' },
+  { key: 'gemini-cli', displayName: 'Gemini-CLI' },
   { key: 'grokai', displayName: 'GrokAI' },
   { key: 'groq', displayName: 'Groq' },
   { key: 'kimi', displayName: 'Kimi' },
@@ -374,7 +375,7 @@ export default {
       try {
         const providerLower = resolveProviderKey(provider);
         const token = localStorage.getItem('token');
-        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'openai-codex-cli' || providerLower === 'claude-code';
+        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'openai-codex-cli' || providerLower === 'claude-code' || providerLower === 'gemini-cli';
         if (!token && !isLocalProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }
@@ -465,6 +466,9 @@ export default {
     },
     async fetchGeminiModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Gemini', forceRefresh });
+    },
+    async fetchGeminiCLIModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Gemini-CLI', forceRefresh });
     },
     async fetchGrokAIModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'GrokAI', forceRefresh });

@@ -269,6 +269,8 @@ export default {
           selectedProvider.value = 'OpenAI';
         } else if (connectedAIProviders.includes('gemini')) {
           selectedProvider.value = 'Gemini';
+        } else if (connectedAIProviders.includes('gemini-cli')) {
+          selectedProvider.value = 'Gemini-CLI';
         } else if (connectedAIProviders.includes('grokai')) {
           selectedProvider.value = 'GrokAI';
         } else if (connectedAIProviders.includes('groq')) {

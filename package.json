@@ -36,7 +36,7 @@
     "@anthropic-ai/sdk": "^0.16.1",
     "@cerebras/cerebras_cloud_sdk": "^1.59.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@google/genai": "^1.30.0",
+    "@google/genai": "^1.41.0",
     "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^1.6.0",
     "@xenova/transformers": "^2.17.2",

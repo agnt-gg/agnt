@@ -256,6 +256,32 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 
+  // ─────────────────────────── GEMINI CLI ───────────────────────────
+  {
+    key: 'gemini-cli',
+    name: 'Gemini CLI',
+    baseURL: 'https://generativelanguage.googleapis.com/v1beta',
+    sdkType: 'gemini',
+    authScheme: 'gemini-cli',
+    responseDataPath: 'models',
+    pagination: {
+      enabled: true,
+      pageSize: 100,
+      limitParam: 'pageSize',
+      cursorParam: 'pageToken',
+      hasMoreField: 'nextPageToken',
+    },
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true },
+      vision: { supportsStreaming: true },
+    },
+    recommendedModels: ['gemini-3-pro-preview', 'gemini-3-flash-preview'],
+    fallbackModels: ['gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+    fallbackVisionModels: ['gemini-2.5-pro'],
+    compat: {},
+    sdkOptions: {},
+  },
+
   // ─────────────────────────── GROKAI (xAI) ───────────────────────────
   {
     key: 'grokai',

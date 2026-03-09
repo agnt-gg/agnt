@@ -32,6 +32,14 @@ const state = {
     checkedAt: null,
   },
   claudeCodeSetupSession: null,
+  geminiCliStatus: {
+    available: false,
+    apiUsable: false,
+    apiStatus: null,
+    source: null,
+    hint: null,
+    checkedAt: null,
+  },
 };
 
 const mutations = {
@@ -85,6 +93,16 @@ const mutations = {
   CLEAR_CLAUDE_CODE_SETUP_SESSION(state) {
     state.claudeCodeSetupSession = null;
   },
+  SET_GEMINI_CLI_STATUS(state, status) {
+    state.geminiCliStatus = {
+      available: status?.available === true,
+      apiUsable: status?.apiUsable === true,
+      apiStatus: typeof status?.apiStatus === 'number' ? status.apiStatus : null,
+      source: status?.source || null,
+      hint: status?.hint || null,
+      checkedAt: status?.checkedAt || new Date().toISOString(),
+    };
+  },
 };
 
 const actions = {
@@ -105,9 +123,10 @@ const actions = {
         }).catch(() => null);
 
         // Fast local checks — these resolve in <100ms
-        const [codexResult, ccResult] = await Promise.allSettled([
+        const [codexResult, ccResult, gcResult] = await Promise.allSettled([
           axios.get(`${API_CONFIG.BASE_URL}/codex/status`),
           axios.get(`${API_CONFIG.BASE_URL}/claude-code/status`),
+          axios.get(`${API_CONFIG.BASE_URL}/gemini-cli/status`),
         ]);
 
         // Process Codex status
@@ -132,6 +151,17 @@ const actions = {
         } else {
           console.warn('Error checking Claude Code status:', ccResult.reason?.message);
           commit('SET_CLAUDE_CODE_STATUS', { available: false, apiUsable: false, hint: 'Claude Code status unavailable' });
+        }
+
+        // Process Gemini CLI status
+        if (gcResult.status === 'fulfilled') {
+          const gcStatus = gcResult.value?.data || {};
+          commit('SET_GEMINI_CLI_STATUS', gcStatus);
+          if (gcStatus.available === true && !connectedApps.includes('gemini-cli')) {
+            connectedApps = [...connectedApps, 'gemini-cli'];
+          }
+        } else {
+          commit('SET_GEMINI_CLI_STATUS', { available: false, apiUsable: false, hint: 'Gemini CLI status unavailable' });
         }
 
         // Commit local results immediately so UI can render
@@ -189,6 +219,15 @@ const actions = {
           instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
           localOnly: true,
         },
+        {
+          id: 'gemini-cli',
+          name: 'Gemini CLI',
+          icon: 'google',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
+          localOnly: true,
+        },
       ];
 
       const existingIds = new Set(remoteProviders.map((p) => p.id));
@@ -220,6 +259,15 @@ const actions = {
           categories: ['AI'],
           connectionType: 'oauth',
           instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
+          localOnly: true,
+        },
+        {
+          id: 'gemini-cli',
+          name: 'Gemini CLI',
+          icon: 'google',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
           localOnly: true,
         },
       ]);
@@ -397,6 +445,17 @@ const actions = {
       return response.data;
     } catch (error) {
       console.error('Error disconnecting Claude Code:', error);
+      throw error;
+    }
+  },
+  async disconnectGeminiCli({ commit, dispatch }) {
+    try {
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/gemini-cli/disconnect`);
+      commit('SET_GEMINI_CLI_STATUS', { available: false, apiUsable: false, hint: 'Disconnected' });
+      await dispatch('fetchConnectedApps');
+      return response.data;
+    } catch (error) {
+      console.error('Error disconnecting Gemini CLI:', error);
       throw error;
     }
   },

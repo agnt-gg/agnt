@@ -5,8 +5,142 @@ import Cerebras from '@cerebras/cerebras_cloud_sdk';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
+import GeminiCliAuthManager from '../auth/GeminiCliAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { getProviderConfig } from './providerConfigs.js';
+
+// ── Gemini OAuth Proxy ──────────────────────────────────────────────
+// Lightweight wrapper that mimics the GoogleGenAI SDK's client interface
+// but uses google-auth-library OAuth2Client for authentication.
+// The Gemini CLI's OAuth credentials (cloud-platform scope) only work
+// with the Code Assist endpoint, not the consumer generativelanguage API.
+
+const GEMINI_OAUTH_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
+
+class GeminiOAuthProxy {
+  constructor(oauth2Client, projectId) {
+    this._auth = oauth2Client;
+    this._project = projectId;
+    this.models = {
+      generateContent: (params) => this._generateContent(params),
+      generateContentStream: (params) => this._generateContentStream(params),
+    };
+  }
+
+  _buildRequest(params) {
+    // Code Assist endpoint wrapper format (matches Gemini CLI's converter.ts):
+    // { model, project, user_prompt_id, request: { contents, systemInstruction, ... } }
+    const inner = { contents: params.contents };
+    if (params.config) {
+      if (params.config.systemInstruction) inner.systemInstruction = params.config.systemInstruction;
+      if (params.config.temperature != null) inner.generationConfig = { ...inner.generationConfig, temperature: params.config.temperature };
+      if (params.config.maxOutputTokens != null) inner.generationConfig = { ...inner.generationConfig, maxOutputTokens: params.config.maxOutputTokens };
+      if (params.config.topP != null) inner.generationConfig = { ...inner.generationConfig, topP: params.config.topP };
+      if (params.config.topK != null) inner.generationConfig = { ...inner.generationConfig, topK: params.config.topK };
+      if (params.config.thinkingConfig) inner.generationConfig = { ...inner.generationConfig, thinkingConfig: params.config.thinkingConfig };
+      if (params.config.responseMimeType) inner.generationConfig = { ...inner.generationConfig, responseMimeType: params.config.responseMimeType };
+      if (params.config.tools) inner.tools = params.config.tools;
+      if (params.config.toolConfig) inner.toolConfig = params.config.toolConfig;
+    }
+    // Model name WITHOUT 'models/' prefix for Code Assist endpoint
+    const model = params.model.replace(/^models\//, '');
+    return { model, project: this._project, request: inner };
+  }
+
+  _extractResponse(data) {
+    // Code Assist wraps response in a 'response' field
+    const resp = data?.response || data;
+    resp.text = resp.candidates?.[0]?.content?.parts
+      ?.filter(p => p.text != null)
+      .map(p => p.text)
+      .join('') || '';
+    resp.functionCalls = resp.candidates?.[0]?.content?.parts
+      ?.filter(p => p.functionCall)
+      .map(p => p.functionCall) || undefined;
+    return resp;
+  }
+
+  async _generateContent(params) {
+    const url = `${GEMINI_OAUTH_BASE}:generateContent`;
+    const body = this._buildRequest(params);
+
+    const res = await this._auth.request({ url, method: 'POST', data: body });
+    return this._extractResponse(res.data);
+  }
+
+  async _generateContentStream(params) {
+    const url = `${GEMINI_OAUTH_BASE}:streamGenerateContent?alt=sse`;
+    const body = this._buildRequest(params);
+
+    const res = await this._auth.request({
+      url, method: 'POST', data: body, responseType: 'stream',
+    });
+
+    return this._parseSSEStream(res.data);
+  }
+
+  async *_parseSSEStream(stream) {
+    // Matches the real Gemini CLI's SSE parsing (server.ts):
+    // Buffer data: lines until a blank line, then parse the accumulated JSON.
+    const decoder = new TextDecoder();
+    let rawBuffer = '';
+    let dataBuffer = '';
+
+    for await (const rawChunk of stream) {
+      rawBuffer += decoder.decode(rawChunk instanceof Buffer ? rawChunk : new Uint8Array(rawChunk), { stream: true });
+      const lines = rawBuffer.split('\n');
+      rawBuffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.replace(/\r$/, '');
+
+        if (trimmed.startsWith('data: ')) {
+          dataBuffer += trimmed.slice(6);
+        } else if (trimmed === '' && dataBuffer) {
+          // Blank line = end of SSE event, parse accumulated data
+          const jsonStr = dataBuffer.trim();
+          dataBuffer = '';
+          if (!jsonStr || jsonStr === '[DONE]') continue;
+
+          try {
+            const data = JSON.parse(jsonStr);
+            const resp = data?.response || data;
+            resp.text = resp.candidates?.[0]?.content?.parts
+              ?.filter(p => p.text != null)
+              .map(p => p.text)
+              .join('') || '';
+            resp.functionCalls = resp.candidates?.[0]?.content?.parts
+              ?.filter(p => p.functionCall)
+              .map(p => p.functionCall) || undefined;
+            if (resp.functionCalls?.length === 0) resp.functionCalls = undefined;
+            yield resp;
+          } catch (e) {
+            console.warn('[GeminiOAuthProxy] SSE parse error, skipping chunk:', e.message);
+          }
+        }
+      }
+    }
+
+    // Flush any remaining buffered data (stream ended without trailing blank line)
+    if (dataBuffer.trim()) {
+      try {
+        const data = JSON.parse(dataBuffer.trim());
+        const resp = data?.response || data;
+        resp.text = resp.candidates?.[0]?.content?.parts
+          ?.filter(p => p.text != null)
+          .map(p => p.text)
+          .join('') || '';
+        resp.functionCalls = resp.candidates?.[0]?.content?.parts
+          ?.filter(p => p.functionCall)
+          .map(p => p.functionCall) || undefined;
+        if (resp.functionCalls?.length === 0) resp.functionCalls = undefined;
+        yield resp;
+      } catch (e) {
+        console.warn('[GeminiOAuthProxy] SSE flush parse error:', e.message);
+      }
+    }
+  }
+}
 
 /**
  * Creates and initializes an LLM client for a given provider.
@@ -151,6 +285,31 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
       baseURL: 'https://chatgpt.com/backend-api/codex',
       defaultHeaders: headers,
     });
+  }
+
+  // Gemini CLI — uses Google OAuth or locally stored API key
+  if (lowerCaseProvider === 'gemini-cli') {
+    const token = await GeminiCliAuthManager.getAccessToken();
+    if (!token) {
+      throw new Error('Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.');
+    }
+    const config = getProviderConfig('gemini');
+    const sdkOpts = { ...(config?.sdkOptions || {}) };
+
+    if (GeminiCliAuthManager.isUsingApiKey()) {
+      // API key → passed as apiKey (sent as ?key= query param)
+      return new GoogleGenAI({ apiKey: token, ...sdkOpts });
+    }
+
+    // OAuth → use GeminiOAuthProxy with the Code Assist endpoint,
+    // matching the real Gemini CLI (cloud-platform scope).
+    const oauth2Client = GeminiCliAuthManager.getOAuth2Client();
+    if (!oauth2Client) {
+      throw new Error('Gemini CLI OAuth credentials not found.');
+    }
+    // Ensure user is onboarded and get the Code Assist project ID
+    const projectId = await GeminiCliAuthManager.ensureOnboarded(oauth2Client);
+    return new GeminiOAuthProxy(oauth2Client, projectId);
   }
 
   return null;

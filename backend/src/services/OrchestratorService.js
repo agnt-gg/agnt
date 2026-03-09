@@ -1292,6 +1292,20 @@ IMPORTANT: The image data is already available in the system context. You don't 
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
 
+      // If the adapter recovered from an error (e.g. 429 rate limit), the error
+      // message was returned as responseMessage.content but was never streamed
+      // via onChunk. Send it to the frontend now so the user sees the error.
+      if (nextResponse.recoveredFromError && responseMessage.content) {
+        const errorContent = typeof responseMessage.content === 'string'
+          ? responseMessage.content
+          : JSON.stringify(responseMessage.content);
+        sendEvent('content_delta', {
+          assistantMessageId,
+          delta: errorContent,
+          accumulated: errorContent,
+        });
+      }
+
       messages.push(responseMessage);
 
       // Log what happened in this round

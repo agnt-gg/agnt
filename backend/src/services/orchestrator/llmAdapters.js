@@ -1982,9 +1982,10 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
 class GeminiAdapter extends BaseAdapter {
   constructor(client, model) {
     super(client, model);
-    this.maxRetries = 3;
-    this.baseDelay = 1000; // 1 second
+    this.maxRetries = 6; // More retries to survive free-tier rate limits (quota resets ~20-60s)
+    this.baseDelay = 1000; // 1 second for non-rate-limit errors
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
+    this.rateLimitBaseDelay = 5000; // 5 second minimum for rate limit retries
   }
 
   /**
@@ -1995,12 +1996,44 @@ class GeminiAdapter extends BaseAdapter {
   }
 
   /**
-   * Calculate delay with exponential backoff and jitter
+   * Calculate delay with exponential backoff and jitter.
+   * For rate limit errors, uses the server-reported reset time when available.
    */
-  calculateDelay(attempt) {
+  calculateDelay(attempt, rateLimitResetSeconds = 0) {
+    if (rateLimitResetSeconds > 0) {
+      // Use the server-reported reset time + 2s buffer + small jitter
+      const resetDelay = (rateLimitResetSeconds + 2) * 1000;
+      const jitter = Math.random() * 2000;
+      return resetDelay + jitter;
+    }
     const exponentialDelay = this.baseDelay * Math.pow(2, attempt);
     const jitter = Math.random() * 0.1 * exponentialDelay; // 10% jitter
     return Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
+  }
+
+  /**
+   * Check if an error is a rate limit / quota error
+   */
+  isRateLimitError(error) {
+    const status = error.status || error.response?.status;
+    if (status === 429) return true;
+    const msg = (error.message || '').toLowerCase();
+    return msg.includes('quota') || msg.includes('rate limit') || msg.includes('resource has been exhausted');
+  }
+
+  /**
+   * Parse the "quota will reset after Xs" value from a Gemini error message.
+   * Returns the number of seconds, or 0 if not found.
+   */
+  parseQuotaResetSeconds(error) {
+    const msg = error.message || '';
+    // Gemini returns messages like: "Your quota will reset after 21s."
+    const match = msg.match(/reset after (\d+)s/i);
+    if (match) return parseInt(match[1], 10);
+    // Also check for "retry after" header style
+    const retryMatch = msg.match(/retry.?after[:\s]+(\d+)/i);
+    if (retryMatch) return parseInt(retryMatch[1], 10);
+    return 0;
   }
 
   /**
@@ -2368,12 +2401,21 @@ class GeminiAdapter extends BaseAdapter {
           };
         }
 
-        // Calculate delay and wait before retrying
-        const delay = this.calculateDelay(attempt);
-        console.warn(`Gemini call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms:`, {
-          status: error.status || error.response?.status,
-          message: error.message,
-        });
+        // Calculate delay - use server-reported reset time for rate limit errors
+        const quotaResetSeconds = this.isRateLimitError(error) ? this.parseQuotaResetSeconds(error) : 0;
+        const delay = this.calculateDelay(attempt, quotaResetSeconds);
+
+        if (this.isRateLimitError(error)) {
+          console.warn(`[Gemini] Rate limit hit (attempt ${attempt + 1}/${this.maxRetries + 1}), waiting ${Math.round(delay / 1000)}s before retry${quotaResetSeconds ? ` (server says reset in ${quotaResetSeconds}s)` : ''}...`, {
+            status: error.status || error.response?.status,
+            message: error.message,
+          });
+        } else {
+          console.warn(`Gemini call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms:`, {
+            status: error.status || error.response?.status,
+            message: error.message,
+          });
+        }
 
         await this.sleep(delay);
       }
@@ -2564,12 +2606,21 @@ class GeminiAdapter extends BaseAdapter {
           };
         }
 
-        // Calculate delay and wait before retrying
-        const delay = this.calculateDelay(attempt);
-        console.warn(`Gemini streaming call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms:`, {
-          status: error.status || error.response?.status,
-          message: error.message,
-        });
+        // Calculate delay - use server-reported reset time for rate limit errors
+        const quotaResetSeconds = this.isRateLimitError(error) ? this.parseQuotaResetSeconds(error) : 0;
+        const delay = this.calculateDelay(attempt, quotaResetSeconds);
+
+        if (this.isRateLimitError(error)) {
+          console.warn(`[Gemini] Rate limit hit (attempt ${attempt + 1}/${this.maxRetries + 1}), waiting ${Math.round(delay / 1000)}s before retry${quotaResetSeconds ? ` (server says reset in ${quotaResetSeconds}s)` : ''}...`, {
+            status: error.status || error.response?.status,
+            message: error.message,
+          });
+        } else {
+          console.warn(`Gemini streaming call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms:`, {
+            status: error.status || error.response?.status,
+            message: error.message,
+          });
+        }
 
         await this.sleep(delay);
       }
@@ -3450,6 +3501,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
       return new AnthropicAdapter(client, model, lowerCaseProvider);
 
     case 'gemini':
+    case 'gemini-cli':
       return new GeminiAdapter(client, model);
 
     case 'cerebras':
