@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.4.9-blue.svg?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.0-blue.svg?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/electron-33.0.2-47848F.svg?style=flat-square&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg?style=flat-square&logo=node.js" alt="Node">
@@ -257,8 +257,8 @@ docker run -d \
 
 - `latest` / `full` - Latest Full variant with browser automation
 - `lite` - Latest Lite variant without browser automation
-- `v0.4.9` / `v0.4.9-full` - Specific version (Full)
-- `v0.4.9-lite` - Specific version (Lite)
+- `v0.5.0` / `v0.5.0-full` - Specific version (Full)
+- `v0.5.0-lite` - Specific version (Lite)
 
 #### Option B: Build from Source (Advanced)
 
@@ -481,8 +481,8 @@ Build outputs are saved to the `dist/` directory:
 | Platform  | Full                                | Lite                                     | Savings |
 | --------- | ----------------------------------- | ---------------------------------------- | ------- |
 | GNU/Linux | AppImage (348MB), DEB (253MB), RPM  | AppImage (344MB), DEB (251MB), RPM       | ~4MB    |
-| Windows   | AGNT-0.4.9-win-x64.exe             | AGNT-Lite-0.4.9-win-x64.exe             | ~4MB    |
-| macOS     | AGNT-0.4.9-mac-{arch}.dmg          | AGNT-Lite-0.4.9-mac-{arch}.dmg          | ~4MB    |
+| Windows   | AGNT-0.5.0-win-x64.exe             | AGNT-Lite-0.5.0-win-x64.exe             | ~4MB    |
+| macOS     | AGNT-0.5.0-mac-{arch}.dmg          | AGNT-Lite-0.5.0-mac-{arch}.dmg          | ~4MB    |
 
 > **Note:** Chromium browser binaries are already excluded from all builds. Lite removes browser automation source code (~16MB uncompressed, ~2-4MB compressed).
 

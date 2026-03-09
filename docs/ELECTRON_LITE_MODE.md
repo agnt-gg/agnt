@@ -15,7 +15,7 @@ AGNT supports building two Electron variants:
 
 ## Size Comparison
 
-Measured on v0.4.9 (GNU/Linux, March 2025):
+Measured on v0.5.0 (GNU/Linux, March 2025):
 
 | Platform | Full | Lite | Savings |
 |----------|------|------|---------|
@@ -70,16 +70,16 @@ npm run build:both:linux
 ### Build Outputs
 
 **Full Version:**
-- `dist/AGNT-0.4.9-win-x64.exe`
-- `dist/AGNT-0.4.9-mac-x64.dmg`
-- `dist/AGNT-0.4.9-linux-x86_64.AppImage` (348MB)
-- `dist/AGNT-0.4.9-linux-amd64.deb` (253MB)
+- `dist/AGNT-0.5.0-win-x64.exe`
+- `dist/AGNT-0.5.0-mac-x64.dmg`
+- `dist/AGNT-0.5.0-linux-x86_64.AppImage` (348MB)
+- `dist/AGNT-0.5.0-linux-amd64.deb` (253MB)
 
 **Lite Version:**
-- `dist/AGNT-Lite-0.4.9-win-x64.exe`
-- `dist/AGNT-Lite-0.4.9-mac-x64.dmg`
-- `dist/AGNT-Lite-0.4.9-linux-x86_64.AppImage` (344MB)
-- `dist/AGNT-Lite-0.4.9-linux-amd64.deb` (251MB)
+- `dist/AGNT-Lite-0.5.0-win-x64.exe`
+- `dist/AGNT-Lite-0.5.0-mac-x64.dmg`
+- `dist/AGNT-Lite-0.5.0-linux-x86_64.AppImage` (344MB)
+- `dist/AGNT-Lite-0.5.0-linux-amd64.deb` (251MB)
 
 Notice the **"-Lite"** suffix in filenames.
 

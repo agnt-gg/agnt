@@ -26,13 +26,13 @@ Get AGNT **lightweight native desktop app** (no browser automation) in under 5 m
 **Visit:** [agnt.gg/downloads](https://agnt.gg/downloads)
 
 **Windows:**
-1. Download `AGNT-Lite-0.4.9-win-x64.exe`
+1. Download `AGNT-Lite-0.5.0-win-x64.exe`
 2. Run installer
 3. Follow setup wizard
 4. Launch AGNT Lite from Start Menu or Desktop
 
 **macOS:**
-1. Download `AGNT-Lite-0.4.9-mac-x64.dmg` (Intel) or `AGNT-Lite-0.4.9-mac-arm64.dmg` (Apple Silicon)
+1. Download `AGNT-Lite-0.5.0-mac-x64.dmg` (Intel) or `AGNT-Lite-0.5.0-mac-arm64.dmg` (Apple Silicon)
 2. Open DMG file
 3. Drag AGNT Lite to Applications folder
 4. Launch from Applications
@@ -42,19 +42,19 @@ Get AGNT **lightweight native desktop app** (no browser automation) in under 5 m
 Choose the format for your distribution:
 
 **AppImage (Universal - works on any distro):**
-1. Download `AGNT-Lite-0.4.9-linux-x86_64.AppImage`
+1. Download `AGNT-Lite-0.5.0-linux-x86_64.AppImage`
 2. Make executable: `chmod +x AGNT-Lite-*.AppImage`
 3. Run: `./AGNT-Lite-*.AppImage`
 
 **DEB (Debian/Ubuntu/Mint/Pop!_OS):**
 ```bash
-sudo dpkg -i AGNT-Lite-0.4.9-amd64.deb
+sudo dpkg -i AGNT-Lite-0.5.0-amd64.deb
 # Or double-click in file manager to install
 ```
 
 **RPM (Fedora/RHEL/CentOS/openSUSE):**
 ```bash
-sudo rpm -i AGNT-Lite-0.4.9.x86_64.rpm
+sudo rpm -i AGNT-Lite-0.5.0.x86_64.rpm
 # Or double-click in file manager to install
 ```
 

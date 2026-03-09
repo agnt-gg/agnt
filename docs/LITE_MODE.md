@@ -346,7 +346,7 @@ console.log('====================');
 This will display:
 ```
 === AGNT Starting ===
-Version: 0.4.9
+Version: 0.5.0
 Node: v20.11.0
 Port: 3333
 

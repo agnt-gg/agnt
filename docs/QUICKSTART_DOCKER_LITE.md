@@ -43,7 +43,7 @@ docker run -d \
   -e NODE_ENV=production \
   -e BASE_URL=http://localhost:3333 \
   --restart unless-stopped \
-  ghcr.io/agnt-gg/agnt:v0.4.9-lite
+  ghcr.io/agnt-gg/agnt:v0.5.0-lite
 ```
 
 ### Option 2: Docker Compose with GHCR

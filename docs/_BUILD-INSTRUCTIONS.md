@@ -99,7 +99,7 @@ npm run build:win
 
 Creates:
 
-- `dist/AGNT-0.4.9-win-x64.exe` (NSIS installer)
+- `dist/AGNT-0.5.0-win-x64.exe` (NSIS installer)
 
 #### macOS
 
@@ -109,10 +109,10 @@ npm run build:mac
 
 Creates:
 
-- `dist/AGNT-0.4.9-mac-x64.dmg` (Intel Macs)
-- `dist/AGNT-0.4.9-mac-arm64.dmg` (Apple Silicon)
-- `dist/AGNT-0.4.9-mac-x64.zip` (Intel Macs - zip)
-- `dist/AGNT-0.4.9-mac-arm64.zip` (Apple Silicon - zip)
+- `dist/AGNT-0.5.0-mac-x64.dmg` (Intel Macs)
+- `dist/AGNT-0.5.0-mac-arm64.dmg` (Apple Silicon)
+- `dist/AGNT-0.5.0-mac-x64.zip` (Intel Macs - zip)
+- `dist/AGNT-0.5.0-mac-arm64.zip` (Apple Silicon - zip)
 
 **Note:** Building for macOS requires a Mac. For code signing, set these environment variables:
 
@@ -131,9 +131,9 @@ npm run build:linux
 
 Creates:
 
-- `dist/AGNT-0.4.9-linux-x86_64.AppImage` (Universal GNU/Linux)
-- `dist/AGNT-0.4.9-linux-amd64.deb` (Debian/Ubuntu)
-- `dist/AGNT-0.4.9-linux-x86_64.rpm` (Fedora/RHEL)
+- `dist/AGNT-0.5.0-linux-x86_64.AppImage` (Universal GNU/Linux)
+- `dist/AGNT-0.5.0-linux-amd64.deb` (Debian/Ubuntu)
+- `dist/AGNT-0.5.0-linux-x86_64.rpm` (Fedora/RHEL)
 
 ### Build for All Platforms
 
@@ -182,15 +182,15 @@ npm run build:both:mac      # macOS both
 npm run build:both:linux    # GNU/Linux both
 ```
 
-**Build outputs (measured on v0.4.9, GNU/Linux):**
+**Build outputs (measured on v0.5.0, GNU/Linux):**
 
 **Full:**
-- `dist/AGNT-0.4.9-linux-x86_64.AppImage` (348MB)
-- `dist/AGNT-0.4.9-linux-amd64.deb` (253MB)
+- `dist/AGNT-0.5.0-linux-x86_64.AppImage` (348MB)
+- `dist/AGNT-0.5.0-linux-amd64.deb` (253MB)
 
 **Lite:**
-- `dist/AGNT-Lite-0.4.9-linux-x86_64.AppImage` (344MB)
-- `dist/AGNT-Lite-0.4.9-linux-amd64.deb` (251MB)
+- `dist/AGNT-Lite-0.5.0-linux-x86_64.AppImage` (344MB)
+- `dist/AGNT-Lite-0.5.0-linux-amd64.deb` (251MB)
 
 > **Note:** Size difference is modest (~2-4MB) because Chromium binaries are already excluded from both variants. Lite removes browser automation source code only.
 

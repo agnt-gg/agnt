@@ -336,11 +336,11 @@ docker run -d \
 - `ghcr.io/agnt-gg/agnt:latest` - Latest Full variant (main branch)
 - `ghcr.io/agnt-gg/agnt:full` - Latest Full variant (main branch)
 - `ghcr.io/agnt-gg/agnt:lite` - Latest Lite variant (main branch)
-- `ghcr.io/agnt-gg/agnt:v0.4.9` - Specific version (Full)
-- `ghcr.io/agnt-gg/agnt:v0.4.9-full` - Specific version (Full)
-- `ghcr.io/agnt-gg/agnt:v0.4.9-lite` - Specific version (Lite)
-- `ghcr.io/agnt-gg/agnt:0.4.9` - Specific version without 'v' prefix (Full)
-- `ghcr.io/agnt-gg/agnt:0.4.9-lite` - Specific version without 'v' prefix (Lite)
+- `ghcr.io/agnt-gg/agnt:v0.5.0` - Specific version (Full)
+- `ghcr.io/agnt-gg/agnt:v0.5.0-full` - Specific version (Full)
+- `ghcr.io/agnt-gg/agnt:v0.5.0-lite` - Specific version (Lite)
+- `ghcr.io/agnt-gg/agnt:0.5.0` - Specific version without 'v' prefix (Full)
+- `ghcr.io/agnt-gg/agnt:0.5.0-lite` - Specific version without 'v' prefix (Lite)
 
 ### Option 2: Build from Source (Advanced)
 

@@ -58,13 +58,13 @@ make DOCKERHUB_USER=yourname build-full
 make build-full
 # Creates tags:
 #   yourname/agnt:latest
-#   yourname/agnt:0.4.9
+#   yourname/agnt:0.5.0
 
 # Build lite image (without Chromium)
 make build-lite
 # Creates tags:
 #   yourname/agnt:lite
-#   yourname/agnt:0.4.9-lite
+#   yourname/agnt:0.5.0-lite
 
 # Build both variants
 make build-all
@@ -468,18 +468,18 @@ make electron-build-all-both         # All platforms both variants
 
 Installers are saved to `dist/` directory:
 
-**Full Version (measured on v0.4.9, GNU/Linux):**
-- `dist/AGNT-0.4.9-win-x64.exe`
-- `dist/AGNT-0.4.9-mac-x64.dmg` / `dist/AGNT-0.4.9-mac-arm64.dmg`
-- `dist/AGNT-0.4.9-linux-x86_64.AppImage` (348MB)
-- `dist/AGNT-0.4.9-linux-amd64.deb` (253MB)
+**Full Version (measured on v0.5.0, GNU/Linux):**
+- `dist/AGNT-0.5.0-win-x64.exe`
+- `dist/AGNT-0.5.0-mac-x64.dmg` / `dist/AGNT-0.5.0-mac-arm64.dmg`
+- `dist/AGNT-0.5.0-linux-x86_64.AppImage` (348MB)
+- `dist/AGNT-0.5.0-linux-amd64.deb` (253MB)
 - Plus `.rpm` packages for GNU/Linux
 
 **Lite Version:**
-- `dist/AGNT-Lite-0.4.9-win-x64.exe`
-- `dist/AGNT-Lite-0.4.9-mac-x64.dmg` / `dist/AGNT-Lite-0.4.9-mac-arm64.dmg`
-- `dist/AGNT-Lite-0.4.9-linux-x86_64.AppImage` (344MB)
-- `dist/AGNT-Lite-0.4.9-linux-amd64.deb` (251MB)
+- `dist/AGNT-Lite-0.5.0-win-x64.exe`
+- `dist/AGNT-Lite-0.5.0-mac-x64.dmg` / `dist/AGNT-Lite-0.5.0-mac-arm64.dmg`
+- `dist/AGNT-Lite-0.5.0-linux-x86_64.AppImage` (344MB)
+- `dist/AGNT-Lite-0.5.0-linux-amd64.deb` (251MB)
 - Plus `.rpm` packages for GNU/Linux
 
 ### Desktop Build Workflow
@@ -640,4 +640,4 @@ For issues or questions:
 ---
 
 **Last Updated**: 2026-01-20
-**AGNT Version**: 0.4.9
+**AGNT Version**: 0.5.0
