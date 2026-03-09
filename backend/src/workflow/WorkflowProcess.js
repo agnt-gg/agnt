@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { dbReady } from '../models/database/index.js';
 import ProcessManager from './ProcessManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';
@@ -61,8 +62,14 @@ async function initializeWorkflowProcess() {
     // Set up IPC message handlers FIRST
     setupIPCHandlers();
 
-    // Send ready message to parent IMMEDIATELY
-    // Don't wait for plugins - they load in background
+    // Wait for database tables and migrations to complete before accepting work.
+    // This prevents SQLITE_BUSY errors when restartActiveWorkflows() fires
+    // while migrations are still running.
+    console.log('[WorkflowProcess] Waiting for database initialization...');
+    await dbReady;
+    console.log('[WorkflowProcess] Database ready');
+
+    // Send ready message to parent AFTER database is initialized
     safeSend({ type: 'READY' });
     console.log('Workflow process ready (plugins loading in background)...');
 

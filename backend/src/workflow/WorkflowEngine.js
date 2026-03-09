@@ -1,6 +1,7 @@
 import EventEmitter from 'events';
 import dotenv from 'dotenv';
 import WorkflowModel from '../models/WorkflowModel.js';
+import { dbRunWithRetry } from '../models/database/index.js';
 import ToolConfig from '../tools/ToolConfig.js';
 import NodeExecutor from './NodeExecutor.js';
 import EdgeEvaluator from './EdgeEvaluator.js';
@@ -146,7 +147,7 @@ class WorkflowEngine extends EventEmitter {
   async _executeWorkflow(triggerData) {
     console.log(`Executing workflow ${this.workflowId} with trigger data:`, JSON.stringify(triggerData));
 
-    const executionId = await ExecutionModel.create(this.workflowId, this.userId, this.workflow.name);
+    const executionId = await dbRunWithRetry(() => ExecutionModel.create(this.workflowId, this.userId, this.workflow.name));
     this.currentExecutionId = executionId;
     let executionLog = '';
     let totalCreditsUsed = 0;
@@ -455,7 +456,7 @@ class WorkflowEngine extends EventEmitter {
   }
   async _updateWorkflowStatus(status) {
     try {
-      await WorkflowModel.updateStatus(this.workflowId, status);
+      await dbRunWithRetry(() => WorkflowModel.updateStatus(this.workflowId, status));
     } catch (error) {
       console.error(`Error updating workflow status: ${error.message}`);
       throw error;

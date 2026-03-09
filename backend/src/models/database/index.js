@@ -795,7 +795,7 @@ function backfillWorkflowSummaryColumns() {
 }
 
 // Ensure tables are created before exporting the database
-createTables()
+const dbReady = createTables()
   .then(() => {
     console.log('All tables created successfully');
     return runMigrations();
@@ -817,4 +817,32 @@ createTables()
     console.error('Error creating tables or running migrations:', error);
   });
 
+/**
+ * Run a db operation with automatic retry on SQLITE_BUSY errors.
+ * @param {Function} fn - async function that performs the db operation
+ * @param {number} maxRetries - maximum number of retries (default 5)
+ * @param {number} baseDelay - base delay in ms between retries (default 500)
+ * @returns {Promise<*>} - result of the db operation
+ */
+async function dbRunWithRetry(fn, maxRetries = 5, baseDelay = 500) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isBusy = error && (
+        error.code === 'SQLITE_BUSY' ||
+        (error.message && error.message.includes('SQLITE_BUSY'))
+      );
+      if (isBusy && attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 200;
+        console.warn(`[DB Retry] SQLITE_BUSY on attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${Math.round(delay)}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw error;
+      }
+    }
+  }
+}
+
+export { dbReady, dbRunWithRetry };
 export default db;

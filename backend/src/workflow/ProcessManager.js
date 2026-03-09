@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import db from '../models/database/index.js';
+import { dbRunWithRetry } from '../models/database/index.js';
 import ProcessWorker from './ProcessWorker.js';
 import WorkflowModel from '../models/WorkflowModel.js';
 import EmailReceiver from '../tools/triggers/EmailReceiver.js';
@@ -129,18 +130,20 @@ class ProcessManager extends EventEmitter {
         busyWorkersCount: this.workers.filter((w) => w.isBusy).length,
       };
     } else {
-      return new Promise((resolve, reject) => {
-        db.get('SELECT status FROM workflows WHERE id = ? AND user_id = ?', [workflowId, userId], (err, row) => {
-          if (err) reject(err);
-          else if (!row) resolve({ status: 'Not Found' });
-          else
-            resolve({
-              status: row.status,
-              queueLength: this.queue.length,
-              activeWorkflowsCount: this.activeWorkflows.size,
-              workersCount: this.workers.length,
-              busyWorkersCount: this.workers.filter((w) => w.isBusy).length,
-            });
+      return dbRunWithRetry(() => {
+        return new Promise((resolve, reject) => {
+          db.get('SELECT status FROM workflows WHERE id = ? AND user_id = ?', [workflowId, userId], (err, row) => {
+            if (err) reject(err);
+            else if (!row) resolve({ status: 'Not Found' });
+            else
+              resolve({
+                status: row.status,
+                queueLength: this.queue.length,
+                activeWorkflowsCount: this.activeWorkflows.size,
+                workersCount: this.workers.length,
+                busyWorkersCount: this.workers.filter((w) => w.isBusy).length,
+              });
+          });
         });
       });
     }
@@ -153,7 +156,9 @@ class ProcessManager extends EventEmitter {
       let totalQueued = 0;
 
       while (true) {
-        const activeWorkflows = await WorkflowModel.findByStatusBatch(['listening', 'running', 'queued'], batchSize, offset);
+        const activeWorkflows = await dbRunWithRetry(() =>
+          WorkflowModel.findByStatusBatch(['listening', 'running', 'queued'], batchSize, offset)
+        );
         if (activeWorkflows.length === 0) break;
 
         for (const workflowData of activeWorkflows) {
@@ -215,10 +220,12 @@ class ProcessManager extends EventEmitter {
 
   // PRIVATE METHODS
   async _updateWorkflowStatus(workflowId, status) {
-    return new Promise((resolve, reject) => {
-      db.run('UPDATE workflows SET status = ? WHERE id = ?', [status, workflowId], (err) => {
-        if (err) reject(err);
-        else resolve();
+    return dbRunWithRetry(() => {
+      return new Promise((resolve, reject) => {
+        db.run('UPDATE workflows SET status = ? WHERE id = ?', [status, workflowId], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
       });
     });
   }

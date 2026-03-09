@@ -257,14 +257,12 @@ async function deferredInit() {
     await WorkflowProcessBridge.spawn();
     console.log('Workflow process spawned successfully');
 
-    // Restart active workflows shortly after spawn
-    setTimeout(() => {
-      console.log('Starting workflow restart...');
-      WorkflowProcessBridge.restartActiveWorkflows().catch((error) => {
-        console.error('Error restarting active workflows:', error);
-      });
-    }, 5000);
-    console.log('Workflow restart scheduled in 5 seconds...');
+    // Restart active workflows - workflow process waits for DB readiness
+    // before accepting messages, so no arbitrary delay needed
+    console.log('Starting workflow restart...');
+    WorkflowProcessBridge.restartActiveWorkflows().catch((error) => {
+      console.error('Error restarting active workflows:', error);
+    });
   } catch (error) {
     console.error('Failed to spawn workflow process:', error);
     console.error('Server will continue running but workflows will not be available');
