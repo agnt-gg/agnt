@@ -103,16 +103,8 @@ export default {
     const healthyConnectionsCount = computed(() => store.getters['appAuth/healthyConnectionsCount']);
     const totalConnectionsCount = computed(() => store.getters['appAuth/totalConnectionsCount']);
 
-    // Adjust counts by subtracting 1 for display
-    const displayHealthyCount = computed(() => {
-      const count = healthyConnectionsCount.value;
-      return count > 0 ? count - 1 : 0;
-    });
-
-    const displayTotalCount = computed(() => {
-      const count = totalConnectionsCount.value;
-      return count > 0 ? count - 1 : 0;
-    });
+    const displayHealthyCount = computed(() => healthyConnectionsCount.value);
+    const displayTotalCount = computed(() => totalConnectionsCount.value);
 
     const integrationHealthPercentage = computed(() => {
       const total = displayTotalCount.value;

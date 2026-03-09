@@ -187,7 +187,7 @@ export default {
 }
 
 .wc-modal {
-  background: var(--color-background);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   width: 480px;
@@ -291,7 +291,7 @@ export default {
 .wc-body {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 12px 4px 12px 16px;
 }
 
 .wc-grid {

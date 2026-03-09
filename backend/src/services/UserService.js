@@ -2,6 +2,44 @@ import UserModel from '../models/UserModel.js';
 import { getUserTokenFromSession } from '../routes/Middleware.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from './auth/CodexAuthManager.js';
+import ClaudeCodeAuthManager from './auth/ClaudeCodeAuthManager.js';
+import GeminiCliAuthManager from './auth/GeminiCliAuthManager.js';
+
+async function _getLocalCliHealthProviders() {
+  const providers = [];
+  const [codexResult, ccResult, gcResult] = await Promise.allSettled([
+    CodexAuthManager.checkApiUsable(),
+    ClaudeCodeAuthManager.checkApiUsable(),
+    GeminiCliAuthManager.checkApiUsable(),
+  ]);
+
+  if (codexResult.status === 'fulfilled' && codexResult.value?.available) {
+    providers.push({
+      status: 'healthy',
+      provider: 'openai-codex-cli',
+      lastChecked: new Date().toISOString(),
+      details: { source: codexResult.value.source || 'local' },
+    });
+  }
+  if (ccResult.status === 'fulfilled' && ccResult.value?.available) {
+    providers.push({
+      status: 'healthy',
+      provider: 'claude-code',
+      lastChecked: new Date().toISOString(),
+      details: { source: ccResult.value.source || 'local' },
+    });
+  }
+  if (gcResult.status === 'fulfilled' && gcResult.value?.available) {
+    providers.push({
+      status: 'healthy',
+      provider: 'gemini-cli',
+      lastChecked: new Date().toISOString(),
+      details: { source: gcResult.value.source || 'local' },
+    });
+  }
+
+  return providers;
+}
 
 class UserService {
   healthCheck(req, res) {
@@ -82,24 +120,13 @@ class UserService {
       const authHeader = req.headers.authorization || '';
       const authToken = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
 
-      // In local mode we may not have a remote auth token. Provide a local-only health summary.
+      // Check local CLI tools in parallel (fast, <100ms)
+      const localProviders = await _getLocalCliHealthProviders();
+
       if (!authToken) {
-        const codexStatus = await CodexAuthManager.checkApiUsable();
-        const providers = [];
-
-        if (codexStatus?.available) {
-          providers.push({
-            status: 'healthy',
-            provider: 'openai-codex-cli',
-            lastChecked: new Date().toISOString(),
-            details: {
-              source: codexStatus.source || 'codex-auth-access-token',
-            },
-          });
-        }
-
-        const healthyCount = providers.filter((p) => p.status === 'healthy').length;
-        const totalCount = providers.length;
+        // Local-only mode: only show CLI tools
+        const healthyCount = localProviders.filter((p) => p.status === 'healthy').length;
+        const totalCount = localProviders.length;
         const overall =
           totalCount === 0 ? 'no_connections' : healthyCount === totalCount ? 'healthy' : healthyCount === 0 ? 'critical' : 'degraded';
 
@@ -109,14 +136,33 @@ class UserService {
             overall,
             healthyConnections: healthyCount,
             totalConnections: totalCount,
-            providers,
+            providers: localProviders,
             timestamp: new Date().toISOString(),
             localOnly: true,
           },
         });
       }
 
+      // Remote mode: get remote health, then merge in local CLI tools
       const healthStatus = await AuthManager.checkConnectionHealth(userId, authToken);
+
+      // Merge local CLI tools that aren't already in remote results
+      for (const lp of localProviders) {
+        if (!healthStatus.providers.some((p) => p.provider === lp.provider)) {
+          healthStatus.providers.push(lp);
+        }
+      }
+
+      // Recalculate totals
+      healthStatus.healthyConnections = healthStatus.providers.filter((p) => p.status === 'healthy').length;
+      healthStatus.totalConnections = healthStatus.providers.length;
+      if (healthStatus.healthyConnections === 0 && healthStatus.totalConnections > 0) {
+        healthStatus.overall = 'critical';
+      } else if (healthStatus.healthyConnections < healthStatus.totalConnections) {
+        healthStatus.overall = 'degraded';
+      } else if (healthStatus.totalConnections > 0) {
+        healthStatus.overall = 'healthy';
+      }
 
       res.json({
         success: true,
@@ -174,12 +220,57 @@ class UserService {
       // Send initial message to confirm connection
       res.write(':ok\n\n');
 
-      // Stream health check updates
+      // Check local CLI tools in parallel with the remote stream
+      const localProvidersPromise = _getLocalCliHealthProviders();
+
+      // Capture the last summary from the remote stream
+      let lastSummary = null;
+
+      // Stream remote health check updates
       await AuthManager.checkConnectionHealthStream(userId, authToken, (update) => {
+        if (update.type === 'summary') {
+          lastSummary = update.data;
+        }
         res.write(`data: ${JSON.stringify(update)}\n\n`);
-        // Force flush to ensure data is sent immediately
         res.flushHeaders();
       });
+
+      // Merge local CLI tools into the results
+      const localProviders = await localProvidersPromise;
+      if (localProviders.length > 0) {
+        const existingProviderIds = new Set((lastSummary?.providers || []).map((p) => p.provider));
+        const newLocalProviders = localProviders.filter((lp) => !existingProviderIds.has(lp.provider));
+
+        if (newLocalProviders.length > 0) {
+          // Send each local provider update
+          for (const lp of newLocalProviders) {
+            res.write(`data: ${JSON.stringify({ type: 'provider', provider: lp })}\n\n`);
+            res.flushHeaders();
+          }
+
+          // Send corrected summary with local providers included
+          const mergedProviders = [...(lastSummary?.providers || []), ...newLocalProviders];
+          const healthyCount = mergedProviders.filter((p) => p.status === 'healthy').length;
+          const totalCount = mergedProviders.length;
+          let overall = 'healthy';
+          if (healthyCount === 0 && totalCount > 0) overall = 'critical';
+          else if (healthyCount < totalCount) overall = 'degraded';
+
+          res.write(
+            `data: ${JSON.stringify({
+              type: 'summary',
+              data: {
+                overall,
+                healthyConnections: healthyCount,
+                totalConnections: totalCount,
+                providers: mergedProviders,
+                timestamp: new Date().toISOString(),
+              },
+            })}\n\n`
+          );
+          res.flushHeaders();
+        }
+      }
 
       // End the stream
       res.write('event: complete\ndata: {}\n\n');
