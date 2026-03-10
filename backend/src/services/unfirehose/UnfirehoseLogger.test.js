@@ -11,47 +11,53 @@ const TEST_DIR = join(tmpdir(), `unfirehose-test-${Date.now()}`);
 
 beforeEach(() => {
   process.env.UNFIREHOSE_DIR = TEST_DIR;
-  delete process.env.UNFIREHOSE_DISABLED;
+  process.env.UNFIREHOSE_ENABLED = '1';
 });
 
 afterEach(() => {
   try { rmSync(TEST_DIR, { recursive: true, force: true }); } catch { /* ok */ }
   delete process.env.UNFIREHOSE_DIR;
-  delete process.env.UNFIREHOSE_DISABLED;
+  delete process.env.UNFIREHOSE_ENABLED;
 });
 
-function readSessionLines(session) {
+async function readSessionLines(session) {
+  await session.flush();
   const content = readFileSync(session.outputFile, 'utf-8');
   return content.trim().split('\n').map(line => JSON.parse(line));
 }
+
 // === UNIT TESTS ===
 describe('Unit: isEnabled', () => {
-  it('returns true by default', () => {
-    expect(isEnabled()).toBe(true);
-  });
-
-  it('returns false when UNFIREHOSE_DISABLED=1', () => {
-    process.env.UNFIREHOSE_DISABLED = '1';
+  it('returns false by default', () => {
+    delete process.env.UNFIREHOSE_ENABLED;
     expect(isEnabled()).toBe(false);
   });
 
-  it('returns true for other UNFIREHOSE_DISABLED values', () => {
-    process.env.UNFIREHOSE_DISABLED = 'false';
+  it('returns true when UNFIREHOSE_ENABLED=1', () => {
+    process.env.UNFIREHOSE_ENABLED = '1';
     expect(isEnabled()).toBe(true);
+  });
+
+  it('returns false for other UNFIREHOSE_ENABLED values', () => {
+    process.env.UNFIREHOSE_ENABLED = 'true';
+    expect(isEnabled()).toBe(false);
   });
 });
 
 describe('Unit: encodeProjectSlug', () => {
   it('encodes a session with a cwd path as a slug', () => {
     const session = createSession({ cwd: '/home/user/project' });
-    expect(session.projectSlug).toBe('-home-user-project');
+    expect(session.projectSlug).toBe('home-user-project');
   });
 
   it('defaults to process.cwd() slug when no cwd given', () => {
     const session = createSession({});
     expect(session.projectSlug).toBeTruthy();
     expect(session.projectSlug).not.toContain('/');
+    expect(session.projectSlug).not.toContain('\\');
+    expect(session.projectSlug).not.toContain(':');
   });
+
   it('uses explicit projectSlug when provided', () => {
     const session = createSession({ projectSlug: 'my-project' });
     expect(session.projectSlug).toBe('my-project');
@@ -59,9 +65,17 @@ describe('Unit: encodeProjectSlug', () => {
 
   it('handles dotfiles in paths', () => {
     const session = createSession({ cwd: '/home/user/.config/agnt' });
-    expect(session.projectSlug).toBe('-home-user--config-agnt');
+    expect(session.projectSlug).toBe('home-user--config-agnt');
   });
-}); describe('Unit: _extractUsage', () => {
+
+  it('handles Windows paths', () => {
+    const session = createSession({ cwd: 'C:\\Users\\Studio\\project' });
+    expect(session.projectSlug).not.toContain('\\');
+    expect(session.projectSlug).not.toContain(':');
+  });
+});
+
+describe('Unit: _extractUsage', () => {
   it('extracts OpenAI-style usage (prompt_tokens/completion_tokens)', () => {
     const session = createSession({ cwd: '/tmp/test' });
     const usage = session._extractUsage({
@@ -126,12 +140,13 @@ describe('Unit: encodeProjectSlug', () => {
 // ============================================================================
 
 describe('Integration: session creation', () => {
-  it('creates output directory and file', () => {
+  it('creates output directory and file', async () => {
     const session = createSession({ cwd: '/tmp/test-project' });
+    await session.flush();
     expect(existsSync(session.outputFile)).toBe(true);
   });
 
-  it('writes session envelope as first line', () => {
+  it('writes session envelope as first line', async () => {
     const session = createSession({
       cwd: '/tmp/test',
       firstPrompt: 'Hello world',
@@ -139,7 +154,7 @@ describe('Integration: session creation', () => {
       model: 'claude-3',
       chatType: 'orchestrator',
     });
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     expect(lines.length).toBe(1);
 
     const envelope = lines[0];
@@ -166,19 +181,19 @@ describe('Integration: session creation', () => {
     expect(session.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
-  it('truncates firstPrompt to 500 chars in envelope', () => {
+  it('truncates firstPrompt to 500 chars in envelope', async () => {
     const longPrompt = 'x'.repeat(1000);
     const session = createSession({ cwd: '/tmp/test', firstPrompt: longPrompt });
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     expect(lines[0].firstPrompt.length).toBe(500);
   });
 });
 
 describe('Integration: logUserMessage', () => {
-  it('logs a text user message', () => {
+  it('logs a text user message', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     const msgId = session.logUserMessage('What is 2+2?');
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
 
     expect(lines.length).toBe(2); // envelope + message
     const msg = lines[1];
@@ -192,29 +207,29 @@ describe('Integration: logUserMessage', () => {
     expect(msg.harness).toBe('agnt');
   });
 
-  it('logs multi-part content (vision)', () => {
+  it('logs multi-part content (vision)', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logUserMessage([
       { type: 'text', text: 'Describe this image' },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,abc123' } },
     ]);
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const msg = lines[1];
     expect(msg.content).toHaveLength(2);
     expect(msg.content[0]).toEqual({ type: 'text', text: 'Describe this image' });
     expect(msg.content[1]).toEqual({ type: 'image', mediaType: 'image/png', data: 'data:image/png;base64,abc123' });
   });
 
-  it('coerces non-string/non-array content to string', () => {
+  it('coerces non-string/non-array content to string', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logUserMessage(42);
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     expect(lines[1].content).toEqual([{ type: 'text', text: '42' }]);
   });
 });
 
 describe('Integration: logAssistantMessage', () => {
-  it('logs a text assistant message with usage', () => {
+  it('logs a text assistant message with usage', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logAssistantMessage('The answer is 4.', {
       model: 'claude-sonnet-4-20250514',
@@ -223,7 +238,7 @@ describe('Integration: logAssistantMessage', () => {
       durationMs: 1200,
       stopReason: 'end_turn',
     });
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const msg = lines[1];
     expect(msg.role).toBe('assistant');
     expect(msg.content[0]).toEqual({ type: 'text', text: 'The answer is 4.' });
@@ -235,7 +250,7 @@ describe('Integration: logAssistantMessage', () => {
     expect(msg.usage.outputTokens).toBe(5);
   });
 
-  it('logs assistant message with tool calls', () => {
+  it('logs assistant message with tool calls', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logAssistantMessage('Let me search for that.', {
       toolCalls: [{
@@ -243,7 +258,7 @@ describe('Integration: logAssistantMessage', () => {
         function: { name: 'web_search', arguments: '{"query":"vitest"}' },
       }],
     });
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const msg = lines[1];
     expect(msg.content).toHaveLength(2);
     expect(msg.content[0]).toEqual({ type: 'text', text: 'Let me search for that.' });
@@ -255,7 +270,7 @@ describe('Integration: logAssistantMessage', () => {
     });
   });
 
-  it('maps provider names correctly', () => {
+  it('maps provider names correctly', async () => {
     const cases = [
       ['anthropic', 'anthropic'],
       ['openai', 'openai'],
@@ -269,12 +284,12 @@ describe('Integration: logAssistantMessage', () => {
     for (const [input, expected] of cases) {
       const session = createSession({ cwd: '/tmp/test' });
       session.logAssistantMessage('test', { provider: input });
-      const lines = readSessionLines(session);
+      const lines = await readSessionLines(session);
       expect(lines[1].provider).toBe(expected);
     }
   });
 
-  it('maps stop reasons correctly', () => {
+  it('maps stop reasons correctly', async () => {
     const cases = [
       ['stop', 'end_turn'],
       ['end_turn', 'end_turn'],
@@ -288,17 +303,17 @@ describe('Integration: logAssistantMessage', () => {
     for (const [input, expected] of cases) {
       const session = createSession({ cwd: '/tmp/test' });
       session.logAssistantMessage('test', { stopReason: input });
-      const lines = readSessionLines(session);
+      const lines = await readSessionLines(session);
       expect(lines[1].stopReason).toBe(expected);
     }
   });
 });
 
 describe('Integration: logToolResult', () => {
-  it('logs a tool result', () => {
+  it('logs a tool result', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logToolResult('call_123', 'web_search', 'Found 10 results');
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const msg = lines[1];
     expect(msg.role).toBe('tool');
     expect(msg.content[0]).toEqual({
@@ -310,36 +325,36 @@ describe('Integration: logToolResult', () => {
     });
   });
 
-  it('logs error tool results', () => {
+  it('logs error tool results', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logToolResult('call_456', 'code_exec', 'TypeError: x is not defined', { isError: true });
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     expect(lines[1].content[0].isError).toBe(true);
   });
 
-  it('truncates output over 50KB', () => {
+  it('truncates output over 50KB', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     const bigOutput = 'x'.repeat(60000);
     session.logToolResult('call_789', 'read_file', bigOutput);
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const output = lines[1].content[0].output;
     expect(output.length).toBeLessThan(51000);
     expect(output).toContain('[truncated]');
   });
 
-  it('serializes object output to JSON', () => {
+  it('serializes object output to JSON', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logToolResult('call_abc', 'api_call', { status: 200, data: [1, 2, 3] });
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     expect(lines[1].content[0].output).toBe('{"status":200,"data":[1,2,3]}');
   });
 });
 
 describe('Integration: logSystemMessage', () => {
-  it('logs a system message', () => {
+  it('logs a system message', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logSystemMessage('You are a helpful assistant.');
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const msg = lines[1];
     expect(msg.role).toBe('system');
     expect(msg.content).toEqual([{ type: 'text', text: 'You are a helpful assistant.' }]);
@@ -347,10 +362,10 @@ describe('Integration: logSystemMessage', () => {
 });
 
 describe('Integration: logGoalEvaluation', () => {
-  it('writes a run.eval training event', () => {
+  it('writes a run.eval training event', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logGoalEvaluation('goal-42', 0.85, 'Good work on the deliverables');
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const evt = lines[1];
     expect(evt.$schema).toBe('unfirehose/1.0');
     expect(evt.type).toBe('run.eval');
@@ -362,7 +377,7 @@ describe('Integration: logGoalEvaluation', () => {
 });
 
 describe('Integration: logTrainingEvent', () => {
-  it('writes arbitrary training events with schema tag', () => {
+  it('writes arbitrary training events with schema tag', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logTrainingEvent({
       type: 'run.step',
@@ -371,7 +386,7 @@ describe('Integration: logTrainingEvent', () => {
       action: 'tool_call',
       ts: '2026-03-10T00:00:00Z',
     });
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const evt = lines[1];
     expect(evt.$schema).toBe('unfirehose/1.0');
     expect(evt.type).toBe('run.step');
@@ -380,7 +395,7 @@ describe('Integration: logTrainingEvent', () => {
 });
 
 describe('Integration: session close', () => {
-  it('writes session close envelope with aggregate usage', () => {
+  it('writes session close envelope with aggregate usage', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logUserMessage('Hello');
     session.logAssistantMessage('Hi!', {
@@ -391,7 +406,7 @@ describe('Integration: session close', () => {
     });
     session.close({ summary: 'Test conversation' });
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const closeEnvelope = lines[lines.length - 1];
     expect(closeEnvelope.type).toBe('session');
     expect(closeEnvelope.status).toBe('closed');
@@ -405,13 +420,13 @@ describe('Integration: session close', () => {
 });
 
 describe('Integration: message chaining (parentId)', () => {
-  it('chains messages via parentId', () => {
+  it('chains messages via parentId', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     const id1 = session.logUserMessage('First');
     const id2 = session.logAssistantMessage('Second');
     const id3 = session.logUserMessage('Third');
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     // First message's parentId is null (no prior message)
     expect(lines[1].parentId).toBeNull();
     // Second message's parentId is first message's id
@@ -440,7 +455,7 @@ describe('Integration: message ID format', () => {
 // ============================================================================
 
 describe('Functional: full conversation lifecycle', () => {
-  it('logs a complete chat session with user → assistant → tool → assistant → close', () => {
+  it('logs a complete chat session with user -> assistant -> tool -> assistant -> close', async () => {
     const session = createSession({
       cwd: '/home/user/project',
       provider: 'anthropic',
@@ -476,7 +491,7 @@ describe('Functional: full conversation lifecycle', () => {
     // Close
     session.close({ summary: 'Searched for vitest docs' });
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     expect(lines.length).toBe(6); // envelope + 4 messages + close
 
     // Validate all lines have $schema
@@ -507,7 +522,7 @@ describe('Functional: full conversation lifecycle', () => {
 });
 
 describe('Functional: wrapSendEvent SSE interception', () => {
-  it('intercepts SSE events and logs messages without disrupting original flow', () => {
+  it('intercepts SSE events and logs messages without disrupting original flow', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     const forwarded = [];
     const originalSendEvent = (name, data) => forwarded.push({ name, data });
@@ -527,13 +542,13 @@ describe('Functional: wrapSendEvent SSE interception', () => {
     ]);
 
     // Should have logged the assistant message
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const assistantMsgs = lines.filter(l => l.role === 'assistant');
     expect(assistantMsgs.length).toBe(1);
     expect(assistantMsgs[0].content[0].text).toBe('Hello world');
   });
 
-  it('intercepts tool_start/tool_end and logs tool calls with results', () => {
+  it('intercepts tool_start/tool_end and logs tool calls with results', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     const wrappedSend = wrapSendEvent(session, () => {});
 
@@ -548,7 +563,7 @@ describe('Functional: wrapSendEvent SSE interception', () => {
     });
     wrappedSend('tool_executions', {});
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     // Should have: envelope, tool result, assistant message (from tool_executions)
     const toolMsgs = lines.filter(l => l.role === 'tool');
     expect(toolMsgs.length).toBe(1);
@@ -561,19 +576,19 @@ describe('Functional: wrapSendEvent SSE interception', () => {
     expect(assistantMsgs[0].content.find(b => b.type === 'tool-call')).toBeTruthy();
   });
 
-  it('intercepts error events and logs system messages', () => {
+  it('intercepts error events and logs system messages', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     const wrappedSend = wrapSendEvent(session, () => {});
 
     wrappedSend('error', { error: 'Rate limit exceeded' });
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const systemMsgs = lines.filter(l => l.role === 'system');
     expect(systemMsgs.length).toBe(1);
     expect(systemMsgs[0].content[0].text).toContain('Rate limit exceeded');
   });
 
-  it('closes session on done event', () => {
+  it('closes session on done event', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     const wrappedSend = wrapSendEvent(session, () => {});
 
@@ -582,13 +597,13 @@ describe('Functional: wrapSendEvent SSE interception', () => {
     wrappedSend('final_content', { content: 'Final answer' });
     wrappedSend('done', {});
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const lastLine = lines[lines.length - 1];
     expect(lastLine.type).toBe('session');
     expect(lastLine.status).toBe('closed');
   });
 
-  it('handles accumulated content_delta format', () => {
+  it('handles accumulated content_delta format', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     const wrappedSend = wrapSendEvent(session, () => {});
 
@@ -596,14 +611,14 @@ describe('Functional: wrapSendEvent SSE interception', () => {
     wrappedSend('content_delta', { accumulated: 'Full text' });
     wrappedSend('final_content', {});
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const assistantMsgs = lines.filter(l => l.role === 'assistant');
     expect(assistantMsgs[0].content[0].text).toBe('Full text');
   });
 });
 
 describe('Functional: unfirehose/1.0 schema compliance', () => {
-  it('every line has $schema: "unfirehose/1.0"', () => {
+  it('every line has $schema: "unfirehose/1.0"', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logUserMessage('Hello');
     session.logAssistantMessage('Hi', { usage: { prompt_tokens: 5, completion_tokens: 3 } });
@@ -613,18 +628,18 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
     session.logTrainingEvent({ type: 'run.step', step: 1, ts: new Date().toISOString() });
     session.close();
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     for (const line of lines) {
       expect(line.$schema).toBe('unfirehose/1.0');
     }
   });
 
-  it('message entries have required fields: type, role, id, content, timestamp', () => {
+  it('message entries have required fields: type, role, id, content, timestamp', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logUserMessage('Test');
     session.logAssistantMessage('Response');
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const messages = lines.filter(l => l.type === 'message');
     expect(messages.length).toBe(2);
 
@@ -639,7 +654,7 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
     }
   });
 
-  it('content blocks use unfirehose/1.0 type names (not Claude Code names)', () => {
+  it('content blocks use unfirehose/1.0 type names (not Claude Code names)', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logAssistantMessage('Thinking...', {
       toolCalls: [{
@@ -649,7 +664,7 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
     });
     session.logToolResult('tc1', 'bash', 'file1.txt\nfile2.txt');
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const assistantMsg = lines.find(l => l.role === 'assistant');
     const toolMsg = lines.find(l => l.role === 'tool');
 
@@ -665,7 +680,7 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
     expect(toolResultBlock.toolCallId).toBe('tc1');
   });
 
-  it('usage uses camelCase (not snake_case)', () => {
+  it('usage uses camelCase (not snake_case)', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logAssistantMessage('Answer', {
       usage: {
@@ -676,7 +691,7 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
       },
     });
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const msg = lines.find(l => l.role === 'assistant');
     // camelCase, not snake_case
     expect(msg.usage.inputTokens).toBe(100);
@@ -688,13 +703,13 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
     expect(msg.usage.output_tokens).toBeUndefined();
   });
 
-  it('session envelope has required fields', () => {
+  it('session envelope has required fields', async () => {
     const session = createSession({
       cwd: '/home/user/project',
       firstPrompt: 'Test',
     });
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const envelope = lines[0];
     expect(envelope.$schema).toBe('unfirehose/1.0');
     expect(envelope.type).toBe('session');
@@ -705,7 +720,7 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
     expect(envelope.createdAt).toBeTruthy();
   });
 
-  it('all JSONL lines are valid JSON', () => {
+  it('all JSONL lines are valid JSON', async () => {
     const session = createSession({ cwd: '/tmp/test' });
     session.logUserMessage('Msg 1');
     session.logAssistantMessage('Msg 2', {
@@ -714,6 +729,7 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
     session.logToolResult('tc1', 'test', { nested: { data: true } });
     session.close();
 
+    await session.flush();
     const raw = readFileSync(session.outputFile, 'utf-8');
     const jsonLines = raw.trim().split('\n');
     for (const line of jsonLines) {
@@ -723,7 +739,7 @@ describe('Functional: unfirehose/1.0 schema compliance', () => {
 });
 
 describe('Functional: goal evaluation integration', () => {
-  it('logs evaluation session with per-task scores', () => {
+  it('logs evaluation session with per-task scores', async () => {
     const session = createSession({
       cwd: '/tmp/test',
       chatType: 'goal-evaluation',
@@ -750,7 +766,7 @@ describe('Functional: goal evaluation integration', () => {
     });
     session.close({ summary: 'PASSED (85%)' });
 
-    const lines = readSessionLines(session);
+    const lines = await readSessionLines(session);
     const evals = lines.filter(l => l.type === 'run.eval');
     expect(evals.length).toBe(3); // overall + 2 tasks
     expect(evals[0].score).toBe(0.85);
@@ -758,20 +774,33 @@ describe('Functional: goal evaluation integration', () => {
     expect(evals[2].eval).toBe('task-crud');
   });
 });
+
 describe('Functional: edge cases', () => {
-  it('handles empty content with only tool calls', () => {
+  it('handles empty content with only tool calls', async () => {
     const session = createSession({ cwd: '/tmp/test' });
-    session.logAssistantMessage('', { toolCalls: [{ id: 'tc_e', function: { name: 'bash', arguments: '{"cmd":"ls"}' } }] });
-    expect(readSessionLines(session).find(l => l.role === 'assistant').content.find(b => b.type === 'tool-call')).toBeTruthy();
+    session.logAssistantMessage('', {
+      toolCalls: [{ id: 'tc_e', function: { name: 'bash', arguments: '{"cmd":"ls"}' } }],
+    });
+    const lines = await readSessionLines(session);
+    expect(lines.find(l => l.role === 'assistant').content.find(b => b.type === 'tool-call')).toBeTruthy();
   });
-  it('handles malformed JSON arguments', () => {
+
+  it('handles malformed JSON arguments', async () => {
     const session = createSession({ cwd: '/tmp/test' });
-    session.logAssistantMessage('x', { toolCalls: [{ id: 'tc_b', function: { name: 'test', arguments: 'bad' } }] });
-    expect(readSessionLines(session).find(l => l.role === 'assistant').content.find(b => b.type === 'tool-call').input).toEqual({});
+    session.logAssistantMessage('x', {
+      toolCalls: [{ id: 'tc_b', function: { name: 'test', arguments: 'bad' } }],
+    });
+    const lines = await readSessionLines(session);
+    expect(lines.find(l => l.role === 'assistant').content.find(b => b.type === 'tool-call').input).toEqual({});
   });
-  it('handles concurrent sessions', () => {
-    const s1 = createSession({ cwd: '/tmp/test' }); const s2 = createSession({ cwd: '/tmp/test' });
-    s1.logUserMessage('s1'); s2.logUserMessage('s2');
-    expect(readSessionLines(s1)[0].id).not.toBe(readSessionLines(s2)[0].id);
+
+  it('handles concurrent sessions', async () => {
+    const s1 = createSession({ cwd: '/tmp/test' });
+    const s2 = createSession({ cwd: '/tmp/test' });
+    s1.logUserMessage('s1');
+    s2.logUserMessage('s2');
+    const lines1 = await readSessionLines(s1);
+    const lines2 = await readSessionLines(s2);
+    expect(lines1[0].id).not.toBe(lines2[0].id);
   });
 });

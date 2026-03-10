@@ -86,11 +86,11 @@ class GoalEvaluator {
           // Log overall eval
           ufSession.logGoalEvaluation(goalId, scores.overall, feedback);
           // Log per-task evals as training events
-          for (const te of taskEvaluations) {
+          for (const [i, te] of taskEvaluations.entries()) {
             ufSession.logTrainingEvent({
               type: 'run.eval',
               run_id: `goal-${goalId}`,
-              step: taskEvaluations.indexOf(te),
+              step: i,
               eval: te.taskTitle || `task-${te.taskId}`,
               score: te.score / 100,
               ts: new Date().toISOString(),

@@ -413,7 +413,7 @@ async function universalChatHandler(req, res, context = {}) {
     }
   });
 
-  let sendEvent = (eventName, data) => {
+  const rawSendEvent = (eventName, data) => {
     if (isClientDisconnected) return;
     try {
       // Send via SSE (Server-Sent Events) to current client
@@ -451,18 +451,18 @@ async function universalChatHandler(req, res, context = {}) {
   const conversationId = inputConversationId || randomUUID();
 
   // --- unfirehose/1.0 integration ---
-  let unfirehoseSession = null;
+  let sendEvent = rawSendEvent;
   if (isUnfirehoseEnabled()) {
     try {
       const firstPrompt = message || (originalMessages && originalMessages[originalMessages.length - 1]?.content);
-      unfirehoseSession = createUnfirehoseSession({
+      const unfirehoseSession = createUnfirehoseSession({
         conversationId,
         provider: normalizedProvider,
         model,
         chatType,
         firstPrompt: typeof firstPrompt === 'string' ? firstPrompt : String(firstPrompt || ''),
       });
-      sendEvent = wrapUnfirehoseSendEvent(unfirehoseSession, sendEvent);
+      sendEvent = wrapUnfirehoseSendEvent(unfirehoseSession, rawSendEvent);
       console.log(`[unfirehose] Session ${conversationId} → ${unfirehoseSession.outputFile}`);
     } catch (ufErr) {
       console.error('[unfirehose] Failed to initialize session:', ufErr.message);

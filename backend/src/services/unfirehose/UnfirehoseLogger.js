@@ -1,31 +1,28 @@
 /**
  * unfirehose/1.0 — Native JSONL session logger for agnt.
  *
- * Tier 1 adopter: agnt writes unfirehose/1.0 as its only session log format.
- * No adapter, no transform. One file, one format, one source of truth.
- *
  * File layout:
  *   ~/.agnt/unfirehose/{project-slug}/{session-uuid}.jsonl
  *
  * Each line is a JSON object with $schema: "unfirehose/1.0".
  * Session envelope first, then messages in append-only order.
- *
- * @see https://www.npmjs.com/package/@unturf/unfirehose-schema
  */
 
 import { randomUUID } from 'crypto';
-import { mkdirSync, appendFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { mkdir, appendFile } from 'fs/promises';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 
 const UNFIREHOSE_DIR = process.env.UNFIREHOSE_DIR || join(homedir(), '.agnt', 'unfirehose');
 const HARNESS = 'agnt';
-let HARNESS_VERSION = '0.3.7';
+let HARNESS_VERSION = '0.5.0';
 
 // Try to read version from package.json at startup
 try {
-  const { readFileSync } = await import('fs');
-  const pkg = JSON.parse(readFileSync(join(import.meta.url.replace('file://', '').replace(/\/[^/]+$/, ''), '../../../../package.json'), 'utf-8'));
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', '..', 'package.json'), 'utf-8'));
   if (pkg.version) HARNESS_VERSION = pkg.version;
 } catch { /* use default */ }
 
@@ -57,11 +54,10 @@ function mapStopReason(reason) {
 
 /**
  * Encode a filesystem path to a project slug.
- * Matches the unfirehose/1.0 convention: replace / and . with -
  */
 function encodeProjectSlug(fsPath) {
   if (!fsPath) return 'default';
-  return fsPath.replace(/[/.]/g, '-');
+  return fsPath.replace(/[\\/:.\s]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
 /**
@@ -111,12 +107,9 @@ class UnfirehoseSession {
     // Ensure output directory exists
     this.outputDir = join(UNFIREHOSE_DIR, this.projectSlug);
     this.outputFile = join(this.outputDir, `${this.sessionId}.jsonl`);
-
-    try {
-      mkdirSync(this.outputDir, { recursive: true });
-    } catch (err) {
+    this._dirReady = mkdir(this.outputDir, { recursive: true }).catch(err => {
       console.error('[unfirehose] Failed to create output directory:', err.message);
-    }
+    });
 
     // Write session envelope
     this._append({
@@ -356,12 +349,23 @@ class UnfirehoseSession {
     return Object.keys(u).length > 0 ? u : undefined;
   }
 
-  _append(obj) {
-    try {
-      appendFileSync(this.outputFile, JSON.stringify(obj) + '\n');
-    } catch (err) {
-      console.error('[unfirehose] Write failed:', err.message);
-    }
+  async _append(obj) {
+    const op = (async () => {
+      try {
+        await this._dirReady;
+        await appendFile(this.outputFile, JSON.stringify(obj) + '\n');
+      } catch (err) {
+        console.error('[unfirehose] Write failed:', err.message);
+      }
+    })();
+    this._pendingWrites = (this._pendingWrites || Promise.resolve()).then(() => op);
+  }
+
+  /**
+   * Wait for all pending writes to complete (useful for testing).
+   */
+  async flush() {
+    await this._pendingWrites;
   }
 }
 
@@ -489,10 +493,10 @@ export function wrapSendEvent(session, originalSendEvent) {
 
 /**
  * Check if unfirehose logging is enabled.
- * Enabled by default. Disable with UNFIREHOSE_DISABLED=1.
+ * Disabled by default. Enable with UNFIREHOSE_ENABLED=1.
  */
 export function isEnabled() {
-  return process.env.UNFIREHOSE_DISABLED !== '1';
+  return process.env.UNFIREHOSE_ENABLED === '1';
 }
 
 export default { createSession, wrapSendEvent, isEnabled };
