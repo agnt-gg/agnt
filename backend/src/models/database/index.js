@@ -714,6 +714,15 @@ function runMigrations() {
         });
       });
 
+      // Migration: Add deleted_at column to goals for soft-delete (2026-03-10)
+      db.run(`ALTER TABLE goals ADD COLUMN deleted_at DATETIME DEFAULT NULL`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding deleted_at column to goals:', err);
+        } else if (!err) {
+          console.log('✓ Added deleted_at column to goals table');
+        }
+      });
+
       // Migration: Add user_id to widget_layouts for per-user page isolation (2026-03-05)
       db.run(`ALTER TABLE widget_layouts ADD COLUMN user_id TEXT`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {

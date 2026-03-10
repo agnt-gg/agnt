@@ -31,15 +31,16 @@ class GoalModel {
       });
     });
   }
-  static findAllByUserId(userId) {
+  static findAllByUserId(userId, { includeDeleted = false } = {}) {
+    const deletedFilter = includeDeleted ? '' : 'AND g.deleted_at IS NULL';
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT g.*, 
+        `SELECT g.*,
          COUNT(t.id) as task_count,
          COUNT(CASE WHEN t.status = 'completed' THEN 1 END) as completed_tasks
          FROM goals g
          LEFT JOIN tasks t ON g.id = t.goal_id
-         WHERE g.user_id = ?
+         WHERE g.user_id = ? ${deletedFilter}
          GROUP BY g.id
          ORDER BY g.created_at DESC`,
         [userId],
@@ -141,11 +142,16 @@ class GoalModel {
   }
 
   static delete(id, userId) {
+    const deletedAt = new Date().toISOString();
     return new Promise((resolve, reject) => {
-      db.run('DELETE FROM goals WHERE id = ? AND user_id = ?', [id, userId], function (err) {
-        if (err) reject(err);
-        else resolve(this.changes);
-      });
+      db.run(
+        'UPDATE goals SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
+        [deletedAt, deletedAt, id, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
     });
   }
 }

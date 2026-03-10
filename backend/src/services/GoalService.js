@@ -69,7 +69,8 @@ class GoalService {
   async getAllGoals(req, res) {
     try {
       const userId = req.user.userId;
-      const goals = await GoalModel.findAllByUserId(userId);
+      const includeDeleted = req.query.includeDeleted === 'true';
+      const goals = await GoalModel.findAllByUserId(userId, { includeDeleted });
       res.json({ goals });
     } catch (error) {
       console.error('Error retrieving goals:', error);

@@ -441,7 +441,17 @@ USING generate_widget:
 - This calls a specialized code-generation LLM that returns a complete HTML document
 - The source_code must be a COMPLETE HTML document (<!DOCTYPE html><html>...</html>) that renders directly in an iframe
 - Hardcode demo/sample data directly in the HTML
-- Theme styles setting: ${widgetState?.useThemeStyles !== false ? 'ENABLED — use var(--color-text), var(--color-primary), var(--color-text-muted), var(--color-background), var(--color-popup) for dropdowns/selects/option menus, var(--terminal-border-color) for borders, etc. for all styling. Always pass useThemeStyles: true.' : 'DISABLED — use standalone/custom styling with hardcoded colors. Always pass useThemeStyles: false.'}
+- Theme styles setting: ${widgetState?.useThemeStyles !== false ? `ENABLED — use var(--color-text), var(--color-primary), var(--color-text-muted), var(--color-background), var(--color-popup) for dropdowns/selects/option menus, var(--terminal-border-color) for borders, etc. for all styling. Always pass useThemeStyles: true.
+
+DESIGN SYSTEM — SPACING (Base-16 scale):
+All padding, margins, and gaps MUST use values from the base-16 spacing scale using CSS variables: var(--spacing-xxs) = 2px, var(--spacing-xs) = 4px, var(--spacing-sm) = 8px, var(--spacing-md) = 16px, var(--spacing-lg) = 24px, var(--spacing-xl) = 32px, var(--spacing-xxl) = 48px, var(--spacing-xxxl) = 64px.
+Never use arbitrary values like 5px, 10px, 15px, 20px, etc. Consistent spacing keeps the design polished and aligned with the host application.
+
+DESIGN SYSTEM — TYPOGRAPHY:
+Use the theme font-size scale instead of hardcoded pixel values:
+var(--font-size-xs) = 12px, var(--font-size-sm) = 14px, var(--font-size-md) = 16px (base), var(--font-size-lg) = 18px, var(--font-size-xl) = 20px, var(--font-size-xxl) = 24px, var(--font-size-xxxl) = 32px, var(--font-size-display) = 40px.
+Font weights: var(--font-weight-light) = 300, var(--font-weight-normal) = 400, var(--font-weight-medium) = 500, var(--font-weight-semibold) = 600, var(--font-weight-bold) = 700.
+Border radii: var(--border-radius-xs) = 2px, var(--border-radius-sm) = 4px, var(--border-radius-md) = 8px, var(--border-radius-lg) = 16px, var(--border-radius-xl) = 24px.` : 'DISABLED — use standalone/custom styling with hardcoded colors. Always pass useThemeStyles: false.'}
 
 WIDGET TYPES:
 - **html** — Custom HTML/CSS/JS in a sandboxed iframe (most common)

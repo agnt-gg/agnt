@@ -518,11 +518,9 @@ async function universalChatHandler(req, res, context = {}) {
           conversationId,
           typeof initialPromptText === 'string' ? initialPromptText.substring(0, 500) : String(initialPromptText).substring(0, 500),
           resolvedProvider,
-          model
+          model,
+          'running'
         );
-
-        // Update status to running
-        await AgentExecutionModel.updateStatus(agentExecutionId, 'running');
 
         sendEvent('agent_execution_started', {
           executionId: agentExecutionId,

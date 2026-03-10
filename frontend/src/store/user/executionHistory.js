@@ -76,7 +76,7 @@ export default {
 
         const [workflowResult, goalsResult, agentResult] = await Promise.allSettled([
           axios.get(`${API_CONFIG.BASE_URL}/executions`, { headers }),
-          axios.get(`${API_CONFIG.BASE_URL}/goals`, { headers }),
+          axios.get(`${API_CONFIG.BASE_URL}/goals?includeDeleted=true`, { headers }),
           axios.get(`${API_CONFIG.BASE_URL}/executions/agents/list`, { headers }),
         ]);
 

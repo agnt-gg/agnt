@@ -24,7 +24,7 @@ class AgentExecutionModel {
   /**
    * Create a new agent execution record
    */
-  static create(userId, agentId, agentName, conversationId, initialPrompt, provider, model) {
+  static create(userId, agentId, agentName, conversationId, initialPrompt, provider, model, status = 'running') {
     const id = generateUUID();
     const startTime = new Date().toISOString();
 
@@ -34,7 +34,7 @@ class AgentExecutionModel {
           `INSERT INTO agent_executions
            (id, agent_id, agent_name, user_id, conversation_id, status, start_time, initial_prompt, provider, model)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, agentId, agentName, userId, conversationId, 'started', startTime, initialPrompt, provider, model],
+          [id, agentId, agentName, userId, conversationId, status, startTime, initialPrompt, provider, model],
           function (err) {
             if (err) reject(err);
             else resolve(id);

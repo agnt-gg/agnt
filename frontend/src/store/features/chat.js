@@ -1866,10 +1866,10 @@ function handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, c
   switch (eventName) {
     case 'conversation_started':
       // Migration already handled in processStream.
-      // Immediately save so the conversation appears in OutputList right away
-      // (we now have the real server-assigned ID after migration).
+      // Save with debounce to avoid blocking the stream and delaying AI responses.
+      // The conversation will appear in OutputList after the debounce period.
       if (dispatch) {
-        dispatch('autosaveConversation', { debounce: false, conversationId });
+        dispatch('autosaveConversation', { debounce: true, conversationId });
       }
       break;
     case 'assistant_message':
