@@ -332,7 +332,7 @@ Always be helpful, creative, and guide users through the tool creation process s
                 name: { type: 'string', description: 'New widget name' },
                 description: { type: 'string', description: 'New widget description' },
                 icon: { type: 'string', description: 'New FontAwesome icon class (e.g. "fas fa-chart-bar")' },
-                category: { type: 'string', description: 'New category' },
+                category: { type: 'string', enum: ['custom', 'dashboard', 'home', 'assets', 'system'], description: 'New category (must be one of the allowed values)' },
                 widget_type: { type: 'string', enum: ['html', 'template', 'iframe', 'markdown'], description: 'New widget type' },
                 default_size: { type: 'object', properties: { cols: { type: 'integer' }, rows: { type: 'integer' } }, description: 'New default grid size' },
                 min_size: { type: 'object', properties: { cols: { type: 'integer' }, rows: { type: 'integer' } }, description: 'New minimum grid size' },
@@ -429,6 +429,14 @@ TOOL SELECTION GUIDELINES:
 - **Small/medium change to existing code** (fix a bug, change a color, add a feature) → use \`edit_widget_code\` with precise search/replace pairs from the source code above
 - **Complete rewrite** (start over, fundamentally different approach) → use \`generate_widget\` with operationType "rewrite"
 - **Metadata only** (rename, change icon, resize, re-categorize) → use \`update_widget_config\`
+
+WIDGET CATEGORIES (use ONLY these values):
+- **custom** — User-created widgets (default)
+- **dashboard** — Small composable dashboard cards (metrics, charts, status indicators)
+- **home** — Full-screen primary widgets
+- **assets** — Asset management widgets
+- **system** — System/settings widgets
+Do NOT invent new categories. Always use one of the five above.
 - You can combine \`edit_widget_code\` + \`update_widget_config\` in one turn when both code and metadata need changing
 
 USING edit_widget_code:

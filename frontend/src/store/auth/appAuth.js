@@ -554,16 +554,20 @@ const actions = {
             const index = providers.findIndex((p) => p.provider === data.provider.provider);
             if (index !== -1) {
               providers[index] = data.provider;
+            } else {
+              providers.push(data.provider);
             }
 
-            commit('SET_CONNECTION_HEALTH', {
-              overall: 'checking',
-              healthyConnections: data.progress.healthy,
-              totalConnections: data.progress.total,
-              providers: [...providers],
-              timestamp: new Date().toISOString(),
-              progress: data.progress,
-            });
+            if (data.progress) {
+              commit('SET_CONNECTION_HEALTH', {
+                overall: 'checking',
+                healthyConnections: data.progress.healthy,
+                totalConnections: data.progress.total,
+                providers: [...providers],
+                timestamp: new Date().toISOString(),
+                progress: data.progress,
+              });
+            }
           } else if (data.type === 'summary') {
             summary = data.data;
             commit('SET_CONNECTION_HEALTH', summary);

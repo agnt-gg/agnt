@@ -2319,12 +2319,18 @@ USER REQUEST: ${enhancedInstruction}`;
 
       case 'update_widget_config': {
         try {
+          const VALID_WIDGET_CATEGORIES = ['custom', 'dashboard', 'home', 'assets', 'system'];
           const configFields = ['name', 'description', 'icon', 'category', 'widget_type', 'default_size', 'min_size'];
           const updates = {};
           for (const field of configFields) {
             if (args[field] !== undefined) {
               updates[field] = args[field];
             }
+          }
+
+          // Validate category against allowed values
+          if (updates.category && !VALID_WIDGET_CATEGORIES.includes(updates.category)) {
+            updates.category = 'custom';
           }
 
           if (Object.keys(updates).length === 0) {
@@ -2402,10 +2408,13 @@ USER REQUEST: ${enhancedInstruction}`;
 
       case 'save_widget':
         if (args.widgetData && db) {
+          const VALID_SAVE_CATEGORIES = ['custom', 'dashboard', 'home', 'assets', 'system'];
           const widgetId = args.widgetData.id || `widget-def-${Date.now()}`;
+          const sanitizedCategory = VALID_SAVE_CATEGORIES.includes(args.widgetData.category) ? args.widgetData.category : 'custom';
           const widgetData = {
             ...args.widgetData,
             id: widgetId,
+            category: sanitizedCategory,
             updatedAt: new Date().toISOString(),
           };
 
