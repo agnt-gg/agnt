@@ -45,7 +45,7 @@
 </template>
 
 <script>
-import { computed, defineAsyncComponent, ref, inject } from 'vue';
+import { computed, defineAsyncComponent, ref, inject, onMounted } from 'vue';
 
 // Lazy-load panel components on demand (cached so re-navigation is instant)
 const panelCache = new Map();
@@ -60,6 +60,24 @@ const loadPanel = (panelName) => {
   );
   panelCache.set(panelName, component);
   return component;
+};
+
+// Preload all panel chunks in background so they're ready before navigation
+const ALL_LEFT_PANELS = [
+  'ChatPanel', 'AgentsPanel', 'ToolsPanel', 'WorkflowsPanel',
+  'AgentForgePanel', 'ToolForgePanel', 'WorkflowForgePanel',
+  'ConnectorsPanel', 'MarketplacePanel', 'RunsPanel',
+  'SettingsPanel', 'SkillsPanel', 'WidgetManagerPanel',
+  'WidgetForgePanel', 'CodeEditorPanel', 'GoalsPanel',
+];
+let panelsPreloaded = false;
+const preloadPanels = () => {
+  if (panelsPreloaded) return;
+  panelsPreloaded = true;
+  for (const name of ALL_LEFT_PANELS) {
+    loadPanel(name); // cache the defineAsyncComponent wrapper
+    import(`./types/${name}/${name}.vue`).catch(() => {}); // start chunk download
+  }
 };
 
 export default {
@@ -112,6 +130,15 @@ export default {
     const handleQuickAction = (action) => {
       emit('panel-action', 'quick-action', action);
     };
+
+    // Preload all panel chunks in background after first render
+    onMounted(() => {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(preloadPanels);
+      } else {
+        setTimeout(preloadPanels, 100);
+      }
+    });
 
     return {
       activePanelComponent,

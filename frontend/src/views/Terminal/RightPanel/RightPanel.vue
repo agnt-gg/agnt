@@ -38,6 +38,24 @@ const loadPanel = (panelName) => {
   return component;
 };
 
+// Preload all panel chunks in background so they're ready before navigation
+const ALL_RIGHT_PANELS = [
+  'ChatPanel', 'AgentsPanel', 'ToolsPanel', 'WorkflowsPanel',
+  'AgentForgePanel', 'ToolForgePanel', 'WorkflowForgePanel',
+  'ToolForgeResponsePanel', 'ConnectorsPanel', 'MarketplacePanel',
+  'RunsPanel', 'SettingsPanel', 'SkillsPanel', 'WidgetManagerPanel',
+  'WidgetForgePanel', 'GoalsPanel', 'FileTreePanel', 'NewsPanel',
+];
+let panelsPreloaded = false;
+const preloadPanels = () => {
+  if (panelsPreloaded) return;
+  panelsPreloaded = true;
+  for (const name of ALL_RIGHT_PANELS) {
+    loadPanel(name); // cache the defineAsyncComponent wrapper
+    import(`./types/${name}/${name}.vue`).catch(() => {}); // start chunk download
+  }
+};
+
 export default {
   name: 'RightPanel',
   components: {},
@@ -119,6 +137,13 @@ export default {
     onMounted(() => {
       // Stats are pre-loaded by initializeStore - just set up a gentle refresh
       pollingInterval = setInterval(fetchStats, 60000);
+
+      // Preload all panel chunks in background after first render
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(preloadPanels);
+      } else {
+        setTimeout(preloadPanels, 100);
+      }
     });
 
     onUnmounted(() => {
