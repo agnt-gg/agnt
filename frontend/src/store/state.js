@@ -32,6 +32,7 @@ import widgetLayout from './features/widgetLayout';
 import widgetDefinitions from './features/widgetDefinitions';
 import widgetChat from './features/widgetChat';
 import skills from './features/skills';
+import skillforge from './features/skillforge';
 import codeChat from './features/codeChat';
 
 const store = createStore({
@@ -148,6 +149,7 @@ const store = createStore({
     widgetDefinitions,
     widgetChat,
     skills,
+    skillforge,
     codeChat,
   },
 });

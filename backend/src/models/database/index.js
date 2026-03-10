@@ -619,6 +619,53 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)`);
 
+      // ==================== SKILLFORGE TABLES ====================
+      // Skill version history — tracks evolutionary lineage of skills
+      db.run(`CREATE TABLE IF NOT EXISTS skill_versions (
+        id TEXT PRIMARY KEY,
+        skill_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        instructions TEXT NOT NULL,
+        instructions_diff TEXT,
+        effectiveness_score REAL,
+        parent_version_id TEXT,
+        source_goal_id TEXT,
+        trace_analysis_summary TEXT,
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_skill_versions_skill_id ON skill_versions(skill_id)`);
+
+      // Skill A/B test evaluations — experiment log
+      db.run(`CREATE TABLE IF NOT EXISTS skill_evaluations (
+        id TEXT PRIMARY KEY,
+        skill_id TEXT NOT NULL,
+        skill_version_id TEXT,
+        user_id TEXT NOT NULL,
+        source_goal_id TEXT NOT NULL,
+        baseline_ses REAL,
+        baseline_completion REAL,
+        baseline_tool_calls INTEGER,
+        baseline_errors INTEGER,
+        baseline_duration_ms INTEGER,
+        treatment_ses REAL,
+        treatment_completion REAL,
+        treatment_tool_calls INTEGER,
+        treatment_errors INTEGER,
+        treatment_duration_ms INTEGER,
+        delta REAL,
+        decision TEXT NOT NULL,
+        trace_analysis TEXT,
+        judge_reasoning TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_id ON skill_evaluations(skill_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_user_id ON skill_evaluations(user_id)`);
+
       // Goal iteration history for AGI loop
       db.run(`CREATE TABLE IF NOT EXISTS goal_iterations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

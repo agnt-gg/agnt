@@ -139,6 +139,12 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'SkillsScreen' },
     },
     {
+      path: '/skillforge',
+      name: 'TerminalSkillForge',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'SkillForgeScreen' },
+    },
+    {
       path: '/code-editor',
       name: 'TerminalCodeEditor',
       component: Terminal,

@@ -5,6 +5,7 @@ import AgentTaskMatcher from './AgentTaskMatcher.js';
 import LlmExecutionService from '../ai/LlmExecutionService.js';
 import { getAvailableToolSchemas } from '../orchestrator/tools.js';
 import GoalEvaluator from './GoalEvaluator.js';
+import SkillForgeOrchestrator from './SkillForgeOrchestrator.js';
 import StreamEngine from '../../stream/StreamEngine.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import db from '../../models/database/index.js';
@@ -371,6 +372,11 @@ Begin working on this task now.`;
       try {
         const evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic');
         console.log(`[TaskOrchestrator] Evaluation complete: ${evaluation.passed ? 'PASSED' : 'NEEDS REVIEW'} (${evaluation.scores.overall}%)`);
+
+        // Fire-and-forget: trigger SkillForge analysis (non-blocking)
+        SkillForgeOrchestrator.onGoalCompleted(goalId, userId).catch(err => {
+          console.error('[TaskOrchestrator] SkillForge analysis failed (non-critical):', err.message);
+        });
       } catch (error) {
         console.error(`[TaskOrchestrator] Evaluation failed for goal ${goalId}:`, error);
         // Don't fail the goal completion if evaluation fails
@@ -571,6 +577,11 @@ Begin working on this task now.`;
             iteration,
             score: evaluation.scores.overall,
             passed: true,
+          });
+
+          // Fire-and-forget: trigger SkillForge analysis (non-blocking)
+          SkillForgeOrchestrator.onGoalCompleted(goalId, userId).catch(err => {
+            console.error('[AGI Loop] SkillForge analysis failed (non-critical):', err.message);
           });
 
           this.runningGoals.delete(goalId);

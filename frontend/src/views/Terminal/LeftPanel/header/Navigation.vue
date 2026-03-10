@@ -192,6 +192,11 @@ export default {
           icon: 'brain',
           label: 'Skills',
         },
+        {
+          screen: 'SkillForgeScreen',
+          icon: 'dna',
+          label: 'SkillForge',
+        },
         // {
         //   screen: 'ResourcesScreen',
         //   icon: 'resources',
@@ -377,6 +382,7 @@ export default {
         integrations: 'fas fa-plug',
         settings: 'fas fa-cog',
         brain: 'fas fa-brain',
+        dna: 'fas fa-dna',
       };
       return iconMap[icon] || 'fas fa-circle';
     };

@@ -97,6 +97,9 @@ export const RealtimeEvents = {
   GOAL_LOOP_COMPLETED: 'goal:loop_completed',
   GOAL_LOOP_ERROR: 'goal:loop_error',
 
+  // SkillForge
+  SKILLFORGE_EVOLUTION_COMPLETE: 'skillforge:evolution_complete',
+
   // Plugins
   PLUGIN_INSTALLED: 'plugin:installed',
   PLUGIN_UNINSTALLED: 'plugin:uninstalled',
