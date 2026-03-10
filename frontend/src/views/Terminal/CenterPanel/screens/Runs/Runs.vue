@@ -68,6 +68,35 @@
             </button>
           </div>
 
+          <!-- Date Range & Sort Controls -->
+          <div class="runs-controls">
+            <div class="controls-left">
+              <select class="control-select" :value="dateRangePreset" @change="handleDatePresetChange($event.target.value)">
+                <option value="1d">Last 24 hours</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="90d">Last 90 days</option>
+                <option value="custom">Custom range</option>
+              </select>
+              <template v-if="dateRangePreset === 'custom'">
+                <input type="date" class="control-date" :value="customStartDate" @change="handleCustomDateChange('start', $event.target.value)" />
+                <span class="control-date-sep">to</span>
+                <input type="date" class="control-date" :value="customEndDate" @change="handleCustomDateChange('end', $event.target.value)" />
+              </template>
+            </div>
+            <div class="controls-right">
+              <select class="control-select" :value="sortField" @change="handleSortChange($event.target.value)">
+                <option value="startTime">Sort by Date</option>
+                <option value="workflowName">Sort by Name</option>
+                <option value="status">Sort by Status</option>
+                <option value="duration">Sort by Duration</option>
+              </select>
+              <button class="sort-dir-btn" @click="toggleSortDirection" :title="sortDirection === 'desc' ? 'Descending' : 'Ascending'">
+                <i :class="sortDirection === 'desc' ? 'fas fa-sort-amount-down' : 'fas fa-sort-amount-up'"></i>
+              </button>
+            </div>
+          </div>
+
           <!-- Main Content -->
           <div class="runs-content">
             <main class="runs-main-content">
@@ -254,6 +283,13 @@ export default {
     const initialDisplayLimit = 108;
     let pollingInterval = null;
 
+    // Date range & sort controls
+    const dateRangePreset = ref('7d');
+    const customStartDate = ref('');
+    const customEndDate = ref('');
+    const sortField = ref('startTime');
+    const sortDirection = ref('desc');
+
     // Define tabs (status-based)
     const tabs = [
       { id: 'all', name: 'All', icon: 'fas fa-list' },
@@ -358,11 +394,29 @@ export default {
         );
       }
 
-      // Sort by startTime descending (most recent first) for consistent display
+      // Sort by selected field and direction
+      const dir = sortDirection.value === 'desc' ? -1 : 1;
       return executions.sort((a, b) => {
-        const aTime = a.startTime ? new Date(a.startTime).getTime() : 0;
-        const bTime = b.startTime ? new Date(b.startTime).getTime() : 0;
-        return bTime - aTime; // Descending order (newest first)
+        switch (sortField.value) {
+          case 'workflowName': {
+            const aName = (a.workflowName || '').toLowerCase();
+            const bName = (b.workflowName || '').toLowerCase();
+            return aName < bName ? -1 * dir : aName > bName ? 1 * dir : 0;
+          }
+          case 'status': {
+            const aStatus = (a.status || '').toLowerCase();
+            const bStatus = (b.status || '').toLowerCase();
+            return aStatus < bStatus ? -1 * dir : aStatus > bStatus ? 1 * dir : 0;
+          }
+          case 'duration':
+            return ((a.duration || 0) - (b.duration || 0)) * dir;
+          case 'startTime':
+          default: {
+            const aTime = a.startTime ? new Date(a.startTime).getTime() : 0;
+            const bTime = b.startTime ? new Date(b.startTime).getTime() : 0;
+            return (aTime - bTime) * dir;
+          }
+        }
       });
     });
 
@@ -403,6 +457,65 @@ export default {
     // Reset display limit when filters change
     const resetDisplayLimit = () => {
       displayLimit.value = initialDisplayLimit;
+    };
+
+    // Date range helpers
+    const getDateRangeFromPreset = (preset) => {
+      const end = new Date();
+      end.setDate(end.getDate() + 1); // Include today
+      const endStr = end.toISOString().split('T')[0];
+
+      const start = new Date();
+      switch (preset) {
+        case '1d': start.setDate(start.getDate() - 1); break;
+        case '7d': start.setDate(start.getDate() - 7); break;
+        case '30d': start.setDate(start.getDate() - 30); break;
+        case '90d': start.setDate(start.getDate() - 90); break;
+        default: return null;
+      }
+      return { startDate: start.toISOString().split('T')[0], endDate: endStr };
+    };
+
+    const fetchWithDateRange = () => {
+      let dateRange = {};
+      if (dateRangePreset.value === 'custom') {
+        if (customStartDate.value && customEndDate.value) {
+          dateRange = { startDate: customStartDate.value, endDate: customEndDate.value };
+        }
+      } else {
+        dateRange = getDateRangeFromPreset(dateRangePreset.value) || {};
+      }
+      store.dispatch('executionHistory/fetchExecutions', { forceRefresh: true, ...dateRange });
+      resetDisplayLimit();
+    };
+
+    const handleDatePresetChange = (preset) => {
+      dateRangePreset.value = preset;
+      if (preset === 'custom') {
+        // Set defaults for custom range
+        const now = new Date();
+        customEndDate.value = now.toISOString().split('T')[0];
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        customStartDate.value = weekAgo.toISOString().split('T')[0];
+      }
+      fetchWithDateRange();
+    };
+
+    const handleCustomDateChange = (which, value) => {
+      if (which === 'start') customStartDate.value = value;
+      else customEndDate.value = value;
+      if (customStartDate.value && customEndDate.value) {
+        fetchWithDateRange();
+      }
+    };
+
+    const handleSortChange = (field) => {
+      sortField.value = field;
+    };
+
+    const toggleSortDirection = () => {
+      sortDirection.value = sortDirection.value === 'desc' ? 'asc' : 'desc';
     };
 
     // --- Methods ---
@@ -978,7 +1091,15 @@ ${execution.log}
     const refreshExecutions = async () => {
       addLine('[Runs] Refreshing executions...', 'info');
       try {
-        await store.dispatch('executionHistory/fetchExecutions', { forceRefresh: true });
+        let dateRange = {};
+        if (dateRangePreset.value === 'custom') {
+          if (customStartDate.value && customEndDate.value) {
+            dateRange = { startDate: customStartDate.value, endDate: customEndDate.value };
+          }
+        } else {
+          dateRange = getDateRangeFromPreset(dateRangePreset.value) || {};
+        }
+        await store.dispatch('executionHistory/fetchExecutions', { forceRefresh: true, ...dateRange });
         const executions = store.getters['executionHistory/getExecutions'];
         addLine(`[Runs] Found ${executions.length} executions.`, 'success');
       } catch (error) {
@@ -1185,6 +1306,16 @@ ${execution.log}
       tutorialConfig,
       startTutorial,
       onTutorialClose,
+      // Date range & sort
+      dateRangePreset,
+      customStartDate,
+      customEndDate,
+      sortField,
+      sortDirection,
+      handleDatePresetChange,
+      handleCustomDateChange,
+      handleSortChange,
+      toggleSortDirection,
     };
   },
 };
@@ -1356,6 +1487,85 @@ ${execution.log}
   background: var(--terminal-border-color);
   margin: 0 8px;
   align-self: stretch;
+}
+
+/* ── Date Range & Sort Controls ── */
+.runs-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  flex-shrink: 0;
+  width: calc(100% - 32px);
+  gap: 12px;
+}
+
+.controls-left,
+.controls-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-select {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  color: var(--color-text);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+}
+
+.control-select:focus {
+  border-color: var(--color-green);
+}
+
+.control-select option {
+  background: var(--color-popup, var(--color-darker-0));
+  color: var(--color-text);
+}
+
+.control-date {
+  padding: 4px 6px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  color: var(--color-text);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+}
+
+.control-date:focus {
+  border-color: var(--color-green);
+}
+
+.control-date-sep {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.sort-dir-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  background: none;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.12s;
+}
+
+.sort-dir-btn:hover {
+  color: var(--color-text);
+  border-color: var(--color-green);
 }
 
 .runs-content {

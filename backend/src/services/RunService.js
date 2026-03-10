@@ -192,7 +192,9 @@ class RunService {
   // Execution Methods
   async getExecutions(req, res) {
     try {
-      const executions = await ExecutionModel.getExecutions(req.user.userId);
+      const { startDate, endDate } = req.query;
+      const dateRange = startDate && endDate ? { startDate, endDate } : {};
+      const executions = await ExecutionModel.getExecutions(req.user.userId, dateRange);
       res.json(executions);
     } catch (error) {
       console.error('Error fetching executions:', error);
@@ -232,7 +234,9 @@ class RunService {
   async getAgentExecutions(req, res) {
     try {
       const userId = req.user.userId || req.user.id;
-      const executions = await AgentExecutionModel.getExecutions(userId);
+      const { startDate, endDate } = req.query;
+      const dateRange = startDate && endDate ? { startDate, endDate } : {};
+      const executions = await AgentExecutionModel.getExecutions(userId, dateRange);
       res.json(executions);
     } catch (error) {
       console.error('Error fetching agent executions:', error);

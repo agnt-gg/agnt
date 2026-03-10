@@ -138,16 +138,21 @@ class AgentExecutionModel {
   /**
    * Get all agent executions for a user (summary only for list view)
    */
-  static getExecutions(userId) {
+  static getExecutions(userId, { startDate, endDate } = {}) {
+    const dateFilter = startDate
+      ? `AND ae.start_time >= ? AND ae.start_time <= ?`
+      : `AND ae.start_time >= datetime('now', '-7 days')`;
+    const params = startDate ? [userId, startDate, endDate] : [userId];
+
     return new Promise((resolve, reject) => {
       db.all(
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.start_time, ae.end_time, ae.status,
                 ae.credits_used, ae.tool_calls_count, ae.provider, ae.model
          FROM agent_executions ae
-         WHERE ae.user_id = ?
+         WHERE ae.user_id = ? ${dateFilter}
          ORDER BY ae.start_time DESC
-         LIMIT 1000`,
-        [userId],
+         LIMIT 10000`,
+        params,
         (err, rows) => {
           if (err) reject(err);
           else {

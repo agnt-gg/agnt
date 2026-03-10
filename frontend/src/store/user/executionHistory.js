@@ -54,7 +54,7 @@ export default {
     },
   },
   actions: {
-    async fetchExecutions({ commit, state }, { page = 1, pageSize = 50, forceRefresh = false } = {}) {
+    async fetchExecutions({ commit, state }, { page = 1, pageSize = 50, forceRefresh = false, startDate, endDate } = {}) {
       try {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -70,26 +70,30 @@ export default {
           return;
         }
 
+        // Build date range query params
+        const dateParams = startDate && endDate ? `?startDate=${startDate}&endDate=${endDate}` : '';
+
         // Fetch all execution types in PARALLEL for faster loading
         // (Previously sequential - 3x slower)
         const headers = { Authorization: `Bearer ${token}` };
 
         const [workflowResult, goalsResult, agentResult] = await Promise.allSettled([
-          axios.get(`${API_CONFIG.BASE_URL}/executions`, { headers }),
+          axios.get(`${API_CONFIG.BASE_URL}/executions${dateParams}`, { headers }),
           axios.get(`${API_CONFIG.BASE_URL}/goals?includeDeleted=true`, { headers }),
-          axios.get(`${API_CONFIG.BASE_URL}/executions/agents/list`, { headers }),
+          axios.get(`${API_CONFIG.BASE_URL}/executions/agents/list${dateParams}`, { headers }),
         ]);
 
         // Process workflow executions
         if (workflowResult.status === 'fulfilled') {
           const summaries = (Array.isArray(workflowResult.value.data) ? workflowResult.value.data : []).map((exec) => ({
             id: exec.id,
+            workflowId: exec.workflowId,
             workflowName: exec.workflowName,
             status: exec.status,
             startTime: exec.startTime,
             endTime: exec.endTime,
-            creditsUsed: exec.creditsUsed,
-            nodeCount: exec.nodeExecutions?.length || 0,
+            creditsUsed: exec.creditsUsed || 0,
+            nodeCount: exec.nodeCount || 0,
           }));
           commit('SET_EXECUTION_SUMMARIES', summaries);
         } else {
@@ -100,7 +104,7 @@ export default {
         // Process goal executions
         if (goalsResult.status === 'fulfilled') {
           const goalSummaries = (goalsResult.value.data.goals || [])
-            .filter((goal) => ['executing', 'completed', 'validated', 'needs_review', 'failed', 'stopped'].includes(goal.status))
+            .filter((goal) => ['executing', 'completed', 'validated', 'needs_review', 'failed', 'stopped', 'in_progress', 'pending', 'paused', 'running', 'started', 'error'].includes(goal.status))
             .map((goal) => {
               let calculatedEndTime = goal.completed_at || goal.updated_at;
               if (goal.task_count && goal.completed_tasks === goal.task_count) {
@@ -293,6 +297,11 @@ export default {
     getWorkflowExecutions: (state) => state.executionSummaries,
     getGoalExecutions: (state) => state.goalExecutionSummaries,
     getAgentExecutions: (state) => state.agentExecutionSummaries,
+    getExecutionsByWorkflowId: (state) => (workflowId) => {
+      return state.executionSummaries
+        .filter((exec) => exec.workflowId === workflowId)
+        .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+    },
     getDetailedExecution: (state) => (id) => {
       const cached = state.detailedExecutionsCache.get(id);
       return cached?.data || null;

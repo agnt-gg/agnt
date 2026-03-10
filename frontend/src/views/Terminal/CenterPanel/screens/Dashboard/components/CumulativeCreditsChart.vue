@@ -276,7 +276,7 @@ export default {
     watch(
       () => chartData.value,
       () => {
-        if (!isLoading.value && chartData.value.labels.length > 0) {
+        if (chartData.value.labels.length > 0) {
           nextTick(() => {
             renderChart();
           });
@@ -285,17 +285,16 @@ export default {
       { deep: true },
     );
 
-    // Watch for changes in creditsActivity from store
+    // Watch for loading completion - render chart once data arrives
     watch(
-      () => creditsActivity.value.rawData,
-      () => {
-        if (!isLoading.value && creditsActivity.value.rawData.length > 0) {
+      isLoading,
+      (loading) => {
+        if (!loading && creditsActivity.value.rawData && creditsActivity.value.rawData.length > 0) {
           nextTick(() => {
             renderChart();
           });
         }
       },
-      { deep: true },
     );
 
     // Re-render chart when theme changes (body class changes update CSS variables)

@@ -19,10 +19,10 @@
           <span class="info-label">Created:</span>
           <span class="info-value">{{ formatDate(selectedWorkflow.createdAt || selectedWorkflow.created_at) }}</span>
         </div>
-        <!-- <div class="info-item">
+        <div class="info-item">
           <span class="info-label">Last Run:</span>
-          <span class="info-value">{{ selectedWorkflow.lastRun ? formatDate(selectedWorkflow.lastRun) : 'Never' }}</span>
-        </div> -->
+          <span class="info-value">{{ lastRunTime }}</span>
+        </div>
         <div class="info-item" v-if="selectedWorkflow.assignedTo">
           <span class="info-label">Assigned To:</span>
           <span class="info-value">{{ selectedWorkflow.assignedTo }}</span>
@@ -52,6 +52,29 @@
           <div class="progress-fill" :style="{ width: `${selectedWorkflow.progress || 0}%` }"></div>
           <span class="progress-text">{{ selectedWorkflow.progress || 0 }}%</span>
         </div>
+      </div>
+
+      <div class="workflow-run-history" v-if="workflowRuns.length > 0">
+        <h3>Run History</h3>
+        <div class="run-list">
+          <div
+            v-for="run in workflowRuns"
+            :key="run.id"
+            class="run-item"
+            @click="handleViewRun(run.id)"
+          >
+            <div class="run-status-indicator" :class="run.status"></div>
+            <div class="run-info">
+              <span class="run-time">{{ formatRelativeTime(run.startTime) }}</span>
+              <span class="run-duration" v-if="run.endTime">{{ formatDuration(run.startTime, run.endTime) }}</span>
+            </div>
+            <span class="run-status-badge" :class="run.status">{{ run.status }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="workflow-run-history" v-else-if="executionsLoaded">
+        <h3>Run History</h3>
+        <div class="run-empty">No runs yet</div>
       </div>
 
       <div class="workflow-actions">
@@ -155,12 +178,33 @@ export default {
 
     const workflowCategories = computed(() => store.getters['workflows/workflowCategories']);
 
+    // Run History (defined early so watcher can reference it)
+    const executionsLoaded = computed(() => store.state.executionHistory?.lastFetchTime !== null);
+
+    const workflowRuns = computed(() => {
+      if (!selectedWorkflow.value) return [];
+      return store.getters['executionHistory/getExecutionsByWorkflowId'](selectedWorkflow.value.id).slice(0, 20);
+    });
+
+    const lastRunTime = computed(() => {
+      if (workflowRuns.value.length === 0) return 'Never';
+      return formatRelativeTime(workflowRuns.value[0].startTime);
+    });
+
+    const handleViewRun = () => {
+      emit('panel-action', 'navigate', 'RunsScreen');
+    };
+
     watch(
       selectedWorkflow,
       (newWorkflow) => {
         if (newWorkflow) {
           // Convert empty string to "Uncategorized" for display in dropdown
           selectedCategory.value = newWorkflow.category || 'Uncategorized';
+          // Fetch execution history if not already loaded
+          if (!executionsLoaded.value) {
+            store.dispatch('executionHistory/fetchExecutions');
+          }
         }
       },
       { immediate: true }
@@ -236,6 +280,35 @@ export default {
     const formatDate = (dateString) => {
       if (!dateString) return 'N/A';
       return new Date(dateString).toLocaleString();
+    };
+
+    const formatRelativeTime = (dateString) => {
+      if (!dateString) return 'N/A';
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    };
+
+    const formatDuration = (startTime, endTime) => {
+      if (!startTime || !endTime) return '';
+      const durationMs = new Date(endTime) - new Date(startTime);
+      const seconds = Math.floor(durationMs / 1000);
+      if (seconds < 60) return `${seconds}s`;
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      return `${hours}h ${remainingMinutes}m`;
     };
 
     const updateCategory = () => {
@@ -564,6 +637,13 @@ export default {
       workflowCategories,
       selectedCategory,
       updateCategory,
+      // Run History
+      workflowRuns,
+      executionsLoaded,
+      lastRunTime,
+      handleViewRun,
+      formatRelativeTime,
+      formatDuration,
       // Marketplace & Reviews
       isMarketplaceWorkflow,
       workflowReviews,
@@ -742,6 +822,114 @@ h3 {
 .info-value-select option {
   background-color: var(--color-popup);
   color: var(--color-text);
+}
+
+.workflow-run-history {
+  margin-top: 15px;
+  border-top: 1px dashed rgba(var(--primary-rgb), 0.2);
+  padding-top: 15px;
+}
+
+.run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.run-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.run-item:hover {
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.run-status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-grey);
+}
+
+.run-status-indicator.completed {
+  background: var(--color-green, #4caf50);
+}
+
+.run-status-indicator.started,
+.run-status-indicator.running {
+  background: var(--color-primary);
+}
+
+.run-status-indicator.error {
+  background: var(--color-red, tomato);
+}
+
+.run-status-indicator.stopped {
+  background: var(--color-yellow, #ffc107);
+}
+
+.run-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.run-time {
+  font-size: 0.85em;
+  color: var(--color-text);
+}
+
+.run-duration {
+  font-size: 0.75em;
+  color: var(--color-grey);
+}
+
+.run-status-badge {
+  font-size: 0.7em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--color-grey);
+}
+
+.run-status-badge.completed {
+  color: var(--color-green, #4caf50);
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.run-status-badge.started,
+.run-status-badge.running {
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.run-status-badge.error {
+  color: var(--color-red, tomato);
+  background: rgba(255, 99, 71, 0.1);
+}
+
+.run-status-badge.stopped {
+  color: var(--color-yellow, #ffc107);
+  background: rgba(255, 193, 7, 0.1);
+}
+
+.run-empty {
+  font-size: 0.85em;
+  color: var(--color-grey);
+  font-style: italic;
+  padding: 4px 0;
 }
 
 .workflow-actions {

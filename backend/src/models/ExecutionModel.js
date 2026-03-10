@@ -69,15 +69,21 @@ class ExecutionModel {
       throw error;
     }
   }
-  static getExecutions(userId) {
+  static getExecutions(userId, { startDate, endDate } = {}) {
+    const dateFilter = startDate
+      ? `AND we.start_time >= ? AND we.start_time <= ?`
+      : `AND we.start_time >= datetime('now', '-7 days')`;
+    const params = startDate ? [userId, startDate, endDate] : [userId];
+
     return new Promise((resolve, reject) => {
       db.all(
-        `SELECT we.id, we.workflow_id, we.workflow_name, we.start_time, we.end_time, we.status
+        `SELECT we.id, we.workflow_id, we.workflow_name, we.start_time, we.end_time, we.status, we.credits_used,
+                (SELECT COUNT(*) FROM node_executions ne WHERE ne.execution_id = we.id) as node_count
          FROM workflow_executions we
-         WHERE we.user_id = ?
+         WHERE we.user_id = ? ${dateFilter}
          ORDER BY we.start_time DESC
-         LIMIT 1000`,
-        [userId],
+         LIMIT 10000`,
+        params,
         (err, rows) => {
           if (err) reject(err);
           else {
@@ -88,6 +94,8 @@ class ExecutionModel {
               startTime: row.start_time,
               endTime: row.end_time,
               status: row.status,
+              creditsUsed: row.credits_used || 0,
+              nodeCount: row.node_count || 0,
             }));
             resolve(executions);
           }
