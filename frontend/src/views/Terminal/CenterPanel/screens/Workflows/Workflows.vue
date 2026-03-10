@@ -376,6 +376,18 @@ export default {
 
     // Computed property for filtered workflows
     const filteredWorkflows = computed(() => {
+      // Marketplace tab returns marketplace items instead of local workflows
+      if (activeTab.value === 'marketplace') {
+        let workflows = marketplaceWorkflows.value;
+        if (searchQuery.value) {
+          const query = searchQuery.value.toLowerCase();
+          workflows = workflows.filter((w) =>
+            [w.name, w.title, w.description].some((val) => val && String(val).toLowerCase().includes(query)),
+          );
+        }
+        return workflows;
+      }
+
       let workflows = workflowsFilteredByTab.value;
 
       // Filter by category

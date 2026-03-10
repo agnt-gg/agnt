@@ -455,13 +455,30 @@ export default {
 
     // --- Filtered Tools ---
     const filteredTools = computed(() => {
+      // Marketplace tab returns marketplace items instead of local tools
+      if (activeTab.value === 'marketplace') {
+        let tools = marketplaceTools.value;
+        if (searchQuery.value) {
+          const query = searchQuery.value.toLowerCase();
+          tools = tools.filter(
+            (tool) =>
+              (tool.title && tool.title.toLowerCase().includes(query)) ||
+              (tool.name && tool.name.toLowerCase().includes(query)) ||
+              (tool.description && tool.description.toLowerCase().includes(query)),
+          );
+        }
+        return tools;
+      }
+
       let tools = allAvailableTools.value;
 
       // Apply tab filtering first
       if (activeTab.value === 'system') {
-        tools = tools.filter((tool) => tool.source === 'system');
+        tools = tools.filter((tool) => tool.source === 'system' && !tool.isPlugin);
       } else if (activeTab.value === 'custom') {
         tools = tools.filter((tool) => tool.source === 'custom');
+      } else if (activeTab.value === 'plugins') {
+        tools = tools.filter((tool) => tool.isPlugin === true);
       }
       // Note: 'all' tab shows all tools, no filtering needed
 

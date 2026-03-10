@@ -422,6 +422,23 @@ export default {
 
     // Filtered agents for grid/table view
     const filteredAgentsGrid = computed(() => {
+      // Marketplace tab returns marketplace items instead of local agents
+      if (agentTab.value === 'marketplace') {
+        let items = marketplaceAgents.value;
+        if (searchQuery.value) {
+          const q = searchQuery.value.toLowerCase();
+          items = items.filter((item) =>
+            [item.name, item.description, item.category].some((val) => val && String(val).toLowerCase().includes(q)),
+          );
+        }
+        items.sort((a, b) => {
+          const nameA = (a.name || '').toLowerCase();
+          const nameB = (b.name || '').toLowerCase();
+          return sortOrder.value === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        });
+        return items;
+      }
+
       let items = agents.value;
       // Filter by tab
       if (agentTab.value === 'active') {

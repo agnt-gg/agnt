@@ -77,13 +77,24 @@
         />
       </div>
     </div>
-    <div v-else class="no-workflow-selected">
-      <p>Select a workflow to view details.</p>
-      <BaseButton variant="primary" class="create-workflow-button" @click="$emit('panel-action', 'navigate', 'WorkflowForgeScreen')">
-        <i class="fas fa-plus"></i>
-        Create New Workflow
-      </BaseButton>
-    </div>
+    <template v-if="!selectedWorkflow">
+      <div class="no-workflow-selected">
+        <p>Select a workflow to view details.</p>
+        <BaseButton variant="primary" class="create-workflow-button" @click="$emit('panel-action', 'navigate', 'WorkflowForgeScreen')">
+          <i class="fas fa-plus"></i>
+          Create New Workflow
+        </BaseButton>
+      </div>
+
+      <!-- Active Workflows -->
+      <ActiveWorkflows
+        @edit-workflow="(payload) => $emit('panel-action', 'edit-workflow', payload.workflowId)"
+        @panel-action="(action, ...args) => $emit('panel-action', action, ...args)"
+      />
+
+      <!-- Integration Health -->
+      <IntegrationHealth />
+    </template>
 
     <!-- Resources Section -->
     <ResourcesSection />
@@ -118,10 +129,12 @@ import ReviewSection from './components/ReviewSection.vue';
 import MarketplaceFormModal from '@/views/_components/common/MarketplaceFormModal.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ActiveWorkflows from '@/views/Terminal/RightPanel/types/ChatPanel/components/ActiveWorkflows.vue';
+import IntegrationHealth from '@/views/Terminal/RightPanel/types/ChatPanel/components/IntegrationHealth.vue';
 
 export default {
   name: 'WorkflowsPanel',
-  components: { BaseButton, SvgIcon, CustomCategoryDropdown, ResourcesSection, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip },
+  components: { BaseButton, SvgIcon, CustomCategoryDropdown, ResourcesSection, ReviewSection, MarketplaceFormModal, SimpleModal, Tooltip, ActiveWorkflows, IntegrationHealth },
   props: {
     selectedWorkflowId: {
       type: String,
@@ -575,7 +588,6 @@ export default {
 .workflow-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
   height: 100%;
   overflow-y: auto;
   min-height: 0;
@@ -800,6 +812,7 @@ h3 {
   display: flex;
   flex-direction: column;
   height: fit-content;
+  margin-bottom: 16px;
 }
 
 .no-workflow-selected p {
