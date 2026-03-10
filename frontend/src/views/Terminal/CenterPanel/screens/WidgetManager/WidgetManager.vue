@@ -333,22 +333,23 @@ export default {
     });
 
     const categoryTabs = computed(() => {
-      const cats = [
-        { id: 'all', label: 'All', icon: 'fas fa-th' },
-        { id: 'custom', label: 'Custom', icon: 'fas fa-puzzle-piece' },
-      ];
-      const seen = new Set(['all', 'custom']);
+      // Built-in categories only (no 'custom') — derived from non-custom widgets
+      const seen = new Set();
       for (const w of allWidgets.value) {
-        const cat = w.category;
-        if (!seen.has(cat)) {
-          seen.add(cat);
-          cats.push({
-            id: cat,
-            label: cat.charAt(0).toUpperCase() + cat.slice(1),
-            icon: getCategoryIcon(cat),
-          });
-        }
+        if (w.category && !w._isCustom) seen.add(w.category);
       }
+      const sorted = Array.from(seen).sort();
+
+      const cats = [{ id: 'all', label: 'All', icon: 'fas fa-th' }];
+      for (const cat of sorted) {
+        cats.push({
+          id: cat,
+          label: cat.charAt(0).toUpperCase() + cat.slice(1),
+          icon: getCategoryIcon(cat),
+        });
+      }
+      // Always show Custom tab for user-created widgets
+      cats.push({ id: 'custom', label: 'Custom', icon: 'fas fa-puzzle-piece' });
       return cats;
     });
 
@@ -391,6 +392,7 @@ export default {
         forge: 'fas fa-hammer',
         system: 'fas fa-cog',
         dashboard: 'fas fa-tachometer-alt',
+        custom: 'fas fa-puzzle-piece',
       };
       return map[cat] || 'fas fa-folder';
     }
