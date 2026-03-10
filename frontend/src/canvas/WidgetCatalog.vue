@@ -87,17 +87,21 @@ export default {
     });
 
     const categories = computed(() => {
-      const cats = [{ id: 'all', label: 'All' }];
+      // Match left panel: derive categories from ALL built-in widgets (including screen widgets)
       const seen = new Set();
-      for (const w of allCatalogWidgets.value) {
-        if (!seen.has(w.category)) {
-          seen.add(w.category);
-          cats.push({
-            id: w.category,
-            label: w.category.charAt(0).toUpperCase() + w.category.slice(1),
-          });
-        }
+      for (const w of getAllWidgets()) {
+        if (w.category && !w.isCustomWidget) seen.add(w.category);
       }
+      const sorted = Array.from(seen).sort();
+
+      const cats = [{ id: 'all', label: 'All' }];
+      for (const cat of sorted) {
+        cats.push({
+          id: cat,
+          label: cat.charAt(0).toUpperCase() + cat.slice(1),
+        });
+      }
+      cats.push({ id: 'custom', label: 'Custom' });
       return cats;
     });
 
@@ -105,7 +109,11 @@ export default {
       let widgets = allCatalogWidgets.value;
 
       if (activeCategory.value !== 'all') {
-        widgets = widgets.filter((w) => w.category === activeCategory.value);
+        if (activeCategory.value === 'custom') {
+          widgets = widgets.filter((w) => w.isCustomWidget);
+        } else {
+          widgets = widgets.filter((w) => w.category === activeCategory.value);
+        }
       }
 
       if (searchQuery.value.trim()) {
