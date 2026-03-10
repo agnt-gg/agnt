@@ -169,6 +169,7 @@ export default {
 
     const handleOnboardingSkip = () => {
       store.commit('userAuth/COMPLETE_ONBOARDING');
+      changeScreen('ChatScreen');
     };
 
     onMounted(() => {
