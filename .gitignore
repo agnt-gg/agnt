@@ -89,8 +89,9 @@ data/
 *.provisionprofile
 *.mobileprovision
 
-# Puppeteer Cache
+# Puppeteer/Playwright Cache
 .chrome/
+build/chromium/
 
 package-lock.json
 
