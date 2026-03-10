@@ -12,6 +12,7 @@
     "postinstall": "cross-env PUPPETEER_SKIP_DOWNLOAD=true PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 electron-builder install-app-deps && node scripts/patch-onnxruntime.js",
     "start": "electron .",
     "start:lite": "cross-env AGNT_LITE_MODE=true electron .",
+    "test": "vitest run",
     "test:e2e": "playwright test",
     "dev": "node backend/server.js",
     "generate-icons": "node scripts/generate-icons.js",
@@ -85,7 +86,8 @@
     "electron": "^33.0.2",
     "electron-builder": "^24.13.3",
     "electron-rebuild": "^3.2.9",
-    "png2icons": "^2.0.1"
+    "png2icons": "^2.0.1",
+    "vitest": "^4.0.18"
   },
   "build": {
     "asar": true,

@@ -3,6 +3,7 @@ import TaskModel from '../../models/TaskModel.js';
 import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
 import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
 import StreamEngine from '../../stream/StreamEngine.js';
+import { createSession as createUnfirehoseSession, isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
 
 /**
  * GoalEvaluator - AI-powered evaluation system for goals and tasks
@@ -73,6 +74,33 @@ class GoalEvaluator {
       await GoalModel.updateStatus(goalId, newStatus);
 
       console.log(`[GoalEvaluator] Evaluation complete: ${passed ? 'PASSED' : 'NEEDS REVIEW'} (${scores.overall.toFixed(1)}%)`);
+
+      // Log to unfirehose/1.0
+      if (isUnfirehoseEnabled()) {
+        try {
+          const ufSession = createUnfirehoseSession({
+            conversationId: `eval-${goalId}-${evaluationId}`,
+            chatType: 'goal-evaluation',
+            firstPrompt: `Evaluate goal: ${goal.title}`,
+          });
+          // Log overall eval
+          ufSession.logGoalEvaluation(goalId, scores.overall, feedback);
+          // Log per-task evals as training events
+          for (const te of taskEvaluations) {
+            ufSession.logTrainingEvent({
+              type: 'run.eval',
+              run_id: `goal-${goalId}`,
+              step: taskEvaluations.indexOf(te),
+              eval: te.taskTitle || `task-${te.taskId}`,
+              score: te.score / 100,
+              ts: new Date().toISOString(),
+            });
+          }
+          ufSession.close({ summary: `${passed ? 'PASSED' : 'NEEDS REVIEW'} (${scores.overall.toFixed(1)}%)` });
+        } catch (ufErr) {
+          console.error('[unfirehose] Goal evaluation logging failed:', ufErr.message);
+        }
+      }
 
       return {
         evaluationId,
