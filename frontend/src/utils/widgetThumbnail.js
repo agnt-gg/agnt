@@ -50,20 +50,46 @@ const noScrollbarCSS =
   '<style>html,body{scrollbar-width:none;-ms-overflow-style:none;}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}</style>';
 
 /**
+ * Resolve a solid background color for screenshot capture.
+ * When custom backgrounds are enabled, --color-background is 'transparent',
+ * so we fall back to --color-background-rgb which always holds the real solid RGB values.
+ */
+function buildCaptureBgCSS() {
+  const rootStyle = getComputedStyle(document.documentElement);
+  const bodyStyle = getComputedStyle(document.body);
+
+  // Try the direct background color first — only use it if it's not transparent
+  const bg = bodyStyle.getPropertyValue('--color-background').trim() || rootStyle.getPropertyValue('--color-background').trim();
+  if (bg && bg !== 'transparent' && !bg.startsWith('rgba(0') && bg !== 'initial') {
+    return `<style>html,body{background-color:${bg};}</style>`;
+  }
+
+  // Custom BG mode: --color-background is transparent, use the RGB triplet instead
+  const rgb = bodyStyle.getPropertyValue('--color-background-rgb').trim() || rootStyle.getPropertyValue('--color-background-rgb').trim();
+  if (rgb) {
+    return `<style>html,body{background-color:rgb(${rgb});}</style>`;
+  }
+
+  // Ultimate fallback
+  return '<style>html,body{background-color:#0c0c18;}</style>';
+}
+
+/**
  * Build the final HTML — EXACT same logic as CustomWidgetRenderer.renderedSource (lines 138-150).
  * This ensures the Puppeteer capture looks identical to the live preview.
  */
 function buildRenderedSource(sourceCode) {
   const html = sourceCode || '';
   const theme = buildThemeStyleTag();
+  const captureBgCSS = buildCaptureBgCSS();
 
   if (html.trim().toLowerCase().startsWith('<!doctype') || html.trim().toLowerCase().startsWith('<html')) {
     if (/<head[^>]*>/i.test(html)) {
-      return html.replace(/<head([^>]*)>/i, `<head$1>${theme}${noScrollbarCSS}`);
+      return html.replace(/<head([^>]*)>/i, `<head$1>${theme}${noScrollbarCSS}${captureBgCSS}`);
     }
-    return html.replace(/<html([^>]*)>/i, `<html$1><head>${theme}${noScrollbarCSS}</head>`);
+    return html.replace(/<html([^>]*)>/i, `<html$1><head>${theme}${noScrollbarCSS}${captureBgCSS}</head>`);
   }
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}<style>html,body{scrollbar-width:none;-ms-overflow-style:none;}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}</style></head><body>${html}</body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}${noScrollbarCSS}${captureBgCSS}</head><body>${html}</body></html>`;
 }
 
 /**
@@ -84,10 +110,11 @@ function buildRenderedMarkdown(sourceCode) {
     .replace(/\n/g, '<br/>');
 
   const theme = buildThemeStyleTag();
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}<style>
+  const captureBgCSS = buildCaptureBgCSS();
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}${captureBgCSS}<style>
     html,body{scrollbar-width:none;-ms-overflow-style:none;}
     html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}
-    body{padding:12px;font-size:13px;color:var(--color-light-0,#c8c8d4);line-height:1.6;font-family:inherit;background:var(--color-background,#0c0c18);}
+    body{padding:12px;font-size:13px;color:var(--color-light-0,#c8c8d4);line-height:1.6;font-family:inherit;}
     h1{font-size:18px;color:var(--color-green);margin-bottom:8px;}
     h2{font-size:15px;color:var(--color-green);margin-bottom:6px;}
     h3{font-size:13px;color:var(--color-green);margin-bottom:4px;}
