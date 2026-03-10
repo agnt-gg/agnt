@@ -177,8 +177,7 @@ export default {
 
     // Data readiness - show skeleton until critical data has arrived
     const dataReady = computed(() => {
-      const hasAgents = store.getters['agents/allAgents']?.length > 0 || store.getters.criticalDataReady;
-      return hasAgents;
+      return store.getters.criticalDataReady;
     });
 
     // --- Computed properties for dashboard data ---
@@ -589,6 +588,11 @@ export default {
       terminalLines.value.push('Initializing Dashboard...');
       terminalLines.value.push('Dashboard Ready.');
       baseScreenRef.value?.scrollToBottom();
+
+      // Ensure dashboard data dependencies are loaded (deduplication built into each store action)
+      store.dispatch('goals/fetchGoals').catch(() => {});
+      store.dispatch('tools/fetchTools').catch(() => {});
+      store.dispatch('executionHistory/fetchExecutions').catch(() => {});
 
       // Note: creditsActivity is fetched by CumulativeCreditsChart on its own mount
 

@@ -42,16 +42,27 @@ class WorkflowService {
         const currentState = await WorkflowProcessBridge.fetchWorkflowState(workflow.id, userId);
         if (['running', 'listening', 'queued'].includes(currentState.status)) {
           console.log(`Detected active workflow with status: ${currentState.status}`);
-          await WorkflowProcessBridge.deactivateWorkflow(workflow.id, userId);
 
-          // Re-fetch the updated record
+          // Re-fetch the updated record before deactivating to ensure we have valid data
           const updatedRecord = await WorkflowModel.findOne(workflow.id);
           const updatedWorkflow = JSON.parse(updatedRecord.workflow_data);
           updatedWorkflow.id = workflow.id;
 
-          // Now activate the updated workflow
-          console.log('Automatically restarting workflow with new changes…');
-          await WorkflowProcessBridge.activateWorkflow(updatedWorkflow, userId);
+          await WorkflowProcessBridge.deactivateWorkflow(workflow.id, userId);
+
+          // Reactivate with updated data — if this fails, try to restore previous state
+          try {
+            console.log('Automatically restarting workflow with new changes…');
+            await WorkflowProcessBridge.activateWorkflow(updatedWorkflow, userId);
+          } catch (reactivateError) {
+            console.error('Failed to reactivate workflow after save:', reactivateError.message);
+            // Attempt one more activation so the workflow doesn't stay stuck as stopped
+            try {
+              await WorkflowProcessBridge.activateWorkflow(updatedWorkflow, userId);
+            } catch (restoreError) {
+              console.error('Could not restore workflow active state:', restoreError.message);
+            }
+          }
         }
       } catch (error) {
         // If workflow process is not ready yet, skip the restart check

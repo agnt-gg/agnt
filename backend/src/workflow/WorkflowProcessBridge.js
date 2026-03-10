@@ -86,8 +86,13 @@ class WorkflowProcessBridge {
   handleMessage(message) {
     // Handle status updates (broadcast to all listeners)
     if (message.type === 'STATUS_UPDATE') {
+      const statusData = message.data.status || {};
+      // Ensure userId is included in the status data
+      if (message.data.userId && !statusData.userId) {
+        statusData.userId = message.data.userId;
+      }
       this.statusUpdateListeners.forEach((listener) => {
-        listener(message.data.workflowId, message.data.status);
+        listener(message.data.workflowId, statusData);
       });
       return;
     }

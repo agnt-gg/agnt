@@ -339,6 +339,31 @@ async function universalChatHandler(req, res, context = {}) {
     }
   }
 
+  // Last resort: fallback to first provider with valid credentials
+  if (!resolvedProvider || !resolvedModel) {
+    try {
+      const providerKeys = Object.keys(ProviderRegistry.PROVIDER_CAPABILITIES);
+      for (const providerKey of providerKeys) {
+        try {
+          const apiKey = await AuthManager._getApiKey(userId, providerKey);
+          if (apiKey) {
+            const textModels = ProviderRegistry.getTextModels(providerKey);
+            if (textModels.length > 0) {
+              resolvedProvider = resolvedProvider || providerKey;
+              resolvedModel = resolvedModel || textModels[0];
+              console.log(`[Chat] Auto-fallback to provider: ${resolvedProvider}, model: ${resolvedModel}`);
+              break;
+            }
+          }
+        } catch (e) {
+          // Skip this provider, try next
+        }
+      }
+    } catch (e) {
+      console.warn('[Chat] Could not auto-detect provider fallback:', e.message);
+    }
+  }
+
   if (!resolvedProvider || !resolvedModel) {
     res.setHeader('Content-Type', 'application/json');
     return res.status(400).json({ error: 'Could not determine AI provider/model. Please select a provider in settings.' });

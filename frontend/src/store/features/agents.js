@@ -205,7 +205,7 @@ export default {
         const agent = {
           id: agentData.id,
           name: agentData.name,
-          status: agentData.status || 'INACTIVE',
+          status: agentData.status || 'ACTIVE',
           icon: agentData.avatar || null,
           description: agentData.description || '',
           creditLimit: agentData.creditLimit ?? 0,

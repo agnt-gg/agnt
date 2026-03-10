@@ -40,6 +40,7 @@ import WidgetDefinitionRoutes from './src/routes/WidgetDefinitionRoutes.js';
 import SkillRoutes from './src/routes/SkillRoutes.js';
 import FileSystemRoutes from './src/routes/FileSystemRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
+import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
 import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
 
@@ -256,6 +257,22 @@ async function deferredInit() {
   try {
     await WorkflowProcessBridge.spawn();
     console.log('Workflow process spawned successfully');
+
+    // Wire up real-time workflow status broadcasts to connected clients
+    WorkflowProcessBridge.onStatusUpdate((workflowId, statusData) => {
+      const event = RealtimeEvents.WORKFLOW_STATUS_CHANGED;
+      const payload = {
+        id: workflowId,
+        status: statusData.status,
+        isActive: statusData.isActive,
+        timestamp: new Date().toISOString(),
+      };
+      if (statusData.userId) {
+        broadcastToUser(statusData.userId, event, payload);
+      } else {
+        broadcast(event, payload);
+      }
+    });
 
     // Restart active workflows - workflow process waits for DB readiness
     // before accepting messages, so no arbitrary delay needed

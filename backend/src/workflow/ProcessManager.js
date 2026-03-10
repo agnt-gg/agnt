@@ -86,6 +86,7 @@ class ProcessManager extends EventEmitter {
     this.emit('workflowStatusUpdate', workflowId, {
       status: 'stopped',
       isActive: false,
+      userId,
       queueLength: this.queue.length,
       activeWorkflowsCount: this.activeWorkflows.size,
       workersCount: this.workers.length,

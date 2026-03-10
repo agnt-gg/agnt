@@ -15,6 +15,7 @@ class ProcessWorker extends EventEmitter {
     const { workflow, userId, triggerData } = job;
     this.isBusy = true;
     this.currentWorkflow = workflow;
+    this._currentUserId = userId;
 
     console.log(`Worker starting to process workflow ${workflow.id}`);
 
@@ -103,6 +104,7 @@ class ProcessWorker extends EventEmitter {
     this.processManager.emit('workflowStatusUpdate', workflowId, {
       status,
       isActive,
+      userId: this._currentUserId,
       queueLength: this.processManager.queue.length,
       activeWorkflowsCount: activeWorkflows.size,
       workersCount: this.processManager.workers.length,

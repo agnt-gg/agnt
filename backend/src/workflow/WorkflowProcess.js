@@ -234,13 +234,14 @@ async function handleShutdown() {
 }
 
 // Set up ProcessManager event listeners to forward status updates
-ProcessManager.on('workflowStatusUpdate', (workflowId, status) => {
+ProcessManager.on('workflowStatusUpdate', (workflowId, statusData) => {
   // Send status update to parent process using safe send
   safeSend({
     type: 'STATUS_UPDATE',
     data: {
       workflowId,
-      status,
+      status: statusData,
+      userId: statusData.userId,
     },
   });
 });

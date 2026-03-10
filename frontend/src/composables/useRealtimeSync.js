@@ -184,6 +184,14 @@ export function useRealtimeSync() {
       debouncedWorkflowFetch();
     });
 
+    // Workflow status changes (running → stopped, listening → error, etc.)
+    socket.on('workflow:status_changed', (data) => {
+      console.log('[Realtime] Workflow status changed:', data);
+      if (data.id && data.status) {
+        store.commit('workflows/UPDATE_WORKFLOW_STATUS', { id: data.id, status: data.status });
+      }
+    });
+
     // Execution events (future: show notifications)
     socket.on('execution:started', (data) => {
       console.log('[Realtime] Execution started:', data);
