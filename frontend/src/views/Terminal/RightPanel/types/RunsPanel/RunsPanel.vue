@@ -327,10 +327,10 @@
 
         <!-- Workflow Execution: Show Nodes -->
         <div v-else-if="selectedExecution.nodeExecutions && selectedExecution.nodeExecutions.length > 0" class="detail-section">
-          <h4>Execution Chain ({{ getUniqueNodeExecutions(selectedExecution.nodeExecutions).length }} nodes)</h4>
+          <h4>Execution Chain ({{ uniqueNodeExecutions.length }} nodes)</h4>
           <div class="execution-chain">
             <div
-              v-for="(nodeExecution, index) in getUniqueNodeExecutions(selectedExecution.nodeExecutions)"
+              v-for="(nodeExecution, index) in uniqueNodeExecutions"
               :key="nodeExecution.id"
               class="chain-node"
             >
@@ -412,7 +412,7 @@
 
         <div v-if="selectedExecution.log" class="detail-section">
           <h4>Execution Log</h4>
-          <pre class="execution-log">{{ getFilteredExecutionLog() }}</pre>
+          <pre class="execution-log">{{ filteredExecutionLog }}</pre>
         </div>
       </div>
     </div>
@@ -575,92 +575,61 @@ export default {
       return expandedNodeSections.value[key] || false;
     };
 
+    // Pre-parse log once into a node-id→name map when selectedExecution changes.
+    // This replaces per-node regex calls with a single O(1) Map lookup.
+    const logNodeNameMap = computed(() => {
+      const map = new Map();
+      if (!selectedExecution.value || !selectedExecution.value.log) return map;
+      const log = selectedExecution.value.log;
+      const pattern = /Executing node:\s*([a-f0-9-]{36})\s*\(([^)]+)\)/gi;
+      let match;
+      while ((match = pattern.exec(log)) !== null) {
+        const nodeId = match[1];
+        const nodeName = match[2].trim();
+        map.set(nodeId, nodeName);
+        map.set(nodeId.substring(0, 8), nodeName);
+      }
+      return map;
+    });
+
     // Helper methods for enhanced details
     const getNodeType = (nodeExecution) => {
-      // First check if this is a synthetic node with a log name
       if (nodeExecution._synthetic && nodeExecution._logName) {
         return nodeExecution._logName;
       }
 
-      // Then try to get the actual node name/type from the execution data
-      if (nodeExecution.name) {
-        return nodeExecution.name;
-      }
-      if (nodeExecution.type) {
-        return nodeExecution.type;
-      }
-      if (nodeExecution.tool_name) {
-        return nodeExecution.tool_name;
-      }
-      if (nodeExecution.node_type) {
-        return nodeExecution.node_type;
-      }
-      if (nodeExecution.label) {
-        return nodeExecution.label;
-      }
-      if (nodeExecution.title) {
-        return nodeExecution.title;
-      }
+      if (nodeExecution.name) return nodeExecution.name;
+      if (nodeExecution.type) return nodeExecution.type;
+      if (nodeExecution.tool_name) return nodeExecution.tool_name;
+      if (nodeExecution.node_type) return nodeExecution.node_type;
+      if (nodeExecution.label) return nodeExecution.label;
+      if (nodeExecution.title) return nodeExecution.title;
 
-      // Try to extract from input/output data
       if (nodeExecution.input) {
-        if (nodeExecution.input.tool_name) {
-          return nodeExecution.input.tool_name;
-        }
-        if (nodeExecution.input.type) {
-          return nodeExecution.input.type;
-        }
-        if (nodeExecution.input.name) {
-          return nodeExecution.input.name;
-        }
-        if (nodeExecution.input.label) {
-          return nodeExecution.input.label;
-        }
+        if (nodeExecution.input.tool_name) return nodeExecution.input.tool_name;
+        if (nodeExecution.input.type) return nodeExecution.input.type;
+        if (nodeExecution.input.name) return nodeExecution.input.name;
+        if (nodeExecution.input.label) return nodeExecution.input.label;
       }
 
       if (nodeExecution.output) {
-        if (nodeExecution.output.tool_name) {
-          return nodeExecution.output.tool_name;
-        }
-        if (nodeExecution.output.type) {
-          return nodeExecution.output.type;
-        }
-        if (nodeExecution.output.name) {
-          return nodeExecution.output.name;
-        }
+        if (nodeExecution.output.tool_name) return nodeExecution.output.tool_name;
+        if (nodeExecution.output.type) return nodeExecution.output.type;
+        if (nodeExecution.output.name) return nodeExecution.output.name;
       }
 
-      // Try to extract name from execution log if available
-      if (selectedExecution.value && selectedExecution.value.log && nodeExecution.node_id) {
-        const log = selectedExecution.value.log;
-        // Look for patterns like "node: uuid (Node Name)" in the log
-        const nodeIdShort = nodeExecution.node_id.substring(0, 8);
-        const patterns = [
-          new RegExp(`${nodeExecution.node_id}\\s*\\(([^)]+)\\)`, 'i'),
-          new RegExp(`${nodeIdShort}[^(]*\\(([^)]+)\\)`, 'i'),
-          new RegExp(`node:\\s*${nodeExecution.node_id}[^(]*\\(([^)]+)\\)`, 'i'),
-          new RegExp(`Executing node:\\s*${nodeExecution.node_id}[^(]*\\(([^)]+)\\)`, 'i'),
-        ];
-
-        for (const pattern of patterns) {
-          const match = log.match(pattern);
-          if (match && match[1]) {
-            return match[1].trim();
-          }
-        }
-      }
-
-      // If no name/type found, try to extract from node_id
+      // O(1) map lookup instead of regex per node
       if (nodeExecution.node_id) {
-        // Check if it's a UUID format and try to find a meaningful name
+        const fromLog = logNodeNameMap.value.get(nodeExecution.node_id)
+          || logNodeNameMap.value.get(nodeExecution.node_id.substring(0, 8));
+        if (fromLog) return fromLog;
+
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (uuidPattern.test(nodeExecution.node_id)) {
           return 'Workflow Node';
-        } else {
-          // For non-UUID node_ids, use the first part
-          const parts = nodeExecution.node_id.split('-');
-          return parts[0] || 'Node';
         }
+        const parts = nodeExecution.node_id.split('-');
+        return parts[0] || 'Node';
       }
 
       return 'Unknown Node';
@@ -673,11 +642,11 @@ export default {
 
     const getDataSize = (data) => {
       if (!data) return '0 bytes';
-      const str = typeof data === 'string' ? data : JSON.stringify(data);
-      const bytes = new Blob([str]).size;
-      if (bytes < 1024) return `${bytes} bytes`;
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      // Use string length as a fast approximation instead of creating a Blob
+      const len = typeof data === 'string' ? data.length : JSON.stringify(data).length;
+      if (len < 1024) return `${len} bytes`;
+      if (len < 1024 * 1024) return `${(len / 1024).toFixed(1)} KB`;
+      return `${(len / (1024 * 1024)).toFixed(1)} MB`;
     };
 
     const formatJSON = (data) => {
@@ -690,130 +659,71 @@ export default {
       }
     };
 
-    // Helper function to determine if a node is a label node
+    // Helper function to determine if a node is a label node.
+    // Checks direct properties only — avoids expensive JSON.stringify on input/output.
     const isLabelNode = (nodeExecution) => {
-      // Check various properties that might indicate this is a label node
       const nodeType = getNodeType(nodeExecution).toLowerCase();
+      if (nodeType.includes('label')) return true;
 
-      // Check if the node type contains "label"
-      if (nodeType.includes('label')) {
-        return true;
-      }
+      if (nodeExecution.type && nodeExecution.type.toLowerCase().includes('label')) return true;
+      if (nodeExecution.node_type && nodeExecution.node_type.toLowerCase().includes('label')) return true;
+      if (nodeExecution.name && nodeExecution.name.toLowerCase().includes('label')) return true;
 
-      // Check if the node has specific label-related properties
-      if (nodeExecution.type && nodeExecution.type.toLowerCase().includes('label')) {
-        return true;
-      }
-
-      if (nodeExecution.node_type && nodeExecution.node_type.toLowerCase().includes('label')) {
-        return true;
-      }
-
-      if (nodeExecution.name && nodeExecution.name.toLowerCase().includes('label')) {
-        return true;
-      }
-
-      // Check input/output data for label indicators
+      // Check direct properties on input/output (no JSON.stringify)
       if (nodeExecution.input) {
-        if (nodeExecution.input.type && nodeExecution.input.type.toLowerCase().includes('label')) {
-          return true;
-        }
-        if (nodeExecution.input.node_type && nodeExecution.input.node_type.toLowerCase().includes('label')) {
-          return true;
-        }
-        // Check input data as string for label patterns
-        const inputStr = JSON.stringify(nodeExecution.input).toLowerCase();
-        if (inputStr.includes('label node') || inputStr.includes('"label"')) {
-          return true;
-        }
+        if (nodeExecution.input.type && nodeExecution.input.type.toLowerCase().includes('label')) return true;
+        if (nodeExecution.input.node_type && nodeExecution.input.node_type.toLowerCase().includes('label')) return true;
       }
 
       if (nodeExecution.output) {
-        if (nodeExecution.output.type && nodeExecution.output.type.toLowerCase().includes('label')) {
-          return true;
-        }
-        if (nodeExecution.output.node_type && nodeExecution.output.node_type.toLowerCase().includes('label')) {
-          return true;
-        }
-        // Check output data as string for label patterns
-        const outputStr = JSON.stringify(nodeExecution.output).toLowerCase();
-        if (outputStr.includes('label node') || outputStr.includes('"label"')) {
-          return true;
-        }
-        // Specific check for "Label node - no action needed" message
-        if (nodeExecution.output.message && nodeExecution.output.message.toLowerCase().includes('label node')) {
-          return true;
-        }
+        if (nodeExecution.output.type && nodeExecution.output.type.toLowerCase().includes('label')) return true;
+        if (nodeExecution.output.node_type && nodeExecution.output.node_type.toLowerCase().includes('label')) return true;
+        if (nodeExecution.output.message && nodeExecution.output.message.toLowerCase().includes('label node')) return true;
       }
 
-      // Check synthetic log name for label indicators
-      if (nodeExecution._synthetic && nodeExecution._logName) {
-        if (nodeExecution._logName.toLowerCase().includes('label')) {
-          return true;
-        }
-      }
-
-      // Check if the node execution has any error or status indicating it's a label
-      if (nodeExecution.error && typeof nodeExecution.error === 'string') {
-        if (nodeExecution.error.toLowerCase().includes('label')) {
-          return true;
-        }
-      }
+      if (nodeExecution._synthetic && nodeExecution._logName && nodeExecution._logName.toLowerCase().includes('label')) return true;
+      if (nodeExecution.error && typeof nodeExecution.error === 'string' && nodeExecution.error.toLowerCase().includes('label')) return true;
 
       return false;
     };
 
-    // Helper function to get filtered execution log (removes label node references)
-    const getFilteredExecutionLog = () => {
-      if (!selectedExecution.value || !selectedExecution.value.log) {
-        return '';
-      }
+    // Cached computed: filtered execution log (removes label node references)
+    const filteredExecutionLog = computed(() => {
+      if (!selectedExecution.value || !selectedExecution.value.log) return '';
 
       const log = selectedExecution.value.log;
       const nodeExecutions = selectedExecution.value.nodeExecutions || [];
 
-      // Get all label node IDs that should be filtered out
       const labelNodeIds = new Set();
-
-      // Check actual node executions for label nodes
-      nodeExecutions.forEach((nodeExecution) => {
-        if (isLabelNode(nodeExecution)) {
-          labelNodeIds.add(nodeExecution.node_id);
-          // Also add short version
-          if (nodeExecution.node_id) {
-            labelNodeIds.add(nodeExecution.node_id.substring(0, 8));
-          }
+      nodeExecutions.forEach((ne) => {
+        if (isLabelNode(ne)) {
+          labelNodeIds.add(ne.node_id);
+          if (ne.node_id) labelNodeIds.add(ne.node_id.substring(0, 8));
         }
       });
 
-      // Also check log for label nodes and add their IDs
-      const executingNodePattern = /Executing node:\s*([a-f0-9-]{36})\s*\(([^)]+)\)/gi;
-      let match;
-      while ((match = executingNodePattern.exec(log)) !== null) {
-        const [, nodeId, nodeName] = match;
-        if (nodeName.toLowerCase().includes('label')) {
+      // Also extract label nodes from log
+      for (const [nodeId, name] of logNodeNameMap.value.entries()) {
+        if (name.toLowerCase().includes('label')) {
           labelNodeIds.add(nodeId);
-          labelNodeIds.add(nodeId.substring(0, 8));
         }
       }
 
-      // Filter out log lines that contain any of the label node IDs
-      const logLines = log.split('\n');
-      const filteredLines = logLines.filter((line) => {
-        // Check if this line contains any label node ID
-        for (const labelNodeId of labelNodeIds) {
-          if (line.includes(labelNodeId)) {
-            return false;
-          }
+      if (labelNodeIds.size === 0) return log;
+
+      return log.split('\n').filter((line) => {
+        for (const id of labelNodeIds) {
+          if (line.includes(id)) return false;
         }
         return true;
-      });
+      }).join('\n');
+    });
 
-      return filteredLines.join('\n');
-    };
+    // Legacy method wrapper for template compatibility
+    const getFilteredExecutionLog = () => filteredExecutionLog.value;
 
     // Deduplicate node executions and add missing nodes from execution log
-    const getUniqueNodeExecutions = (nodeExecutions) => {
+    const _getUniqueNodeExecutions = (nodeExecutions) => {
       if (!nodeExecutions || !Array.isArray(nodeExecutions)) {
         nodeExecutions = [];
       }
@@ -920,6 +830,20 @@ export default {
         }
         return false;
       });
+    };
+
+    // Cached computed: unique node executions (avoids recalculating on every render)
+    const uniqueNodeExecutions = computed(() => {
+      if (!selectedExecution.value || !selectedExecution.value.nodeExecutions) return [];
+      return _getUniqueNodeExecutions(selectedExecution.value.nodeExecutions);
+    });
+
+    // Legacy method wrapper for template compatibility
+    const getUniqueNodeExecutions = (nodeExecutions) => {
+      if (selectedExecution.value && nodeExecutions === selectedExecution.value.nodeExecutions) {
+        return uniqueNodeExecutions.value;
+      }
+      return _getUniqueNodeExecutions(nodeExecutions);
     };
 
     // Status icon helper
@@ -1278,6 +1202,8 @@ ${execution.log}
       getDataSize,
       formatJSON,
       getUniqueNodeExecutions,
+      uniqueNodeExecutions,
+      filteredExecutionLog,
       getFilteredExecutionLog,
       getStatusIcon,
       formatDate,
