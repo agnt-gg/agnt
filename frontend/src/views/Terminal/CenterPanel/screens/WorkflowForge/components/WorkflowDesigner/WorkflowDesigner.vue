@@ -1808,7 +1808,8 @@ export default {
                 }
               }
               // Handle base64 data - convert to blob URL for display ONLY
-              else if (value.startsWith('data:')) {
+              // Skip template variable strings like data:{{var}} which aren't real data URLs
+              else if (value.startsWith('data:') && !value.includes('{{') && !value.includes('}}')) {
                 console.log(`🔄 CRITICAL: Converting base64 to blob URL for node ${node.id}, parameter ${key}`);
                 try {
                   // CRITICAL: Clean up old entries for this specific node parameter first
@@ -2057,7 +2058,7 @@ export default {
     compressNodeParameters(parameters) {
       const compressed = {};
       for (const [key, value] of Object.entries(parameters)) {
-        if (typeof value === 'string' && value.startsWith('data:') && value.length > 100000) {
+        if (typeof value === 'string' && value.startsWith('data:') && !value.includes('{{') && !value.includes('}}') && value.length > 100000) {
           // Replace large base64 with a placeholder to free up space
           compressed[key] = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...'; // Placeholder
           console.log('🧹 Compressed parameter', key, 'from', (value.length / 1024).toFixed(1), 'KB to placeholder');
@@ -2138,7 +2139,7 @@ export default {
 
           // Check for base64 data in parameters and convert to IndexedDB references
           for (const [key, value] of Object.entries(convertedParameters)) {
-            if (typeof value === 'string' && value.startsWith('data:')) {
+            if (typeof value === 'string' && value.startsWith('data:') && !value.includes('{{') && !value.includes('}}')) {
               console.log(`🔄 Converting base64 to IndexedDB for node ${node.id}, parameter ${key}`);
 
               try {
@@ -2181,7 +2182,7 @@ export default {
 
         // Compress parameters for localStorage storage
         for (const [key, value] of Object.entries(node.parameters)) {
-          if (typeof value === 'string' && value.startsWith('data:')) {
+          if (typeof value === 'string' && value.startsWith('data:') && !value.includes('{{') && !value.includes('}}')) {
             // For base64 data, create a much smaller placeholder for localStorage
             if (value.length > 50000) {
               // 50KB threshold

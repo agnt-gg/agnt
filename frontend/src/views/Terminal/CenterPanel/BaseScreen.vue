@@ -312,6 +312,10 @@ export default {
     const minRightPanelWidth = 280;
     const minMainWidth = 480;
 
+    // Snap notch: panels snap to default width when dragged within this range
+    const defaultPanelWidth = 384;
+    const snapThreshold = 16; // px range on each side to trigger snap
+
     // --- Computed ---
     // Controls visibility based on prop AND disabled state
     const showInputLine = computed(() => showInput.value);
@@ -572,10 +576,16 @@ export default {
 
       if (!isLeftSwitchMode.value) {
         // Normal resize - adjust left panel width
-        const newLeftWidth = Math.max(
+        let newLeftWidth = Math.max(
           minLeftPanelWidth,
           Math.min(mouseX, containerRect.width - minMainWidth - (showRightPanel.value ? rightPanelWidth.value + 8 : 0) - 8),
         );
+
+        // Snap to default width when within threshold
+        if (Math.abs(newLeftWidth - defaultPanelWidth) <= snapThreshold) {
+          newLeftWidth = defaultPanelWidth;
+        }
+
         actualLeftPanelWidth.value = newLeftWidth;
 
         // Recalculate main content width
@@ -653,10 +663,16 @@ export default {
 
       if (!isRightSwitchMode.value) {
         // Normal resize - adjust right panel width
-        const newRightWidth = Math.max(
+        let newRightWidth = Math.max(
           minRightPanelWidth,
           Math.min(containerWidth - mouseX, containerWidth - minMainWidth - (showLeftPanel.value ? actualLeftPanelWidth.value + 8 : 0) - 8),
         );
+
+        // Snap to default width when within threshold
+        if (Math.abs(newRightWidth - defaultPanelWidth) <= snapThreshold) {
+          newRightWidth = defaultPanelWidth;
+        }
+
         rightPanelWidth.value = newRightWidth;
 
         // Recalculate main content width

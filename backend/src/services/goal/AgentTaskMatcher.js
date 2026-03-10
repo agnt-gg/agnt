@@ -163,7 +163,10 @@ class AgentTaskMatcher {
     }
 
     if (!provider || !model) {
-      throw new Error('No provider/model configured. Please set your default provider and model in settings.');
+      // Fallback to hardcoded defaults matching UserModel.getUserSettings() behavior
+      console.warn('[AgentTaskMatcher] No provider/model from user settings, using hardcoded defaults');
+      if (!provider) provider = 'Anthropic';
+      if (!model) model = 'claude-3-5-sonnet-20240620';
     }
 
     return {

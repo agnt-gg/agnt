@@ -91,6 +91,34 @@ class WorkflowService {
       const workflowData = JSON.stringify(req.body.workflow);
       const result = await WorkflowModel.update(req.params.id, workflowData, req.user.userId);
 
+      // If the workflow was already active, restart it with updated data
+      try {
+        const currentState = await WorkflowProcessBridge.fetchWorkflowState(req.params.id, req.user.userId);
+        if (['running', 'listening', 'queued'].includes(currentState.status)) {
+          console.log(`[updateWorkflow] Detected active workflow with status: ${currentState.status}, restarting...`);
+
+          const updatedRecord = await WorkflowModel.findOne(req.params.id);
+          const updatedWorkflow = JSON.parse(updatedRecord.workflow_data);
+          updatedWorkflow.id = req.params.id;
+
+          await WorkflowProcessBridge.deactivateWorkflow(req.params.id, req.user.userId);
+
+          try {
+            await WorkflowProcessBridge.activateWorkflow(updatedWorkflow, req.user.userId);
+            console.log('[updateWorkflow] Workflow restarted with new changes');
+          } catch (reactivateError) {
+            console.error('[updateWorkflow] Failed to reactivate workflow:', reactivateError.message);
+            try {
+              await WorkflowProcessBridge.activateWorkflow(updatedWorkflow, req.user.userId);
+            } catch (restoreError) {
+              console.error('[updateWorkflow] Could not restore workflow active state:', restoreError.message);
+            }
+          }
+        }
+      } catch (error) {
+        console.log('[updateWorkflow] Workflow process not ready yet, skipping restart check');
+      }
+
       // Broadcast real-time update to user's connected clients (all tabs)
       broadcastToUser(req.user.userId, RealtimeEvents.WORKFLOW_UPDATED, {
         id: req.params.id,
