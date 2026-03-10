@@ -23,6 +23,7 @@ import conversationManager from './ConversationManager.js';
 import autonomousMessageService from './AutonomousMessageService.js';
 import UserModel from '../models/UserModel.js';
 import AgentModel from '../models/AgentModel.js';
+import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled } from './unfirehose/UnfirehoseLogger.js';
 
 /**
  * Extract images from tool results and replace with references
@@ -412,7 +413,7 @@ async function universalChatHandler(req, res, context = {}) {
     }
   });
 
-  const sendEvent = (eventName, data) => {
+  let sendEvent = (eventName, data) => {
     if (isClientDisconnected) return;
     try {
       // Send via SSE (Server-Sent Events) to current client
@@ -448,6 +449,26 @@ async function universalChatHandler(req, res, context = {}) {
   // Generate conversation ID
   const isNewConversation = !inputConversationId;
   const conversationId = inputConversationId || randomUUID();
+
+  // --- unfirehose/1.0 integration ---
+  let unfirehoseSession = null;
+  if (isUnfirehoseEnabled()) {
+    try {
+      const firstPrompt = message || (originalMessages && originalMessages[originalMessages.length - 1]?.content);
+      unfirehoseSession = createUnfirehoseSession({
+        conversationId,
+        provider: normalizedProvider,
+        model,
+        chatType,
+        firstPrompt: typeof firstPrompt === 'string' ? firstPrompt : String(firstPrompt || ''),
+      });
+      sendEvent = wrapUnfirehoseSendEvent(unfirehoseSession, sendEvent);
+      console.log(`[unfirehose] Session ${conversationId} → ${unfirehoseSession.outputFile}`);
+    } catch (ufErr) {
+      console.error('[unfirehose] Failed to initialize session:', ufErr.message);
+    }
+  }
+
   sendEvent('conversation_started', { conversationId });
 
   // Variables for logging
@@ -593,6 +614,14 @@ async function universalChatHandler(req, res, context = {}) {
           message: lastUserMessage,
           timestamp: Date.now(),
         });
+      }
+    }
+
+    // Log the latest user message to unfirehose
+    if (unfirehoseSession) {
+      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+      if (lastUserMsg) {
+        unfirehoseSession.logUserMessage(lastUserMsg.content);
       }
     }
 

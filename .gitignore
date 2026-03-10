@@ -106,3 +106,4 @@ backend/tests/providers/results/*.json
 dup.js
 
 PR_BODY.md
+build/chromium/
