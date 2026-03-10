@@ -291,8 +291,6 @@ export default {
       selectedWidget: selectedWidget.value,
     }));
 
-    document.body.setAttribute('data-page', 'terminal-widget-manager');
-
     onMounted(async () => {
       // Definitions are fetched at startup (store initializeStore Phase 2).
       // If somehow not yet loaded (e.g. race condition), fetch now as fallback.

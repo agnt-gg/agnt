@@ -1065,8 +1065,6 @@ ${execution.log}
       terminalLines.value = [];
       addLine('Loading execution history...', 'info');
 
-      document.body.setAttribute('data-page', 'terminal-runs');
-
       // Show cached data immediately if available
       const cachedExecutions = store.getters['executionHistory/getExecutions'];
       if (cachedExecutions && cachedExecutions.length > 0) {

@@ -325,8 +325,6 @@ export default {
     const marketplaceWorkflows = computed(() => store.getters['marketplace/filteredMarketplaceWorkflows'] || []);
     const marketplaceSearchQuery = ref('');
 
-    document.body.setAttribute('data-page', 'terminal-workflows');
-
     // Tutorial setup
     const { tutorialConfig, startTutorial, onTutorialClose, initializeWorkflowsTutorial } = useWorkflowsTutorial();
 

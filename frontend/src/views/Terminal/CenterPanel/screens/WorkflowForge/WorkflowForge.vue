@@ -428,7 +428,6 @@ export default {
     // --- Initialization ---
     const initializeScreen = async () => {
       console.log('Initializing Workflow Designer Screen');
-      document.body.setAttribute('data-page', 'terminal-workflow-designer');
       terminalLines.value = ['Loading Workflow Designer...'];
 
       // Wait for the workflow designer to be ready, then load workflow if ID is present
@@ -649,25 +648,25 @@ body.wf-panel-fullscreen .controls-panel {
 }
 
 /* --- Existing Styles Cleanup --- */
-body[data-page='terminal-workflow-designer'] .node-based-tool {
+body[data-page='terminal-workflow-forge'] .node-based-tool {
   height: 100% !important;
   width: 100% !important;
   border: none !important;
   background: transparent !important;
 }
 
-body[data-page='terminal-workflow-designer'] .designer-container :deep(.canvas-state-controls) {
+body[data-page='terminal-workflow-forge'] .designer-container :deep(.canvas-state-controls) {
   top: 16px;
   right: 16px;
 }
 
-body[data-page='terminal-workflow-designer'] .canvas-state-controls {
+body[data-page='terminal-workflow-forge'] .canvas-state-controls {
   position: absolute;
   top: 16px;
   right: 16px;
 }
 
-body[data-page='terminal-workflow-designer'] #sidebar-wrapper {
+body[data-page='terminal-workflow-forge'] #sidebar-wrapper {
   position: absolute;
   top: 0;
   left: 0;
@@ -676,22 +675,22 @@ body[data-page='terminal-workflow-designer'] #sidebar-wrapper {
   width: 304px;
 }
 
-body[data-page='terminal-workflow-designer'] #sidebar-wrapper.closed {
+body[data-page='terminal-workflow-forge'] #sidebar-wrapper.closed {
   width: 64px;
 }
 
-body[data-page='terminal-workflow-designer'] #sidebar.closed .close-sidebar-button {
+body[data-page='terminal-workflow-forge'] #sidebar.closed .close-sidebar-button {
   top: -3px;
   right: -24px;
   transform: rotate(180deg);
   color: var(--color-green);
 }
 
-body[data-page='terminal-workflow-designer'] #sidebar .close-sidebar-button {
+body[data-page='terminal-workflow-forge'] #sidebar .close-sidebar-button {
   color: var(--color-green);
 }
 
-body[data-page='terminal-workflow-designer'] #sidebar {
+body[data-page='terminal-workflow-forge'] #sidebar {
   position: absolute;
   top: 16px;
   left: 16px;
@@ -699,7 +698,7 @@ body[data-page='terminal-workflow-designer'] #sidebar {
   scrollbar-width: none;
 }
 
-body[data-page='terminal-workflow-designer'] .inner-sidebar {
+body[data-page='terminal-workflow-forge'] .inner-sidebar {
   position: absolute;
   top: 0;
   left: 0;
@@ -707,15 +706,15 @@ body[data-page='terminal-workflow-designer'] .inner-sidebar {
   scrollbar-width: none;
 }
 
-body[data-page='terminal-workflow-designer'] .node-based-tool {
+body[data-page='terminal-workflow-forge'] .node-based-tool {
   border-radius: 0;
 }
 
-body[data-page='terminal-workflow-designer'] .designer-container {
+body[data-page='terminal-workflow-forge'] .designer-container {
   border-radius: 8px 0 0 8px;
 }
 
-body[data-page='terminal-workflow-designer'] .close-sidebar-button {
+body[data-page='terminal-workflow-forge'] .close-sidebar-button {
   right: -16px;
 }
 

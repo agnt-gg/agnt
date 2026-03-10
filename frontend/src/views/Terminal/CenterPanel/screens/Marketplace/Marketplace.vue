@@ -1234,7 +1234,6 @@ export default {
     };
 
     const initializeScreen = () => {
-      document.body.setAttribute('data-page', 'terminal-marketplace');
       terminalLines.value = [];
       addLine('Loading marketplace...', 'info');
 

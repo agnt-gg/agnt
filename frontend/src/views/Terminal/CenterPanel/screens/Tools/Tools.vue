@@ -335,8 +335,6 @@ export default {
     const customTools = computed(() => store.getters['tools/customTools'] || []);
     const isLoading = computed(() => store.getters['tools/isLoading']);
 
-    document.body.setAttribute('data-page', 'terminal-tools');
-
     // Inject playSound function
     const playSound = inject('playSound');
 

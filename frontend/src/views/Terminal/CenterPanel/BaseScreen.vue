@@ -251,6 +251,21 @@ export default {
     const store = useStore(); // Keep store access if needed for base actions
     const { screenId, showInput, disableInputInitially, useTutorialHook, terminalLines } = toRefs(props);
 
+    // --- Data Page ---
+    // Derive data-page from screenId: "ChatScreen" → "terminal-chat"
+    const dataPage = computed(() => {
+      if (!props.screenId) return null;
+      const base = props.screenId.replace(/Screen$/, '');
+      const kebab = base.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+      return `terminal-${kebab}`;
+    });
+
+    const setDataPage = () => {
+      if (dataPage.value) {
+        document.body.setAttribute('data-page', dataPage.value);
+      }
+    };
+
     // --- Refs ---
     const terminalContentRef = ref(null);
     const mainPanelRef = ref(null);
@@ -819,6 +834,7 @@ export default {
 
     // --- Lifecycle ---
     onMounted(async () => {
+      setDataPage();
       await nextTick();
       initializePanelWidths();
       window.addEventListener('resize', handleWindowResize);
@@ -851,8 +867,9 @@ export default {
       }
     });
 
-    // KeepAlive re-activation — re-emit base-mounted so screens can restore data-page
+    // KeepAlive re-activation — restore data-page and re-emit base-mounted
     onActivated(() => {
+      setDataPage();
       emit('base-mounted');
       if (props.showInput) {
         nextTick(focusInput);
@@ -1111,7 +1128,7 @@ export default {
   align-items: center;
 }
 
-body[data-page='terminal-workflow-designer'] .main-panel {
+body[data-page='terminal-workflow-forge'] .main-panel {
   padding: 0;
 }
 
@@ -1914,7 +1931,7 @@ body[data-page='terminal-code-editor'] .scrollable-content > * {
   transform: none;
 }
 
-body[data-page='goals-page'] .scrollable-content {
+body[data-page='terminal-goals'] .scrollable-content {
   overflow-y: hidden !important;
   padding: 0;
 }

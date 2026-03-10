@@ -204,7 +204,7 @@ inner-editor-area {
   font-weight: 400;
 }
 
-body[data-page='chat'] inner-editor-area {
+body[data-page='terminal-chat'] inner-editor-area {
   width: calc(800px - 32px);
   background: var(--color-dull-white);
   /* border-bottom: none !important; */
@@ -214,7 +214,7 @@ body[data-page='chat'] inner-editor-area {
   gap: 32px;
 } */
 
-body[data-page='create'] inner-editor-area {
+body[data-page='terminal-agent-forge'] inner-editor-area {
   gap: 32px;
   border-radius: 16px;
 }

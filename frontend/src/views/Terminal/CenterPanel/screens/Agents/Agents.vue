@@ -379,8 +379,6 @@ export default {
     const marketplaceAgents = computed(() => store.getters['marketplace/filteredMarketplaceAgents'] || []);
     const agentTab = ref('all');
 
-    document.body.setAttribute('data-page', 'terminal-agents');
-
     async function onAgentTabSelect(tabId) {
       agentTab.value = tabId;
 

@@ -188,7 +188,6 @@ export default {
 
     const initializeScreen = async () => {
       terminalLines.value.push('Initializing Tool Forge...');
-      document.body.setAttribute('data-page', 'terminal-tool-forge');
       await initializeToolForge();
 
       // Check for content-id in query params and load if present

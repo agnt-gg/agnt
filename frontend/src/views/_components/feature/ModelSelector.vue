@@ -268,13 +268,13 @@ export default {
   border-radius: 0px;
 }
 
-body[data-page='chat'] .field-group.model-selector {
+body[data-page='terminal-chat'] .field-group.model-selector {
   width: calc(100% - 18px);
   padding: 8px;
   border: 1px solid var(--color-light-navy);
 }
 
-body[data-page='chat'].dark .field-group.model-selector {
+body[data-page='terminal-chat'].dark .field-group.model-selector {
   border: 1px solid var(--color-dull-navy);
 }
 
@@ -317,7 +317,7 @@ body.dark select {
   font-weight: 300;
 }
 
-body[data-page='create'] .field-group.model-selector {
+body[data-page='terminal-agent-forge'] .field-group.model-selector {
   font-size: 15px;
   font-weight: 500;
 }

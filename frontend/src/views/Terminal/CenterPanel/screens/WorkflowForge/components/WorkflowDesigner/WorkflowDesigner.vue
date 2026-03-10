@@ -2434,7 +2434,6 @@ export default {
     });
 
     onMounted(async () => {
-      document.body.setAttribute('data-page', 'workflow-designer');
 
       // Always check URL first - this is the source of truth
       const urlWorkflowId = route.query.id;
@@ -2691,17 +2690,17 @@ header {
   display: none !important;
 }
 
-body[data-page='workflow-designer'].cyberpunk {
+body[data-page='terminal-workflow-forge'].cyberpunk {
   height: 100vh;
   width: 100vw;
 }
 
-body[data-page='workflow-designer'].cyberpunk .node-based-tool {
+body[data-page='terminal-workflow-forge'].cyberpunk .node-based-tool {
   height: 100%;
   width: 100%;
 }
 
-body[data-page='workflow-designer'].cyberpunk div#app {
+body[data-page='terminal-workflow-forge'].cyberpunk div#app {
   padding: 16px;
   width: calc(100% - 32px);
   height: calc(100% - 32px);

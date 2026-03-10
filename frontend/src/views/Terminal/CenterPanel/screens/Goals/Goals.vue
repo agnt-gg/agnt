@@ -123,8 +123,6 @@ export default {
     const goalInputRef = ref(null);
     const isCreatingGoal = computed(() => store.getters['goals/isCreatingGoal']);
 
-    document.body.setAttribute('data-page', 'terminal-goals');
-
     const allGoals = computed(() => store.getters['goals/allGoals']);
     const isLoading = computed(() => store.getters['goals/isLoading']);
 
@@ -285,7 +283,7 @@ export default {
   overflow-x: auto;
 }
 
-body[data-page='goals-page'] .scrollable-content {
+body[data-page='terminal-goals'] .scrollable-content {
   overflow-y: hidden !important;
   padding: 0;
 }

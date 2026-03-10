@@ -339,7 +339,6 @@ export default {
     };
 
     onMounted(() => {
-      document.body.setAttribute('data-page', 'terminal-code-editor');
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('code-file-written', handleFileWritten);
     });

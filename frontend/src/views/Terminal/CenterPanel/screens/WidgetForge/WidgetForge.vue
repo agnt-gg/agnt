@@ -227,8 +227,6 @@ export default {
     const saveFlash = ref(false);
     const modalRef = ref(null);
 
-    document.body.setAttribute('data-page', 'terminal-widget-forge');
-
     // Form state
     const form = reactive({
       name: '',
@@ -411,7 +409,6 @@ export default {
     );
 
     onMounted(() => {
-      document.body.setAttribute('data-page', 'terminal-widget-forge');
       window.addEventListener('chat-sse-event', handleChatSSEEvent);
     });
 

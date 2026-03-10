@@ -875,8 +875,6 @@ export default {
 
     let screenInitialized = false;
     const initializeScreen = async () => {
-      document.body.setAttribute('data-page', 'terminal-chat');
-
       // Always switch back to the main conversation when entering main chat.
       // This handles returning from agent chat where the active conversation
       // and mirror state are still pointing at the agent's conversation.
@@ -890,7 +888,7 @@ export default {
         }
       }
 
-      // Skip heavy init on KeepAlive reactivation — only set data-page + conversation switch
+      // Skip heavy init on KeepAlive reactivation
       if (screenInitialized) return;
       screenInitialized = true;
 

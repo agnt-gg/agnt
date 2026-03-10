@@ -549,12 +549,12 @@ body.dark .cancel,
 
 /* CHAT */
 
-body[data-page='chat'].dark inner-editor-area {
+body[data-page='terminal-chat'].dark inner-editor-area {
   background: var(--color-ultra-dark-navy);
   border: 1px solid var(--color-dull-navy);
 }
 
-body[data-page='chat'].dark .user-message-sent {
+body[data-page='terminal-chat'].dark .user-message-sent {
   /* background: var(--color-navy); */
   border: 1px solid var(--color-dull-navy);
 }

@@ -579,9 +579,7 @@ export default {
     // --- Initialization ---
     let screenInitialized = false;
     const initializeScreen = () => {
-      document.body.setAttribute('data-page', 'terminal-dashboard');
-
-      // Skip heavy init on KeepAlive reactivation — only set data-page
+      // Skip heavy init on KeepAlive reactivation
       if (screenInitialized) return;
       screenInitialized = true;
 
