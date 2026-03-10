@@ -702,7 +702,9 @@ export default {
             await store.dispatch('appAuth/fetchConnectedApps');
             await refreshHealth();
 
-            const tierInfo = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/status`).then(r => r.json()).catch(() => ({}));
+            const tierInfo = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/status`)
+              .then((r) => r.json())
+              .catch(() => ({}));
             const tierMsg = tierInfo.tier ? ` (Tier: ${tierInfo.tier})` : '';
             await showAlert('Success', `Gemini CLI connected via Google account.${tierMsg}`);
             return;
@@ -1019,9 +1021,12 @@ export default {
   grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
   gap: 4px;
   margin-top: 16px;
-  padding: 8px 8px 12px;
+  /* padding: 8px 8px 12px;
   background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
+  border: 1px solid var(--terminal-border-color); */
+  padding: 0;
+  background: transparent;
+  border: none;
   border-radius: 8px;
   max-height: 188px;
   overflow: auto;
