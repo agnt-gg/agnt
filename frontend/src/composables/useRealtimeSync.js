@@ -1,5 +1,4 @@
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
-import { io } from 'socket.io-client';
 import { debounce } from 'lodash-es';
 import { API_CONFIG } from '../tt.config.js';
 import { useStore } from 'vuex';
@@ -40,11 +39,14 @@ export function useRealtimeSync() {
   /**
    * Initialize Socket.IO connection
    */
-  const connect = () => {
+  const connect = async () => {
     if (socket && socket.connected) {
       console.log('[Realtime] Already connected');
       return;
     }
+
+    // Dynamic import - defers ~44KB vendor-services chunk until actually needed
+    const { io } = await import('socket.io-client');
 
     // Socket.IO client connects using http/https, not ws/wss
     // Socket.IO handles the protocol upgrade internally

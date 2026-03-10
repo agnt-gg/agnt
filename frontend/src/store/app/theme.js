@@ -245,10 +245,8 @@ export default {
 
     // Initialize theme on app startup
     async initTheme({ commit, state, dispatch }) {
-      // Load background images from IndexedDB first
-      await dispatch('loadBackgroundImages');
-
-      // Apply the current theme classes
+      // Apply CSS classes IMMEDIATELY from localStorage state (no async dependency)
+      // This prevents theme flash while IndexedDB loads background images
       document.body.classList.remove('dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose');
       const darkVariants = ['dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker'];
       if (darkVariants.includes(state.currentTheme)) {
@@ -260,13 +258,15 @@ export default {
         document.body.classList.add('rose');
       }
 
-      // Initialize greyscale
+      // Initialize greyscale and visual settings synchronously
       document.documentElement.classList.toggle('greyscale', state.isGreyscaleMode);
-
-      // Apply all visual settings
-      dispatch('applyCurrentThemeBackground');
       dispatch('applyFont');
       dispatch('applyScale');
+
+      // Load background images from IndexedDB in background (non-blocking)
+      dispatch('loadBackgroundImages').then(() => {
+        dispatch('applyCurrentThemeBackground');
+      });
     },
 
     // Legacy actions for backward compatibility
@@ -396,19 +396,21 @@ export default {
     async loadBackgroundImages({ state }) {
       const themes = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose'];
 
-      for (const theme of themes) {
-        const exists = localStorage.getItem(`customBackgroundImage_${theme}_exists`);
-        if (exists) {
-          try {
-            const mediaDataUrl = await mediaStorage.getItem(`customBackgroundImage_${theme}`);
-            if (mediaDataUrl) {
-              state.customBackgroundImages[theme] = mediaDataUrl;
+      // Load all themes in parallel instead of sequentially
+      await Promise.all(
+        themes
+          .filter((theme) => localStorage.getItem(`customBackgroundImage_${theme}_exists`))
+          .map(async (theme) => {
+            try {
+              const mediaDataUrl = await mediaStorage.getItem(`customBackgroundImage_${theme}`);
+              if (mediaDataUrl) {
+                state.customBackgroundImages[theme] = mediaDataUrl;
+              }
+            } catch (error) {
+              console.error(`Error loading background for ${theme}:`, error);
             }
-          } catch (error) {
-            console.error(`Error loading background for ${theme}:`, error);
-          }
-        }
-      }
+          })
+      );
     },
     // Apply background for current theme based on useCustomBackground setting
     // Background rendering is handled by the #bg-layer in TerminalLayout.vue (reactive).

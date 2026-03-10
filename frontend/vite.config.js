@@ -39,6 +39,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    // Inline small assets as base64 data URLs (default 4KB)
+    // Raised to 10KB so annie-avatar.png (8KB) is embedded directly
+    // instead of requiring a separate HTTP request that competes with JS chunks
+    assetsInlineLimit: 10240,
     rollupOptions: {
       output: {
         // Include a content hash in the filenames to ensure browsers fetch updated files
@@ -66,16 +70,17 @@ export default defineConfig({
           // 3D graphics - only used in BallJumper minigame
           'vendor-3d': ['three'],
 
-          // Utility libraries - shared across app
-          'vendor-utils': [
-            'axios',
-            'dompurify',
-            'showdown',
-            'highlight.js',
-            'date-fns',
-            'lodash-es',
-            'crypto-js'
-          ],
+          // HTTP client - imported eagerly by main.js, keep tiny and separate
+          'vendor-axios': ['axios'],
+
+          // Markdown rendering - only when chat messages render
+          'vendor-markdown': ['dompurify', 'showdown', 'highlight.js'],
+
+          // Encryption - only when provider setup / onboarding triggers
+          'vendor-crypto': ['crypto-js'],
+
+          // Lightweight utilities - broadly used across app
+          'vendor-utils': ['date-fns', 'lodash-es'],
 
           // Real-time & payments - loaded on demand
           'vendor-services': ['socket.io-client', '@stripe/stripe-js'],

@@ -257,14 +257,16 @@
 </template>
 
 <script>
-import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick } from 'vue';
+import { computed, ref, watch, onMounted, onUpdated, onBeforeUnmount, nextTick, defineAsyncComponent } from 'vue';
 import { useStore } from 'vuex';
 import showdown from 'showdown';
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/atom-one-dark.css';
 
 import defaultAvatar from '@/assets/images/annie-avatar.png';
-import ProviderSetup from './ProviderSetup.vue';
+// Lazy-load ProviderSetup - only shown conditionally (message.showProviderSetup)
+// This defers the crypto-js dependency (~40KB) from the critical render path
+const ProviderSetup = defineAsyncComponent(() => import('./ProviderSetup.vue'));
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/../user.config.js';
 
