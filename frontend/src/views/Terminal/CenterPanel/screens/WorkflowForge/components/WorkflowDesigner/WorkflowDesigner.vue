@@ -625,30 +625,24 @@ export default {
         this.workflowName = workflowData.name;
       }
 
-      // 2) Clear existing nodes and edges
-      this.nodes = [];
-      this.edges = []; // Clear edges too
-
+      // 2) Update workflow ID (don't clear nodes/edges separately — replace in one shot below
+      // to avoid an intermediate empty-canvas render cycle)
       this.updateActiveWorkflowId(workflowData.id);
 
-      // 3) Process media data - convert base64 to IndexedDB references if needed
-      console.log('🔄 Loading workflow - processing media data...');
-      const nodesWithProcessedMedia = await this.processWorkflowMediaData(workflowData.nodes);
-
-      // 4) Populate new nodes
-      this.nodes = nodesWithProcessedMedia.map((node) => {
+      // 3) Map and render nodes IMMEDIATELY (no blocking media processing)
+      const mapNode = (node) => {
         const nodeDetails = this.getNodeDetails(node.type);
 
         if (!nodeDetails) {
           console.error(`Node type "${node.type}" not found. Creating a placeholder error node for:`, node);
           return {
-            ...node, // Spread original node data first (id, x, y, etc.)
-            icon: 'fas fa-exclamation-triangle', // Error icon
-            parameters: node.parameters || {}, // Preserve original params if they exist, or empty
-            outputs: {}, // Always empty for error nodes to prevent crashes
+            ...node,
+            icon: 'fas fa-exclamation-triangle',
+            parameters: node.parameters || {},
+            outputs: {},
             description: `Error: Node type "${node.type}" not found. Original description: ${node.description || ''}`,
             error: `Node type "${node.type}" not found. Please check toolLibrary or custom tools.`,
-            isInvalid: true, // Custom flag for styling or identification
+            isInvalid: true,
             category: node.category || 'error',
             text: node.text || `Unknown Node: ${node.type}`,
           };
@@ -657,24 +651,21 @@ export default {
         const initializedOutputs = {};
         const initializedParameters = {};
 
-        // Initialize outputs with default values
         if (nodeDetails.outputs) {
           for (const [key, value] of Object.entries(nodeDetails.outputs)) {
             initializedOutputs[key] = this.getDefaultValueForType(value.type);
           }
         }
 
-        // Initialize parameters with existing values or default values
         if (nodeDetails.parameters) {
           for (const [key, param] of Object.entries(nodeDetails.parameters)) {
             initializedParameters[key] = this.getDefaultValueForParameter(
               param,
-              node.parameters && node.parameters[key] // Check if node.parameters exists
+              node.parameters && node.parameters[key]
             );
           }
         }
 
-        // Preserve extra non-schema parameters (e.g., customWidth, customHeight from widget resize)
         if (node.parameters) {
           for (const [key, value] of Object.entries(node.parameters)) {
             if (!(key in initializedParameters)) {
@@ -689,23 +680,36 @@ export default {
           parameters: initializedParameters,
           outputs: initializedOutputs,
           description: node.description || nodeDetails.description,
-          error: node.error || null, // Preserve existing error if any
+          error: node.error || null,
         };
-      });
+      };
 
-      // Populate new edges and ensure they are new objects
+      // Render nodes and edges immediately so the canvas appears fast
+      this.nodes = workflowData.nodes.map(mapNode);
       this.edges = workflowData.edges ? workflowData.edges.map((edge) => ({ ...edge })) : [];
 
       // IMPORTANT: Immediately update/sanitize edge coordinates after loading them
       this.updateEdges();
 
-      // 5) Update canvas transform
+      // 4) Update canvas transform
       this.$nextTick(() => {
         if (this.$refs.canvas) {
           this.$refs.canvas.zoomLevel = workflowData.zoomLevel || 1;
           this.$refs.canvas.canvasOffsetX = workflowData.canvasOffsetX || 0;
           this.$refs.canvas.canvasOffsetY = workflowData.canvasOffsetY || 0;
           this.$refs.canvas.updateCanvasTransform();
+        }
+      });
+
+      // 5) Process media data in the background AFTER initial render
+      // This converts base64/idb:// refs to blob URLs without blocking the canvas
+      this.$nextTick(async () => {
+        const processedNodes = await this.processWorkflowMediaData(this.nodes);
+        // Only update nodes that actually changed (had media to process)
+        for (let i = 0; i < processedNodes.length; i++) {
+          if (processedNodes[i].parameters !== this.nodes[i].parameters) {
+            this.nodes[i] = processedNodes[i];
+          }
         }
       });
     },
@@ -1179,27 +1183,50 @@ export default {
         });
       }
     },
-    getNodeDetails(type) {
-      // First, check in backendTools (fetched from backend, includes plugins)
+    /**
+     * Build a lookup cache from backendTools + customTools for O(1) node detail access.
+     * Called lazily by getNodeDetails; invalidated when tools change.
+     */
+    _buildNodeDetailsCache() {
+      const cache = new Map();
       if (this.backendTools) {
         for (const category in this.backendTools) {
           if (Array.isArray(this.backendTools[category])) {
-            const foundNode = this.backendTools[category].find((node) => node.type === type);
-            if (foundNode) {
-              console.log(`🔌 Found node type ${type} in backendTools (category: ${category})`);
-              return foundNode;
+            for (const node of this.backendTools[category]) {
+              if (node.type && !cache.has(node.type)) {
+                cache.set(node.type, node);
+              }
             }
           }
         }
       }
-
-      // If not found in toolLibrary or backendTools, check in custom tools
-      const customTool = this.customTools.find((tool) => tool.type === type);
-      if (customTool) {
-        return customTool;
+      if (this.customTools) {
+        for (const tool of this.customTools) {
+          if (tool.type && !cache.has(tool.type)) {
+            cache.set(tool.type, tool);
+          }
+        }
+      }
+      this._nodeDetailsCache = cache;
+      this._nodeDetailsCacheVersion = this._currentCacheVersion();
+    },
+    _currentCacheVersion() {
+      // Simple version key based on tool counts to detect changes
+      const backendCount = this.backendTools
+        ? Object.values(this.backendTools).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0)
+        : 0;
+      const customCount = this.customTools ? this.customTools.length : 0;
+      return `${backendCount}:${customCount}`;
+    },
+    getNodeDetails(type) {
+      // Rebuild cache if tools have changed or cache doesn't exist
+      if (!this._nodeDetailsCache || this._nodeDetailsCacheVersion !== this._currentCacheVersion()) {
+        this._buildNodeDetailsCache();
       }
 
-      // If not found anywhere, return null or a default object
+      const cached = this._nodeDetailsCache.get(type);
+      if (cached) return cached;
+
       console.warn(`Node type ${type} not found in toolLibrary, backendTools, or custom tools`);
       return null;
     },
@@ -2304,47 +2331,51 @@ export default {
             updateWorkflowName(data.workflow.name);
           }
 
-          // Update localStorage with the loaded workflow using safe storage
-          const baseNodes = data.workflow.nodes.map((node) => ({
-            ...node,
-            parameters: { ...node.parameters },
-            outputs: { ...node.outputs },
-          }));
-
-          // Convert base64 data to IndexedDB references for localStorage storage
-          const nodesForLocalStorage = await proxy.convertBase64ToIndexedDB(baseNodes);
-
-          const stateToSave = {
-            id: newWorkflowId,
-            name: data.workflow.name,
-            nodes: nodesForLocalStorage,
-            edges: data.workflow.edges,
-            zoomLevel: data.workflow.zoomLevel || 1,
-            canvasOffsetX: data.workflow.canvasOffsetX || 0,
-            canvasOffsetY: data.workflow.canvasOffsetY || 0,
-            isTinyNodeMode: data.workflow.isTinyNodeMode || false,
-            isShareable: workflowIsShareable,
-          };
-
-          // Use safe localStorage setter
-          const success = await proxy.safeLocalStorageSet('canvasState', JSON.stringify(stateToSave));
-          if (success) {
-            localStorage.setItem('activeWorkflow', newWorkflowId);
-          } else {
-            console.warn('⚠️ Failed to save loaded workflow to localStorage due to size constraints');
-            // Still set the active workflow ID
-            localStorage.setItem('activeWorkflow', newWorkflowId);
-          }
+          // Set active workflow ID immediately (non-blocking)
           activeWorkflowId.value = newWorkflowId;
           isShareable.value = workflowIsShareable;
+          localStorage.setItem('activeWorkflow', newWorkflowId);
 
-          // Update Vuex store with the loaded workflow state
-          if (proxy && proxy.$store) {
-            proxy.$store.dispatch('canvas/updateCanvasState', stateToSave);
-          }
+          // Defer localStorage persistence off the critical rendering path.
+          // convertBase64ToIndexedDB + JSON.stringify + localStorage.setItem are expensive
+          // and not needed for the initial canvas render.
+          setTimeout(async () => {
+            try {
+              const baseNodes = data.workflow.nodes.map((node) => ({
+                ...node,
+                parameters: { ...node.parameters },
+                outputs: { ...node.outputs },
+              }));
+
+              const nodesForLocalStorage = await proxy.convertBase64ToIndexedDB(baseNodes);
+
+              const stateToSave = {
+                id: newWorkflowId,
+                name: data.workflow.name,
+                nodes: nodesForLocalStorage,
+                edges: data.workflow.edges,
+                zoomLevel: data.workflow.zoomLevel || 1,
+                canvasOffsetX: data.workflow.canvasOffsetX || 0,
+                canvasOffsetY: data.workflow.canvasOffsetY || 0,
+                isTinyNodeMode: data.workflow.isTinyNodeMode || false,
+                isShareable: workflowIsShareable,
+              };
+
+              const success = await proxy.safeLocalStorageSet('canvasState', JSON.stringify(stateToSave));
+              if (!success) {
+                console.warn('Failed to save loaded workflow to localStorage due to size constraints');
+              }
+
+              // Update Vuex store after localStorage is ready
+              if (proxy && proxy.$store) {
+                proxy.$store.dispatch('canvas/updateCanvasState', stateToSave);
+              }
+            } catch (err) {
+              console.error('Error persisting workflow to localStorage:', err);
+            }
+          }, 0);
 
           // Defer status polling to after the canvas has rendered
-          // This prevents an extra HTTP round-trip during the critical loading path
           if (pollWorkflowStatusRef.value) {
             setTimeout(() => pollWorkflowStatusRef.value(), 1000);
           }
@@ -2441,7 +2472,10 @@ export default {
       if (urlWorkflowId) {
         // When loading from URL, use the URL ID as the definitive ID
         activeWorkflowId.value = urlWorkflowId;
-        // Don't clear localStorage - let the loadWorkflowFromUrl handle it
+        // Clear stale nodes/edges immediately so the old workflow doesn't flash
+        // while the new one loads from the API
+        nodes.value = [];
+        edges.value = [];
       } else {
         // NO URL ID - Clear old workflow data and generate new ID
         console.log('WorkflowDesigner: No URL ID found, clearing old workflow and generating new ID');

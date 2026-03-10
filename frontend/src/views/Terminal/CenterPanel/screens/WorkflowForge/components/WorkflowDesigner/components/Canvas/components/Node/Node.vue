@@ -257,14 +257,7 @@ export default {
       resizeHandle: null, // 'nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'
     };
   },
-  watch: {
-    node: {
-      handler(newNode) {
-        this.$emit('update:node', newNode);
-      },
-      deep: true,
-    },
-  },
+  watch: {},
   computed: {
     nodeStyle() {
       const baseStyle = {

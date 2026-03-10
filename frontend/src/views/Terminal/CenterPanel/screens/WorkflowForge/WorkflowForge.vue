@@ -36,7 +36,7 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
@@ -238,23 +238,19 @@ export default {
       }
     );
 
-    // Watch for route changes to immediately set workflowId when available
+    // Single consolidated route.query.id watcher.
+    // The second watcher (below) handles loading; this one only syncs the cached ID.
     watch(
       () => route.query.id,
       (newId, oldId) => {
-        // Only update if the ID actually changed
         if (newId !== oldId) {
-          console.log('Route query ID changed to:', newId);
           if (newId) {
-            // URL has ID - use it
             initialWorkflowId = newId;
-            updatePanelProps();
           } else {
-            // NO URL ID - clear the cached ID so new workflows work properly
-            console.log('Clearing cached initialWorkflowId for new workflow');
             initialWorkflowId = null;
-            updatePanelProps();
           }
+          // Don't call updatePanelProps here — the loading watcher below handles it
+          // after the workflow data is actually available.
         }
       },
       { immediate: true }
@@ -367,6 +363,8 @@ export default {
 
     // Track if we've already attempted to load the workflow
     let hasAttemptedLoad = false;
+    // Track the last successfully loaded workflow ID to detect stale state on KeepAlive reactivation
+    let lastLoadedWorkflowId = null;
 
     // Load workflow from URL parameter
     const loadWorkflowFromUrl = async () => {
@@ -390,6 +388,10 @@ export default {
 
           // Call the loadWorkflow method from the WorkflowDesigner component
           await workflowDesigner.value.loadWorkflow(workflowId);
+          lastLoadedWorkflowId = workflowId;
+
+          // Update panel props AFTER the new workflow is loaded (not before)
+          updatePanelProps();
 
           terminalLines.value.push(`Workflow ${workflowId} loaded successfully.`);
 
@@ -402,7 +404,7 @@ export default {
       }
     };
 
-    // Watch for changes in route query parameters
+    // Watch for changes in route query parameters — handles actual workflow loading
     watch(
       () => route.query.id,
       (newId) => {
@@ -410,8 +412,8 @@ export default {
           // Reset the flags when the workflow ID changes
           hasAttemptedLoad = false;
           hasInitializedConversation = false;
-          // Reload conversations from localStorage when the route changes
-          store.dispatch('workflowChat/reloadConversations');
+          // Defer conversation reload off the critical loading path
+          setTimeout(() => store.dispatch('workflowChat/reloadConversations'), 0);
           loadWorkflowFromUrl();
         } else if (!newId && workflowDesigner.value) {
           // If there's no URL ID, ensure we have a conversation for the current workflow
@@ -496,6 +498,37 @@ export default {
       window.addEventListener('workflow-started-from-chat', handleWorkflowStartedFromChat);
       window.addEventListener('workflow-stopped-from-chat', handleWorkflowStoppedFromChat);
       window.addEventListener('panel-fullscreen-toggle', handleCustomFullscreenToggle);
+    });
+
+    // KeepAlive reactivation — clear stale canvas when returning with a different workflow ID
+    onActivated(() => {
+      const currentUrlId = route.query.id;
+      if (currentUrlId && currentUrlId !== lastLoadedWorkflowId && workflowDesigner.value) {
+        // Different workflow requested — clear old nodes immediately so they don't flash
+        workflowDesigner.value.nodes = [];
+        workflowDesigner.value.edges = [];
+        // Reset load flag so the watcher/initializeScreen will fetch the new workflow
+        hasAttemptedLoad = false;
+        hasInitializedConversation = false;
+      } else if (!currentUrlId && workflowDesigner.value) {
+        // Navigated to blank workflow forge — clear old data
+        workflowDesigner.value.nodes = [];
+        workflowDesigner.value.edges = [];
+        workflowDesigner.value.workflowName = 'My Workflow';
+        lastLoadedWorkflowId = null;
+        hasAttemptedLoad = false;
+        hasInitializedConversation = false;
+      }
+    });
+
+    // KeepAlive deactivation — clean up fullscreen state
+    onDeactivated(() => {
+      activeFullscreenPanel.value = null;
+      document.body.classList.remove('wf-panel-fullscreen');
+      document.body.classList.remove('wf-fullscreen-left');
+      document.body.classList.remove('wf-fullscreen-editor');
+      document.body.classList.remove('workflow-editor-fullscreen');
+      document.body.classList.remove('node-editor-expanded');
     });
 
     onUnmounted(() => {
