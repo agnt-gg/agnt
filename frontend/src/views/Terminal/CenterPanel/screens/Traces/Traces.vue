@@ -13,10 +13,7 @@
         selectedExecutionId,
         currentFilter,
       }"
-      :panelProps="{
-        selectedExecutionId,
-        executions: allExecutions,
-      }"
+      :panelProps="panelProps"
       @submit-input="handleUserInputSubmit"
       @panel-action="handlePanelAction"
       @screen-change="(screenName) => emit('screen-change', screenName)"
@@ -318,6 +315,12 @@ export default {
 
     const allExecutions = computed(() => store.getters['executionHistory/getExecutions']);
 
+    // Stable panelProps — only recalculated when dependencies change (not on every render)
+    const panelProps = computed(() => ({
+      selectedExecutionId: selectedExecutionId.value,
+      executions: allExecutions.value,
+    }));
+
     // Filtered executions based on active tab, search, and panel filters (before display limit)
     const filteredExecutionsBeforeLimit = computed(() => {
       let executions = allExecutions.value.map((execution) => {
@@ -531,6 +534,10 @@ export default {
 
     const handleExecutionClick = async (execution) => {
       playSound('typewriterKeyPress');
+
+      // Skip if already selected — avoids redundant API call + re-render
+      if (selectedExecutionId.value === execution.id) return;
+
       selectedExecutionId.value = execution.id;
       addLine(`Selected execution: ${execution.id} (${execution.workflowName || 'Unnamed'})`, 'info');
 
@@ -952,26 +959,19 @@ export default {
 
     const viewExecutionDetails = async (execution) => {
       try {
-        addLine(`Loading detailed execution data for ${execution.id}...`, 'info');
-
         // Use the store action to fetch details (with caching)
         const detailedData = await store.dispatch('executionHistory/fetchExecutionDetails', execution.id);
 
-        if (detailedData) {
-          selectedExecution.value = detailedData;
-          addLine(`Loaded details for ${detailedData.workflowName || 'execution'}`, 'info');
+        // Bail if user clicked a different trace while we were loading
+        if (selectedExecutionId.value !== execution.id) return;
 
-          // Update the right panel with detailed data
-          baseScreenRef.value?.triggerPanelMethod('updateSelectedExecution', detailedData);
-        } else {
-          // Fallback to summary data
-          selectedExecution.value = execution;
-          baseScreenRef.value?.triggerPanelMethod('updateSelectedExecution', execution);
-        }
+        const data = detailedData || execution;
+        selectedExecution.value = data;
+        baseScreenRef.value?.triggerPanelMethod('updateSelectedExecution', data);
       } catch (error) {
         console.error('Error fetching execution details:', error);
-        addLine(`Error loading execution details: ${error.message}`, 'error');
         // Fallback to basic execution data if API call fails
+        if (selectedExecutionId.value !== execution.id) return;
         selectedExecution.value = execution;
         baseScreenRef.value?.triggerPanelMethod('updateSelectedExecution', execution);
       }

@@ -237,11 +237,7 @@ const MAIN_SECTIONS = [
       { screen: 'GoalsScreen', label: 'GOALS' },
       { screen: 'TracesScreen', label: 'TRACES' },
       { screen: 'ExperimentsScreen', label: 'EXPERIMENTS' },
-      { screen: 'ExperimentForgeScreen', label: 'NEW EXPERIMENT' },
-      { screen: 'EvalDatasetsScreen', label: 'EVAL DATASETS' },
-      { screen: 'ExperimentInsightsScreen', label: 'INSIGHTS' },
       { screen: 'SkillsScreen', label: 'SKILLS' },
-      { screen: 'SkillForgeScreen', label: 'SKILLFORGE' },
     ],
   },
 ];

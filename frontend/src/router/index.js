@@ -139,12 +139,6 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'SkillsScreen' },
     },
     {
-      path: '/skillforge',
-      name: 'TerminalSkillForge',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'SkillForgeScreen' },
-    },
-    {
       path: '/code-editor',
       name: 'TerminalCodeEditor',
       component: Terminal,
@@ -161,24 +155,6 @@ const router = createRouter({
       name: 'TerminalExperiments',
       component: Terminal,
       meta: { requiresAuth: true, terminalScreen: 'ExperimentsScreen' },
-    },
-    {
-      path: '/experiment-forge',
-      name: 'TerminalExperimentForge',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'ExperimentForgeScreen' },
-    },
-    {
-      path: '/eval-datasets',
-      name: 'TerminalEvalDatasets',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'EvalDatasetsScreen' },
-    },
-    {
-      path: '/experiment-insights',
-      name: 'TerminalExperimentInsights',
-      component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'ExperimentInsightsScreen' },
     },
     {
       path: '/oauth-callback',

@@ -88,7 +88,7 @@
                 {{ isRawView('agent-prompt') ? 'Rendered' : 'Raw' }}
               </button>
             </div>
-            <div v-show="isNodeSectionExpanded('agent-prompt', 'input')" class="io-content">
+            <div v-if="isNodeSectionExpanded('agent-prompt', 'input')" class="io-content">
               <div v-if="isRawView('agent-prompt')" class="output-raw">
                 <pre class="io-data">{{ selectedExecution.initialPrompt }}</pre>
               </div>
@@ -106,7 +106,7 @@
                 {{ isRawView('agent-response') ? 'Rendered' : 'Raw' }}
               </button>
             </div>
-            <div v-show="isNodeSectionExpanded('agent-response', 'output')" class="io-content">
+            <div v-if="isNodeSectionExpanded('agent-response', 'output')" class="io-content">
               <div v-if="isRawView('agent-response')" class="output-raw">
                 <pre class="io-data">{{ typeof selectedExecution.finalResponse === 'object' ? JSON.stringify(selectedExecution.finalResponse, null, 2) : selectedExecution.finalResponse }}</pre>
               </div>
@@ -160,7 +160,7 @@
                       {{ isRawView(toolExec.id + '-input') ? 'Rendered' : 'Raw' }}
                     </button>
                   </div>
-                  <div v-show="isNodeSectionExpanded(toolExec.id, 'input')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(toolExec.id, 'input')" class="io-content">
                     <div v-if="isRawView(toolExec.id + '-input')" class="output-raw">
                       <pre class="io-data">{{ formatJSON(toolExec.input) }}</pre>
                     </div>
@@ -179,7 +179,7 @@
                       {{ isRawView(toolExec.id + '-output') ? 'Rendered' : 'Raw' }}
                     </button>
                   </div>
-                  <div v-show="isNodeSectionExpanded(toolExec.id, 'output')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(toolExec.id, 'output')" class="io-content">
                     <div v-if="isRawView(toolExec.id + '-output')" class="output-raw">
                       <pre class="io-data">{{ formatJSON(toolExec.output) }}</pre>
                     </div>
@@ -193,7 +193,7 @@
                     <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(toolExec.id, 'error') }"></i>
                     <span>Error</span>
                   </div>
-                  <div v-show="isNodeSectionExpanded(toolExec.id, 'error')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(toolExec.id, 'error')" class="io-content">
                     <pre class="error-data">{{ toolExec.error }}</pre>
                   </div>
                 </div>
@@ -249,7 +249,7 @@
                       {{ isRawView(task.id + '-input') ? 'Rendered' : 'Raw' }}
                     </button>
                   </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'input')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(task.id, 'input')" class="io-content">
                     <div v-if="isRawView(task.id + '-input')" class="output-raw">
                       <pre class="io-data">{{ formatJSON(task.input) }}</pre>
                     </div>
@@ -268,7 +268,7 @@
                       {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
                     </button>
                   </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(task.id, 'output')" class="io-content">
                     <div v-if="isRawView(task.id)" class="output-raw">
                       <pre class="io-data">{{ formatJSON(task.output) }}</pre>
                     </div>
@@ -282,7 +282,7 @@
                     <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'tools') }"></i>
                     <span>Tool Executions ({{ getExecutedTools(task).length }})</span>
                   </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'tools')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(task.id, 'tools')" class="io-content">
                     <div
                       v-for="(toolExecItem, tIdx) in getExecutedTools(task)"
                       :key="tIdx"
@@ -296,7 +296,7 @@
                           {{ toolHasError(toolExecItem) ? 'error' : 'ok' }}
                         </span>
                       </div>
-                      <div v-show="isNodeSectionExpanded(task.id, 'tool-' + tIdx)" class="tool-exec-detail-body">
+                      <div v-if="isNodeSectionExpanded(task.id, 'tool-' + tIdx)" class="tool-exec-detail-body">
                         <div v-if="toolExecItem.arguments || toolExecItem.args || toolExecItem.input" class="tool-exec-detail-block">
                           <div class="tool-exec-detail-block-label">Input</div>
                           <pre class="io-data">{{ formatToolResponse(toolExecItem.arguments || toolExecItem.args || toolExecItem.input) }}</pre>
@@ -316,7 +316,7 @@
                     <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'error') }"></i>
                     <span>Error</span>
                   </div>
-                  <div v-show="isNodeSectionExpanded(task.id, 'error')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(task.id, 'error')" class="io-content">
                     <pre class="error-data">{{ task.error }}</pre>
                   </div>
                 </div>
@@ -368,7 +368,7 @@
                       {{ isRawView(nodeExecution.id + '-input') ? 'Rendered' : 'Raw' }}
                     </button>
                   </div>
-                  <div v-show="isNodeSectionExpanded(nodeExecution.id, 'input')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(nodeExecution.id, 'input')" class="io-content">
                     <div v-if="isRawView(nodeExecution.id + '-input')" class="output-raw">
                       <pre class="io-data">{{ formatJSON(nodeExecution.input) }}</pre>
                     </div>
@@ -387,7 +387,7 @@
                       {{ isRawView(nodeExecution.id + '-output') ? 'Rendered' : 'Raw' }}
                     </button>
                   </div>
-                  <div v-show="isNodeSectionExpanded(nodeExecution.id, 'output')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(nodeExecution.id, 'output')" class="io-content">
                     <div v-if="isRawView(nodeExecution.id + '-output')" class="output-raw">
                       <pre class="io-data">{{ formatJSON(nodeExecution.output) }}</pre>
                     </div>
@@ -401,7 +401,7 @@
                     <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(nodeExecution.id, 'error') }"></i>
                     <span>Error</span>
                   </div>
-                  <div v-show="isNodeSectionExpanded(nodeExecution.id, 'error')" class="io-content">
+                  <div v-if="isNodeSectionExpanded(nodeExecution.id, 'error')" class="io-content">
                     <pre class="error-data">{{ nodeExecution.error }}</pre>
                   </div>
                 </div>

@@ -78,12 +78,8 @@ const screenLoaders = [
   ['WidgetManagerScreen', () => import('./CenterPanel/screens/WidgetManager/WidgetManager.vue')],
   ['WidgetForgeScreen', () => import('./CenterPanel/screens/WidgetForge/WidgetForge.vue')],
   ['SkillsScreen', () => import('./CenterPanel/screens/Skills/Skills.vue')],
-  ['SkillForgeScreen', () => import('./CenterPanel/screens/SkillForge/SkillForge.vue')],
   ['CodeEditorScreen', () => import('./CenterPanel/screens/CodeEditor/CodeEditor.vue')],
   ['ExperimentsScreen', () => import('./CenterPanel/screens/Experiments/Experiments.vue')],
-  ['ExperimentForgeScreen', () => import('./CenterPanel/screens/ExperimentForge/ExperimentForge.vue')],
-  ['EvalDatasetsScreen', () => import('./CenterPanel/screens/EvalDatasets/EvalDatasets.vue')],
-  ['ExperimentInsightsScreen', () => import('./CenterPanel/screens/ExperimentInsights/ExperimentInsights.vue')],
 ];
 
 // Preload all screen chunks in parallel, register into reactive map as each resolves
@@ -148,12 +144,8 @@ export default {
         WidgetManagerScreen: '/widget-manager',
         WidgetForgeScreen: '/widget-forge',
         SkillsScreen: '/skills',
-        SkillForgeScreen: '/skillforge',
         CodeEditorScreen: '/code-editor',
         ExperimentsScreen: '/experiments',
-        ExperimentForgeScreen: '/experiment-forge',
-        EvalDatasetsScreen: '/eval-datasets',
-        ExperimentInsightsScreen: '/experiment-insights',
       };
 
       if (screenName in screenRoutes) {

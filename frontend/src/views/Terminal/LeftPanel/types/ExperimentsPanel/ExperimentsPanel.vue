@@ -33,7 +33,7 @@
       </div>
 
       <div class="action-buttons">
-        <button @click="emit('panel-action', 'navigate', 'ExperimentForgeScreen')" class="action-button">
+        <button @click="emit('panel-action', 'navigate', 'ExperimentsScreen')" class="action-button">
           <i class="fas fa-plus"></i> New Experiment
         </button>
         <button @click="store.dispatch('experiments/fetchExperiments', { force: true })" class="action-button">
