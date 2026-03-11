@@ -295,7 +295,8 @@ Remember: You are ${agent.name} with specialized expertise. Use your assigned to
 
       // Extract final content
       let finalResponse;
-      if (provider.toLowerCase() === 'anthropic') {
+      if (Array.isArray(responseMessage.content)) {
+        // Anthropic-style responses (anthropic, claude-code) return content blocks
         const textBlock = responseMessage.content.find((c) => c.type === 'text');
         finalResponse = textBlock ? textBlock.text : '';
       } else {
