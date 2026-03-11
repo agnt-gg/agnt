@@ -16,7 +16,9 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Custom Tool Routes](#custom-tool-routes)
 - [Email Listener Routes](#email-listener-routes)
 - [Execution Routes](#execution-routes)
+- [Experiment Routes](#experiment-routes)
 - [FileSystem Routes](#filesystem-routes)
+- [Gemini CLI Auth Routes](#gemini-cli-auth-routes)
 - [Goal Routes](#goal-routes)
 - [Layout Routes](#layout-routes)
 - [MCP Routes](#mcp-routes)
@@ -25,6 +27,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Orchestrator Routes](#orchestrator-routes)
 - [Plugin Routes](#plugin-routes)
 - [Skill Routes](#skill-routes)
+- [SkillForge Routes](#skillforge-routes)
 - [Speech Routes](#speech-routes)
 - [Stream Routes](#stream-routes)
 - [Tool Schema Routes](#tool-schema-routes)
@@ -970,6 +973,32 @@ Base path: `/api/custom-providers`
 }
 ```
 
+### Get Provider Templates
+
+**GET** `/templates`
+
+- **Authentication**: None
+- **Description**: Get pre-configured templates for common custom providers (e.g., Ollama, LM Studio, vLLM)
+- **Response**:
+
+```json
+{
+  "success": true,
+  "templates": [
+    {
+      "name": "Ollama",
+      "base_url": "http://localhost:11434/v1",
+      "description": "Local Ollama instance"
+    },
+    {
+      "name": "LM Studio",
+      "base_url": "http://localhost:1234/v1",
+      "description": "Local LM Studio instance"
+    }
+  ]
+}
+```
+
 ### Test Custom Provider Connection
 
 **POST** `/test`
@@ -1297,6 +1326,401 @@ Base path: `/api/executions`
 }
 ```
 
+### Get Agent Executions
+
+**GET** `/agents/list`
+
+- **Authentication**: Required
+- **Description**: Get all agent/orchestrator execution traces
+- **Response**:
+
+```json
+{
+  "success": true,
+  "runs": [
+    {
+      "id": "run-id",
+      "agentId": "agent-id",
+      "agentName": "Agent Name",
+      "status": "completed|running|failed",
+      "startedAt": "2024-01-01T00:00:00Z",
+      "completedAt": "2024-01-01T00:05:00Z",
+      "tokensUsed": 1500,
+      "cost": 0.003
+    }
+  ]
+}
+```
+
+### Get Agent Execution Details
+
+**GET** `/agents/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Execution/run ID
+- **Description**: Get detailed agent execution trace including messages and tool calls
+- **Response**:
+
+```json
+{
+  "success": true,
+  "run": {
+    "id": "run-id",
+    "agentId": "agent-id",
+    "status": "completed",
+    "messages": [],
+    "toolCalls": [],
+    "tokensUsed": 1500,
+    "cost": 0.003,
+    "startedAt": "2024-01-01T00:00:00Z",
+    "completedAt": "2024-01-01T00:05:00Z"
+  }
+}
+```
+
+### Delete Agent Execution
+
+**DELETE** `/agents/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Execution/run ID
+- **Description**: Delete a specific agent execution trace
+- **Response**:
+
+```json
+{
+  "success": true,
+  "message": "Agent execution deleted"
+}
+```
+
+### Clear Completed Agent Executions
+
+**POST** `/agents/clear-completed`
+
+- **Authentication**: Required
+- **Description**: Clear all completed agent execution traces for the authenticated user
+- **Response**:
+
+```json
+{
+  "success": true,
+  "cleared": 15
+}
+```
+
+---
+
+## Experiment Routes
+
+Base path: `/api/experiments`
+
+Manages A/B testing experiments, evaluation datasets, and benchmarks for the SkillForge ecosystem.
+
+### Create Eval Dataset
+
+**POST** `/datasets`
+
+- **Authentication**: Required
+- **Description**: Create an evaluation dataset (manual or synthetic)
+- **Body**:
+
+```json
+{
+  "name": "Dataset Name",
+  "skillId": "skill-id",
+  "category": "general",
+  "source": "manual|synthetic|history|golden",
+  "items": [
+    {
+      "input": "Test input",
+      "expectedOutput": "Expected output",
+      "metadata": {}
+    }
+  ],
+  "splitConfig": {
+    "train": 0.7,
+    "test": 0.2,
+    "validation": 0.1
+  }
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "datasetId": "dataset-uuid"
+}
+```
+
+### List Datasets
+
+**GET** `/datasets`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `skillId` (query, optional): Filter by skill
+  - `category` (query, optional): Filter by category
+- **Response**:
+
+```json
+{
+  "success": true,
+  "datasets": [
+    {
+      "id": "dataset-id",
+      "name": "Dataset Name",
+      "skillId": "skill-id",
+      "category": "general",
+      "source": "manual",
+      "itemCount": 100,
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Generate Dataset
+
+**POST** `/datasets/generate`
+
+- **Authentication**: Required
+- **Description**: Auto-generate a dataset from goal history, golden standards, or synthetically
+- **Body**:
+
+```json
+{
+  "skillId": "skill-id",
+  "source": "history|golden|synthetic",
+  "category": "general",
+  "provider": "openai",
+  "model": "gpt-4"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "datasetId": "dataset-uuid"
+}
+```
+
+### Get Dataset with Splits
+
+**GET** `/datasets/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Dataset ID
+- **Response**:
+
+```json
+{
+  "success": true,
+  "dataset": {
+    "id": "dataset-id",
+    "name": "Dataset Name",
+    "items": []
+  },
+  "splits": {
+    "train": [],
+    "test": [],
+    "validation": []
+  }
+}
+```
+
+### Delete Dataset
+
+**DELETE** `/datasets/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Dataset ID
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Get Benchmarks
+
+**GET** `/benchmarks`
+
+- **Authentication**: Required
+- **Description**: List golden standard benchmarks available for experiments
+- **Response**:
+
+```json
+{
+  "success": true,
+  "benchmarks": [
+    {
+      "id": "benchmark-id",
+      "name": "Benchmark Name",
+      "sourceGoalId": "goal-id",
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Create Experiment
+
+**POST** `/`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "name": "Experiment Name",
+  "hypothesis": "Skill v2 will outperform v1 on accuracy",
+  "type": "ab_test|benchmark|regression",
+  "sourceGoalId": "goal-id",
+  "benchmarkId": "benchmark-id",
+  "skillId": "skill-id",
+  "evalDatasetId": "dataset-id",
+  "config": {}
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "experiment": {
+    "id": "experiment-id",
+    "name": "Experiment Name",
+    "status": "created",
+    "createdAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### List Experiments
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `status` (query, optional): Filter by status
+  - `limit` (query, optional): Max results (default: 50)
+- **Response**:
+
+```json
+{
+  "success": true,
+  "experiments": [
+    {
+      "id": "experiment-id",
+      "name": "Experiment Name",
+      "status": "created|running|completed|failed",
+      "type": "ab_test",
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Experiment with Results
+
+**GET** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Experiment ID
+- **Response**:
+
+```json
+{
+  "success": true,
+  "experiment": {
+    "id": "experiment-id",
+    "name": "Experiment Name",
+    "status": "completed",
+    "results": {},
+    "createdAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### Run Experiment
+
+**POST** `/:id/run`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Experiment ID
+- **Body** (optional):
+
+```json
+{
+  "provider": "openai",
+  "model": "gpt-4"
+}
+```
+
+- **Description**: Fire-and-forget experiment execution. Returns immediately while the experiment runs in the background.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "message": "Experiment run started"
+}
+```
+
+### Delete Experiment
+
+**DELETE** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Experiment ID
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Get Experiment Runs
+
+**GET** `/:id/runs`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Experiment ID
+- **Description**: Get all run results for an experiment
+- **Response**:
+
+```json
+{
+  "success": true,
+  "runs": [
+    {
+      "id": "run-id",
+      "experimentId": "experiment-id",
+      "status": "completed",
+      "results": {},
+      "startedAt": "2024-01-01T00:00:00Z",
+      "completedAt": "2024-01-01T00:05:00Z"
+    }
+  ]
+}
+```
+
 ---
 
 ## FileSystem Routes
@@ -1472,6 +1896,161 @@ Provides a sandboxed file system for the built-in code editor. All file paths ar
 ```
 
 - **Error** (404): File not found
+
+---
+
+## Gemini CLI Auth Routes
+
+Base path: `/api/gemini-cli`
+
+### Get Status
+
+**GET** `/status`
+
+- **Authentication**: None
+- **Description**: Check whether Gemini CLI auth exists locally and whether the Google AI API is usable
+- **Response**:
+
+```json
+{
+  "success": true,
+  "available": true,
+  "apiUsable": true,
+  "hint": "Gemini CLI is connected and the API is usable."
+}
+```
+
+### Start OAuth Flow
+
+**GET** `/oauth/start`
+
+- **Authentication**: None
+- **Description**: Initiate the Google OAuth loopback flow. Returns an `authUrl` the frontend opens in the system browser.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "sessionId": "session-uuid",
+  "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?..."
+}
+```
+
+### Poll OAuth Status
+
+**GET** `/oauth/status?sessionId=...`
+
+- **Authentication**: None
+- **Parameters**:
+  - `sessionId` (query, required): The session ID from the start endpoint
+- **Description**: Poll the OAuth session state
+- **Response**:
+
+```json
+{
+  "success": true,
+  "state": "pending|completed|expired|error"
+}
+```
+
+### Connect with API Key
+
+**POST** `/connect`
+
+- **Authentication**: None
+- **Description**: Save a manually provided Google AI API key (alternative to OAuth)
+- **Body**:
+
+```json
+{
+  "apiKey": "AIza..."
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "message": "API key saved",
+  "apiUsable": true
+}
+```
+
+### Refresh Token
+
+**POST** `/refresh`
+
+- **Authentication**: None
+- **Description**: Refresh the Gemini CLI access token using the stored refresh token
+- **Response**:
+
+```json
+{
+  "success": true,
+  "refreshed": true,
+  "available": true,
+  "apiUsable": true
+}
+```
+
+### Set GCP Project
+
+**POST** `/gcp-project`
+
+- **Authentication**: None
+- **Description**: Set the Google Cloud Project ID (required for workspace accounts)
+- **Body**:
+
+```json
+{
+  "projectId": "my-gcp-project"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Set Auth Method
+
+**POST** `/set-auth-method`
+
+- **Authentication**: None
+- **Description**: Switch between API key and OAuth authentication methods
+- **Body**:
+
+```json
+{
+  "method": "api-key|oauth"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Disconnect
+
+**POST** `/disconnect`
+
+- **Authentication**: None
+- **Description**: Remove Gemini CLI credentials and log out
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
 
 ---
 
@@ -1665,6 +2244,120 @@ Base path: `/api/goals`
 {
   "success": true,
   "message": "Goal deleted successfully"
+}
+```
+
+### Execute Goal Autonomously (AGI Loop)
+
+**POST** `/:goalId/execute-autonomous`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `goalId` (path): Goal ID
+- **Description**: Trigger autonomous goal execution. The system iterates through plan-execute-evaluate cycles until the goal is achieved or requires human review.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "message": "Autonomous execution started",
+  "goalId": "goal-id"
+}
+```
+
+### Get Iteration History
+
+**GET** `/:goalId/iterations`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `goalId` (path): Goal ID
+- **Description**: Get the full iteration history for an autonomous goal execution
+- **Response**:
+
+```json
+{
+  "success": true,
+  "iterations": [
+    {
+      "iteration": 1,
+      "action": "Description of action taken",
+      "result": {},
+      "evaluation": {},
+      "timestamp": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get World State
+
+**GET** `/:goalId/world-state`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `goalId` (path): Goal ID
+- **Description**: Get the current world state snapshot for a goal's autonomous execution
+- **Response**:
+
+```json
+{
+  "success": true,
+  "worldState": {
+    "goalId": "goal-id",
+    "currentIteration": 5,
+    "state": {},
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### Revert to Iteration
+
+**POST** `/:goalId/revert/:iteration`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `goalId` (path): Goal ID
+  - `iteration` (path): Iteration number to revert to
+- **Description**: Revert the goal's execution state to a specific iteration
+- **Response**:
+
+```json
+{
+  "success": true,
+  "revertedToIteration": 3,
+  "worldState": {}
+}
+```
+
+### Review Goal
+
+**POST** `/:id/review`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Goal ID
+- **Description**: Approve or reject a goal that is in `needs_review` status
+- **Body**:
+
+```json
+{
+  "status": "approved|rejected",
+  "feedback": "Optional feedback message"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "goal": {
+    "id": "goal-id",
+    "status": "approved",
+    "reviewedAt": "2024-01-01T00:00:00Z"
+  }
 }
 ```
 
@@ -2136,6 +2829,108 @@ Base path: `/api/models`
 - **Description**: Legacy endpoint for refreshing OpenRouter models
 - **Response**: Same as `/:provider/models/refresh` for openrouter
 
+### Get Provider Metadata (All Models)
+
+**GET** `/:provider/metadata`
+
+- **Authentication**: None
+- **Parameters**:
+  - `provider` (path): Provider name
+- **Description**: Get metadata for all models from a specific provider
+- **Response**:
+
+```json
+{
+  "success": true,
+  "provider": "openai",
+  "metadata": {
+    "gpt-4": {
+      "contextLength": 128000,
+      "maxOutput": 4096,
+      "inputCost": 0.03,
+      "outputCost": 0.06,
+      "reasoning": false
+    }
+  }
+}
+```
+
+### Get Model Metadata (Single Model)
+
+**GET** `/:provider/metadata/:modelId`
+
+- **Authentication**: None
+- **Parameters**:
+  - `provider` (path): Provider name
+  - `modelId` (path): Model ID
+  - `inputTokens` (query, optional): Input token count for cost estimate
+  - `outputTokens` (query, optional): Output token count for cost estimate
+- **Description**: Get metadata for a specific model, optionally with cost estimate
+- **Response**:
+
+```json
+{
+  "success": true,
+  "provider": "openai",
+  "model": "gpt-4",
+  "metadata": {
+    "contextLength": 128000,
+    "maxOutput": 4096,
+    "inputCost": 0.03,
+    "outputCost": 0.06
+  },
+  "reasoning": false,
+  "cost": {
+    "inputCost": 0.0015,
+    "outputCost": 0.003,
+    "totalCost": 0.0045
+  }
+}
+```
+
+### Get Provider Health
+
+**GET** `/provider-health`
+
+- **Authentication**: None
+- **Description**: Get cached provider health status for all configured providers
+- **Response**:
+
+```json
+{
+  "success": true,
+  "healthy": 8,
+  "unhealthy": 1,
+  "total": 9,
+  "providers": {
+    "openai": { "status": "healthy", "latency": 150 },
+    "anthropic": { "status": "healthy", "latency": 200 },
+    "gemini": { "status": "error", "error": "Invalid API key" }
+  }
+}
+```
+
+### Check Provider Health (Live)
+
+**POST** `/provider-health/check`
+
+- **Authentication**: Conditional (may need API keys)
+- **Description**: Run live health checks against all configured providers. More expensive than the cached GET endpoint.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "healthy": 8,
+  "unhealthy": 1,
+  "total": 9,
+  "providers": {
+    "openai": { "status": "healthy", "latency": 150 },
+    "anthropic": { "status": "healthy", "latency": 200 }
+  }
+}
+```
+
 ### Get Model Categories
 
 **GET** `/models/categories`
@@ -2368,6 +3163,30 @@ Base path: `/api/orchestrator`
   - `message` (string): Chat message
   - `files` (file[]): Optional file attachments
 - **Description**: Chat with a specific goal
+- **Response**: Server-sent events stream
+
+### Code Chat
+
+**POST** `/code-chat`
+
+- **Authentication**: Required
+- **Content-Type**: `multipart/form-data`
+- **Body**:
+  - `message` (string): Chat message
+  - `files` (file[]): Optional file attachments (max 20MB each)
+- **Description**: Code-focused chat with streaming. Uses code-specialized system prompts and tools.
+- **Response**: Server-sent events stream
+
+### Widget Chat
+
+**POST** `/widget-chat`
+
+- **Authentication**: Required
+- **Content-Type**: `multipart/form-data`
+- **Body**:
+  - `message` (string): Chat message
+  - `files` (file[]): Optional file attachments (max 20MB each)
+- **Description**: Widget-specific chat with streaming. Used for creating and editing custom dashboard widgets.
 - **Response**: Server-sent events stream
 
 ### Get Suggestions
@@ -2661,6 +3480,25 @@ Base path: `/api/plugins`
 }
 ```
 
+### Regenerate Entire Plugin
+
+**POST** `/regenerate`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "description": "Updated plugin description",
+  "currentManifest": {},
+  "currentCode": {},
+  "provider": "openai",
+  "model": "gpt-4"
+}
+```
+
+- **Response**: Server-sent events stream with regeneration progress
+
 ### Build Generated Plugin
 
 **POST** `/build-generated`
@@ -2882,6 +3720,277 @@ Instructions for the skill go here...
 {
   "skill": { ... },
   "skillId": "skill-uuid"
+}
+```
+
+---
+
+## SkillForge Routes
+
+Base path: `/api/skillforge`
+
+SkillForge is the evolutionary skill improvement system. It analyzes goal execution traces, extracts patterns, evolves skills, and tracks performance over time using a Skill Evolution Score (SES).
+
+### Get Eligible Goals
+
+**GET** `/eligible-goals`
+
+- **Authentication**: Required
+- **Description**: List completed goals that are available for skill forging/analysis
+- **Response**:
+
+```json
+{
+  "success": true,
+  "goals": [
+    {
+      "id": "goal-id",
+      "title": "Goal Title",
+      "status": "completed",
+      "completedAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Analyze Goal Trace
+
+**POST** `/analyze/:goalId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `goalId` (path): Goal ID
+- **Description**: Analyze a goal's execution trace to extract patterns and insights for skill improvement
+- **Response**:
+
+```json
+{
+  "success": true,
+  "analysis": {
+    "patterns": [],
+    "insights": [],
+    "suggestedImprovements": []
+  }
+}
+```
+
+### Evolve Skill
+
+**POST** `/evolve/:goalId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `goalId` (path): Goal ID
+- **Description**: Full analysis and skill evolution — analyzes the goal trace and creates an improved skill version
+- **Response**:
+
+```json
+{
+  "success": true,
+  "result": {
+    "skillId": "skill-id",
+    "previousVersion": 1,
+    "newVersion": 2,
+    "sesDelta": 0.15,
+    "improvements": []
+  }
+}
+```
+
+### Get All Evaluations
+
+**GET** `/evaluations`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `limit` (query, optional): Max results (default: 50)
+- **Description**: List all skill evaluations for the authenticated user
+- **Response**:
+
+```json
+{
+  "success": true,
+  "evaluations": [
+    {
+      "id": "eval-id",
+      "skillId": "skill-id",
+      "score": 85,
+      "sesDelta": 0.12,
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Evaluations for Skill
+
+**GET** `/evaluations/:skillId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `skillId` (path): Skill ID
+- **Description**: Get all evaluations for a specific skill
+- **Response**:
+
+```json
+{
+  "success": true,
+  "evaluations": [
+    {
+      "id": "eval-id",
+      "skillId": "skill-id",
+      "score": 85,
+      "sesDelta": 0.12,
+      "version": 2,
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Leaderboard
+
+**GET** `/leaderboard`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `limit` (query, optional): Max results (default: 20)
+- **Description**: Get top skills ranked by average SES delta
+- **Response**:
+
+```json
+{
+  "success": true,
+  "leaderboard": [
+    {
+      "skillId": "skill-id",
+      "skillName": "Code Reviewer",
+      "avgSesDelta": 0.25,
+      "totalEvolutions": 8,
+      "currentVersion": 5
+    }
+  ]
+}
+```
+
+### Get Skill Version History
+
+**GET** `/skill/:skillId/versions`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `skillId` (path): Skill ID
+- **Description**: Get the version history for a skill's evolution
+- **Response**:
+
+```json
+{
+  "success": true,
+  "versions": [
+    {
+      "version": 3,
+      "sesDelta": 0.15,
+      "changes": "Improved error handling patterns",
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Skill Lineage
+
+**GET** `/skill/:skillId/lineage`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `skillId` (path): Skill ID
+- **Description**: Get the full evolutionary lineage of a skill — every ancestor, mutation, and stats
+- **Response**:
+
+```json
+{
+  "success": true,
+  "lineage": [
+    {
+      "version": 1,
+      "parentGoalId": "goal-id",
+      "sesDelta": 0.0,
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "stats": {
+    "totalEvolutions": 5,
+    "avgSesDelta": 0.18,
+    "bestVersion": 4
+  }
+}
+```
+
+### Get Aggregate Stats
+
+**GET** `/stats`
+
+- **Authentication**: Required
+- **Description**: Get aggregate SkillForge statistics for the user
+- **Response**:
+
+```json
+{
+  "success": true,
+  "stats": {
+    "totalSkills": 12,
+    "totalEvolutions": 45,
+    "totalEvaluations": 120,
+    "avgSesDelta": 0.15,
+    "topSkill": "Code Reviewer"
+  }
+}
+```
+
+### Get SkillForge Settings
+
+**GET** `/settings`
+
+- **Authentication**: Required
+- **Description**: Get SkillForge configuration settings
+- **Response**:
+
+```json
+{
+  "success": true,
+  "settings": {
+    "autoEvolve": false,
+    "evaluationThreshold": 0.7,
+    "maxVersions": 50
+  }
+}
+```
+
+### Update SkillForge Settings
+
+**POST** `/settings`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "autoEvolve": true,
+  "evaluationThreshold": 0.8,
+  "maxVersions": 100
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "settings": {
+    "autoEvolve": true,
+    "evaluationThreshold": 0.8,
+    "maxVersions": 100
+  }
 }
 ```
 
@@ -4293,6 +5402,73 @@ Base path: `/api/workflows`
 
 ---
 
+## Direct Server Routes
+
+These endpoints are defined directly in `server.js`, not in route files.
+
+### Health Check
+
+**GET** `/api/health`
+
+- **Authentication**: None
+- **Description**: Global health check endpoint
+- **Response**:
+
+```json
+{
+  "status": "OK"
+}
+```
+
+### Get App Version
+
+**GET** `/api/version`
+
+- **Authentication**: None
+- **Description**: Get the current application version (reads from package.json)
+- **Response**:
+
+```json
+{
+  "version": "0.5.0"
+}
+```
+
+### Check for Updates
+
+**GET** `/api/updates/check`
+
+- **Authentication**: None
+- **Description**: Check for application updates (proxies to agnt.gg)
+- **Response**: Proxied response from update server
+
+---
+
+## WebSocket / Socket.IO
+
+AGNT uses Socket.IO for real-time bidirectional communication.
+
+### Connection
+
+```javascript
+const socket = io('http://localhost:3333');
+socket.emit('authenticate', { userId: 'user-id' });
+```
+
+### Events
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `authenticate` | Client → Server | Authenticate the socket connection |
+| `authenticated` | Server → Client | Confirmation of successful authentication |
+| `disconnect` | Bidirectional | Client disconnected |
+| `workflow:reverted` | Server → Client | Broadcast when a workflow version is reverted |
+| `PLUGIN_INSTALLED` | Server → Client | Broadcast when a plugin is installed |
+
+Real-time updates are broadcast via the `global.io` object throughout the backend.
+
+---
+
 ## Error Responses
 
 All endpoints may return error responses in the following format:
@@ -5108,4 +6284,4 @@ Base path: `https://api.agnt.gg/workflows` (Internal: `WorkflowRoutes.js`)
 
 ---
 
-_This documentation covers all API endpoints as of the current version. For the most up-to-date information, please refer to the source code or contact the development team._
+_This documentation covers all API endpoints as of v0.5.0. For the most up-to-date information, please refer to the source code in `backend/src/routes/`._
