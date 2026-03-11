@@ -45,7 +45,7 @@
         <!-- Conversation Canvas -->
         <div class="conversation-canvas" ref="conversationSpace">
           <div class="conversation-container">
-            <TransitionGroup name="message" tag="div" class="message-flow">
+            <TransitionGroup :name="bulkLoading ? '' : 'message'" tag="div" class="message-flow">
               <MessageItem
                 v-for="message in displayMessages"
                 :key="message.id"
@@ -145,6 +145,9 @@ export default {
     const expandedToolCalls = ref({});
     const runningToolCalls = ref({});
     const messageStates = ref({});
+
+    // Suppress TransitionGroup animations during bulk message loads (e.g. loading saved outputs)
+    const bulkLoading = ref(false);
 
     // Image cache from Vuex store
     const imageCache = computed(() => store.state.chat.imageCache);
@@ -828,6 +831,9 @@ export default {
           // Use the saved conversation's ID as the slot key
           const convId = conversationData.conversationId || `saved-${contentId}`;
 
+          // Suppress enter animations when bulk-loading all messages at once
+          bulkLoading.value = true;
+
           // Create or switch to the conversation slot
           store.commit('chat/ENSURE_CONVERSATION', convId);
           store.commit('chat/SCOPED_SET_MESSAGES', { conversationId: convId, messages: conversationData.messages });
@@ -841,6 +847,10 @@ export default {
           terminalLines.value.push(
             `Loaded conversation from ${new Date(conversationData.createdAt).toLocaleDateString()} (${conversationData.messages.length} messages)`
           );
+
+          // Re-enable animations after DOM settles
+          await nextTick();
+          bulkLoading.value = false;
         } else {
           // Legacy HTML format
           const output = data.output || data;
@@ -898,7 +908,15 @@ export default {
       // Register stream event callback (sync dispatch, no need to await)
       store.dispatch('chat/registerStreamEventCallback', handleStreamEvent);
 
-      // PHASE 1: Get connected apps (fast — local checks resolve in <100ms, remote merges later)
+      // PRIORITY: If loading a saved output, start immediately — don't wait on provider checks
+      const contentId = route.query['content-id'];
+      let contentLoadPromise = null;
+      if (contentId) {
+        terminalLines.value = ['Loading saved output...'];
+        contentLoadPromise = loadSavedOutput(contentId);
+      }
+
+      // PHASE 1: Get connected apps (runs in parallel with content load)
       // fetchConnectedApps has built-in deduplication (joins in-flight promise from initializeStore)
       const versionPromise = fetchVersion(); // fire early, don't block on it
       const localServerPromise = checkLocalServer(); // fire early, don't block on 1s timeout
@@ -925,13 +943,9 @@ export default {
         store.commit('chat/SET_ACTIVE_CONVERSATION', initConvId);
       }
 
-      // Check if we're loading a saved output
-      const contentId = route.query['content-id'];
-
-      if (contentId) {
-        // Load or switch to the saved output (loadSavedOutput handles slot switching)
-        terminalLines.value = ['Loading saved output...'];
-        await loadSavedOutput(contentId);
+      // Wait for content load if it was started early
+      if (contentLoadPromise) {
+        await contentLoadPromise;
       } else if (store.state.chat.messages.length === 0) {
         store.commit('chat/RESET_CHAT');
 
@@ -1447,6 +1461,7 @@ export default {
       hasConnectedAIProvider,
       imageCache,
       dataCache,
+      bulkLoading,
     };
   },
 };
