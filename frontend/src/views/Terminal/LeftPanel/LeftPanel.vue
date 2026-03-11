@@ -69,6 +69,7 @@ const ALL_LEFT_PANELS = [
   'ConnectorsPanel', 'MarketplacePanel', 'RunsPanel',
   'SettingsPanel', 'SkillsPanel', 'WidgetManagerPanel',
   'WidgetForgePanel', 'CodeEditorPanel', 'GoalsPanel',
+  'ExperimentsPanel', 'ExperimentForgePanel', 'EvalDatasetsPanel', 'ExperimentInsightsPanel',
 ];
 let panelsPreloaded = false;
 const preloadPanels = () => {

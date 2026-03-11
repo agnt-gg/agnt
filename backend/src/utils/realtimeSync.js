@@ -100,6 +100,12 @@ export const RealtimeEvents = {
   // SkillForge
   SKILLFORGE_EVOLUTION_COMPLETE: 'skillforge:evolution_complete',
 
+  // Experiments
+  EXPERIMENT_STATUS: 'experiment:status',
+  EXPERIMENT_RUN_COMPLETED: 'experiment:run_completed',
+  EXPERIMENT_RESULT: 'experiment:result',
+  EXPERIMENT_ITERATION: 'experiment:iteration',
+
   // Plugins
   PLUGIN_INSTALLED: 'plugin:installed',
   PLUGIN_UNINSTALLED: 'plugin:uninstalled',

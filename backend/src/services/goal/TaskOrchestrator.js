@@ -19,7 +19,7 @@ const execAsync = promisify(exec);
 class TaskOrchestrator {
   static runningGoals = new Map(); // Track active goals
 
-  static async executeGoal(goalId, userId) {
+  static async executeGoal(goalId, userId, experimentContext = null) {
     try {
       // Mark goal as executing
       await GoalModel.updateStatus(goalId, 'executing');
@@ -29,6 +29,7 @@ class TaskOrchestrator {
         userId,
         startTime: Date.now(),
         status: 'executing',
+        experimentContext,
       });
 
       // Start real task execution with workflows
@@ -377,6 +378,15 @@ Begin working on this task now.`;
         SkillForgeOrchestrator.onGoalCompleted(goalId, userId).catch(err => {
           console.error('[TaskOrchestrator] SkillForge analysis failed (non-critical):', err.message);
         });
+
+        // Fire-and-forget: notify ExperimentService if this goal is part of an experiment
+        if (goalData?.experimentContext) {
+          import('../ExperimentService.js').then(mod => {
+            mod.default.onRunCompleted(goalId, goalData.experimentContext, evaluation).catch(err => {
+              console.error('[TaskOrchestrator] Experiment notification failed (non-critical):', err.message);
+            });
+          }).catch(() => {});
+        }
       } catch (error) {
         console.error(`[TaskOrchestrator] Evaluation failed for goal ${goalId}:`, error);
         // Don't fail the goal completion if evaluation fails

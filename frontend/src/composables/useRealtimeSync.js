@@ -379,6 +379,23 @@ export function useRealtimeSync() {
       });
     });
 
+    // Experiment Events
+    socket.on('experiment:status', (data) => {
+      console.log('[Realtime] Experiment status:', data);
+      store.commit('experiments/UPDATE_EXPERIMENT', { id: data.experimentId, status: data.status });
+    });
+
+    socket.on('experiment:run_completed', (data) => {
+      console.log('[Realtime] Experiment run completed:', data);
+      store.commit('experiments/UPDATE_EXPERIMENT_RUN', { experimentId: data.experimentId, runId: data.runId, variant: data.variant, metrics: data.metrics });
+      if (data.progress) store.commit('experiments/UPDATE_EXPERIMENT_PROGRESS', { experimentId: data.experimentId, progress: data.progress });
+    });
+
+    socket.on('experiment:result', (data) => {
+      console.log('[Realtime] Experiment result:', data);
+      store.commit('experiments/UPDATE_EXPERIMENT_RESULT', { experimentId: data.experimentId, result: data.result });
+    });
+
     // Plugin events - notify components when plugins change
     // Note: We don't call refreshAllTools here to avoid race conditions during batch installs
     // The calling code (marketplace install flow) handles the refresh after all plugins are installed

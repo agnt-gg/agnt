@@ -691,6 +691,79 @@ function createTables() {
 
       db.run(`CREATE INDEX IF NOT EXISTS idx_goal_iterations_goal_id ON goal_iterations(goal_id)`);
 
+      // ==================== EXPERIMENT ECOSYSTEM ====================
+      db.run(`CREATE TABLE IF NOT EXISTS experiments (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        hypothesis TEXT,
+        status TEXT DEFAULT 'planned',
+        type TEXT DEFAULT 'ab_test',
+        benchmark_id TEXT,
+        skill_id TEXT,
+        source_goal_id TEXT,
+        eval_dataset_id TEXT,
+        config TEXT DEFAULT '{}',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS experiment_runs (
+        id TEXT PRIMARY KEY,
+        experiment_id TEXT NOT NULL,
+        variant TEXT NOT NULL,
+        goal_id TEXT,
+        eval_example_index INTEGER,
+        status TEXT DEFAULT 'pending',
+        metrics TEXT DEFAULT '{}',
+        evaluation_score REAL,
+        evaluation_passed INTEGER,
+        judge_feedback TEXT,
+        started_at DATETIME,
+        completed_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
+      )`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS experiment_results (
+        id TEXT PRIMARY KEY,
+        experiment_id TEXT NOT NULL,
+        iteration INTEGER DEFAULT 1,
+        control_avg_ses REAL,
+        treatment_avg_ses REAL,
+        delta REAL,
+        confidence REAL,
+        per_dimension TEXT,
+        constraint_results TEXT,
+        decision TEXT,
+        analysis TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
+      )`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS eval_datasets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        skill_id TEXT,
+        category TEXT,
+        source TEXT DEFAULT 'synthetic',
+        items TEXT DEFAULT '[]',
+        split_config TEXT DEFAULT '{"trainRatio":0.6,"valRatio":0.2,"holdoutRatio":0.2}',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_experiments_user_id ON experiments(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_experiments_status ON experiments(status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_experiment_runs_experiment_id ON experiment_runs(experiment_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_experiment_results_experiment_id ON experiment_results(experiment_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_eval_datasets_user_id ON eval_datasets(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_eval_datasets_skill_id ON eval_datasets(skill_id)`);
+
       // ==================== PERFORMANCE INDEXES ====================
       // Agents - faster lookup by user
       db.run(`CREATE INDEX IF NOT EXISTS idx_agents_created_by ON agents(created_by)`);

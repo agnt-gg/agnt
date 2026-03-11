@@ -157,6 +157,30 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'BallJumperScreen' },
     },
     {
+      path: '/experiments',
+      name: 'TerminalExperiments',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'ExperimentsScreen' },
+    },
+    {
+      path: '/experiment-forge',
+      name: 'TerminalExperimentForge',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'ExperimentForgeScreen' },
+    },
+    {
+      path: '/eval-datasets',
+      name: 'TerminalEvalDatasets',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'EvalDatasetsScreen' },
+    },
+    {
+      path: '/experiment-insights',
+      name: 'TerminalExperimentInsights',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'ExperimentInsightsScreen' },
+    },
+    {
       path: '/oauth-callback',
       name: 'OAuthCallback',
       component: OAuthCallback,

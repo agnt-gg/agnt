@@ -99,6 +99,8 @@ class UnfirehoseSession {
     this.chatType = opts.chatType;
     this.cwd = opts.cwd || process.cwd();
     this.firstPrompt = opts.firstPrompt;
+    this.experimentId = opts.experimentId || null;
+    this.variant = opts.variant || null;
     this.createdAt = new Date().toISOString();
     this.messageCounter = 0;
     this.lastParentId = null;
@@ -124,6 +126,8 @@ class UnfirehoseSession {
       harness: HARNESS,
       harnessVersion: HARNESS_VERSION,
       messageCount: 0,
+      experimentId: this.experimentId,
+      variant: this.variant,
     });
   }
 

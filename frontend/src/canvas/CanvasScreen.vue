@@ -233,6 +233,17 @@ const MAIN_SECTIONS = [
     ],
   },
   { id: 'code', icon: 'fas fa-code', label: 'Code Editor', screens: [{ screen: 'CodeEditorScreen', label: 'CODE EDITOR' }] },
+  {
+    id: 'experiments',
+    icon: 'fas fa-flask',
+    label: 'Experiments',
+    screens: [
+      { screen: 'ExperimentsScreen', label: 'EXPERIMENTS' },
+      { screen: 'ExperimentForgeScreen', label: 'EXPERIMENT FORGE' },
+      { screen: 'EvalDatasetsScreen', label: 'EVAL DATASETS' },
+      { screen: 'ExperimentInsightsScreen', label: 'INSIGHTS' },
+    ],
+  },
 ];
 
 const SETTINGS_SECTIONS = [
