@@ -1,8 +1,8 @@
 import BaseAction from '../BaseAction.js';
-import AgentModel from '../../../models/AgentModel.js';
+import AgentService from '../../../services/AgentService.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
-import { getAvailableToolSchemas, executeTool } from '../../../services/orchestrator/tools.js';
+import { executeTool } from '../../../services/orchestrator/tools.js';
 import { randomUUID } from 'crypto';
 
 class AgentTool extends BaseAction {
@@ -83,26 +83,16 @@ class AgentTool extends BaseAction {
 
       const userId = workflowEngine.userId;
 
-      // Get agent from database
-      const agent = await AgentModel.findOne(params.agentId);
-
-      if (!agent) {
-        return {
-          success: false,
-          error: 'Agent not found',
-        };
+      // Use AgentService to get the full agent context (system prompt, skills, tools)
+      // This is the same path used by the orchestrator agent chat
+      const { agentContext, provider: agentProvider, model: agentModel, error, status } = await AgentService._getAgentContext(params.agentId, userId);
+      if (error) {
+        return { success: false, error };
       }
 
-      if (agent.created_by !== userId) {
-        return {
-          success: false,
-          error: 'You do not have permission to use this agent',
-        };
-      }
-
-      // Use agent's provider/model if set, otherwise fall back to user's global settings
-      let provider = agent.provider;
-      let model = agent.model;
+      // Resolve provider/model: agent config → user defaults
+      let provider = agentProvider;
+      let model = agentModel;
 
       if (!provider || !model) {
         const UserModel = (await import('../../../models/UserModel.js')).default;
@@ -118,62 +108,11 @@ class AgentTool extends BaseAction {
         }
       }
 
-      // Get agent's assigned tools
-      const assignedTools = Array.isArray(agent.assignedTools) ? agent.assignedTools : [];
-      const allAvailableTools = await getAvailableToolSchemas();
-
-      // Filter to only tools assigned to this agent
-      const toolSchemaMap = new Map();
-      allAvailableTools.forEach((toolSchema) => {
-        toolSchemaMap.set(toolSchema.function.name, toolSchema);
-      });
-
-      const agentToolSchemas = [];
-      for (const toolName of assignedTools) {
-        if (toolSchemaMap.has(toolName)) {
-          agentToolSchemas.push(toolSchemaMap.get(toolName));
-        }
-      }
-
-      // Build system prompt
-      const currentDate = new Date().toString();
-      const availableToolsList =
-        agentToolSchemas.length > 0
-          ? agentToolSchemas
-              .map((tool) => {
-                const schema = tool.function;
-                return `- ${schema.name}: ${schema.description}`;
-              })
-              .join('\n')
-          : '- No tools assigned to this agent';
-
-      const systemPrompt = `Current date and time: ${currentDate}
-
-You are an AI assistant named '${agent.name}'.
-Your primary function and persona are defined as follows: ${agent.description}.
-You must strictly adhere to this persona and fulfill your designated role while leveraging the operational capabilities described below.
-
-AVAILABLE TOOLS:
-${availableToolsList}
-
-CRITICAL TOOL USAGE INSTRUCTIONS:
-- When using execute_javascript or execute_javascript_code: ALWAYS use RETURN statements to get output, NOT console.log()
-- Example CORRECT: "let x = 5 * 5; x;" or "return 5 * 5;"
-- Example WRONG: "console.log(5 * 5);" (this will not capture the result)
-- The last expression in your code will be returned as the result
-- For calculations, end with the variable name or expression to return it
-
-RESPONSE FORMATTING (VERY IMPORTANT):
-- If returning advanced math, LaTeX, or chemical notation, ALWAYS USE MATHJAX WITH DOUBLE DOLLAR SIGNS.
-- If returning programming code, enclose it within <pre><code>...</code></pre> tags.
-- Always structure your helpful answer in valid, well-formed markdown (e.g., using #, ##, -, *).
-- DO NOT INCLUDE the outermost "\`\`\`markdown" or final "\`\`\`" in your result.
-
-Remember: You are ${agent.name} with specialized expertise. Use your assigned tools strategically to provide exceptional assistance while maintaining your unique personality and focus area.`;
+      const agentToolSchemas = agentContext.availableTools || [];
 
       // Prepare messages with system prompt and conversation history
       const messages = [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: agentContext.systemPrompt },
         ...(params.conversationHistory || []),
         {
           role: 'user',
