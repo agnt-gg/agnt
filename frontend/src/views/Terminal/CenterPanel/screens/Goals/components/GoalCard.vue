@@ -117,6 +117,9 @@ export default {
 .goal-card.paused {
   border-left: 3px solid var(--color-yellow);
 }
+.goal-card.needs_review {
+  border-left: 3px solid var(--color-orange, #f59e0b);
+}
 
 .card-header {
   display: flex;
@@ -157,6 +160,10 @@ export default {
 .goal-status.paused {
   background: rgba(255, 193, 7, 0.2);
   color: var(--color-yellow);
+}
+.goal-status.needs_review {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--color-orange, #f59e0b);
 }
 .goal-status.planning {
   background: rgba(127, 129, 147, 0.2);

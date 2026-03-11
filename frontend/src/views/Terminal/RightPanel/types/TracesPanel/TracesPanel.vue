@@ -1,5 +1,5 @@
 <template>
-  <div class="ui-panel runs-panel">
+  <div class="ui-panel traces-panel">
     <!-- Selected Execution Details -->
     <div v-if="selectedExecution" class="panel-section selected-execution-section">
       <div class="selected-execution-header">
@@ -503,7 +503,7 @@ const mdConverter = new showdown.Converter({
 });
 
 export default {
-  name: 'RunsPanel',
+  name: 'TracesPanel',
   components: {
     ResourcesSection,
     Tooltip,

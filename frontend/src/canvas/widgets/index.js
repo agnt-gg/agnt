@@ -106,14 +106,14 @@ export function registerAllWidgets() {
     isScreenWidget: true,
   });
 
-  registerWidget('runs', {
-    name: 'Runs',
+  registerWidget('traces', {
+    name: 'Traces',
     icon: 'fas fa-play-circle',
     category: 'home',
-    component: defineAsyncComponent(() => import('@/views/Terminal/CenterPanel/screens/Runs/Runs.vue')),
+    component: defineAsyncComponent(() => import('@/views/Terminal/CenterPanel/screens/Traces/Traces.vue')),
     defaultSize: { cols: 12, rows: 8 },
     minSize: { cols: 4, rows: 3 },
-    description: 'Execution history',
+    description: 'Execution trace history',
     isScreenWidget: true,
   });
 

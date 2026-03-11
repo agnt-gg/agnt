@@ -1,8 +1,8 @@
 <template>
-  <div class="ui-panel runs-panel">
+  <div class="ui-panel traces-panel">
     <!-- Panel Header -->
     <div class="panel-header">
-      <h2 class="title">/ Runs</h2>
+      <h2 class="title">/ Traces</h2>
       <div class="panel-stats">
         <span class="stat-item">
           <i class="fas fa-play-circle"></i>
@@ -11,11 +11,11 @@
       </div>
     </div>
 
-    <!-- Run Statistics -->
-    <div class="runs-stats-section">
+    <!-- Trace Statistics -->
+    <div class="traces-stats-section">
       <h4 class="section-title">
         <i class="fas fa-chart-bar"></i>
-        Run Statistics
+        Trace Statistics
       </h4>
       <div class="stats-grid">
         <div class="stat-card">
@@ -95,7 +95,7 @@
         Quick Actions
       </h4>
       <div class="action-buttons">
-        <button @click="refreshRuns" class="action-button">
+        <button @click="refreshTraces" class="action-button">
           <i class="fas fa-sync"></i>
           Refresh Runs
         </button>
@@ -103,7 +103,7 @@
           <i class="fas fa-filter"></i>
           Clear Filters
         </button>
-        <button @click="exportRuns" class="action-button">
+        <button @click="exportTraces" class="action-button">
           <i class="fas fa-download"></i>
           Export Runs
         </button>
@@ -117,7 +117,7 @@ import { defineComponent, ref, computed, inject } from 'vue';
 import { useStore } from 'vuex';
 
 export default {
-  name: 'RunsPanel',
+  name: 'TracesPanel',
   props: {
     executions: {
       type: Array,
@@ -206,7 +206,7 @@ export default {
       emit('panel-action', 'execution-selected', execution);
     };
 
-    const refreshRuns = () => {
+    const refreshTraces = () => {
       playSound('typewriterKeyPress');
       emit('panel-action', 'refresh-runs');
     };
@@ -216,7 +216,7 @@ export default {
       emit('panel-action', 'filter-changed', { filter: 'all' });
     };
 
-    const exportRuns = () => {
+    const exportTraces = () => {
       playSound('typewriterKeyPress');
       const runsData = executions.value;
       const dataStr = JSON.stringify(runsData, null, 2);
@@ -224,7 +224,7 @@ export default {
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `runs-export-${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `traces-export-${new Date().toISOString().split('T')[0]}.json`;
       link.click();
       URL.revokeObjectURL(url);
       emit('panel-action', 'show-feedback', {
@@ -288,9 +288,9 @@ export default {
       recentExecutionsList,
       setFilter,
       selectExecution,
-      refreshRuns,
+      refreshTraces,
       clearFilters,
-      exportRuns,
+      exportTraces,
       getStatusIcon,
       formatDuration,
       formatRelativeDate,
@@ -367,10 +367,10 @@ export default {
   color: var(--color-green);
 }
 
-/* Run Statistics */
-.runs-stats-section,
+/* Trace Statistics */
+.traces-stats-section,
 .run-filters-section,
-.recent-runs-section,
+.recent-traces-section,
 .quick-actions-section {
   background: transparent;
   border: 1px solid var(--terminal-border-color);
@@ -500,7 +500,7 @@ export default {
 }
 
 /* Recent Runs */
-.recent-runs-list {
+.recent-traces-list {
   display: flex;
   flex-direction: column;
   gap: 8px;

@@ -201,8 +201,19 @@
           </button>
         </Tooltip>
 
-        <!-- Standby actions -->
-        <template v-if="canStartAutonomous">
+        <!-- Needs review actions -->
+        <template v-if="selectedGoal.status === 'needs_review'">
+          <button class="action-button edit" @click="reviewOutputs"><i class="fas fa-file-alt"></i> Review Outputs</button>
+          <button class="action-button start" @click="approveGoal"><i class="fas fa-check"></i> Approve</button>
+          <button class="action-button" @click="showRejectModal = true"><i class="fas fa-comment-dots"></i> Send Feedback</button>
+          <button class="action-button" @click="startAutonomous" :disabled="isStartingAutonomous">
+            <i :class="isStartingAutonomous ? 'fas fa-spinner fa-spin' : 'fas fa-redo'"></i>
+            {{ isStartingAutonomous ? 'Starting...' : 'Retry' }}
+          </button>
+        </template>
+
+        <!-- Standby actions (planning, queued) -->
+        <template v-else-if="canStartAutonomous">
           <button class="action-button start" @click="startAutonomous" :disabled="isStartingAutonomous">
             <i :class="isStartingAutonomous ? 'fas fa-spinner fa-spin' : 'fas fa-infinity'"></i>
             {{ isStartingAutonomous ? 'Starting...' : 'Start Autonomous' }}
@@ -236,6 +247,41 @@
 
     <!-- Resources Section -->
     <ResourcesSection />
+
+    <!-- Feedback Modal -->
+    <Teleport to="body">
+      <div v-if="showRejectModal" class="modal-overlay" @click.self="showRejectModal = false">
+        <div class="modal-container">
+          <div class="modal-header">
+            <h3>Send Feedback</h3>
+            <button class="modal-close-btn" @click="showRejectModal = false">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p class="feedback-hint">Tell the agent what to fix. This feedback will be used in the next iteration.</p>
+            <textarea
+              ref="feedbackInputRef"
+              v-model="rejectFeedback"
+              class="feedback-input"
+              placeholder="e.g. The output format is wrong, use JSON instead of CSV..."
+              rows="4"
+              @keydown.ctrl.enter="submitRejectFeedback"
+              @keydown.escape="showRejectModal = false"
+            ></textarea>
+          </div>
+          <div class="modal-footer">
+            <span class="modal-hint">Ctrl+Enter to send</span>
+            <div class="modal-actions">
+              <button class="modal-btn modal-cancel" @click="showRejectModal = false">Cancel</button>
+              <button class="modal-btn reject" @click="submitRejectFeedback" :disabled="!rejectFeedback.trim()">
+                <i class="fas fa-paper-plane"></i> Send & Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -282,6 +328,9 @@ export default {
     const selectedGoal = ref(null);
     const showCopiedMessage = ref(false);
     const isStartingAutonomous = ref(false);
+    const showRejectModal = ref(false);
+    const rejectFeedback = ref('');
+    const feedbackInputRef = ref(null);
 
     const toggleRawView = (taskId) => {
       rawViewTasks.value[taskId] = !rawViewTasks.value[taskId];
@@ -378,7 +427,7 @@ export default {
     const canStartAutonomous = computed(() => {
       if (!selectedGoal.value) return false;
       const s = selectedGoal.value.status;
-      return ['planning', 'queued', 'needs_review'].includes(s);
+      return ['planning', 'queued'].includes(s);
     });
 
     const isGoalDone = computed(() => {
@@ -409,6 +458,55 @@ export default {
         emit('panel-action', 'show-feedback', {
           type: 'error',
           message: `[AGI Loop] Error: ${error.message}`,
+        });
+      } finally {
+        isStartingAutonomous.value = false;
+      }
+    };
+
+    const approveGoal = async () => {
+      if (!selectedGoal.value) return;
+      try {
+        await store.dispatch('goals/reviewGoal', {
+          goalId: selectedGoal.value.id,
+          action: 'approve',
+        });
+        emit('panel-action', 'show-feedback', {
+          type: 'success',
+          message: 'Goal approved and validated',
+        });
+      } catch (error) {
+        emit('panel-action', 'show-feedback', {
+          type: 'error',
+          message: `Error approving goal: ${error.message}`,
+        });
+      }
+    };
+
+    const submitRejectFeedback = async () => {
+      if (!selectedGoal.value || !rejectFeedback.value.trim()) return;
+      try {
+        await store.dispatch('goals/reviewGoal', {
+          goalId: selectedGoal.value.id,
+          action: 'reject',
+          feedback: rejectFeedback.value.trim(),
+        });
+        showRejectModal.value = false;
+        rejectFeedback.value = '';
+        // Auto-start autonomous retry with the feedback
+        isStartingAutonomous.value = true;
+        await store.dispatch('goals/executeGoalAutonomous', {
+          goalId: selectedGoal.value.id,
+          maxIterations: 50,
+        });
+        emit('panel-action', 'show-feedback', {
+          type: 'success',
+          message: 'Feedback sent — agent is retrying',
+        });
+      } catch (error) {
+        emit('panel-action', 'show-feedback', {
+          type: 'error',
+          message: `Error: ${error.message}`,
         });
       } finally {
         isStartingAutonomous.value = false;
@@ -720,6 +818,11 @@ ${goal.tasks
       reviewOutputs,
       evaluateGoal,
       formatPhase,
+      approveGoal,
+      showRejectModal,
+      rejectFeedback,
+      feedbackInputRef,
+      submitRejectFeedback,
     };
   },
 };
@@ -1555,5 +1658,149 @@ h3 {
   color: var(--color-grey);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* Feedback Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.modal-container {
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  width: 500px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 0.9em;
+  transition: color 0.2s;
+}
+
+.modal-close-btn:hover {
+  color: var(--color-text);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.feedback-hint {
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  margin: 0 0 12px;
+}
+
+.feedback-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 0.95em;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s ease;
+}
+
+.feedback-input:focus {
+  outline: none;
+  border-color: rgba(var(--primary-rgb), 0.5);
+}
+
+.feedback-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+.modal-hint {
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-btn {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-btn.modal-cancel {
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-text-muted);
+}
+
+.modal-btn.modal-cancel:hover {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
+.modal-btn.reject {
+  background: rgba(var(--primary-rgb), 0.1);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  color: var(--color-primary);
+}
+
+.modal-btn.reject:hover:not(:disabled) {
+  background: rgba(var(--primary-rgb), 0.2);
+  border-color: rgba(var(--primary-rgb), 0.5);
+}
+
+.modal-btn.reject:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

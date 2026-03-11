@@ -1,11 +1,11 @@
 <template>
-  <div class="runs-screen-root">
+  <div class="traces-screen-root">
     <SimpleModal ref="simpleModal" />
     <BaseScreen
       ref="baseScreenRef"
-      activeLeftPanel="RunsPanel"
-      activeRightPanel="RunsPanel"
-      screenId="RunsScreen"
+      activeLeftPanel="TracesPanel"
+      activeRightPanel="TracesPanel"
+      screenId="TracesScreen"
       :showInput="false"
       :terminalLines="terminalLines"
       :leftPanelProps="{
@@ -23,12 +23,12 @@
       @base-mounted="initializeScreen"
     >
       <template #default>
-        <div class="runs-panel">
+        <div class="traces-panel">
           <!-- Header bar -->
           <div class="wm-header">
             <div class="wm-header-left">
-              <span class="wm-title">RUNS</span>
-              <span class="wm-count">{{ filteredExecutions.length }} runs</span>
+              <span class="wm-title">TRACES</span>
+              <span class="wm-count">{{ filteredExecutions.length }} traces</span>
             </div>
             <div class="wm-header-right">
               <input
@@ -256,12 +256,12 @@ import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
-import { useRunsTutorial } from './useRunsTutorial.js';
+import { useTracesTutorial } from './useTracesTutorial.js';
 import { API_CONFIG } from '@/tt.config.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
-  name: 'RunsScreen',
+  name: 'TracesScreen',
   components: { BaseScreen, BaseTable, SimpleModal, PopupTutorial, Tooltip },
   emits: ['screen-change', 'panel-action'],
   setup(props, { emit }) {
@@ -1180,7 +1180,7 @@ ${execution.log}
       }
     };
 
-    const { tutorialConfig, startTutorial, onTutorialClose, initializeRunsTutorial } = useRunsTutorial();
+    const { tutorialConfig, startTutorial, onTutorialClose, initializeTracesTutorial } = useTracesTutorial();
 
     const initializeScreen = () => {
       terminalLines.value = [];
@@ -1243,7 +1243,7 @@ ${execution.log}
 
       // Show tutorial after a short delay
       cleanup.setTimeout(() => {
-        initializeRunsTutorial();
+        initializeTracesTutorial();
       }, 2000);
     };
 
@@ -1322,7 +1322,7 @@ ${execution.log}
 </script>
 
 <style scoped>
-.runs-screen-root {
+.traces-screen-root {
   width: 100%;
   height: 100%;
   display: flex;
@@ -1330,7 +1330,7 @@ ${execution.log}
   min-height: 0;
 }
 
-.runs-panel {
+.traces-panel {
   position: relative;
   top: 0;
   display: flex;

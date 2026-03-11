@@ -377,6 +377,40 @@ class GoalService {
     }
   }
 
+  async reviewGoal(req, res) {
+    try {
+      const { id } = req.params;
+      const { action, feedback } = req.body; // action: 'approve' | 'reject'
+
+      const goal = await GoalModel.findOne(id);
+      if (!goal) {
+        return res.status(404).json({ error: 'Goal not found' });
+      }
+
+      if (action === 'approve') {
+        await GoalModel.updateStatus(id, 'validated');
+        res.json({ message: 'Goal approved', status: 'validated' });
+      } else if (action === 'reject') {
+        // Set back to queued so user can re-run with feedback
+        await GoalModel.updateStatus(id, 'queued');
+        // Store feedback in world state so the next iteration can use it
+        if (feedback) {
+          const currentWorldState = await GoalModel.getWorldState(id);
+          const worldState = currentWorldState || {};
+          worldState.user_feedback = feedback;
+          worldState.user_feedback_at = new Date().toISOString();
+          await GoalModel.updateWorldState(id, worldState);
+        }
+        res.json({ message: 'Goal sent back for revision', status: 'queued', feedback });
+      } else {
+        return res.status(400).json({ error: "Invalid action. Use 'approve' or 'reject'" });
+      }
+    } catch (error) {
+      console.error('Error reviewing goal:', error);
+      res.status(500).json({ error: 'Failed to review goal', details: error.message });
+    }
+  }
+
   async revertToIteration(req, res) {
     try {
       const { goalId, iteration } = req.params;

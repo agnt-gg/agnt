@@ -914,6 +914,35 @@ const actions = {
     }
   },
 
+  async reviewGoal({ commit }, { goalId, action, feedback }) {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/review`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action, feedback }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to review goal: ${response.status}`);
+      }
+
+      const result = await response.json();
+      commit('UPDATE_GOAL', { id: goalId, status: result.status });
+      return result;
+    } catch (error) {
+      console.error('Error reviewing goal:', error);
+      throw error;
+    }
+  },
+
   async evaluateGoal({ commit, rootState }, { goalId, evaluationType = 'automatic' }) {
     try {
       const token = localStorage.getItem('token');

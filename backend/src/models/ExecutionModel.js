@@ -118,52 +118,49 @@ class ExecutionModel {
       );
     });
   }
-  static getExecutionDetails(executionId) {
-    return new Promise((resolve, reject) => {
+  static async getExecutionDetails(executionId) {
+    const execQuery = new Promise((resolve, reject) => {
       db.get(
         `SELECT we.id, we.workflow_id, we.workflow_name, we.start_time, we.end_time, we.status, we.log
          FROM workflow_executions we
          WHERE we.id = ?`,
         [executionId],
-        (err, execution) => {
-          if (err) {
-            reject(err);
-          } else if (!execution) {
-            resolve(null);
-          } else {
-            db.all(
-              `SELECT id, node_id, start_time, end_time, status, input, output, error, credits_used
-               FROM node_executions
-               WHERE execution_id = ?
-               ORDER BY start_time`,
-              [executionId],
-              (err, nodeExecutions) => {
-                if (err) {
-                  reject(err);
-                } else {
-                  const totalCreditsUsed = nodeExecutions.reduce((sum, ne) => sum + (ne.credits_used || 0), 0);
-                  resolve({
-                    id: execution.id,
-                    workflowId: execution.workflow_id,
-                    workflowName: execution.workflow_name || 'Unknown Workflow',
-                    startTime: execution.start_time,
-                    endTime: execution.end_time,
-                    status: execution.status,
-                    log: execution.log,
-                    creditsUsed: totalCreditsUsed,
-                    nodeExecutions: nodeExecutions.map((ne) => ({
-                      ...ne,
-                      input: JSON.parse(ne.input),
-                      output: JSON.parse(ne.output),
-                    })),
-                  });
-                }
-              }
-            );
-          }
-        }
+        (err, row) => err ? reject(err) : resolve(row)
       );
     });
+
+    const nodesQuery = new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, node_id, start_time, end_time, status, input, output, error, credits_used
+         FROM node_executions
+         WHERE execution_id = ?
+         ORDER BY start_time`,
+        [executionId],
+        (err, rows) => err ? reject(err) : resolve(rows || [])
+      );
+    });
+
+    const [execution, nodeExecutions] = await Promise.all([execQuery, nodesQuery]);
+    if (!execution) return null;
+
+    const safeParse = (str) => { try { return JSON.parse(str); } catch { return str; } };
+    const totalCreditsUsed = nodeExecutions.reduce((sum, ne) => sum + (ne.credits_used || 0), 0);
+
+    return {
+      id: execution.id,
+      workflowId: execution.workflow_id,
+      workflowName: execution.workflow_name || 'Unknown Workflow',
+      startTime: execution.start_time,
+      endTime: execution.end_time,
+      status: execution.status,
+      log: execution.log,
+      creditsUsed: totalCreditsUsed,
+      nodeExecutions: nodeExecutions.map((ne) => ({
+        ...ne,
+        input: safeParse(ne.input),
+        output: safeParse(ne.output),
+      })),
+    };
   }
   static getAgentActivityData(userId, startDate, endDate) {
     return new Promise((resolve, reject) => {

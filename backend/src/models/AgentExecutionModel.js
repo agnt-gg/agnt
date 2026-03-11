@@ -179,8 +179,8 @@ class AgentExecutionModel {
   /**
    * Get detailed agent execution with tool executions
    */
-  static getExecutionDetails(executionId) {
-    return new Promise((resolve, reject) => {
+  static async getExecutionDetails(executionId) {
+    const execQuery = new Promise((resolve, reject) => {
       db.get(
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.user_id, ae.conversation_id,
                 ae.start_time, ae.end_time, ae.status, ae.credits_used, ae.tool_calls_count,
@@ -188,60 +188,56 @@ class AgentExecutionModel {
          FROM agent_executions ae
          WHERE ae.id = ?`,
         [executionId],
-        (err, execution) => {
-          if (err) {
-            reject(err);
-          } else if (!execution) {
-            resolve(null);
-          } else {
-            // Get tool executions for this agent execution
-            db.all(
-              `SELECT id, tool_name, tool_call_id, start_time, end_time, status, input, output, error, credits_used
-               FROM agent_tool_executions
-               WHERE execution_id = ?
-               ORDER BY start_time`,
-              [executionId],
-              (err, toolExecutions) => {
-                if (err) {
-                  reject(err);
-                } else {
-                  const totalCreditsUsed = toolExecutions.reduce((sum, te) => sum + (te.credits_used || 0), 0);
-                  resolve({
-                    id: execution.id,
-                    agentId: execution.agent_id,
-                    agentName: execution.agent_name || 'Orchestrator',
-                    conversationId: execution.conversation_id,
-                    startTime: execution.start_time,
-                    endTime: execution.end_time,
-                    status: execution.status,
-                    creditsUsed: totalCreditsUsed || execution.credits_used || 0,
-                    toolCallsCount: execution.tool_calls_count,
-                    initialPrompt: execution.initial_prompt,
-                    finalResponse: execution.final_response,
-                    error: execution.error,
-                    provider: execution.provider,
-                    model: execution.model,
-                    type: 'agent',
-                    toolExecutions: toolExecutions.map((te) => ({
-                      id: te.id,
-                      toolName: te.tool_name,
-                      toolCallId: te.tool_call_id,
-                      startTime: te.start_time,
-                      endTime: te.end_time,
-                      status: te.status,
-                      input: te.input ? JSON.parse(te.input) : null,
-                      output: te.output ? JSON.parse(te.output) : null,
-                      error: te.error,
-                      creditsUsed: te.credits_used || 0,
-                    })),
-                  });
-                }
-              }
-            );
-          }
-        }
+        (err, row) => err ? reject(err) : resolve(row)
       );
     });
+
+    const toolsQuery = new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, tool_name, tool_call_id, start_time, end_time, status, input, output, error, credits_used
+         FROM agent_tool_executions
+         WHERE execution_id = ?
+         ORDER BY start_time`,
+        [executionId],
+        (err, rows) => err ? reject(err) : resolve(rows || [])
+      );
+    });
+
+    const [execution, toolExecutions] = await Promise.all([execQuery, toolsQuery]);
+    if (!execution) return null;
+
+    const safeParse = (str) => { try { return JSON.parse(str); } catch { return str; } };
+    const totalCreditsUsed = toolExecutions.reduce((sum, te) => sum + (te.credits_used || 0), 0);
+
+    return {
+      id: execution.id,
+      agentId: execution.agent_id,
+      agentName: execution.agent_name || 'Orchestrator',
+      conversationId: execution.conversation_id,
+      startTime: execution.start_time,
+      endTime: execution.end_time,
+      status: execution.status,
+      creditsUsed: totalCreditsUsed || execution.credits_used || 0,
+      toolCallsCount: execution.tool_calls_count,
+      initialPrompt: execution.initial_prompt,
+      finalResponse: execution.final_response,
+      error: execution.error,
+      provider: execution.provider,
+      model: execution.model,
+      type: 'agent',
+      toolExecutions: toolExecutions.map((te) => ({
+        id: te.id,
+        toolName: te.tool_name,
+        toolCallId: te.tool_call_id,
+        startTime: te.start_time,
+        endTime: te.end_time,
+        status: te.status,
+        input: te.input ? safeParse(te.input) : null,
+        output: te.output ? safeParse(te.output) : null,
+        error: te.error,
+        creditsUsed: te.credits_used || 0,
+      })),
+    };
   }
 
   /**

@@ -1,12 +1,12 @@
 import { ref } from 'vue';
 
-export function useRunsTutorial() {
+export function useTracesTutorial() {
   const tutorialConfig = ref([
     {
-      target: '.runs-panel',
+      target: '.traces-panel',
       position: 'center',
-      title: '📊 Execution History',
-      content: 'This is your execution history page. Here you can see all your workflow and goal runs, track their status, and review detailed logs.',
+      title: '📊 Execution Traces',
+      content: 'This is your trace history page. Here you can see all your workflow and goal traces, track their status, and review detailed logs.',
       buttonText: 'Show Me Around',
       hideArrow: true,
     },
@@ -23,7 +23,7 @@ export function useRunsTutorial() {
       target: '.type-filter-bar',
       position: 'bottom',
       title: '🎯 Type Filters',
-      content: 'Switch between viewing all executions, just Goals, or just Workflows. This helps you focus on what matters most.',
+      content: 'Switch between viewing all traces, just Goals, or just Workflows. This helps you focus on what matters most.',
       buttonText: 'Got It',
       highlightTarget: true,
       enforceStep: false,
@@ -31,9 +31,9 @@ export function useRunsTutorial() {
     {
       target: '.executions-grid',
       position: 'center',
-      title: '📋 Execution Cards',
+      title: '📋 Trace Cards',
       content:
-        'Each card shows an execution with its status, start time, duration, and credits used. Click any card to see detailed logs and node execution data.',
+        'Each card shows a trace with its status, start time, duration, and credits used. Click any card to see detailed logs and node execution data.',
       buttonText: 'Next',
       highlightTarget: true,
       hideArrow: true,
@@ -42,17 +42,17 @@ export function useRunsTutorial() {
     {
       target: '.execution-card',
       position: 'right',
-      title: '🔄 Execution Details',
-      content: 'Click an execution to view full details in the right panel. Double-click to see an expanded view with node-by-node execution data.',
+      title: '🔄 Trace Details',
+      content: 'Click a trace to view full details in the right panel. Double-click to see an expanded view with node-by-node execution data.',
       buttonText: 'Makes Sense',
       highlightTarget: true,
       enforceStep: false,
     },
     {
-      target: '.runs-panel',
+      target: '.traces-panel',
       position: 'center',
       title: "✅ You're All Set!",
-      content: 'Now you can track all your workflow and goal executions, monitor their progress, and debug any issues. Happy automating!',
+      content: 'Now you can track all your workflow and goal traces, monitor their progress, and debug any issues. Happy automating!',
       buttonText: "Let's Go!",
       hideArrow: true,
     },
@@ -79,7 +79,7 @@ export function useRunsTutorial() {
     }
   };
 
-  const initializeRunsTutorial = () => {
+  const initializeTracesTutorial = () => {
     currentStep.value = 0;
     startTutorial.value = true;
   };
@@ -90,6 +90,6 @@ export function useRunsTutorial() {
     currentStep,
     onTutorialClose,
     nextStep,
-    initializeRunsTutorial,
+    initializeTracesTutorial,
   };
 }

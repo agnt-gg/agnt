@@ -132,12 +132,12 @@ export default {
         {
           id: 'standby',
           title: 'Standby',
-          goals: goals.filter((g) => ['planning', 'queued', 'needs_review'].includes(g.status)),
+          goals: goals.filter((g) => ['planning', 'queued'].includes(g.status)),
         },
         {
           id: 'active',
           title: 'Active',
-          goals: goals.filter((g) => ['executing', 'paused'].includes(g.status)),
+          goals: goals.filter((g) => ['executing', 'paused', 'needs_review'].includes(g.status)),
         },
         {
           id: 'done',
@@ -163,6 +163,7 @@ export default {
     };
 
     const handleGoalClick = async (goal) => {
+      playSound('typewriterKeyPress');
       selectedGoalId.value = goal.id;
       terminalLines.value.push(`Selected goal: ${goal.title}`);
       baseScreenRef.value?.scrollToBottom();

@@ -192,7 +192,7 @@ export default {
     });
 
     const handleViewRun = () => {
-      emit('panel-action', 'navigate', 'RunsScreen');
+      emit('panel-action', 'navigate', 'TracesScreen');
     };
 
     watch(

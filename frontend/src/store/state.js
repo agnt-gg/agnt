@@ -85,13 +85,13 @@ const store = createStore({
         commit('SET_CRITICAL_DATA_READY');
 
         // PHASE 2: Fetch secondary data (less urgent, can load after)
-        // Deferred to respective screens: fetchReferralBalance, fetchReferralTree (Settings),
+        // Deferred to respective screens: goals/fetchGoals (Goals/Dashboard),
+        // executionHistory/fetchExecutions (Traces/Dashboard),
+        // fetchReferralBalance, fetchReferralTree (Settings),
         // fetchCreditsActivity (Dashboard), fetchMyPurchases/fetchMyInstalls (Marketplace)
         Promise.allSettled([
-          dispatch('goals/fetchGoals'),
           dispatch('tools/fetchTools'),
           dispatch('tools/fetchWorkflowTools'),
-          dispatch('executionHistory/fetchExecutions'),
           dispatch('widgetLayout/fetchLayouts'),
           dispatch('widgetDefinitions/fetchDefinitions'),
           dispatch('skills/fetchSkills'),

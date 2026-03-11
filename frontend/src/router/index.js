@@ -115,10 +115,10 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'GoalsScreen' },
     },
     {
-      path: '/runs',
-      name: 'TerminalRuns',
+      path: '/traces',
+      name: 'TerminalTraces',
       component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'RunsScreen' },
+      meta: { requiresAuth: true, terminalScreen: 'TracesScreen' },
     },
     {
       path: '/widget-manager',

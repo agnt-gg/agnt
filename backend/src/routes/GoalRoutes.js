@@ -20,6 +20,9 @@ GoalRoutes.get('/:goalId/iterations', authenticateToken, GoalService.getIteratio
 GoalRoutes.get('/:goalId/world-state', authenticateToken, GoalService.getWorldState);
 GoalRoutes.post('/:goalId/revert/:iteration', authenticateToken, GoalService.revertToIteration);
 
+// Review endpoint (approve/reject needs_review goals)
+GoalRoutes.post('/:id/review', authenticateToken, GoalService.reviewGoal);
+
 // Evaluation endpoints
 GoalRoutes.post('/:id/evaluate', authenticateToken, GoalService.evaluateGoal);
 GoalRoutes.get('/:id/evaluation', authenticateToken, GoalService.getEvaluationReport);

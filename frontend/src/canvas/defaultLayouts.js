@@ -13,7 +13,7 @@ export const defaultLayouts = {
 
   DashboardScreen: [{ widgetId: 'dashboard', col: 0, row: 0, cols: 12, rows: 8 }],
 
-  RunsScreen: [{ widgetId: 'runs', col: 0, row: 0, cols: 12, rows: 8 }],
+  TracesScreen: [{ widgetId: 'traces', col: 0, row: 0, cols: 12, rows: 8 }],
 
   // ── Assets ──
   WorkflowsScreen: [{ widgetId: 'workflows', col: 0, row: 0, cols: 12, rows: 8 }],
@@ -56,7 +56,7 @@ export const routeScreenMap = {
   '/tools': 'ToolsScreen',
   '/workflows': 'WorkflowsScreen',
   '/goals': 'GoalsScreen',
-  '/runs': 'RunsScreen',
+  '/traces': 'TracesScreen',
   '/settings': 'SettingsScreen',
   '/connectors': 'ConnectorsScreen',
   '/marketplace': 'MarketplaceScreen',

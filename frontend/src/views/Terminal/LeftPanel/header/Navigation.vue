@@ -90,21 +90,18 @@ export default {
       {
         id: 'assets',
         label: 'Assets',
-        // disabled: userLevel.value < 4,
-        // unlocksAt: 4,
       },
       {
         id: 'forge',
         label: 'Studio',
-        // disabled: userLevel.value < 9,
-        // unlocksAt: 9,
       },
-
+      {
+        id: 'lab',
+        label: 'Lab',
+      },
       {
         id: 'system',
         label: 'AGNT',
-        // disabled: userLevel.value < 17,
-        // unlocksAt: 17,
       },
     ]);
 
@@ -115,54 +112,28 @@ export default {
           screen: 'ChatScreen',
           icon: 'chat',
           label: 'Chat',
-          // disabled: userLevel.value < 1,
-          // unlocksAt: 1,
         },
         {
           screen: 'DashboardScreen',
           icon: 'dashboard',
           label: 'Dashboard',
-          // disabled: userLevel.value < 3,
-          // unlocksAt: 3,
-          // disabled: true,
         },
-        // {
-        //   screen: 'GoalsScreen',
-        //   icon: 'goals',
-        //   label: 'Goals',
-        // },
-        {
-          screen: 'RunsScreen',
-          icon: 'runs',
-          label: 'Runs',
-        },
-        // {
-        //   screen: 'DashboardScreen',
-        //   icon: 'data',
-        //   label: 'Dashboard',
-        // },
       ],
       forge: [
         {
           screen: 'WorkflowForgeScreen',
           icon: 'workflow',
           label: 'Workflow',
-          // disabled: userLevel.value < 12,
-          // unlocksAt: 12,
         },
         {
           screen: 'AgentForgeScreen',
           icon: 'agent',
           label: 'Agent',
-          // disabled: true,
-          // unlocksAt: 'Soon...',
         },
         {
           screen: 'ToolForgeScreen',
           icon: 'tool',
           label: 'Tool',
-          // disabled: true,
-          // unlocksAt: 'Custom Tool Forge (Soon...)',
         },
       ],
       assets: [
@@ -170,62 +141,38 @@ export default {
           screen: 'WorkflowsScreen',
           icon: 'workflows',
           label: 'Workflows',
-          // disabled: userLevel.value < 4,
-          // unlocksAt: 4,
         },
         {
           screen: 'AgentsScreen',
           icon: 'agents',
           label: 'Agents',
-          // disabled: userLevel.value < 5,
-          // unlocksAt: 5,
         },
         {
           screen: 'ToolsScreen',
           icon: 'tools',
           label: 'Tools',
-          // disabled: userLevel.value < 7,
-          // unlocksAt: 7,
+        },
+      ],
+      lab: [
+        {
+          screen: 'GoalsScreen',
+          icon: 'goals',
+          label: 'Goals',
+        },
+        {
+          screen: 'TracesScreen',
+          icon: 'traces',
+          label: 'Traces',
+        },
+        {
+          screen: 'ExperimentsScreen',
+          icon: 'flask',
+          label: 'Experiments',
         },
         {
           screen: 'SkillsScreen',
           icon: 'brain',
           label: 'Skills',
-        },
-        {
-          screen: 'SkillForgeScreen',
-          icon: 'dna',
-          label: 'SkillForge',
-        },
-        // {
-        //   screen: 'ResourcesScreen',
-        //   icon: 'resources',
-        //   label: 'Resources',
-        //   disabled: userLevel.value < 5,
-        //   unlocksAt: 5,
-        // },
-      ],
-      ops: [
-        {
-          screen: 'MarketScreen',
-          icon: 'marketplace',
-          label: 'Marketplace',
-          // disabled: userLevel.value < 14,
-          // unlocksAt: 14,
-        },
-        {
-          screen: 'MissionsScreen',
-          icon: 'missions',
-          label: 'Missions',
-          // disabled: userLevel.value < 15,
-          // unlocksAt: 15,
-        },
-        {
-          screen: 'MapScreen',
-          icon: 'territory',
-          label: 'Territory',
-          // disabled: userLevel.value < 16,
-          // unlocksAt: 16,
         },
       ],
       system: [
@@ -233,37 +180,17 @@ export default {
           screen: 'MarketplaceScreen',
           icon: 'marketplace',
           label: 'Market',
-          // disabled: userLevel.value < 14,
-          // unlocksAt: 14,
         },
         {
           screen: 'ConnectorsScreen',
           icon: 'integrations',
           label: 'Connectors',
-          // disabled: userLevel.value < 18,
-          // unlocksAt: 18,
         },
         {
           screen: 'SettingsScreen',
           icon: 'settings',
           label: 'Account',
-          // disabled: userLevel.value < 19,
-          // unlocksAt: 19,
         },
-        // {
-        //   screen: 'BallJumperScreen',
-        //   icon: 'game',
-        //   label: 'Blue Ball 🎮',
-        //   disabled: userLevel.value < 20,
-        //   unlocksAt: 20,
-        // },
-        // {
-        //   screen: "ProfileScreen",
-        //   icon: 'profile',
-        //   label: "Profile 💼",
-        //   disabled: userLevel.value < 1,
-        //   unlocksAt: 1,
-        // },
       ],
     }));
 
@@ -368,6 +295,7 @@ export default {
         chat: 'fas fa-comments',
         goals: 'fas fa-bullseye',
         runs: 'fas fa-play',
+        traces: 'fas fa-play-circle',
         data: 'fas fa-database',
         dashboard: 'fas fa-chart-bar',
         workflow: 'fas fa-project-diagram',
@@ -383,6 +311,7 @@ export default {
         settings: 'fas fa-cog',
         brain: 'fas fa-brain',
         dna: 'fas fa-dna',
+        flask: 'fas fa-flask',
       };
       return iconMap[icon] || 'fas fa-circle';
     };

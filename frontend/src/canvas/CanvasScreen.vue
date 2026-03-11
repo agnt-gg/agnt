@@ -201,8 +201,6 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 const MAIN_SECTIONS = [
   { id: 'chat', icon: 'fas fa-comments', label: 'Chat', screens: [{ screen: 'ChatScreen', label: 'CHAT' }] },
   { id: 'dashboard', icon: 'fas fa-tachometer-alt', label: 'Dashboard', screens: [{ screen: 'DashboardScreen', label: 'DASHBOARD' }] },
-  { id: 'runs', icon: 'fas fa-play-circle', label: 'Runs', screens: [{ screen: 'RunsScreen', label: 'RUNS' }] },
-  { id: 'goals', icon: 'fas fa-bullseye', label: 'Goals', screens: [{ screen: 'GoalsScreen', label: 'GOALS' }] },
   {
     id: 'agents',
     icon: 'fas fa-robot',
@@ -210,8 +208,6 @@ const MAIN_SECTIONS = [
     screens: [
       { screen: 'AgentsScreen', label: 'MY AGENTS' },
       { screen: 'AgentForgeScreen', label: 'AGENT FORGE' },
-      { screen: 'SkillsScreen', label: 'SKILLS' },
-      { screen: 'SkillForgeScreen', label: 'SKILLFORGE' },
     ],
   },
   {
@@ -234,14 +230,18 @@ const MAIN_SECTIONS = [
   },
   { id: 'code', icon: 'fas fa-code', label: 'Code Editor', screens: [{ screen: 'CodeEditorScreen', label: 'CODE EDITOR' }] },
   {
-    id: 'experiments',
+    id: 'lab',
     icon: 'fas fa-flask',
-    label: 'Experiments',
+    label: 'Lab',
     screens: [
+      { screen: 'GoalsScreen', label: 'GOALS' },
+      { screen: 'TracesScreen', label: 'TRACES' },
       { screen: 'ExperimentsScreen', label: 'EXPERIMENTS' },
-      { screen: 'ExperimentForgeScreen', label: 'EXPERIMENT FORGE' },
+      { screen: 'ExperimentForgeScreen', label: 'NEW EXPERIMENT' },
       { screen: 'EvalDatasetsScreen', label: 'EVAL DATASETS' },
       { screen: 'ExperimentInsightsScreen', label: 'INSIGHTS' },
+      { screen: 'SkillsScreen', label: 'SKILLS' },
+      { screen: 'SkillForgeScreen', label: 'SKILLFORGE' },
     ],
   },
 ];

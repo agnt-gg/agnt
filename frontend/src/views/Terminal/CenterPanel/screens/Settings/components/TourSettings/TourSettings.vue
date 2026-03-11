@@ -138,10 +138,10 @@ export default {
         isOnboarding: true,
       },
       {
-        id: 'runs',
-        name: 'Runs List Tour',
-        description: 'Learn to track and manage workflow executions',
-        screen: 'RunsScreen',
+        id: 'traces',
+        name: 'Traces Tour',
+        description: 'Learn to track and manage execution traces',
+        screen: 'TracesScreen',
       },
       {
         id: 'SettingsScreen',
