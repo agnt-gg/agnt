@@ -666,6 +666,14 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_id ON skill_evaluations(skill_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_user_id ON skill_evaluations(user_id)`);
 
+      // SkillForge settings — persisted per-user configuration
+      db.run(`CREATE TABLE IF NOT EXISTS skillforge_settings (
+        user_id TEXT PRIMARY KEY,
+        settings TEXT NOT NULL DEFAULT '{}',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+
       // Goal iteration history for AGI loop
       db.run(`CREATE TABLE IF NOT EXISTS goal_iterations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

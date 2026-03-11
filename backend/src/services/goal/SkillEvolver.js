@@ -92,8 +92,8 @@ class SkillEvolver {
       status: 'active',
     });
 
-    // Run A/B test
-    const abResult = await this._runABTest(sourceGoalId, skillId, userId);
+    // Run A/B test (quality-based evaluation)
+    const abResult = await this._runABTest(sourceGoalId, skillId, userId, traceAnalysis);
 
     if (!abResult) {
       // A/B test couldn't run (no reference goal possible) — keep the skill as draft
@@ -187,6 +187,7 @@ class SkillEvolver {
 
   /**
    * Refine an existing skill by merging new trace insights.
+   * Uses quality-based comparison (no update-then-revert pattern).
    */
   static async refineSkill(existingSkillId, traceAnalysis, sourceGoalId, userId) {
     const existingSkill = await SkillModel.findById(existingSkillId);
@@ -209,11 +210,11 @@ class SkillEvolver {
       return { action: 'error', reason: 'Failed to merge skill instructions' };
     }
 
-    // Get next version number
+    // Get version info
     const nextVersion = await SkillVersionModel.getNextVersion(existingSkillId);
     const currentVersion = await SkillVersionModel.findLatest(existingSkillId);
 
-    // Create new version record
+    // Create new version record (candidate — will be superseded if discarded)
     const versionId = await SkillVersionModel.create({
       skillId: existingSkillId,
       userId,
@@ -229,59 +230,45 @@ class SkillEvolver {
       status: 'active',
     });
 
-    // A/B test: new version vs current version
-    // For refinement, temporarily update skill instructions then test
-    const originalInstructions = existingSkill.instructions;
+    // Quality-based comparison: old instructions vs new instructions
+    const tasks = await TaskModel.findByGoalId(sourceGoalId);
+    const rawMetrics = await this._measureGoalPerformance(sourceGoalId, userId);
+    const baselineQuality = this._evaluateSkillQuality(existingSkill.instructions || '', traceAnalysis, tasks);
+    const treatmentQuality = this._evaluateSkillQuality(mergedInstructions, traceAnalysis, tasks);
+    const delta = treatmentQuality - baselineQuality;
+    const baseSes = rawMetrics?.ses || 50;
+    const baselineSes = Math.min(100, baseSes + baselineQuality);
+    const treatmentSes = Math.min(100, baseSes + treatmentQuality);
 
-    // Run baseline with current skill
-    const baselineMetrics = await this._measureGoalPerformance(sourceGoalId, userId, existingSkillId, originalInstructions);
+    // Record evaluation
+    const abResult = {
+      baselineSes,
+      baselineCompletion: rawMetrics?.completion || 0,
+      baselineToolCalls: rawMetrics?.toolCalls || 0,
+      baselineErrors: rawMetrics?.errors || 0,
+      baselineDurationMs: rawMetrics?.durationMs || 0,
+      treatmentSes,
+      treatmentCompletion: rawMetrics?.completion || 0,
+      treatmentToolCalls: rawMetrics?.toolCalls || 0,
+      treatmentErrors: rawMetrics?.errors || 0,
+      treatmentDurationMs: rawMetrics?.durationMs || 0,
+      delta,
+      decision: delta > this.MIN_DELTA ? 'kept' : 'discarded',
+      judgeReasoning: `Refinement quality: old=${baselineQuality.toFixed(1)} vs new=${treatmentQuality.toFixed(1)}, improvement=${delta.toFixed(1)}`,
+    };
 
-    // Run treatment with merged skill
-    await SkillModel.createOrUpdate(existingSkillId, {
-      ...existingSkill,
-      instructions: mergedInstructions,
-      allowedTools: existingSkill.allowed_tools,
-    }, userId);
+    await SkillEvalModel.create({
+      skillId: existingSkillId,
+      skillVersionId: versionId,
+      userId,
+      sourceGoalId,
+      ...abResult,
+    });
 
-    const treatmentMetrics = await this._measureGoalPerformance(sourceGoalId, userId, existingSkillId, mergedInstructions);
+    if (delta > this.MIN_DELTA) {
+      // KEEP — supersede old version and update skill
+      if (currentVersion) await SkillVersionModel.supersede(currentVersion.id);
 
-    let delta = 0;
-    let abResult = null;
-
-    if (baselineMetrics && treatmentMetrics) {
-      delta = treatmentMetrics.ses - baselineMetrics.ses;
-      abResult = {
-        baselineSes: baselineMetrics.ses,
-        baselineCompletion: baselineMetrics.completion,
-        baselineToolCalls: baselineMetrics.toolCalls,
-        baselineErrors: baselineMetrics.errors,
-        baselineDurationMs: baselineMetrics.durationMs,
-        treatmentSes: treatmentMetrics.ses,
-        treatmentCompletion: treatmentMetrics.completion,
-        treatmentToolCalls: treatmentMetrics.toolCalls,
-        treatmentErrors: treatmentMetrics.errors,
-        treatmentDurationMs: treatmentMetrics.durationMs,
-        delta,
-        decision: delta > this.MIN_DELTA ? 'kept' : 'discarded',
-      };
-
-      // Record evaluation
-      await SkillEvalModel.create({
-        skillId: existingSkillId,
-        skillVersionId: versionId,
-        userId,
-        sourceGoalId,
-        ...abResult,
-      });
-    }
-
-    if (!abResult || delta > this.MIN_DELTA) {
-      // KEEP new version — supersede old
-      if (currentVersion) {
-        await SkillVersionModel.supersede(currentVersion.id);
-      }
-
-      // Update skill metadata
       const existingMeta = existingSkill.metadata ? JSON.parse(existingSkill.metadata) : {};
       const sfMeta = existingMeta.skillforge || {};
       const sourceGoals = sfMeta.sourceGoals || [];
@@ -291,7 +278,7 @@ class SkillEvolver {
         ...existingMeta,
         skillforge: {
           ...sfMeta,
-          status: (treatmentMetrics?.ses || 0) >= this.GOLD_STANDARD_THRESHOLD ? 'gold_standard' : 'validated',
+          status: treatmentSes >= this.GOLD_STANDARD_THRESHOLD ? 'gold_standard' : 'validated',
           currentVersion: nextVersion,
           totalEvaluations: (sfMeta.totalEvaluations || 0) + 1,
           lastEvalDate: new Date().toISOString(),
@@ -310,36 +297,26 @@ class SkillEvolver {
         metadata: JSON.stringify(metadata),
       }, userId);
 
-      // Promote if exceptional
-      if ((treatmentMetrics?.ses || 0) >= this.GOLD_STANDARD_THRESHOLD) {
-        await this._promoteToGoldStandard(existingSkillId, { name: existingSkill.name, description: existingSkill.description }, sourceGoalId, userId, treatmentMetrics.ses);
+      if (treatmentSes >= this.GOLD_STANDARD_THRESHOLD) {
+        await this._promoteToGoldStandard(existingSkillId, { name: existingSkill.name, description: existingSkill.description }, sourceGoalId, userId, treatmentSes);
       }
 
-      console.log(`[SkillEvolver] REFINED "${existingSkill.name}" v${nextVersion} (delta: ${delta > 0 ? '+' : ''}${delta.toFixed(1)})`);
+      console.log(`[SkillEvolver] REFINED "${existingSkill.name}" v${nextVersion} (delta: +${delta.toFixed(1)})`);
 
       return {
-        action: (treatmentMetrics?.ses || 0) >= this.GOLD_STANDARD_THRESHOLD ? 'promoted' : 'kept',
+        action: treatmentSes >= this.GOLD_STANDARD_THRESHOLD ? 'promoted' : 'kept',
         skillId: existingSkillId,
         skillName: existingSkill.name,
         version: nextVersion,
         previousVersion: nextVersion - 1,
         versionId,
         delta,
-        baselineSES: abResult?.baselineSes,
-        treatmentSES: abResult?.treatmentSes,
+        baselineSES: baselineSes,
+        treatmentSES: treatmentSes,
       };
     } else {
-      // DISCARD new version — revert to original instructions
+      // DISCARD — supersede new version, don't touch the skill
       await SkillVersionModel.supersede(versionId);
-      await SkillModel.createOrUpdate(existingSkillId, {
-        name: existingSkill.name,
-        description: existingSkill.description,
-        instructions: originalInstructions,
-        category: existingSkill.category,
-        icon: existingSkill.icon,
-        allowedTools: existingSkill.allowed_tools,
-        metadata: existingSkill.metadata,
-      }, userId);
 
       console.log(`[SkillEvolver] DISCARDED refinement of "${existingSkill.name}" (delta: ${delta.toFixed(1)})`);
 
@@ -350,34 +327,38 @@ class SkillEvolver {
         version: nextVersion,
         previousVersion: nextVersion - 1,
         delta,
-        baselineSES: abResult?.baselineSes,
-        treatmentSES: abResult?.treatmentSes,
+        baselineSES: baselineSes,
+        treatmentSES: treatmentSes,
       };
     }
   }
 
   /**
-   * Run A/B test: baseline (no skill) vs treatment (with skill).
+   * Run A/B test: baseline (raw execution) vs treatment (with skill quality bonus).
+   * Uses structural analysis of skill quality instead of fake string-length bonus.
    * @private
    * @returns {Object|null} A/B test metrics, or null if test couldn't run
    */
-  static async _runABTest(sourceGoalId, skillId, userId) {
+  static async _runABTest(sourceGoalId, skillId, userId, traceAnalysis) {
     try {
       const goal = await GoalModel.findOne(sourceGoalId);
       if (!goal) return null;
 
-      // Measure baseline (existing performance from the source goal)
-      const baselineMetrics = await this._measureGoalPerformance(sourceGoalId, userId, null, null);
+      const tasks = await TaskModel.findByGoalId(sourceGoalId);
+
+      // Baseline: actual execution performance (no skill)
+      const baselineMetrics = await this._measureGoalPerformance(sourceGoalId, userId);
       if (!baselineMetrics) return null;
 
-      // Measure treatment (re-evaluate with the skill context considered)
+      // Treatment: evaluate skill quality structurally
       const skill = await SkillModel.findById(skillId);
-      const treatmentMetrics = await this._measureGoalPerformance(sourceGoalId, userId, skillId, skill?.instructions);
+      const qualityScore = this._evaluateSkillQuality(skill?.instructions || '', traceAnalysis, tasks);
 
-      if (!treatmentMetrics) return null;
-
-      const delta = treatmentMetrics.ses - baselineMetrics.ses;
-      const decision = delta > this.MIN_DELTA ? (treatmentMetrics.ses >= this.GOLD_STANDARD_THRESHOLD ? 'promoted' : 'kept') : 'discarded';
+      const treatmentSes = Math.min(100, baselineMetrics.ses + qualityScore);
+      const delta = qualityScore;
+      const decision = delta > this.MIN_DELTA
+        ? (treatmentSes >= this.GOLD_STANDARD_THRESHOLD ? 'promoted' : 'kept')
+        : 'discarded';
 
       return {
         baselineSes: baselineMetrics.ses,
@@ -385,13 +366,14 @@ class SkillEvolver {
         baselineToolCalls: baselineMetrics.toolCalls,
         baselineErrors: baselineMetrics.errors,
         baselineDurationMs: baselineMetrics.durationMs,
-        treatmentSes: treatmentMetrics.ses,
-        treatmentCompletion: treatmentMetrics.completion,
-        treatmentToolCalls: treatmentMetrics.toolCalls,
-        treatmentErrors: treatmentMetrics.errors,
-        treatmentDurationMs: treatmentMetrics.durationMs,
+        treatmentSes,
+        treatmentCompletion: baselineMetrics.completion,
+        treatmentToolCalls: baselineMetrics.toolCalls,
+        treatmentErrors: baselineMetrics.errors,
+        treatmentDurationMs: baselineMetrics.durationMs,
         delta,
         decision,
+        judgeReasoning: `Skill quality score: ${qualityScore.toFixed(1)}/25 — structural analysis of instruction depth, tool alignment, pattern coverage, error handling, and format quality.`,
       };
     } catch (error) {
       console.error(`[SkillEvolver] A/B test failed:`, error);
@@ -400,11 +382,11 @@ class SkillEvolver {
   }
 
   /**
-   * Measure goal performance metrics and calculate SES.
-   * Uses existing execution data rather than re-running the goal.
+   * Measure goal performance metrics and calculate SES from actual execution data.
+   * Returns raw metrics without any skill bonus — skill quality is evaluated separately.
    * @private
    */
-  static async _measureGoalPerformance(goalId, userId, skillId, skillInstructions) {
+  static async _measureGoalPerformance(goalId, userId) {
     try {
       const goal = await GoalModel.findOne(goalId);
       if (!goal) return null;
@@ -439,29 +421,20 @@ class SkillEvolver {
 
       const errorCount = failedTasks.length;
 
-      // If we have a skill, apply a bonus based on trace confidence
-      // This simulates the "treatment" effect without re-running the goal
-      let skillBonus = 0;
-      if (skillId && skillInstructions) {
-        // Estimate improvement based on skill instruction quality
-        const instructionLength = skillInstructions.length;
-        skillBonus = Math.min(15, instructionLength / 200); // Up to 15 point bonus
-      }
-
       const ses = this._calculateSES({
         completion,
         toolCalls: totalToolCalls,
-        expectedToolCalls: tasks.length * 3, // Rough baseline
+        expectedToolCalls: tasks.length * 3,
         errorCount,
         totalErrors: errorCount + completedTasks.length,
         durationMs,
-        baselineDurationMs: durationMs * 1.2, // Assume baseline was slower
+        baselineDurationMs: durationMs * 1.2,
         qualityScore: evaluation?.overall_score || evaluation?.evaluation_data?.scores?.overall || completion * 0.7,
         taskScores: tasks.map(t => {
           const te = evaluation?.taskEvaluations?.find(e => (e.task_id || e.taskId) === t.id);
           return te?.score || (t.status === 'completed' ? 70 : 0);
         }),
-      }) + skillBonus;
+      });
 
       return {
         ses: Math.min(100, Math.max(0, ses)),
@@ -474,6 +447,73 @@ class SkillEvolver {
       console.error(`[SkillEvolver] Performance measurement failed:`, error);
       return null;
     }
+  }
+
+  /**
+   * Evaluate skill quality through structural analysis of instructions.
+   * Scores based on: comprehensiveness, tool alignment, pattern coverage,
+   * error handling, and structural format.
+   * @private
+   * @returns {number} Quality score 0-25
+   */
+  static _evaluateSkillQuality(skillInstructions, traceAnalysis, tasks) {
+    if (!skillInstructions || !skillInstructions.trim()) return 0;
+
+    let score = 0;
+    const instructionsLower = skillInstructions.toLowerCase();
+
+    // 1. Instruction comprehensiveness (0-5)
+    const wordCount = skillInstructions.split(/\s+/).length;
+    if (wordCount >= 200) score += 5;
+    else if (wordCount >= 100) score += 4;
+    else if (wordCount >= 50) score += 3;
+    else if (wordCount >= 25) score += 2;
+    else score += 1;
+
+    // 2. Tool alignment — do instructions reference tools used in execution? (0-5)
+    const usedTools = new Set();
+    for (const task of (tasks || [])) {
+      try {
+        const tools = typeof task.required_tools === 'string'
+          ? JSON.parse(task.required_tools)
+          : (task.required_tools || []);
+        tools.forEach(t => usedTools.add(String(t).toLowerCase()));
+      } catch { /* ignore */ }
+    }
+    if (usedTools.size > 0) {
+      let toolMatches = 0;
+      for (const tool of usedTools) {
+        if (instructionsLower.includes(tool)) toolMatches++;
+      }
+      score += Math.min(5, (toolMatches / usedTools.size) * 5);
+    } else {
+      score += 2; // No tools to compare against
+    }
+
+    // 3. Pattern coverage — does skill incorporate discovered patterns? (0-5)
+    const patterns = traceAnalysis?.patterns || [];
+    const effectivePatterns = patterns.filter(p => (p.effectiveness || 0) >= 0.5);
+    score += Math.min(5, effectivePatterns.length * 1.25);
+
+    // 4. Error handling coverage (0-5)
+    const errorKeywords = ['error', 'fail', 'recover', 'retry', 'fallback', 'exception', 'handle', 'timeout', 'issue'];
+    const errorMatches = errorKeywords.filter(k => instructionsLower.includes(k)).length;
+    score += Math.min(5, errorMatches);
+
+    // 5. Structural quality — well-formatted instructions (0-5)
+    let structScore = 0;
+    if (skillInstructions.includes('#')) structScore += 1;
+    if (/\d\.\s/.test(skillInstructions) || /^-\s/m.test(skillInstructions)) structScore += 1;
+    if (instructionsLower.includes('when') || instructionsLower.includes('if')) structScore += 1;
+    if (instructionsLower.includes('avoid') || instructionsLower.includes('do not') || instructionsLower.includes("don't")) structScore += 1;
+    if (instructionsLower.includes('step') || instructionsLower.includes('first') || instructionsLower.includes('then')) structScore += 1;
+    score += structScore;
+
+    // Apply confidence multiplier from trace analysis (0.5-1.0)
+    const confidence = traceAnalysis?.skillCandidate?.confidence || 0.7;
+    score *= Math.max(0.5, Math.min(1.0, confidence));
+
+    return Math.round(Math.min(25, Math.max(0, score)) * 10) / 10;
   }
 
   /**

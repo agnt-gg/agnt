@@ -16,7 +16,9 @@ export default {
     selectedSkillVersions: [],
     selectedSkillLineage: null,
     selectedSkillEvals: [],
+    eligibleGoals: [],
     isLoading: false,
+    isLoadingGoals: false,
     isAnalyzing: false,
     isEvolving: false,
     error: null,
@@ -31,7 +33,9 @@ export default {
     SET_SKILL_VERSIONS(state, versions) { state.selectedSkillVersions = versions || []; },
     SET_SKILL_LINEAGE(state, data) { state.selectedSkillLineage = data; },
     SET_SKILL_EVALS(state, evals) { state.selectedSkillEvals = evals || []; },
+    SET_ELIGIBLE_GOALS(state, goals) { state.eligibleGoals = goals || []; },
     SET_LOADING(state, val) { state.isLoading = val; },
+    SET_LOADING_GOALS(state, val) { state.isLoadingGoals = val; },
     SET_ANALYZING(state, val) { state.isAnalyzing = val; },
     SET_EVOLVING(state, val) { state.isEvolving = val; },
     SET_ERROR(state, err) { state.error = err; },
@@ -122,6 +126,23 @@ export default {
       }
     },
 
+    async fetchEligibleGoals({ commit }) {
+      commit('SET_LOADING_GOALS', true);
+      try {
+        const res = await fetch(`${API_CONFIG.BASE_URL}/skillforge/eligible-goals`, {
+          credentials: 'include',
+          headers: getAuthHeaders(),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        commit('SET_ELIGIBLE_GOALS', data.goals);
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+      } finally {
+        commit('SET_LOADING_GOALS', false);
+      }
+    },
+
     async analyzeGoal({ commit }, goalId) {
       commit('SET_ANALYZING', true);
       commit('SET_LAST_ANALYSIS', null);
@@ -155,9 +176,10 @@ export default {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         commit('SET_LAST_EVOLUTION', data.result);
-        // Refresh stats after evolution
+        // Refresh stats and leaderboard after evolution
         dispatch('fetchStats');
         dispatch('fetchLeaderboard');
+        dispatch('fetchEligibleGoals');
         return data.result;
       } catch (error) {
         commit('SET_ERROR', error.message);
@@ -215,10 +237,12 @@ export default {
     leaderboard: state => state.leaderboard,
     settings: state => state.settings,
     isLoading: state => state.isLoading,
+    isLoadingGoals: state => state.isLoadingGoals,
     isAnalyzing: state => state.isAnalyzing,
     isEvolving: state => state.isEvolving,
     lastAnalysis: state => state.lastAnalysis,
     lastEvolution: state => state.lastEvolution,
+    eligibleGoals: state => state.eligibleGoals,
     selectedSkillVersions: state => state.selectedSkillVersions,
     selectedSkillLineage: state => state.selectedSkillLineage,
     selectedSkillEvals: state => state.selectedSkillEvals,

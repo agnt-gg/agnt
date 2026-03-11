@@ -102,7 +102,7 @@
             <div class="empty-state">
               <i class="fas fa-flask"></i>
               <p>No evolved skills yet</p>
-              <span class="empty-hint">Complete goals to generate skill candidates, then evolve them here.</span>
+              <span class="empty-hint">Complete goals to generate skill candidates, then forge them in the Forge tab.</span>
             </div>
           </div>
 
@@ -155,6 +155,39 @@
                 @change="saveSetting('goldStandardThreshold')"
               />
             </div>
+            <div class="setting-item">
+              <label>Min Tasks</label>
+              <span class="setting-hint">Minimum tasks a goal needs to be eligible</span>
+              <input
+                type="number"
+                class="setting-input"
+                v-model.number="localSettings.minTasks"
+                min="0" max="20" step="1"
+                @change="saveSetting('minTasks')"
+              />
+            </div>
+            <div class="setting-item">
+              <label>Min Iterations</label>
+              <span class="setting-hint">Minimum AGI loop iterations (0 = allow single-pass)</span>
+              <input
+                type="number"
+                class="setting-input"
+                v-model.number="localSettings.minIterations"
+                min="0" max="10" step="1"
+                @change="saveSetting('minIterations')"
+              />
+            </div>
+            <div class="setting-item">
+              <label>Min Score</label>
+              <span class="setting-hint">Minimum evaluation score % to forge from</span>
+              <input
+                type="number"
+                class="setting-input"
+                v-model.number="localSettings.minScore"
+                min="0" max="100" step="5"
+                @change="saveSetting('minScore')"
+              />
+            </div>
           </div>
         </div>
 
@@ -192,6 +225,7 @@
                 <span class="eval-detail"><i class="fas fa-wrench"></i> {{ ev.baseline_tool_calls ?? '?' }} / {{ ev.treatment_tool_calls ?? '?' }} tool calls</span>
                 <span class="eval-detail"><i class="fas fa-bug"></i> {{ ev.baseline_errors ?? '?' }} / {{ ev.treatment_errors ?? '?' }} errors</span>
               </div>
+              <p v-if="ev.judge_reasoning" class="eval-reasoning">{{ ev.judge_reasoning }}</p>
             </div>
           </div>
           <div v-else class="empty-state-container">
@@ -202,33 +236,118 @@
           </div>
         </div>
 
-        <!-- Evolve Tab -->
-        <div v-if="activeTab === 'evolve'" class="sf-content">
-          <div class="evolve-section">
-            <h3><i class="fas fa-dna"></i> Evolve from Goal</h3>
-            <p class="evolve-desc">Enter a completed goal ID to analyze its execution trace and generate or refine a skill.</p>
-            <div class="evolve-form">
+        <!-- Forge Tab (was Evolve) -->
+        <div v-if="activeTab === 'forge'" class="sf-content">
+          <div class="forge-section">
+            <h3><i class="fas fa-dna"></i> Forge Skills from Goals</h3>
+            <p class="forge-desc">Select a completed goal to analyze its execution trace and forge a new skill.</p>
+
+            <!-- Filter controls -->
+            <div class="forge-filters">
               <input
-                v-model="evolveGoalId"
+                v-model="goalSearch"
                 class="form-input"
-                placeholder="Goal ID (e.g., abc123-def4-...)"
+                placeholder="Search goals..."
               />
               <button
-                class="evolve-btn analyze"
-                :disabled="!evolveGoalId || isAnalyzing"
-                @click="runAnalysis"
+                class="filter-btn"
+                :class="{ active: showEligibleOnly }"
+                @click="showEligibleOnly = !showEligibleOnly"
               >
-                <i :class="isAnalyzing ? 'fas fa-spinner fa-spin' : 'fas fa-search'"></i>
-                {{ isAnalyzing ? 'Analyzing...' : 'Analyze Trace' }}
+                <i class="fas fa-filter"></i> Eligible Only
               </button>
-              <button
-                class="evolve-btn evolve"
-                :disabled="!evolveGoalId || isEvolving"
-                @click="runEvolution"
+              <button class="filter-btn" @click="refreshGoals">
+                <i :class="isLoadingGoals ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+              </button>
+            </div>
+
+            <!-- Goal list -->
+            <div v-if="isLoadingGoals" class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i> Loading goals...
+            </div>
+            <div v-else-if="filteredGoals.length > 0" class="goals-list">
+              <div
+                v-for="goal in filteredGoals"
+                :key="goal.id"
+                class="goal-card"
+                :class="{
+                  selected: selectedGoal?.id === goal.id,
+                  eligible: goal.eligible,
+                  ineligible: !goal.eligible,
+                  forged: goal.already_forged
+                }"
+                @click="selectGoal(goal)"
               >
-                <i :class="isEvolving ? 'fas fa-spinner fa-spin' : 'fas fa-dna'"></i>
-                {{ isEvolving ? 'Evolving...' : 'Analyze + Evolve' }}
-              </button>
+                <div class="goal-header">
+                  <span class="goal-title">{{ goal.title }}</span>
+                  <div class="goal-badges">
+                    <span v-if="goal.already_forged" class="badge forged">
+                      <i class="fas fa-hammer"></i> Forged ({{ goal.forged_count }})
+                    </span>
+                    <span v-if="goal.eligible" class="badge eligible">
+                      <i class="fas fa-check"></i> Eligible
+                    </span>
+                    <span v-else class="badge ineligible">
+                      <i class="fas fa-times"></i> Ineligible
+                    </span>
+                  </div>
+                </div>
+                <p v-if="goal.description" class="goal-desc">{{ truncate(goal.description, 120) }}</p>
+                <div class="goal-metrics">
+                  <span class="goal-metric">
+                    <i class="fas fa-star"></i> {{ goal.eval_score != null ? Math.round(goal.eval_score) + '%' : 'N/A' }}
+                  </span>
+                  <span class="goal-metric">
+                    <i class="fas fa-tasks"></i> {{ goal.completed_tasks }}/{{ goal.task_count }} tasks
+                  </span>
+                  <span class="goal-metric">
+                    <i class="fas fa-redo"></i> {{ goal.iteration_count }} iters
+                  </span>
+                  <span class="goal-metric">
+                    <i class="fas fa-calendar"></i> {{ formatDate(goal.completed_at || goal.created_at) }}
+                  </span>
+                </div>
+                <div v-if="!goal.eligible && goal.ineligible_reasons?.length" class="ineligible-reasons">
+                  <span v-for="reason in goal.ineligible_reasons" :key="reason" class="reason">{{ reason }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="empty-state-container">
+              <div class="empty-state">
+                <i class="fas fa-flag-checkered"></i>
+                <p>No completed goals found</p>
+                <span class="empty-hint">Complete goals with the AGI loop to generate skill candidates.</span>
+              </div>
+            </div>
+
+            <!-- Selected goal actions -->
+            <div v-if="selectedGoal" class="selected-goal-actions">
+              <div class="selected-goal-bar">
+                <div class="selected-info">
+                  <span class="selected-label">Selected:</span>
+                  <span class="selected-name">{{ selectedGoal.title }}</span>
+                  <span class="selected-id">{{ selectedGoal.id.substring(0, 8) }}...</span>
+                </div>
+                <div class="action-buttons">
+                  <button
+                    class="forge-btn analyze"
+                    :disabled="isAnalyzing"
+                    @click="runAnalysis"
+                  >
+                    <i :class="isAnalyzing ? 'fas fa-spinner fa-spin' : 'fas fa-search'"></i>
+                    {{ isAnalyzing ? 'Analyzing...' : 'Analyze Trace' }}
+                  </button>
+                  <button
+                    class="forge-btn primary"
+                    :disabled="!selectedGoal.eligible || isEvolving"
+                    @click="runEvolution"
+                    :title="!selectedGoal.eligible ? 'Goal does not meet eligibility thresholds' : 'Analyze trace and forge a skill'"
+                  >
+                    <i :class="isEvolving ? 'fas fa-spinner fa-spin' : 'fas fa-hammer'"></i>
+                    {{ isEvolving ? 'Forging...' : 'Forge Skill' }}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <!-- Analysis Results -->
@@ -239,18 +358,18 @@
                   <span class="meta-badge" :class="lastAnalysis.analysis.traceQuality">
                     {{ lastAnalysis.analysis.traceQuality }} quality
                   </span>
-                  <span class="meta-info">{{ lastAnalysis.analysis.patternCount || 0 }} patterns</span>
-                  <span class="meta-info">{{ lastAnalysis.analysis.antipatternCount || 0 }} antipatterns</span>
+                  <span class="meta-info">{{ lastAnalysis.analysis.patternCount || lastAnalysis.analysis.patterns?.length || 0 }} patterns</span>
+                  <span class="meta-info">{{ lastAnalysis.analysis.antipatternCount || lastAnalysis.analysis.antipatterns?.length || 0 }} antipatterns</span>
                 </div>
                 <p class="analysis-summary">{{ lastAnalysis.analysis.overallAssessment }}</p>
                 <!-- Skill candidate -->
-                <div v-if="lastAnalysis.analysis.skillCandidate" class="candidate-preview">
+                <div v-if="lastAnalysis.analysis.skillCandidate?.shouldGenerate" class="candidate-preview">
                   <h5>Skill Candidate</h5>
                   <p><strong>{{ lastAnalysis.analysis.skillCandidate.name }}</strong> — {{ lastAnalysis.analysis.skillCandidate.description }}</p>
                   <span class="meta-badge">Confidence: {{ (lastAnalysis.analysis.skillCandidate.confidence * 100).toFixed(0) }}%</span>
                 </div>
                 <!-- Patterns list -->
-                <div v-if="lastAnalysis.analysis.patterns?.length" class="patterns-list">
+                <div v-if="(lastAnalysis.analysis.patterns || lastAnalysis.analysis.patterns)?.length" class="patterns-list">
                   <h5>Patterns Found</h5>
                   <div v-for="p in lastAnalysis.analysis.patterns" :key="p.name" class="pattern-item">
                     <span class="pattern-name">{{ p.name }}</span>
@@ -259,12 +378,12 @@
                   </div>
                 </div>
               </div>
-              <p v-else class="result-message">{{ lastAnalysis.message || 'No analysis data returned.' }}</p>
+              <p v-else class="result-message">{{ lastAnalysis.message || lastAnalysis.reason || 'No analysis data returned.' }}</p>
             </div>
 
             <!-- Evolution Results -->
             <div v-if="lastEvolution" class="result-panel evolution-result">
-              <h4><i class="fas fa-dna"></i> Evolution Result</h4>
+              <h4><i class="fas fa-dna"></i> Forge Result</h4>
               <div v-if="lastEvolution.evolution" class="evolution-content">
                 <div class="evo-header">
                   <span class="evo-action" :class="lastEvolution.evolution.action">
@@ -289,8 +408,12 @@
                   </div>
                 </div>
               </div>
-              <p v-else-if="lastEvolution.reason" class="result-message">{{ lastEvolution.reason }}</p>
-              <p v-else class="result-message">{{ lastEvolution.status }}: {{ lastEvolution.reason || 'No details' }}</p>
+              <div v-if="lastEvolution.analysis" class="evo-analysis-summary">
+                <span class="meta-badge" :class="lastEvolution.analysis.traceQuality">{{ lastEvolution.analysis.traceQuality }}</span>
+                <span class="meta-info">{{ lastEvolution.analysis.patternCount || 0 }} patterns</span>
+              </div>
+              <p v-if="lastEvolution.reason" class="result-message">{{ lastEvolution.reason }}</p>
+              <p v-else-if="lastEvolution.status === 'skipped'" class="result-message">{{ lastEvolution.reason || 'Skipped — goal did not meet thresholds' }}</p>
             </div>
           </div>
         </div>
@@ -373,19 +496,24 @@ const searchQuery = ref('');
 const activeTab = ref('dashboard');
 const selectedSkillId = ref(null);
 const selectedSkillName = ref('');
-const evolveGoalId = ref('');
+const selectedGoal = ref(null);
+const goalSearch = ref('');
+const showEligibleOnly = ref(false);
 
 const localSettings = reactive({
   autoAnalyze: false,
   minConfidence: 0.7,
   minDelta: 2.0,
   goldStandardThreshold: 90,
+  minTasks: 1,
+  minIterations: 0,
+  minScore: 30,
 });
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: 'fas fa-chart-bar' },
   { id: 'evaluations', label: 'A/B Tests', icon: 'fas fa-vial' },
-  { id: 'evolve', label: 'Evolve', icon: 'fas fa-dna' },
+  { id: 'forge', label: 'Forge', icon: 'fas fa-hammer' },
 ];
 
 // Getters
@@ -394,10 +522,12 @@ const evaluations = computed(() => store.getters['skillforge/evaluations']);
 const leaderboard = computed(() => store.getters['skillforge/leaderboard']);
 const isAnalyzing = computed(() => store.getters['skillforge/isAnalyzing']);
 const isEvolving = computed(() => store.getters['skillforge/isEvolving']);
+const isLoadingGoals = computed(() => store.getters['skillforge/isLoadingGoals']);
 const lastAnalysis = computed(() => store.getters['skillforge/lastAnalysis']);
 const lastEvolution = computed(() => store.getters['skillforge/lastEvolution']);
 const skillVersions = computed(() => store.getters['skillforge/selectedSkillVersions']);
 const skillEvals = computed(() => store.getters['skillforge/selectedSkillEvals']);
+const eligibleGoals = computed(() => store.getters['skillforge/eligibleGoals']);
 
 const filteredLeaderboard = computed(() => {
   const q = searchQuery.value.toLowerCase();
@@ -407,12 +537,33 @@ const filteredLeaderboard = computed(() => {
   );
 });
 
+const filteredGoals = computed(() => {
+  let goals = eligibleGoals.value || [];
+  if (showEligibleOnly.value) {
+    goals = goals.filter(g => g.eligible);
+  }
+  const q = goalSearch.value.toLowerCase();
+  if (q) {
+    goals = goals.filter(g =>
+      g.title?.toLowerCase().includes(q) || g.description?.toLowerCase().includes(q)
+    );
+  }
+  return goals;
+});
+
 const panelProps = computed(() => ({ selectedSkill: null }));
 
 // Load settings from store
 watch(() => store.getters['skillforge/settings'], (s) => {
   if (s) Object.assign(localSettings, s);
 }, { immediate: true });
+
+// Load goals when switching to forge tab
+watch(activeTab, (tab) => {
+  if (tab === 'forge' && eligibleGoals.value.length === 0) {
+    store.dispatch('skillforge/fetchEligibleGoals');
+  }
+});
 
 const initializeScreen = () => {
   store.dispatch('skillforge/fetchStats');
@@ -433,21 +584,35 @@ const selectLeaderboardSkill = (skill) => {
   store.dispatch('skillforge/fetchSkillEvaluations', skill.skill_id);
 };
 
+const selectGoal = (goal) => {
+  selectedGoal.value = selectedGoal.value?.id === goal.id ? null : goal;
+  // Clear previous results when selecting a new goal
+  store.commit('skillforge/SET_LAST_ANALYSIS', null);
+  store.commit('skillforge/SET_LAST_EVOLUTION', null);
+};
+
+const refreshGoals = () => {
+  store.dispatch('skillforge/fetchEligibleGoals');
+};
+
 const runAnalysis = async () => {
+  if (!selectedGoal.value) return;
   try {
-    await store.dispatch('skillforge/analyzeGoal', evolveGoalId.value);
-    terminalLines.value.push(`[SkillForge] Trace analysis complete for goal ${evolveGoalId.value}`);
+    await store.dispatch('skillforge/analyzeGoal', selectedGoal.value.id);
+    terminalLines.value.push(`[SkillForge] Trace analysis complete for "${selectedGoal.value.title}"`);
   } catch (err) {
     terminalLines.value.push(`[SkillForge] Analysis error: ${err.message}`);
   }
 };
 
 const runEvolution = async () => {
+  if (!selectedGoal.value) return;
   try {
-    const result = await store.dispatch('skillforge/evolveFromGoal', evolveGoalId.value);
-    terminalLines.value.push(`[SkillForge] Evolution complete: ${result?.evolution?.action || result?.status || 'done'}`);
+    const result = await store.dispatch('skillforge/evolveFromGoal', selectedGoal.value.id);
+    const action = result?.evolution?.action || result?.status || 'done';
+    terminalLines.value.push(`[SkillForge] Forge complete: ${action} — "${selectedGoal.value.title}"`);
   } catch (err) {
-    terminalLines.value.push(`[SkillForge] Evolution error: ${err.message}`);
+    terminalLines.value.push(`[SkillForge] Forge error: ${err.message}`);
   }
 };
 
@@ -462,12 +627,12 @@ const saveSetting = (key) => {
 
 // Helpers
 const formatDelta = (d) => {
-  if (d == null) return '—';
+  if (d == null) return '\u2014';
   return (d >= 0 ? '+' : '') + d.toFixed(1);
 };
 
 const formatPercent = (v) => {
-  if (v == null) return '—';
+  if (v == null) return '\u2014';
   return (v * 100).toFixed(0) + '%';
 };
 
@@ -609,13 +774,7 @@ onMounted(() => {
   border-color: var(--color-green);
   background: rgba(var(--green-rgb), 0.05);
 }
-.lb-rank {
-  font-weight: 700;
-  color: var(--color-green);
-  width: 30px;
-  text-align: center;
-  font-size: 0.9em;
-}
+.lb-rank { font-weight: 700; color: var(--color-green); width: 30px; text-align: center; font-size: 0.9em; }
 .lb-info { flex: 1; display: flex; flex-direction: column; }
 .lb-name { font-weight: 600; color: var(--color-text); font-size: 0.9em; }
 .lb-category { font-size: 0.7em; color: var(--color-grey); text-transform: uppercase; }
@@ -673,9 +832,16 @@ onMounted(() => {
   color: var(--color-grey);
 }
 .eval-detail { display: flex; align-items: center; gap: 4px; }
+.eval-reasoning {
+  font-size: 0.75em;
+  color: var(--color-grey);
+  margin: 8px 0 0;
+  font-style: italic;
+  line-height: 1.3;
+}
 
-/* Evolve */
-.evolve-section h3 {
+/* Forge Tab */
+.forge-section h3 {
   font-size: 1em;
   color: var(--color-text);
   margin: 0 0 4px;
@@ -683,26 +849,199 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
 }
-.evolve-section h3 i { color: var(--color-green); }
-.evolve-desc { font-size: 0.85em; color: var(--color-grey); margin: 0 0 14px; }
-.evolve-form {
+.forge-section h3 i { color: var(--color-green); }
+.forge-desc { font-size: 0.85em; color: var(--color-grey); margin: 0 0 14px; }
+
+/* Forge Filters */
+.forge-filters {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
-.evolve-form .form-input {
+.forge-filters .form-input {
   flex: 1;
-  padding: 8px 12px;
+  padding: 7px 12px;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   color: var(--color-text);
+  font-size: 0.85em;
+}
+.forge-filters .form-input:focus { outline: none; border-color: var(--color-primary); }
+.filter-btn {
+  padding: 7px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  color: var(--color-grey);
+  font-size: 0.8em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.filter-btn:hover { color: var(--color-text); border-color: var(--color-text); }
+.filter-btn.active {
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.3);
+  color: var(--color-green);
+}
+.loading-state {
+  text-align: center;
+  padding: 30px;
+  color: var(--color-grey);
   font-size: 0.9em;
+}
+
+/* Goal List */
+.goals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.goal-card {
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.goal-card:hover {
+  border-color: rgba(var(--green-rgb), 0.3);
+  background: rgba(0, 0, 0, 0.25);
+}
+.goal-card.selected {
+  border-color: var(--color-green);
+  background: rgba(var(--green-rgb), 0.06);
+}
+.goal-card.ineligible {
+  opacity: 0.65;
+}
+.goal-card.ineligible:hover {
+  opacity: 0.85;
+}
+.goal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.goal-title {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.9em;
+  flex: 1;
+}
+.goal-badges {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.badge {
+  font-size: 0.65em;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.badge.eligible {
+  background: rgba(var(--green-rgb), 0.15);
+  color: var(--color-green);
+}
+.badge.ineligible {
+  background: rgba(255, 77, 79, 0.1);
+  color: #ff6b6b;
+}
+.badge.forged {
+  background: rgba(100, 149, 237, 0.15);
+  color: #6495ed;
+}
+.goal-desc {
+  font-size: 0.8em;
+  color: var(--color-grey);
+  margin: 0 0 6px;
+  line-height: 1.3;
+}
+.goal-metrics {
+  display: flex;
+  gap: 14px;
+  font-size: 0.75em;
+  color: var(--color-grey);
+}
+.goal-metric {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.goal-metric i { font-size: 0.85em; }
+.ineligible-reasons {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.reason {
+  font-size: 0.65em;
+  background: rgba(255, 77, 79, 0.08);
+  color: #ff6b6b;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Selected Goal Actions */
+.selected-goal-actions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+.selected-goal-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.selected-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.selected-label {
+  font-size: 0.75em;
+  color: var(--color-grey);
+  text-transform: uppercase;
+}
+.selected-name {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selected-id {
+  font-size: 0.7em;
+  color: var(--color-grey);
   font-family: 'Courier New', monospace;
 }
-.evolve-form .form-input:focus { outline: none; border-color: var(--color-primary); }
-.evolve-btn {
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+.forge-btn {
   padding: 8px 16px;
   border-radius: 6px;
   font-size: 0.85em;
@@ -714,18 +1053,18 @@ onMounted(() => {
   white-space: nowrap;
   transition: opacity 0.15s;
 }
-.evolve-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.evolve-btn.analyze {
+.forge-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.forge-btn.analyze {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.3);
   color: var(--color-green);
 }
-.evolve-btn.evolve {
+.forge-btn.primary {
   background: var(--color-green);
   border: none;
   color: var(--color-dark-navy);
 }
-.evolve-btn:not(:disabled):hover { opacity: 0.85; }
+.forge-btn:not(:disabled):hover { opacity: 0.85; }
 
 /* Result Panels */
 .result-panel {
@@ -733,7 +1072,7 @@ onMounted(() => {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 16px;
-  margin-bottom: 16px;
+  margin-top: 16px;
 }
 .result-panel h4 {
   font-size: 0.9em;
@@ -806,6 +1145,12 @@ onMounted(() => {
 .evo-action.skipped, .evo-action.error { color: var(--color-grey); }
 .evo-name { font-weight: 600; color: var(--color-text); }
 .evo-version { font-size: 0.8em; color: var(--color-grey); }
+.evo-analysis-summary {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
 
 /* Settings */
 .settings-grid {

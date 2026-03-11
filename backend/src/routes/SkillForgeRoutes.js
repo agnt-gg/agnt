@@ -6,6 +6,18 @@ import { authenticateToken } from './Middleware.js';
 
 const SkillForgeRoutes = express.Router();
 
+// GET /api/skillforge/eligible-goals — List completed goals available for skill forging
+SkillForgeRoutes.get('/eligible-goals', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const goals = await SkillForgeOrchestrator.getEligibleGoals(userId);
+    res.json({ success: true, goals });
+  } catch (error) {
+    console.error('[SkillForge Route] Eligible goals error:', error);
+    res.status(500).json({ error: 'Failed to fetch eligible goals' });
+  }
+});
+
 // POST /api/skillforge/analyze/:goalId — Trigger trace analysis for a completed goal
 SkillForgeRoutes.post('/analyze/:goalId', authenticateToken, async (req, res) => {
   try {
@@ -110,17 +122,27 @@ SkillForgeRoutes.get('/stats', authenticateToken, async (req, res) => {
 });
 
 // GET /api/skillforge/settings — Get SkillForge configuration
-SkillForgeRoutes.get('/settings', authenticateToken, (req, res) => {
-  const userId = req.user.userId;
-  const settings = SkillForgeOrchestrator.getSettings(userId);
-  res.json({ success: true, settings });
+SkillForgeRoutes.get('/settings', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const settings = await SkillForgeOrchestrator.getSettings(userId);
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('[SkillForge Route] Settings error:', error);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
 });
 
 // POST /api/skillforge/settings — Update SkillForge configuration
-SkillForgeRoutes.post('/settings', authenticateToken, (req, res) => {
-  const userId = req.user.userId;
-  const settings = SkillForgeOrchestrator.updateSettings(userId, req.body);
-  res.json({ success: true, settings });
+SkillForgeRoutes.post('/settings', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const settings = await SkillForgeOrchestrator.updateSettings(userId, req.body);
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('[SkillForge Route] Settings update error:', error);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
 });
 
 console.log('SkillForge Routes Started...');

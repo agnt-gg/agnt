@@ -3,6 +3,10 @@ import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
 import GoalEvaluator from './GoalEvaluator.js';
 import StreamEngine from '../../stream/StreamEngine.js';
+import { isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
+import { readFile, readdir } from 'fs/promises';
+import { join } from 'path';
+import { homedir } from 'os';
 
 /**
  * TraceAnalyzer — LLM-as-Judge that reviews goal execution traces
@@ -29,14 +33,9 @@ class TraceAnalyzer {
       const tasks = await TaskModel.findByGoalId(goalId);
       const iterations = await GoalIterationModel.findByGoalId(goalId);
 
-      // Guard: minimum data thresholds
-      if (tasks.length < 3) {
-        console.log(`[TraceAnalyzer] Skipping — only ${tasks.length} tasks (need >= 3)`);
-        return null;
-      }
-
-      if (iterations.length < 2) {
-        console.log(`[TraceAnalyzer] Skipping — only ${iterations.length} iterations (need >= 2)`);
+      // Guard: need at least 1 task with some data to analyze
+      if (tasks.length === 0) {
+        console.log(`[TraceAnalyzer] Skipping — no tasks found for goal ${goalId}`);
         return null;
       }
 
@@ -51,7 +50,20 @@ class TraceAnalyzer {
       const evalScore = evaluation?.overall_score || evaluation?.evaluation_data?.scores?.overall || 0;
 
       // Build trace document
-      const traceDoc = this._buildTraceDocument(goal, tasks, iterations, evaluation);
+      let traceDoc = this._buildTraceDocument(goal, tasks, iterations, evaluation);
+
+      // Enrich with unfirehose execution logs if available
+      try {
+        if (isUnfirehoseEnabled()) {
+          const enrichment = await this._getUnfirehoseEnrichment(goal, tasks);
+          if (enrichment) {
+            traceDoc += enrichment;
+            console.log(`[TraceAnalyzer] Enriched trace with unfirehose execution logs`);
+          }
+        }
+      } catch (err) {
+        console.log(`[TraceAnalyzer] Unfirehose enrichment skipped: ${err.message}`);
+      }
 
       // Determine if we should generate a skill candidate
       const generateSkill = evalScore >= 30;
@@ -304,6 +316,110 @@ OUTPUT FORMAT (respond with valid JSON only, no markdown fences):
       console.error('[TraceAnalyzer] Failed to parse LLM judge output:', error);
       return null;
     }
+  }
+
+  /**
+   * Scan unfirehose session files for execution logs that overlap with the goal's timeframe.
+   * Returns an enrichment string to append to the trace document, or null.
+   * @private
+   */
+  static async _getUnfirehoseEnrichment(goal, tasks) {
+    const baseDir = process.env.UNFIREHOSE_DIR || join(homedir(), '.agnt', 'unfirehose');
+
+    // Determine execution time window from tasks
+    const startTimes = tasks.filter(t => t.started_at).map(t => new Date(t.started_at).getTime());
+    const endTimes = tasks.filter(t => t.completed_at).map(t => new Date(t.completed_at).getTime());
+    if (startTimes.length === 0) return null;
+
+    const windowStart = Math.min(...startTimes) - 60000; // 1 min buffer
+    const windowEnd = endTimes.length > 0 ? Math.max(...endTimes) + 60000 : Date.now();
+
+    const matchingSessions = [];
+
+    const projectDirs = await readdir(baseDir, { withFileTypes: true }).catch(() => []);
+    for (const dirent of projectDirs) {
+      if (!dirent.isDirectory()) continue;
+      if (matchingSessions.length >= 5) break;
+
+      const dirPath = join(baseDir, dirent.name);
+      const files = (await readdir(dirPath).catch(() => [])).filter(f => f.endsWith('.jsonl'));
+
+      // Only check the most recent 50 files per directory
+      for (const file of files.slice(-50)) {
+        if (matchingSessions.length >= 5) break;
+
+        const filePath = join(dirPath, file);
+        const content = await readFile(filePath, 'utf-8').catch(() => '');
+        const lines = content.split('\n').filter(l => l.trim());
+        if (lines.length < 2) continue;
+
+        try {
+          const envelope = JSON.parse(lines[0]);
+          if (envelope.type !== 'session') continue;
+
+          const sessionTime = new Date(envelope.createdAt).getTime();
+          if (sessionTime >= windowStart && sessionTime <= windowEnd) {
+            const messages = [];
+            for (let i = 1; i < lines.length; i++) {
+              try {
+                const parsed = JSON.parse(lines[i]);
+                if (parsed.type === 'message') messages.push(parsed);
+              } catch { /* skip malformed lines */ }
+            }
+            matchingSessions.push({ envelope, messages });
+          }
+        } catch { continue; }
+      }
+    }
+
+    if (matchingSessions.length === 0) return null;
+
+    // Build enrichment section (capped at 50 entries to keep prompt manageable)
+    let enrichment = `\n=== DETAILED EXECUTION LOG (unfirehose) ===\n`;
+    enrichment += `Sessions found: ${matchingSessions.length}\n\n`;
+
+    let entryCount = 0;
+    for (const session of matchingSessions) {
+      enrichment += `--- Session: ${session.envelope.id} (${session.envelope.chatType || 'unknown'}) ---\n`;
+
+      for (const msg of session.messages) {
+        if (entryCount >= 50) break;
+
+        if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+          // Log tool calls with their inputs
+          for (const block of msg.content) {
+            if (block.type === 'tool-call') {
+              const inputStr = JSON.stringify(block.input || {}).substring(0, 500);
+              enrichment += `Tool Call: ${block.toolName}\n  Input: ${inputStr}\n`;
+              entryCount++;
+            }
+          }
+          // Log assistant reasoning (first text block, truncated)
+          const textBlock = msg.content.find(b => b.type === 'text');
+          if (textBlock?.text && textBlock.text.length > 10) {
+            enrichment += `Agent Reasoning: ${textBlock.text.substring(0, 300)}\n`;
+            entryCount++;
+          }
+        }
+
+        if (msg.role === 'tool' && Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (block.type === 'tool-result') {
+              const outputStr = String(block.output || '').substring(0, 300);
+              enrichment += `Tool Result: ${block.toolName} ${block.isError ? '[ERROR]' : '[OK]'}\n  Output: ${outputStr}\n`;
+              entryCount++;
+            }
+          }
+        }
+      }
+
+      if (entryCount >= 50) {
+        enrichment += `... (truncated, ${entryCount} entries shown)\n`;
+        break;
+      }
+    }
+
+    return enrichment;
   }
 }
 
