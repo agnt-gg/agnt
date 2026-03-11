@@ -452,10 +452,11 @@ async function universalChatHandler(req, res, context = {}) {
 
   // --- unfirehose/1.0 integration ---
   let sendEvent = rawSendEvent;
+  let unfirehoseSession = null;
   if (isUnfirehoseEnabled()) {
     try {
       const firstPrompt = message || (originalMessages && originalMessages[originalMessages.length - 1]?.content);
-      const unfirehoseSession = createUnfirehoseSession({
+      unfirehoseSession = createUnfirehoseSession({
         conversationId,
         provider: normalizedProvider,
         model,
