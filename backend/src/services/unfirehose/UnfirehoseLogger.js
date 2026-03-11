@@ -349,16 +349,15 @@ class UnfirehoseSession {
     return Object.keys(u).length > 0 ? u : undefined;
   }
 
-  async _append(obj) {
-    const op = (async () => {
+  _append(obj) {
+    this._pendingWrites = (this._pendingWrites || Promise.resolve()).then(async () => {
       try {
         await this._dirReady;
         await appendFile(this.outputFile, JSON.stringify(obj) + '\n');
       } catch (err) {
         console.error('[unfirehose] Write failed:', err.message);
       }
-    })();
-    this._pendingWrites = (this._pendingWrites || Promise.resolve()).then(() => op);
+    });
   }
 
   /**

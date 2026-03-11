@@ -65,7 +65,7 @@ describe('Unit: encodeProjectSlug', () => {
 
   it('handles dotfiles in paths', () => {
     const session = createSession({ cwd: '/home/user/.config/agnt' });
-    expect(session.projectSlug).toBe('home-user--config-agnt');
+    expect(session.projectSlug).toBe('home-user-config-agnt');
   });
 
   it('handles Windows paths', () => {
