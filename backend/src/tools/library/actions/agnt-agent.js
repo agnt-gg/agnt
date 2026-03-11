@@ -105,7 +105,7 @@ class AgentTool extends BaseAction {
       let model = agent.model;
 
       if (!provider || !model) {
-        const UserModel = (await import('../../models/UserModel.js')).default;
+        const UserModel = (await import('../../../models/UserModel.js')).default;
         try {
           const userSettings = await UserModel.getUserSettings(userId);
           provider = provider || userSettings.selectedProvider || 'Anthropic';
