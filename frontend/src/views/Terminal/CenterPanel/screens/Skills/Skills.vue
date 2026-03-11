@@ -544,6 +544,7 @@ onMounted(() => {
   border-radius: 8px;
   padding: 14px;
   cursor: pointer;
+  overflow: hidden;
   transition:
     border-color 0.2s,
     background 0.2s;
@@ -636,6 +637,8 @@ onMounted(() => {
   font-family: 'Courier New', monospace;
   line-height: 1.35;
   white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Import Button */

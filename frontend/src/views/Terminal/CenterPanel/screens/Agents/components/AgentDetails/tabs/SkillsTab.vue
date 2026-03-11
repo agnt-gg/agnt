@@ -87,6 +87,7 @@ h3.section-title {
   border: 1px solid rgba(var(--green-rgb), 0.2);
   border-radius: 8px;
   padding: 14px;
+  overflow: hidden;
   transition: border-color 0.2s;
 }
 .skill-card:hover {
@@ -148,6 +149,9 @@ h3.section-title {
   margin: 4px 0 0;
   font-family: 'Courier New', monospace;
   line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .empty-state {

@@ -63,7 +63,7 @@ class SkillEvolver {
       description: candidate.description,
       instructions: candidate.instructions,
       category: candidate.category || 'general',
-      icon: '🔬',
+      icon: 'fas fa-flask',
       allowedTools: JSON.stringify(candidate.allowedTools || []),
       metadata: JSON.stringify({
         skillforge: {
@@ -141,7 +141,7 @@ class SkillEvolver {
         description: candidate.description,
         instructions: candidate.instructions,
         category: candidate.category || 'general',
-        icon: '🔬',
+        icon: 'fas fa-flask',
         allowedTools: JSON.stringify(candidate.allowedTools || []),
         metadata: JSON.stringify(metadata),
       }, userId);
