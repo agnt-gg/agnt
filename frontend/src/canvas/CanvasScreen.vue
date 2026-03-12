@@ -25,8 +25,11 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
-        <Tooltip v-if="globalModelLabel" :text="globalModelLabel">
-          <span class="cv-global-model"> {{ globalProviderLabel }}/{{ globalModelLabel }} </span>
+        <Tooltip v-if="globalModelLabel" text="Click to change model" width="auto" position="bottom">
+          <span class="cv-global-model cv-global-model-clickable" @click="toggleGlobalProviderSelector">
+            {{ globalProviderLabel }}/{{ globalModelLabel }}
+            <i class="fas fa-caret-down"></i>
+          </span>
         </Tooltip>
         <Tooltip v-if="onCustomPage" text="Add widget">
           <button class="cv-btn" @click="showCatalog = true">+</button>
@@ -202,6 +205,17 @@
 
     <!-- Widget Catalog Modal -->
     <WidgetCatalog :isOpen="showCatalog" :pageId="activePageId || ''" @close="showCatalog = false" />
+
+    <!-- Global Provider Selector (toolbar dropdown) -->
+    <Teleport to="body">
+      <ChatProviderSelector
+        v-if="isGlobalProviderSelectorOpen"
+        :is-open="isGlobalProviderSelectorOpen"
+        :style="globalSelectorStyle"
+        class="cv-toolbar-selector"
+        @close="isGlobalProviderSelectorOpen = false"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -211,6 +225,7 @@ import { useStore } from 'vuex';
 import WidgetCanvas from './WidgetCanvas.vue';
 import WidgetCatalog from './WidgetCatalog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ChatProviderSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatProviderSelector.vue';
 import { getDefaultLayout } from './defaultLayouts.js';
 import { useElectron, electronUtils } from '@/composables/useElectron';
 
@@ -282,7 +297,7 @@ const SECTION_ROUTES = new Set(ALL_SECTIONS.flatMap((s) => s.screens.map((t) => 
 
 export default {
   name: 'CanvasScreen',
-  components: { WidgetCanvas, WidgetCatalog, Tooltip },
+  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector },
   props: {
     screenName: { type: String, default: 'ChatScreen' },
   },
@@ -320,6 +335,24 @@ export default {
       const providerClean = provider.replace(/\./g, '-').toLowerCase(); // fixes BS for z-ai
       return providerClean || '';
     });
+
+    // Global provider selector dropdown
+    const isGlobalProviderSelectorOpen = ref(false);
+    const globalSelectorStyle = ref({});
+
+    const toggleGlobalProviderSelector = (event) => {
+      if (isGlobalProviderSelectorOpen.value) {
+        isGlobalProviderSelectorOpen.value = false;
+        return;
+      }
+      const rect = event.currentTarget.getBoundingClientRect();
+      const dropdownWidth = 320;
+      globalSelectorStyle.value = {
+        left: Math.max(8, rect.right - dropdownWidth) + 'px',
+        top: '32px',
+      };
+      isGlobalProviderSelectorOpen.value = true;
+    };
 
     const activePageId = computed(() => store.getters['widgetLayout/activePageId']);
     const activePage = computed(() => store.getters['widgetLayout/activePage']);
@@ -597,6 +630,9 @@ export default {
       minimizeWindow,
       maximizeWindow,
       closeWindow,
+      isGlobalProviderSelectorOpen,
+      globalSelectorStyle,
+      toggleGlobalProviderSelector,
     };
   },
 };
@@ -713,6 +749,21 @@ export default {
 }
 .cv-global-model i {
   font-size: 10px;
+}
+
+.cv-global-model-clickable {
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: opacity 0.15s;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.cv-global-model-clickable:hover {
+  opacity: 1;
+  border-color: rgba(var(--primary-rgb), 0.2);
+  background: rgba(var(--primary-rgb), 0.04);
 }
 
 .cv-clock {
@@ -1164,5 +1215,11 @@ export default {
 /* ═══════════════════ CUSTOM BACKGROUND MODE ═══════════════════ */
 body.custom-bg .cv-dashboard {
   background: transparent !important;
+}
+
+/* ═══════════════════ TOOLBAR PROVIDER SELECTOR ═══════════════════ */
+.cv-toolbar-selector .provider-dropdown {
+  margin-top: 0 !important;
+  margin-left: 0 !important;
 }
 </style>

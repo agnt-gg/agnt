@@ -127,7 +127,12 @@
                 </Tooltip>
               </div>
 
-              <p class="hint" style="margin-top: 16px; text-align: center">Don't have an API key? You can skip this step and configure it later.</p>
+              <p v-if="hasAnyProviderConnected" class="hint success" style="margin-top: 16px; text-align: center">
+                Provider connected! You can add more providers later in Settings.
+              </p>
+              <p v-else class="hint" style="margin-top: 16px; text-align: center">
+                Connect at least one AI provider to power your agents and chat.
+              </p>
             </div>
 
             <!-- Step 5: Referral Bonus (conditional) -->
@@ -267,6 +272,11 @@ export default {
       return connectedApps.value.some((app) => app.toLowerCase() === providerKey);
     };
 
+    // Check if at least one AI provider is connected
+    const hasAnyProviderConnected = computed(() => {
+      return (connectedApps.value || []).length > 0;
+    });
+
     // Computed
     const totalSteps = computed(() => {
       let steps = 5; // Base steps: Welcome, Theme, Profile, Provider, Ready
@@ -277,7 +287,12 @@ export default {
     const referrerName = ref(null);
 
     // Methods
-    const nextStep = () => {
+    const nextStep = async () => {
+      // On provider step, require at least one connected provider
+      if (currentStep.value === 4 && !hasAnyProviderConnected.value) {
+        await showAlert('Provider Required', 'Please connect at least one AI provider to continue. AGNT needs an AI provider to power chat, agents, and workflows.');
+        return;
+      }
       if (currentStep.value < totalSteps.value) {
         transitionName.value = 'slide-left';
         currentStep.value++;
@@ -631,11 +646,16 @@ export default {
         return;
       }
 
+      const hasProvider = hasAnyProviderConnected.value;
+      const message = hasProvider
+        ? 'Are you sure you want to skip the tour?<br/>You can always restart it from Tour Settings.'
+        : 'You haven\'t connected an AI provider yet.<br/><br/>Chat, agents, and workflows <strong>won\'t work</strong> without one. You can add a provider later in Settings &gt; Connectors.';
+
       const confirmed = await modal.value.showModal({
-        title: 'Skip Onboarding?',
-        message: 'Are you sure you want to skip the tour?<br/>You can always restart it from Tour Settings.',
-        confirmText: 'Skip Tour',
-        cancelText: 'Continue Tour',
+        title: hasProvider ? 'Skip Onboarding?' : 'Skip Without Provider?',
+        message,
+        confirmText: 'Skip Anyway',
+        cancelText: 'Go Back',
         showCancel: true,
         confirmClass: 'btn-danger',
       });
@@ -740,6 +760,7 @@ export default {
       handleSkip,
       handleProviderClick,
       isProviderConnected,
+      hasAnyProviderConnected,
       checkPseudonymAvailability,
       PROVIDER_DISPLAY_NAMES,
     };
