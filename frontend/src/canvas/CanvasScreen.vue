@@ -345,11 +345,9 @@ export default {
         isGlobalProviderSelectorOpen.value = false;
         return;
       }
-      const rect = event.currentTarget.getBoundingClientRect();
-      const dropdownWidth = 320;
       globalSelectorStyle.value = {
-        left: Math.max(8, rect.right - dropdownWidth) + 'px',
-        top: '32px',
+        right: '5px',
+        top: '38px',
       };
       isGlobalProviderSelectorOpen.value = true;
     };
