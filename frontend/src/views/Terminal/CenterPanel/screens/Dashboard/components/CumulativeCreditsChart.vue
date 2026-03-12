@@ -2,10 +2,10 @@
   <div class="cumulative-credits-section">
     <div class="chart-header">
       <div class="header-with-info">
-        <h4>Task Seconds Automated</h4>
+        <h4>Automation Activity</h4>
         <Tooltip
-          title="Seconds Automated Over Time"
-          text="Tracks how many seconds of task time are automated over time while workflow automations work. Toggle between cumulative and daily views."
+          title="Compute, Tokens & Cost Over Time"
+          text="Tracks compute seconds, token consumption, and estimated cost across all agent chats and workflow automations. Toggle between cumulative and daily views."
           position="bottom"
           width="350px"
         >
@@ -74,25 +74,31 @@ export default {
     // Computed property to process data based on view mode
     const chartData = computed(() => {
       if (!creditsActivity.value.rawData || creditsActivity.value.rawData.length === 0) {
-        return { labels: [], data: [] };
+        return { labels: [], computeData: [], tokenData: [], costData: [] };
       }
 
       if (isCumulativeView.value) {
-        // Calculate cumulative from raw data
-        let cumulative = 0;
+        let cumCompute = 0;
+        let cumTokens = 0;
+        let cumCost = 0;
         const processedData = creditsActivity.value.rawData.map((item) => {
-          cumulative += item.credits_used;
-          return { date: item.date, credits_used: cumulative };
+          cumCompute += item.credits_used;
+          cumTokens += item.total_tokens || 0;
+          cumCost += item.estimated_cost || 0;
+          return { date: item.date, compute: cumCompute, tokens: cumTokens, cost: cumCost };
         });
         return {
           labels: processedData.map((item) => item.date),
-          data: processedData.map((item) => item.credits_used),
+          computeData: processedData.map((item) => item.compute),
+          tokenData: processedData.map((item) => item.tokens),
+          costData: processedData.map((item) => item.cost),
         };
       } else {
-        // Use raw daily data
         return {
           labels: creditsActivity.value.rawData.map((item) => item.date),
-          data: creditsActivity.value.rawData.map((item) => item.credits_used),
+          computeData: creditsActivity.value.rawData.map((item) => item.credits_used),
+          tokenData: creditsActivity.value.rawData.map((item) => item.total_tokens || 0),
+          costData: creditsActivity.value.rawData.map((item) => item.estimated_cost || 0),
         };
       }
     });
@@ -121,7 +127,7 @@ export default {
 
       const data = chartData.value;
 
-      if (!data || !data.labels || !data.data || data.labels.length === 0) {
+      if (!data || !data.labels || data.labels.length === 0) {
         console.log('No data to render');
         return;
       }
@@ -135,118 +141,203 @@ export default {
       const ctx = chartCanvas.value.getContext('2d');
       if (!ctx) return;
 
-      // Clear the canvas completely
       ctx.clearRect(0, 0, chartCanvas.value.width, chartCanvas.value.height);
-
-      console.log('Rendering chart with', data.labels.length, 'data points', 'Range:', activityDays.value, 'days');
 
       const g = getPrimaryRgb();
       const mutedColor = getTextMutedColor();
+      const tokenColor = '100, 180, 255'; // blue for tokens
+      const costColor = '255, 180, 50'; // amber for cost
+
+      const hasTokenData = data.tokenData.some((v) => v > 0);
+      const hasCostData = data.costData.some((v) => v > 0);
+      const prefix = isCumulativeView.value ? 'Cumulative' : 'Daily';
+
+      const datasets = [
+        {
+          label: `${prefix} Compute (s)`,
+          data: data.computeData,
+          yAxisID: 'y',
+          fill: true,
+          backgroundColor: (context) => {
+            const chart = context.chart;
+            const { ctx: c, chartArea } = chart;
+            if (!chartArea) return null;
+            const gradient = c.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+            gradient.addColorStop(0, `rgba(${g}, 0)`);
+            gradient.addColorStop(1, `rgba(${g}, 0.15)`);
+            return gradient;
+          },
+          borderColor: `rgba(${g}, 1)`,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointBackgroundColor: `rgba(${g}, 1)`,
+          pointHoverBackgroundColor: `rgba(${g}, 1)`,
+          pointBorderWidth: 0,
+          borderWidth: 2,
+        },
+      ];
+
+      if (hasTokenData) {
+        datasets.push({
+          label: `${prefix} Tokens`,
+          data: data.tokenData,
+          yAxisID: 'y1',
+          fill: true,
+          backgroundColor: (context) => {
+            const chart = context.chart;
+            const { ctx: c, chartArea } = chart;
+            if (!chartArea) return null;
+            const gradient = c.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+            gradient.addColorStop(0, `rgba(${tokenColor}, 0)`);
+            gradient.addColorStop(1, `rgba(${tokenColor}, 0.15)`);
+            return gradient;
+          },
+          borderColor: `rgba(${tokenColor}, 1)`,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointBackgroundColor: `rgba(${tokenColor}, 1)`,
+          pointHoverBackgroundColor: `rgba(${tokenColor}, 1)`,
+          pointBorderWidth: 0,
+          borderWidth: 2,
+        });
+      }
+
+      if (hasCostData) {
+        datasets.push({
+          label: `${prefix} Est. Cost ($)`,
+          data: data.costData,
+          yAxisID: 'y',
+          fill: true,
+          backgroundColor: (context) => {
+            const chart = context.chart;
+            const { ctx: c, chartArea } = chart;
+            if (!chartArea) return null;
+            const gradient = c.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+            gradient.addColorStop(0, `rgba(${costColor}, 0)`);
+            gradient.addColorStop(1, `rgba(${costColor}, 0.15)`);
+            return gradient;
+          },
+          borderColor: `rgba(${costColor}, 1)`,
+          tension: 0.4,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointBackgroundColor: `rgba(${costColor}, 1)`,
+          pointHoverBackgroundColor: `rgba(${costColor}, 1)`,
+          pointBorderWidth: 0,
+          borderWidth: 2,
+        });
+      }
+
+      const scales = {
+        y: {
+          beginAtZero: true,
+          min: 0,
+          position: 'left',
+          title: {
+            display: true,
+            text: 'Compute (s) / Cost ($)',
+            color: mutedColor,
+            font: { size: 10 },
+          },
+          grid: {
+            color: `rgba(${g}, 0.05)`,
+          },
+          ticks: {
+            color: mutedColor,
+            font: { size: 10 },
+            maxTicksLimit: 6,
+            callback: function (value) {
+              return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
+            },
+          },
+        },
+        x: {
+          grid: { display: false },
+          ticks: {
+            color: mutedColor,
+            font: { size: 10 },
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 10,
+          },
+        },
+      };
+
+      if (hasTokenData) {
+        scales.y1 = {
+          beginAtZero: true,
+          min: 0,
+          position: 'right',
+          title: {
+            display: true,
+            text: 'Tokens',
+            color: `rgba(${tokenColor}, 0.8)`,
+            font: { size: 10 },
+          },
+          grid: { drawOnChartArea: false },
+          ticks: {
+            color: `rgba(${tokenColor}, 0.8)`,
+            font: { size: 10 },
+            maxTicksLimit: 6,
+            callback: function (value) {
+              if (value >= 1_000_000) return (value / 1_000_000).toFixed(1) + 'M';
+              if (value >= 1_000) return (value / 1_000).toFixed(0) + 'K';
+              return value;
+            },
+          },
+        };
+      }
 
       chartInstance = new Chart(ctx, {
         type: 'line',
-        data: {
-          labels: data.labels,
-          datasets: [
-            {
-              label: isCumulativeView.value ? 'Cumulative Seconds Automated' : 'Daily Seconds Automated',
-              data: data.data,
-              fill: true,
-              backgroundColor: (context) => {
-                const chart = context.chart;
-                const { ctx, chartArea } = chart;
-                if (!chartArea) {
-                  return null;
-                }
-                const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-                gradient.addColorStop(0, `rgba(${g}, 0)`);
-                gradient.addColorStop(1, `rgba(${g}, 0.3)`);
-                return gradient;
-              },
-              borderColor: `rgba(${g}, 1)`,
-              tension: 0.4,
-              pointRadius: 0,
-              pointHoverRadius: 4,
-              pointBackgroundColor: `rgba(${g}, 1)`,
-              pointHoverBackgroundColor: `rgba(${g}, 1)`,
-              pointBorderColor: '#fff',
-              pointHoverBorderColor: '#fff',
-              pointBorderWidth: 2,
-              borderWidth: 2,
-            },
-          ],
-        },
+        data: { labels: data.labels, datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          animation: {
-            duration: 750,
-            easing: 'easeInOutQuart',
-          },
-          interaction: {
-            intersect: false,
-            mode: 'index',
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              min: 0,
-              grid: {
-                color: `rgba(${g}, 0.05)`,
-              },
-              ticks: {
-                color: mutedColor,
-                font: { size: 10 },
-                maxTicksLimit: 6,
-                callback: function (value) {
-                  return new Intl.NumberFormat('en-US', {
-                    maximumFractionDigits: 0,
-                  }).format(value);
-                },
-              },
-            },
-            x: {
-              grid: {
-                display: false,
-              },
-              ticks: {
-                color: mutedColor,
-                font: { size: 10 },
-                maxRotation: 0,
-                autoSkip: true,
-                maxTicksLimit: 10,
-              },
-            },
-          },
+          animation: { duration: 750, easing: 'easeInOutQuart' },
+          interaction: { intersect: false, mode: 'index' },
+          scales,
           plugins: {
             legend: {
-              display: false,
+              display: datasets.length > 1,
+              position: 'bottom',
+              labels: {
+                color: mutedColor,
+                font: { size: 10 },
+                boxWidth: 6,
+                boxHeight: 6,
+                padding: 16,
+                usePointStyle: true,
+                pointStyle: 'circle',
+              },
             },
             tooltip: {
               enabled: true,
               mode: 'index',
               intersect: false,
-              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              backgroundColor: 'rgba(0, 0, 0, 0.85)',
               titleColor: '#fff',
               bodyColor: '#fff',
               borderColor: `rgba(${g}, 0.3)`,
               borderWidth: 1,
               padding: 10,
-              displayColors: false,
+              displayColors: true,
               titleFont: { size: 12 },
               bodyFont: { size: 11 },
               callbacks: {
                 label: function (context) {
-                  let label = context.dataset.label || '';
-                  if (label) {
-                    label += ': ';
+                  const label = context.dataset.label || '';
+                  const val = context.parsed.y;
+                  if (val == null) return label;
+                  if (label.includes('Tokens')) {
+                    return `${label}: ${new Intl.NumberFormat('en-US').format(val)}`;
                   }
-                  if (context.parsed.y !== null) {
-                    label += new Intl.NumberFormat('en-US', {
-                      maximumFractionDigits: 2,
-                    }).format(context.parsed.y);
+                  if (label.includes('Cost')) {
+                    return `${label}: $${val.toFixed(4)}`;
                   }
-                  return label;
+                  return `${label}: ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(val)}`;
                 },
               },
             },

@@ -500,6 +500,8 @@ class GenerateWithAiLlm extends BaseAction {
     return {
       generatedText: response.generatedText,
       tokenCount: response.tokenCount,
+      inputTokens: response.inputTokens || 0,
+      outputTokens: response.outputTokens || 0,
       error: null,
     };
   }
@@ -545,6 +547,8 @@ class GenerateWithAiLlm extends BaseAction {
     return {
       generatedText: response.generatedText,
       tokenCount: response.tokenCount,
+      inputTokens: response.inputTokens || 0,
+      outputTokens: response.outputTokens || 0,
       error: null,
     };
   }

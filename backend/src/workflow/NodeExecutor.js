@@ -170,13 +170,20 @@ class NodeExecutor {
 
       // Skip credit deduction for non-charging nodes
       const shouldCharge = !this.nonChargingNodes.includes(node.type);
+
+      // Extract token usage from LLM tool outputs (e.g., generate-with-ai-llm)
+      const tokenUsage = (output.inputTokens || output.outputTokens)
+        ? { inputTokens: output.inputTokens || 0, outputTokens: output.outputTokens || 0 }
+        : null;
+
       await ExecutionModel.updateNodeExecution(
         this.workflowEngine.currentExecutionId,
         node.id,
         'completed',
         output,
         null,
-        shouldCharge ? executionDuration : 0
+        shouldCharge ? executionDuration : 0,
+        tokenUsage
       );
       return { ...output, error: null };
     } catch (error) {

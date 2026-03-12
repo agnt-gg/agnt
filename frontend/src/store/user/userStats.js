@@ -87,21 +87,19 @@ const calculateLevelFromScore = (score) => {
 };
 
 const fillMissingDates = (data, startDate, endDate) => {
-  const dateMap = new Map(data.map((item) => [item.date, item.credits_used]));
+  const dateMap = new Map(data.map((item) => [item.date, item]));
   const result = [];
   let currentDate = new Date(startDate);
-  const end = new Date(endDate); // Use the calculated end date
-
-  // Ensure loop includes the end date by comparing with the day *after* the desired end date
-  const loopEndDate = new Date(end);
-  // loopEndDate.setDate(loopEndDate.getDate() + 1); // This caused an off-by-one, compare directly
+  const end = new Date(endDate);
 
   while (currentDate < end) {
-    // Iterate up to, but not including, the day *after* the target end date
     const dateString = currentDate.toISOString().split('T')[0];
+    const existing = dateMap.get(dateString);
     result.push({
-      date: formatDate(currentDate), // Format the date here
-      credits_used: dateMap.get(dateString) || 0,
+      date: formatDate(currentDate),
+      credits_used: existing?.credits_used || 0,
+      total_tokens: existing?.total_tokens || 0,
+      estimated_cost: existing?.estimated_cost || 0,
     });
     currentDate.setDate(currentDate.getDate() + 1);
   }

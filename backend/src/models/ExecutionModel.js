@@ -167,16 +167,33 @@ class ExecutionModel {
   static getAgentActivityData(userId, startDate, endDate) {
     return new Promise((resolve, reject) => {
       const query = `
-        SELECT 
-          DATE(start_time) as date, 
-          SUM(credits_used) as credits_used
-        FROM workflow_executions
-        WHERE user_id = ? AND start_time BETWEEN ? AND ?
-        GROUP BY DATE(start_time)
+        SELECT
+          date,
+          SUM(credits_used) as credits_used,
+          SUM(total_tokens) as total_tokens,
+          SUM(estimated_cost) as estimated_cost
+        FROM (
+          SELECT
+            DATE(we.start_time) as date,
+            we.credits_used,
+            COALESCE((SELECT SUM(ne.input_tokens + ne.output_tokens) FROM node_executions ne WHERE ne.execution_id = we.id), 0) as total_tokens,
+            0 as estimated_cost
+          FROM workflow_executions we
+          WHERE we.user_id = ? AND we.start_time BETWEEN ? AND ?
+          UNION ALL
+          SELECT
+            DATE(start_time) as date,
+            credits_used,
+            COALESCE(total_tokens, 0) as total_tokens,
+            COALESCE(estimated_cost, 0) as estimated_cost
+          FROM agent_executions
+          WHERE user_id = ? AND start_time BETWEEN ? AND ?
+        )
+        GROUP BY date
         ORDER BY date
       `;
 
-      db.all(query, [userId, startDate, endDate], (err, rows) => {
+      db.all(query, [userId, startDate, endDate, userId, startDate, endDate], (err, rows) => {
         if (err) {
           console.error('Database error:', err);
           reject(err);
