@@ -640,6 +640,12 @@ Output the FULL updated skill instructions as markdown. No JSON wrapping, no cod
       if (!provider || !model) return null;
 
       const result = await streamEngine.generateCompletion(prompt, provider, model);
+      if (streamEngine._lastCompletionUsage) {
+        const u = streamEngine._lastCompletionUsage;
+        const input = u.prompt_tokens || u.input_tokens || 0;
+        const output = u.completion_tokens || u.output_tokens || 0;
+        console.log(`[SkillEvolver] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      }
 
       // Clean up
       let cleaned = result;

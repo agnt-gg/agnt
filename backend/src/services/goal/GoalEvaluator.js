@@ -4,6 +4,7 @@ import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
 import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
 import StreamEngine from '../../stream/StreamEngine.js';
 import { createSession as createUnfirehoseSession, isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
+import { getModelCost } from '../ai/providerConfigs.js';
 
 /**
  * GoalEvaluator - AI-powered evaluation system for goals and tasks
@@ -34,10 +35,21 @@ class GoalEvaluator {
       const tasks = await TaskModel.findByGoalId(goalId);
       console.log(`[GoalEvaluator] Evaluating goal "${goal.title}" with ${tasks.length} tasks`);
 
+      // Token usage accumulator across all LLM calls
+      const tokenAccumulator = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+      function accumulateUsage(usage) {
+        if (!usage) return;
+        const input = usage.prompt_tokens || usage.input_tokens || 0;
+        const output = usage.completion_tokens || usage.output_tokens || 0;
+        tokenAccumulator.inputTokens += input;
+        tokenAccumulator.outputTokens += output;
+        tokenAccumulator.totalTokens += input + output;
+      }
+
       // Step 2: Evaluate each task
       const taskEvaluations = [];
       for (const task of tasks) {
-        const taskEval = await this.evaluateTask(task, goal.success_criteria, userId, provider, model);
+        const taskEval = await this.evaluateTask(task, goal.success_criteria, userId, provider, model, accumulateUsage);
         taskEvaluations.push(taskEval);
       }
 
@@ -45,10 +57,32 @@ class GoalEvaluator {
       const scores = this.calculateOverallScores(taskEvaluations, goal.success_criteria);
 
       // Step 4: Generate comprehensive feedback
-      const feedback = await this.generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider, model);
+      const feedback = await this.generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider, model, accumulateUsage);
 
       // Step 5: Determine if goal passed
       const passed = scores.overall >= 70; // 70% threshold for passing
+
+      // Calculate estimated cost from token usage
+      let resolvedProvider = provider;
+      let resolvedModel = model;
+      if (!resolvedProvider || !resolvedModel) {
+        const UserModel = (await import('../../models/UserModel.js')).default;
+        const userSettings = await UserModel.getUserSettings(userId);
+        if (!resolvedProvider) resolvedProvider = userSettings?.selectedProvider;
+        if (!resolvedModel) resolvedModel = userSettings?.selectedModel;
+      }
+
+      let tokenUsage = null;
+      if (tokenAccumulator.totalTokens > 0) {
+        const costInfo = getModelCost(resolvedProvider?.toLowerCase(), resolvedModel, tokenAccumulator.inputTokens, tokenAccumulator.outputTokens);
+        tokenUsage = {
+          inputTokens: tokenAccumulator.inputTokens,
+          outputTokens: tokenAccumulator.outputTokens,
+          totalTokens: tokenAccumulator.totalTokens,
+          estimatedCost: costInfo?.totalCost || 0,
+        };
+        console.log(`[GoalEvaluator] Token Usage: ${tokenAccumulator.inputTokens} in / ${tokenAccumulator.outputTokens} out = ${tokenAccumulator.totalTokens} total, est. cost: $${(tokenUsage.estimatedCost || 0).toFixed(6)}`);
+      }
 
       // Step 6: Store evaluation in database
       const evaluationData = {
@@ -62,7 +96,7 @@ class GoalEvaluator {
         timestamp: new Date().toISOString(),
       };
 
-      const evaluationId = await GoalEvaluationModel.create(goalId, evaluationType, scores.overall, passed, evaluationData, feedback, 'system');
+      const evaluationId = await GoalEvaluationModel.create(goalId, evaluationType, scores.overall, passed, evaluationData, feedback, 'system', tokenUsage);
 
       // Step 7: Store individual task evaluations
       for (const taskEval of taskEvaluations) {
@@ -96,7 +130,10 @@ class GoalEvaluator {
               ts: new Date().toISOString(),
             });
           }
-          ufSession.close({ summary: `${passed ? 'PASSED' : 'NEEDS REVIEW'} (${scores.overall.toFixed(1)}%)` });
+          ufSession.close({
+            summary: `${passed ? 'PASSED' : 'NEEDS REVIEW'} (${scores.overall.toFixed(1)}%)`,
+            totalUsage: tokenUsage || undefined,
+          });
         } catch (ufErr) {
           console.error('[unfirehose] Goal evaluation logging failed:', ufErr.message);
         }
@@ -110,6 +147,7 @@ class GoalEvaluator {
         feedback,
         taskEvaluations,
         status: newStatus,
+        tokenUsage: tokenUsage || undefined,
       };
     } catch (error) {
       console.error('[GoalEvaluator] Error evaluating goal:', error);
@@ -124,9 +162,10 @@ class GoalEvaluator {
    * @param {string} userId - User ID for AI service
    * @param {string} provider - AI provider to use
    * @param {string} model - AI model to use
+   * @param {Function} accumulateUsage - Optional callback to accumulate token usage
    * @returns {Promise<Object>} Task evaluation results
    */
-  static async evaluateTask(task, successCriteria, userId, provider = null, model = null) {
+  static async evaluateTask(task, successCriteria, userId, provider = null, model = null, accumulateUsage = null) {
     console.log(`[GoalEvaluator] Evaluating task: ${task.title}`);
 
     // Parse task output
@@ -143,7 +182,7 @@ class GoalEvaluator {
     }
 
     // Use AI to evaluate task output against criteria
-    const evaluation = await this.aiEvaluateTaskOutput(task, taskOutput, successCriteria, userId, provider, model);
+    const evaluation = await this.aiEvaluateTaskOutput(task, taskOutput, successCriteria, userId, provider, model, accumulateUsage);
 
     return {
       taskId: task.id,
@@ -162,9 +201,10 @@ class GoalEvaluator {
    * @param {string} userId - User ID for AI service
    * @param {string} provider - AI provider to use
    * @param {string} model - AI model to use
+   * @param {Function} accumulateUsage - Optional callback to accumulate token usage
    * @returns {Promise<Object>} AI evaluation results
    */
-  static async aiEvaluateTaskOutput(task, taskOutput, successCriteria, userId, provider = null, model = null) {
+  static async aiEvaluateTaskOutput(task, taskOutput, successCriteria, userId, provider = null, model = null, accumulateUsage = null) {
     const streamEngine = new StreamEngine(userId);
 
     const prompt = `You are an expert evaluator assessing whether a task output meets specified success criteria.
@@ -222,6 +262,7 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
       }
 
       const result = await streamEngine.generateCompletion(prompt, evalProvider, evalModel);
+      if (accumulateUsage) accumulateUsage(streamEngine._lastCompletionUsage);
 
       // Clean and parse response - remove thinking tags and markdown
       let cleanedResult = result;
@@ -301,9 +342,10 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
    * @param {string} userId - User ID for AI service
    * @param {string} provider - AI provider to use
    * @param {string} model - AI model to use
+   * @param {Function} accumulateUsage - Optional callback to accumulate token usage
    * @returns {Promise<string>} Generated feedback
    */
-  static async generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider = null, model = null) {
+  static async generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider = null, model = null, accumulateUsage = null) {
     const streamEngine = new StreamEngine(userId);
 
     const prompt = `Generate a comprehensive evaluation report for a completed goal.
@@ -360,7 +402,8 @@ Keep it professional but encouraging. Focus on constructive feedback.`;
       }
 
       const feedback = await streamEngine.generateCompletion(prompt, evalProvider, evalModel);
-      return feedback.trim();
+      if (accumulateUsage) accumulateUsage(streamEngine._lastCompletionUsage);
+      return typeof feedback === 'string' ? feedback.trim() : (feedback.completion || feedback.text || '').trim();
     } catch (error) {
       console.error('[GoalEvaluator] Failed to generate feedback:', error);
 

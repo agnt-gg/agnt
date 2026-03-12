@@ -266,6 +266,12 @@ OUTPUT FORMAT (respond with valid JSON only, no markdown fences):
       }
 
       const result = await streamEngine.generateCompletion(prompt, provider, model);
+      if (streamEngine._lastCompletionUsage) {
+        const u = streamEngine._lastCompletionUsage;
+        const input = u.prompt_tokens || u.input_tokens || 0;
+        const output = u.completion_tokens || u.output_tokens || 0;
+        console.log(`[TraceAnalyzer] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      }
 
       return this._validateAnalysis(result);
     } catch (error) {

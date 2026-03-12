@@ -1699,6 +1699,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
   async generateCompletion(prompt, provider = 'openai', model = 'gpt-4') {
     try {
+      this._lastCompletionUsage = null;
+
       if (!provider) {
         provider = 'anthropic';
         model = 'claude-3-5-sonnet-20240620';
@@ -1790,6 +1792,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             completionText = completion.content[0].text;
           }
 
+          this._lastCompletionUsage = completion.usage || null;
+
           return thinkingText
             ? {
                 completion: completionText,
@@ -1810,6 +1814,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
             max_tokens: 8192,
           });
+          this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
 
         case 'deepseek':
@@ -1827,6 +1832,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
             max_tokens: 8192,
           });
+          this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
 
         case 'gemini':
@@ -1845,6 +1851,10 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
             ],
           });
+          this._lastCompletionUsage = completion.usageMetadata ? {
+            input_tokens: completion.usageMetadata.promptTokenCount || 0,
+            output_tokens: completion.usageMetadata.candidatesTokenCount || 0,
+          } : null;
           return {
             completion: completion.text || '',
             inputTokens: null,
@@ -1863,6 +1873,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
             max_tokens: 8192,
           });
+          this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
 
         case 'groq':
@@ -1880,6 +1891,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
             stream: false, // Groq doesn't support streaming for this use case
           });
+          this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
 
         case 'openai-codex-cli': {
@@ -1904,6 +1916,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
             max_completion_tokens: 8192,
           });
+          this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
 
         case 'openrouter':
@@ -1918,6 +1931,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
             max_tokens: 8192,
           });
+          this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
 
         case 'togetherai':
@@ -1926,6 +1940,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             prompt: `System: You are a helpful assistant. Generate valid responses based on the user instructions.\nUser: ${prompt}`,
             max_tokens: 8192,
           });
+          this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].text;
 
         case 'local':
@@ -1940,6 +1955,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             ],
             max_tokens: 8192,
           });
+          this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
 
         default:

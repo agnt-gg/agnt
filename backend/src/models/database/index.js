@@ -873,6 +873,24 @@ function runMigrations() {
         });
       });
 
+      // Migration: Add token usage columns to evaluation tables (2026-03-11)
+      const evalTokenColumns = [
+        { table: 'goal_evaluations', name: 'input_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'goal_evaluations', name: 'output_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'goal_evaluations', name: 'total_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'goal_evaluations', name: 'estimated_cost', type: 'REAL DEFAULT 0' },
+      ];
+
+      evalTokenColumns.forEach((col) => {
+        db.run(`ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to ${col.table}:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to ${col.table} table`);
+          }
+        });
+      });
+
       // Migration: Add user_id to widget_layouts for per-user page isolation (2026-03-05)
       db.run(`ALTER TABLE widget_layouts ADD COLUMN user_id TEXT`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {

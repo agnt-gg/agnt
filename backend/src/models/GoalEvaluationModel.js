@@ -5,13 +5,20 @@ class GoalEvaluationModel {
   /**
    * Create a new goal evaluation record
    */
-  static create(goalId, evaluationType, overallScore, passed, evaluationData, feedback, evaluatedBy = 'system') {
+  static create(goalId, evaluationType, overallScore, passed, evaluationData, feedback, evaluatedBy = 'system', tokenUsage = null) {
     const id = generateUUID();
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO goal_evaluations (id, goal_id, evaluation_type, overall_score, passed, evaluation_data, feedback, evaluated_by) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, goalId, evaluationType, overallScore, passed ? 1 : 0, JSON.stringify(evaluationData), feedback, evaluatedBy],
+        `INSERT INTO goal_evaluations (id, goal_id, evaluation_type, overall_score, passed, evaluation_data, feedback, evaluated_by, input_tokens, output_tokens, total_tokens, estimated_cost)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id, goalId, evaluationType, overallScore, passed ? 1 : 0,
+          JSON.stringify(evaluationData), feedback, evaluatedBy,
+          tokenUsage?.inputTokens || 0,
+          tokenUsage?.outputTokens || 0,
+          tokenUsage?.totalTokens || 0,
+          tokenUsage?.estimatedCost || 0,
+        ],
         function (err) {
           if (err) reject(err);
           else resolve(id);

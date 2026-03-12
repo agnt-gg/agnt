@@ -208,6 +208,12 @@ Rules:
       }
       console.log(`[GoalProcessor] Using provider: ${analysisProvider}, model: ${analysisModel}`);
       const analysisResult = await streamEngine.generateCompletion(prompt, analysisProvider, analysisModel);
+      if (streamEngine._lastCompletionUsage) {
+        const u = streamEngine._lastCompletionUsage;
+        const input = u.prompt_tokens || u.input_tokens || 0;
+        const output = u.completion_tokens || u.output_tokens || 0;
+        console.log(`[GoalProcessor] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      }
       console.log('Raw AI response:', analysisResult);
 
       // Clean up the response (remove any markdown formatting)

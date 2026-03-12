@@ -242,6 +242,14 @@ Return ONLY JSON:
       }
       const result = await streamEngine.generateCompletion(prompt, provider, model);
 
+      // Log token usage from judge scoring
+      const usage = streamEngine._lastCompletionUsage;
+      if (usage) {
+        const input = usage.prompt_tokens || usage.input_tokens || 0;
+        const output = usage.completion_tokens || usage.output_tokens || 0;
+        console.log(`[ExperimentService] Judge Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      }
+
       let cleaned = result;
       if (typeof result === 'string') {
         cleaned = result.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();

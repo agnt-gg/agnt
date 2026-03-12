@@ -769,6 +769,12 @@ Rules:
       }
 
       const result = await streamEngine.generateCompletion(prompt, evalProvider, evalModel);
+      if (streamEngine._lastCompletionUsage) {
+        const u = streamEngine._lastCompletionUsage;
+        const input = u.prompt_tokens || u.input_tokens || 0;
+        const output = u.completion_tokens || u.output_tokens || 0;
+        console.log(`[TaskOrchestrator] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      }
 
       let cleanedResult = result;
       if (typeof result === 'string') {
