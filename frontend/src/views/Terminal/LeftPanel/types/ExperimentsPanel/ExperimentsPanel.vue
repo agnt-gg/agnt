@@ -2,8 +2,12 @@
   <div class="experiments-panel">
     <!-- Panel Header -->
     <div class="panel-header">
-      <h2 class="title">/ Experiments</h2>
+      <h2 class="title">/ Evolution</h2>
       <div class="panel-stats">
+        <span v-if="pendingInsightCount > 0" class="stat-item pending-badge">
+          <i class="fas fa-lightbulb"></i>
+          {{ pendingInsightCount }}
+        </span>
         <span class="stat-item">
           <i class="fas fa-flask"></i>
           {{ totalExperiments }}
@@ -13,6 +17,30 @@
 
     <!-- Panel Content -->
     <div class="panel-content">
+      <!-- Insight stats -->
+      <div v-if="hasInsightStats" class="section-label">Insights</div>
+      <div v-if="hasInsightStats" class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value pending-val">{{ insightStats?.statusCounts?.pending || 0 }}</div>
+          <div class="stat-label">Pending</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value applied-val">{{ insightStats?.statusCounts?.applied || 0 }}</div>
+          <div class="stat-label">Applied</div>
+        </div>
+      </div>
+
+      <!-- Target breakdown -->
+      <div v-if="hasTargetCounts" class="target-breakdown">
+        <div v-for="(count, type) in insightStats?.targetCounts" :key="type" class="target-row">
+          <i :class="targetIcon(type)"></i>
+          <span class="target-type">{{ type }}</span>
+          <span class="target-count">{{ count }}</span>
+        </div>
+      </div>
+
+      <!-- Experiment stats -->
+      <div class="section-label">Experiments</div>
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-value">{{ totalExperiments }}</div>
@@ -36,7 +64,7 @@
         <button @click="emit('panel-action', 'navigate', 'ExperimentsScreen')" class="action-button">
           <i class="fas fa-plus"></i> New Experiment
         </button>
-        <button @click="store.dispatch('experiments/fetchExperiments', { force: true })" class="action-button">
+        <button @click="refreshAll" class="action-button">
           <i class="fas fa-sync"></i> Refresh
         </button>
       </div>
@@ -50,14 +78,40 @@ import { useStore } from 'vuex';
 
 export default {
   name: 'ExperimentsPanel',
+  props: {
+    insightStats: { type: Object, default: null },
+    pendingInsightCount: { type: Number, default: 0 },
+  },
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
     const all = computed(() => store.getters['experiments/allExperiments'] || []);
 
+    const hasInsightStats = computed(() => {
+      const sc = props.insightStats?.statusCounts;
+      return sc && (sc.pending || sc.applied || sc.rejected);
+    });
+
+    const hasTargetCounts = computed(() => {
+      const tc = props.insightStats?.targetCounts;
+      return tc && Object.keys(tc).length > 0;
+    });
+
+    const targetIcon = (t) => ({ agent: 'fas fa-robot', skill: 'fas fa-puzzle-piece', workflow: 'fas fa-project-diagram', tool: 'fas fa-wrench' }[t] || 'fas fa-cube');
+
+    const refreshAll = () => {
+      store.dispatch('experiments/fetchExperiments', { force: true });
+      store.dispatch('insights/fetchInsights');
+      store.dispatch('insights/fetchStats');
+    };
+
     return {
       store,
       emit,
+      hasInsightStats,
+      hasTargetCounts,
+      targetIcon,
+      refreshAll,
       totalExperiments: computed(() => all.value.length),
       runningCount: computed(() => all.value.filter(e => e.status === 'running').length),
       completedCount: computed(() => all.value.filter(e => e.status === 'completed').length),
@@ -109,17 +163,31 @@ export default {
   opacity: 0.8;
 }
 
+.stat-item.pending-badge {
+  color: #f59e0b;
+  opacity: 1;
+  font-weight: 600;
+}
+
 .panel-content {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: none;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .panel-content::-webkit-scrollbar {
   display: none;
+}
+
+.section-label {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-grey);
+  margin-top: 4px;
 }
 
 .stats-grid {
@@ -143,10 +211,44 @@ export default {
   margin-bottom: 4px;
 }
 
+.stat-value.pending-val { color: #f59e0b; }
+.stat-value.applied-val { color: var(--color-green); }
+
 .stat-label {
   font-size: 0.8em;
   color: var(--color-text-muted);
   text-transform: uppercase;
+}
+
+/* Target breakdown */
+.target-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.target-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color-light);
+  font-size: 0.85em;
+}
+.target-row i {
+  color: var(--color-grey);
+  width: 14px;
+  text-align: center;
+  font-size: 0.9em;
+}
+.target-type {
+  flex: 1;
+  color: var(--color-text);
+  text-transform: capitalize;
+}
+.target-count {
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .action-buttons {

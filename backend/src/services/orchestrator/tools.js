@@ -2988,6 +2988,113 @@ export const TOOLS = {
       }
     },
   },
+
+  save_agent_memory: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'save_agent_memory',
+        description: 'Save a memory about the user or conversation to your persistent memory. Memories persist across conversations. Use this to remember user preferences, facts, corrections, or important context.',
+        parameters: {
+          type: 'object',
+          properties: {
+            memory_type: {
+              type: 'string',
+              enum: ['fact', 'preference', 'correction', 'context'],
+              description: 'Type of memory: fact (about the user), preference (how they like things), correction (they corrected you), context (background info)',
+            },
+            content: {
+              type: 'string',
+              description: 'The memory content to store. Be concise and specific.',
+            },
+          },
+          required: ['memory_type', 'content'],
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      try {
+        const { memory_type, content } = args;
+        const agentId = context?.agentId;
+        const userId = context?.userId;
+        const conversationId = context?.conversationId;
+
+        if (!agentId || !userId) {
+          return JSON.stringify({ success: false, error: 'Agent context required for memory storage' });
+        }
+
+        const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
+
+        // Check for duplicate
+        const existing = await AgentMemoryModel.findDuplicate(agentId, content);
+        if (existing) {
+          await AgentMemoryModel.update(existing.id, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
+          return JSON.stringify({ success: true, message: 'Memory already exists, reinforced', id: existing.id });
+        }
+
+        const id = await AgentMemoryModel.create({
+          agentId,
+          userId,
+          memoryType: memory_type,
+          content,
+          sourceConversationId: conversationId,
+        });
+
+        return JSON.stringify({ success: true, message: 'Memory saved successfully', id });
+      } catch (error) {
+        console.error('[save_agent_memory] Error:', error);
+        return JSON.stringify({ success: false, error: error.message });
+      }
+    },
+  },
+
+  get_agent_memories: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'get_agent_memories',
+        description: 'Retrieve your stored memories about the user. Use this to recall what you know from previous conversations.',
+        parameters: {
+          type: 'object',
+          properties: {
+            memory_type: {
+              type: 'string',
+              enum: ['fact', 'preference', 'correction', 'context'],
+              description: 'Optional filter by memory type',
+            },
+          },
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      try {
+        const { memory_type } = args;
+        const agentId = context?.agentId;
+
+        if (!agentId) {
+          return JSON.stringify({ success: false, error: 'Agent context required' });
+        }
+
+        const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
+        const memories = await AgentMemoryModel.findByAgentId(agentId, { memoryType: memory_type, limit: 30 });
+
+        return JSON.stringify({
+          success: true,
+          count: memories.length,
+          memories: memories.map(m => ({
+            id: m.id,
+            type: m.memory_type,
+            content: m.content,
+            relevance: m.relevance_score,
+            created: m.created_at,
+          })),
+        });
+      } catch (error) {
+        console.error('[get_agent_memories] Error:', error);
+        return JSON.stringify({ success: false, error: error.message });
+      }
+    },
+  },
 };
 
 /**

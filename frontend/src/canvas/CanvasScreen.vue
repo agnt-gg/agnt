@@ -257,7 +257,7 @@ const MAIN_SECTIONS = [
     screens: [
       { screen: 'GoalsScreen', label: 'GOALS' },
       { screen: 'TracesScreen', label: 'TRACES' },
-      { screen: 'ExperimentsScreen', label: 'EXPERIMENTS' },
+      { screen: 'ExperimentsScreen', label: 'EVOLUTION' },
       { screen: 'SkillsScreen', label: 'SKILLS' },
     ],
   },

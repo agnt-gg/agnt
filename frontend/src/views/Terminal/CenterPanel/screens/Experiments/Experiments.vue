@@ -14,24 +14,28 @@
     <template #default>
       <div class="experiments-screen">
         <ScreenToolbar
-          title="EXPERIMENTS"
-          :count="activeView === 'experiments' ? filteredExperiments.length : filteredDatasets.length"
-          :countLabel="activeView === 'experiments' ? 'experiments' : 'datasets'"
-          :searchPlaceholder="activeView === 'experiments' ? 'Search experiments...' : 'Search datasets...'"
+          title="EVOLUTION"
+          :count="activeViewCount"
+          :countLabel="activeView"
+          :searchPlaceholder="`Search ${activeView}...`"
           :searchQuery="searchQuery"
           :currentLayout="currentLayout"
           :layoutOptions="['grid', 'table']"
           :showCollapseToggle="false"
           :showHideEmpty="false"
-          :createLabel="activeView === 'experiments' ? 'New Experiment' : 'Generate Dataset'"
+          :createLabel="createLabel"
           @update:searchQuery="(v) => (searchQuery = v)"
           @update:layout="(v) => (currentLayout = v)"
-          @create="activeView === 'experiments' ? (showForgeModal = true) : (showGenerateModal = true)"
+          @create="handleCreate"
         />
 
         <!-- View switcher + filter tabs -->
         <div class="tab-bar">
           <div class="view-tabs">
+            <button class="view-tab" :class="{ active: activeView === 'insights' }" @click="switchView('insights')">
+              <i class="fas fa-lightbulb"></i> Insights
+              <span class="tab-count" :class="{ 'has-pending': pendingInsightCount > 0 }">{{ insights.length }}</span>
+            </button>
             <button class="view-tab" :class="{ active: activeView === 'experiments' }" @click="switchView('experiments')">
               <i class="fas fa-flask"></i> Experiments
               <span class="tab-count">{{ experiments.length }}</span>
@@ -42,7 +46,32 @@
             </button>
           </div>
           <div class="tab-sep"></div>
-          <!-- Status filter tabs (experiments view only) -->
+
+          <!-- Insight filter tabs -->
+          <div v-if="activeView === 'insights'" class="status-tabs">
+            <button
+              v-for="tab in insightStatusTabs"
+              :key="tab.value"
+              class="status-tab"
+              :class="{ active: activeInsightStatus === tab.value }"
+              @click="activeInsightStatus = tab.value"
+            >
+              {{ tab.label }}
+              <span class="tab-count">{{ getInsightStatusCount(tab.value) }}</span>
+            </button>
+            <div class="tab-sep"></div>
+            <button
+              v-for="tab in insightTargetTabs"
+              :key="tab.value"
+              class="status-tab"
+              :class="{ active: activeInsightTarget === tab.value }"
+              @click="activeInsightTarget = tab.value"
+            >
+              <i :class="tab.icon"></i> {{ tab.label }}
+            </button>
+          </div>
+
+          <!-- Status filter tabs (experiments view) -->
           <div v-if="activeView === 'experiments'" class="status-tabs">
             <button
               v-for="tab in statusTabs"
@@ -55,7 +84,8 @@
               <span class="tab-count">{{ getTabCount(tab.value) }}</span>
             </button>
           </div>
-          <!-- Source filter tabs (datasets view only) -->
+
+          <!-- Source filter tabs (datasets view) -->
           <div v-if="activeView === 'datasets'" class="status-tabs">
             <button
               v-for="tab in sourceTabs"
@@ -70,11 +100,98 @@
           </div>
         </div>
 
+        <!-- ═══ INSIGHTS VIEW ═══ -->
+        <template v-if="activeView === 'insights'">
+          <!-- Stats bar -->
+          <div v-if="insightStats" class="insights-stats-bar">
+            <div class="stat-chip">
+              <span class="stat-num pending-num">{{ insightStats.statusCounts?.pending || 0 }}</span>
+              <span class="stat-txt">pending</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-num applied-num">{{ insightStats.statusCounts?.applied || 0 }}</span>
+              <span class="stat-txt">applied</span>
+            </div>
+            <div class="stat-chip">
+              <span class="stat-num rejected-num">{{ insightStats.statusCounts?.rejected || 0 }}</span>
+              <span class="stat-txt">rejected</span>
+            </div>
+            <div class="stat-sep"></div>
+            <div v-for="(count, type) in insightStats.targetCounts" :key="type" class="stat-chip target-chip">
+              <span class="stat-num">{{ count }}</span>
+              <span class="stat-txt">{{ type }}</span>
+            </div>
+            <div class="stat-actions">
+              <Tooltip text="Analyze recent tool usage patterns">
+                <button class="stat-btn" @click="triggerRollup" :disabled="rollingUp">
+                  <i :class="rollingUp ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i> Rollup
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+
+          <!-- Grid Layout -->
+          <div v-if="filteredInsights.length > 0 && currentLayout === 'grid'" class="experiments-grid">
+            <InsightCard
+              v-for="ins in filteredInsights"
+              :key="ins.id"
+              :insight="ins"
+              :selected="selectedInsight?.id === ins.id"
+              @click="selectInsight(ins)"
+              @apply="applyInsight(ins)"
+              @reject="rejectInsight(ins)"
+              @delete="confirmDeleteInsight(ins)"
+            />
+          </div>
+
+          <!-- Table Layout -->
+          <div v-if="filteredInsights.length > 0 && currentLayout === 'table'" class="experiments-table-container">
+            <table class="experiments-table">
+              <thead>
+                <tr><th>Title</th><th>Category</th><th>Target</th><th>Confidence</th><th>Status</th><th>Seen</th><th></th></tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="ins in filteredInsights"
+                  :key="ins.id"
+                  :class="{ selected: selectedInsight?.id === ins.id }"
+                  @click="selectInsight(ins)"
+                >
+                  <td class="name-cell">{{ ins.title }}</td>
+                  <td><span class="type-badge" :class="ins.category">{{ formatCategory(ins.category) }}</span></td>
+                  <td><span class="target-chip-sm"><i :class="targetIcon(ins.target_type)"></i> {{ ins.target_type }}</span></td>
+                  <td>
+                    <div class="conf-cell">
+                      <div class="conf-bar"><div class="conf-fill" :style="{ width: (ins.confidence * 100) + '%' }"></div></div>
+                      <span>{{ Math.round(ins.confidence * 100) }}%</span>
+                    </div>
+                  </td>
+                  <td><span class="status-badge" :class="ins.status">{{ ins.status }}</span></td>
+                  <td>{{ ins.occurrence_count }}x</td>
+                  <td class="actions-cell" @click.stop>
+                    <button v-if="ins.status === 'pending'" class="row-btn apply" @click="applyInsight(ins)" title="Apply"><i class="fas fa-check"></i></button>
+                    <button v-if="ins.status === 'pending'" class="row-btn reject" @click="rejectInsight(ins)" title="Reject"><i class="fas fa-times"></i></button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty -->
+          <div v-if="filteredInsights.length === 0" class="empty-state-container">
+            <div class="empty-state">
+              <i class="fas fa-lightbulb"></i>
+              <p>No insights yet</p>
+              <span class="empty-hint">Insights are automatically extracted when you chat with agents, complete goals, or run workflows.</span>
+            </div>
+          </div>
+        </template>
+
         <!-- ═══ EXPERIMENTS VIEW ═══ -->
         <template v-if="activeView === 'experiments'">
           <!-- Insights detail (shown when experiment selected) -->
           <div v-if="selectedExperiment && selectedExperiment.status === 'completed'" class="insights-bar">
-            <div class="insights-stats">
+            <div class="insights-bar-stats">
               <span class="ins-stat">
                 <span class="ins-label">Delta</span>
                 <span class="ins-value" :class="selectedExperiment.result?.delta > 0 ? 'delta-positive' : selectedExperiment.result?.delta < 0 ? 'delta-negative' : ''">
@@ -199,7 +316,6 @@
               <button class="modal-close" @click="showForgeModal = false"><i class="fas fa-times"></i></button>
             </div>
             <div class="modal-body">
-              <!-- Experiment Details -->
               <div class="form-group">
                 <label>Name <span class="required">*</span></label>
                 <input v-model="forgeForm.name" class="form-input" placeholder="e.g., Improve code review accuracy" />
@@ -320,6 +436,7 @@ import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ExperimentCard from './_components/ExperimentCard.vue';
+import InsightCard from './_components/InsightCard.vue';
 import DatasetCard from '../EvalDatasets/_components/DatasetCard.vue';
 
 const store = useStore();
@@ -327,19 +444,23 @@ const emit = defineEmits(['screen-change']);
 const simpleModal = ref(null);
 
 // View state
-const activeView = ref('experiments');
+const activeView = ref('insights');
 const searchQuery = ref('');
 const activeStatusTab = ref('all');
 const activeSourceTab = ref('all');
+const activeInsightStatus = ref('all');
+const activeInsightTarget = ref('all');
 const currentLayout = ref('grid');
 const selectedExperiment = ref(null);
 const selectedDataset = ref(null);
+const selectedInsight = ref(null);
 
 // Modals
 const showForgeModal = ref(false);
 const showGenerateModal = ref(false);
 const launching = ref(false);
 const generating = ref(false);
+const rollingUp = ref(false);
 
 // Forge form
 const forgeForm = ref({
@@ -351,6 +472,21 @@ const forgeForm = ref({
 const generateForm = ref({ skillId: '', source: 'synthetic', category: '' });
 
 // Tabs
+const insightStatusTabs = [
+  { value: 'all', label: 'All' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'applied', label: 'Applied' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
+const insightTargetTabs = [
+  { value: 'all', label: 'All', icon: 'fas fa-globe' },
+  { value: 'agent', label: 'Agent', icon: 'fas fa-robot' },
+  { value: 'skill', label: 'Skill', icon: 'fas fa-puzzle-piece' },
+  { value: 'workflow', label: 'Workflow', icon: 'fas fa-project-diagram' },
+  { value: 'tool', label: 'Tool', icon: 'fas fa-wrench' },
+];
+
 const statusTabs = [
   { value: 'all', label: 'All' },
   { value: 'planned', label: 'Planned' },
@@ -370,8 +506,36 @@ const sourceTabs = [
 // Data
 const experiments = computed(() => store.getters['experiments/allExperiments'] || []);
 const datasets = computed(() => store.getters['experiments/allEvalDatasets'] || []);
+const insights = computed(() => store.getters['insights/allInsights'] || []);
+const insightStats = computed(() => store.getters['insights/stats']);
+const pendingInsightCount = computed(() => store.getters['insights/pendingCount']);
 const availableSkills = computed(() => store.getters['skills/allSkills'] || []);
 const availableGoals = computed(() => store.getters['goals/allGoals'] || []);
+
+// Dynamic toolbar
+const activeViewCount = computed(() => {
+  if (activeView.value === 'insights') return filteredInsights.value.length;
+  if (activeView.value === 'experiments') return filteredExperiments.value.length;
+  return filteredDatasets.value.length;
+});
+
+const createLabel = computed(() => {
+  if (activeView.value === 'experiments') return 'New Experiment';
+  if (activeView.value === 'datasets') return 'Generate Dataset';
+  return null;
+});
+
+// Filtered data
+const filteredInsights = computed(() => {
+  let result = insights.value;
+  if (activeInsightStatus.value !== 'all') result = result.filter((i) => i.status === activeInsightStatus.value);
+  if (activeInsightTarget.value !== 'all') result = result.filter((i) => i.target_type === activeInsightTarget.value);
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase();
+    result = result.filter((i) => i.title?.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q));
+  }
+  return result;
+});
 
 const filteredExperiments = computed(() => {
   let result = experiments.value;
@@ -396,12 +560,19 @@ const filteredDatasets = computed(() => {
 const panelProps = computed(() => ({
   selectedExperiment: activeView.value === 'experiments' ? selectedExperiment.value : null,
   selectedDataset: activeView.value === 'datasets' ? selectedDataset.value : null,
+  selectedInsight: activeView.value === 'insights' ? selectedInsight.value : null,
 }));
-const leftPanelProps = computed(() => ({ experiments: experiments.value, activeTab: activeStatusTab.value }));
+const leftPanelProps = computed(() => ({
+  experiments: experiments.value,
+  activeTab: activeStatusTab.value,
+  insightStats: insightStats.value,
+  pendingInsightCount: pendingInsightCount.value,
+}));
 const canLaunch = computed(() => forgeForm.value.name?.trim() && forgeForm.value.skillId);
 
 const getTabCount = (s) => s === 'all' ? experiments.value.length : experiments.value.filter((e) => e.status === s).length;
 const getSourceCount = (s) => s === 'all' ? datasets.value.length : datasets.value.filter((d) => (d.source || 'manual') === s).length;
+const getInsightStatusCount = (s) => s === 'all' ? insights.value.length : insights.value.filter((i) => i.status === s).length;
 
 const formatDate = (d) => {
   if (!d) return '-';
@@ -413,11 +584,70 @@ const formatDate = (d) => {
 };
 
 const truncate = (text, max) => (!text ? '' : text.length > max ? text.slice(0, max) + '...' : text);
+const formatCategory = (c) => (c || '').replace(/_/g, ' ');
+const targetIcon = (t) => ({ agent: 'fas fa-robot', skill: 'fas fa-puzzle-piece', workflow: 'fas fa-project-diagram', tool: 'fas fa-wrench' }[t] || 'fas fa-cube');
 
 const switchView = (view) => {
   activeView.value = view;
   searchQuery.value = '';
 };
+
+const handleCreate = () => {
+  if (activeView.value === 'experiments') showForgeModal.value = true;
+  else if (activeView.value === 'datasets') showGenerateModal.value = true;
+};
+
+// ═══ INSIGHT ACTIONS ═══
+
+const selectInsight = (ins) => {
+  selectedInsight.value = selectedInsight.value?.id === ins.id ? null : ins;
+};
+
+const applyInsight = async (ins) => {
+  try {
+    await store.dispatch('insights/applyInsight', ins.id);
+    if (selectedInsight.value?.id === ins.id) selectedInsight.value = { ...ins, status: 'applied' };
+  } catch (err) {
+    console.error('Failed to apply insight:', err);
+  }
+};
+
+const rejectInsight = async (ins) => {
+  try {
+    await store.dispatch('insights/rejectInsight', ins.id);
+    if (selectedInsight.value?.id === ins.id) selectedInsight.value = { ...ins, status: 'rejected' };
+  } catch (err) {
+    console.error('Failed to reject insight:', err);
+  }
+};
+
+const confirmDeleteInsight = async (ins) => {
+  const confirmed = await simpleModal.value?.showModal({
+    title: 'Delete Insight?',
+    message: `Are you sure you want to delete "${ins.title}"? This cannot be undone.`,
+    confirmText: 'Delete', cancelText: 'Cancel', showCancel: true, confirmClass: 'btn-danger',
+  });
+  if (confirmed) {
+    try {
+      await store.dispatch('insights/deleteInsight', ins.id);
+      if (selectedInsight.value?.id === ins.id) selectedInsight.value = null;
+    } catch (err) { console.error('Failed to delete insight:', err); }
+  }
+};
+
+const triggerRollup = async () => {
+  if (rollingUp.value) return;
+  rollingUp.value = true;
+  try {
+    await store.dispatch('insights/triggerRollup');
+  } catch (err) {
+    console.error('Rollup failed:', err);
+  } finally {
+    rollingUp.value = false;
+  }
+};
+
+// ═══ EXPERIMENT ACTIONS ═══
 
 const selectExperiment = (e) => {
   selectedExperiment.value = selectedExperiment.value?.id === e.id ? null : e;
@@ -514,11 +744,16 @@ const handlePanelAction = (action, data) => {
   else if (action === 'delete-experiment' && data) confirmDeleteExperiment(data);
   else if (action === 'run-experiment' && data) runExperiment(data);
   else if (action === 'delete-dataset' && data) confirmDeleteDataset(data);
+  else if (action === 'apply-insight' && data) applyInsight(data);
+  else if (action === 'reject-insight' && data) rejectInsight(data);
+  else if (action === 'delete-insight' && data) confirmDeleteInsight(data);
 };
 
 const initializeScreen = () => {
   store.dispatch('experiments/fetchExperiments', { force: true });
   store.dispatch('experiments/fetchEvalDatasets', { force: false });
+  store.dispatch('insights/fetchInsights');
+  store.dispatch('insights/fetchStats');
   store.dispatch('skills/fetchSkills');
   store.dispatch('goals/fetchGoals');
 };
@@ -544,6 +779,7 @@ onMounted(() => initializeScreen());
   border-bottom: 1px solid var(--terminal-border-color);
   flex-shrink: 0;
   gap: 4px;
+  flex-wrap: wrap;
 }
 .tab-sep {
   width: 1px;
@@ -584,6 +820,7 @@ onMounted(() => initializeScreen());
   display: flex;
   gap: 4px;
   padding: 0 4px;
+  align-items: center;
 }
 .status-tab {
   display: flex;
@@ -612,8 +849,74 @@ onMounted(() => initializeScreen());
   border-radius: 10px;
   font-size: 0.85em;
 }
+.tab-count.has-pending {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
 
-/* Insights bar */
+/* Insights stats bar */
+.insights-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(var(--green-rgb), 0.03);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.stat-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  font-size: 0.8em;
+}
+.stat-num {
+  font-weight: 600;
+  color: var(--color-text);
+}
+.stat-num.pending-num { color: #f59e0b; }
+.stat-num.applied-num { color: var(--color-green); }
+.stat-num.rejected-num { color: #ef4444; }
+.stat-txt {
+  color: var(--color-grey);
+  font-size: 0.9em;
+}
+.stat-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--terminal-border-color);
+}
+.target-chip .stat-num {
+  color: var(--color-primary);
+}
+.stat-actions {
+  margin-left: auto;
+}
+.stat-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: rgba(var(--green-rgb), 0.08);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
+  border-radius: 4px;
+  color: var(--color-grey);
+  cursor: pointer;
+  font-size: 0.78em;
+  transition: all 0.2s;
+}
+.stat-btn:hover:not(:disabled) {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.4);
+  background: rgba(var(--green-rgb), 0.15);
+}
+.stat-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Insights bar (experiment selected) */
 .insights-bar {
   display: flex;
   align-items: center;
@@ -623,7 +926,7 @@ onMounted(() => initializeScreen());
   border-bottom: 1px solid rgba(var(--green-rgb), 0.15);
   flex-shrink: 0;
 }
-.insights-stats {
+.insights-bar-stats {
   display: flex;
   gap: 16px;
   flex: 1;
@@ -725,7 +1028,64 @@ onMounted(() => initializeScreen());
   font-size: 0.8em;
   background: rgba(var(--primary-rgb), 0.1);
   color: var(--color-primary);
+  text-transform: capitalize;
 }
+.type-badge.pattern { background: rgba(var(--green-rgb), 0.1); color: var(--color-green); }
+.type-badge.antipattern { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.type-badge.prompt_refinement { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+.type-badge.skill_recommendation { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.type-badge.memory { background: rgba(236, 72, 153, 0.1); color: #ec4899; }
+.type-badge.bottleneck { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.type-badge.parameter_tune { background: rgba(20, 184, 166, 0.1); color: #14b8a6; }
+.type-badge.tool_preference { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
+.target-chip-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85em;
+  color: var(--color-grey);
+  text-transform: capitalize;
+}
+.target-chip-sm i { font-size: 0.9em; }
+.conf-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+}
+.conf-bar {
+  width: 50px;
+  height: 4px;
+  background: rgba(var(--green-rgb), 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.conf-fill {
+  height: 100%;
+  background: var(--color-green);
+  border-radius: 2px;
+}
+.actions-cell {
+  display: flex;
+  gap: 4px;
+}
+.row-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--color-grey);
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.75em;
+  transition: all 0.15s;
+}
+.row-btn.apply:hover { color: var(--color-green); background: rgba(var(--green-rgb), 0.1); border-color: rgba(var(--green-rgb), 0.3); }
+.row-btn.reject:hover { color: #f59e0b; background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.3); }
+
 .status-badge {
   padding: 2px 8px;
   border-radius: 4px;
@@ -736,6 +1096,10 @@ onMounted(() => initializeScreen());
 .status-badge.running { background: rgba(59,130,246,0.15); color: #3b82f6; }
 .status-badge.completed { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
 .status-badge.failed { background: rgba(239,68,68,0.15); color: #ef4444; }
+.status-badge.pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.status-badge.applied { background: rgba(var(--green-rgb), 0.15); color: var(--color-green); }
+.status-badge.rejected { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.status-badge.superseded { background: rgba(150, 150, 150, 0.15); color: #999; }
 .delta-positive { color: var(--color-green); font-weight: 500; }
 .delta-negative { color: #ef4444; font-weight: 500; }
 
@@ -749,8 +1113,9 @@ onMounted(() => initializeScreen());
 }
 .empty-state { text-align: center; color: var(--color-grey); }
 .empty-state i { font-size: 3em; display: block; opacity: 0.5; }
-.empty-state p { margin: 16px 0; font-size: 1.1em; }
-.empty-state-buttons { display: flex; gap: 12px; justify-content: center; }
+.empty-state p { margin: 16px 0 4px; font-size: 1.1em; }
+.empty-hint { font-size: 0.85em; color: var(--color-grey); opacity: 0.7; }
+.empty-state-buttons { display: flex; gap: 12px; justify-content: center; margin-top: 12px; }
 .create-button {
   display: flex;
   align-items: center;

@@ -1573,6 +1573,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
     console.log(`[ConversationManager] Stored conversation ${conversationId} for autonomous messages`);
 
+    // Fire-and-forget: trigger insight extraction from chat execution
+    if (agentExecutionId && userId) {
+      import('./evolution/InsightTriggers.js').then(({ default: InsightTriggers }) => {
+        InsightTriggers.onChatCompleted(agentExecutionId, userId, {
+          agentId,
+          conversationId,
+        }).catch(err => {
+          console.error('[InsightTriggers] Chat insight extraction failed (non-critical):', err.message);
+        });
+      }).catch(() => {});
+    }
+
     sendEvent('done', { message: 'Stream ended' });
     res.end();
   }

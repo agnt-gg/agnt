@@ -115,7 +115,7 @@ export const CHAT_CONFIGS = {
       console.warn('No assigned tools found for agent, returning empty tool set');
       return [];
     },
-    buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(currentDate, context) {
       const { agentId, agentContext, agentState, toolSchemas } = context;
 
       // Check if this is agent management chat (AgentForge)
@@ -130,10 +130,27 @@ export const CHAT_CONFIGS = {
       // This is chatting WITH a specific agent - use the agent's custom system prompt
       console.log(`Using custom system prompt for agent ${agentId}`);
 
+      // Load agent memory for injection into system prompt
+      let memorySection = '';
+      try {
+        const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
+        const memories = await AgentMemoryModel.findByAgentId(agentId, { limit: 20 });
+        if (memories.length > 0) {
+          // Increment access count for used memories
+          for (const mem of memories) {
+            AgentMemoryModel.incrementAccess(mem.id).catch(() => {});
+          }
+          const memoryLines = memories.map(m => `- [${m.memory_type}] ${m.content}`).join('\n');
+          memorySection = `\n\n## Your Memory\nYou have the following memories from previous conversations with this user:\n${memoryLines}\n\nUse these memories to provide more personalized and contextually aware responses. If you learn new facts or receive corrections, use the save_agent_memory tool to store them.`;
+        }
+      } catch (e) {
+        console.warn('[chatConfigs] Failed to load agent memories:', e.message);
+      }
+
       // If we have agent context from AgentService, use it
       if (agentContext && agentContext.systemPrompt) {
-        // Append async execution guidance so agents can use async tools
-        return `${agentContext.systemPrompt}\n\n${ASYNC_EXECUTION_GUIDANCE}`;
+        // Append async execution guidance and memory so agents can use async tools
+        return `${agentContext.systemPrompt}${memorySection}\n\n${ASYNC_EXECUTION_GUIDANCE}`;
       }
 
       // Otherwise build a basic system prompt with the agent's assigned tools
@@ -148,6 +165,7 @@ You are an AI agent with specific assigned tools. Use only the tools assigned to
 
 AVAILABLE TOOLS:
 ${toolsList}
+${memorySection}
 
 ${ASYNC_EXECUTION_GUIDANCE}
 

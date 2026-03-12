@@ -35,6 +35,7 @@ import skills from './features/skills';
 import skillforge from './features/skillforge';
 import experiments from './features/experiments';
 import codeChat from './features/codeChat';
+import insights from './features/insights';
 
 const store = createStore({
   state: {
@@ -153,6 +154,7 @@ const store = createStore({
     skillforge,
     experiments,
     codeChat,
+    insights,
   },
 });
 

@@ -6,6 +6,7 @@ import LlmExecutionService from '../ai/LlmExecutionService.js';
 import { getAvailableToolSchemas } from '../orchestrator/tools.js';
 import GoalEvaluator from './GoalEvaluator.js';
 import SkillForgeOrchestrator from './SkillForgeOrchestrator.js';
+import InsightTriggers from '../evolution/InsightTriggers.js';
 import StreamEngine from '../../stream/StreamEngine.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import db from '../../models/database/index.js';
@@ -374,9 +375,9 @@ Begin working on this task now.`;
         const evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic');
         console.log(`[TaskOrchestrator] Evaluation complete: ${evaluation.passed ? 'PASSED' : 'NEEDS REVIEW'} (${evaluation.scores.overall}%)`);
 
-        // Fire-and-forget: trigger SkillForge analysis (non-blocking)
-        SkillForgeOrchestrator.onGoalCompleted(goalId, userId).catch(err => {
-          console.error('[TaskOrchestrator] SkillForge analysis failed (non-critical):', err.message);
+        // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
+        InsightTriggers.onGoalCompleted(goalId, userId).catch(err => {
+          console.error('[TaskOrchestrator] Insight/SkillForge analysis failed (non-critical):', err.message);
         });
 
         // Fire-and-forget: notify ExperimentService if this goal is part of an experiment
@@ -589,9 +590,9 @@ Begin working on this task now.`;
             passed: true,
           });
 
-          // Fire-and-forget: trigger SkillForge analysis (non-blocking)
-          SkillForgeOrchestrator.onGoalCompleted(goalId, userId).catch(err => {
-            console.error('[AGI Loop] SkillForge analysis failed (non-critical):', err.message);
+          // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
+          InsightTriggers.onGoalCompleted(goalId, userId).catch(err => {
+            console.error('[AGI Loop] Insight/SkillForge analysis failed (non-critical):', err.message);
           });
 
           this.runningGoals.delete(goalId);

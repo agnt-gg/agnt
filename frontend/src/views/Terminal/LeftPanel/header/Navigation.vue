@@ -167,7 +167,7 @@ export default {
         {
           screen: 'ExperimentsScreen',
           icon: 'flask',
-          label: 'Experiments',
+          label: 'Evolution',
         },
         {
           screen: 'SkillsScreen',

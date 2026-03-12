@@ -42,6 +42,7 @@ import SkillDiscoveryRoutes from './src/routes/SkillDiscoveryRoutes.js';
 import SkillForgeRoutes from './src/routes/SkillForgeRoutes.js';
 import ExperimentRoutes from './src/routes/ExperimentRoutes.js';
 import FileSystemRoutes from './src/routes/FileSystemRoutes.js';
+import InsightRoutes from './src/routes/InsightRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
@@ -139,6 +140,7 @@ app.use('/api/skills/discovered', SkillDiscoveryRoutes);
 app.use('/api/skills', SkillRoutes);
 app.use('/api/skillforge', SkillForgeRoutes);
 app.use('/api/experiments', ExperimentRoutes);
+app.use('/api/insights', InsightRoutes);
 app.use('/api/filesystem', FileSystemRoutes);
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
@@ -286,6 +288,26 @@ async function deferredInit() {
         broadcastToUser(statusData.userId, event, payload);
       } else {
         broadcast(event, payload);
+      }
+
+      // Fire-and-forget: trigger insight extraction when a workflow execution finishes
+      const terminalStatuses = ['listening', 'error', 'stopped'];
+      if (terminalStatuses.includes(statusData.status) && statusData.userId) {
+        import('./src/services/evolution/InsightTriggers.js').then(({ default: InsightTriggers }) => {
+          // Look up the latest execution for this workflow to get the execution ID
+          import('./src/models/database/index.js').then(({ default: db }) => {
+            db.get(
+              'SELECT id FROM workflow_executions WHERE workflow_id = ? ORDER BY start_time DESC LIMIT 1',
+              [workflowId],
+              (err, row) => {
+                if (err || !row) return;
+                InsightTriggers.onWorkflowExecutionCompleted(row.id, statusData.userId, { workflowId }).catch(e => {
+                  console.error('[InsightTriggers] Workflow insight extraction failed (non-critical):', e.message);
+                });
+              }
+            );
+          }).catch(() => {});
+        }).catch(() => {});
       }
     });
 

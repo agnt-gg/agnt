@@ -781,6 +781,54 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_tools_created_by ON tools(created_by)`);
 
       // Webhooks - faster lookup by user
+      // ==================== EVOLUTION ENGINE TABLES ====================
+      // Insights — unified observations extracted from any execution trace
+      db.run(`CREATE TABLE IF NOT EXISTS insights (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        source_context TEXT,
+        target_type TEXT NOT NULL,
+        target_id TEXT,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        evidence TEXT,
+        confidence REAL DEFAULT 0.5,
+        status TEXT DEFAULT 'pending',
+        applied_at DATETIME,
+        applied_result TEXT,
+        occurrence_count INTEGER DEFAULT 1,
+        last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_insights_user_id ON insights(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_insights_target ON insights(target_type, target_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_insights_status ON insights(status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_insights_source ON insights(source_type, source_id)`);
+
+      // Agent memory — persistent memory for agents across conversations
+      db.run(`CREATE TABLE IF NOT EXISTS agent_memory (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        memory_type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        source_conversation_id TEXT,
+        relevance_score REAL DEFAULT 1.0,
+        access_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_agent_id ON agent_memory(agent_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_user_id ON agent_memory(user_id)`);
+
       db.run(`CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id)`,
         (err) => {
           if (err) {
@@ -905,6 +953,15 @@ function runMigrations() {
               });
             }
           });
+        }
+      });
+
+      // Migration: Add insight_version column to agents for evolution tracking (2026-03-12)
+      db.run(`ALTER TABLE agents ADD COLUMN insight_version INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding insight_version column to agents:', err);
+        } else if (!err) {
+          console.log('✓ Added insight_version column to agents table');
         }
       });
 

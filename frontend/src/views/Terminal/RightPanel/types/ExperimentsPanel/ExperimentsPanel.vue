@@ -1,7 +1,97 @@
 <template>
   <div class="ui-panel experiments-panel">
+    <!-- ═══ INSIGHT DETAILS ═══ -->
+    <template v-if="selectedInsight">
+      <div class="panel-section">
+        <div class="selected-header">
+          <h2>{{ selectedInsight.title }}</h2>
+          <span class="status-badge" :class="selectedInsight.status">{{ selectedInsight.status }}</span>
+        </div>
+
+        <!-- Core Info -->
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Category</span>
+            <span class="detail-value category-val" :class="selectedInsight.category">{{ formatCategory(selectedInsight.category) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Target</span>
+            <span class="detail-value"><i :class="targetIcon(selectedInsight.target_type)"></i> {{ selectedInsight.target_type }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Source</span>
+            <span class="detail-value"><i :class="sourceIcon(selectedInsight.source_type)"></i> {{ formatSource(selectedInsight.source_type) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Confidence</span>
+            <span class="detail-value">
+              <span class="conf-inline">
+                <span class="conf-bar-sm"><span class="conf-fill-sm" :style="{ width: (selectedInsight.confidence * 100) + '%' }"></span></span>
+                {{ Math.round(selectedInsight.confidence * 100) }}%
+              </span>
+            </span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Occurrences</span>
+            <span class="detail-value">{{ selectedInsight.occurrence_count }}x</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Last Seen</span>
+            <span class="detail-value">{{ formatDate(selectedInsight.last_seen_at || selectedInsight.created_at) }}</span>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="sub-section">
+          <h3><i class="fas fa-align-left"></i> Description</h3>
+          <p class="description-text">{{ selectedInsight.description }}</p>
+        </div>
+
+        <!-- Source Origin -->
+        <div v-if="sourceOriginItems.length > 0" class="sub-section">
+          <h3><i class="fas fa-link"></i> Source Origin</h3>
+          <div class="origin-list">
+            <div v-for="item in sourceOriginItems" :key="item.label" class="origin-item">
+              <i :class="item.icon"></i>
+              <span class="origin-label">{{ item.label }}</span>
+              <span class="origin-value">{{ item.value }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Evidence -->
+        <div v-if="parsedEvidence" class="sub-section">
+          <h3><i class="fas fa-search"></i> Evidence</h3>
+          <div class="evidence-block">
+            <pre class="evidence-pre">{{ typeof parsedEvidence === 'string' ? parsedEvidence : JSON.stringify(parsedEvidence, null, 2) }}</pre>
+          </div>
+        </div>
+
+        <!-- Applied Result -->
+        <div v-if="parsedAppliedResult" class="sub-section">
+          <h3><i class="fas fa-check-circle"></i> Applied Result</h3>
+          <div class="evidence-block">
+            <pre class="evidence-pre">{{ typeof parsedAppliedResult === 'string' ? parsedAppliedResult : JSON.stringify(parsedAppliedResult, null, 2) }}</pre>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="panel-actions">
+          <BaseButton v-if="selectedInsight.status === 'pending'" @click="$emit('panel-action', 'apply-insight', selectedInsight)" variant="primary" full-width>
+            <i class="fas fa-check"></i> Apply Insight
+          </BaseButton>
+          <BaseButton v-if="selectedInsight.status === 'pending'" @click="$emit('panel-action', 'reject-insight', selectedInsight)" variant="secondary" full-width>
+            <i class="fas fa-times"></i> Reject
+          </BaseButton>
+          <BaseButton @click="$emit('panel-action', 'delete-insight', selectedInsight)" variant="danger" full-width>
+            <i class="fas fa-trash"></i> Delete
+          </BaseButton>
+        </div>
+      </div>
+    </template>
+
     <!-- ═══ EXPERIMENT DETAILS ═══ -->
-    <template v-if="selectedExperiment && !selectedDataset">
+    <template v-else-if="selectedExperiment && !selectedDataset">
       <div class="panel-section">
         <div class="selected-header">
           <h2>{{ selectedExperiment.name }}</h2>
@@ -197,8 +287,8 @@
     <!-- ═══ PLACEHOLDER ═══ -->
     <template v-else>
       <div class="panel-section placeholder-section">
-        <i class="fas fa-flask"></i>
-        <p>Select an experiment or dataset to view details.</p>
+        <i class="fas fa-lightbulb"></i>
+        <p>Select an insight, experiment, or dataset to view details.</p>
       </div>
     </template>
 
@@ -208,6 +298,7 @@
 
 <script>
 import { computed } from 'vue';
+import { useStore } from 'vuex';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 
@@ -217,9 +308,63 @@ export default {
   props: {
     selectedExperiment: { type: Object, default: null },
     selectedDataset: { type: Object, default: null },
+    selectedInsight: { type: Object, default: null },
   },
   emits: ['panel-action'],
   setup(props) {
+    const store = useStore();
+
+    // Insight helpers
+    const parsedEvidence = computed(() => {
+      if (!props.selectedInsight?.evidence) return null;
+      try { return JSON.parse(props.selectedInsight.evidence); } catch { return props.selectedInsight.evidence; }
+    });
+
+    const parsedAppliedResult = computed(() => {
+      if (!props.selectedInsight?.applied_result) return null;
+      try { return JSON.parse(props.selectedInsight.applied_result); } catch { return props.selectedInsight.applied_result; }
+    });
+
+    const parsedSourceContext = computed(() => {
+      if (!props.selectedInsight?.source_context) return null;
+      try { return typeof props.selectedInsight.source_context === 'string' ? JSON.parse(props.selectedInsight.source_context) : props.selectedInsight.source_context; } catch { return null; }
+    });
+
+    // Resolve names from stores
+    const sourceOriginItems = computed(() => {
+      const ctx = parsedSourceContext.value;
+      if (!ctx) return [];
+      const items = [];
+
+      if (ctx.agent_id) {
+        const agents = store.getters['agents/allAgents'] || [];
+        const agent = agents.find(a => a.id === ctx.agent_id);
+        items.push({ icon: 'fas fa-robot', label: 'Agent', value: agent?.name || (ctx.agent_id === 'orchestrator' ? 'Orchestrator' : ctx.agent_id) });
+      }
+      if (ctx.workflow_id) {
+        const workflows = store.getters['workflows/allWorkflows'] || [];
+        const wf = workflows.find(w => w.id === ctx.workflow_id);
+        items.push({ icon: 'fas fa-project-diagram', label: 'Workflow', value: wf?.name || ctx.workflow_id });
+      }
+      if (ctx.goal_id) {
+        const goals = store.getters['goals/allGoals'] || [];
+        const goal = goals.find(g => g.id === ctx.goal_id);
+        items.push({ icon: 'fas fa-bullseye', label: 'Goal', value: goal?.title || ctx.goal_id });
+      }
+      if (ctx.conversation_id) {
+        items.push({ icon: 'fas fa-comments', label: 'Conversation', value: ctx.conversation_id.substring(0, 12) + '...' });
+      }
+      if (ctx.period) {
+        items.push({ icon: 'fas fa-clock', label: 'Period', value: ctx.period });
+      }
+      return items;
+    });
+
+    const targetIcon = (t) => ({ agent: 'fas fa-robot', skill: 'fas fa-puzzle-piece', workflow: 'fas fa-project-diagram', tool: 'fas fa-wrench' }[t] || 'fas fa-cube');
+    const sourceIcon = (s) => ({ agent_chat: 'fas fa-comments', goal: 'fas fa-bullseye', workflow: 'fas fa-project-diagram', tool_call: 'fas fa-wrench' }[s] || 'fas fa-circle');
+    const formatCategory = (c) => (c || '').replace(/_/g, ' ');
+    const formatSource = (s) => (s || '').replace(/_/g, ' ');
+
     // Experiment helpers
     const experimentRuns = computed(() => props.selectedExperiment?.runs || []);
 
@@ -281,6 +426,8 @@ export default {
     const truncate = (text, max) => (!text ? '' : text.length > max ? text.slice(0, max) + '...' : text);
 
     return {
+      parsedEvidence, parsedAppliedResult, sourceOriginItems,
+      targetIcon, sourceIcon, formatCategory, formatSource,
       experimentRuns, dimensions, constraintGates,
       datasetItems, itemCount, trainCount, valCount, holdoutCount, previewItems,
       formatDate, formatDelta, deltaClass, truncate,
@@ -336,6 +483,10 @@ export default {
 .status-badge.running { background: rgba(59,130,246,0.15); color: #3b82f6; }
 .status-badge.completed { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
 .status-badge.failed { background: rgba(239,68,68,0.15); color: #ef4444; }
+.status-badge.pending { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.status-badge.applied { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
+.status-badge.rejected { background: rgba(239,68,68,0.15); color: #ef4444; }
+.status-badge.superseded { background: rgba(150,150,150,0.15); color: #999; }
 .source-badge {
   padding: 2px 8px;
   border-radius: 4px;
@@ -368,6 +519,41 @@ export default {
   font-size: 0.85em;
   color: var(--color-text);
   word-break: break-word;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  text-transform: capitalize;
+}
+.detail-value i { font-size: 0.9em; color: var(--color-grey); }
+
+/* Category color */
+.category-val.pattern { color: var(--color-green); }
+.category-val.antipattern { color: #ef4444; }
+.category-val.prompt_refinement { color: #a855f7; }
+.category-val.skill_recommendation { color: #3b82f6; }
+.category-val.memory { color: #ec4899; }
+.category-val.bottleneck { color: #f59e0b; }
+.category-val.parameter_tune { color: #14b8a6; }
+.category-val.tool_preference { color: #6366f1; }
+
+/* Confidence inline */
+.conf-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.conf-bar-sm {
+  width: 50px;
+  height: 4px;
+  background: rgba(var(--green-rgb), 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.conf-fill-sm {
+  display: block;
+  height: 100%;
+  background: var(--color-green);
+  border-radius: 2px;
 }
 
 /* Sub-sections */
@@ -398,13 +584,74 @@ export default {
   margin: 10px 0 6px;
 }
 
-/* Hypothesis */
+/* Description & Hypothesis */
+.description-text {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.85em;
+  line-height: 1.5;
+}
 .hypothesis-text {
   margin: 0;
   font-style: italic;
   color: var(--color-grey);
   font-size: 0.85em;
   line-height: 1.4;
+}
+
+/* Source Origin */
+.origin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.origin-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  font-size: 0.82em;
+}
+.origin-item i {
+  color: var(--color-grey);
+  width: 14px;
+  text-align: center;
+  font-size: 0.9em;
+  flex-shrink: 0;
+}
+.origin-label {
+  color: var(--color-grey);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+.origin-value {
+  color: var(--color-text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Evidence */
+.evidence-block {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.evidence-pre {
+  margin: 0;
+  font-size: 0.78em;
+  color: var(--color-grey);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: monospace;
 }
 
 /* Results */
