@@ -4,7 +4,11 @@ export default {
   namespaced: true,
   state: {
     skills: [],
+    discoveredSkills: [],
+    discoveryLastScan: null,
+    discoveryScanLocations: [],
     isLoading: false,
+    isDiscoveryLoading: false,
     error: null,
     categories: ['general', 'support', 'development', 'marketing', 'productivity', 'communication', 'analytics', 'finance', 'design', 'sales'],
   },
@@ -22,8 +26,16 @@ export default {
     DELETE_SKILL(state, id) {
       state.skills = state.skills.filter((s) => s.id !== id);
     },
+    SET_DISCOVERED_SKILLS(state, { skills, lastScan, scanLocations }) {
+      state.discoveredSkills = skills || [];
+      state.discoveryLastScan = lastScan || null;
+      state.discoveryScanLocations = scanLocations || [];
+    },
     SET_LOADING(state, val) {
       state.isLoading = val;
+    },
+    SET_DISCOVERY_LOADING(state, val) {
+      state.isDiscoveryLoading = val;
     },
     SET_ERROR(state, err) {
       state.error = err;
@@ -159,6 +171,86 @@ export default {
         throw error;
       }
     },
+
+    // --- Agent Skills Standard (agentskills.io) - Filesystem Discovery ---
+
+    async fetchDiscoveredSkills({ commit }) {
+      commit('SET_DISCOVERY_LOADING', true);
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No authentication token found');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/skills/discovered/`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        commit('SET_DISCOVERED_SKILLS', {
+          skills: data.skills || [],
+          lastScan: data.lastScan,
+          scanLocations: data.scanLocations,
+        });
+        return data;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+      } finally {
+        commit('SET_DISCOVERY_LOADING', false);
+      }
+    },
+
+    async rescanSkills({ commit }) {
+      commit('SET_DISCOVERY_LOADING', true);
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No authentication token found');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/skills/discovered/rescan`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        commit('SET_DISCOVERED_SKILLS', {
+          skills: data.skills || [],
+          lastScan: data.lastScan,
+          scanLocations: [],
+        });
+        return data;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        throw error;
+      } finally {
+        commit('SET_DISCOVERY_LOADING', false);
+      }
+    },
+
+    async importDiscoveredSkill({ commit, dispatch }, skillName) {
+      commit('SET_LOADING', true);
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No authentication token found');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/skills/discovered/${skillName}/import`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        if (data.skill) commit('ADD_SKILL', data.skill);
+        return data;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
   },
   getters: {
     allSkills: (state) => state.skills,
@@ -170,5 +262,9 @@ export default {
       const allCats = new Set([...state.categories, ...skillCats]);
       return [...allCats].sort();
     },
+    discoveredSkills: (state) => state.discoveredSkills,
+    discoveryLastScan: (state) => state.discoveryLastScan,
+    discoveryScanLocations: (state) => state.discoveryScanLocations,
+    isDiscoveryLoading: (state) => state.isDiscoveryLoading,
   },
 };

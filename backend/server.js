@@ -38,6 +38,7 @@ import PluginRoutes from './src/routes/PluginRoutes.js';
 import AsyncToolRoutes from './src/routes/AsyncToolRoutes.js';
 import WidgetDefinitionRoutes from './src/routes/WidgetDefinitionRoutes.js';
 import SkillRoutes from './src/routes/SkillRoutes.js';
+import SkillDiscoveryRoutes from './src/routes/SkillDiscoveryRoutes.js';
 import SkillForgeRoutes from './src/routes/SkillForgeRoutes.js';
 import ExperimentRoutes from './src/routes/ExperimentRoutes.js';
 import FileSystemRoutes from './src/routes/FileSystemRoutes.js';
@@ -134,6 +135,7 @@ app.use('/api/speech', SpeechRoutes);
 app.use('/api/plugins', PluginRoutes);
 app.use('/api/async-tools', AsyncToolRoutes);
 app.use('/api/widget-definitions', WidgetDefinitionRoutes);
+app.use('/api/skills/discovered', SkillDiscoveryRoutes);
 app.use('/api/skills', SkillRoutes);
 app.use('/api/skillforge', SkillForgeRoutes);
 app.use('/api/experiments', ExperimentRoutes);
@@ -245,6 +247,15 @@ async function deferredInit() {
     await CodexCliSessionManager.init();
   } catch (error) {
     console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
+  }
+
+  // Initialize Agent Skills discovery (agentskills.io standard)
+  try {
+    const { default: SkillDiscoveryService } = await import('./src/services/SkillDiscoveryService.js');
+    await SkillDiscoveryService.init();
+    console.log('Skill discovery initialized');
+  } catch (error) {
+    console.warn('[Server] Skill discovery initialization failed (non-fatal):', error);
   }
 
   // Initialize plugins before spawning workflow process

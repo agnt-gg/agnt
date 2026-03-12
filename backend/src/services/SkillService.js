@@ -1,5 +1,6 @@
 import SkillModel from '../models/SkillModel.js';
 import generateUUID from '../utils/generateUUID.js';
+import { parseSkillMd, serializeSkillMd, isValidSkillName, toKebabCase } from '../utils/skillValidation.js';
 
 class SkillService {
   /**
@@ -11,7 +12,36 @@ class SkillService {
   }
 
   /**
-   * Build XML-tagged prompt injection string from skills array
+   * Build a compact XML catalog of available skills (Tier 1 - progressive disclosure).
+   * Only includes name + description for minimal token usage.
+   * @param {Array<{name: string, description: string, source?: string}>} skills
+   */
+  static buildSkillCatalog(skills) {
+    if (!skills || skills.length === 0) return '';
+
+    const entries = skills
+      .map((s) => `  <skill name="${s.name}" source="${s.source || 'database'}">\n    <description>${s.description || ''}</description>\n  </skill>`)
+      .join('\n');
+
+    return `<available-skills>\n${entries}\n</available-skills>`;
+  }
+
+  /**
+   * Build behavioral instructions telling the LLM how to use the skill activation system.
+   */
+  static buildSkillActivationInstructions() {
+    return `SKILL ACTIVATION INSTRUCTIONS:
+You have skills available (listed above in <available-skills>). Skills provide specialized instructions for specific tasks.
+- When a user's request matches a skill's description, call the activate_skill tool with the skill's name to load its full instructions.
+- Only activate skills that are relevant to the current task.
+- Once activated, follow the skill's instructions carefully.
+- You can activate multiple skills if needed for a complex task.
+- Skills may include bundled scripts and reference files — use your file-reading capabilities to access them when the skill instructions reference them.`;
+  }
+
+  /**
+   * Build XML-tagged prompt injection string from activated skills (Tier 2).
+   * Used for skills that have been explicitly activated by the LLM or statically assigned.
    */
   static buildSkillsContext(skills) {
     if (!skills || skills.length === 0) return '';
@@ -27,7 +57,10 @@ class SkillService {
             parts.push(`  <allowed-tools>${tools.join(', ')}</allowed-tools>`);
           }
         } catch (e) {
-          // ignore parse errors
+          // Could be space-delimited string per Agent Skills spec
+          if (typeof skill.allowed_tools === 'string' && skill.allowed_tools.trim()) {
+            parts.push(`  <allowed-tools>${skill.allowed_tools}</allowed-tools>`);
+          }
         }
       }
       parts.push('</skill>');
@@ -77,6 +110,11 @@ You have the above skills assigned. Follow the instructions defined in each skil
         return res.status(400).json({ error: 'Skill name must contain at least one letter or number' });
       }
       skill.name = sanitizedName;
+
+      // Warn if name doesn't conform to Agent Skills spec (but don't reject)
+      if (!isValidSkillName(sanitizedName)) {
+        console.warn(`[SkillService] Skill name "${sanitizedName}" does not conform to Agent Skills spec (kebab-case, 1-64 chars)`);
+      }
 
       const id = generateUUID();
       await SkillModel.createOrUpdate(id, skill, userId);
@@ -128,49 +166,18 @@ You have the above skills assigned. Follow the instructions defined in each skil
 
   /**
    * Export a skill as SKILL.md (YAML frontmatter + markdown body)
+   * Uses the shared serializeSkillMd utility for Agent Skills spec compliance.
    */
   async exportSkillMd(req, res) {
     try {
       const skill = await SkillModel.findById(req.params.id);
       if (!skill) return res.status(404).json({ error: 'Skill not found' });
 
-      // Build YAML frontmatter
-      const yamlLines = [];
-      yamlLines.push(`name: "${skill.name}"`);
-      if (skill.description) yamlLines.push(`description: "${skill.description.replace(/"/g, '\\"')}"`);
-      if (skill.category) yamlLines.push(`category: "${skill.category}"`);
-      if (skill.icon) yamlLines.push(`icon: "${skill.icon}"`);
-      if (skill.license) yamlLines.push(`license: "${skill.license}"`);
-      if (skill.compatibility) yamlLines.push(`compatibility: "${skill.compatibility}"`);
-      if (skill.allowed_tools) {
-        try {
-          const tools = JSON.parse(skill.allowed_tools);
-          if (Array.isArray(tools) && tools.length > 0) {
-            yamlLines.push(`allowed-tools:`);
-            tools.forEach((t) => yamlLines.push(`  - ${t}`));
-          }
-        } catch (e) {
-          // If not JSON, treat as raw string
-          if (skill.allowed_tools) yamlLines.push(`allowed-tools: "${skill.allowed_tools}"`);
-        }
-      }
-      if (skill.metadata) {
-        try {
-          const meta = typeof skill.metadata === 'string' ? JSON.parse(skill.metadata) : skill.metadata;
-          if (meta && typeof meta === 'object') {
-            yamlLines.push(`metadata:`);
-            Object.entries(meta).forEach(([k, v]) => yamlLines.push(`  ${k}: "${v}"`));
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
+      const content = serializeSkillMd(skill);
 
-      const frontmatter = `---\n${yamlLines.join('\n')}\n---`;
-      const body = skill.instructions || '';
-      const content = `${frontmatter}\n\n${body}\n`;
-
-      const filename = `${skill.name || 'skill'}.SKILL.md`;
+      // Use kebab-case directory name per spec
+      const dirName = isValidSkillName(skill.name) ? skill.name : toKebabCase(skill.name) || 'skill';
+      const filename = `${dirName}.SKILL.md`;
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(content);
@@ -181,7 +188,8 @@ You have the above skills assigned. Follow the instructions defined in each skil
   }
 
   /**
-   * Import a skill from SKILL.md content (YAML frontmatter + markdown body)
+   * Import a skill from SKILL.md content (YAML frontmatter + markdown body).
+   * Uses the shared parseSkillMd utility for Agent Skills spec compliance.
    */
   async importSkillMd(req, res) {
     try {
@@ -197,65 +205,14 @@ You have the above skills assigned. Follow the instructions defined in each skil
         return res.status(400).json({ error: 'Request body must contain SKILL.md content' });
       }
 
-      // Parse YAML frontmatter (between --- delimiters)
-      const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
-      if (!fmMatch) {
-        return res.status(400).json({ error: 'Invalid SKILL.md format: missing YAML frontmatter (--- delimiters)' });
+      const parsed = parseSkillMd(content);
+
+      // Check for fatal errors
+      if (parsed.errors.length > 0 && !parsed.frontmatter.name) {
+        return res.status(400).json({ error: `Invalid SKILL.md: ${parsed.errors.join('; ')}` });
       }
 
-      const yamlStr = fmMatch[1];
-      const instructions = fmMatch[2].trim();
-
-      // Simple YAML parser for flat key-value pairs and arrays
-      const parsed = {};
-      let currentKey = null;
-      let currentArray = null;
-
-      for (const line of yamlStr.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-
-        // Array item
-        if (trimmed.startsWith('- ') && currentKey) {
-          if (!currentArray) currentArray = [];
-          currentArray.push(trimmed.slice(2).replace(/^["']|["']$/g, ''));
-          continue;
-        }
-
-        // Save previous array
-        if (currentKey && currentArray) {
-          parsed[currentKey] = currentArray;
-          currentArray = null;
-        }
-
-        // Nested key (indented) for metadata
-        if (line.startsWith('  ') && currentKey === 'metadata') {
-          const nestedMatch = trimmed.match(/^(\w[\w-]*)\s*:\s*(.*)$/);
-          if (nestedMatch) {
-            if (!parsed.metadata) parsed.metadata = {};
-            parsed.metadata[nestedMatch[1]] = nestedMatch[2].replace(/^["']|["']$/g, '');
-          }
-          continue;
-        }
-
-        // Top-level key: value
-        const kvMatch = trimmed.match(/^([\w-]+)\s*:\s*(.*)$/);
-        if (kvMatch) {
-          currentKey = kvMatch[1];
-          const val = kvMatch[2].replace(/^["']|["']$/g, '').trim();
-          if (val) {
-            parsed[currentKey] = val;
-          }
-        }
-      }
-
-      // Save trailing array
-      if (currentKey && currentArray) {
-        parsed[currentKey] = currentArray;
-      }
-
-      // Extract fields
-      const name = parsed.name;
+      const name = parsed.frontmatter.name;
       if (!name) {
         return res.status(400).json({ error: 'SKILL.md must include a "name" field in frontmatter' });
       }
@@ -265,7 +222,7 @@ You have the above skills assigned. Follow the instructions defined in each skil
         return res.status(400).json({ error: 'Skill name must contain at least one letter or number' });
       }
 
-      const description = parsed.description || '';
+      const description = parsed.frontmatter.description || '';
       if (description.length > 1024) {
         return res.status(400).json({ error: 'Description must be 1024 characters or less' });
       }
@@ -273,19 +230,19 @@ You have the above skills assigned. Follow the instructions defined in each skil
       const skillData = {
         name: sanitizedName,
         description,
-        instructions: instructions || '',
-        category: parsed.category || 'general',
-        icon: parsed.icon || 'fas fa-puzzle-piece',
-        license: parsed.license || '',
-        compatibility: parsed.compatibility || '',
-        metadata: parsed.metadata ? JSON.stringify(parsed.metadata) : '',
-        allowedTools: Array.isArray(parsed['allowed-tools']) ? JSON.stringify(parsed['allowed-tools']) : '',
+        instructions: parsed.instructions || '',
+        category: parsed.frontmatter.category || 'general',
+        icon: parsed.frontmatter.icon || 'fas fa-puzzle-piece',
+        license: parsed.frontmatter.license || '',
+        compatibility: parsed.frontmatter.compatibility || '',
+        metadata: parsed.frontmatter.metadata ? JSON.stringify(parsed.frontmatter.metadata) : '',
+        allowedTools: parsed.frontmatter['allowed-tools'] || '',
       };
 
       const id = generateUUID();
       await SkillModel.createOrUpdate(id, skillData, userId);
       const created = await SkillModel.findById(id);
-      res.status(201).json({ skill: created, skillId: id });
+      res.status(201).json({ skill: created, skillId: id, warnings: parsed.warnings });
     } catch (error) {
       console.error('Error importing skill:', error);
       res.status(500).json({ error: 'Failed to import skill' });
@@ -308,7 +265,9 @@ You have the above skills assigned. Follow the instructions defined in each skil
 
 console.log('Skill Service Started...');
 
-// Named export for static utility function
+// Named exports for static utility functions
 export const buildSkillsContext = SkillService.buildSkillsContext;
+export const buildSkillCatalog = SkillService.buildSkillCatalog;
+export const buildSkillActivationInstructions = SkillService.buildSkillActivationInstructions;
 
 export default new SkillService();

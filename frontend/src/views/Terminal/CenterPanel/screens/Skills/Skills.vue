@@ -42,6 +42,10 @@
               <i class="fas fa-puzzle-piece"></i> Skills
               <span class="tab-count">{{ allSkills.length }}</span>
             </button>
+            <button class="view-tab" :class="{ active: activeView === 'discovered' }" @click="switchToDiscovered">
+              <i class="fas fa-folder-open"></i> Discovered
+              <span class="tab-count">{{ discoveredSkills.length }}</span>
+            </button>
             <button class="view-tab" :class="{ active: activeView === 'evolution' }" @click="switchToEvolution">
               <i class="fas fa-dna"></i> Evolution
               <span class="tab-count">{{ leaderboard.length }}</span>
@@ -85,6 +89,81 @@
               <div class="empty-state-buttons">
                 <button class="create-button" @click="openCreateModal"><i class="fas fa-plus"></i> Create Skill</button>
               </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ═══ DISCOVERED VIEW (Agent Skills Standard) ═══ -->
+        <template v-if="activeView === 'discovered'">
+          <div class="discovered-header">
+            <div class="discovered-info">
+              <span class="discovered-label"><i class="fas fa-info-circle"></i> Skills discovered from your filesystem following the <strong>agentskills.io</strong> standard. These are also visible to Claude Code, Cursor, VS Code, and other compatible tools.</span>
+            </div>
+            <div class="discovered-actions">
+              <button class="filter-btn" @click="rescanSkills" :disabled="isDiscoveryLoading">
+                <i :class="isDiscoveryLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i> Rescan
+              </button>
+            </div>
+          </div>
+
+          <div v-if="discoveryLastScan" class="scan-meta">
+            <span class="scan-time"><i class="fas fa-clock"></i> Last scan: {{ formatFullDate(discoveryLastScan) }}</span>
+            <span class="scan-locations" v-if="discoveryScanLocations.length">
+              <i class="fas fa-folder"></i> Scanning {{ discoveryScanLocations.length }} location{{ discoveryScanLocations.length > 1 ? 's' : '' }}
+            </span>
+          </div>
+
+          <div v-if="filteredDiscoveredSkills.length > 0" class="skills-grid">
+            <div
+              v-for="skill in filteredDiscoveredSkills"
+              :key="skill.name"
+              class="skill-card discovered-card"
+              :class="{ selected: selectedDiscoveredSkill?.name === skill.name }"
+              @click="selectDiscoveredSkill(skill)"
+            >
+              <div class="card-header">
+                <span class="card-icon"><i class="fas fa-file-alt"></i></span>
+                <div class="card-title-block">
+                  <span class="card-name">{{ toTitleCase(skill.name) }}</span>
+                  <span class="card-category">
+                    <span class="source-badge" :class="skill.scope">{{ skill.scope }}</span>
+                    <span v-if="!skill.trusted" class="trust-badge untrusted"><i class="fas fa-shield-alt"></i> untrusted</span>
+                  </span>
+                </div>
+                <div class="card-actions">
+                  <Tooltip text="Import to AGNT"><button class="card-btn import" :disabled="importingSkill === skill.name" @click.stop="importDiscoveredSkill(skill)"><i :class="importingSkill === skill.name ? 'fas fa-spinner fa-spin' : 'fas fa-download'"></i></button></Tooltip>
+                </div>
+              </div>
+              <p class="card-description">{{ skill.description }}</p>
+            </div>
+          </div>
+
+          <div v-else class="empty-state-container">
+            <div class="empty-state">
+              <i class="fas fa-folder-open"></i>
+              <p>No skills discovered</p>
+              <span class="empty-hint">
+                Place skill directories in <code>~/.agents/skills/</code> or <code>~/.agnt/skills/</code>
+              </span>
+              <div class="empty-state-buttons" style="margin-top: 12px;">
+                <button class="create-button" @click="rescanSkills"><i class="fas fa-sync-alt"></i> Rescan</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Selected Discovered Skill Detail -->
+          <div v-if="selectedDiscoveredSkill" class="discovered-detail">
+            <div class="detail-header">
+              <h4><i class="fas fa-file-alt"></i> {{ toTitleCase(selectedDiscoveredSkill.name) }}</h4>
+              <button class="forge-btn primary" :disabled="importingSkill === selectedDiscoveredSkill.name" @click="importDiscoveredSkill(selectedDiscoveredSkill)">
+                <i :class="importingSkill === selectedDiscoveredSkill.name ? 'fas fa-spinner fa-spin' : 'fas fa-download'"></i>
+                {{ importingSkill === selectedDiscoveredSkill.name ? 'Importing...' : 'Import to AGNT' }}
+              </button>
+            </div>
+            <div class="detail-meta">
+              <span><strong>Source:</strong> {{ selectedDiscoveredSkill.scope }} / {{ selectedDiscoveredSkill.client }}</span>
+              <span v-if="selectedDiscoveredSkill.trusted"><i class="fas fa-check-circle" style="color: var(--color-green);"></i> Trusted</span>
+              <span v-else><i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i> Untrusted (project-level)</span>
             </div>
           </div>
         </template>
@@ -341,6 +420,11 @@ const forgeTabs = [
 
 // Skills data
 const allSkills = computed(() => store.getters['skills/allSkills'] || []);
+const discoveredSkills = computed(() => store.getters['skills/discoveredSkills'] || []);
+const discoveryScanLocations = computed(() => store.getters['skills/discoveryScanLocations'] || []);
+const discoveryLastScan = computed(() => store.getters['skills/discoveryLastScan']);
+const isDiscoveryLoading = computed(() => store.getters['skills/isDiscoveryLoading']);
+const selectedDiscoveredSkill = ref(null);
 const panelProps = computed(() => ({ selectedSkill: selectedSkill.value }));
 const leftPanelProps = computed(() => ({ allSkills: allSkills.value, selectedSkill: selectedSkill.value }));
 
@@ -355,6 +439,12 @@ const filteredSkills = computed(() => {
   const q = searchQuery.value.toLowerCase();
   if (q) result = result.filter((s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q));
   return result;
+});
+
+const filteredDiscoveredSkills = computed(() => {
+  const q = searchQuery.value.toLowerCase();
+  if (!q) return discoveredSkills.value;
+  return discoveredSkills.value.filter((s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q));
 });
 
 // SkillForge data
@@ -387,6 +477,11 @@ watch(forgeTab, (tab) => {
     store.dispatch('skillforge/fetchEligibleGoals');
   }
 });
+
+const switchToDiscovered = () => {
+  activeView.value = 'discovered';
+  store.dispatch('skills/fetchDiscoveredSkills');
+};
 
 const switchToEvolution = () => {
   activeView.value = 'evolution';
@@ -478,9 +573,66 @@ const handleImportFile = async (event) => {
   if (!file) return;
   try {
     const content = await file.text();
-    await store.dispatch('skills/importSkillMd', content);
-  } catch (err) { console.error('Import error:', err); }
+    const result = await store.dispatch('skills/importSkillMd', content);
+    const name = result?.skill?.name || file.name;
+    terminalLines.value.push(`[Skills] Imported "${name}" from file.`);
+    await simpleModal.value?.showModal({
+      title: 'Skill Imported',
+      message: `"${name}" has been imported successfully.`,
+      confirmText: 'OK',
+      showCancel: false,
+    });
+  } catch (err) {
+    console.error('Import error:', err);
+    await simpleModal.value?.showModal({
+      title: 'Import Failed',
+      message: err.message || 'Failed to import SKILL.md file.',
+      confirmText: 'OK',
+      showCancel: false,
+    });
+  }
   event.target.value = '';
+};
+
+// Discovered skills actions
+const selectDiscoveredSkill = (skill) => {
+  selectedDiscoveredSkill.value = selectedDiscoveredSkill.value?.name === skill.name ? null : skill;
+};
+
+const rescanSkills = async () => {
+  try {
+    await store.dispatch('skills/rescanSkills');
+    terminalLines.value.push(`[Skills] Rescan complete. Found ${discoveredSkills.value.length} skills.`);
+  } catch (err) {
+    console.error('Rescan error:', err);
+  }
+};
+
+const importingSkill = ref(null);
+
+const importDiscoveredSkill = async (skill) => {
+  importingSkill.value = skill.name;
+  try {
+    await store.dispatch('skills/importDiscoveredSkill', skill.name);
+    terminalLines.value.push(`[Skills] Imported "${skill.name}" from filesystem.`);
+    await simpleModal.value?.showModal({
+      title: 'Skill Imported',
+      message: `"${skill.name}" has been imported to your skills library. You can now assign it to agents.`,
+      confirmText: 'View Skills',
+      showCancel: false,
+    });
+    activeView.value = 'skills';
+  } catch (err) {
+    console.error('Import discovered skill error:', err);
+    await simpleModal.value?.showModal({
+      title: 'Import Failed',
+      message: err.message || `Failed to import "${skill.name}".`,
+      confirmText: 'OK',
+      showCancel: false,
+    });
+  } finally {
+    importingSkill.value = null;
+  }
 };
 
 // SkillForge actions
@@ -511,6 +663,7 @@ const runEvolution = async () => {
 };
 
 // Helpers
+const toTitleCase = (name) => (!name ? '' : name.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
 const truncate = (text, max) => (!text ? '' : text.length > max ? text.slice(0, max) + '...' : text);
 const formatDelta = (d) => (d == null ? '\u2014' : (d >= 0 ? '+' : '') + d.toFixed(1));
 const formatPercent = (v) => (v == null ? '\u2014' : (v * 100).toFixed(0) + '%');
@@ -624,6 +777,105 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
 .card-instructions { border-top: 1px dashed rgba(var(--green-rgb), 0.15); padding-top: 8px; }
 .instructions-label { font-size: 0.7em; color: var(--color-green); text-transform: uppercase; letter-spacing: 0.5px; }
 .instructions-preview { font-size: 0.8em; color: var(--color-grey); margin: 4px 0 0; font-family: 'Courier New', monospace; line-height: 1.35; white-space: pre-wrap; word-break: break-word; }
+
+/* Discovered Skills */
+.discovered-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  gap: 12px;
+}
+.discovered-info {
+  flex: 1;
+}
+.discovered-label {
+  font-size: 0.8em;
+  color: var(--color-grey);
+  line-height: 1.4;
+}
+.discovered-label strong {
+  color: var(--color-green);
+}
+.discovered-actions {
+  flex-shrink: 0;
+}
+.scan-meta {
+  display: flex;
+  gap: 16px;
+  padding: 0 16px 8px;
+  font-size: 0.75em;
+  color: var(--color-grey);
+}
+.scan-meta i {
+  margin-right: 4px;
+}
+.discovered-card {
+  border-left: 3px solid rgba(var(--green-rgb), 0.3);
+}
+.source-badge {
+  font-size: 0.7em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(var(--green-rgb), 0.1);
+  color: var(--color-green);
+}
+.source-badge.user {
+  background: rgba(100, 149, 237, 0.1);
+  color: #6495ed;
+}
+.trust-badge {
+  font-size: 0.65em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+.trust-badge.untrusted {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+.card-btn.import:hover {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.4);
+  background: rgba(var(--green-rgb), 0.2);
+}
+.discovered-detail {
+  border-top: 1px solid var(--terminal-border-color);
+  padding: 14px 16px;
+  flex-shrink: 0;
+}
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.detail-header h4 {
+  margin: 0;
+  font-size: 0.9em;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.detail-header h4 i {
+  color: var(--color-green);
+}
+.detail-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 0.8em;
+  color: var(--color-grey);
+}
+.empty-hint code {
+  background: rgba(var(--green-rgb), 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  color: var(--color-green);
+}
 
 /* SkillForge tabs */
 .sf-tabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--terminal-border-color); flex-shrink: 0; }

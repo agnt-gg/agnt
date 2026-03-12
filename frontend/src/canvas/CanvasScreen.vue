@@ -41,40 +41,28 @@
         <!-- macOS traffic lights (right side) -->
         <template v-if="isElectron && isMac">
           <div class="cv-mac-controls">
-            <Tooltip text="Close">
-              <button class="cv-mac-btn cv-mac-close" @click="closeWindow"></button>
-            </Tooltip>
-            <Tooltip text="Minimize">
-              <button class="cv-mac-btn cv-mac-minimize" @click="minimizeWindow"></button>
-            </Tooltip>
-            <Tooltip text="Maximize">
-              <button class="cv-mac-btn cv-mac-maximize" @click="maximizeWindow"></button>
-            </Tooltip>
+            <button class="cv-mac-btn cv-mac-close" @click="closeWindow"></button>
+            <button class="cv-mac-btn cv-mac-minimize" @click="minimizeWindow"></button>
+            <button class="cv-mac-btn cv-mac-maximize" @click="maximizeWindow"></button>
           </div>
         </template>
 
         <!-- Windows/Linux window controls (right side) -->
         <template v-if="isElectron && !isMac">
           <span class="cv-sep">|</span>
-          <Tooltip text="Minimize">
-            <button class="cv-btn cv-win-ctrl" @click="minimizeWindow">
-              <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor" /></svg>
-            </button>
-          </Tooltip>
-          <Tooltip text="Maximize">
-            <button class="cv-btn cv-win-ctrl" @click="maximizeWindow">
-              <svg width="10" height="10" viewBox="0 0 10 10">
-                <rect x="0.5" y="0.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1" fill="none" />
-              </svg>
-            </button>
-          </Tooltip>
-          <Tooltip text="Close">
-            <button class="cv-btn cv-win-ctrl cv-win-close" @click="closeWindow">
-              <svg width="10" height="10" viewBox="0 0 10 10">
-                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-              </svg>
-            </button>
-          </Tooltip>
+          <button class="cv-btn cv-win-ctrl" @click="minimizeWindow">
+            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor" /></svg>
+          </button>
+          <button class="cv-btn cv-win-ctrl" @click="maximizeWindow">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <rect x="0.5" y="0.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1" fill="none" />
+            </svg>
+          </button>
+          <button class="cv-btn cv-win-ctrl cv-win-close" @click="closeWindow">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+            </svg>
+          </button>
         </template>
       </div>
     </div>

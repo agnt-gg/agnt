@@ -513,6 +513,8 @@ async function universalChatHandler(req, res, context = {}) {
     normalizedProvider,
     // Abort signal for cancelling LLM streams
     abortSignal: streamAbortController.signal,
+    // Track activated skills for this session (Agent Skills standard - progressive disclosure)
+    activatedSkills: new Set(),
   };
 
   // Token usage accumulator — tracks real LLM token consumption across all rounds

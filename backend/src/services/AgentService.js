@@ -1,6 +1,7 @@
 import AgentModel from '../models/AgentModel.js';
 import SkillModel from '../models/SkillModel.js';
-import SkillService, { buildSkillsContext } from './SkillService.js';
+import SkillService, { buildSkillsContext, buildSkillCatalog, buildSkillActivationInstructions } from './SkillService.js';
+import SkillDiscoveryService from './SkillDiscoveryService.js';
 import UserModel from '../models/UserModel.js';
 import generateUUID from '../utils/generateUUID.js';
 
@@ -246,17 +247,39 @@ class AgentService {
       ? `\nPRIMARY DIRECTIVES:\n${agent.systemPrompt}\n`
       : '';
 
-    // Build skills context from assigned skills
+    // Build skills context using progressive disclosure (Agent Skills standard)
+    // Tier 1: Compact catalog of ALL available skills (DB assigned + filesystem discovered)
+    // Tier 2: Full instructions loaded on demand via activate_skill tool
     let skillsContext = '';
-    if (agent.assignedSkills && agent.assignedSkills.length > 0) {
-      try {
+    try {
+      const catalogEntries = [];
+
+      // Add agent's assigned DB skills to catalog
+      if (agent.assignedSkills && agent.assignedSkills.length > 0) {
         const skillRecords = await SkillModel.findByIds(agent.assignedSkills);
-        if (skillRecords.length > 0) {
-          skillsContext = '\n' + buildSkillsContext(skillRecords) + '\n';
+        for (const s of skillRecords) {
+          catalogEntries.push({ name: s.name, description: s.description, source: 'database' });
         }
-      } catch (err) {
-        console.warn('Failed to load skills for agent:', err.message);
       }
+
+      // Add filesystem-discovered skills to catalog (if discovery service is initialized)
+      if (SkillDiscoveryService.initialized) {
+        const discoveredCatalog = SkillDiscoveryService.getSkillCatalog();
+        for (const ds of discoveredCatalog) {
+          // Avoid duplicates: skip discovered skills that share a name with DB skills
+          if (!catalogEntries.some((e) => e.name === ds.name)) {
+            catalogEntries.push(ds);
+          }
+        }
+      }
+
+      if (catalogEntries.length > 0) {
+        const catalog = buildSkillCatalog(catalogEntries);
+        const instructions = buildSkillActivationInstructions();
+        skillsContext = '\n' + catalog + '\n\n' + instructions + '\n';
+      }
+    } catch (err) {
+      console.warn('Failed to build skills catalog for agent:', err.message);
     }
 
     const systemPrompt = `Current date and time: ${currentDate}

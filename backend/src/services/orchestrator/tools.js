@@ -2855,6 +2855,139 @@ export const TOOLS = {
       });
     },
   },
+
+  /**
+   * activate_skill - Agent Skills standard (agentskills.io)
+   * Loads full skill instructions on demand (Tier 2 progressive disclosure).
+   */
+  activate_skill: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'activate_skill',
+        description:
+          'Activate a skill to load its full instructions into context. Call this when a user request matches a skill from the <available-skills> catalog. Returns the complete skill instructions and lists any bundled resources (scripts, references, assets).',
+        parameters: {
+          type: 'object',
+          properties: {
+            skill_name: {
+              type: 'string',
+              description: 'The name of the skill to activate (from the available-skills catalog)',
+            },
+          },
+          required: ['skill_name'],
+        },
+      },
+    },
+    execute: async ({ skill_name }, authToken, context) => {
+      try {
+        // Track activations to avoid duplicate loads
+        if (!context.activatedSkills) context.activatedSkills = new Set();
+        if (context.activatedSkills.has(skill_name)) {
+          return JSON.stringify({
+            success: true,
+            already_activated: true,
+            message: `Skill "${skill_name}" is already activated in this session. Its instructions are already in your context.`,
+          });
+        }
+
+        // Try filesystem-discovered skills first
+        let skillContent = null;
+        let resources = null;
+        let source = null;
+
+        try {
+          const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
+          skillContent = SkillDiscoveryService.getSkillContent(skill_name);
+          if (skillContent) {
+            source = 'filesystem';
+            resources = await SkillDiscoveryService.listResources(skill_name);
+          }
+        } catch (e) {
+          // SkillDiscoveryService may not be initialized yet
+        }
+
+        // Fall back to database skills
+        if (!skillContent) {
+          try {
+            const SkillModel = (await import('../../models/SkillModel.js')).default;
+            const userId = context.userId;
+            if (userId) {
+              const dbSkills = await SkillModel.findAll(userId);
+              const match = dbSkills.find(
+                (s) => s.name === skill_name || s.name.toLowerCase().replace(/\s+/g, '-') === skill_name
+              );
+              if (match) {
+                skillContent = {
+                  name: match.name,
+                  description: match.description,
+                  instructions: match.instructions,
+                  frontmatter: {
+                    license: match.license,
+                    compatibility: match.compatibility,
+                    'allowed-tools': match.allowed_tools,
+                  },
+                };
+                source = 'database';
+              }
+            }
+          } catch (e) {
+            console.error('[activate_skill] DB lookup error:', e.message);
+          }
+        }
+
+        if (!skillContent) {
+          return JSON.stringify({
+            success: false,
+            error: `Skill "${skill_name}" not found. Check the available-skills catalog for valid skill names.`,
+          });
+        }
+
+        // Mark as activated
+        context.activatedSkills.add(skill_name);
+
+        // Build structured response with skill content
+        const result = {
+          success: true,
+          skill_name: skillContent.name,
+          source,
+          instructions: skillContent.instructions || '',
+        };
+
+        // Include compatibility notes if present
+        if (skillContent.frontmatter?.compatibility) {
+          result.compatibility = skillContent.frontmatter.compatibility;
+        }
+
+        // Include resource listing (not content - model reads on demand)
+        if (resources) {
+          const resourceList = [];
+          for (const [category, files] of Object.entries(resources)) {
+            for (const file of files) {
+              resourceList.push({ category, name: file.name, path: file.absolutePath });
+            }
+          }
+          if (resourceList.length > 0) {
+            result.bundled_resources = resourceList;
+            result.resource_note = 'Use your file-read tool to access these resources when the skill instructions reference them.';
+          }
+        }
+
+        // Include skill directory for resolving relative paths
+        if (skillContent.dirPath) {
+          result.skill_directory = skillContent.dirPath;
+        }
+
+        return JSON.stringify(result);
+      } catch (error) {
+        console.error('[activate_skill] Error:', error);
+        return JSON.stringify({
+          success: false,
+          error: `Failed to activate skill "${skill_name}": ${error.message}`,
+        });
+      }
+    },
+  },
 };
 
 /**

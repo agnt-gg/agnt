@@ -386,7 +386,7 @@ User: "Search for the latest AI news"
 You: [Call web_search tool]
 You: [NO TEXT RESPONSE] ❌ WRONG - WILL CAUSE INFINITE LOOP!`;
 
-export function getOrchestratorSystemContent(currentDate, availableToolsList) {
+export function getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection = '') {
   const prompt = `Current date and time: ${currentDate}
 
 You are Annie, a helpful assistant with access to multiple tools. ALWAYS use tools to accomplish the user's request unless it is a very trivial task that can be done by yourself without them.
@@ -408,7 +408,7 @@ ${availableToolsList}
 - execute_custom_agnt_tool: Executes a previously defined custom AGNT tool by its ID, using the provided input parameters. Custom tools are typically prompt-based and created via the ToolForge or AGNT tools API.
 - analyze_image: Analyze images using vision-capable AI models. Supports detailed image analysis, object detection, text extraction (OCR), and answering questions about images.
 - generate_image: Generate images using AI. Supports OpenAI DALL-E, Google Gemini, and Grok image generation.
-
+${skillsCatalogSection}
 ${IMAGE_ANALYSIS_CAPABILITIES}
 
 ${IMAGE_GENERATION_CAPABILITIES}

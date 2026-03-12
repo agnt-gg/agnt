@@ -19,9 +19,47 @@ export const CHAT_CONFIGS = {
     async getToolSchemas(context) {
       return await getAvailableToolSchemas();
     },
-    buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(currentDate, context) {
       const availableToolsList = context.toolSchemas.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n');
-      return getOrchestratorSystemContent(currentDate, availableToolsList);
+
+      // Build skill catalog for progressive disclosure (Agent Skills standard)
+      let skillsCatalogSection = '';
+      try {
+        const { buildSkillCatalog, buildSkillActivationInstructions } = await import('../SkillService.js');
+        const catalogEntries = [];
+
+        // Add all DB skills
+        if (context.userId) {
+          const SkillModel = (await import('../../models/SkillModel.js')).default;
+          const dbSkills = await SkillModel.findAll(context.userId);
+          for (const s of dbSkills) {
+            catalogEntries.push({ name: s.name, description: s.description, source: 'database' });
+          }
+        }
+
+        // Add filesystem-discovered skills
+        try {
+          const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
+          if (SkillDiscoveryService.initialized) {
+            const discovered = SkillDiscoveryService.getSkillCatalog();
+            for (const ds of discovered) {
+              if (!catalogEntries.some((e) => e.name === ds.name)) {
+                catalogEntries.push(ds);
+              }
+            }
+          }
+        } catch (e) {
+          // Discovery service may not be initialized
+        }
+
+        if (catalogEntries.length > 0) {
+          skillsCatalogSection = '\n' + buildSkillCatalog(catalogEntries) + '\n\n' + buildSkillActivationInstructions() + '\n';
+        }
+      } catch (e) {
+        console.warn('[chatConfigs] Failed to build skill catalog:', e.message);
+      }
+
+      return getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection);
     },
     maxToolRounds: 100,
     responseType: 'stream',
