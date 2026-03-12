@@ -21,7 +21,7 @@
           SOURCE CODE
           <span class="type-badge">{{ forge.form.widget_type.toUpperCase() }}</span>
           <span class="line-count">{{ lineCount }} lines</span>
-          <button class="format-btn" title="Format Code (Shift+Alt+F)" @click="formatCode"><i class="fas fa-magic"></i> Format</button>
+          <Tooltip text="Format Code (Shift+Alt+F)"><button class="format-btn" @click="formatCode"><i class="fas fa-magic"></i> Format</button></Tooltip>
         </div>
         <div class="codemirror-wrapper">
           <codemirror
@@ -166,6 +166,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorView, keymap } from '@codemirror/view';
 import { html_beautify } from 'js-beautify';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const beautifyOpts = {
   indent_size: 2,
@@ -196,7 +197,7 @@ function looksMinified(code) {
 
 export default {
   name: 'WidgetForgeRightPanel',
-  components: { Codemirror, CustomSelect },
+  components: { Codemirror, CustomSelect, Tooltip },
   emits: ['panel-action'],
   setup() {
     const forge = inject('widgetForge');

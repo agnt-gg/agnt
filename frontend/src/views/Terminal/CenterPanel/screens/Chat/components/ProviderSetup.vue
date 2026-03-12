@@ -1,20 +1,19 @@
 <template>
   <div class="provider-setup">
     <div class="provider-grid">
-      <button
-        v-for="provider in aiProviders"
-        :key="provider.id"
-        type="button"
-        class="provider-tile"
-        :title="provider.name"
-        :aria-label="`Connect to ${provider.name}`"
-        @click="handleProviderClick(provider)"
-      >
-        <div class="provider-icon">
-          <SvgIcon :name="provider.icon" />
-        </div>
-        <span class="provider-name">{{ provider.name }}</span>
-      </button>
+      <Tooltip v-for="provider in aiProviders" :key="provider.id" :text="provider.name">
+        <button
+          type="button"
+          class="provider-tile"
+          :aria-label="`Connect to ${provider.name}`"
+          @click="handleProviderClick(provider)"
+        >
+          <div class="provider-icon">
+            <SvgIcon :name="provider.icon" />
+          </div>
+          <span class="provider-name">{{ provider.name }}</span>
+        </button>
+      </Tooltip>
     </div>
     <SimpleModal ref="modal" />
   </div>
@@ -25,6 +24,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { PROVIDER_FETCH_ACTIONS, resolveProviderKey } from '@/store/app/aiProvider.js';
@@ -34,6 +34,7 @@ export default {
   components: {
     SvgIcon,
     SimpleModal,
+    Tooltip,
   },
   emits: ['provider-connected'],
   setup(props, { emit }) {

@@ -103,24 +103,28 @@
               </p>
 
               <div class="provider-grid">
-                <button
+                <Tooltip
                   v-for="provider in aiProviders"
                   :key="provider.id"
-                  type="button"
-                  class="provider-tile"
-                  :class="{ connected: isProviderConnected(provider.id) }"
-                  :title="provider.name"
-                  :aria-label="`Connect to ${provider.name}`"
-                  @click="handleProviderClick(provider)"
+                  :text="provider.name"
+                  width="auto"
                 >
-                  <span v-if="isProviderConnected(provider.id)" class="provider-status-dot"></span>
-                  <div class="provider-icon">
-                    <SvgIcon :name="provider.icon" />
-                  </div>
-                  <span class="provider-name">{{
-                    PROVIDER_DISPLAY_NAMES[provider.id] || PROVIDER_DISPLAY_NAMES[provider.name] || provider.name
-                  }}</span>
-                </button>
+                  <button
+                    type="button"
+                    class="provider-tile"
+                    :class="{ connected: isProviderConnected(provider.id) }"
+                    :aria-label="`Connect to ${provider.name}`"
+                    @click="handleProviderClick(provider)"
+                  >
+                    <span v-if="isProviderConnected(provider.id)" class="provider-status-dot"></span>
+                    <div class="provider-icon">
+                      <SvgIcon :name="provider.icon" />
+                    </div>
+                    <span class="provider-name">{{
+                      PROVIDER_DISPLAY_NAMES[provider.id] || PROVIDER_DISPLAY_NAMES[provider.name] || provider.name
+                    }}</span>
+                  </button>
+                </Tooltip>
               </div>
 
               <p class="hint" style="margin-top: 16px; text-align: center">Don't have an API key? You can skip this step and configure it later.</p>
@@ -186,6 +190,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES, PROVIDER_FETCH_ACTIONS, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
@@ -195,6 +200,7 @@ export default {
   components: {
     SvgIcon,
     SimpleModal,
+    Tooltip,
   },
   props: {
     show: {

@@ -35,9 +35,11 @@
             <div class="column-header">
               <h3>{{ column.title }}</h3>
               <div class="column-header-right">
-                <button v-if="column.id === 'standby'" class="add-goal-btn" @click="showCreateModal = true" title="Create new goal">
-                  <i class="fas fa-plus"></i>
-                </button>
+                <Tooltip v-if="column.id === 'standby'" text="Create new goal">
+                  <button class="add-goal-btn" @click="showCreateModal = true">
+                    <i class="fas fa-plus"></i>
+                  </button>
+                </Tooltip>
                 <span class="count">{{ column.goals.length }}</span>
               </div>
             </div>
@@ -102,12 +104,14 @@ import { ref, computed, inject } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import GoalCard from './components/GoalCard.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'GoalsScreen',
   components: {
     BaseScreen,
     GoalCard,
+    Tooltip,
   },
   emits: ['screen-change'],
   setup(props, { emit }) {

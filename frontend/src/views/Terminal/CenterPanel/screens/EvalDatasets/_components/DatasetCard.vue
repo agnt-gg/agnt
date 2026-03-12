@@ -7,7 +7,9 @@
         <span class="card-category">{{ dataset.source || 'manual' }}</span>
       </div>
       <div class="card-actions">
-        <button class="card-btn delete" @click.stop="$emit('delete')" title="Delete"><i class="fas fa-trash"></i></button>
+        <Tooltip text="Delete">
+          <button class="card-btn delete" @click.stop="$emit('delete')"><i class="fas fa-trash"></i></button>
+        </Tooltip>
       </div>
     </div>
     <p v-if="dataset.description" class="card-description">{{ dataset.description?.length > 120 ? dataset.description.substring(0, 120) + '...' : dataset.description }}</p>
@@ -33,6 +35,8 @@
 </template>
 
 <script setup>
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
 defineProps({ dataset: { type: Object, required: true }, selected: { type: Boolean, default: false } });
 defineEmits(['click', 'delete']);
 

@@ -11,7 +11,9 @@
           @click="setActiveTab(tab.name)"
         >
           <!-- <img :src="tab.icon" :alt="tab.name" :title="tab.title" /> -->
-          <SvgIcon :name="tab.icon" :title="tab.title" />
+          <Tooltip :text="tab.title" width="auto">
+            <SvgIcon :name="tab.icon" />
+          </Tooltip>
         </button>
         <Tooltip :text="isFullScreen ? 'Contract Panel' : 'Expand Panel'" width="auto">
           <button class="tab-button" :class="{ active: isFullScreen }" @click="toggleFullScreen">

@@ -90,9 +90,11 @@
                 <span class="ins-value">"{{ truncate(selectedExperiment.hypothesis, 100) }}"</span>
               </span>
             </div>
-            <button class="ins-close" @click="selectedExperiment = null; store.commit('experiments/SET_SELECTED_EXPERIMENT', null)" title="Dismiss">
-              <i class="fas fa-times"></i>
-            </button>
+            <Tooltip text="Dismiss">
+              <button class="ins-close" @click="selectedExperiment = null; store.commit('experiments/SET_SELECTED_EXPERIMENT', null)">
+                <i class="fas fa-times"></i>
+              </button>
+            </Tooltip>
           </div>
 
           <!-- Grid Layout -->
@@ -315,6 +317,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ExperimentCard from './_components/ExperimentCard.vue';
 import DatasetCard from '../EvalDatasets/_components/DatasetCard.vue';

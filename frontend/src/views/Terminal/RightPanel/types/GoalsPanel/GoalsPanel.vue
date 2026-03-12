@@ -10,9 +10,11 @@
             [{{ selectedGoal.status }}]
           </div>
         </div>
-        <button class="close-btn" @click="closePanel" title="Close">
-          <i class="fas fa-times"></i>
-        </button>
+        <Tooltip text="Close">
+          <button class="close-btn" @click="closePanel">
+            <i class="fas fa-times"></i>
+          </button>
+        </Tooltip>
       </div>
 
       <!-- Description -->
@@ -75,10 +77,12 @@
               <div class="io-toggle" @click="toggleNodeSection(task.id, 'output')">
                 <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded(task.id, 'output') }"></i>
                 <span>Output</span>
-                <button class="raw-toggle" @click.stop="toggleRawView(task.id)" :title="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
-                  <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
-                  {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
-                </button>
+                <Tooltip :text="isRawView(task.id) ? 'View Rendered' : 'View Raw'">
+                  <button class="raw-toggle" @click.stop="toggleRawView(task.id)">
+                    <i :class="isRawView(task.id) ? 'fas fa-eye' : 'fas fa-code'"></i>
+                    {{ isRawView(task.id) ? 'Rendered' : 'Raw' }}
+                  </button>
+                </Tooltip>
               </div>
               <div v-show="isNodeSectionExpanded(task.id, 'output')" class="io-body">
                 <div v-if="isRawView(task.id)" class="output-raw">
@@ -141,10 +145,12 @@
         <div class="io-toggle" @click="toggleNodeSection('eval', 'output')">
           <i class="fas fa-chevron-right" :class="{ rotated: isNodeSectionExpanded('eval', 'output') }"></i>
           <span>Evaluation</span>
-          <button class="raw-toggle" @click.stop="toggleRawView('eval')" :title="isRawView('eval') ? 'View Rendered' : 'View Raw'">
-            <i :class="isRawView('eval') ? 'fas fa-eye' : 'fas fa-code'"></i>
-            {{ isRawView('eval') ? 'Rendered' : 'Raw' }}
-          </button>
+          <Tooltip :text="isRawView('eval') ? 'View Rendered' : 'View Raw'">
+            <button class="raw-toggle" @click.stop="toggleRawView('eval')">
+              <i :class="isRawView('eval') ? 'fas fa-eye' : 'fas fa-code'"></i>
+              {{ isRawView('eval') ? 'Rendered' : 'Raw' }}
+            </button>
+          </Tooltip>
         </div>
         <div v-show="isNodeSectionExpanded('eval', 'output')" class="io-body">
           <div v-if="isRawView('eval')" class="output-raw">
@@ -169,9 +175,11 @@
               <span class="iteration-score" :class="iter.evaluation_passed ? 'score-pass' : 'score-fail'">
                 {{ iter.evaluation_score ? Math.round(iter.evaluation_score) : 0 }}%
               </span>
-              <span v-if="iter.git_commit_hash" class="iteration-hash" :title="iter.git_commit_hash">
-                <i class="fas fa-code-branch"></i> {{ iter.git_commit_hash.substring(0, 7) }}
-              </span>
+              <Tooltip v-if="iter.git_commit_hash" :text="iter.git_commit_hash">
+                <span class="iteration-hash">
+                  <i class="fas fa-code-branch"></i> {{ iter.git_commit_hash.substring(0, 7) }}
+                </span>
+              </Tooltip>
             </div>
             <div class="iteration-meta">
               <span v-if="iter.duration_ms"><i class="fas fa-clock"></i> {{ (iter.duration_ms / 1000).toFixed(1) }}s</span>

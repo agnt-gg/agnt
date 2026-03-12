@@ -60,9 +60,11 @@
               </div>
 
               <!-- Stop button for async tools -->
-              <button v-if="isAsyncToolRunning(toolCall)" @click="stopAsyncTool(toolCall)" class="stop-async-tool-btn" title="Stop async tool">
-                <i class="fas fa-stop"></i>
-              </button>
+              <Tooltip text="Stop async tool">
+                <button v-if="isAsyncToolRunning(toolCall)" @click="stopAsyncTool(toolCall)" class="stop-async-tool-btn">
+                  <i class="fas fa-stop"></i>
+                </button>
+              </Tooltip>
             </div>
 
             <div v-if="isExpanded(index)" class="tool-call-content">

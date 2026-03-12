@@ -27,10 +27,14 @@
       <div class="app-grid" ref="appGrid" @scroll="handleScroll">
         <div v-for="app in visibleApps" :key="app.id" class="app-item" :class="{ connected: app.connected }">
           <div class="app-item-inner" @click="handleAppClick(app)">
-            <div class="app-icon" :title="app.instructions">
-              <SvgIcon :name="app.icon" />
-            </div>
-            <span :title="app.instructions">{{ app.name }}</span>
+            <Tooltip :text="app.instructions || app.name" width="auto">
+              <div class="app-icon">
+                <SvgIcon :name="app.icon" />
+              </div>
+            </Tooltip>
+            <Tooltip :text="app.instructions || app.name" width="auto">
+              <span>{{ app.name }}</span>
+            </Tooltip>
             <span v-if="app.connected" class="connected-status">Connected</span>
           </div>
           <!-- <div class="app-actions">
@@ -63,6 +67,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useStore, mapActions } from 'vuex';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { useRoute, useRouter } from 'vue-router';
 import { encrypt, decrypt } from '@/views/_utils/encryption.js';

@@ -17,7 +17,9 @@
       <span class="wf-icon"><i :class="widgetDef?.icon"></i></span>
       <span class="wf-title">{{ widgetDef?.name }}</span>
       <div class="wf-ctrl">
-        <button v-if="widgetDef?.isCustomWidget" @mousedown.stop @click="$emit('edit', widget)" title="Edit widget"><i class="fas fa-pen" style="font-size: 9px;"></i></button>
+        <Tooltip v-if="widgetDef?.isCustomWidget" text="Edit widget">
+          <button @mousedown.stop @click="$emit('edit', widget)"><i class="fas fa-pen" style="font-size: 9px;"></i></button>
+        </Tooltip>
         <button @mousedown.stop @click="$emit('collapse', widget.instanceId)">{{ widget.collapsed ? '&#43;' : '&#9472;' }}</button>
         <button @mousedown.stop @click="$emit('close', widget.instanceId)">&#10005;</button>
       </div>
@@ -37,9 +39,11 @@
 import { ref, computed, onBeforeUnmount } from 'vue';
 import { gridToPixel, snapToGrid, snapSizeToGrid, clampToGrid, GRID_COLS, GRID_ROWS, GRID_GAP } from './gridUtils.js';
 import { getWidget } from './widgetRegistry.js';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'WidgetFrame',
+  components: { Tooltip },
   props: {
     widget: { type: Object, required: true },
     cellWidth: { type: Number, required: true },

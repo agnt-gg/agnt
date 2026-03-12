@@ -317,14 +317,15 @@
             <div class="condition-fields">
               <div class="condition-header">
                 <span class="condition-label">Condition {{ index + 1 }}</span>
-                <button
-                  v-if="localEdgeContent.conditions.length > 1"
-                  class="remove-condition-btn"
-                  @click="removeCondition(index)"
-                  title="Remove condition"
-                >
-                  <i class="fas fa-trash-alt"></i>
-                </button>
+                <Tooltip text="Remove condition" width="auto">
+                  <button
+                    v-if="localEdgeContent.conditions.length > 1"
+                    class="remove-condition-btn"
+                    @click="removeCondition(index)"
+                  >
+                    <i class="fas fa-trash-alt"></i>
+                  </button>
+                </Tooltip>
               </div>
               <div class="form-group">
                 <label>If:</label>
@@ -408,7 +409,7 @@
       </div>
     </div>
     <Teleport to="body">
-      <div class="tooltip" ref="tooltip" :class="{ show: showTooltip }">
+      <div class="panel-tab-tooltip" ref="tooltip" :class="{ show: showTooltip }">
         {{ tooltipMessage }}
       </div>
     </Teleport>
@@ -2318,7 +2319,7 @@ body.dark .tool-docs-content em {
 </style>
 
 <style>
-.tooltip {
+.panel-tab-tooltip {
   position: fixed;
   background-color: var(--color-med-navy);
   color: var(--color-dull-white);
@@ -2331,12 +2332,12 @@ body.dark .tool-docs-content em {
   transition: opacity 0.1s ease-in-out;
 }
 
-body.dark .tooltip {
+body.dark .panel-tab-tooltip {
   background-color: var(--color-dull-navy);
   color: var(--color-white);
 }
 
-.tooltip.show {
+.panel-tab-tooltip.show {
   opacity: 0.75;
 }
 

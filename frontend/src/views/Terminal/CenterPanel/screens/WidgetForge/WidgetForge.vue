@@ -14,9 +14,11 @@
 
         <!-- Top toolbar -->
         <div class="wf-toolbar">
-          <button class="wf-back" @click="goBack" title="Back to Widget Manager">
-            <i class="fas fa-arrow-left"></i>
-          </button>
+          <Tooltip text="Back to Widget Manager">
+            <button class="wf-back" @click="goBack">
+              <i class="fas fa-arrow-left"></i>
+            </button>
+          </Tooltip>
           <span class="wf-toolbar-title">{{ isEditing ? 'EDIT WIDGET' : 'NEW WIDGET' }}</span>
 
           <div class="wf-toolbar-right">
@@ -32,19 +34,24 @@
               ></i>
               {{ autosaveStatus === 'saving' ? 'Saving...' : autosaveStatus === 'saved' ? 'Saved' : 'Save failed' }}
             </span>
-            <button class="wf-btn wf-btn-clear" @click="clearForge" title="Clear all fields"><i class="fas fa-trash-alt"></i> Clear</button>
-            <button
-              class="wf-btn wf-btn-capture"
-              @click="manualCapture"
-              :disabled="capturingThumbnail || !form.source_code"
-              title="Capture preview thumbnail"
-            >
+            <Tooltip text="Clear all fields">
+              <button class="wf-btn wf-btn-clear" @click="clearForge"><i class="fas fa-trash-alt"></i> Clear</button>
+            </Tooltip>
+            <Tooltip text="Capture preview thumbnail">
+              <button
+                class="wf-btn wf-btn-capture"
+                @click="manualCapture"
+                :disabled="capturingThumbnail || !form.source_code"
+              >
               <i :class="capturingThumbnail ? 'fas fa-circle-notch fa-spin' : 'fas fa-camera'"></i>
               {{ capturingThumbnail ? 'Capturing...' : 'Capture' }}
-            </button>
-            <button v-if="isEditing" class="wf-btn wf-btn-export" @click="exportWidget" title="Export widget">
-              <i class="fas fa-file-export"></i> Export
-            </button>
+              </button>
+            </Tooltip>
+            <Tooltip text="Export widget">
+              <button v-if="isEditing" class="wf-btn wf-btn-export" @click="exportWidget">
+                <i class="fas fa-file-export"></i> Export
+              </button>
+            </Tooltip>
             <button class="wf-btn wf-btn-save" :class="{ 'wf-saved': saveFlash }" @click="saveWidget" :disabled="!canSave || saveFlash">
               <i :class="saveFlash ? 'fas fa-check' : 'fas fa-save'"></i> {{ saveFlash ? 'Saved!' : 'Save' }}
             </button>
@@ -87,6 +94,7 @@ import { API_CONFIG } from '@/tt.config.js';
 import CustomWidgetRenderer from '@/canvas/CustomWidgetRenderer.vue';
 import BaseScreen from '../../BaseScreen.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { captureWidgetThumbnail } from '@/utils/widgetThumbnail.js';
 
 const WIDGET_ICONS = [
@@ -216,7 +224,7 @@ const TEMPLATES = [
 
 export default {
   name: 'WidgetForgeScreen',
-  components: { BaseScreen, CustomWidgetRenderer, SimpleModal },
+  components: { BaseScreen, CustomWidgetRenderer, SimpleModal, Tooltip },
   emits: ['screen-change'],
   setup(props, { emit }) {
     const store = useStore();

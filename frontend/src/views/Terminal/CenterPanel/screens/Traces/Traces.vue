@@ -36,12 +36,12 @@
                 @input="handleSearch($event.target.value)"
               />
               <Tooltip text="Grid View" width="auto">
-                <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')" title="Grid view">
+                <button class="wm-btn" :class="{ active: currentLayout === 'grid' }" @click="setLayout('grid')">
                   <i class="fas fa-th-large"></i>
                 </button>
               </Tooltip>
               <Tooltip text="Table View" width="auto">
-                <button class="wm-btn" :class="{ active: currentLayout === 'table' }" @click="setLayout('table')" title="Table view">
+                <button class="wm-btn" :class="{ active: currentLayout === 'table' }" @click="setLayout('table')">
                   <i class="fas fa-table"></i>
                 </button>
               </Tooltip>
@@ -88,9 +88,11 @@
                 <option value="status">Sort by Status</option>
                 <option value="duration">Sort by Duration</option>
               </select>
-              <button class="sort-dir-btn" @click="toggleSortDirection" :title="sortDirection === 'desc' ? 'Descending' : 'Ascending'">
-                <i :class="sortDirection === 'desc' ? 'fas fa-sort-amount-down' : 'fas fa-sort-amount-up'"></i>
-              </button>
+              <Tooltip :text="sortDirection === 'desc' ? 'Descending' : 'Ascending'" width="auto">
+                <button class="sort-dir-btn" @click="toggleSortDirection">
+                  <i :class="sortDirection === 'desc' ? 'fas fa-sort-amount-down' : 'fas fa-sort-amount-up'"></i>
+                </button>
+              </Tooltip>
             </div>
           </div>
 

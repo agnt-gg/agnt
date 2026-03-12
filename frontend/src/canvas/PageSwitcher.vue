@@ -1,24 +1,25 @@
 <template>
   <div class="page-switcher">
     <div class="ps-pages">
-      <button
-        v-for="page in customPages"
-        :key="page.id"
-        class="ps-page"
-        :class="{ active: page.id === activePageId }"
-        :title="page.name"
-        @click="switchPage(page.id)"
-        @contextmenu.prevent="openContextMenu($event, page)"
-      >
-        <i :class="page.icon || 'fas fa-th'"></i>
-        <span class="ps-page-name">{{ page.name }}</span>
-      </button>
+      <Tooltip v-for="page in customPages" :key="page.id" :text="page.name">
+        <button
+          class="ps-page"
+          :class="{ active: page.id === activePageId }"
+          @click="switchPage(page.id)"
+          @contextmenu.prevent="openContextMenu($event, page)"
+        >
+          <i :class="page.icon || 'fas fa-th'"></i>
+          <span class="ps-page-name">{{ page.name }}</span>
+        </button>
+      </Tooltip>
     </div>
 
-    <button class="ps-add" @click="promptAddPage" title="Add page">
-      <i class="fas fa-plus"></i>
-      <span class="ps-add-label">New Page</span>
-    </button>
+    <Tooltip text="Add page">
+      <button class="ps-add" @click="promptAddPage">
+        <i class="fas fa-plus"></i>
+        <span class="ps-add-label">New Page</span>
+      </button>
+    </Tooltip>
 
     <!-- Context menu -->
     <Teleport to="body">
@@ -45,9 +46,11 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { getDefaultLayout } from './defaultLayouts.js';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'PageSwitcher',
+  components: { Tooltip },
   emits: ['page-changed'],
   setup(props, { emit }) {
     const store = useStore();

@@ -30,10 +30,12 @@
           @create="createNewWidget"
         >
           <template #extra-buttons>
-            <button class="wm-btn wm-btn-import" @click="showImportModal = true" title="Import widget">
-              <i class="fas fa-file-import"></i>
-              <span>Import</span>
-            </button>
+            <Tooltip text="Import widget">
+              <button class="wm-btn wm-btn-import" @click="showImportModal = true">
+                <i class="fas fa-file-import"></i>
+                <span>Import</span>
+              </button>
+            </Tooltip>
           </template>
         </ScreenToolbar>
 
@@ -109,13 +111,15 @@
                 </div>
                 <!-- Actions for custom widgets -->
                 <div v-if="widget._isCustom" class="wm-card-actions" @click.stop>
-                  <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
-                  <button @click="captureWidgetPreview(widget)" title="Capture preview" :disabled="capturingId === widget.id">
-                    <i :class="capturingId === widget.id ? 'fas fa-circle-notch fa-spin' : 'fas fa-camera'"></i>
-                  </button>
-                  <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
-                  <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
-                  <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
+                  <Tooltip text="Edit"><button @click="openEditor(widget)"><i class="fas fa-pen"></i></button></Tooltip>
+                  <Tooltip text="Capture preview">
+                    <button @click="captureWidgetPreview(widget)" :disabled="capturingId === widget.id">
+                      <i :class="capturingId === widget.id ? 'fas fa-circle-notch fa-spin' : 'fas fa-camera'"></i>
+                    </button>
+                  </Tooltip>
+                  <Tooltip text="Duplicate"><button @click="duplicateWidget(widget)"><i class="fas fa-copy"></i></button></Tooltip>
+                  <Tooltip text="Export"><button @click="exportWidget(widget)"><i class="fas fa-file-export"></i></button></Tooltip>
+                  <Tooltip text="Delete"><button class="wm-card-delete" @click="confirmDelete(widget)"><i class="fas fa-trash"></i></button></Tooltip>
                 </div>
               </div>
 
@@ -150,13 +154,15 @@
                 <span class="wm-list-type">{{ widget.widget_type || widget.category }}</span>
                 <span class="wm-list-size">{{ formatSize(widget) }}</span>
                 <div v-if="widget._isCustom" class="wm-list-actions" @click.stop>
-                  <button @click="openEditor(widget)" title="Edit"><i class="fas fa-pen"></i></button>
-                  <button @click="captureWidgetPreview(widget)" title="Capture preview" :disabled="capturingId === widget.id">
-                    <i :class="capturingId === widget.id ? 'fas fa-circle-notch fa-spin' : 'fas fa-camera'"></i>
-                  </button>
-                  <button @click="duplicateWidget(widget)" title="Duplicate"><i class="fas fa-copy"></i></button>
-                  <button @click="exportWidget(widget)" title="Export"><i class="fas fa-file-export"></i></button>
-                  <button class="wm-card-delete" @click="confirmDelete(widget)" title="Delete"><i class="fas fa-trash"></i></button>
+                  <Tooltip text="Edit"><button @click="openEditor(widget)"><i class="fas fa-pen"></i></button></Tooltip>
+                  <Tooltip text="Capture preview">
+                    <button @click="captureWidgetPreview(widget)" :disabled="capturingId === widget.id">
+                      <i :class="capturingId === widget.id ? 'fas fa-circle-notch fa-spin' : 'fas fa-camera'"></i>
+                    </button>
+                  </Tooltip>
+                  <Tooltip text="Duplicate"><button @click="duplicateWidget(widget)"><i class="fas fa-copy"></i></button></Tooltip>
+                  <Tooltip text="Export"><button @click="exportWidget(widget)"><i class="fas fa-file-export"></i></button></Tooltip>
+                  <Tooltip text="Delete"><button class="wm-card-delete" @click="confirmDelete(widget)"><i class="fas fa-trash"></i></button></Tooltip>
                 </div>
               </div>
 

@@ -305,7 +305,7 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { useStore } from 'vuex';
-import Tooltip from '@/views/Terminal/components/shared/Tooltip.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import GoalDetailView from './GoalDetailView.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 

@@ -13,30 +13,32 @@
         @input="$emit('update:searchQuery', $event.target.value)"
       />
       <Tooltip v-if="showCollapseToggle" :text="allCategoriesCollapsed ? 'Expand all categories' : 'Collapse all categories'" width="auto">
-        <button class="wm-btn" :class="{ active: allCategoriesCollapsed }" @click="$emit('toggleCollapseAll')" title="Toggle collapse">
+        <button class="wm-btn" :class="{ active: allCategoriesCollapsed }" @click="$emit('toggleCollapseAll')">
           <i :class="allCategoriesCollapsed ? 'fas fa-expand' : 'fas fa-compress'"></i>
         </button>
       </Tooltip>
       <Tooltip v-if="showHideEmpty" :text="hideEmptyCategories ? 'Show empty categories' : 'Hide empty categories'" width="auto">
-        <button class="wm-btn" :class="{ active: hideEmptyCategories }" @click="$emit('toggleHideEmpty')" title="Toggle empty categories">
+        <button class="wm-btn" :class="{ active: hideEmptyCategories }" @click="$emit('toggleHideEmpty')">
           <i :class="hideEmptyCategories ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
         </button>
       </Tooltip>
       <Tooltip :text="sortOrder === 'az' ? 'Sort Z → A' : 'Sort A → Z'" width="auto">
-        <button class="wm-btn" @click="$emit('update:sortOrder', sortOrder === 'az' ? 'za' : 'az')" title="Toggle sort order">
+        <button class="wm-btn" @click="$emit('update:sortOrder', sortOrder === 'az' ? 'za' : 'az')">
           <i :class="sortOrder === 'az' ? 'fas fa-sort-alpha-down' : 'fas fa-sort-alpha-up-alt'"></i>
         </button>
       </Tooltip>
       <Tooltip v-for="opt in layoutOptions" :key="opt" :text="layoutLabels[opt] || opt" width="auto">
-        <button class="wm-btn" :class="{ active: currentLayout === opt }" @click="$emit('update:layout', opt)" :title="layoutLabels[opt] || opt">
+        <button class="wm-btn" :class="{ active: currentLayout === opt }" @click="$emit('update:layout', opt)">
           <i :class="layoutIcons[opt] || 'fas fa-th-large'"></i>
         </button>
       </Tooltip>
       <slot name="extra-buttons"></slot>
-      <button v-if="createLabel" class="wm-btn wm-btn-create" @click="$emit('create')" :title="createLabel">
-        <i class="fas fa-plus"></i>
-        <span>{{ createLabel }}</span>
-      </button>
+      <Tooltip v-if="createLabel" :text="createLabel" width="auto">
+        <button class="wm-btn wm-btn-create" @click="$emit('create')">
+          <i class="fas fa-plus"></i>
+          <span>{{ createLabel }}</span>
+        </button>
+      </Tooltip>
     </div>
   </div>
 </template>

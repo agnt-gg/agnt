@@ -30,7 +30,7 @@
           @create="openCreateModal"
         >
           <template v-if="activeView === 'skills'" #extra-buttons>
-            <button class="import-btn" @click="triggerImport" title="Import SKILL.md"><i class="fas fa-file-import"></i> Import</button>
+            <Tooltip text="Import SKILL.md"><button class="import-btn" @click="triggerImport"><i class="fas fa-file-import"></i> Import</button></Tooltip>
           </template>
         </ScreenToolbar>
         <input ref="importFileInput" type="file" accept=".md" style="display: none" @change="handleImportFile" />
@@ -66,8 +66,8 @@
                   <span class="card-category">{{ skill.category || 'general' }}</span>
                 </div>
                 <div class="card-actions">
-                  <button class="card-btn edit" @click.stop="openEditModal(skill)" title="Edit"><i class="fas fa-pen"></i></button>
-                  <button class="card-btn delete" @click.stop="confirmDelete(skill)" title="Delete"><i class="fas fa-trash"></i></button>
+                  <Tooltip text="Edit"><button class="card-btn edit" @click.stop="openEditModal(skill)"><i class="fas fa-pen"></i></button></Tooltip>
+                  <Tooltip text="Delete"><button class="card-btn delete" @click.stop="confirmDelete(skill)"><i class="fas fa-trash"></i></button></Tooltip>
                 </div>
               </div>
               <p class="card-description">{{ skill.description }}</p>
@@ -292,6 +292,7 @@ import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const SKILL_ICONS = [
   'fas fa-puzzle-piece', 'fas fa-chart-bar', 'fas fa-chart-line', 'fas fa-chart-pie',

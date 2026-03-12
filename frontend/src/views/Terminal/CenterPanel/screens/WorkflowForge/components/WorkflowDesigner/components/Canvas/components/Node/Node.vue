@@ -1,28 +1,28 @@
 <template>
-  <div
-    :class="[
-      'node',
-      'no-select',
-      node.type,
-      {
-        'label-node': node.type === 'label',
-        selected: node.isSelected,
-        'tiny-node': isTinyNodeMode,
-        trigger: node.isTrigger,
-        'has-media-content': hasMediaContent,
-        'has-html-content': hasHtmlContent,
-      },
-      node.category,
-      { 'has-output': output },
-      { 'has-error': error },
-    ]"
-    :style="nodeStyle"
-    @mousedown.stop="startDragging"
-    @click.stop="selectNode"
-    :data-id="node.id"
-    :data-category="node.category"
-    :title="node.title || node.text"
-  >
+  <Tooltip :text="node.title || node.text || 'Untitled Node'" width="auto">
+    <div
+      :class="[
+        'node',
+        'no-select',
+        node.type,
+        {
+          'label-node': node.type === 'label',
+          selected: node.isSelected,
+          'tiny-node': isTinyNodeMode,
+          trigger: node.isTrigger,
+          'has-media-content': hasMediaContent,
+          'has-html-content': hasHtmlContent,
+        },
+        node.category,
+        { 'has-output': output },
+        { 'has-error': error },
+      ]"
+      :style="nodeStyle"
+      @mousedown.stop="startDragging"
+      @click.stop="selectNode"
+      :data-id="node.id"
+      :data-category="node.category"
+    >
     <SvgIcon
       v-if="node.icon && node.type !== 'label' && !hasMediaContent && !hasHtmlContent && !hasContent && !hasWidget"
       :name="node.icon"
@@ -205,12 +205,14 @@
     </template>
 
     <div class="node-delete-button" @click.stop="deleteNode">x</div>
-  </div>
+    </div>
+  </Tooltip>
 </template>
 
 <script>
 import { inject } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import MediaPreview from '../Widgets/MediaPreview.vue';
 import HtmlPreview from '../Widgets/HtmlPreview.vue';
 import CodePreview from '../Widgets/CodePreview.vue';
@@ -223,6 +225,7 @@ export default {
   name: 'Node',
   components: {
     SvgIcon,
+    Tooltip,
     MediaPreview,
     HtmlPreview,
     CodePreview,

@@ -7,12 +7,16 @@
         <span class="card-category">{{ experiment.type || 'ab_test' }}</span>
       </div>
       <div class="card-actions">
-        <button v-if="experiment.status === 'planned'" class="card-btn run" @click.stop="$emit('run')" title="Run">
-          <i class="fas fa-play"></i>
-        </button>
-        <button class="card-btn delete" @click.stop="$emit('delete')" title="Delete">
-          <i class="fas fa-trash"></i>
-        </button>
+        <Tooltip v-if="experiment.status === 'planned'" text="Run">
+          <button class="card-btn run" @click.stop="$emit('run')">
+            <i class="fas fa-play"></i>
+          </button>
+        </Tooltip>
+        <Tooltip text="Delete">
+          <button class="card-btn delete" @click.stop="$emit('delete')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </Tooltip>
       </div>
     </div>
 
@@ -47,6 +51,8 @@
 </template>
 
 <script setup>
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
 defineProps({
   experiment: { type: Object, required: true },
   selected: { type: Boolean, default: false },

@@ -20,9 +20,11 @@
             @click="switchTab(tab.path)"
           >
             <span class="ce-tab-name">{{ tab.name }}{{ tab.isDirty ? ' *' : '' }}</span>
-            <button class="ce-tab-close" @click.stop="closeTab(tab.path)" title="Close">
-              <i class="fas fa-times"></i>
-            </button>
+            <Tooltip text="Close">
+              <button class="ce-tab-close" @click.stop="closeTab(tab.path)">
+                <i class="fas fa-times"></i>
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -75,19 +77,22 @@
                 Preview
               </span>
               <div class="ce-preview-actions">
-                <button class="ce-preview-btn" @click="refreshPreview" title="Refresh preview">
-                  <i class="fas fa-sync-alt"></i>
-                </button>
+                <Tooltip text="Refresh preview">
+                  <button class="ce-preview-btn" @click="refreshPreview">
+                    <i class="fas fa-sync-alt"></i>
+                  </button>
+                </Tooltip>
               </div>
             </div>
             <div class="ce-preview-content">
-              <iframe
-                v-if="isHtmlFile && activeTab"
-                ref="previewFrame"
-                class="ce-preview-iframe"
-                sandbox="allow-scripts allow-same-origin"
-                title="Preview"
-              ></iframe>
+              <Tooltip text="Preview">
+                <iframe
+                  v-if="isHtmlFile && activeTab"
+                  ref="previewFrame"
+                  class="ce-preview-iframe"
+                  sandbox="allow-scripts allow-same-origin"
+                ></iframe>
+              </Tooltip>
               <div v-else-if="activeTab" class="ce-preview-empty">
                 <i class="fas fa-eye-slash"></i>
                 <p>No preview for .{{ activeTab.path.split('.').pop() }} files</p>
@@ -112,6 +117,7 @@ import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
 import BaseScreen from '../../BaseScreen.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, saveFile } from '@/services/fileSystemService.js';
 
 const LANG_MAP = {
@@ -134,7 +140,7 @@ const HTML_PREVIEW_EXTS = new Set(['html', 'htm', 'svg']);
 
 export default {
   name: 'CodeEditorScreen',
-  components: { BaseScreen, Codemirror },
+  components: { BaseScreen, Codemirror, Tooltip },
   emits: ['screen-change'],
   setup() {
     const baseScreenRef = ref(null);

@@ -34,9 +34,11 @@
           ref="chatInputRef"
         />
         <template v-if="isProcessing">
-          <button @click="stopStream" class="chat-stop-button" title="Stop generating">
-            <i class="fas fa-stop"></i>
-          </button>
+          <Tooltip text="Stop generating">
+            <button @click="stopStream" class="chat-stop-button">
+              <i class="fas fa-stop"></i>
+            </button>
+          </Tooltip>
         </template>
         <template v-else>
           <button @click="sendChatMessage" :disabled="!chatInput.trim()" class="chat-send-button">
@@ -54,10 +56,11 @@ import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
 import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/components/ProcessingState.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'CodeChatContainer',
-  components: { MessageItem, ProcessingState },
+  components: { MessageItem, ProcessingState, Tooltip },
   props: {
     sessionId: { type: String, default: 'code-editor' },
   },

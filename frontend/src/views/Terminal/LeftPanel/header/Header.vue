@@ -56,9 +56,11 @@
               <span>⭐69k</span>
             </div>
           </div>
-          <button @click="toggleCollapse" class="collapse-toggle" :title="isCollapsed ? 'Expand header' : 'Collapse header'">
-            <span class="toggle-icon">{{ isCollapsed ? '↓' : '↑' }}</span>
-          </button>
+          <Tooltip :text="isCollapsed ? 'Expand header' : 'Collapse header'" width="auto">
+            <button @click="toggleCollapse" class="collapse-toggle">
+              <span class="toggle-icon">{{ isCollapsed ? '↓' : '↑' }}</span>
+            </button>
+          </Tooltip>
         </div>
       </div> -->
     </div>
@@ -69,10 +71,11 @@
 import { computed, ref } from 'vue';
 import { useStore } from 'vuex';
 import SongPlayerController from '@/views/Terminal/_components/SongPlayerController.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
   name: 'Header',
-  components: { SongPlayerController },
+  components: { SongPlayerController, Tooltip },
   props: {
     stats: {
       type: Object,

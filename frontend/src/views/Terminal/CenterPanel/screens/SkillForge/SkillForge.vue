@@ -337,15 +337,16 @@
                     <i :class="isAnalyzing ? 'fas fa-spinner fa-spin' : 'fas fa-search'"></i>
                     {{ isAnalyzing ? 'Analyzing...' : 'Analyze Trace' }}
                   </button>
-                  <button
-                    class="forge-btn primary"
-                    :disabled="!selectedGoal.eligible || isEvolving"
-                    @click="runEvolution"
-                    :title="!selectedGoal.eligible ? 'Goal does not meet eligibility thresholds' : 'Analyze trace and forge a skill'"
-                  >
-                    <i :class="isEvolving ? 'fas fa-spinner fa-spin' : 'fas fa-hammer'"></i>
-                    {{ isEvolving ? 'Forging...' : 'Forge Skill' }}
-                  </button>
+                  <Tooltip :text="!selectedGoal.eligible ? 'Goal does not meet eligibility thresholds' : 'Analyze trace and forge a skill'">
+                    <button
+                      class="forge-btn primary"
+                      :disabled="!selectedGoal.eligible || isEvolving"
+                      @click="runEvolution"
+                    >
+                      <i :class="isEvolving ? 'fas fa-spinner fa-spin' : 'fas fa-hammer'"></i>
+                      {{ isEvolving ? 'Forging...' : 'Forge Skill' }}
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </div>
@@ -486,6 +487,7 @@ import { ref, computed, onMounted, watch, reactive } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const store = useStore();
 const emit = defineEmits(['screen-change']);

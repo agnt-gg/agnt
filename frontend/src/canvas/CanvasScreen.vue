@@ -25,35 +25,53 @@
       <!-- Right side controls -->
       <div class="cv-right">
         <span class="cv-clock" id="cvClock">{{ clock }}</span>
-        <span v-if="globalModelLabel" class="cv-global-model" :title="globalModelLabel"> {{ globalProviderLabel }}/{{ globalModelLabel }} </span>
-        <button v-if="onCustomPage" class="cv-btn" @click="showCatalog = true" title="Add widget">+</button>
-        <button v-if="onCustomPage" class="cv-btn" @click="resetCurrentPage" title="Reset layout">&#8635;</button>
+        <Tooltip v-if="globalModelLabel" :text="globalModelLabel">
+          <span class="cv-global-model"> {{ globalProviderLabel }}/{{ globalModelLabel }} </span>
+        </Tooltip>
+        <Tooltip v-if="onCustomPage" text="Add widget">
+          <button class="cv-btn" @click="showCatalog = true">+</button>
+        </Tooltip>
+        <Tooltip v-if="onCustomPage" text="Reset layout">
+          <button class="cv-btn" @click="resetCurrentPage">&#8635;</button>
+        </Tooltip>
 
         <!-- macOS traffic lights (right side) -->
         <template v-if="isElectron && isMac">
           <div class="cv-mac-controls">
-            <button class="cv-mac-btn cv-mac-close" @click="closeWindow" title="Close"></button>
-            <button class="cv-mac-btn cv-mac-minimize" @click="minimizeWindow" title="Minimize"></button>
-            <button class="cv-mac-btn cv-mac-maximize" @click="maximizeWindow" title="Maximize"></button>
+            <Tooltip text="Close">
+              <button class="cv-mac-btn cv-mac-close" @click="closeWindow"></button>
+            </Tooltip>
+            <Tooltip text="Minimize">
+              <button class="cv-mac-btn cv-mac-minimize" @click="minimizeWindow"></button>
+            </Tooltip>
+            <Tooltip text="Maximize">
+              <button class="cv-mac-btn cv-mac-maximize" @click="maximizeWindow"></button>
+            </Tooltip>
           </div>
         </template>
 
         <!-- Windows/Linux window controls (right side) -->
         <template v-if="isElectron && !isMac">
           <span class="cv-sep">|</span>
-          <button class="cv-btn cv-win-ctrl" @click="minimizeWindow" title="Minimize">
-            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor" /></svg>
-          </button>
-          <button class="cv-btn cv-win-ctrl" @click="maximizeWindow" title="Maximize">
-            <svg width="10" height="10" viewBox="0 0 10 10">
-              <rect x="0.5" y="0.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1" fill="none" />
-            </svg>
-          </button>
-          <button class="cv-btn cv-win-ctrl cv-win-close" @click="closeWindow" title="Close">
-            <svg width="10" height="10" viewBox="0 0 10 10">
-              <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-            </svg>
-          </button>
+          <Tooltip text="Minimize">
+            <button class="cv-btn cv-win-ctrl" @click="minimizeWindow">
+              <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor" /></svg>
+            </button>
+          </Tooltip>
+          <Tooltip text="Maximize">
+            <button class="cv-btn cv-win-ctrl" @click="maximizeWindow">
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <rect x="0.5" y="0.5" width="9" height="9" rx="1" stroke="currentColor" stroke-width="1" fill="none" />
+              </svg>
+            </button>
+          </Tooltip>
+          <Tooltip text="Close">
+            <button class="cv-btn cv-win-ctrl cv-win-close" @click="closeWindow">
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+              </svg>
+            </button>
+          </Tooltip>
         </template>
       </div>
     </div>

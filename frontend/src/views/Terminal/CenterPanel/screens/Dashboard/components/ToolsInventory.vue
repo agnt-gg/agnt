@@ -4,9 +4,11 @@
       <div v-for="family in toolFamilies" :key="family.name" class="tool-family">
         <div class="family-name">{{ family.name }}:</div>
         <div class="tools-list">
-          <span v-for="tool in family.tools" :key="tool.id" class="tool-item" :title="tool.name">
-            <SvgIcon :name="tool.icon" class="tool-icon" :class="tool.statusClass" />
-          </span>
+          <Tooltip v-for="tool in family.tools" :key="tool.id" :text="tool.name">
+            <span class="tool-item">
+              <SvgIcon :name="tool.icon" class="tool-icon" :class="tool.statusClass" />
+            </span>
+          </Tooltip>
         </div>
       </div>
     </div>
@@ -18,6 +20,7 @@ import { computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseDashboardCard from './BaseDashboardCard.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 // NOTE: Static toolLibrary import removed - now using centralized Vuex store (tools/fetchWorkflowTools)
 
 export default {
@@ -25,6 +28,7 @@ export default {
   components: {
     BaseDashboardCard,
     SvgIcon,
+    Tooltip,
   },
   setup() {
     const store = useStore();
