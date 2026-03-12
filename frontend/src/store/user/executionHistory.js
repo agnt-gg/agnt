@@ -145,6 +145,10 @@ export default {
             isAgentExecution: true,
             provider: exec.provider,
             model: exec.model,
+            inputTokens: exec.inputTokens || 0,
+            outputTokens: exec.outputTokens || 0,
+            totalTokens: exec.totalTokens || 0,
+            estimatedCost: exec.estimatedCost || 0,
           }));
           commit('SET_AGENT_EXECUTION_SUMMARIES', agentSummaries);
         } else {

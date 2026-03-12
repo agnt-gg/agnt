@@ -47,24 +47,40 @@ class AgentExecutionModel {
 
   /**
    * Update an agent execution record
+   * @param {object} [tokenUsage] - Optional token usage { inputTokens, outputTokens, totalTokens, estimatedCost }
    */
-  static update(id, status, finalResponse, creditsUsed, toolCallsCount, error = null) {
+  static update(id, status, finalResponse, creditsUsed, toolCallsCount, error = null, tokenUsage = null) {
     return new Promise((resolve, reject) => {
       const safeStatus = status || 'stopped';
       const endTime = ['completed', 'failed', 'stopped', 'error'].includes(safeStatus)
         ? new Date().toISOString()
         : null;
 
-      db.run(
-        `UPDATE agent_executions
-         SET status = ?, final_response = ?, end_time = ?, credits_used = ?, tool_calls_count = ?, error = ?
-         WHERE id = ?`,
-        [safeStatus, finalResponse, endTime, creditsUsed, toolCallsCount, error, id],
-        function (err) {
-          if (err) reject(err);
-          else resolve(this.changes);
-        }
-      );
+      if (tokenUsage) {
+        db.run(
+          `UPDATE agent_executions
+           SET status = ?, final_response = ?, end_time = ?, credits_used = ?, tool_calls_count = ?, error = ?,
+               input_tokens = ?, output_tokens = ?, total_tokens = ?, estimated_cost = ?
+           WHERE id = ?`,
+          [safeStatus, finalResponse, endTime, creditsUsed, toolCallsCount, error,
+           tokenUsage.inputTokens || 0, tokenUsage.outputTokens || 0, tokenUsage.totalTokens || 0, tokenUsage.estimatedCost || 0, id],
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      } else {
+        db.run(
+          `UPDATE agent_executions
+           SET status = ?, final_response = ?, end_time = ?, credits_used = ?, tool_calls_count = ?, error = ?
+           WHERE id = ?`,
+          [safeStatus, finalResponse, endTime, creditsUsed, toolCallsCount, error, id],
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      }
     });
   }
 
@@ -118,20 +134,36 @@ class AgentExecutionModel {
 
   /**
    * Update a tool execution record
+   * @param {object} [tokenUsage] - Optional { inputTokens, outputTokens }
    */
-  static updateToolExecution(id, status, output, error, creditsUsed = 0) {
+  static updateToolExecution(id, status, output, error, creditsUsed = 0, tokenUsage = null) {
     const endTime = new Date().toISOString();
     return new Promise((resolve, reject) => {
-      db.run(
-        `UPDATE agent_tool_executions
-         SET status = ?, output = ?, error = ?, end_time = ?, credits_used = ?
-         WHERE id = ?`,
-        [status, JSON.stringify(output), error, endTime, creditsUsed, id],
-        function (err) {
-          if (err) reject(err);
-          else resolve(this.changes);
-        }
-      );
+      if (tokenUsage) {
+        db.run(
+          `UPDATE agent_tool_executions
+           SET status = ?, output = ?, error = ?, end_time = ?, credits_used = ?,
+               input_tokens = ?, output_tokens = ?
+           WHERE id = ?`,
+          [status, JSON.stringify(output), error, endTime, creditsUsed,
+           tokenUsage.inputTokens || 0, tokenUsage.outputTokens || 0, id],
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      } else {
+        db.run(
+          `UPDATE agent_tool_executions
+           SET status = ?, output = ?, error = ?, end_time = ?, credits_used = ?
+           WHERE id = ?`,
+          [status, JSON.stringify(output), error, endTime, creditsUsed, id],
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      }
     });
   }
 
@@ -147,7 +179,8 @@ class AgentExecutionModel {
     return new Promise((resolve, reject) => {
       db.all(
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.start_time, ae.end_time, ae.status,
-                ae.credits_used, ae.tool_calls_count, ae.provider, ae.model
+                ae.credits_used, ae.tool_calls_count, ae.provider, ae.model,
+                ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost
          FROM agent_executions ae
          WHERE ae.user_id = ? ${dateFilter}
          ORDER BY ae.start_time DESC
@@ -167,6 +200,10 @@ class AgentExecutionModel {
               toolCallsCount: row.tool_calls_count || 0,
               provider: row.provider,
               model: row.model,
+              inputTokens: row.input_tokens || 0,
+              outputTokens: row.output_tokens || 0,
+              totalTokens: row.total_tokens || 0,
+              estimatedCost: row.estimated_cost || 0,
               type: 'agent', // Mark as agent execution for frontend
             }));
             resolve(executions);
@@ -184,7 +221,8 @@ class AgentExecutionModel {
       db.get(
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.user_id, ae.conversation_id,
                 ae.start_time, ae.end_time, ae.status, ae.credits_used, ae.tool_calls_count,
-                ae.initial_prompt, ae.final_response, ae.error, ae.provider, ae.model
+                ae.initial_prompt, ae.final_response, ae.error, ae.provider, ae.model,
+                ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost
          FROM agent_executions ae
          WHERE ae.id = ?`,
         [executionId],
@@ -194,7 +232,8 @@ class AgentExecutionModel {
 
     const toolsQuery = new Promise((resolve, reject) => {
       db.all(
-        `SELECT id, tool_name, tool_call_id, start_time, end_time, status, input, output, error, credits_used
+        `SELECT id, tool_name, tool_call_id, start_time, end_time, status, input, output, error, credits_used,
+                input_tokens, output_tokens
          FROM agent_tool_executions
          WHERE execution_id = ?
          ORDER BY start_time`,
@@ -224,6 +263,10 @@ class AgentExecutionModel {
       error: execution.error,
       provider: execution.provider,
       model: execution.model,
+      inputTokens: execution.input_tokens || 0,
+      outputTokens: execution.output_tokens || 0,
+      totalTokens: execution.total_tokens || 0,
+      estimatedCost: execution.estimated_cost || 0,
       type: 'agent',
       toolExecutions: toolExecutions.map((te) => ({
         id: te.id,
@@ -236,6 +279,8 @@ class AgentExecutionModel {
         output: te.output ? safeParse(te.output) : null,
         error: te.error,
         creditsUsed: te.credits_used || 0,
+        inputTokens: te.input_tokens || 0,
+        outputTokens: te.output_tokens || 0,
       })),
     };
   }
@@ -401,6 +446,26 @@ class AgentExecutionModel {
       db.run(
         'UPDATE agent_executions SET credits_used = credits_used + ? WHERE id = ?',
         [credits, executionId],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  /**
+   * Accumulate token usage for an execution
+   */
+  static addTokenUsage(executionId, inputTokens, outputTokens) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE agent_executions
+         SET input_tokens = input_tokens + ?,
+             output_tokens = output_tokens + ?,
+             total_tokens = total_tokens + ?
+         WHERE id = ?`,
+        [inputTokens || 0, outputTokens || 0, (inputTokens || 0) + (outputTokens || 0), executionId],
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);

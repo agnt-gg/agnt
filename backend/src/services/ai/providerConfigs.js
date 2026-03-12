@@ -438,6 +438,16 @@ const PROVIDER_CONFIGS = [
       'Qwen/Qwen3-235B-A22B-Thinking-2507',
       'meta-llama/Llama-3.3-70B-Instruct-Turbo',
     ],
+    modelMetadata: {
+      'deepseek-ai/DeepSeek-V3': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.30, outputCostPer1M: 0.88, supportsVision: false, supportsTools: true, reasoning: false },
+      'deepseek-ai/DeepSeek-R1': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.75, outputCostPer1M: 2.19, supportsVision: false, supportsTools: true, reasoning: true },
+      'moonshotai/Kimi-K2.5': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.20, outputCostPer1M: 0.88, supportsVision: false, supportsTools: true, reasoning: true },
+      'MiniMaxAI/MiniMax-M2.5': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 0.30, outputCostPer1M: 1.20, supportsVision: false, supportsTools: true, reasoning: true },
+      'Qwen/Qwen3-235B-A22B-Thinking-2507': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.50, outputCostPer1M: 1.50, supportsVision: false, supportsTools: true, reasoning: true },
+      'meta-llama/Llama-3.3-70B-Instruct-Turbo': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.18, outputCostPer1M: 0.34, supportsVision: false, supportsTools: true, reasoning: false },
+      'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8': { contextWindow: 1048576, maxOutputTokens: 32768, inputCostPer1M: 0.27, outputCostPer1M: 0.35, supportsVision: true, supportsTools: true, reasoning: false },
+      'meta-llama/Llama-4-Scout-17B-16E-Instruct': { contextWindow: 524288, maxOutputTokens: 32768, inputCostPer1M: 0.18, outputCostPer1M: 0.30, supportsVision: true, supportsTools: true, reasoning: false },
+    },
     modelFilter: (m) => m.id && m.type === 'chat',
     compat: {},
     sdkOptions: {},
@@ -793,13 +803,97 @@ export function buildBaseURLs() {
 // ─────────────────────────── MODEL METADATA HELPERS ───────────────────────────
 
 /**
+ * Mapping of provider variants to their parent provider for metadata fallback.
+ * When a variant (e.g. 'openai-codex') has no modelMetadata, we check the parent.
+ */
+const PROVIDER_METADATA_FALLBACK = {
+  'openai-codex': 'openai',
+  'openai-codex-cli': 'openai',
+  'claude-code': 'anthropic',
+  'gemini-cli': 'gemini',
+};
+
+/**
+ * Dynamic pricing cache — populated at runtime from provider API responses.
+ * Keyed by "providerKey:modelId", values are metadata objects with inputCostPer1M/outputCostPer1M.
+ * Used for providers like OpenRouter that return per-model pricing in their API.
+ */
+const dynamicPricingCache = new Map();
+
+/**
+ * Register dynamic pricing for a model (from provider API response).
+ * @param {string} providerKey - Provider key (e.g., 'openrouter')
+ * @param {string} modelId - Model ID
+ * @param {Object} metadata - { inputCostPer1M, outputCostPer1M, ... }
+ */
+export function registerDynamicPricing(providerKey, modelId, metadata) {
+  if (metadata?.inputCostPer1M != null && metadata?.outputCostPer1M != null) {
+    dynamicPricingCache.set(`${providerKey}:${modelId}`, metadata);
+  }
+}
+
+/**
+ * Register dynamic pricing from an array of fetched model objects.
+ * Automatically extracts pricing from models that have it (e.g., OpenRouter format).
+ * @param {string} providerKey - Provider key
+ * @param {Object[]} models - Array of model objects from fetchModels()
+ */
+export function registerDynamicPricingFromModels(providerKey, models) {
+  if (!models?.length) return;
+  let registered = 0;
+  for (const model of models) {
+    // OpenRouter format: pricing.prompt/completion are cost per token
+    if (model.pricing?.prompt != null && model.pricing?.completion != null) {
+      const inputCostPer1M = parseFloat(model.pricing.prompt) * 1_000_000;
+      const outputCostPer1M = parseFloat(model.pricing.completion) * 1_000_000;
+      if (inputCostPer1M > 0 || outputCostPer1M > 0) {
+        dynamicPricingCache.set(`${providerKey}:${model.id}`, {
+          inputCostPer1M,
+          outputCostPer1M,
+          contextWindow: model.contextLength || 0,
+          dynamic: true,
+        });
+        registered++;
+      }
+    }
+  }
+  if (registered > 0) {
+    console.log(`[Dynamic Pricing] Registered pricing for ${registered} ${providerKey} models`);
+  }
+}
+
+/**
  * Get metadata for a specific model.
- * Returns null if provider or model metadata not found (graceful degradation).
+ * Lookup order:
+ *   1. Static modelMetadata on the requested provider
+ *   2. Parent provider metadata (for known variants like claude-code → anthropic)
+ *   3. Dynamic pricing cache (from provider API responses, e.g. OpenRouter)
+ *   4. Cross-provider search (same model ID on a different provider)
+ * Returns null if no metadata found (graceful degradation).
  */
 export function getModelMetadata(providerKey, modelId) {
+  // 1. Direct lookup on the requested provider
   const config = getProviderConfig(providerKey);
-  if (!config?.modelMetadata) return null;
-  return config.modelMetadata[modelId] || null;
+  if (config?.modelMetadata?.[modelId]) return config.modelMetadata[modelId];
+
+  // 2. Fallback to parent provider for known variants
+  const fallbackKey = PROVIDER_METADATA_FALLBACK[providerKey];
+  if (fallbackKey) {
+    const fallbackConfig = getProviderConfig(fallbackKey);
+    if (fallbackConfig?.modelMetadata?.[modelId]) return fallbackConfig.modelMetadata[modelId];
+  }
+
+  // 3. Dynamic pricing cache (populated from provider API responses)
+  const dynamicMeta = dynamicPricingCache.get(`${providerKey}:${modelId}`);
+  if (dynamicMeta) return dynamicMeta;
+
+  // 4. Last resort: search all providers for this model ID
+  for (const p of PROVIDER_CONFIGS) {
+    if (p.key === providerKey || p.key === fallbackKey) continue;
+    if (p.modelMetadata?.[modelId]) return p.modelMetadata[modelId];
+  }
+
+  return null;
 }
 
 /**

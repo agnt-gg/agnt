@@ -44,20 +44,21 @@ class ExecutionModel {
       );
     });
   }
-  static async updateNodeExecution(executionId, nodeId, status, output, error, executionDuration) {
+  static async updateNodeExecution(executionId, nodeId, status, output, error, executionDuration, tokenUsage = null) {
     const endTime = new Date().toISOString();
     try {
       const nodeExecution = await this.getNodeExecution(executionId, nodeId);
       const durationInSeconds = executionDuration / 1000;
-      // const creditsUsed = executionDuration === 0 ? 0 : durationInSeconds / 100; // 1 credit per 100 seconds, 0 if duration is 0
       const creditsUsed = executionDuration === 0 ? 0 : durationInSeconds; // 1 credit per 1 second, 0 if duration is 0
 
-      // SEND CREDITS USED TO REMOTE SERVER FOR USAGE TRACKING
+      // Extract token usage from output if available (e.g., from generate-with-ai-llm tool)
+      const inputTokens = tokenUsage?.inputTokens || 0;
+      const outputTokens = tokenUsage?.outputTokens || 0;
 
       return new Promise((resolve, reject) => {
         db.run(
-          'UPDATE node_executions SET status = ?, output = ?, error = ?, end_time = ?, credits_used = ? WHERE execution_id = ? AND node_id = ?',
-          [status, JSON.stringify(output), error, endTime, creditsUsed, executionId, nodeId],
+          'UPDATE node_executions SET status = ?, output = ?, error = ?, end_time = ?, credits_used = ?, input_tokens = ?, output_tokens = ? WHERE execution_id = ? AND node_id = ?',
+          [status, JSON.stringify(output), error, endTime, creditsUsed, inputTokens, outputTokens, executionId, nodeId],
           function (err) {
             if (err) reject(err);
             else resolve(this.changes);
@@ -131,7 +132,8 @@ class ExecutionModel {
 
     const nodesQuery = new Promise((resolve, reject) => {
       db.all(
-        `SELECT id, node_id, start_time, end_time, status, input, output, error, credits_used
+        `SELECT id, node_id, start_time, end_time, status, input, output, error, credits_used,
+                input_tokens, output_tokens
          FROM node_executions
          WHERE execution_id = ?
          ORDER BY start_time`,

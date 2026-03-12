@@ -8,6 +8,7 @@ import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter } from './orchestrator/llmAdapters.js';
+import { getModelCost } from './ai/providerConfigs.js';
 import { manageContext } from '../utils/contextManager.js';
 import { detectChatType, getChatConfig } from './orchestrator/chatConfigs.js';
 import log from '../utils/logger.js';
@@ -481,6 +482,7 @@ async function universalChatHandler(req, res, context = {}) {
   // Agent execution tracking
   let agentExecutionId = null;
   let toolCallsCount = 0;
+  const executionStartTime = Date.now();
   const toolExecutionIds = new Map(); // Map toolCallId -> toolExecutionId
 
   // Initialize conversation context
@@ -512,6 +514,10 @@ async function universalChatHandler(req, res, context = {}) {
     // Abort signal for cancelling LLM streams
     abortSignal: streamAbortController.signal,
   };
+
+  // Token usage accumulator — tracks real LLM token consumption across all rounds
+  // Declared before try/catch so it's accessible in the finally block
+  const tokenAccumulator = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
   try {
     // Process uploaded files
@@ -733,6 +739,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
       });
     }
 
+    /**
+     * Normalize and accumulate token usage from any provider format
+     */
+    function accumulateUsage(usage) {
+      if (!usage) return;
+      const input = usage.prompt_tokens || usage.input_tokens || 0;
+      const output = usage.completion_tokens || usage.output_tokens || 0;
+      tokenAccumulator.inputTokens += input;
+      tokenAccumulator.outputTokens += output;
+      tokenAccumulator.totalTokens += input + output;
+    }
+
     // Initial LLM call with streaming
     // Send initial assistant message
     sendEvent('assistant_message', {
@@ -744,7 +762,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       timestamp: Date.now(),
     });
 
-    let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError } = await adapter.callStream(
+    let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError, usage: initialUsage } = await adapter.callStream(
       contextResult.messages,
       finalToolSchemas,
       (chunk) => {
@@ -768,6 +786,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       },
       conversationContext // Pass context for vision image handling
     );
+    accumulateUsage(initialUsage);
 
     // Handle API errors that the adapter recovered from (401, 429, etc.)
     if (recoveredFromError) {
@@ -1344,6 +1363,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
+      accumulateUsage(nextResponse.usage);
 
       // If the adapter recovered from an error (e.g. 429 rate limit), the error
       // message was returned as responseMessage.content but was never streamed
@@ -1425,6 +1445,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           conversationContext
         );
 
+        accumulateUsage(followUpResponse.usage);
         if (followUpResponse.responseMessage.content) {
           finalContentForLogging = typeof followUpResponse.responseMessage.content === 'string'
             ? followUpResponse.responseMessage.content
@@ -1437,7 +1458,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
 
     // Send final content event
-    sendEvent('final_content', { assistantMessageId, content: finalContentForLogging });
+    sendEvent('final_content', {
+      assistantMessageId,
+      content: finalContentForLogging,
+      usage: tokenAccumulator.totalTokens > 0 ? tokenAccumulator : undefined,
+    });
   } catch (error) {
     console.error(`Error in universal chat handler (${chatType}), but CONTINUING PROCESSING:`, error);
     streamErrorForLogging = { message: error.message, details: error.toString() };
@@ -1497,19 +1522,36 @@ IMPORTANT: The image data is already available in the system context. You don't 
           ? finalContentForLogging
           : String(finalContentForLogging || '');
 
+        // Calculate estimated cost from real token usage
+        let tokenUsageForDb = null;
+        if (tokenAccumulator.totalTokens > 0) {
+          const costInfo = getModelCost(normalizedProvider, model, tokenAccumulator.inputTokens, tokenAccumulator.outputTokens);
+          tokenUsageForDb = {
+            inputTokens: tokenAccumulator.inputTokens,
+            outputTokens: tokenAccumulator.outputTokens,
+            totalTokens: tokenAccumulator.totalTokens,
+            estimatedCost: costInfo?.totalCost || 0,
+          };
+          console.log(`[Token Usage] ${tokenAccumulator.inputTokens} in / ${tokenAccumulator.outputTokens} out = ${tokenAccumulator.totalTokens} total tokens, est. cost: $${(tokenUsageForDb.estimatedCost || 0).toFixed(6)}`);
+        }
+
+        const computeSeconds = (Date.now() - executionStartTime) / 1000;
+
         await AgentExecutionModel.update(
           agentExecutionId,
           finalStatus,
           finalResponseText,
-          0, // credits_used - could be calculated based on tokens
+          computeSeconds,
           toolCallsCount,
-          streamErrorForLogging ? streamErrorForLogging.message : null
+          streamErrorForLogging ? streamErrorForLogging.message : null,
+          tokenUsageForDb
         );
 
         sendEvent('agent_execution_completed', {
           executionId: agentExecutionId,
           status: finalStatus,
           toolCallsCount,
+          tokenUsage: tokenAccumulator.totalTokens > 0 ? tokenAccumulator : undefined,
         });
 
         console.log(`[Agent Execution] Completed execution ${agentExecutionId} with status ${finalStatus}, ${toolCallsCount} tool calls`);

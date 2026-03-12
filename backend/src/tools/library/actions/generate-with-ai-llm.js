@@ -654,7 +654,9 @@ class GenerateWithAiLlm extends BaseAction {
 
     return {
       generatedText: response.content[0].text,
-      tokenCount: response.usage.output_tokens,
+      tokenCount: (response.usage.input_tokens || 0) + (response.usage.output_tokens || 0),
+      inputTokens: response.usage.input_tokens || 0,
+      outputTokens: response.usage.output_tokens || 0,
     };
   }
 
@@ -719,6 +721,8 @@ class GenerateWithAiLlm extends BaseAction {
     return {
       generatedText: content,
       tokenCount,
+      inputTokens: completion?.usage?.prompt_tokens || 0,
+      outputTokens: completion?.usage?.completion_tokens || 0,
     };
   }
 

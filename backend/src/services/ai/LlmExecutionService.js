@@ -182,8 +182,16 @@ class LlmExecutionService {
       model,
     };
 
+    // Track accumulated token usage across all LLM calls
+    const accumulatedUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
     // Initial LLM call
-    let { responseMessage, toolCalls } = await adapter.call(messages, finalToolSchemas);
+    let { responseMessage, toolCalls, usage: initialUsage } = await adapter.call(messages, finalToolSchemas);
+    if (initialUsage) {
+      accumulatedUsage.inputTokens += initialUsage.prompt_tokens || initialUsage.input_tokens || 0;
+      accumulatedUsage.outputTokens += initialUsage.completion_tokens || initialUsage.output_tokens || 0;
+      accumulatedUsage.totalTokens += initialUsage.total_tokens || ((initialUsage.prompt_tokens || initialUsage.input_tokens || 0) + (initialUsage.completion_tokens || initialUsage.output_tokens || 0));
+    }
     messages.push(responseMessage);
 
     // Tool execution loop
@@ -266,6 +274,11 @@ class LlmExecutionService {
       const nextResponse = await adapter.call(messages, finalToolSchemas);
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
+      if (nextResponse.usage) {
+        accumulatedUsage.inputTokens += nextResponse.usage.prompt_tokens || nextResponse.usage.input_tokens || 0;
+        accumulatedUsage.outputTokens += nextResponse.usage.completion_tokens || nextResponse.usage.output_tokens || 0;
+        accumulatedUsage.totalTokens += nextResponse.usage.total_tokens || ((nextResponse.usage.prompt_tokens || nextResponse.usage.input_tokens || 0) + (nextResponse.usage.completion_tokens || nextResponse.usage.output_tokens || 0));
+      }
 
       messages.push(responseMessage);
     }
@@ -285,8 +298,8 @@ class LlmExecutionService {
 
     // Calculate execution time and update metrics
     const executionTime = Date.now() - startTime;
-    const estimatedTokens = contextResult.managedTokens || 0;
-    this._updateMetrics(provider, model, executionTime, estimatedTokens, allToolExecutions.length);
+    const actualTokens = accumulatedUsage.totalTokens || contextResult.managedTokens || 0;
+    this._updateMetrics(provider, model, executionTime, actualTokens, allToolExecutions.length);
 
     const result = {
       responseMessage,
@@ -295,9 +308,10 @@ class LlmExecutionService {
       messages,
       metrics: {
         executionTime,
-        estimatedTokens,
+        estimatedTokens: contextResult.managedTokens || 0,
         toolCallCount: allToolExecutions.length,
       },
+      usage: accumulatedUsage.totalTokens > 0 ? accumulatedUsage : undefined,
     };
 
     // Cache the result if no tools were used

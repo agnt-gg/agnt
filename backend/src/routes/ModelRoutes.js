@@ -1,6 +1,6 @@
 import express from 'express';
 import GenericProviderService from '../services/ai/providers/GenericProviderService.js';
-import { getAllProviderConfigs, getProviderConfig, getModelMetadata, getModelCost, isReasoningModel, getAllModelMetadata } from '../services/ai/providerConfigs.js';
+import { getAllProviderConfigs, getProviderConfig, getModelMetadata, getModelCost, isReasoningModel, getAllModelMetadata, registerDynamicPricingFromModels } from '../services/ai/providerConfigs.js';
 import providerHealthCheck from '../services/ai/ProviderHealthCheck.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
@@ -250,8 +250,14 @@ router.get('/:provider/models', async (req, res) => {
     let models;
     if (format === 'full') {
       models = await service.fetchModels(apiKey, options);
+      // Register dynamic pricing from models that include it (e.g., OpenRouter)
+      registerDynamicPricingFromModels(providerLower, models);
     } else {
       models = await service.getModelNames(apiKey, options);
+      // Also register pricing from the cached full model objects
+      if (service.modelsCache) {
+        registerDynamicPricingFromModels(providerLower, service.modelsCache);
+      }
     }
 
     res.json({
@@ -367,6 +373,11 @@ router.post('/:provider/models/refresh', async (req, res) => {
     // Clear cache and fetch fresh models
     service.clearCache();
     const models = await service.getModelNames(apiKey, { useCache: false });
+
+    // Register dynamic pricing from cached full model objects
+    if (service.modelsCache) {
+      registerDynamicPricingFromModels(providerLower, service.modelsCache);
+    }
 
     res.json({
       success: true,

@@ -200,8 +200,16 @@
                         <span class="info-value">{{ calculateDuration(execution) }}</span>
                       </div>
                       <div v-if="execution.creditsUsed" class="info-row">
-                        <span class="info-label">Credits:</span>
-                        <span class="info-value">{{ execution.creditsUsed }}</span>
+                        <span class="info-label">Compute:</span>
+                        <span class="info-value">{{ execution.creditsUsed }}s</span>
+                      </div>
+                      <div v-if="execution.totalTokens" class="info-row">
+                        <span class="info-label">Tokens:</span>
+                        <span class="info-value">{{ formatTokenCount(execution.totalTokens) }}</span>
+                      </div>
+                      <div v-if="execution.estimatedCost" class="info-row">
+                        <span class="info-label">Cost:</span>
+                        <span class="info-value">${{ execution.estimatedCost.toFixed(4) }}</span>
                       </div>
                     </div>
 
@@ -859,6 +867,14 @@ export default {
       return new Date(dateString).toLocaleString();
     };
 
+    // Format token count with K/M suffixes
+    const formatTokenCount = (count) => {
+      if (!count) return '0';
+      if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+      if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+      return count.toLocaleString();
+    };
+
     // Duration calculation
     const calculateDuration = (execution) => {
       if (!execution.startTime) return '-';
@@ -991,7 +1007,7 @@ Status: ${execution.status}
 Start Time: ${formatDate(execution.startTime)}
 End Time: ${execution.endTime ? formatDate(execution.endTime) : 'Still running'}
 Duration: ${calculateDuration(execution)}
-Credits Used: ${execution.creditsUsed || 0}
+Compute: ${execution.creditsUsed || 0}s
 
 ${
   execution.nodeExecutions && execution.nodeExecutions.length > 0
@@ -1003,7 +1019,7 @@ ${execution.nodeExecutions
   Node ID: ${node.node_id}
   Status: ${node.status}
   Duration: ${calculateNodeDuration(node)}
-  Credits: ${node.credits_used || 0}
+  Compute: ${node.credits_used || 0}s
 `,
   )
   .join('')}
@@ -1288,6 +1304,7 @@ ${execution.log}
       currentFilter,
       getStatusIcon,
       formatDate,
+      formatTokenCount,
       calculateDuration,
       calculateNodeDuration,
       stopExecution,

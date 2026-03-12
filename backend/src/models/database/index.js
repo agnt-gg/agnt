@@ -851,6 +851,28 @@ function runMigrations() {
         }
       });
 
+      // Migration: Add token usage columns to execution tables (2026-03-11)
+      const tokenColumns = [
+        { table: 'agent_executions', name: 'input_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'agent_executions', name: 'output_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'agent_executions', name: 'total_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'agent_executions', name: 'estimated_cost', type: 'REAL DEFAULT 0' },
+        { table: 'agent_tool_executions', name: 'input_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'agent_tool_executions', name: 'output_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'node_executions', name: 'input_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'node_executions', name: 'output_tokens', type: 'INTEGER DEFAULT 0' },
+      ];
+
+      tokenColumns.forEach((col) => {
+        db.run(`ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to ${col.table}:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to ${col.table} table`);
+          }
+        });
+      });
+
       // Migration: Add user_id to widget_layouts for per-user page isolation (2026-03-05)
       db.run(`ALTER TABLE widget_layouts ADD COLUMN user_id TEXT`, (err) => {
         if (err && !err.message.includes('duplicate column name')) {

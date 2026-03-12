@@ -449,6 +449,7 @@ export function wrapSendEvent(session, originalSendEvent) {
                 durationMs: assistantStartTime ? Date.now() - assistantStartTime : undefined,
                 model: currentModel,
                 provider: currentProvider,
+                usage: data.usage || undefined,
               }
             );
           }

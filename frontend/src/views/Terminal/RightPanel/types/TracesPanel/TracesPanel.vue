@@ -47,8 +47,16 @@
               <span>{{ calculateDuration(selectedExecution) }}</span>
             </div>
             <div class="detail-item">
-              <label>Credits Used:</label>
-              <span>{{ selectedExecution.creditsUsed || 0 }}</span>
+              <label>Compute:</label>
+              <span>{{ selectedExecution.creditsUsed || 0 }}s</span>
+            </div>
+            <div v-if="selectedExecution.totalTokens" class="detail-item">
+              <label>Tokens:</label>
+              <span>{{ (selectedExecution.inputTokens || 0).toLocaleString() }} in / {{ (selectedExecution.outputTokens || 0).toLocaleString() }} out ({{ (selectedExecution.totalTokens || 0).toLocaleString() }} total)</span>
+            </div>
+            <div v-if="selectedExecution.estimatedCost" class="detail-item">
+              <label>Est. Cost:</label>
+              <span>${{ selectedExecution.estimatedCost.toFixed(4) }}</span>
             </div>
           </div>
         </div>
@@ -146,7 +154,7 @@
                 <div class="node-timing">
                   <span v-if="toolExec.start_time">Started: {{ formatTime(toolExec.start_time) }}</span>
                   <span v-if="toolExec.end_time">Ended: {{ formatTime(toolExec.end_time) }}</span>
-                  <span v-if="toolExec.credits_used">Credits: {{ toolExec.credits_used }}</span>
+                  <span v-if="toolExec.credits_used">Compute: {{ toolExec.credits_used }}s</span>
                 </div>
 
                 <!-- Input Section -->
@@ -353,7 +361,7 @@
 
                 <div class="node-timing">
                   <span>Duration: {{ calculateNodeDuration(nodeExecution) }}</span>
-                  <span>Credits: {{ nodeExecution.credits_used || 0 }}</span>
+                  <span>Compute: {{ nodeExecution.credits_used || 0 }}s</span>
                   <span v-if="nodeExecution.start_time">Started: {{ formatTime(nodeExecution.start_time) }}</span>
                 </div>
 
@@ -974,7 +982,7 @@ Status: ${execution.status}
 Start Time: ${formatDate(execution.startTime)}
 End Time: ${execution.endTime ? formatDate(execution.endTime) : 'Still running'}
 Duration: ${calculateDuration(execution)}
-Credits Used: ${execution.creditsUsed || 0}
+Compute: ${execution.creditsUsed || 0}s
 
 ${
   execution.nodeExecutions && execution.nodeExecutions.length > 0
@@ -986,7 +994,7 @@ ${execution.nodeExecutions
   Node ID: ${node.node_id}
   Status: ${node.status}
   Duration: ${calculateNodeDuration(node)}
-  Credits: ${node.credits_used || 0}
+  Compute: ${node.credits_used || 0}s
 `
   )
   .join('')}

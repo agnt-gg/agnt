@@ -239,6 +239,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
         return {
           responseMessage: message,
           toolCalls: message.tool_calls || [],
+          usage: response.usage || undefined,
         };
       } catch (error) {
         lastError = error;
@@ -402,6 +403,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
       let role = 'assistant';
       let streamError = null;
       let finishReason = null;
+      let streamUsage = null;
 
       try {
         // DEBUG: Log message structure before sending to OpenAI
@@ -430,6 +432,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           tools: effectiveTools.length > 0 ? effectiveTools : undefined,
           tool_choice: effectiveTools.length > 0 ? 'auto' : undefined,
           stream: true,
+          stream_options: { include_usage: true },
         };
         // Pass extra body params for providers that need them (e.g., Z.AI thinking)
         if (this.extraBody) {
@@ -458,6 +461,11 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
             const choice = chunk.choices[0];
             const delta = choice?.delta;
+
+            // Capture usage from final chunk (sent when stream_options.include_usage is true)
+            if (chunk.usage) {
+              streamUsage = chunk.usage;
+            }
 
             // Track finish_reason
             if (choice?.finish_reason) {
@@ -682,6 +690,7 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
           responseMessage: responseMessage,
           toolCalls: validToolCalls || [],
           invalidToolCalls: invalidToolCalls.length > 0 ? invalidToolCalls : undefined,
+          usage: streamUsage || undefined,
         };
       } catch (error) {
         lastError = error;
@@ -968,6 +977,7 @@ class AnthropicAdapter extends BaseAdapter {
         return {
           responseMessage: historyMessage,
           toolCalls: standardizedToolCalls,
+          usage: response.usage || undefined,
         };
       } catch (error) {
         lastError = error;
@@ -1115,6 +1125,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
       let accumulatedContent = '';
       let accumulatedToolCalls = [];
       let contentBlocks = [];
+      let anthropicUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
 
       try {
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
@@ -1206,6 +1217,22 @@ Please carefully check the tool schema and ensure all parameters match the expec
             if (!event || !event.type) {
               console.warn('[Anthropic] Received null or invalid event, skipping');
               continue;
+            }
+
+            // Capture usage from message_start event (contains input_tokens)
+            if (event.type === 'message_start' && event.message?.usage) {
+              anthropicUsage.input_tokens = event.message.usage.input_tokens || 0;
+              if (event.message.usage.cache_creation_input_tokens) {
+                anthropicUsage.cache_creation_input_tokens = event.message.usage.cache_creation_input_tokens;
+              }
+              if (event.message.usage.cache_read_input_tokens) {
+                anthropicUsage.cache_read_input_tokens = event.message.usage.cache_read_input_tokens;
+              }
+            }
+
+            // Capture usage from message_delta event (contains output_tokens)
+            if (event.type === 'message_delta' && event.usage) {
+              anthropicUsage.output_tokens = event.usage.output_tokens || 0;
             }
 
             // Handle content block start
@@ -1356,6 +1383,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
         return {
           responseMessage: responseMessage,
           toolCalls: accumulatedToolCalls,
+          usage: (anthropicUsage.input_tokens || anthropicUsage.output_tokens) ? anthropicUsage : undefined,
         };
       } catch (error) {
         lastError = error;
@@ -1612,6 +1640,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
         return {
           responseMessage: message,
           toolCalls: message.tool_calls || [],
+          usage: response.usage || undefined,
         };
       } catch (error) {
         lastError = error;
@@ -1766,6 +1795,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
       let accumulatedContent = '';
       let accumulatedToolCalls = [];
       let role = 'assistant';
+      let streamUsage = null;
 
       try {
         // Transform tools for Cerebras compatibility (strict: true, additionalProperties: false)
@@ -1775,6 +1805,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
           model: this.model,
           messages: currentMessages,
           stream: true,
+          stream_options: { include_usage: true },
         };
 
         // Add tools if present AND model supports streaming + tools
@@ -1805,6 +1836,11 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
             stream.controller?.abort?.();
             console.log('[Cerebras Stream] Aborted by client disconnect');
             break;
+          }
+
+          // Capture usage from final chunk
+          if (chunk.usage) {
+            streamUsage = chunk.usage;
           }
 
           const delta = chunk.choices[0]?.delta;
@@ -1885,6 +1921,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
         return {
           responseMessage: responseMessage,
           toolCalls: accumulatedToolCalls,
+          usage: streamUsage || undefined,
         };
       } catch (error) {
         lastError = error;
@@ -2370,9 +2407,17 @@ class GeminiAdapter extends BaseAdapter {
           _geminiThoughtSignature: thoughtSignature, // Store for next turn
         };
 
+        // Extract Gemini usage metadata
+        const geminiUsage = response.usageMetadata ? {
+          prompt_tokens: response.usageMetadata.promptTokenCount || 0,
+          completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
+          total_tokens: response.usageMetadata.totalTokenCount || 0,
+        } : undefined;
+
         return {
           responseMessage: responseMessage,
           toolCalls: toolCalls,
+          usage: geminiUsage,
         };
       } catch (error) {
         lastError = error;
@@ -2580,6 +2625,8 @@ class GeminiAdapter extends BaseAdapter {
         return {
           responseMessage: responseMessage,
           toolCalls: accumulatedToolCalls,
+          // Gemini streaming doesn't provide per-chunk usage metadata
+          usage: undefined,
         };
       } catch (error) {
         lastError = error;
@@ -2967,6 +3014,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           responseMessage: responseMessage,
           toolCalls: toolCalls,
           _responsesApiId: response.id, // Store for potential conversation continuation
+          usage: response.usage || undefined,
         };
       } catch (error) {
         lastError = error;
@@ -3021,6 +3069,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
       let accumulatedToolCalls = [];
+      let streamUsage = null;
 
       try {
         const { instructions, input } = this._transformMessagesToInput(messages);
@@ -3118,6 +3167,10 @@ class OpenAIResponsesAdapter extends BaseAdapter {
                 accumulatedToolCalls = finalToolCalls;
               }
             }
+            // Capture usage from completed response
+            if (event.response && event.response.usage) {
+              streamUsage = event.response.usage;
+            }
           }
         }
 
@@ -3134,6 +3187,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         return {
           responseMessage: responseMessage,
           toolCalls: accumulatedToolCalls,
+          usage: streamUsage || undefined,
         };
       } catch (error) {
         lastError = error;
