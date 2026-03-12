@@ -496,10 +496,10 @@ export function wrapSendEvent(session, originalSendEvent) {
 
 /**
  * Check if unfirehose logging is enabled.
- * Disabled by default. Enable with UNFIREHOSE_ENABLED=1.
+ * Enabled by default. Disable with UNFIREHOSE_ENABLED=0.
  */
 export function isEnabled() {
-  return process.env.UNFIREHOSE_ENABLED === '1';
+  return process.env.UNFIREHOSE_ENABLED !== '0';
 }
 
 export default { createSession, wrapSendEvent, isEnabled };
