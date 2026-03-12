@@ -1068,10 +1068,12 @@ export default {
       runningToolCalls.value = {};
       messageStates.value = {};
 
-      // Reset store (this will clear image cache)
-      store.commit('chat/RESET_CHAT');
+      // Prepare for new chat without aborting background streams
+      store.commit('chat/PREPARE_NEW_CHAT');
 
-      // Create a fresh conversation slot
+      // Create a fresh conversation slot and switch to it
+      // SET_ACTIVE_CONVERSATION → syncMirror will reset the global mirror
+      // (messages, isStreaming, etc.) to the new empty conversation state
       const newConvId = `temp-${Date.now()}`;
       store.commit('chat/ENSURE_CONVERSATION', newConvId);
       store.commit('chat/SET_ACTIVE_CONVERSATION', newConvId);

@@ -316,6 +316,21 @@ export default {
         state.messages = [];
       }
     },
+
+    /**
+     * Prepare state for a new chat without aborting background streams.
+     * Used by "New Chat" so existing conversations keep streaming.
+     */
+    PREPARE_NEW_CHAT(state) {
+      // Clear global mirror state (will be overwritten by syncMirror on SET_ACTIVE_CONVERSATION)
+      state.activeStreamId = null;
+
+      // Clear ChatWindow maps for the new chat UI
+      if (state.mainChatWindow) {
+        state.mainChatWindow.messages.clear();
+        state.mainChatWindow.threads.clear();
+      }
+    },
     ADD_IMAGE_TO_CACHE(state, { imageId, imageData, toolCallId, messageId, index }) {
       // LRU eviction - remove oldest entries if cache is full
       if (state.imageCache.size >= MAX_IMAGE_CACHE) {
