@@ -85,9 +85,8 @@
               </div>
             </div>
             <div class="ce-preview-content">
-              <Tooltip text="Preview">
+              <Tooltip v-if="isHtmlFile && activeTab" text="Preview">
                 <iframe
-                  v-if="isHtmlFile && activeTab"
                   ref="previewFrame"
                   class="ce-preview-iframe"
                   sandbox="allow-scripts allow-same-origin"
