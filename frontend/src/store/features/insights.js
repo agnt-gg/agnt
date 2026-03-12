@@ -12,6 +12,7 @@ export default {
     insights: [],
     stats: null,
     targetInsights: [],
+    sourceInsights: [],
     agentMemories: [],
     isLoading: false,
     error: null,
@@ -20,6 +21,7 @@ export default {
     SET_INSIGHTS(state, insights) { state.insights = insights || []; },
     SET_STATS(state, stats) { state.stats = stats; },
     SET_TARGET_INSIGHTS(state, insights) { state.targetInsights = insights || []; },
+    SET_SOURCE_INSIGHTS(state, insights) { state.sourceInsights = insights || []; },
     SET_AGENT_MEMORIES(state, memories) { state.agentMemories = memories || []; },
     SET_LOADING(state, val) { state.isLoading = val; },
     SET_ERROR(state, err) { state.error = err; },
@@ -85,12 +87,32 @@ export default {
       }
     },
 
-    async applyInsight({ commit, dispatch }, insightId) {
+    async fetchSourceInsights({ commit }, { sourceType, sourceId }) {
       try {
+        const res = await fetch(`${API_CONFIG.BASE_URL}/insights/source/${sourceType}/${sourceId}`, {
+          credentials: 'include',
+          headers: getAuthHeaders(),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        commit('SET_SOURCE_INSIGHTS', data.insights);
+        return data.insights;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        return [];
+      }
+    },
+
+    async applyInsight({ commit, dispatch, rootState }, insightId) {
+      try {
+        const provider = rootState.aiProvider?.selectedProvider || null;
+        const model = rootState.aiProvider?.selectedModel || null;
+
         const res = await fetch(`${API_CONFIG.BASE_URL}/insights/${insightId}/apply`, {
           method: 'POST',
           credentials: 'include',
           headers: getAuthHeaders(),
+          body: JSON.stringify({ provider, model }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -220,6 +242,7 @@ export default {
     allInsights: state => state.insights,
     stats: state => state.stats,
     targetInsights: state => state.targetInsights,
+    sourceInsights: state => state.sourceInsights,
     agentMemories: state => state.agentMemories,
     isLoading: state => state.isLoading,
     error: state => state.error,

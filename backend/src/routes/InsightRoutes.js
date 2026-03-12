@@ -54,6 +54,18 @@ InsightRoutes.get('/target/:targetType/:targetId', authenticateToken, async (req
   }
 });
 
+// GET /api/insights/source/:sourceType/:sourceId — Get insights generated from a specific execution
+InsightRoutes.get('/source/:sourceType/:sourceId', authenticateToken, async (req, res) => {
+  try {
+    const { sourceType, sourceId } = req.params;
+    const insights = await InsightModel.findBySource(sourceType, sourceId);
+    res.json({ success: true, insights });
+  } catch (error) {
+    console.error('[Insight Route] Source insights error:', error);
+    res.status(500).json({ error: 'Failed to fetch source insights' });
+  }
+});
+
 // GET /api/insights/:id — Get a single insight
 InsightRoutes.get('/:id', authenticateToken, async (req, res) => {
   try {
@@ -70,13 +82,14 @@ InsightRoutes.get('/:id', authenticateToken, async (req, res) => {
 InsightRoutes.post('/:id/apply', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
+    const { provider, model } = req.body || {};
     const insight = await InsightModel.findOne(req.params.id);
     if (!insight) return res.status(404).json({ error: 'Insight not found' });
 
     let result;
     switch (insight.target_type) {
       case 'agent':
-        result = await AgentApplicator.apply(req.params.id, userId);
+        result = await AgentApplicator.apply(req.params.id, userId, provider, model);
         break;
       case 'skill':
         result = await SkillApplicator.apply(req.params.id, userId);

@@ -7,7 +7,9 @@ import { getAvailableToolSchemas } from '../orchestrator/tools.js';
 import GoalEvaluator from './GoalEvaluator.js';
 import SkillForgeOrchestrator from './SkillForgeOrchestrator.js';
 import InsightTriggers from '../evolution/InsightTriggers.js';
-import StreamEngine from '../../stream/StreamEngine.js';
+import { createLlmClient } from '../ai/LlmService.js';
+import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
+import { getProviderConfig } from '../ai/providerConfigs.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
 import db from '../../models/database/index.js';
 import { exec } from 'child_process';
@@ -20,10 +22,18 @@ const execAsync = promisify(exec);
 class TaskOrchestrator {
   static runningGoals = new Map(); // Track active goals
 
-  static async executeGoal(goalId, userId, experimentContext = null) {
+  static async executeGoal(goalId, userId, experimentContext = null, provider = null, model = null) {
     try {
       // Mark goal as executing
       await GoalModel.updateStatus(goalId, 'executing');
+
+      // Reset any failed/stuck tasks to pending so they can be re-executed
+      const tasks = await TaskModel.findByGoalId(goalId);
+      for (const task of tasks) {
+        if (task.status === 'failed' || task.status === 'running') {
+          await TaskModel.updateStatus(task.id, 'pending', 0);
+        }
+      }
 
       // Start monitoring this goal with real workflow execution
       this.runningGoals.set(goalId, {
@@ -31,10 +41,18 @@ class TaskOrchestrator {
         startTime: Date.now(),
         status: 'executing',
         experimentContext,
+        provider,
+        model,
+      });
+
+      // Broadcast status change to frontend
+      broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {
+        id: goalId,
+        status: 'executing',
       });
 
       // Start real task execution with workflows
-      this.executeGoalTasks(goalId, userId);
+      this.executeGoalTasks(goalId, userId, provider, model);
 
       return {
         goalId,
@@ -46,7 +64,7 @@ class TaskOrchestrator {
       throw error;
     }
   }
-  static async executeGoalTasks(goalId, userId) {
+  static async executeGoalTasks(goalId, userId, provider = null, model = null) {
     console.log(`Starting workflow-based execution for goal ${goalId}`);
 
     try {
@@ -72,6 +90,16 @@ class TaskOrchestrator {
           return;
         }
 
+        // Skip already-completed tasks (preserve their output for downstream tasks)
+        if (task.status === 'completed') {
+          console.log(`[TaskOrchestrator] Task ${task.id} already completed, skipping`);
+          try {
+            const output = task.output ? (typeof task.output === 'string' ? JSON.parse(task.output) : task.output) : null;
+            if (output) previousTaskOutputs = output;
+          } catch { /* ignore parse errors */ }
+          continue;
+        }
+
         // Check if task dependencies are met
         const canExecute = await TaskModel.canExecuteTask(task.id);
         if (!canExecute) {
@@ -81,7 +109,7 @@ class TaskOrchestrator {
 
         try {
           // Execute task with data from previous task
-          const taskOutputs = await this.executeTask(task, userId, previousTaskOutputs);
+          const taskOutputs = await this.executeTask(task, userId, previousTaskOutputs, provider, model);
 
           // Store outputs for next task
           if (taskOutputs) {
@@ -106,7 +134,7 @@ class TaskOrchestrator {
       await this.handleGoalError(goalId, error);
     }
   }
-  static async executeTask(task, userId, previousTaskOutputs = null) {
+  static async executeTask(task, userId, previousTaskOutputs = null, provider = null, model = null) {
     console.log(`[TaskOrchestrator] Executing task: ${task.title} (ID: ${task.id})`);
 
     try {
@@ -139,7 +167,7 @@ class TaskOrchestrator {
 
       // Step 4: Execute task via agent chat
       console.log(`[TaskOrchestrator] Step 4: Executing task via agent ${agent.name}`);
-      const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId);
+      const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model);
       console.log(`[TaskOrchestrator] Step 4 Complete: Agent completed task execution`);
 
       // Step 5: Process and store results
@@ -182,7 +210,7 @@ Begin working on this task now.`;
 
     return message;
   }
-  static async executeTaskViaAgentChat(agent, taskMessage, userId) {
+  static async executeTaskViaAgentChat(agent, taskMessage, userId, reqProvider = null, reqModel = null) {
     console.log(`[TaskOrchestrator] Sending task to agent ${agent.name} via chat`);
 
     try {
@@ -201,19 +229,19 @@ Begin working on this task now.`;
       // Prepare messages
       const messages = [{ role: 'user', content: taskMessage }];
 
-      // ALWAYS use user's provider/model settings - NO FALLBACKS
-      let provider = null;
-      let model = null;
+      // Priority: request provider/model → agent config → user settings
+      let provider = reqProvider;
+      let model = reqModel;
 
-      // First check if agent has valid provider/model
-      if (agent.provider && agent.provider.trim() !== '') {
+      // If not from request, check agent config
+      if (!provider && agent.provider && agent.provider.trim() !== '') {
         provider = agent.provider;
       }
-      if (agent.model && agent.model.trim() !== '') {
+      if (!model && agent.model && agent.model.trim() !== '') {
         model = agent.model;
       }
 
-      // If agent doesn't have provider/model, ALWAYS use user's settings
+      // If still missing, fall back to user settings
       if (!provider || !model) {
         const UserModel = (await import('../../models/UserModel.js')).default;
         const userSettings = await UserModel.getUserSettings(userId);
@@ -260,6 +288,7 @@ Begin working on this task now.`;
           arguments: execution.arguments,
           response: execution.response,
         })),
+        usage: result.usage || null,
       };
     } catch (error) {
       console.error(`[TaskOrchestrator] Error executing task via agent chat:`, error);
@@ -275,6 +304,7 @@ Begin working on this task now.`;
       toolExecutions: agentResponse.tool_executions || [],
       files: this.extractFileReferences(agentResponse),
       timestamp: new Date().toISOString(),
+      usage: agentResponse.usage || null,
     };
 
     // Mark task as completed with output data
@@ -364,19 +394,40 @@ Begin working on this task now.`;
   static async completeGoal(goalId) {
     const goalData = this.runningGoals.get(goalId);
     const userId = goalData?.userId;
+    const provider = goalData?.provider || null;
+    const model = goalData?.model || null;
 
     await GoalModel.updateStatus(goalId, 'completed', new Date().toISOString());
     console.log(`Goal ${goalId} completed successfully`);
+
+    // Broadcast completion to frontend immediately
+    if (userId) {
+      broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {
+        id: goalId,
+        status: 'completed',
+      });
+    }
 
     // Trigger automatic evaluation
     if (userId) {
       console.log(`[TaskOrchestrator] Starting automatic evaluation for goal ${goalId}`);
       try {
-        const evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic');
+        const evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model);
         console.log(`[TaskOrchestrator] Evaluation complete: ${evaluation.passed ? 'PASSED' : 'NEEDS REVIEW'} (${evaluation.scores.overall}%)`);
 
+        // Broadcast the final status (validated or needs_review) set by evaluator
+        broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {
+          id: goalId,
+          status: evaluation.status,
+          evaluation: {
+            passed: evaluation.passed,
+            scores: evaluation.scores,
+            feedback: evaluation.feedback,
+          },
+        });
+
         // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
-        InsightTriggers.onGoalCompleted(goalId, userId).catch(err => {
+        InsightTriggers.onGoalCompleted(goalId, userId, provider, model).catch(err => {
           console.error('[TaskOrchestrator] Insight/SkillForge analysis failed (non-critical):', err.message);
         });
 
@@ -397,9 +448,20 @@ Begin working on this task now.`;
     this.runningGoals.delete(goalId);
   }
   static async handleGoalError(goalId, error) {
+    const goalData = this.runningGoals.get(goalId);
+    const userId = goalData?.userId;
+
     await GoalModel.updateStatus(goalId, 'failed');
     this.runningGoals.delete(goalId);
     console.error(`Goal ${goalId} failed:`, error);
+
+    // Broadcast failure to frontend
+    if (userId) {
+      broadcastToUser(userId, RealtimeEvents.GOAL_UPDATED, {
+        id: goalId,
+        status: 'failed',
+      });
+    }
   }
   static async getGoalStatus(goalId) {
     const goal = await GoalModel.findOne(goalId);
@@ -483,11 +545,32 @@ Begin working on this task now.`;
     await GoalModel.updateStatus(goalId, 'paused');
     this.runningGoals.delete(goalId);
   }
-  static async resumeGoal(goalId) {
+  static async resumeGoal(goalId, provider = null, model = null) {
     const goal = await GoalModel.findOne(goalId);
     if (goal) {
+      // Reset any failed/stuck tasks to pending so they can be re-executed
+      const tasks = await TaskModel.findByGoalId(goalId);
+      for (const task of tasks) {
+        if (task.status === 'failed' || task.status === 'running') {
+          await TaskModel.updateStatus(task.id, 'pending', 0);
+        }
+      }
+
       await GoalModel.updateStatus(goalId, 'executing');
-      this.executeGoalTasks(goalId, goal.user_id); // Changed from startExecutionLoop
+      this.runningGoals.set(goalId, {
+        userId: goal.user_id,
+        startTime: Date.now(),
+        status: 'executing',
+        provider,
+        model,
+      });
+
+      broadcastToUser(goal.user_id, RealtimeEvents.GOAL_UPDATED, {
+        id: goalId,
+        status: 'executing',
+      });
+
+      this.executeGoalTasks(goalId, goal.user_id, provider, model);
     }
   }
   static async stopGoal(goalId) {
@@ -505,7 +588,7 @@ Begin working on this task now.`;
    * Execute a goal autonomously with iterative feedback loop.
    * Evaluate → Re-plan failed tasks → Re-execute → Repeat until pass or max iterations.
    */
-  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50 } = {}) {
+  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50, provider = null, model = null } = {}) {
     try {
       console.log(`[AGI Loop] Starting autonomous execution for goal ${goalId} (max ${maxIterations} iterations)`);
 
@@ -518,6 +601,8 @@ Begin working on this task now.`;
         startTime: Date.now(),
         status: 'executing',
         autonomous: true,
+        provider,
+        model,
       });
 
       let identicalReplanCount = 0;
@@ -546,7 +631,7 @@ Begin working on this task now.`;
 
         // Phase 1: Execute tasks
         try {
-          await this.executeGoalTasks(goalId, userId);
+          await this.executeGoalTasks(goalId, userId, provider, model);
         } catch (error) {
           console.error(`[AGI Loop] Task execution error at iteration ${iteration}:`, error);
           // Don't break — evaluate what we have
@@ -561,7 +646,7 @@ Begin working on this task now.`;
 
         let evaluation;
         try {
-          evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic');
+          evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model);
         } catch (error) {
           console.error(`[AGI Loop] Evaluation error at iteration ${iteration}:`, error);
           evaluation = { passed: false, scores: { overall: 0 }, feedback: error.message };
@@ -591,7 +676,7 @@ Begin working on this task now.`;
           });
 
           // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
-          InsightTriggers.onGoalCompleted(goalId, userId).catch(err => {
+          InsightTriggers.onGoalCompleted(goalId, userId, provider, model).catch(err => {
             console.error('[AGI Loop] Insight/SkillForge analysis failed (non-critical):', err.message);
           });
 
@@ -610,7 +695,7 @@ Begin working on this task now.`;
           phase: 'replanning',
         });
 
-        const replannedTasks = await this._replanFailedTasks(goalId, evaluation, userId);
+        const replannedTasks = await this._replanFailedTasks(goalId, evaluation, userId, provider, model);
 
         // Guard: detect identical re-plans
         const replanHash = JSON.stringify(replannedTasks.map((t) => t.title + t.description).sort());
@@ -687,7 +772,7 @@ Begin working on this task now.`;
    * Re-plan failed/low-scoring tasks using LLM analysis.
    * Resets failed tasks to pending with updated descriptions.
    */
-  static async _replanFailedTasks(goalId, evaluation, userId) {
+  static async _replanFailedTasks(goalId, evaluation, userId, provider = null, model = null) {
     const goal = await GoalModel.findOne(goalId);
     const tasks = await TaskModel.findByGoalId(goalId);
     const worldState = await GoalModel.getWorldState(goalId);
@@ -709,7 +794,6 @@ Begin working on this task now.`;
     }
 
     // Use LLM to generate improved task descriptions
-    const streamEngine = new StreamEngine(userId);
     const prompt = `You are re-planning failed tasks for an autonomous goal execution system.
 
 GOAL: ${goal.title}
@@ -759,22 +843,35 @@ Rules:
 - Return ONLY the JSON array`;
 
     try {
-      let evalProvider, evalModel;
-      const UserModel = (await import('../../models/UserModel.js')).default;
-      const userSettings = await UserModel.getUserSettings(userId);
-      evalProvider = userSettings?.selectedProvider;
-      evalModel = userSettings?.selectedModel;
+      let rawProvider = provider;
+      let evalModel = model;
+      if (!rawProvider || !evalModel) {
+        const UserModel = (await import('../../models/UserModel.js')).default;
+        const userSettings = await UserModel.getUserSettings(userId);
+        if (!rawProvider) rawProvider = userSettings?.selectedProvider;
+        if (!evalModel) evalModel = userSettings?.selectedModel;
+      }
 
-      if (!evalProvider || !evalModel) {
+      if (!rawProvider || !evalModel) {
         throw new Error('No provider/model configured for re-planning');
       }
 
-      const result = await streamEngine.generateCompletion(prompt, evalProvider, evalModel);
-      if (streamEngine._lastCompletionUsage) {
-        const u = streamEngine._lastCompletionUsage;
-        const input = u.prompt_tokens || u.input_tokens || 0;
-        const output = u.completion_tokens || u.output_tokens || 0;
-        console.log(`[TaskOrchestrator] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      const _cfg = getProviderConfig(rawProvider);
+      const evalProvider = _cfg ? _cfg.key : rawProvider.toLowerCase();
+      const client = await createLlmClient(evalProvider, userId);
+      const adapter = await createLlmAdapter(evalProvider, client, evalModel);
+      const adapterResult = await adapter.call([
+        { role: 'system', content: 'You are a task re-planning assistant. Return valid JSON only.' },
+        { role: 'user', content: prompt },
+      ], []);
+
+      let result = '';
+      if (adapterResult.responseMessage?.content) {
+        if (typeof adapterResult.responseMessage.content === 'string') {
+          result = adapterResult.responseMessage.content;
+        } else if (Array.isArray(adapterResult.responseMessage.content)) {
+          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
+        }
       }
 
       let cleanedResult = result;

@@ -37,7 +37,11 @@ class GoalModel {
       db.all(
         `SELECT g.*,
          COUNT(t.id) as task_count,
-         COUNT(CASE WHEN t.status = 'completed' THEN 1 END) as completed_tasks
+         COUNT(CASE WHEN t.status = 'completed' THEN 1 END) as completed_tasks,
+         (SELECT SUM(ge.input_tokens) FROM goal_evaluations ge WHERE ge.goal_id = g.id) as input_tokens,
+         (SELECT SUM(ge.output_tokens) FROM goal_evaluations ge WHERE ge.goal_id = g.id) as output_tokens,
+         (SELECT SUM(ge.total_tokens) FROM goal_evaluations ge WHERE ge.goal_id = g.id) as total_tokens,
+         (SELECT SUM(ge.estimated_cost) FROM goal_evaluations ge WHERE ge.goal_id = g.id) as estimated_cost
          FROM goals g
          LEFT JOIN tasks t ON g.id = t.goal_id
          WHERE g.user_id = ? ${deletedFilter}

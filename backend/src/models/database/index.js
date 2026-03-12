@@ -965,6 +965,25 @@ function runMigrations() {
         }
       });
 
+      // Migration: Add evaluation_score column to goal_iterations for AGI loop tracking (2026-03-12)
+      const goalIterationColumns = [
+        { name: 'evaluation_score', type: 'REAL' },
+        { name: 'evaluation_passed', type: 'INTEGER DEFAULT 0' },
+        { name: 'world_state_snapshot', type: 'JSON' },
+        { name: 'replanned_tasks', type: 'JSON' },
+        { name: 'git_commit_hash', type: 'TEXT' },
+        { name: 'duration_ms', type: 'INTEGER' },
+      ];
+      goalIterationColumns.forEach(col => {
+        db.run(`ALTER TABLE goal_iterations ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to goal_iterations:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to goal_iterations table`);
+          }
+        });
+      });
+
       // Migration: Add denormalized metadata columns to workflows for fast summary queries (2026-02-26)
       // These columns avoid parsing the full workflow_data JSON blob for list/summary views
       const summaryColumns = [

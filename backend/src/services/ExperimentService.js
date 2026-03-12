@@ -3,7 +3,9 @@ import EvalDatasetService from './EvalDatasetService.js';
 import SkillModel from '../models/SkillModel.js';
 import GoalModel from '../models/GoalModel.js';
 import TaskModel from '../models/TaskModel.js';
-import StreamEngine from '../stream/StreamEngine.js';
+import { createLlmClient } from './ai/LlmService.js';
+import { createLlmAdapter } from './orchestrator/llmAdapters.js';
+import { getProviderConfig } from './ai/providerConfigs.js';
 import UserModel from '../models/UserModel.js';
 import db from '../models/database/index.js';
 import { broadcastToUser } from '../utils/realtimeSync.js';
@@ -231,7 +233,6 @@ Return ONLY JSON:
   "feedback": "Brief textual feedback"
 }`;
 
-      const streamEngine = new StreamEngine(userId);
       // Use provider/model from request (frontend sends current selection), fall back to DB settings
       let provider = reqProvider;
       let model = reqModel;
@@ -240,14 +241,22 @@ Return ONLY JSON:
         provider = provider || userSettings?.selectedProvider || 'anthropic';
         model = model || userSettings?.selectedModel || 'claude-sonnet-4-20250514';
       }
-      const result = await streamEngine.generateCompletion(prompt, provider, model);
+      const _cfg = getProviderConfig(provider);
+      const normalizedProvider = _cfg ? _cfg.key : provider.toLowerCase();
+      const client = await createLlmClient(normalizedProvider, userId);
+      const adapter = await createLlmAdapter(normalizedProvider, client, model);
+      const adapterResult = await adapter.call([
+        { role: 'system', content: 'You are an evaluation judge. Return valid JSON only.' },
+        { role: 'user', content: prompt },
+      ], []);
 
-      // Log token usage from judge scoring
-      const usage = streamEngine._lastCompletionUsage;
-      if (usage) {
-        const input = usage.prompt_tokens || usage.input_tokens || 0;
-        const output = usage.completion_tokens || usage.output_tokens || 0;
-        console.log(`[ExperimentService] Judge Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      let result = '';
+      if (adapterResult.responseMessage?.content) {
+        if (typeof adapterResult.responseMessage.content === 'string') {
+          result = adapterResult.responseMessage.content;
+        } else if (Array.isArray(adapterResult.responseMessage.content)) {
+          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
+        }
       }
 
       let cleaned = result;

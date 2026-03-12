@@ -265,6 +265,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
         // Check if this is the last attempt or if the error is not retryable
         if (attempt === this.maxRetries || (!this.isRetryableError(error) && !this.isTokenLimitError(error))) {
           console.error(`LLM call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
+            model: this.model,
             status: error.status,
             message: error.message,
             retryable: this.isRetryableError(error),

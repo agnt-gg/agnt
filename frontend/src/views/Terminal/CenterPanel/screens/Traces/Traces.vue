@@ -255,9 +255,9 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, computed, nextTick, inject } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, inject, watch } from 'vue';
 import { useStore } from 'vuex';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTable from '../../../_components/BaseTable.vue';
@@ -274,6 +274,7 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
     const router = useRouter();
+    const route = useRoute();
     const cleanup = useCleanup();
     const playSound = inject('playSound', () => {});
     const baseScreenRef = ref(null);
@@ -1091,6 +1092,9 @@ ${execution.log}
           console.log('Runs: Handling edit workflow:', payload);
           emit('screen-change', 'WorkflowForgeScreen', { workflowId: payload });
           break;
+        case 'navigate-to-insight':
+          emit('screen-change', 'ExperimentsScreen', { selectedInsight: payload });
+          break;
         case 'update-execution-details':
           // This action is handled by the right panel directly
           break;
@@ -1264,6 +1268,35 @@ ${execution.log}
         initializeTracesTutorial();
       }, 2000);
     };
+
+    // Auto-select execution from query param (e.g. navigating from insights)
+    watch(
+      () => route.query.executionId,
+      async (executionId) => {
+        if (!executionId || route.path !== '/traces') return;
+        // Find in existing executions or fetch directly
+        const executions = store.getters['executionHistory/getExecutions'];
+        const execution = executions.find(e => e.id === executionId);
+        if (execution) {
+          await handleExecutionClick(execution);
+        } else {
+          // Try fetching it directly
+          selectedExecutionId.value = executionId;
+          try {
+            const detailedData = await store.dispatch('executionHistory/fetchExecutionDetails', executionId);
+            if (detailedData) {
+              selectedExecution.value = detailedData;
+              baseScreenRef.value?.triggerPanelMethod('updateSelectedExecution', detailedData);
+            }
+          } catch (err) {
+            console.error('Failed to load execution from query:', err);
+          }
+        }
+        // Clear the query param to avoid re-triggering
+        router.replace({ path: '/traces', query: {} });
+      },
+      { immediate: true }
+    );
 
     onUnmounted(() => {
       if (pollingInterval) {

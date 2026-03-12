@@ -1,6 +1,8 @@
 import InsightModel from '../../models/InsightModel.js';
 import AgentMemoryModel from '../../models/AgentMemoryModel.js';
-import StreamEngine from '../../stream/StreamEngine.js';
+import { createLlmClient } from '../ai/LlmService.js';
+import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
+import { getProviderConfig } from '../ai/providerConfigs.js';
 
 /**
  * InsightEngine — Core extraction engine for the Unified Evolution system.
@@ -42,7 +44,7 @@ class InsightEngine {
    * Produces: memory facts, prompt refinements, tool preferences.
    */
   static async _extractFromChat(executionId, userId, context) {
-    const { agentId, conversationId } = context;
+    const { agentId, conversationId, provider, model } = context;
     const isOrchestratorChat = !agentId || agentId === 'agent-chat';
 
     // Load execution data (includes tool executions)
@@ -80,7 +82,7 @@ class InsightEngine {
     const trace = this._buildChatTrace(execution, toolExecutions, conversationLog);
 
     // Use LLM to extract insights
-    const rawInsights = await this._llmExtractChatInsights(trace, userId);
+    const rawInsights = await this._llmExtractChatInsights(trace, userId, provider, model);
     if (!rawInsights || rawInsights.length === 0) return [];
 
     // Store insights with deduplication
@@ -120,9 +122,10 @@ class InsightEngine {
    * Delegates to existing TraceAnalyzer and translates output to insight rows.
    */
   static async _extractFromGoal(goalId, userId, context) {
+    const { provider, model } = context;
     // Import TraceAnalyzer to reuse existing analysis
     const TraceAnalyzer = (await import('../goal/TraceAnalyzer.js')).default;
-    const analysis = await TraceAnalyzer.analyzeTrace(goalId, userId);
+    const analysis = await TraceAnalyzer.analyzeTrace(goalId, userId, provider, model);
     if (!analysis) return [];
 
     const stored = [];
@@ -185,6 +188,7 @@ class InsightEngine {
    * Extract insights from a workflow execution.
    */
   static async _extractFromWorkflow(executionId, userId, context) {
+    const { provider, model } = context;
     // Load workflow execution and node executions
     const db = (await import('../../models/database/index.js')).default;
 
@@ -205,7 +209,7 @@ class InsightEngine {
 
     // Build workflow trace
     const trace = this._buildWorkflowTrace(execution, nodeExecutions);
-    const rawInsights = await this._llmExtractWorkflowInsights(trace, userId);
+    const rawInsights = await this._llmExtractWorkflowInsights(trace, userId, provider, model);
     if (!rawInsights || rawInsights.length === 0) return [];
 
     const stored = [];
@@ -351,14 +355,11 @@ Duration: ${execution.end_time && execution.start_time ? Math.round((new Date(ex
   /**
    * Use LLM to extract insights from a chat trace.
    */
-  static async _llmExtractChatInsights(trace, userId) {
-    const streamEngine = new StreamEngine(userId);
-
-    const prompt = `You are an AI behavior analyst. Analyze this agent chat execution trace and extract reusable insights.
-
-${trace}
-
----
+  static async _llmExtractChatInsights(trace, userId, provider = null, model = null) {
+    const messages = [
+      {
+        role: 'system',
+        content: `You are an AI behavior analyst. Extract reusable insights from agent chat execution traces.
 
 Extract insights in these categories:
 1. **memory** — Facts about the user, their preferences, or corrections they gave (memory_type: fact, preference, or correction)
@@ -383,18 +384,13 @@ Rules:
 - Skip trivial or generic observations
 - Maximum 5 insights per extraction
 - For memory items, write the memoryContent as a concise statement the agent should remember
-- Return an empty array [] if no meaningful insights can be extracted`;
+- Return an empty array [] if no meaningful insights can be extracted`,
+      },
+      { role: 'user', content: trace },
+    ];
 
     try {
-      const resolved = await this._resolveProviderForCompletion(userId);
-      if (!resolved) return [];
-
-      const result = await streamEngine.generateCompletion(prompt, resolved.provider, resolved.model);
-      if (streamEngine._lastCompletionUsage) {
-        const u = streamEngine._lastCompletionUsage;
-        console.log(`[InsightEngine] Chat extraction tokens: ${(u.prompt_tokens || u.input_tokens || 0)} in / ${(u.completion_tokens || u.output_tokens || 0)} out`);
-      }
-
+      const result = await this._callLlm(userId, messages, provider, model);
       return this._parseJsonArray(result);
     } catch (error) {
       console.error('[InsightEngine] LLM chat insight extraction failed:', error.message);
@@ -405,14 +401,11 @@ Rules:
   /**
    * Use LLM to extract insights from a workflow trace.
    */
-  static async _llmExtractWorkflowInsights(trace, userId) {
-    const streamEngine = new StreamEngine(userId);
-
-    const prompt = `You are a workflow optimization analyst. Analyze this workflow execution trace and extract improvement insights.
-
-${trace}
-
----
+  static async _llmExtractWorkflowInsights(trace, userId, provider = null, model = null) {
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a workflow optimization analyst. Analyze workflow execution traces and extract improvement insights.
 
 Extract insights in these categories:
 1. **bottleneck** — Nodes that are slow, failing, or causing issues
@@ -433,18 +426,13 @@ Return ONLY a valid JSON array (no markdown, no fences):
 Rules:
 - Only extract insights with clear evidence
 - Maximum 5 insights
-- Return an empty array [] if no meaningful insights`;
+- Return an empty array [] if no meaningful insights`,
+      },
+      { role: 'user', content: trace },
+    ];
 
     try {
-      const resolved = await this._resolveProviderForCompletion(userId);
-      if (!resolved) return [];
-
-      const result = await streamEngine.generateCompletion(prompt, resolved.provider, resolved.model);
-      if (streamEngine._lastCompletionUsage) {
-        const u = streamEngine._lastCompletionUsage;
-        console.log(`[InsightEngine] Workflow extraction tokens: ${(u.prompt_tokens || u.input_tokens || 0)} in / ${(u.completion_tokens || u.output_tokens || 0)} out`);
-      }
-
+      const result = await this._callLlm(userId, messages, provider, model);
       return this._parseJsonArray(result);
     } catch (error) {
       console.error('[InsightEngine] LLM workflow insight extraction failed:', error.message);
@@ -505,50 +493,36 @@ Rules:
   }
 
   /**
-   * Resolve a provider/model pair that generateCompletion actually supports.
-   * Custom providers (Z.AI, etc.) aren't in the switch — fall back to a known one.
+   * Call the LLM using the standard createLlmClient + createLlmAdapter pattern.
+   * Same approach as PluginGenerator, OrchestratorService, etc.
    */
-  static async _resolveProviderForCompletion(userId) {
-    const UserModel = (await import('../../models/UserModel.js')).default;
-    const userSettings = await UserModel.getUserSettings(userId);
-    let provider = userSettings?.selectedProvider;
-    let model = userSettings?.selectedModel;
-    if (!provider) return null;
-
-    // Providers that generateCompletion's switch statement supports
-    const supportedProviders = new Set([
-      'anthropic', 'claude-code', 'cerebras', 'deepseek', 'openai',
-      'openai-codex', 'openai-codex-cli', 'openrouter', 'togetherai',
-      'gemini', 'gemini-cli', 'grokai', 'groq', 'kimi', 'minimax', 'local',
-    ]);
-
-    if (supportedProviders.has(provider.toLowerCase())) {
-      return { provider, model };
+  static async _callLlm(userId, messages, provider = null, model = null) {
+    let rawProvider = provider;
+    if (!rawProvider || !model) {
+      const UserModel = (await import('../../models/UserModel.js')).default;
+      const userSettings = await UserModel.getUserSettings(userId);
+      if (!rawProvider) rawProvider = userSettings?.selectedProvider;
+      if (!model) model = userSettings?.selectedModel;
     }
+    if (!rawProvider) throw new Error('No AI provider configured');
 
-    // Unsupported provider (Z.AI, custom, etc.) — try openrouter as fallback
-    // since most custom providers are OpenAI-compatible and often routed via OpenRouter
-    console.log(`[InsightEngine] Provider "${provider}" not supported by generateCompletion, trying openrouter fallback`);
-    try {
-      const { createLlmClient } = await import('../../services/ai/LlmService.js');
-      const client = await createLlmClient('openrouter', userId);
-      if (client) return { provider: 'openrouter', model: null };
-    } catch { /* no openrouter configured */ }
+    // Normalize provider the same way the orchestrator does
+    const providerConfig = getProviderConfig(rawProvider);
+    const normalizedProvider = providerConfig ? providerConfig.key : rawProvider.toLowerCase();
 
-    // Try other common fallbacks
-    for (const fallback of ['anthropic', 'openai', 'groq', 'gemini']) {
-      try {
-        const { createLlmClient } = await import('../../services/ai/LlmService.js');
-        const client = await createLlmClient(fallback, userId);
-        if (client) {
-          console.log(`[InsightEngine] Using fallback provider: ${fallback}`);
-          return { provider: fallback, model: null };
-        }
-      } catch { /* not configured */ }
+    const client = await createLlmClient(normalizedProvider, userId);
+    const adapter = await createLlmAdapter(normalizedProvider, client, model);
+    const result = await adapter.call(messages, []);
+
+    if (result.responseMessage?.content) {
+      if (typeof result.responseMessage.content === 'string') {
+        return result.responseMessage.content;
+      }
+      if (Array.isArray(result.responseMessage.content)) {
+        return result.responseMessage.content.map(block => block.text || '').join('');
+      }
     }
-
-    console.warn(`[InsightEngine] No supported provider found for insight extraction`);
-    return null;
+    return '';
   }
 
   /**

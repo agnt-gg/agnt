@@ -18,7 +18,7 @@ class SkillForgeOrchestrator {
    * Called after a goal completes. Orchestrates the full SkillForge pipeline.
    * Fire-and-forget — failures here never affect goal execution.
    */
-  static async onGoalCompleted(goalId, userId) {
+  static async onGoalCompleted(goalId, userId, provider = null, model = null) {
     try {
       const settings = await this.getSettings(userId);
       if (!settings.autoAnalyze) {
@@ -26,7 +26,7 @@ class SkillForgeOrchestrator {
         return null;
       }
 
-      return await this.analyzeAndEvolve(goalId, userId);
+      return await this.analyzeAndEvolve(goalId, userId, provider, model);
     } catch (error) {
       console.error(`[SkillForge] onGoalCompleted failed (non-critical):`, error.message);
       return null;
@@ -36,7 +36,7 @@ class SkillForgeOrchestrator {
   /**
    * Manual trigger: analyze a completed goal and evolve skills.
    */
-  static async analyzeAndEvolve(goalId, userId) {
+  static async analyzeAndEvolve(goalId, userId, provider = null, model = null) {
     const settings = await this.getSettings(userId);
 
     // Guard: check goal score
@@ -62,7 +62,7 @@ class SkillForgeOrchestrator {
 
     // Phase 1: Trace Analysis
     console.log(`[SkillForge] Analyzing goal ${goalId}...`);
-    const analysis = await TraceAnalyzer.analyzeTrace(goalId, userId);
+    const analysis = await TraceAnalyzer.analyzeTrace(goalId, userId, provider, model);
 
     if (!analysis) {
       return { status: 'skipped', reason: 'Trace analysis returned no results' };
@@ -115,8 +115,8 @@ class SkillForgeOrchestrator {
   /**
    * Analyze a goal without evolving (just return the trace analysis).
    */
-  static async analyzeGoal(goalId, userId) {
-    const analysis = await TraceAnalyzer.analyzeTrace(goalId, userId);
+  static async analyzeGoal(goalId, userId, provider = null, model = null) {
+    const analysis = await TraceAnalyzer.analyzeTrace(goalId, userId, provider, model);
     return analysis;
   }
 

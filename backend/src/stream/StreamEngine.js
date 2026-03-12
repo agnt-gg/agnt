@@ -8,6 +8,7 @@ import PathManager from '../utils/PathManager.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import { createLlmClient } from '../services/ai/LlmService.js';
+import { getProviderConfig } from '../services/ai/providerConfigs.js';
 
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer, trimToWordLimit, generateUniqueId, computeFileHash } from './utils.js';
 
@@ -723,7 +724,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         model = 'claude-3-5-sonnet-20240620';
       }
 
-      const lowerCaseProvider = provider.toLowerCase();
+      const _providerConfig = getProviderConfig(provider);
+      const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
       const client = await createLlmClient(lowerCaseProvider, this.userId);
 
       if (!client) {
@@ -1112,7 +1114,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         model = 'claude-3-5-sonnet-20240620';
       }
 
-      const lowerCaseProvider = provider.toLowerCase();
+      const _providerConfig = getProviderConfig(provider);
+      const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
       const client = await createLlmClient(lowerCaseProvider, this.userId);
 
       if (!client) {
@@ -1486,7 +1489,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         model = 'claude-3-5-sonnet-20240620';
       }
 
-      const lowerCaseProvider = provider.toLowerCase();
+      const _providerConfig = getProviderConfig(provider);
+      const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
       const client = await createLlmClient(lowerCaseProvider, this.userId);
 
       if (!client) {
@@ -1706,7 +1710,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         model = 'claude-3-5-sonnet-20240620';
       }
 
-      const lowerCaseProvider = provider.toLowerCase();
+      const _providerConfig = getProviderConfig(provider);
+      const lowerCaseProvider = _providerConfig ? _providerConfig.key : provider.toLowerCase();
       const client = await createLlmClient(lowerCaseProvider, this.userId);
 
       if (!client) {

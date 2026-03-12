@@ -422,6 +422,36 @@
           <h4>Execution Log</h4>
           <pre class="execution-log">{{ filteredExecutionLog }}</pre>
         </div>
+
+        <!-- Linked Insights -->
+        <div class="detail-section insights-section">
+          <h4>
+            <i class="fas fa-lightbulb"></i>
+            Insights
+            <span v-if="linkedInsights.length > 0" class="insight-count">{{ linkedInsights.length }}</span>
+          </h4>
+          <div v-if="linkedInsights.length > 0" class="linked-insights-list">
+            <div
+              v-for="insight in linkedInsights"
+              :key="insight.id"
+              class="linked-insight-item"
+              @click="navigateToInsight(insight)"
+            >
+              <div class="linked-insight-header">
+                <i :class="insightCategoryIcon(insight.category)"></i>
+                <span class="linked-insight-title">{{ insight.title }}</span>
+              </div>
+              <div class="linked-insight-meta">
+                <span class="insight-status-badge" :class="insight.status">{{ insight.status }}</span>
+                <span class="insight-confidence">{{ Math.round(insight.confidence * 100) }}%</span>
+                <span class="insight-category-label">{{ formatInsightCategory(insight.category) }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="no-insights">
+            <span>No insights generated from this trace</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1189,6 +1219,46 @@ ${execution.log}
       }
     };
 
+    // ═══ Linked Insights ═══
+    const linkedInsights = ref([]);
+
+    const fetchLinkedInsights = async (execution) => {
+      if (!execution) { linkedInsights.value = []; return; }
+      // Determine source type based on execution type
+      let sourceType = 'workflow';
+      if (execution.isAgentExecution) sourceType = 'agent_chat';
+      else if (execution.isGoalExecution) sourceType = 'goal';
+      try {
+        const insights = await store.dispatch('insights/fetchSourceInsights', {
+          sourceType,
+          sourceId: execution.id,
+        });
+        linkedInsights.value = insights || [];
+      } catch {
+        linkedInsights.value = [];
+      }
+    };
+
+    // Watch for execution changes to fetch insights
+    watch(selectedExecution, (exec) => { fetchLinkedInsights(exec); });
+
+    const insightCategoryIcon = (c) => ({
+      pattern: 'fas fa-thumbs-up',
+      antipattern: 'fas fa-thumbs-down',
+      prompt_refinement: 'fas fa-pen',
+      skill_recommendation: 'fas fa-puzzle-piece',
+      memory: 'fas fa-brain',
+      bottleneck: 'fas fa-tachometer-alt',
+      parameter_tune: 'fas fa-sliders-h',
+      tool_preference: 'fas fa-wrench',
+    }[c] || 'fas fa-lightbulb');
+
+    const formatInsightCategory = (c) => (c || '').replace(/_/g, ' ');
+
+    const navigateToInsight = (insight) => {
+      emit('panel-action', 'navigate-to-insight', insight);
+    };
+
     const closePanel = () => {
       selectedExecution.value = null;
       emit('panel-action', 'close-panel');
@@ -1242,6 +1312,11 @@ ${execution.log}
       clearGoalInput,
       closePanel,
       handleEditWorkflow,
+      // Linked insights
+      linkedInsights,
+      insightCategoryIcon,
+      formatInsightCategory,
+      navigateToInsight,
     };
   },
 };
@@ -2376,5 +2451,94 @@ ${execution.log}
   .detail-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ═══ Linked Insights Section ═══ */
+.insights-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.insights-section h4 i {
+  color: #f59e0b;
+  font-size: 0.9em;
+}
+.insight-count {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  font-size: 0.75em;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.linked-insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.linked-insight-item {
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(var(--primary-rgb), 0.08);
+  border-left: 3px solid rgba(245, 158, 11, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.linked-insight-item:hover {
+  background: rgba(var(--primary-rgb), 0.08);
+  border-left-color: #f59e0b;
+}
+.linked-insight-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.linked-insight-header i {
+  margin-top: 2px;
+  font-size: 0.8em;
+  color: var(--color-grey);
+  flex-shrink: 0;
+}
+.linked-insight-title {
+  font-size: 0.82em;
+  color: var(--color-text);
+  line-height: 1.3;
+  word-break: break-word;
+}
+.linked-insight-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 20px;
+}
+.insight-status-badge {
+  font-size: 0.65em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: capitalize;
+  font-weight: 500;
+}
+.insight-status-badge.pending { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.insight-status-badge.applied { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
+.insight-status-badge.rejected { background: rgba(239,68,68,0.15); color: #ef4444; }
+.insight-status-badge.superseded { background: rgba(150,150,150,0.15); color: #999; }
+.insight-confidence {
+  font-size: 0.7em;
+  color: var(--color-grey);
+  font-weight: 500;
+}
+.insight-category-label {
+  font-size: 0.65em;
+  color: var(--color-grey);
+  text-transform: capitalize;
+}
+.no-insights {
+  font-size: 0.8em;
+  color: var(--color-grey);
+  font-style: italic;
+  padding: 6px 0;
 }
 </style>

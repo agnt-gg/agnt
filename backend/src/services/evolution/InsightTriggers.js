@@ -12,13 +12,15 @@ class InsightTriggers {
    */
   static async onChatCompleted(executionId, userId, context = {}) {
     try {
-      const { agentId, conversationId } = context;
+      const { agentId, conversationId, provider, model } = context;
 
       console.log(`[InsightTriggers] Chat completed: ${executionId} for agent ${agentId || 'orchestrator'}`);
 
       const insightIds = await InsightEngine.extract('agent_chat', executionId, userId, {
         agentId,
         conversationId,
+        provider,
+        model,
       });
 
       if (insightIds.length > 0) {
@@ -44,16 +46,16 @@ class InsightTriggers {
    * Called after a goal completes.
    * Routes through InsightEngine then delegates to SkillForge for skill evolution.
    */
-  static async onGoalCompleted(goalId, userId) {
+  static async onGoalCompleted(goalId, userId, provider = null, model = null) {
     try {
       console.log(`[InsightTriggers] Goal completed: ${goalId}`);
 
       // Extract insights from goal traces
-      const insightIds = await InsightEngine.extract('goal', goalId, userId, { goalId });
+      const insightIds = await InsightEngine.extract('goal', goalId, userId, { goalId, provider, model });
 
       // Also trigger existing SkillForge pipeline
       const SkillForgeOrchestrator = (await import('../goal/SkillForgeOrchestrator.js')).default;
-      const forgeResult = await SkillForgeOrchestrator.onGoalCompleted(goalId, userId);
+      const forgeResult = await SkillForgeOrchestrator.onGoalCompleted(goalId, userId, provider, model);
 
       if (insightIds.length > 0) {
         broadcastToUser(userId, 'evolution:insights_extracted', {

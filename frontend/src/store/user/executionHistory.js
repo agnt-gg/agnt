@@ -44,6 +44,21 @@ export default {
     REMOVE_FROM_CACHE(state, id) {
       state.detailedExecutionsCache.delete(id);
     },
+    UPDATE_GOAL_EXECUTION_STATUS(state, { goalId, status, evaluation }) {
+      const execId = `goal-${goalId}`;
+      // Update summary list
+      const summary = state.goalExecutionSummaries.find(e => e.goalId === goalId);
+      if (summary) {
+        summary.status = status;
+      }
+      // Update cached detail if present
+      const cached = state.detailedExecutionsCache.get(execId);
+      if (cached?.data) {
+        cached.data.status = status;
+        if (cached.data.goalDetails) cached.data.goalDetails.status = status;
+        if (evaluation) cached.data.evaluation = evaluation;
+      }
+    },
     SET_LAST_FETCH_TIME(state, time) {
       state.lastFetchTime = time;
     },
@@ -121,6 +136,10 @@ export default {
                 creditsUsed: goal.credits_used || 0,
                 nodeCount: goal.task_count || 0,
                 isGoalExecution: true,
+                inputTokens: goal.input_tokens || 0,
+                outputTokens: goal.output_tokens || 0,
+                totalTokens: goal.total_tokens || 0,
+                estimatedCost: goal.estimated_cost || 0,
               };
             });
           commit('SET_GOAL_EXECUTION_SUMMARIES', goalSummaries);
@@ -214,11 +233,15 @@ export default {
             status: goalData.status,
             startTime: goalData.created_at,
             endTime: calculatedEndTime,
-            creditsUsed: goalData.credits_used || 0,
+            creditsUsed: goalData.credits_used || goalData.total_duration || 0,
             nodeExecutions: goalData.tasks || [],
             log: null,
             isGoalExecution: true,
             goalDetails: goalData,
+            inputTokens: goalData.input_tokens || 0,
+            outputTokens: goalData.output_tokens || 0,
+            totalTokens: goalData.total_tokens || 0,
+            estimatedCost: goalData.estimated_cost || 0,
           };
 
           commit('SET_DETAILED_EXECUTION', { id: executionId, data: detailedData });

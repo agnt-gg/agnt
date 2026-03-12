@@ -16,6 +16,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Custom Tool Routes](#custom-tool-routes)
 - [Email Listener Routes](#email-listener-routes)
 - [Execution Routes](#execution-routes)
+- [Evolution / Insight Routes](#evolution--insight-routes)
 - [Experiment Routes](#experiment-routes)
 - [FileSystem Routes](#filesystem-routes)
 - [Gemini CLI Auth Routes](#gemini-cli-auth-routes)
@@ -1413,11 +1414,302 @@ Base path: `/api/executions`
 
 ---
 
+## Evolution / Insight Routes
+
+Base path: `/api/insights`
+
+The unified evolution system extracts actionable insights from agent chats, goal executions, and workflow runs. Insights can target agents, skills, workflows, or tools and are automatically generated when executions complete. The system also manages per-agent memory (facts, preferences, corrections learned from conversations).
+
+### List Insights
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `targetType` (query, optional): Filter by target type (`agent`, `skill`, `workflow`, `tool`)
+  - `targetId` (query, optional): Filter by target ID
+  - `status` (query, optional): Filter by status (`pending`, `applied`, `rejected`)
+  - `category` (query, optional): Filter by category (`memory`, `prompt_refinement`, `skill_recommendation`, `tool_preference`, `bottleneck`, `optimization`, `error_pattern`, `skill_candidate`)
+  - `limit` (query, optional): Max results (default: 100)
+- **Response**:
+
+```json
+{
+  "success": true,
+  "insights": [
+    {
+      "id": "insight-uuid",
+      "user_id": "user-id",
+      "source_type": "agent_chat|goal|workflow",
+      "source_id": "execution-id",
+      "target_type": "agent|skill|workflow|tool",
+      "target_id": "agent-id",
+      "category": "prompt_refinement",
+      "title": "Insight title",
+      "description": "Detailed description",
+      "confidence": 0.85,
+      "priority": "medium",
+      "status": "pending",
+      "source_context": {},
+      "evidence": {},
+      "applied_result": null,
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Insight Stats
+
+**GET** `/stats`
+
+- **Authentication**: Required
+- **Description**: Get aggregated insight counts grouped by status and target type
+- **Response**:
+
+```json
+{
+  "success": true,
+  "statusCounts": { "pending": 12, "applied": 8, "rejected": 2 },
+  "targetCounts": { "agent": 10, "skill": 5, "workflow": 7 }
+}
+```
+
+### Get Insights by Target
+
+**GET** `/target/:targetType/:targetId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `targetType` (path): `agent`, `skill`, `workflow`, or `tool`
+  - `targetId` (path): Target entity ID
+  - `status` (query, optional): Filter by status
+- **Description**: Get all insights targeting a specific entity (e.g., all insights for a particular agent)
+- **Response**:
+
+```json
+{
+  "success": true,
+  "insights": [ ... ]
+}
+```
+
+### Get Insights by Source
+
+**GET** `/source/:sourceType/:sourceId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `sourceType` (path): `agent_chat`, `goal`, or `workflow`
+  - `sourceId` (path): Source execution ID
+- **Description**: Get all insights generated from a specific execution (e.g., all insights extracted from a particular goal run)
+- **Response**:
+
+```json
+{
+  "success": true,
+  "insights": [ ... ]
+}
+```
+
+### Get Single Insight
+
+**GET** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Insight ID
+- **Response**:
+
+```json
+{
+  "success": true,
+  "insight": { ... }
+}
+```
+
+- **Error** (404): Insight not found
+
+### Apply Insight
+
+**POST** `/:id/apply`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Insight ID
+- **Body** (optional):
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
+}
+```
+
+- **Description**: Apply an insight to its target entity. For agent prompt refinements, uses LLM to merge the improvement into the agent's system prompt. Provider/model override the user's defaults for the LLM call. The insight status is updated to `applied`.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "result": {
+    "applied": true,
+    "changes": { ... }
+  }
+}
+```
+
+### Reject Insight
+
+**POST** `/:id/reject`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Insight ID
+- **Description**: Mark an insight as rejected
+- **Response**:
+
+```json
+{
+  "success": true,
+  "message": "Insight rejected"
+}
+```
+
+### Delete Insight
+
+**DELETE** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Insight ID
+- **Response**:
+
+```json
+{
+  "success": true,
+  "deleted": true
+}
+```
+
+### Trigger Periodic Rollup
+
+**POST** `/rollup`
+
+- **Authentication**: Required
+- **Description**: Manually trigger tool usage rollup analysis. Extracts tool preference insights from recent execution history.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "count": 3,
+  "insightIds": ["id-1", "id-2", "id-3"]
+}
+```
+
+### Get Agent Memories
+
+**GET** `/memory/:agentId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `agentId` (path): Agent ID
+  - `memoryType` (query, optional): Filter by type (`fact`, `preference`, `correction`)
+- **Description**: Get all memories for an agent. Memories are facts, preferences, and corrections learned from conversations.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "memories": [
+    {
+      "id": "memory-uuid",
+      "agent_id": "agent-id",
+      "user_id": "user-id",
+      "memory_type": "fact",
+      "content": "User prefers TypeScript over JavaScript",
+      "relevance_score": 0.9,
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Add Agent Memory
+
+**POST** `/memory/:agentId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `agentId` (path): Agent ID
+- **Body**:
+
+```json
+{
+  "memoryType": "fact|preference|correction",
+  "content": "User prefers concise answers"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "id": "memory-uuid"
+}
+```
+
+### Update Agent Memory
+
+**PUT** `/memory/entry/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Memory entry ID
+- **Body**:
+
+```json
+{
+  "content": "Updated memory content",
+  "relevanceScore": 0.95,
+  "memoryType": "preference"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "updated": true
+}
+```
+
+### Delete Agent Memory
+
+**DELETE** `/memory/entry/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Memory entry ID
+- **Response**:
+
+```json
+{
+  "success": true,
+  "deleted": true
+}
+```
+
+---
+
 ## Experiment Routes
 
 Base path: `/api/experiments`
 
-Manages A/B testing experiments, evaluation datasets, and benchmarks for the SkillForge ecosystem.
+Manages A/B testing experiments, evaluation datasets, and benchmarks for the evolution system.
 
 ### Create Eval Dataset
 
@@ -2077,7 +2369,7 @@ Base path: `/api/goals`
 **GET** `/`
 
 - **Authentication**: Required
-- **Description**: Retrieve all goals for the authenticated user
+- **Description**: Retrieve all goals for the authenticated user. Includes aggregated token usage from goal evaluations.
 - **Response**:
 
 ```json
@@ -2086,8 +2378,14 @@ Base path: `/api/goals`
     "id": "goal-id",
     "title": "Goal Title",
     "description": "Goal description",
-    "status": "active|paused|completed|failed",
+    "status": "active|paused|completed|validated|needs_review|failed",
     "priority": "low|medium|high",
+    "task_count": 5,
+    "completed_tasks": 3,
+    "input_tokens": 15000,
+    "output_tokens": 3200,
+    "total_tokens": 18200,
+    "estimated_cost": 0.045,
     "createdAt": "2024-01-01T00:00:00Z",
     "updatedAt": "2024-01-01T00:00:00Z"
   }
@@ -2135,21 +2433,23 @@ Base path: `/api/goals`
 - **Authentication**: Required
 - **Parameters**:
   - `goalId` (path): Goal ID
-- **Body**:
+- **Body** (optional):
 
 ```json
 {
-  "executionConfig": {}
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
 }
 ```
 
+- **Description**: Start goal execution. Any failed or stuck tasks are reset to pending. The provider/model override the user's default settings for this execution and all downstream operations (task execution, evaluation, insight extraction, skill evolution).
 - **Response**:
 
 ```json
 {
-  "success": true,
-  "executionId": "execution-id",
-  "message": "Goal execution started"
+  "message": "Goal execution started",
+  "goalId": "goal-id",
+  "status": "executing"
 }
 ```
 
@@ -2160,19 +2460,28 @@ Base path: `/api/goals`
 - **Authentication**: Required
 - **Parameters**:
   - `id` (path): Goal ID
-- **Description**: Retrieve a specific goal by ID
+- **Description**: Retrieve a specific goal with tasks and aggregated token usage from evaluations and task executions
 - **Response**:
 
 ```json
 {
-  "id": "goal-id",
-  "title": "Goal Title",
-  "description": "Goal description",
-  "status": "active|paused|completed|failed",
-  "priority": "low|medium|high",
-  "config": {},
-  "createdAt": "2024-01-01T00:00:00Z",
-  "updatedAt": "2024-01-01T00:00:00Z"
+  "goal": {
+    "id": "goal-id",
+    "title": "Goal Title",
+    "description": "Goal description",
+    "status": "active|paused|completed|validated|needs_review|failed",
+    "priority": "low|medium|high",
+    "config": {},
+    "tasks": [],
+    "total_duration": 120,
+    "credits_used": 120,
+    "input_tokens": 15000,
+    "output_tokens": 3200,
+    "total_tokens": 18200,
+    "estimated_cost": 0.045,
+    "createdAt": "2024-01-01T00:00:00Z",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
 }
 ```
 
@@ -2220,13 +2529,21 @@ Base path: `/api/goals`
 - **Authentication**: Required
 - **Parameters**:
   - `id` (path): Goal ID
-- **Description**: Resume a paused goal
+- **Body** (optional):
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
+}
+```
+
+- **Description**: Resume a paused or failed goal. Failed/stuck tasks are reset to pending. Provider/model are forwarded to all downstream operations.
 - **Response**:
 
 ```json
 {
-  "success": true,
-  "message": "Goal resumed successfully"
+  "message": "Goal resumed"
 }
 ```
 
@@ -2254,14 +2571,24 @@ Base path: `/api/goals`
 - **Authentication**: Required
 - **Parameters**:
   - `goalId` (path): Goal ID
-- **Description**: Trigger autonomous goal execution. The system iterates through plan-execute-evaluate cycles until the goal is achieved or requires human review.
+- **Body** (optional):
+
+```json
+{
+  "maxIterations": 50,
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
+}
+```
+
+- **Description**: Trigger autonomous goal execution. The system iterates through execute → evaluate → re-plan cycles until the goal passes evaluation or reaches `maxIterations`. Provider/model are forwarded to task execution, evaluation, re-planning, insight extraction, and skill evolution. Broadcasts real-time `goal:iteration_*` events via WebSocket.
 - **Response**:
 
 ```json
 {
-  "success": true,
-  "message": "Autonomous execution started",
-  "goalId": "goal-id"
+  "message": "Autonomous goal execution started",
+  "goalId": "goal-id",
+  "maxIterations": 50
 }
 ```
 
@@ -2272,7 +2599,7 @@ Base path: `/api/goals`
 - **Authentication**: Required
 - **Parameters**:
   - `goalId` (path): Goal ID
-- **Description**: Get the full iteration history for an autonomous goal execution
+- **Description**: Get the full iteration history for an autonomous goal execution. Each iteration includes evaluation scores and re-planned task data.
 - **Response**:
 
 ```json
@@ -2284,6 +2611,11 @@ Base path: `/api/goals`
       "action": "Description of action taken",
       "result": {},
       "evaluation": {},
+      "evaluation_score": 65.5,
+      "evaluation_passed": 0,
+      "world_state_snapshot": {},
+      "replanned_tasks": [],
+      "duration_ms": 45000,
       "timestamp": "2024-01-01T00:00:00Z"
     }
   ]
@@ -2372,20 +2704,28 @@ Base path: `/api/goals`
 
 ```json
 {
-  "evaluationCriteria": {}
+  "evaluation_type": "automatic",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
 }
 ```
 
+- **Description**: Evaluate a completed goal using LLM-as-judge. Each task output is scored against its success criteria, then an overall evaluation is produced. Token usage is tracked and stored per evaluation. The goal status is set to `validated` (score ≥ 70%) or `needs_review`.
 - **Response**:
 
 ```json
 {
-  "success": true,
-  "evaluation": {
-    "score": 85,
-    "metrics": {},
-    "recommendations": []
-  }
+  "passed": true,
+  "status": "validated",
+  "scores": {
+    "overall": 85,
+    "taskScores": {}
+  },
+  "feedback": "Detailed evaluation feedback...",
+  "input_tokens": 8000,
+  "output_tokens": 1500,
+  "total_tokens": 9500,
+  "estimated_cost": 0.025
 }
 ```
 
@@ -3729,7 +4069,7 @@ Instructions for the skill go here...
 
 Base path: `/api/skillforge`
 
-SkillForge is the evolutionary skill improvement system. It analyzes goal execution traces, extracts patterns, evolves skills, and tracks performance over time using a Skill Evolution Score (SES).
+SkillForge is the skill evolution subsystem within the unified evolution engine. It analyzes goal execution traces via the TraceAnalyzer, extracts patterns and anti-patterns, evolves skills with improved instructions, and tracks performance over time using a Skill Evolution Score (SES). Runs automatically after goal completion when `autoAnalyze` is enabled, or can be triggered manually.
 
 ### Get Eligible Goals
 
@@ -3760,7 +4100,16 @@ SkillForge is the evolutionary skill improvement system. It analyzes goal execut
 - **Authentication**: Required
 - **Parameters**:
   - `goalId` (path): Goal ID
-- **Description**: Analyze a goal's execution trace to extract patterns and insights for skill improvement
+- **Body** (optional):
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
+}
+```
+
+- **Description**: Analyze a goal's execution trace using LLM-as-judge to extract patterns, anti-patterns, and a reusable skill candidate. Provider/model override the user's defaults for the LLM analysis call.
 - **Response**:
 
 ```json
@@ -3768,8 +4117,9 @@ SkillForge is the evolutionary skill improvement system. It analyzes goal execut
   "success": true,
   "analysis": {
     "patterns": [],
+    "antipatterns": [],
     "insights": [],
-    "suggestedImprovements": []
+    "skillCandidate": {}
   }
 }
 ```
@@ -3781,7 +4131,16 @@ SkillForge is the evolutionary skill improvement system. It analyzes goal execut
 - **Authentication**: Required
 - **Parameters**:
   - `goalId` (path): Goal ID
-- **Description**: Full analysis and skill evolution — analyzes the goal trace and creates an improved skill version
+- **Body** (optional):
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
+}
+```
+
+- **Description**: Full analysis and skill evolution — analyzes the goal trace, creates or updates a skill with merged instructions, and records the evolution with SES tracking. Provider/model are forwarded to trace analysis and skill instruction merging.
 - **Response**:
 
 ```json
@@ -3959,7 +4318,7 @@ SkillForge is the evolutionary skill improvement system. It analyzes goal execut
 {
   "success": true,
   "settings": {
-    "autoEvolve": false,
+    "autoAnalyze": false,
     "evaluationThreshold": 0.7,
     "maxVersions": 50
   }
@@ -3975,7 +4334,7 @@ SkillForge is the evolutionary skill improvement system. It analyzes goal execut
 
 ```json
 {
-  "autoEvolve": true,
+  "autoAnalyze": true,
   "evaluationThreshold": 0.8,
   "maxVersions": 100
 }
@@ -3987,7 +4346,7 @@ SkillForge is the evolutionary skill improvement system. It analyzes goal execut
 {
   "success": true,
   "settings": {
-    "autoEvolve": true,
+    "autoAnalyze": true,
     "evaluationThreshold": 0.8,
     "maxVersions": 100
   }

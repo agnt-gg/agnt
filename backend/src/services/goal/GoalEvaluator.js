@@ -2,7 +2,9 @@ import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalEvaluationModel from '../../models/GoalEvaluationModel.js';
 import TaskEvaluationModel from '../../models/TaskEvaluationModel.js';
-import StreamEngine from '../../stream/StreamEngine.js';
+import { createLlmClient } from '../ai/LlmService.js';
+import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
+import { getProviderConfig } from '../ai/providerConfigs.js';
 import { createSession as createUnfirehoseSession, isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
 import { getModelCost } from '../ai/providerConfigs.js';
 
@@ -205,8 +207,6 @@ class GoalEvaluator {
    * @returns {Promise<Object>} AI evaluation results
    */
   static async aiEvaluateTaskOutput(task, taskOutput, successCriteria, userId, provider = null, model = null, accumulateUsage = null) {
-    const streamEngine = new StreamEngine(userId);
-
     const prompt = `You are an expert evaluator assessing whether a task output meets specified success criteria.
 
 TASK INFORMATION:
@@ -261,8 +261,24 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
         throw new Error('No provider/model configured for evaluation');
       }
 
-      const result = await streamEngine.generateCompletion(prompt, evalProvider, evalModel);
-      if (accumulateUsage) accumulateUsage(streamEngine._lastCompletionUsage);
+      const _cfg1 = getProviderConfig(evalProvider);
+      const normalizedProvider = _cfg1 ? _cfg1.key : evalProvider.toLowerCase();
+      const client = await createLlmClient(normalizedProvider, userId);
+      const adapter = await createLlmAdapter(normalizedProvider, client, evalModel);
+      const adapterResult = await adapter.call([
+        { role: 'system', content: 'You are an expert evaluator. Return valid JSON only.' },
+        { role: 'user', content: prompt },
+      ], []);
+
+      let result = '';
+      if (adapterResult.responseMessage?.content) {
+        if (typeof adapterResult.responseMessage.content === 'string') {
+          result = adapterResult.responseMessage.content;
+        } else if (Array.isArray(adapterResult.responseMessage.content)) {
+          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
+        }
+      }
+      if (accumulateUsage) accumulateUsage(adapterResult.usage || null);
 
       // Clean and parse response - remove thinking tags and markdown
       let cleanedResult = result;
@@ -346,8 +362,6 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
    * @returns {Promise<string>} Generated feedback
    */
   static async generateEvaluationFeedback(goal, tasks, taskEvaluations, scores, userId, provider = null, model = null, accumulateUsage = null) {
-    const streamEngine = new StreamEngine(userId);
-
     const prompt = `Generate a comprehensive evaluation report for a completed goal.
 
 GOAL: ${goal.title}
@@ -401,9 +415,25 @@ Keep it professional but encouraging. Focus on constructive feedback.`;
         throw new Error('No provider/model configured for evaluation feedback');
       }
 
-      const feedback = await streamEngine.generateCompletion(prompt, evalProvider, evalModel);
-      if (accumulateUsage) accumulateUsage(streamEngine._lastCompletionUsage);
-      return typeof feedback === 'string' ? feedback.trim() : (feedback.completion || feedback.text || '').trim();
+      const _cfg2 = getProviderConfig(evalProvider);
+      const normalizedProvider2 = _cfg2 ? _cfg2.key : evalProvider.toLowerCase();
+      const client = await createLlmClient(normalizedProvider2, userId);
+      const adapter = await createLlmAdapter(normalizedProvider2, client, evalModel);
+      const adapterResult = await adapter.call([
+        { role: 'system', content: 'You are an evaluation report writer. Provide constructive feedback.' },
+        { role: 'user', content: prompt },
+      ], []);
+
+      let feedback = '';
+      if (adapterResult.responseMessage?.content) {
+        if (typeof adapterResult.responseMessage.content === 'string') {
+          feedback = adapterResult.responseMessage.content;
+        } else if (Array.isArray(adapterResult.responseMessage.content)) {
+          feedback = adapterResult.responseMessage.content.map(block => block.text || '').join('');
+        }
+      }
+      if (accumulateUsage) accumulateUsage(adapterResult.usage || null);
+      return feedback.trim();
     } catch (error) {
       console.error('[GoalEvaluator] Failed to generate feedback:', error);
 

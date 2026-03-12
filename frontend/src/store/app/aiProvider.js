@@ -319,6 +319,9 @@ export default {
                   commit('SET_SELECTED_MODEL', model);
                 }
               }
+
+              // Ensure model is valid for this provider and sync any correction back to DB
+              await dispatch('ensureValidModel');
             }
           }
         }
@@ -591,10 +594,29 @@ export default {
       }
 
       await dispatch('setProvider', newProvider);
+
+      // After models are loaded and provider is set, ensure model is valid and re-sync
+      await dispatch('ensureValidModel');
     },
 
-    ensureValidModel({ commit, state }) {
+    async ensureValidModel({ commit, state }) {
+      const oldModel = state.selectedModel;
       commit('ENSURE_VALID_MODEL');
+      // If model changed, sync the corrected pair to the backend DB
+      if (state.selectedModel !== oldModel) {
+        try {
+          const token = localStorage.getItem('token');
+          if (token) {
+            await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
+              method: 'PUT',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ selectedProvider: state.selectedProvider, selectedModel: state.selectedModel }),
+            });
+          }
+        } catch (e) {
+          console.error('Failed to sync corrected model to backend:', e);
+        }
+      }
     },
 
     // Custom provider management actions

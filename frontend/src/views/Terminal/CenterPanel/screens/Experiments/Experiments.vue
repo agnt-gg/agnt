@@ -429,8 +429,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
+import { useRoute, useRouter } from 'vue-router';
 import BaseScreen from '@/views/Terminal/CenterPanel/BaseScreen.vue';
 import ScreenToolbar from '@/views/Terminal/_components/ScreenToolbar.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -440,6 +441,8 @@ import InsightCard from './_components/InsightCard.vue';
 import DatasetCard from '../EvalDatasets/_components/DatasetCard.vue';
 
 const store = useStore();
+const route = useRoute();
+const router = useRouter();
 const emit = defineEmits(['screen-change']);
 const simpleModal = ref(null);
 
@@ -534,7 +537,7 @@ const filteredInsights = computed(() => {
     const q = searchQuery.value.toLowerCase();
     result = result.filter((i) => i.title?.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q));
   }
-  return result;
+  return [...result].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 });
 
 const filteredExperiments = computed(() => {
@@ -741,6 +744,7 @@ const generateDataset = async () => {
 
 const handlePanelAction = (action, data) => {
   if (action === 'navigate') emit('screen-change', data);
+  else if (action === 'navigate-to-trace') emit('screen-change', 'TracesScreen', { selectedExecutionId: data?.sourceId });
   else if (action === 'delete-experiment' && data) confirmDeleteExperiment(data);
   else if (action === 'run-experiment' && data) runExperiment(data);
   else if (action === 'delete-dataset' && data) confirmDeleteDataset(data);
@@ -757,6 +761,24 @@ const initializeScreen = () => {
   store.dispatch('skills/fetchSkills');
   store.dispatch('goals/fetchGoals');
 };
+
+// Auto-select insight from query param (e.g. navigating from traces)
+watch(
+  () => route.query.insightId,
+  async (insightId) => {
+    if (!insightId || route.path !== '/experiments') return;
+    activeView.value = 'insights';
+    // Wait for insights to load
+    await store.dispatch('insights/fetchInsights');
+    const insights = store.getters['insights/allInsights'];
+    const insight = insights.find(i => i.id === insightId);
+    if (insight) {
+      selectedInsight.value = insight;
+    }
+    router.replace({ path: '/experiments', query: {} });
+  },
+  { immediate: true }
+);
 
 onMounted(() => initializeScreen());
 </script>

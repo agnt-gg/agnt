@@ -1,6 +1,8 @@
 import InsightModel from '../../../models/InsightModel.js';
 import AgentModel from '../../../models/AgentModel.js';
-import StreamEngine from '../../../stream/StreamEngine.js';
+import { createLlmClient } from '../../ai/LlmService.js';
+import { createLlmAdapter } from '../../orchestrator/llmAdapters.js';
+import { getProviderConfig } from '../../ai/providerConfigs.js';
 import db from '../../../models/database/index.js';
 
 /**
@@ -10,7 +12,7 @@ class AgentApplicator {
   /**
    * Apply a specific insight to its target agent.
    */
-  static async apply(insightId, userId) {
+  static async apply(insightId, userId, provider = null, model = null) {
     const insight = await InsightModel.findOne(insightId);
     if (!insight || insight.user_id !== userId) {
       throw new Error('Insight not found or access denied');
@@ -30,7 +32,7 @@ class AgentApplicator {
     let result;
     switch (insight.category) {
       case 'prompt_refinement':
-        result = await this._applyPromptRefinement(agent, insight, userId);
+        result = await this._applyPromptRefinement(agent, insight, userId, provider, model);
         break;
       case 'skill_recommendation':
         result = await this._applySkillRecommendation(agent, insight, userId);
@@ -54,37 +56,57 @@ class AgentApplicator {
   /**
    * Apply a prompt refinement insight — merge the refinement into the agent's system prompt.
    */
-  static async _applyPromptRefinement(agent, insight, userId) {
+  static async _applyPromptRefinement(agent, insight, userId, provider = null, model = null) {
     const currentPrompt = agent.system_prompt || agent.systemPrompt || '';
 
     if (!currentPrompt) {
       return { applied: false, reason: 'Agent has no system prompt to refine' };
     }
 
-    const streamEngine = new StreamEngine(userId);
-    const prompt = `You are a prompt engineering expert. Merge the following improvement into the agent's system prompt.
-
-CURRENT SYSTEM PROMPT:
-${currentPrompt}
-
-IMPROVEMENT TO APPLY:
-Title: ${insight.title}
-Description: ${insight.description}
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a prompt engineering expert. Merge improvements into agent system prompts.
 
 Rules:
 - Integrate the improvement naturally into the existing prompt
 - Do not remove existing functionality
 - Keep the same tone and structure
-- Return ONLY the updated system prompt text, nothing else`;
+- Return ONLY the updated system prompt text, nothing else`,
+      },
+      {
+        role: 'user',
+        content: `CURRENT SYSTEM PROMPT:\n${currentPrompt}\n\nIMPROVEMENT TO APPLY:\nTitle: ${insight.title}\nDescription: ${insight.description}`,
+      },
+    ];
 
     try {
-      const UserModel = (await import('../../../models/UserModel.js')).default;
-      const userSettings = await UserModel.getUserSettings(userId);
-      if (!userSettings?.selectedProvider || !userSettings?.selectedModel) {
+      let resolvedProvider = provider;
+      let resolvedModel = model;
+      if (!resolvedProvider || !resolvedModel) {
+        const UserModel = (await import('../../../models/UserModel.js')).default;
+        const userSettings = await UserModel.getUserSettings(userId);
+        if (!resolvedProvider) resolvedProvider = userSettings?.selectedProvider;
+        if (!resolvedModel) resolvedModel = userSettings?.selectedModel;
+      }
+      if (!resolvedProvider || !resolvedModel) {
         return { applied: false, reason: 'No provider/model configured' };
       }
 
-      const updatedPrompt = await streamEngine.generateCompletion(prompt, userSettings.selectedProvider, userSettings.selectedModel);
+      const _cfg = getProviderConfig(resolvedProvider);
+      const normalizedProvider = _cfg ? _cfg.key : resolvedProvider.toLowerCase();
+      const client = await createLlmClient(normalizedProvider, userId);
+      const adapter = await createLlmAdapter(normalizedProvider, client, resolvedModel);
+      const result = await adapter.call(messages, []);
+
+      let updatedPrompt = '';
+      if (result.responseMessage?.content) {
+        if (typeof result.responseMessage.content === 'string') {
+          updatedPrompt = result.responseMessage.content;
+        } else if (Array.isArray(result.responseMessage.content)) {
+          updatedPrompt = result.responseMessage.content.map(block => block.text || '').join('');
+        }
+      }
 
       if (!updatedPrompt || updatedPrompt.length < 20) {
         return { applied: false, reason: 'LLM returned invalid prompt' };

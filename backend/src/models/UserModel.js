@@ -68,13 +68,25 @@ class UserModel {
     return new Promise((resolve, reject) => {
       const { selectedProvider, selectedModel } = settings;
 
-      db.run(
-        `UPDATE users SET 
-         default_provider = COALESCE(?, default_provider),
-         default_model = COALESCE(?, default_model),
-         updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`,
-        [selectedProvider, selectedModel, userId],
+      // If provider is being changed, always update model too (even to null)
+      // to prevent stale model from a different provider lingering in the DB.
+      // Only use COALESCE for model when provider is NOT being changed.
+      const query = selectedProvider
+        ? `UPDATE users SET
+           default_provider = ?,
+           default_model = ?,
+           updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`
+        : `UPDATE users SET
+           default_model = COALESCE(?, default_model),
+           updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`;
+
+      const params = selectedProvider
+        ? [selectedProvider, selectedModel, userId]
+        : [selectedModel, userId];
+
+      db.run(query, params,
         function (err) {
           if (err) {
             reject(err);

@@ -1,7 +1,9 @@
 import ExperimentModel from '../models/ExperimentModel.js';
 import SkillModel from '../models/SkillModel.js';
 import GoldenStandardModel from '../models/GoldenStandardModel.js';
-import StreamEngine from '../stream/StreamEngine.js';
+import { createLlmClient } from './ai/LlmService.js';
+import { createLlmAdapter } from './orchestrator/llmAdapters.js';
+import { getProviderConfig } from './ai/providerConfigs.js';
 import UserModel from '../models/UserModel.js';
 
 class EvalDatasetService {
@@ -36,7 +38,6 @@ Return ONLY a JSON array:
   }
 ]`;
 
-      const streamEngine = new StreamEngine(userId);
       // Use provider/model from request (frontend sends current selection), fall back to DB settings
       let provider = reqProvider;
       let model = reqModel;
@@ -45,12 +46,22 @@ Return ONLY a JSON array:
         provider = provider || userSettings?.selectedProvider || 'anthropic';
         model = model || userSettings?.selectedModel || 'claude-sonnet-4-20250514';
       }
-      const result = await streamEngine.generateCompletion(prompt, provider, model);
-      if (streamEngine._lastCompletionUsage) {
-        const u = streamEngine._lastCompletionUsage;
-        const input = u.prompt_tokens || u.input_tokens || 0;
-        const output = u.completion_tokens || u.output_tokens || 0;
-        console.log(`[EvalDatasetService] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      const _cfg = getProviderConfig(provider);
+      const normalizedProvider = _cfg ? _cfg.key : provider.toLowerCase();
+      const client = await createLlmClient(normalizedProvider, userId);
+      const adapter = await createLlmAdapter(normalizedProvider, client, model);
+      const adapterResult = await adapter.call([
+        { role: 'system', content: 'You are an evaluation dataset generator. Return valid JSON only.' },
+        { role: 'user', content: prompt },
+      ], []);
+
+      let result = '';
+      if (adapterResult.responseMessage?.content) {
+        if (typeof adapterResult.responseMessage.content === 'string') {
+          result = adapterResult.responseMessage.content;
+        } else if (Array.isArray(adapterResult.responseMessage.content)) {
+          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
+        }
       }
 
       let cleaned = result;

@@ -1,6 +1,8 @@
 import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
-import StreamEngine from '../../stream/StreamEngine.js';
+import { createLlmClient } from '../ai/LlmService.js';
+import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
+import { getProviderConfig } from '../ai/providerConfigs.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -145,8 +147,6 @@ class GoalProcessor {
    * @private
    */
   static async _analyzeGoal(goalText, userId, provider = null, model = null) {
-    const streamEngine = new StreamEngine(userId);
-
     // Load the actual tool library
     const toolLibrary = await this._loadToolLibrary();
     const availableToolTypes = this._extractToolTypes(toolLibrary);
@@ -206,13 +206,23 @@ Rules:
       if (!analysisProvider || !analysisModel) {
         throw new Error('No provider/model configured. Please set your default provider and model in settings.');
       }
-      console.log(`[GoalProcessor] Using provider: ${analysisProvider}, model: ${analysisModel}`);
-      const analysisResult = await streamEngine.generateCompletion(prompt, analysisProvider, analysisModel);
-      if (streamEngine._lastCompletionUsage) {
-        const u = streamEngine._lastCompletionUsage;
-        const input = u.prompt_tokens || u.input_tokens || 0;
-        const output = u.completion_tokens || u.output_tokens || 0;
-        console.log(`[GoalProcessor] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      const _cfg = getProviderConfig(analysisProvider);
+      const normalizedProvider = _cfg ? _cfg.key : analysisProvider.toLowerCase();
+      console.log(`[GoalProcessor] Using provider: ${normalizedProvider}, model: ${analysisModel}`);
+      const client = await createLlmClient(normalizedProvider, userId);
+      const adapter = await createLlmAdapter(normalizedProvider, client, analysisModel);
+      const adapterResult = await adapter.call([
+        { role: 'system', content: 'You are a goal analysis assistant. Return valid JSON only.' },
+        { role: 'user', content: prompt },
+      ], []);
+
+      let analysisResult = '';
+      if (adapterResult.responseMessage?.content) {
+        if (typeof adapterResult.responseMessage.content === 'string') {
+          analysisResult = adapterResult.responseMessage.content;
+        } else if (Array.isArray(adapterResult.responseMessage.content)) {
+          analysisResult = adapterResult.responseMessage.content.map(block => block.text || '').join('');
+        }
       }
       console.log('Raw AI response:', analysisResult);
 

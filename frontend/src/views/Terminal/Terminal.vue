@@ -156,6 +156,10 @@ export default {
           router.push({ path: targetPath, query: { id: options.workflowId } });
         } else if (screenName === 'ToolForgeScreen' && options.toolId) {
           router.push({ path: targetPath, query: { 'tool-id': options.toolId } });
+        } else if (screenName === 'TracesScreen' && options.selectedExecutionId) {
+          router.push({ path: targetPath, query: { executionId: options.selectedExecutionId } });
+        } else if (screenName === 'ExperimentsScreen' && options.selectedInsight) {
+          router.push({ path: targetPath, query: { insightId: options.selectedInsight.id } });
         } else if (route.path !== targetPath) {
           router.push(targetPath);
         }

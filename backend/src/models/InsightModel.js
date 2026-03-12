@@ -199,6 +199,29 @@ class InsightModel {
   }
 
   /**
+   * Find insights by source (execution that generated them).
+   */
+  static findBySource(sourceType, sourceId, { limit = 50 } = {}) {
+    return new Promise((resolve, reject) => {
+      db.all(
+        'SELECT * FROM insights WHERE source_type = ? AND source_id = ? ORDER BY created_at DESC LIMIT ?',
+        [sourceType, sourceId, limit],
+        (err, rows) => {
+          if (err) reject(err);
+          else {
+            (rows || []).forEach(row => {
+              row.source_context = row.source_context ? JSON.parse(row.source_context) : null;
+              row.evidence = row.evidence ? JSON.parse(row.evidence) : null;
+              row.applied_result = row.applied_result ? JSON.parse(row.applied_result) : null;
+            });
+            resolve(rows || []);
+          }
+        }
+      );
+    });
+  }
+
+  /**
    * Delete an insight.
    */
   static delete(id, userId) {

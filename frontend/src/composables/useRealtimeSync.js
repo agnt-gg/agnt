@@ -361,6 +361,33 @@ export function useRealtimeSync() {
       });
     });
 
+    // Goal status events - real-time updates when goals complete/fail/change status
+    socket.on('goal:updated', (data) => {
+      console.log('[Realtime] Goal updated:', data);
+      if (data.id) {
+        const update = { id: data.id, status: data.status };
+        if (data.evaluation) update.evaluation = data.evaluation;
+        store.commit('goals/UPDATE_GOAL', update);
+
+        // Also update the traces/execution history store so Traces screen reflects the new status
+        store.commit('executionHistory/UPDATE_GOAL_EXECUTION_STATUS', {
+          goalId: data.id,
+          status: data.status,
+          evaluation: data.evaluation,
+        });
+
+        // If goal reached a terminal status, stop monitoring and fetch full details
+        if (['completed', 'validated', 'needs_review', 'failed', 'stopped'].includes(data.status)) {
+          store.commit('goals/REMOVE_GOAL_SUBSCRIPTION', data.id);
+        }
+
+        // If goal started executing, start monitoring
+        if (data.status === 'executing') {
+          store.dispatch('goals/monitorGoalProgress', data.id);
+        }
+      }
+    });
+
     // AGI Loop events - goal iteration progress
     const agiLoopEvents = [
       'goal:iteration_start',

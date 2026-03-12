@@ -48,11 +48,12 @@ class GoalService {
     try {
       const { goalId } = req.params;
       const userId = req.user.userId;
+      const { provider, model } = req.body || {};
 
       console.log('Starting goal execution:', goalId);
 
       // Start execution using TaskOrchestrator
-      const execution = await TaskOrchestrator.executeGoal(goalId, userId);
+      const execution = await TaskOrchestrator.executeGoal(goalId, userId, null, provider, model);
 
       res.status(200).json({
         message: 'Goal execution started',
@@ -114,28 +115,52 @@ class GoalService {
         totalDuration = Math.floor((latestEnd - earliestStart) / 1000);
       }
 
-      // Get total credits used from task_executions
+      // Get token usage from goal evaluations
       const db = (await import('../models/database/index.js')).default;
-      const creditsUsed = await new Promise((resolve, reject) => {
+      const evalTokenData = await new Promise((resolve, reject) => {
         db.get(
-          `SELECT SUM(te.credits_used) as total_credits
-           FROM task_executions te
-           JOIN tasks t ON te.task_id = t.id
-           WHERE t.goal_id = ?`,
+          `SELECT SUM(input_tokens) as input_tokens,
+                  SUM(output_tokens) as output_tokens,
+                  SUM(total_tokens) as total_tokens,
+                  SUM(estimated_cost) as estimated_cost
+           FROM goal_evaluations
+           WHERE goal_id = ?`,
           [id],
           (err, row) => {
             if (err) reject(err);
-            else resolve(row?.total_credits || 0);
+            else resolve(row || {});
           }
         );
       });
+
+      // Also aggregate token usage from task execution outputs
+      let taskInputTokens = 0, taskOutputTokens = 0, taskTotalTokens = 0;
+      for (const task of tasks) {
+        try {
+          const output = task.output ? (typeof task.output === 'string' ? JSON.parse(task.output) : task.output) : null;
+          if (output?.usage) {
+            taskInputTokens += output.usage.inputTokens || 0;
+            taskOutputTokens += output.usage.outputTokens || 0;
+            taskTotalTokens += output.usage.totalTokens || 0;
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      const totalInputTokens = (evalTokenData.input_tokens || 0) + taskInputTokens;
+      const totalOutputTokens = (evalTokenData.output_tokens || 0) + taskOutputTokens;
+      const totalTokens = (evalTokenData.total_tokens || 0) + taskTotalTokens;
+      const totalCost = evalTokenData.estimated_cost || 0;
 
       res.json({
         goal: {
           ...goal,
           tasks,
           total_duration: totalDuration,
-          credits_used: creditsUsed,
+          credits_used: totalDuration,
+          input_tokens: totalInputTokens,
+          output_tokens: totalOutputTokens,
+          total_tokens: totalTokens,
+          estimated_cost: totalCost,
         },
       });
     } catch (error) {
@@ -166,7 +191,8 @@ class GoalService {
   async resumeGoal(req, res) {
     try {
       const { id } = req.params;
-      await TaskOrchestrator.resumeGoal(id);
+      const { provider, model } = req.body || {};
+      await TaskOrchestrator.resumeGoal(id, provider, model);
       res.json({ message: 'Goal resumed' });
     } catch (error) {
       console.error('Error resuming goal:', error);
@@ -199,11 +225,11 @@ class GoalService {
     try {
       const { id } = req.params;
       const userId = req.user.userId;
-      const { evaluation_type = 'automatic' } = req.body;
+      const { evaluation_type = 'automatic', provider, model } = req.body;
 
       console.log(`Evaluating goal ${id} with type: ${evaluation_type}`);
 
-      const evaluation = await GoalEvaluator.evaluateGoal(id, userId, evaluation_type);
+      const evaluation = await GoalEvaluator.evaluateGoal(id, userId, evaluation_type, provider, model);
 
       res.status(200).json(evaluation);
     } catch (error) {
@@ -328,12 +354,12 @@ class GoalService {
     try {
       const { goalId } = req.params;
       const userId = req.user.userId;
-      const { maxIterations = 50 } = req.body;
+      const { maxIterations = 50, provider, model } = req.body;
 
       console.log(`Starting autonomous goal execution: ${goalId} (max ${maxIterations} iterations)`);
 
       // Start autonomous execution (non-blocking — runs in background)
-      TaskOrchestrator.executeGoalAutonomous(goalId, userId, { maxIterations });
+      TaskOrchestrator.executeGoalAutonomous(goalId, userId, { maxIterations, provider, model });
 
       res.status(200).json({
         message: 'Autonomous goal execution started',

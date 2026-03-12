@@ -7,7 +7,9 @@ import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
 import GoalEvaluator from './GoalEvaluator.js';
 import TaskOrchestrator from './TaskOrchestrator.js';
-import StreamEngine from '../../stream/StreamEngine.js';
+import { createLlmClient } from '../ai/LlmService.js';
+import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
+import { getProviderConfig } from '../ai/providerConfigs.js';
 import generateUUID from '../../utils/generateUUID.js';
 
 /**
@@ -605,10 +607,8 @@ class SkillEvolver {
    * Use LLM to merge existing skill instructions with new trace insights.
    * @private
    */
-  static async _mergeSkillInstructions(existingInstructions, newInstructions, traceAnalysis, userId) {
+  static async _mergeSkillInstructions(existingInstructions, newInstructions, traceAnalysis, userId, provider = null, model = null) {
     try {
-      const streamEngine = new StreamEngine(userId);
-
       const prompt = `You are merging an existing AI agent skill with new insights from a recent execution trace.
 
 CURRENT SKILL INSTRUCTIONS:
@@ -632,19 +632,33 @@ MERGE RULES:
 
 Output the FULL updated skill instructions as markdown. No JSON wrapping, no code fences — just the raw markdown content.`;
 
-      const UserModel = (await import('../../models/UserModel.js')).default;
-      const userSettings = await UserModel.getUserSettings(userId);
-      const provider = userSettings?.selectedProvider;
-      const model = userSettings?.selectedModel;
+      let rawProvider = provider;
+      let resolvedModel = model;
+      if (!rawProvider || !resolvedModel) {
+        const UserModel = (await import('../../models/UserModel.js')).default;
+        const userSettings = await UserModel.getUserSettings(userId);
+        if (!rawProvider) rawProvider = userSettings?.selectedProvider;
+        if (!resolvedModel) resolvedModel = userSettings?.selectedModel;
+      }
 
-      if (!provider || !model) return null;
+      if (!rawProvider || !resolvedModel) return null;
 
-      const result = await streamEngine.generateCompletion(prompt, provider, model);
-      if (streamEngine._lastCompletionUsage) {
-        const u = streamEngine._lastCompletionUsage;
-        const input = u.prompt_tokens || u.input_tokens || 0;
-        const output = u.completion_tokens || u.output_tokens || 0;
-        console.log(`[SkillEvolver] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      const _cfg = getProviderConfig(rawProvider);
+      const normalizedProvider = _cfg ? _cfg.key : rawProvider.toLowerCase();
+      const client = await createLlmClient(normalizedProvider, userId);
+      const adapter = await createLlmAdapter(normalizedProvider, client, resolvedModel);
+      const adapterResult = await adapter.call([
+        { role: 'system', content: 'You are a skill merging assistant. Return updated skill instructions as markdown.' },
+        { role: 'user', content: prompt },
+      ], []);
+
+      let result = '';
+      if (adapterResult.responseMessage?.content) {
+        if (typeof adapterResult.responseMessage.content === 'string') {
+          result = adapterResult.responseMessage.content;
+        } else if (Array.isArray(adapterResult.responseMessage.content)) {
+          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
+        }
       }
 
       // Clean up

@@ -2,7 +2,9 @@ import GoalModel from '../../models/GoalModel.js';
 import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
 import GoalEvaluator from './GoalEvaluator.js';
-import StreamEngine from '../../stream/StreamEngine.js';
+import { createLlmClient } from '../ai/LlmService.js';
+import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
+import { getProviderConfig } from '../ai/providerConfigs.js';
 import { isEnabled as isUnfirehoseEnabled } from '../unfirehose/UnfirehoseLogger.js';
 import { readFile, readdir } from 'fs/promises';
 import { join } from 'path';
@@ -19,7 +21,7 @@ class TraceAnalyzer {
    * @param {string} userId - Owner of the goal
    * @returns {Object|null} TraceAnalysis with patterns, antipatterns, insights, skillCandidate
    */
-  static async analyzeTrace(goalId, userId) {
+  static async analyzeTrace(goalId, userId, provider = null, model = null) {
     try {
       console.log(`[TraceAnalyzer] Starting trace analysis for goal ${goalId}`);
 
@@ -69,7 +71,7 @@ class TraceAnalyzer {
       const generateSkill = evalScore >= 30;
 
       // Send to LLM Judge
-      const analysis = await this._llmJudgeAnalysis(traceDoc, userId, generateSkill);
+      const analysis = await this._llmJudgeAnalysis(traceDoc, userId, generateSkill, provider, model);
       if (!analysis) {
         console.log(`[TraceAnalyzer] LLM judge returned no usable analysis`);
         return null;
@@ -167,9 +169,7 @@ Feedback: ${evaluation.feedback || 'No feedback'}
    * Send trace document to LLM-as-Judge for structured analysis.
    * @private
    */
-  static async _llmJudgeAnalysis(traceDoc, userId, generateSkill = true) {
-    const streamEngine = new StreamEngine(userId);
-
+  static async _llmJudgeAnalysis(traceDoc, userId, generateSkill = true, provider = null, model = null) {
     const skillInstructions = generateSkill
       ? `6. SKILL CANDIDATE
    - Based on the patterns above, generate a reusable SKILL.md candidate
@@ -254,23 +254,37 @@ OUTPUT FORMAT (respond with valid JSON only, no markdown fences):
 }`;
 
     try {
-      // Use user's configured provider/model
-      const UserModel = (await import('../../models/UserModel.js')).default;
-      const userSettings = await UserModel.getUserSettings(userId);
-      const provider = userSettings?.selectedProvider;
-      const model = userSettings?.selectedModel;
+      // Use passed provider/model, fall back to user settings
+      let rawProvider = provider;
+      let resolvedModel = model;
+      if (!rawProvider || !resolvedModel) {
+        const UserModel = (await import('../../models/UserModel.js')).default;
+        const userSettings = await UserModel.getUserSettings(userId);
+        if (!rawProvider) rawProvider = userSettings?.selectedProvider;
+        if (!resolvedModel) resolvedModel = userSettings?.selectedModel;
+      }
 
-      if (!provider || !model) {
+      if (!rawProvider || !resolvedModel) {
         console.error('[TraceAnalyzer] No provider/model configured');
         return null;
       }
 
-      const result = await streamEngine.generateCompletion(prompt, provider, model);
-      if (streamEngine._lastCompletionUsage) {
-        const u = streamEngine._lastCompletionUsage;
-        const input = u.prompt_tokens || u.input_tokens || 0;
-        const output = u.completion_tokens || u.output_tokens || 0;
-        console.log(`[TraceAnalyzer] Token Usage: ${input} in / ${output} out = ${input + output} total`);
+      const _cfg = getProviderConfig(rawProvider);
+      const normalizedProvider = _cfg ? _cfg.key : rawProvider.toLowerCase();
+      const client = await createLlmClient(normalizedProvider, userId);
+      const adapter = await createLlmAdapter(normalizedProvider, client, resolvedModel);
+      const adapterResult = await adapter.call([
+        { role: 'system', content: 'You are an expert AI systems researcher. Analyze execution traces and return valid JSON only.' },
+        { role: 'user', content: prompt },
+      ], []);
+
+      let result = '';
+      if (adapterResult.responseMessage?.content) {
+        if (typeof adapterResult.responseMessage.content === 'string') {
+          result = adapterResult.responseMessage.content;
+        } else if (Array.isArray(adapterResult.responseMessage.content)) {
+          result = adapterResult.responseMessage.content.map(block => block.text || '').join('');
+        }
       }
 
       return this._validateAnalysis(result);

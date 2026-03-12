@@ -370,19 +370,24 @@ const actions = {
     }
   },
 
-  async resumeGoal({ commit, dispatch }, goalId) {
+  async resumeGoal({ commit, dispatch, rootState }, goalId) {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('No authentication token found');
       }
 
+      const provider = rootState.aiProvider?.selectedProvider || null;
+      const model = rootState.aiProvider?.selectedModel || null;
+
       const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/resume`, {
         method: 'POST',
         credentials: 'include',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ provider, model }),
       });
 
       if (!response.ok) throw new Error('Failed to resume goal');
@@ -1026,6 +1031,9 @@ const actions = {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
+      const provider = rootState.aiProvider?.selectedProvider || null;
+      const model = rootState.aiProvider?.selectedModel || null;
+
       const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/execute-autonomous`, {
         method: 'POST',
         credentials: 'include',
@@ -1033,7 +1041,7 @@ const actions = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ maxIterations }),
+        body: JSON.stringify({ maxIterations, provider, model }),
       });
 
       if (!response.ok) throw new Error('Failed to start autonomous execution');

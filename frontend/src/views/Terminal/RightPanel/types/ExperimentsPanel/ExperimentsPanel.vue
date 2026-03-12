@@ -51,11 +51,18 @@
         <div v-if="sourceOriginItems.length > 0" class="sub-section">
           <h3><i class="fas fa-link"></i> Source Origin</h3>
           <div class="origin-list">
-            <div v-for="item in sourceOriginItems" :key="item.label" class="origin-item">
+            <div v-for="item in sourceOriginItems" :key="item.label" class="origin-item" :class="{ clickable: item.navigable }" @click="item.navigable && navigateToTrace(item)">
               <i :class="item.icon"></i>
               <span class="origin-label">{{ item.label }}</span>
               <span class="origin-value">{{ item.value }}</span>
+              <i v-if="item.navigable" class="fas fa-external-link-alt origin-nav-icon"></i>
             </div>
+          </div>
+          <!-- View in Traces link -->
+          <div v-if="selectedInsight.source_id" class="view-trace-link" @click="navigateToSourceTrace">
+            <i class="fas fa-stream"></i>
+            <span>View Source Trace</span>
+            <i class="fas fa-chevron-right"></i>
           </div>
         </div>
 
@@ -311,7 +318,7 @@ export default {
     selectedInsight: { type: Object, default: null },
   },
   emits: ['panel-action'],
-  setup(props) {
+  setup(props, { emit }) {
     const store = useStore();
 
     // Insight helpers
@@ -333,6 +340,7 @@ export default {
     // Resolve names from stores
     const sourceOriginItems = computed(() => {
       const ctx = parsedSourceContext.value;
+      const insight = props.selectedInsight;
       if (!ctx) return [];
       const items = [];
 
@@ -344,12 +352,12 @@ export default {
       if (ctx.workflow_id) {
         const workflows = store.getters['workflows/allWorkflows'] || [];
         const wf = workflows.find(w => w.id === ctx.workflow_id);
-        items.push({ icon: 'fas fa-project-diagram', label: 'Workflow', value: wf?.name || ctx.workflow_id });
+        items.push({ icon: 'fas fa-project-diagram', label: 'Workflow', value: wf?.name || ctx.workflow_id, navigable: true, executionId: insight?.source_id, sourceType: 'workflow' });
       }
       if (ctx.goal_id) {
         const goals = store.getters['goals/allGoals'] || [];
         const goal = goals.find(g => g.id === ctx.goal_id);
-        items.push({ icon: 'fas fa-bullseye', label: 'Goal', value: goal?.title || ctx.goal_id });
+        items.push({ icon: 'fas fa-bullseye', label: 'Goal', value: goal?.title || ctx.goal_id, navigable: true, executionId: insight?.source_id, sourceType: 'goal' });
       }
       if (ctx.conversation_id) {
         items.push({ icon: 'fas fa-comments', label: 'Conversation', value: ctx.conversation_id.substring(0, 12) + '...' });
@@ -359,6 +367,22 @@ export default {
       }
       return items;
     });
+
+    const navigateToSourceTrace = () => {
+      if (!props.selectedInsight) return;
+      emit('panel-action', 'navigate-to-trace', {
+        sourceType: props.selectedInsight.source_type,
+        sourceId: props.selectedInsight.source_id,
+      });
+    };
+
+    const navigateToTrace = (item) => {
+      if (!item.navigable || !item.executionId) return;
+      emit('panel-action', 'navigate-to-trace', {
+        sourceType: item.sourceType,
+        sourceId: item.executionId,
+      });
+    };
 
     const targetIcon = (t) => ({ agent: 'fas fa-robot', skill: 'fas fa-puzzle-piece', workflow: 'fas fa-project-diagram', tool: 'fas fa-wrench' }[t] || 'fas fa-cube');
     const sourceIcon = (s) => ({ agent_chat: 'fas fa-comments', goal: 'fas fa-bullseye', workflow: 'fas fa-project-diagram', tool_call: 'fas fa-wrench' }[s] || 'fas fa-circle');
@@ -428,6 +452,7 @@ export default {
     return {
       parsedEvidence, parsedAppliedResult, sourceOriginItems,
       targetIcon, sourceIcon, formatCategory, formatSource,
+      navigateToSourceTrace, navigateToTrace,
       experimentRuns, dimensions, constraintGates,
       datasetItems, itemCount, trainCount, valCount, holdoutCount, previewItems,
       formatDate, formatDelta, deltaClass, truncate,
@@ -625,6 +650,44 @@ export default {
   color: var(--color-grey);
   min-width: 70px;
   flex-shrink: 0;
+}
+.origin-item.clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.origin-item.clickable:hover {
+  background: rgba(var(--primary-rgb), 0.12);
+}
+.origin-nav-icon {
+  margin-left: auto;
+  font-size: 0.7em !important;
+  opacity: 0.5;
+}
+.origin-item.clickable:hover .origin-nav-icon {
+  opacity: 1;
+}
+.view-trace-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-top: 6px;
+  font-size: 0.8em;
+  color: var(--color-primary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.view-trace-link:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+.view-trace-link i:first-child {
+  font-size: 0.9em;
+}
+.view-trace-link i:last-child {
+  margin-left: auto;
+  font-size: 0.7em;
+  opacity: 0.5;
 }
 .origin-value {
   color: var(--color-text);
