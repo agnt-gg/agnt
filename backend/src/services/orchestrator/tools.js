@@ -324,7 +324,7 @@ export const TOOLS = {
         const sessionKey = CodexCliSessionManager.getSessionKey({
           userId,
           conversationId,
-          provider: 'openai-codex-cli',
+          provider: 'openai-codex',
           scope: sessionScope === 'user' ? 'user' : 'conversation',
         });
 
@@ -348,7 +348,7 @@ export const TOOLS = {
             userId,
             conversationId,
             authToken: _authToken,
-            provider: 'openai-codex-cli',
+            provider: 'openai-codex',
           },
           { onEvent: handleEvent }
         );
@@ -359,7 +359,7 @@ export const TOOLS = {
 
         return JSON.stringify({
           success: true,
-          provider: 'openai-codex-cli',
+          provider: 'openai-codex',
           model,
           cwd: resolvedCwd,
           sessionKey,

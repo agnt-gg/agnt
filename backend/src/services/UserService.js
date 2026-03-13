@@ -1,44 +1,25 @@
 import UserModel from '../models/UserModel.js';
 import { getUserTokenFromSession } from '../routes/Middleware.js';
 import AuthManager from '../services/auth/AuthManager.js';
-import CodexAuthManager from './auth/CodexAuthManager.js';
-import ClaudeCodeAuthManager from './auth/ClaudeCodeAuthManager.js';
-import GeminiCliAuthManager from './auth/GeminiCliAuthManager.js';
+import { getCliProviderIds, getAuthEntry } from './auth/AuthDispatcher.js';
 
 async function _getLocalCliHealthProviders() {
-  const providers = [];
-  const [codexResult, ccResult, gcResult] = await Promise.allSettled([
-    CodexAuthManager.checkApiUsable(),
-    ClaudeCodeAuthManager.checkApiUsable(),
-    GeminiCliAuthManager.checkApiUsable(),
-  ]);
-
-  if (codexResult.status === 'fulfilled' && codexResult.value?.available) {
-    providers.push({
-      status: 'healthy',
-      provider: 'openai-codex-cli',
-      lastChecked: new Date().toISOString(),
-      details: { source: codexResult.value.source || 'local' },
-    });
-  }
-  if (ccResult.status === 'fulfilled' && ccResult.value?.available) {
-    providers.push({
-      status: 'healthy',
-      provider: 'claude-code',
-      lastChecked: new Date().toISOString(),
-      details: { source: ccResult.value.source || 'local' },
-    });
-  }
-  if (gcResult.status === 'fulfilled' && gcResult.value?.available) {
-    providers.push({
-      status: 'healthy',
-      provider: 'gemini-cli',
-      lastChecked: new Date().toISOString(),
-      details: { source: gcResult.value.source || 'local' },
-    });
-  }
-
-  return providers;
+  const ids = getCliProviderIds();
+  const results = await Promise.allSettled(
+    ids.map((id) => getAuthEntry(id).manager.checkApiUsable()),
+  );
+  return results
+    .map((r, i) =>
+      r.status === 'fulfilled' && r.value?.available
+        ? {
+            status: 'healthy',
+            provider: ids[i],
+            lastChecked: new Date().toISOString(),
+            details: { source: r.value.source || 'local' },
+          }
+        : null,
+    )
+    .filter(Boolean);
 }
 
 class UserService {

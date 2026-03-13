@@ -445,7 +445,7 @@ function createTables() {
       db.run(
         `CREATE TABLE IF NOT EXISTS codex_threads (
         user_id TEXT NOT NULL,
-        provider TEXT NOT NULL DEFAULT 'openai-codex-cli',
+        provider TEXT NOT NULL DEFAULT 'openai-codex',
         scope TEXT NOT NULL DEFAULT 'conversation',
         conversation_id TEXT NOT NULL DEFAULT '',
         thread_id TEXT NOT NULL,

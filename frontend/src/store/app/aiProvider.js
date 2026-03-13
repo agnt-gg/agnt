@@ -34,7 +34,6 @@ const BUILT_IN_PROVIDERS = [
   { key: 'minimax', displayName: 'MiniMax' },
   { key: 'openai', displayName: 'OpenAI' },
   { key: 'openai-codex', displayName: 'OpenAI-Codex' },
-  { key: 'openai-codex-cli', displayName: 'OpenAI-Codex-CLI' },
   { key: 'openrouter', displayName: 'OpenRouter' },
   { key: 'togetherai', displayName: 'TogetherAI' },
   { key: 'zai', displayName: 'Z.AI' },
@@ -204,13 +203,8 @@ export default {
       if (!state.selectedProvider || !state.selectedModel) return null;
       return state.modelMetadata[state.selectedProvider]?.[state.selectedModel] || null;
     },
-    filteredProviders(state, _getters, rootState) {
-      const codexStatus = rootState?.appAuth?.codexStatus || {};
-      const shouldHideOpenAICodex = codexStatus.available === true && codexStatus.apiUsable !== true;
-      if (!shouldHideOpenAICodex) {
-        return state.providers;
-      }
-      return state.providers.filter((provider) => provider !== 'OpenAI-Codex');
+    filteredProviders(state) {
+      return state.providers;
     },
     allProviders(state) {
       const customProviderNames = state.customProviders.map((p) => ({
@@ -378,7 +372,7 @@ export default {
       try {
         const providerLower = resolveProviderKey(provider);
         const token = localStorage.getItem('token');
-        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'openai-codex-cli' || providerLower === 'claude-code' || providerLower === 'gemini-cli';
+        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'claude-code' || providerLower === 'gemini-cli';
         if (!token && !isLocalProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }
@@ -463,9 +457,6 @@ export default {
     },
     async fetchOpenAICodexModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'OpenAI-Codex', forceRefresh });
-    },
-    async fetchOpenAICodexCLIModels({ dispatch }, { forceRefresh = false } = {}) {
-      return dispatch('fetchProviderModels', { provider: 'OpenAI-Codex-CLI', forceRefresh });
     },
     async fetchGeminiModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Gemini', forceRefresh });

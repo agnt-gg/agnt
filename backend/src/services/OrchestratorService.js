@@ -376,7 +376,7 @@ async function universalChatHandler(req, res, context = {}) {
   let model = resolvedModel;
 
   // Guardrail: Codex CLI accounts do not support every OpenAI model name.
-  if (normalizedProvider === 'openai-codex-cli') {
+  if (normalizedProvider === 'openai-codex') {
     const supportedModels = ProviderRegistry.getTextModels(normalizedProvider);
     if (Array.isArray(supportedModels) && supportedModels.length > 0 && !supportedModels.includes(model)) {
       const fallbackModel = supportedModels[0] || 'gpt-5-codex';
@@ -570,7 +570,7 @@ async function universalChatHandler(req, res, context = {}) {
 
     // Store client in context
     conversationContext.llmClient = client;
-    if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex' || normalizedProvider === 'openai-codex-cli') {
+    if (normalizedProvider === 'openai' || normalizedProvider === 'openai-codex' || normalizedProvider === 'openai-codex') {
       conversationContext.openai = client;
     }
 

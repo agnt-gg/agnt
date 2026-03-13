@@ -1,7 +1,7 @@
 /**
- * OpenAI Codex CLI Provider — Specific Tests
+ * OpenAI Codex Provider — Specific Tests
  *
- * Tests unique to the openai-codex-cli provider:
+ * Tests unique to the openai-codex provider:
  * - Uses CodexAuthManager for local auth (same as openai-codex)
  * - Creates a standard OpenAI SDK client (no subprocess)
  * - Responses API routing for GPT-5/codex models (full tool support)
@@ -16,11 +16,11 @@ import { PROVIDER_CAPABILITIES } from '../../../src/services/ai/ProviderRegistry
 
 export default {
   name: 'codex-cli-specific',
-  provider: 'openai-codex-cli',
+  provider: 'openai-codex',
 
   async run(harness, result) {
-    if (harness.provider.toLowerCase() !== 'openai-codex-cli') {
-      harness.skipTest(result, 'codex-cli-specific', 'not openai-codex-cli provider');
+    if (harness.provider.toLowerCase() !== 'openai-codex') {
+      harness.skipTest(result, 'codex-cli-specific', 'not openai-codex provider');
       return;
     }
 
@@ -31,7 +31,7 @@ export default {
 
     // ── Test: tool support is enabled in registry ────────────────────
     await harness.runTest(result, 'tool support is enabled', async () => {
-      const caps = PROVIDER_CAPABILITIES['openai-codex-cli'];
+      const caps = PROVIDER_CAPABILITIES['openai-codex'];
       return [
         assert.ok(caps != null, 'capabilities exist'),
         assert.eq(caps.text.supportsTools, true, 'supportsTools is true'),
@@ -68,7 +68,7 @@ export default {
     // ── Test: default model adapter is CodexResponsesAdapter ────────
     // gpt-5-codex requires Responses API
     await harness.runTest(result, 'gpt-5-codex gets CodexResponsesAdapter', async () => {
-      const adapter = await createLlmAdapter('openai-codex-cli', harness.client, 'gpt-5-codex');
+      const adapter = await createLlmAdapter('openai-codex', harness.client, 'gpt-5-codex');
       return [
         assert.eq(adapter.constructor.name, 'CodexResponsesAdapter', 'adapter is CodexResponsesAdapter'),
       ];
@@ -76,7 +76,7 @@ export default {
 
     // ── Test: gpt-5 also routes to Responses adapter ─────────────────
     await harness.runTest(result, 'gpt-5 gets CodexResponsesAdapter', async () => {
-      const adapter = await createLlmAdapter('openai-codex-cli', harness.client, 'gpt-5');
+      const adapter = await createLlmAdapter('openai-codex', harness.client, 'gpt-5');
       return [
         assert.eq(adapter.constructor.name, 'CodexResponsesAdapter', 'adapter is CodexResponsesAdapter'),
       ];
@@ -84,7 +84,7 @@ export default {
 
     // ── Test: non-Responses model falls back to OpenAiLikeAdapter ────
     await harness.runTest(result, 'standard model falls back to OpenAiLikeAdapter', async () => {
-      const adapter = await createLlmAdapter('openai-codex-cli', harness.client, 'gpt-4.1');
+      const adapter = await createLlmAdapter('openai-codex', harness.client, 'gpt-4.1');
       return [
         assert.eq(adapter.constructor.name, 'OpenAiLikeAdapter', 'adapter is OpenAiLikeAdapter'),
       ];

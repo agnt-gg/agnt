@@ -17,7 +17,7 @@ const providerServices = {};
 for (const config of getAllProviderConfigs()) {
   const recommended = config.recommendedModels || config.fallbackModels.slice(0, 3);
   if (config.staticModels) {
-    // Static model list — no API call needed (e.g., openai-codex-cli)
+    // Static model list — no API call needed (e.g., openai-codex)
     // Order fallback models with recommended first
     const recSet = new Set(recommended);
     const orderedModels = [
@@ -97,7 +97,7 @@ router.get('/:provider/models', async (req, res) => {
     let apiKey = null;
 
     // Codex CLI provider does not use the OpenAI API, but still requires local Codex login.
-    if (providerLower === 'openai-codex-cli') {
+    if (providerLower === 'openai-codex') {
       const codexToken = CodexAuthManager.getAccessToken();
       if (!codexToken) {
         return res.status(400).json({
@@ -174,30 +174,6 @@ router.get('/:provider/models', async (req, res) => {
           }
 
           return res.json({ success: true, models, cached: false, count: models.length });
-        }
-      }
-      // OpenAI Codex: use local Codex CLI auth
-      else if (providerLower === 'openai-codex') {
-        const codexStatus = await CodexAuthManager.checkApiUsable();
-        if (!codexStatus.available) {
-          return res.status(400).json({
-            success: false,
-            error: 'OpenAI Codex is not connected. Start device login from the provider setup.',
-          });
-        }
-        if (!codexStatus.apiUsable) {
-          const detail = codexStatus.apiStatus ? ` (API status: ${codexStatus.apiStatus})` : '';
-          return res.status(400).json({
-            success: false,
-            error: `OpenAI Codex is connected but the OpenAI API is not usable${detail}.`,
-          });
-        }
-        apiKey = CodexAuthManager.getAccessToken();
-        if (!apiKey) {
-          return res.status(400).json({
-            success: false,
-            error: 'OpenAI Codex token not found after login.',
-          });
         }
       } else {
         // Standard providers: extract user ID from auth token
@@ -331,15 +307,6 @@ router.post('/:provider/models/refresh', async (req, res) => {
         });
       }
       apiKey = CodexAuthManager.getAccessToken();
-    } else if (providerLower === 'openai-codex-cli') {
-      const codexToken = CodexAuthManager.getAccessToken();
-      if (!codexToken) {
-        return res.status(400).json({
-          success: false,
-          error: 'OpenAI Codex CLI is not connected. Start device login from the provider setup.',
-        });
-      }
-      // No API key needed; models are static.
     } else if (!hasHardcodedModels) {
       if (!authToken || !authToken.startsWith('Bearer ')) {
         return res.status(401).json({

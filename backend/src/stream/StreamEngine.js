@@ -181,7 +181,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'minimax':
         case 'openai':
         case 'openai-codex':
-        case 'openai-codex-cli':
         case 'zai':
           await this.startCodexResponsesStream(res, systemPrompt, combinedDocumentText, userQuery, messages, streamId, modelName, client);
           break;
@@ -377,7 +376,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
     try {
       const providerKey = provider.toLowerCase();
-      const isOpenAIProvider = providerKey === 'openai' || providerKey === 'openai-codex' || providerKey === 'openai-codex-cli';
+      const isOpenAIProvider = providerKey === 'openai' || providerKey === 'openai-codex';
 
       // For o1-preview model, include system instructions in the first user message
       if (modelName === 'o1-mini' && isOpenAIProvider) {
@@ -744,8 +743,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         kimi: 'kimi-k2.5',
         minimax: 'MiniMax-M2.1',
         openai: 'gpt-4o',
-        'openai-codex': 'gpt-4o',
-        'openai-codex-cli': 'gpt-5-codex',
+        'openai-codex': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -867,7 +865,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
-        case 'openai-codex-cli': {
+        case 'openai-codex': {
           const toolText = await this._codexResponsesGenerate(
             client,
             selectedModel,
@@ -877,7 +875,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { template: this._removeMarkdownJson(toolText) };
         }
 
-        case 'openai-codex':
         case 'openai':
           response = await client.chat.completions.create({
             model: selectedModel,
@@ -1208,8 +1205,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
-        'openai-codex': 'o1-preview',
-        'openai-codex-cli': 'gpt-5-codex',
+        'openai-codex': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1357,7 +1353,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
-        case 'openai-codex-cli': {
+        case 'openai-codex': {
           const wfText = await this._codexResponsesGenerate(
             client,
             selectedModel,
@@ -1367,7 +1363,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { workflow: this._removeMarkdownJson(wfText) };
         }
 
-        case 'openai-codex':
         case 'openai':
           completion = await client.chat.completions.create({
             model: selectedModel,
@@ -1509,8 +1504,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         kimi: 'kimi-k2.5',
         minimax: 'MiniMax-M2.1',
         openai: 'gpt-4o',
-        'openai-codex': 'gpt-4o',
-        'openai-codex-cli': 'gpt-5-codex',
+        'openai-codex': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1632,7 +1626,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
-        case 'openai-codex-cli': {
+        case 'openai-codex': {
           const agentText = await this._codexResponsesGenerate(
             client,
             selectedModel,
@@ -1642,7 +1636,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return { agent: this._removeMarkdownJson(agentText) };
         }
 
-        case 'openai-codex':
         case 'openai':
           response = await client.chat.completions.create({
             model: selectedModel,
@@ -1724,8 +1717,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
-        'openai-codex': 'o1-preview',
-        'openai-codex-cli': 'gpt-5-codex',
+        'openai-codex': 'gpt-5-codex',
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1899,7 +1891,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
 
-        case 'openai-codex-cli': {
+        case 'openai-codex': {
           const completionText = await this._codexResponsesGenerate(
             client,
             selectedModel,
@@ -1909,7 +1901,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           return completionText;
         }
 
-        case 'openai-codex':
         case 'openai':
           completion = await client.chat.completions.create({
             model: selectedModel,

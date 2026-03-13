@@ -23,7 +23,7 @@ const providerServicePaths = {
   kimi:       '../../../src/services/ai/providers/Kimi.js',
   minimax:    '../../../src/services/ai/providers/Minimax.js',
   zai:        '../../../src/services/ai/providers/ZAI.js',
-  'openai-codex-cli': '../../../src/services/ai/providers/OpenAICodexCli.js',
+  'openai-codex': '../../../src/services/ai/providers/OpenAICodexCli.js',
 };
 
 export default {

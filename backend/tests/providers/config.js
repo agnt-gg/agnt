@@ -24,8 +24,7 @@ export const PROVIDERS = {
 
   // ── CLI / hybrid providers (local auth) ──────────────────────────────
   'claude-code':       { model: 'claude-sonnet-4-5-20250929', category: 'cli', adapter: 'anthropic' },
-  'openai-codex':      { model: 'gpt-4.1',                   category: 'cli', adapter: 'openai-like' },
-  'openai-codex-cli':  { model: 'gpt-5-codex',               category: 'cli', adapter: 'responses' },
+  'openai-codex':      { model: 'gpt-5-codex',               category: 'cli', adapter: 'responses' },
   // kimi-code is detected dynamically from custom_openai_providers table
 };
 

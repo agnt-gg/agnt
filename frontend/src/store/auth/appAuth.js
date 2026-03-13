@@ -1,6 +1,10 @@
 import { API_CONFIG } from '@/tt.config.js';
 import axios from 'axios';
 import { resolveProviderKey } from '@/store/app/aiProvider.js';
+import providerAuthService from '@/services/providerAuthService.js';
+
+// CLI provider IDs that use local filesystem auth
+const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli'];
 
 // In-flight promise for deduplicating concurrent fetchConnectedApps calls
 let _fetchConnectedAppsPromise = null;
@@ -12,34 +16,10 @@ const state = {
   lastHealthCheck: null,
   isHealthCheckLoading: false,
   pollingIntervalId: null,
-  codexStatus: {
-    available: false,
-    apiUsable: false,
-    apiStatus: null,
-    source: null,
-    hint: null,
-    checkedAt: null,
-    codexWorkdir: null,
-    toolRunner: null,
-  },
+  // Unified CLI provider statuses keyed by provider ID
+  cliProviderStatuses: {},
   codexDeviceSession: null,
-  claudeCodeStatus: {
-    available: false,
-    apiUsable: false,
-    apiStatus: null,
-    source: null,
-    hint: null,
-    checkedAt: null,
-  },
   claudeCodeSetupSession: null,
-  geminiCliStatus: {
-    available: false,
-    apiUsable: false,
-    apiStatus: null,
-    source: null,
-    hint: null,
-    checkedAt: null,
-  },
 };
 
 const mutations = {
@@ -59,16 +39,20 @@ const mutations = {
   SET_POLLING_INTERVAL_ID(state, intervalId) {
     state.pollingIntervalId = intervalId;
   },
-  SET_CODEX_STATUS(state, status) {
-    state.codexStatus = {
-      available: status?.available === true,
-      apiUsable: status?.apiUsable === true,
-      apiStatus: typeof status?.apiStatus === 'number' ? status.apiStatus : null,
-      source: status?.source || null,
-      hint: status?.hint || null,
-      checkedAt: status?.checkedAt || new Date().toISOString(),
-      codexWorkdir: status?.codexWorkdir || null,
-      toolRunner: status?.toolRunner || null,
+  SET_CLI_PROVIDER_STATUS(state, { providerId, status }) {
+    state.cliProviderStatuses = {
+      ...state.cliProviderStatuses,
+      [providerId]: {
+        available: status?.available === true,
+        apiUsable: status?.apiUsable === true,
+        apiStatus: typeof status?.apiStatus === 'number' ? status.apiStatus : null,
+        source: status?.source || null,
+        hint: status?.hint || null,
+        checkedAt: status?.checkedAt || new Date().toISOString(),
+        // Codex-specific extras
+        ...(status?.codexWorkdir !== undefined ? { codexWorkdir: status.codexWorkdir } : {}),
+        ...(status?.toolRunner !== undefined ? { toolRunner: status.toolRunner } : {}),
+      },
     };
   },
   SET_CODEX_DEVICE_SESSION(state, session) {
@@ -77,31 +61,11 @@ const mutations = {
   CLEAR_CODEX_DEVICE_SESSION(state) {
     state.codexDeviceSession = null;
   },
-  SET_CLAUDE_CODE_STATUS(state, status) {
-    state.claudeCodeStatus = {
-      available: status?.available === true,
-      apiUsable: status?.apiUsable === true,
-      apiStatus: typeof status?.apiStatus === 'number' ? status.apiStatus : null,
-      source: status?.source || null,
-      hint: status?.hint || null,
-      checkedAt: status?.checkedAt || new Date().toISOString(),
-    };
-  },
   SET_CLAUDE_CODE_SETUP_SESSION(state, session) {
     state.claudeCodeSetupSession = session || null;
   },
   CLEAR_CLAUDE_CODE_SETUP_SESSION(state) {
     state.claudeCodeSetupSession = null;
-  },
-  SET_GEMINI_CLI_STATUS(state, status) {
-    state.geminiCliStatus = {
-      available: status?.available === true,
-      apiUsable: status?.apiUsable === true,
-      apiStatus: typeof status?.apiStatus === 'number' ? status.apiStatus : null,
-      source: status?.source || null,
-      hint: status?.hint || null,
-      checkedAt: status?.checkedAt || new Date().toISOString(),
-    };
   },
 };
 
@@ -115,54 +79,31 @@ const actions = {
         const token = localStorage.getItem('token');
         let connectedApps = [];
 
-        // Local status checks are fast (localhost) — run them in parallel
         // Remote agnt.gg call runs concurrently but we don't block on it for initial render
         const remotePromise = axios.get(`${API_CONFIG.REMOTE_URL}/auth/connected`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           timeout: 5000,
         }).catch(() => null);
 
-        // Fast local checks — these resolve in <100ms
-        const [codexResult, ccResult, gcResult] = await Promise.allSettled([
-          axios.get(`${API_CONFIG.BASE_URL}/codex/status`),
-          axios.get(`${API_CONFIG.BASE_URL}/claude-code/status`),
-          axios.get(`${API_CONFIG.BASE_URL}/gemini-cli/status`),
-        ]);
+        // Fast local checks via unified endpoints — these resolve in <100ms
+        const statusResults = await Promise.allSettled(
+          CLI_PROVIDER_IDS.map((id) => providerAuthService.getStatus(id)),
+        );
 
-        // Process Codex status
-        if (codexResult.status === 'fulfilled') {
-          const codexStatus = codexResult.value?.data || {};
-          commit('SET_CODEX_STATUS', codexStatus);
-          if (codexStatus.available === true && !connectedApps.includes('openai-codex-cli')) {
-            connectedApps = [...connectedApps, 'openai-codex-cli'];
+        // Process each CLI provider status
+        CLI_PROVIDER_IDS.forEach((id, index) => {
+          const result = statusResults[index];
+          if (result.status === 'fulfilled') {
+            const status = result.value || {};
+            commit('SET_CLI_PROVIDER_STATUS', { providerId: id, status });
+            if (status.available === true && !connectedApps.includes(id)) {
+              connectedApps = [...connectedApps, id];
+            }
+          } else {
+            console.warn(`Error checking ${id} status:`, result.reason?.message);
+            commit('SET_CLI_PROVIDER_STATUS', { providerId: id, status: { available: false, apiUsable: false, hint: `${id} status unavailable` } });
           }
-        } else {
-          console.warn('Error checking Codex status:', codexResult.reason?.message);
-          commit('SET_CODEX_STATUS', { available: false, apiUsable: false, hint: 'Codex status unavailable' });
-        }
-
-        // Process Claude Code status
-        if (ccResult.status === 'fulfilled') {
-          const ccStatus = ccResult.value?.data || {};
-          commit('SET_CLAUDE_CODE_STATUS', ccStatus);
-          if (ccStatus.available === true && !connectedApps.includes('claude-code')) {
-            connectedApps = [...connectedApps, 'claude-code'];
-          }
-        } else {
-          console.warn('Error checking Claude Code status:', ccResult.reason?.message);
-          commit('SET_CLAUDE_CODE_STATUS', { available: false, apiUsable: false, hint: 'Claude Code status unavailable' });
-        }
-
-        // Process Gemini CLI status
-        if (gcResult.status === 'fulfilled') {
-          const gcStatus = gcResult.value?.data || {};
-          commit('SET_GEMINI_CLI_STATUS', gcStatus);
-          if (gcStatus.available === true && !connectedApps.includes('gemini-cli')) {
-            connectedApps = [...connectedApps, 'gemini-cli'];
-          }
-        } else {
-          commit('SET_GEMINI_CLI_STATUS', { available: false, apiUsable: false, hint: 'Gemini CLI status unavailable' });
-        }
+        });
 
         // Commit local results immediately so UI can render
         const localDeduped = Array.from(new Set(connectedApps));
@@ -202,7 +143,7 @@ const actions = {
       // Inject local providers so they can be configured without the remote auth service.
       const localCodexProviders = [
         {
-          id: 'openai-codex-cli',
+          id: 'openai-codex',
           name: 'OpenAI Codex',
           icon: 'openai',
           categories: ['AI'],
@@ -244,7 +185,7 @@ const actions = {
       // Still expose the local providers even if the remote fetch fails.
       commit('SET_ALL_PROVIDERS', [
         {
-          id: 'openai-codex-cli',
+          id: 'openai-codex',
           name: 'OpenAI Codex',
           icon: 'openai',
           categories: ['AI'],
@@ -273,57 +214,104 @@ const actions = {
       ]);
     }
   },
-  async fetchCodexStatus({ commit }) {
+
+  // ── Generic provider actions (unified endpoints) ──────────────────
+
+  async fetchProviderStatus({ commit }, providerId) {
     try {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/codex/status`);
-      commit('SET_CODEX_STATUS', response.data);
-      return response.data;
+      const status = await providerAuthService.getStatus(providerId);
+      commit('SET_CLI_PROVIDER_STATUS', { providerId, status });
+      return status;
     } catch (error) {
-      console.error('Error fetching Codex status:', error);
-      const fallback = { available: false, apiUsable: false, hint: 'Codex status unavailable' };
-      commit('SET_CODEX_STATUS', fallback);
+      console.error(`Error fetching ${providerId} status:`, error);
+      const fallback = { available: false, apiUsable: false, hint: `${providerId} status unavailable` };
+      commit('SET_CLI_PROVIDER_STATUS', { providerId, status: fallback });
       return fallback;
     }
   },
-  async startCodexDeviceAuth({ commit }) {
-    const response = await axios.post(`${API_CONFIG.BASE_URL}/codex/device/start`);
-    if (response.data?.success) {
+
+  async connectProvider({ dispatch }, { providerId, payload }) {
+    const result = await providerAuthService.connect(providerId, payload);
+    if (result?.success) {
+      await dispatch('fetchProviderStatus', providerId);
+      await dispatch('fetchConnectedApps');
+    }
+    return result;
+  },
+
+  async disconnectProvider({ commit, dispatch }, providerId) {
+    try {
+      const result = await providerAuthService.disconnect(providerId);
+      commit('SET_CLI_PROVIDER_STATUS', { providerId, status: { available: false, apiUsable: false, hint: 'Disconnected' } });
+      commit('CLEAR_CODEX_DEVICE_SESSION');
+      commit('CLEAR_CLAUDE_CODE_SETUP_SESSION');
+      await dispatch('fetchConnectedApps');
+      return result;
+    } catch (error) {
+      console.error(`Error disconnecting ${providerId}:`, error);
+      throw error;
+    }
+  },
+
+  async refreshProviderToken({ commit, dispatch }, providerId) {
+    try {
+      const result = await providerAuthService.refresh(providerId);
+      if (result?.success) {
+        commit('SET_CLI_PROVIDER_STATUS', { providerId, status: result });
+        return { success: true };
+      }
+      return { success: false, error: result?.error };
+    } catch (error) {
+      const data = error?.response?.data;
+      if (data?.code === 'REAUTH_REQUIRED') {
+        commit('SET_CLI_PROVIDER_STATUS', {
+          providerId,
+          status: { available: false, apiUsable: false, hint: 'Session expired. Please reconnect.' },
+        });
+        await dispatch('fetchConnectedApps');
+        return { success: false, reauthRequired: true, error: data.error };
+      }
+      console.error(`Error refreshing ${providerId} token:`, error);
+      return { success: false, error: data?.error || error.message };
+    }
+  },
+
+  async startProviderDeviceAuth({ commit }, providerId) {
+    const result = await providerAuthService.startDeviceAuth(providerId);
+    if (result?.success) {
       commit('SET_CODEX_DEVICE_SESSION', {
-        sessionId: response.data.sessionId,
-        deviceUrl: response.data.deviceUrl,
-        deviceCode: response.data.deviceCode,
-        state: response.data.state,
-        startedAt: response.data.startedAt,
-        expiresAt: response.data.expiresAt,
+        sessionId: result.sessionId,
+        deviceUrl: result.deviceUrl,
+        deviceCode: result.deviceCode,
+        state: result.state,
+        startedAt: result.startedAt,
+        expiresAt: result.expiresAt,
       });
     }
-    return response.data;
+    return result;
   },
-  async pollCodexDeviceAuth({ commit, dispatch, state }, { sessionId, timeoutMs = 2 * 60 * 1000, intervalMs = 3000 } = {}) {
-    const activeSessionId = sessionId || state.codexDeviceSession?.sessionId;
+
+  async pollProviderDeviceAuth({ commit, dispatch, state: s }, { providerId, sessionId, timeoutMs = 2 * 60 * 1000, intervalMs = 3000 } = {}) {
+    const activeSessionId = sessionId || s.codexDeviceSession?.sessionId;
     if (!activeSessionId) {
-      throw new Error('No Codex device session to poll.');
+      throw new Error('No device session to poll.');
     }
 
     const start = Date.now();
     let lastStatus = null;
 
     while (Date.now() - start < timeoutMs) {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/codex/device/status`, {
-        params: { sessionId: activeSessionId },
-      });
-      lastStatus = response.data;
+      lastStatus = await providerAuthService.pollDeviceAuth(providerId, activeSessionId);
 
       if (lastStatus?.state === 'success') {
-        // Refresh Codex status and connected apps after successful login.
-        await dispatch('fetchCodexStatus');
+        await dispatch('fetchProviderStatus', providerId);
         await dispatch('fetchConnectedApps');
         commit('CLEAR_CODEX_DEVICE_SESSION');
         return lastStatus;
       }
 
       if (lastStatus?.state === 'error') {
-        await dispatch('fetchCodexStatus');
+        await dispatch('fetchProviderStatus', providerId);
         return lastStatus;
       }
 
@@ -332,117 +320,43 @@ const actions = {
 
     return lastStatus || { success: false, state: 'error', message: 'Timed out waiting for device login.' };
   },
-  async logoutCodex({ commit, dispatch }) {
-    try {
-      const response = await axios.post(`${API_CONFIG.BASE_URL}/codex/logout`);
-      await dispatch('fetchCodexStatus');
-      await dispatch('fetchConnectedApps');
-      commit('CLEAR_CODEX_DEVICE_SESSION');
-      return response.data;
-    } catch (error) {
-      console.error('Error logging out of Codex:', error);
-      throw error;
-    }
+
+  // ── Legacy action aliases (keep existing component dispatches working) ──
+
+  async fetchCodexStatus({ dispatch }) {
+    return dispatch('fetchProviderStatus', 'openai-codex');
   },
-  async fetchClaudeCodeStatus({ commit }) {
-    try {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/claude-code/status`);
-      commit('SET_CLAUDE_CODE_STATUS', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching Claude Code status:', error);
-      const fallback = { available: false, apiUsable: false, hint: 'Claude Code status unavailable' };
-      commit('SET_CLAUDE_CODE_STATUS', fallback);
-      return fallback;
-    }
+  async startCodexDeviceAuth({ dispatch }) {
+    return dispatch('startProviderDeviceAuth', 'openai-codex');
   },
-  async startClaudeCodeSetup({ commit }) {
-    const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/setup/start`);
-    if (response.data?.success) {
-      commit('SET_CLAUDE_CODE_SETUP_SESSION', {
-        sessionId: response.data.sessionId,
-        state: response.data.state,
-        startedAt: response.data.startedAt,
-        expiresAt: response.data.expiresAt,
-      });
-    }
-    return response.data;
+  async pollCodexDeviceAuth({ dispatch }, opts = {}) {
+    return dispatch('pollProviderDeviceAuth', { providerId: 'openai-codex', ...opts });
   },
-  async pollClaudeCodeSetup({ commit, dispatch, state }, { sessionId, timeoutMs = 2 * 60 * 1000, intervalMs = 3000 } = {}) {
-    const activeSessionId = sessionId || state.claudeCodeSetupSession?.sessionId;
-    if (!activeSessionId) {
-      throw new Error('No Claude Code setup session to poll.');
-    }
-
-    const start = Date.now();
-    let lastStatus = null;
-
-    while (Date.now() - start < timeoutMs) {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/claude-code/setup/status`, {
-        params: { sessionId: activeSessionId },
-      });
-      lastStatus = response.data;
-
-      if (lastStatus?.state === 'success') {
-        // Clear stale model cache so fresh models are fetched
-        localStorage.removeItem('Claude-Code_models');
-        await dispatch('fetchClaudeCodeStatus');
-        await dispatch('fetchConnectedApps');
-        commit('CLEAR_CLAUDE_CODE_SETUP_SESSION');
-        return lastStatus;
-      }
-
-      if (lastStatus?.state === 'error') {
-        await dispatch('fetchClaudeCodeStatus');
-        return lastStatus;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
-
-    return lastStatus || { success: false, state: 'error', message: 'Timed out waiting for setup.' };
+  async logoutCodex({ dispatch }) {
+    return dispatch('disconnectProvider', 'openai-codex');
   },
-  async connectClaudeCodeManual({ commit, dispatch }, token) {
-    const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/connect`, { token });
-    if (response.data?.success) {
-      // Clear stale model cache so fresh models are fetched
+  async fetchClaudeCodeStatus({ dispatch }) {
+    return dispatch('fetchProviderStatus', 'claude-code');
+  },
+  async connectClaudeCodeManual({ dispatch }, token) {
+    const result = await providerAuthService.connect('claude-code', { token });
+    if (result?.success) {
       localStorage.removeItem('Claude-Code_models');
-      await dispatch('fetchClaudeCodeStatus');
+      await dispatch('fetchProviderStatus', 'claude-code');
       await dispatch('fetchConnectedApps');
     }
-    return response.data;
+    return result;
   },
-  async refreshClaudeCodeToken({ commit, dispatch }) {
-    try {
-      const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/refresh`);
-      if (response.data?.success) {
-        commit('SET_CLAUDE_CODE_STATUS', response.data);
-        return { success: true };
-      }
-      return { success: false, error: response.data?.error };
-    } catch (error) {
-      const data = error?.response?.data;
-      if (data?.code === 'REAUTH_REQUIRED') {
-        // Token revoked — mark as disconnected so UI can prompt reconnect
-        commit('SET_CLAUDE_CODE_STATUS', {
-          available: false,
-          apiUsable: false,
-          hint: 'Session expired. Please reconnect Claude Code.',
-        });
-        await dispatch('fetchConnectedApps');
-        return { success: false, reauthRequired: true, error: data.error };
-      }
-      console.error('Error refreshing Claude Code token:', error);
-      return { success: false, error: data?.error || error.message };
-    }
+  async refreshClaudeCodeToken({ dispatch }) {
+    return dispatch('refreshProviderToken', 'claude-code');
   },
   async disconnectClaudeCode({ commit, dispatch }) {
     try {
-      const response = await axios.post(`${API_CONFIG.BASE_URL}/claude-code/disconnect`);
-      await dispatch('fetchClaudeCodeStatus');
+      const result = await providerAuthService.disconnect('claude-code');
+      await dispatch('fetchProviderStatus', 'claude-code');
       await dispatch('fetchConnectedApps');
       commit('CLEAR_CLAUDE_CODE_SETUP_SESSION');
-      return response.data;
+      return result;
     } catch (error) {
       console.error('Error disconnecting Claude Code:', error);
       throw error;
@@ -450,15 +364,18 @@ const actions = {
   },
   async disconnectGeminiCli({ commit, dispatch }) {
     try {
-      const response = await axios.post(`${API_CONFIG.BASE_URL}/gemini-cli/disconnect`);
-      commit('SET_GEMINI_CLI_STATUS', { available: false, apiUsable: false, hint: 'Disconnected' });
+      const result = await providerAuthService.disconnect('gemini-cli');
+      commit('SET_CLI_PROVIDER_STATUS', { providerId: 'gemini-cli', status: { available: false, apiUsable: false, hint: 'Disconnected' } });
       await dispatch('fetchConnectedApps');
-      return response.data;
+      return result;
     } catch (error) {
       console.error('Error disconnecting Gemini CLI:', error);
       throw error;
     }
   },
+
+  // ── Health check actions (unchanged) ──────────────────────────────
+
   async checkConnectionHealth({ commit }) {
     try {
       const response = await axios.get(`${API_CONFIG.BASE_URL}/users/connection-health`, {
@@ -650,13 +567,15 @@ const HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 const getters = {
   connectedApps: (state) => state.connectedApps,
-  codexStatus: (state) => state.codexStatus,
+  // Backward-compatible getters for existing component reads
+  codexStatus: (state) => state.cliProviderStatuses['openai-codex'] || { available: false, apiUsable: false },
   codexDeviceSession: (state) => state.codexDeviceSession,
-  claudeCodeStatus: (state) => state.claudeCodeStatus,
+  claudeCodeStatus: (state) => state.cliProviderStatuses['claude-code'] || { available: false, apiUsable: false },
   claudeCodeSetupSession: (state) => state.claudeCodeSetupSession,
+  geminiCliStatus: (state) => state.cliProviderStatuses['gemini-cli'] || { available: false, apiUsable: false },
   claudeCodeNeedsReauth: (state) => {
-    const s = state.claudeCodeStatus;
-    return s.available === false && s.hint && s.hint.includes('expired');
+    const s = state.cliProviderStatuses['claude-code'];
+    return s?.available === false && s?.hint && s.hint.includes('expired');
   },
   connectionHealthStatus: (state) => {
     if (!state.connectionHealth) return 'unknown';

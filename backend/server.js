@@ -14,9 +14,7 @@ import PluginManager from './src/plugins/PluginManager.js';
 
 // Import your API routes
 import UserRoutes from './src/routes/UserRoutes.js';
-import CodexAuthRoutes from './src/routes/CodexAuthRoutes.js';
-import ClaudeCodeAuthRoutes from './src/routes/ClaudeCodeAuthRoutes.js';
-import GeminiCliAuthRoutes from './src/routes/GeminiCliAuthRoutes.js';
+import ProviderAuthRoutes from './src/routes/ProviderAuthRoutes.js';
 import StreamRoutes from './src/routes/StreamRoutes.js';
 import WorkflowRoutes from './src/routes/WorkflowRoutes.js';
 import ExecutionRoutes from './src/routes/ExecutionRoutes.js';
@@ -112,9 +110,7 @@ if (frontendExists) {
 // Define API routes
 app.use('/lite', express.static(path.join(__dirname, '..', 'lite')));
 app.use('/api/users', UserRoutes);
-app.use('/api/codex', CodexAuthRoutes);
-app.use('/api/claude-code', ClaudeCodeAuthRoutes);
-app.use('/api/gemini-cli', GeminiCliAuthRoutes);
+app.use('/api/providers', ProviderAuthRoutes);
 app.use('/api/stream', StreamRoutes);
 app.use('/api/agents', AgentRoutes);
 app.use('/api/workflows', WorkflowRoutes);

@@ -837,6 +837,7 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import ConnectorsPanel from '@/views/Terminal/RightPanel/types/ConnectorsPanel/ConnectorsPanel.vue';
 import { encrypt } from '@/views/_utils/encryption.js';
+import providerAuthService from '@/services/providerAuthService.js';
 import { useTutorial } from './useTutorial.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import ProviderSelector from '../Settings/components/ProviderSelector/ProviderSelector.vue';
@@ -1367,9 +1368,7 @@ export default {
 
     async function connectGeminiCliOAuth(app) {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/oauth/start`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
+        const data = await providerAuthService.startOAuth('gemini-cli');
         if (!data.authUrl) throw new Error('No authUrl returned');
 
         if (window.electron?.openExternalUrl) {
@@ -1396,16 +1395,14 @@ export default {
 
         const maxAttempts = 20;
         for (let i = 0; i < maxAttempts; i++) {
-          const statusResponse = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/oauth/status?sessionId=${data.sessionId}`);
-          const status = await statusResponse.json();
+          const status = await providerAuthService.pollOAuthStatus('gemini-cli', data.sessionId);
 
           if (status.status === 'success') {
             localStorage.removeItem('Gemini_models');
             localStorage.removeItem('Gemini-CLI_models');
             await store.dispatch('appAuth/fetchConnectedApps');
 
-            // Fetch tier info to show the user
-            const tierInfo = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/status`).then(r => r.json()).catch(() => ({}));
+            const tierInfo = await providerAuthService.getStatus('gemini-cli').catch(() => ({}));
             const tierMsg = tierInfo.tier ? ` (Tier: ${tierInfo.tier})` : '';
             await showAlert('Success', `Gemini CLI connected via Google account.${tierMsg}`);
             terminalLines.value.push(`[Connect] Gemini CLI connected via Google account${tierMsg}`);
@@ -1440,19 +1437,8 @@ export default {
       });
       if (!apiKey) return;
       try {
-        // Switch to API key mode (removes OAuth creds)
-        await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/set-auth-method`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method: 'api-key' }),
-        });
-
-        const result = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/connect`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey }),
-        });
-        const respData = await result.json();
+        await providerAuthService.setAuthMethod('gemini-cli', 'api-key');
+        const respData = await providerAuthService.connect('gemini-cli', { apiKey });
         if (respData.success) {
           localStorage.removeItem('Gemini_models');
           localStorage.removeItem('Gemini-CLI_models');
@@ -1472,7 +1458,7 @@ export default {
         // Route local-only providers through their dedicated store actions
         if (appId === 'claude-code') {
           disconnectLocalProvider(app, 'appAuth/disconnectClaudeCode');
-        } else if (appId === 'openai-codex-cli') {
+        } else if (appId === 'openai-codex') {
           disconnectLocalProvider(app, 'appAuth/logoutCodex');
         } else if (appId === 'gemini-cli') {
           disconnectLocalProvider(app, 'appAuth/disconnectGeminiCli');

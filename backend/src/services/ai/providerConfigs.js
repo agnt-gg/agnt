@@ -60,39 +60,9 @@ const PROVIDER_CONFIGS = [
   {
     key: 'openai-codex',
     name: 'OpenAI Codex',
-    baseURL: 'https://api.openai.com/v1',
-    sdkType: 'openai',
-    authScheme: 'codex',
-    capabilities: {
-      text: { supportsStreaming: true, supportsTools: true },
-      vision: { supportsStreaming: true },
-      imageGen: {
-        models: ['dall-e-3'],
-        operations: ['generate', 'edit', 'variation'],
-        defaultModel: 'dall-e-3',
-        supportedSizes: {
-          'dall-e-2': ['256x256', '512x512', '1024x1024'],
-          'dall-e-3': ['1024x1024', '1792x1024', '1024x1792'],
-        },
-        supportedFormats: ['url', 'b64_json'],
-        maxImages: 10,
-        supportsQuality: true,
-        supportsStyle: true,
-      },
-    },
-    recommendedModels: ['gpt-4.1'],
-    fallbackModels: ['gpt-4.1'],
-    compat: {},
-    sdkOptions: {},
-  },
-
-  // ─────────────────────────── OPENAI CODEX CLI ───────────────────────────
-  {
-    key: 'openai-codex-cli',
-    name: 'OpenAI Codex CLI',
     baseURL: 'https://chatgpt.com/backend-api/codex',
     sdkType: 'openai',
-    authScheme: 'codex-cli',
+    authScheme: 'codex',
     staticModels: true,
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
@@ -808,7 +778,6 @@ export function buildBaseURLs() {
  */
 const PROVIDER_METADATA_FALLBACK = {
   'openai-codex': 'openai',
-  'openai-codex-cli': 'openai',
   'claude-code': 'anthropic',
   'gemini-cli': 'gemini',
 };

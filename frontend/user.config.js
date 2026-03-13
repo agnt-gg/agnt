@@ -19,7 +19,7 @@ export const DEPLOYMENT_CONFIG = {
 // ADD LLM PROVIDERS / MODELS TO FRONT END
 // NOTE: Models are now fetched dynamically from the backend API endpoints
 // This config only defines the available providers
-const baseProviders = ['Anthropic', 'Cerebras', 'DeepSeek', 'Gemini', 'GrokAI', 'Groq', 'OpenAI', 'OpenAI-Codex-CLI', 'OpenRouter', 'TogetherAI'];
+const baseProviders = ['Anthropic', 'Cerebras', 'DeepSeek', 'Gemini', 'GrokAI', 'Groq', 'OpenAI', 'OpenAI-Codex', 'OpenRouter', 'TogetherAI'];
 const providers = DEPLOYMENT_CONFIG.DISABLE_LOCAL_LLM ? baseProviders : [...baseProviders, 'Local'];
 
 export const AI_PROVIDERS_CONFIG = {
@@ -34,7 +34,7 @@ export const AI_PROVIDERS_CONFIG = {
     Groq: [], // Fetched from /api/models/groq/models
     Local: [], // Fetched from LM Studio at http://127.0.0.1:1234/v1/models
     OpenAI: [], // Fetched from /api/models/openai/models
-    'OpenAI-Codex-CLI': [], // Fetched from /api/models/openai-codex-cli/models
+    'OpenAI-Codex': [], // Fetched from /api/models/openai-codex/models
     OpenRouter: [], // Fetched from /api/models/openrouter/models
     TogetherAI: [], // Fetched from /api/models/togetherai/models
   },

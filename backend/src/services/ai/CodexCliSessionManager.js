@@ -25,7 +25,7 @@ function parseSessionKey(sessionKey) {
   const parts = sessionKey.split('::');
   if (parts.length < 3) return null;
 
-  const provider = parts[0] || 'openai-codex-cli';
+  const provider = parts[0] || 'openai-codex';
   const userIndex = parts.indexOf('user');
   const conversationIndex = parts.indexOf('conversation');
 
@@ -115,8 +115,8 @@ class CodexCliSessionManager {
     return this._initPromise;
   }
 
-  getSessionKey({ userId, conversationId, provider = 'openai-codex-cli', scope = 'conversation' } = {}) {
-    const normalizedProvider = normalizePart(provider, 'openai-codex-cli').toLowerCase();
+  getSessionKey({ userId, conversationId, provider = 'openai-codex', scope = 'conversation' } = {}) {
+    const normalizedProvider = normalizePart(provider, 'openai-codex').toLowerCase();
     const normalizedUserId = normalizePart(userId, 'anonymous-user');
 
     if (scope === 'user') {

@@ -43,7 +43,7 @@ describe('Provider Configs', () => {
       });
 
       it('should have a valid authScheme', () => {
-        const validSchemes = ['bearer', 'api-key', 'query-param', 'codex', 'codex-cli', 'claude-code'];
+        const validSchemes = ['bearer', 'api-key', 'query-param', 'codex', 'claude-code', 'gemini-cli'];
         assert.ok(validSchemes.includes(config.authScheme), `Invalid authScheme: ${config.authScheme}`);
       });
 
@@ -114,9 +114,9 @@ describe('Static Model Providers', () => {
     assert.ok(minimax.fallbackModels.includes('MiniMax-M2.5-highspeed'), 'Missing MiniMax-M2.5-highspeed');
   });
 
-  it('OpenAI Codex CLI should be staticModels', () => {
-    const codexCli = getProviderConfig('openai-codex-cli');
-    assert.ok(codexCli, 'OpenAI Codex CLI provider not found');
+  it('OpenAI Codex should be staticModels', () => {
+    const codexCli = getProviderConfig('openai-codex');
+    assert.ok(codexCli, 'OpenAI Codex provider not found');
     assert.strictEqual(codexCli.staticModels, true);
   });
 });

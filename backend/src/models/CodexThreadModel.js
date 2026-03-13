@@ -10,7 +10,7 @@ function normalizeScope(scope) {
 }
 
 function normalizeProvider(provider) {
-  if (!provider) return 'openai-codex-cli';
+  if (!provider) return 'openai-codex';
   return String(provider).toLowerCase();
 }
 

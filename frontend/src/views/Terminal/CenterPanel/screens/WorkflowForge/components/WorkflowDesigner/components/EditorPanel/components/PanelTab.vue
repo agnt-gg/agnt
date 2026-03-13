@@ -1337,7 +1337,6 @@ export default {
         Minimax: 'aiProvider/fetchMinimaxModels',
         OpenAI: 'aiProvider/fetchOpenAIModels',
         'OpenAI-Codex': 'aiProvider/fetchOpenAICodexModels',
-        'OpenAI-Codex-CLI': 'aiProvider/fetchOpenAICodexCliModels',
         OpenRouter: 'aiProvider/fetchOpenRouterModels',
         TogetherAI: 'aiProvider/fetchTogetherAIModels',
         ZAI: 'aiProvider/fetchZAIModels',

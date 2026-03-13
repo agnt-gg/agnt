@@ -215,7 +215,7 @@ function _createClientFromConfig(config, accessToken) {
 }
 
 /**
- * Handles special-auth providers: local, openai-codex, openai-codex-cli, claude-code.
+ * Handles special-auth providers: local, openai-codex, claude-code.
  * Returns null if the provider is not a special-auth provider.
  */
 async function _createSpecialAuthClient(lowerCaseProvider, options) {
@@ -227,26 +227,6 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
       dangerouslyAllowBrowser: false,
       maxRetries: 0,
       timeout: 60000,
-    });
-  }
-
-  // OpenAI Codex — uses local Codex CLI auth
-  if (lowerCaseProvider === 'openai-codex') {
-    const codexStatus = await CodexAuthManager.checkApiUsable();
-    if (!codexStatus.available) {
-      throw new Error('OpenAI Codex is not connected. Use device login to connect.');
-    }
-    if (!codexStatus.apiUsable) {
-      const detail = codexStatus.apiStatus ? ` (API status: ${codexStatus.apiStatus})` : '';
-      throw new Error(`OpenAI Codex is connected but the OpenAI API is not usable${detail}.`);
-    }
-    const codexToken = CodexAuthManager.getAccessToken();
-    if (!codexToken) {
-      throw new Error('OpenAI Codex token not found after login.');
-    }
-    return new OpenAI({
-      apiKey: codexToken,
-      baseURL: 'https://api.openai.com/v1',
     });
   }
 
@@ -264,13 +244,12 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
     });
   }
 
-  // OpenAI Codex CLI — uses Codex OAuth token with ChatGPT backend
-  if (lowerCaseProvider === 'openai-codex-cli') {
+  // OpenAI Codex — uses Codex OAuth token with ChatGPT backend
+  if (lowerCaseProvider === 'openai-codex') {
     const oauthToken = CodexAuthManager.getOAuthToken();
     if (!oauthToken) {
       throw new Error(
-        'OpenAI Codex CLI requires OAuth authentication for the Responses API. ' +
-          'Use device login to connect. (API keys are not supported — use the openai-codex provider instead.)'
+        'OpenAI Codex requires OAuth authentication. Use device login to connect.'
       );
     }
     const accountId = CodexAuthManager.getChatGptAccountId();

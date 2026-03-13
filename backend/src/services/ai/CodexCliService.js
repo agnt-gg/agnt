@@ -178,7 +178,7 @@ class CodexCliService {
       userId = null,
       conversationId = null,
       authToken = null,
-      provider = 'openai-codex-cli',
+      provider = 'openai-codex',
     },
     { onDelta, onEvent } = {}
   ) {

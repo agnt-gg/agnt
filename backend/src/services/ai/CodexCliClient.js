@@ -115,7 +115,7 @@ export function createCodexCliClient({
   sessionKey = null,
   userId = null,
   conversationId = null,
-  provider = 'openai-codex-cli',
+  provider = 'openai-codex',
   fullAuto = true,
   authToken = null,
 } = {}) {
@@ -129,7 +129,7 @@ export function createCodexCliClient({
     });
 
   return {
-    __provider: 'openai-codex-cli',
+    __provider: 'openai-codex',
     __codexBin: CodexCliService.getCodexBin(),
     __sessionKey: resolvedSessionKey,
     chat: {

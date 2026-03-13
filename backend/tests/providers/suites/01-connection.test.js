@@ -27,7 +27,7 @@ const EXPECTED_CLIENT_TYPE = {
   minimax:           OpenAI,
   zai:               OpenAI,
   'openai-codex':    OpenAI,
-  'openai-codex-cli': OpenAI,
+  'openai-codex': OpenAI,
 };
 
 export default {
@@ -85,7 +85,7 @@ export default {
     }
 
     // ── CLI-specific: codex-cli uses OpenAI SDK with Responses API ────
-    if (harness.provider.toLowerCase() === 'openai-codex-cli') {
+    if (harness.provider.toLowerCase() === 'openai-codex') {
       await harness.runTest(result, 'codex-cli: OpenAI SDK with Responses API', async () => [
         assert.instanceOf(harness.client, OpenAI, 'client is OpenAI instance'),
         assert.ok(typeof harness.client.responses?.create === 'function', 'has responses.create()'),

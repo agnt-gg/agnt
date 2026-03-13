@@ -392,7 +392,6 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         'openai-codex': 'OpenAI-Codex',
-        'openai-codex-cli': 'OpenAI-Codex-CLI',
         gemini: 'Gemini',
         grokai: 'GrokAI',
         groq: 'Groq',
@@ -454,7 +453,7 @@ export default {
 
       // OpenAI Codex providers use a local device auth flow via the Codex CLI.
       const providerLower = provider.id.toLowerCase();
-      if (providerLower === 'openai-codex' || providerLower === 'openai-codex-cli') {
+      if (providerLower === 'openai-codex' || providerLower === 'openai-codex') {
         await connectCodexProvider(provider);
         return;
       }
@@ -520,12 +519,12 @@ export default {
     const connectCodexProvider = async (provider) => {
       try {
         const providerLower = provider.id.toLowerCase();
-        const isCliProvider = providerLower === 'openai-codex-cli';
+        const isCliProvider = providerLower === 'openai-codex';
         const status = await store.dispatch('appAuth/fetchCodexStatus');
         if (status?.available && (isCliProvider || status?.apiUsable)) {
           await selectProvider(provider);
           const readyMessage = isCliProvider
-            ? 'OpenAI Codex CLI is already connected on this machine.'
+            ? 'OpenAI Codex is already connected on this machine.'
             : 'OpenAI Codex is already connected and API access is available.';
           await showAlert('Provider Ready', readyMessage);
           return;
@@ -575,13 +574,13 @@ export default {
 
           if (isReady) {
             await selectProvider(provider);
-            const successMessage = isCliProvider ? 'OpenAI Codex CLI connected successfully.' : 'OpenAI Codex connected successfully.';
+            const successMessage = isCliProvider ? 'OpenAI Codex connected successfully.' : 'OpenAI Codex connected successfully.';
             await showAlert('Success', successMessage);
             return;
           }
 
           const hint = latestStatus?.hint ? `\n\n${latestStatus.hint}` : '';
-          const suggestion = isCliProvider ? '' : '\n\nTip: If you do not have OpenAI API access, use the OpenAI Codex CLI provider instead.';
+          const suggestion = isCliProvider ? '' : '\n\nTip: If you do not have OpenAI API access, use the OpenAI Codex provider instead.';
           await showAlert('Codex Not Ready', `Device login completed but the provider is not ready yet.${hint}${suggestion}`);
         } else {
           const latestStatus = await store.dispatch('appAuth/fetchCodexStatus');

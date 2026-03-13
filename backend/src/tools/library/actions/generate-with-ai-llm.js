@@ -67,7 +67,7 @@ const PROVIDER_CONFIG = {
     supportsImageEdit: true,
     imageModels: ['dall-e-3'],
   },
-  'openai-codex-cli': {
+  'openai-codex': {
     baseURL: 'codex-cli://local',
     defaultModel: 'gpt-5-codex',
     supportsVision: true,
@@ -406,7 +406,7 @@ class GenerateWithAiLlm extends BaseAction {
             if (!accessTokenOrApiKey) {
               throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
             }
-          } else if (normalizedProvider === 'openai-codex' || normalizedProvider === 'openai-codex-cli') {
+          } else if (normalizedProvider === 'openai-codex') {
             const codexStatus = await CodexAuthManager.checkApiUsable();
             if (!codexStatus.available) {
               throw new Error('OpenAI Codex is not connected. Use device login to connect.');
@@ -487,7 +487,6 @@ class GenerateWithAiLlm extends BaseAction {
       case 'minimax':
       case 'openai':
       case 'openai-codex':
-      case 'openai-codex-cli':
       case 'openrouter':
       case 'togetherai':
       case 'zai':
@@ -534,7 +533,6 @@ class GenerateWithAiLlm extends BaseAction {
       case 'minimax':
       case 'openai':
       case 'openai-codex':
-      case 'openai-codex-cli':
       case 'openrouter':
       case 'togetherai':
       case 'zai':

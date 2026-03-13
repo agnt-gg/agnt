@@ -28,6 +28,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { encrypt } from '@/views/_utils/encryption.js';
 import { PROVIDER_FETCH_ACTIONS, resolveProviderKey } from '@/store/app/aiProvider.js';
+import providerAuthService from '@/services/providerAuthService.js';
 
 export default {
   name: 'ProviderSetup',
@@ -107,7 +108,6 @@ export default {
         'claude-code': 'Claude-Code',
         openai: 'OpenAI',
         'openai-codex': 'OpenAI-Codex',
-        'openai-codex-cli': 'OpenAI-Codex-CLI',
         gemini: 'Gemini',
         grokai: 'GrokAI',
         groq: 'Groq',
@@ -150,7 +150,7 @@ export default {
 
       // OpenAI Codex providers use a local device auth flow via the Codex CLI.
       const providerLower = provider.id.toLowerCase();
-      if (providerLower === 'openai-codex' || providerLower === 'openai-codex-cli') {
+      if (providerLower === 'openai-codex' || providerLower === 'openai-codex') {
         await connectCodexProvider(provider);
         return;
       }
@@ -221,12 +221,12 @@ export default {
     const connectCodexProvider = async (provider) => {
       try {
         const providerLower = provider.id.toLowerCase();
-        const isCliProvider = providerLower === 'openai-codex-cli';
+        const isCliProvider = providerLower === 'openai-codex';
         const status = await store.dispatch('appAuth/fetchCodexStatus');
         if (status?.available && (isCliProvider || status?.apiUsable)) {
           await selectProvider(provider);
           const readyMessage = isCliProvider
-            ? 'OpenAI Codex CLI is already connected on this machine.'
+            ? 'OpenAI Codex is already connected on this machine.'
             : 'OpenAI Codex is already connected and API access is available.';
           await showAlert('Provider Ready', `${readyMessage}${getCodexWorkdirHtml(status)}`);
           return;
@@ -280,7 +280,7 @@ export default {
           if (isReady) {
             await selectProvider(provider);
             const successMessage = isCliProvider
-              ? 'OpenAI Codex CLI connected successfully.'
+              ? 'OpenAI Codex connected successfully.'
               : 'OpenAI Codex connected successfully.';
             await showAlert('Success', `${successMessage}${getCodexWorkdirHtml(latestStatus)}`);
             return;
@@ -289,7 +289,7 @@ export default {
           const hint = latestStatus?.hint ? `\n\n${latestStatus.hint}` : '';
           const suggestion = isCliProvider
             ? ''
-            : '\n\nTip: If you do not have OpenAI API access, use the OpenAI Codex CLI provider instead.';
+            : '\n\nTip: If you do not have OpenAI API access, use the OpenAI Codex provider instead.';
           await showAlert('Codex Not Ready', `Device login completed but the provider is not ready yet.${hint}${suggestion}`);
         } else {
           const latestStatus = await store.dispatch('appAuth/fetchCodexStatus');
@@ -311,21 +311,15 @@ export default {
       }
 
       try {
-        // Get Anthropic OAuth URL from local backend
-        const response = await fetch(`${API_CONFIG.BASE_URL}/claude-code/oauth/start`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-
+        const data = await providerAuthService.startOAuth('claude-code');
         if (!data.authUrl) throw new Error('No authUrl returned');
 
-        // Open in the system browser
         if (window.electron?.openExternalUrl) {
           window.electron.openExternalUrl(data.authUrl);
         } else {
           window.open(data.authUrl, '_blank');
         }
 
-        // Prompt the user to paste the code from Anthropic's callback page
         const codeState = await showPrompt(
           'Claude Code Authentication',
           `<div style="text-align:left">
@@ -340,13 +334,10 @@ export default {
 
         if (!codeState) return;
 
-        // Exchange the code for tokens via the backend
-        const exchangeResponse = await fetch(`${API_CONFIG.BASE_URL}/claude-code/oauth/exchange`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: data.sessionId, codeState }),
+        const exchangeResult = await providerAuthService.exchangeOAuth('claude-code', {
+          sessionId: data.sessionId,
+          codeState,
         });
-        const exchangeResult = await exchangeResponse.json();
 
         if (exchangeResult.success) {
           localStorage.removeItem('Claude-Code_models');

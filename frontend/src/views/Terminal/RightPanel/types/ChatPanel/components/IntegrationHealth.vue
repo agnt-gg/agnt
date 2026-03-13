@@ -54,6 +54,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
+import providerAuthService from '@/services/providerAuthService.js';
 
 export default {
   name: 'IntegrationHealth',
@@ -205,10 +206,10 @@ export default {
       }
 
       // Fallback: provide local provider details even if the remote auth service is unavailable.
-      if (normalizedId === 'openai-codex-cli') {
+      if (normalizedId === 'openai-codex') {
         return {
-          id: 'openai-codex-cli',
-          name: 'OpenAI Codex CLI',
+          id: 'openai-codex',
+          name: 'OpenAI Codex',
           icon: 'openai',
           categories: ['AI'],
           connectionType: 'oauth',
@@ -283,7 +284,7 @@ export default {
         return;
       }
 
-      if (normalizedProviderId === 'openai-codex-cli') {
+      if (normalizedProviderId === 'openai-codex') {
         if (integration.statusClass === 'healthy') {
           await disconnectCodex(providerDetails);
         } else {
@@ -496,7 +497,7 @@ export default {
 
         const result = await store.dispatch('appAuth/pollCodexDeviceAuth', { sessionId: session.sessionId });
         if (result?.state === 'success') {
-          await showAlert('Success', 'OpenAI Codex CLI connected successfully.');
+          await showAlert('Success', 'OpenAI Codex connected successfully.');
           await refreshHealth();
         } else {
           await showAlert('Connection Failed', result?.message || 'Device login not completed yet.');
@@ -509,21 +510,15 @@ export default {
 
     const connectClaudeCode = async (providerDetails) => {
       try {
-        // Get the Anthropic OAuth URL from the local backend
-        const response = await fetch(`${API_CONFIG.BASE_URL}/claude-code/oauth/start`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-
+        const data = await providerAuthService.startOAuth('claude-code');
         if (!data.authUrl) throw new Error('No authUrl returned');
 
-        // Open in the system browser
         if (window.electron?.openExternalUrl) {
           window.electron.openExternalUrl(data.authUrl);
         } else {
           window.open(data.authUrl, '_blank');
         }
 
-        // Prompt the user to paste the code from Anthropic's callback page
         const codeState = await showPrompt(
           'Claude Code Authentication',
           `<div style="text-align:left">
@@ -544,13 +539,10 @@ export default {
 
         if (!codeState) return;
 
-        // Exchange the code for tokens via the backend
-        const exchangeResponse = await fetch(`${API_CONFIG.BASE_URL}/claude-code/oauth/exchange`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: data.sessionId, codeState }),
+        const exchangeResult = await providerAuthService.exchangeOAuth('claude-code', {
+          sessionId: data.sessionId,
+          codeState,
         });
-        const exchangeResult = await exchangeResponse.json();
 
         if (exchangeResult.success) {
           localStorage.removeItem('Claude-Code_models');
@@ -561,7 +553,6 @@ export default {
           await showAlert('Connection Failed', exchangeResult.error || 'Failed to exchange authorization code.');
         }
       } catch (error) {
-        // Fall back to paste-token prompt
         console.warn('Claude Code OAuth failed, falling back to paste-token:', error.message);
         const token = await showPrompt(
           `Connect to ${providerDetails.name}`,
@@ -664,9 +655,7 @@ export default {
 
     const connectGeminiCliOAuth = async (providerDetails) => {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/oauth/start`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
+        const data = await providerAuthService.startOAuth('gemini-cli');
         if (!data.authUrl) throw new Error('No authUrl returned');
 
         if (window.electron?.openExternalUrl) {
@@ -693,8 +682,7 @@ export default {
 
         const maxAttempts = 20;
         for (let i = 0; i < maxAttempts; i++) {
-          const statusResponse = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/oauth/status?sessionId=${data.sessionId}`);
-          const status = await statusResponse.json();
+          const status = await providerAuthService.pollOAuthStatus('gemini-cli', data.sessionId);
 
           if (status.status === 'success') {
             localStorage.removeItem('Gemini_models');
@@ -702,9 +690,7 @@ export default {
             await store.dispatch('appAuth/fetchConnectedApps');
             await refreshHealth();
 
-            const tierInfo = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/status`)
-              .then((r) => r.json())
-              .catch(() => ({}));
+            const tierInfo = await providerAuthService.getStatus('gemini-cli').catch(() => ({}));
             const tierMsg = tierInfo.tier ? ` (Tier: ${tierInfo.tier})` : '';
             await showAlert('Success', `Gemini CLI connected via Google account.${tierMsg}`);
             return;
@@ -737,18 +723,8 @@ export default {
       });
       if (!apiKey) return;
       try {
-        await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/set-auth-method`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method: 'api-key' }),
-        });
-
-        const result = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/connect`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey }),
-        });
-        const respData = await result.json();
+        await providerAuthService.setAuthMethod('gemini-cli', 'api-key');
+        const respData = await providerAuthService.connect('gemini-cli', { apiKey });
         if (respData.success) {
           localStorage.removeItem('Gemini_models');
           localStorage.removeItem('Gemini-CLI_models');

@@ -1,7 +1,6 @@
 /**
  * Shared composable for provider connect/disconnect flows.
- * Encapsulates the OAuth, API-key, Claude Code, and Codex CLI auth logic
- * that lives in IntegrationHealth.vue so other views can reuse it.
+ * Uses unified /api/providers/:id/auth/* endpoints via providerAuthService.
  */
 
 import { computed, onMounted, onUnmounted } from 'vue';
@@ -9,6 +8,7 @@ import { useStore } from 'vuex';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
+import providerAuthService from '@/services/providerAuthService.js';
 
 export function useProviderConnection(modalRef) {
   const store = useStore();
@@ -71,41 +71,6 @@ export function useProviderConnection(modalRef) {
     });
     if (cached) return cached;
 
-    // Hardcoded fallbacks for local-only providers
-    if (normalizedId === 'openai-codex-cli') {
-      return {
-        id: 'openai-codex-cli',
-        name: 'OpenAI Codex CLI',
-        icon: 'openai',
-        categories: ['AI'],
-        connectionType: 'oauth',
-        instructions: 'Uses Codex CLI locally (no API key). You will be given a URL and one-time code to complete sign-in.',
-        localOnly: true,
-      };
-    }
-    if (normalizedId === 'claude-code') {
-      return {
-        id: 'claude-code',
-        name: 'Claude Code',
-        icon: 'anthropic',
-        categories: ['AI'],
-        connectionType: 'oauth',
-        instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
-        localOnly: true,
-      };
-    }
-    if (normalizedId === 'gemini-cli') {
-      return {
-        id: 'gemini-cli',
-        name: 'Gemini CLI',
-        icon: 'google',
-        categories: ['AI'],
-        connectionType: 'oauth',
-        instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
-        localOnly: true,
-      };
-    }
-
     try {
       const token = localStorage.getItem('token');
       if (!token) return null;
@@ -124,7 +89,210 @@ export function useProviderConnection(modalRef) {
     }
   };
 
-  // ── connection flows ─────────────────────────────────────
+  // ── capability-driven connection flows ─────────────────────
+
+  const connectOAuthPkce = async (providerId, providerDetails) => {
+    try {
+      const data = await providerAuthService.startOAuth(providerId);
+      if (!data.authUrl) throw new Error('No authUrl returned');
+
+      if (window.electron?.openExternalUrl) {
+        window.electron.openExternalUrl(data.authUrl);
+      } else {
+        window.open(data.authUrl, '_blank');
+      }
+
+      const codeState = await showPrompt(
+        `${providerDetails.name} Authentication`,
+        `<div style="text-align:left">
+          <p>A browser window has opened for authentication.</p>
+          <p><strong>1.</strong> Sign in to your account</p>
+          <p><strong>2.</strong> Click <strong>Authorize</strong></p>
+          <p><strong>3.</strong> Copy the code shown on the resulting page</p>
+          <p><strong>4.</strong> Paste it below</p>
+        </div>`,
+        '',
+        { confirmText: 'Connect', cancelText: 'Cancel', confirmClass: 'btn-primary', inputType: 'text' },
+      );
+      if (!codeState) return;
+
+      const exchangeResult = await providerAuthService.exchangeOAuth(providerId, {
+        sessionId: data.sessionId,
+        codeState,
+      });
+
+      if (exchangeResult.success) {
+        localStorage.removeItem('Claude-Code_models');
+        await store.dispatch('appAuth/fetchConnectedApps');
+        await refreshHealth();
+        await showAlert('Success', `${providerDetails.name} connected successfully.`);
+      } else {
+        await showAlert('Connection Failed', exchangeResult.error || 'Failed to exchange authorization code.');
+      }
+    } catch (error) {
+      // Fall back to paste-token prompt
+      console.warn(`${providerDetails.name} OAuth failed, falling back to paste-token:`, error.message);
+      const token = await showPrompt(
+        `Connect to ${providerDetails.name}`,
+        `Could not complete OAuth. Paste your ${providerDetails.name} OAuth token:`,
+        '',
+        { confirmText: 'Connect', cancelText: 'Cancel', confirmClass: 'btn-primary', inputType: 'password' },
+      );
+      if (!token) return;
+      try {
+        const result = await store.dispatch('appAuth/connectClaudeCodeManual', token);
+        if (result?.success) {
+          await showAlert('Success', result.message || `${providerDetails.name} connected successfully.`);
+          await store.dispatch('appAuth/fetchConnectedApps');
+          await refreshHealth();
+        } else {
+          await showAlert('Connection Failed', result?.error || `Failed to connect ${providerDetails.name}.`);
+        }
+      } catch (manualError) {
+        await showAlert('Error', `Failed to connect ${providerDetails.name}: ${manualError.message}`);
+      }
+    }
+  };
+
+  const connectOAuthLoopback = async (providerId, providerDetails) => {
+    try {
+      const data = await providerAuthService.startOAuth(providerId);
+      if (!data.authUrl) throw new Error('No authUrl returned');
+
+      if (window.electron?.openExternalUrl) {
+        window.electron.openExternalUrl(data.authUrl);
+      } else {
+        window.open(data.authUrl, '_blank');
+      }
+
+      const confirmed = await modalRef.value.showModal({
+        title: `${providerDetails.name} Authentication`,
+        message: `<div style="text-align:left">
+          <p>A browser window has opened for authentication.</p>
+          <p><strong>1.</strong> Sign in to your account</p>
+          <p><strong>2.</strong> Click <strong>Allow</strong> to grant access</p>
+          <p><strong>3.</strong> Return here and click <strong>I have signed in</strong></p>
+        </div>`,
+        confirmText: 'I have signed in',
+        cancelText: 'Cancel',
+        showCancel: true,
+        confirmClass: 'btn-primary',
+      });
+      if (!confirmed) return;
+
+      const maxAttempts = 20;
+      for (let i = 0; i < maxAttempts; i++) {
+        const status = await providerAuthService.pollOAuthStatus(providerId, data.sessionId);
+
+        if (status.status === 'success') {
+          localStorage.removeItem('Gemini_models');
+          localStorage.removeItem('Gemini-CLI_models');
+          await store.dispatch('appAuth/fetchConnectedApps');
+          await refreshHealth();
+          await showAlert('Success', `${providerDetails.name} connected successfully.`);
+          return;
+        }
+        if (status.status === 'error') {
+          await showAlert('Connection Failed', status.error || 'OAuth failed.');
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      await showAlert('Connection Failed', 'OAuth timed out. Please try again.');
+    } catch (error) {
+      console.warn(`${providerDetails.name} OAuth failed, falling back to API key:`, error.message);
+      const apiKey = await showPrompt(
+        `Connect to ${providerDetails.name}`,
+        `Could not complete OAuth. Paste your API key instead:`,
+        '',
+        { confirmText: 'Connect', cancelText: 'Cancel', confirmClass: 'btn-primary', inputType: 'password' },
+      );
+      if (!apiKey) return;
+      try {
+        const result = await providerAuthService.connect(providerId, { apiKey });
+        if (result.success) {
+          await showAlert('Success', `${providerDetails.name} connected with API key.`);
+          await store.dispatch('appAuth/fetchConnectedApps');
+          await refreshHealth();
+        } else {
+          await showAlert('Connection Failed', result.error || 'Failed to save API key.');
+        }
+      } catch (manualError) {
+        await showAlert('Error', `Failed to connect ${providerDetails.name}: ${manualError.message}`);
+      }
+    }
+  };
+
+  const connectDeviceAuth = async (providerId, providerDetails) => {
+    try {
+      const session = await store.dispatch('appAuth/startProviderDeviceAuth', providerId);
+      if (!session?.success) throw new Error(session?.error || 'Failed to start device login');
+      if (session.state === 'error') {
+        await showAlert('Device Login', session.message || 'Device login failed to start.');
+        return;
+      }
+
+      const deviceUrl = session.deviceUrl || 'https://auth.openai.com/codex/device';
+      const deviceCode = session.deviceCode || '(code unavailable)';
+      if (!session.deviceUrl || !session.deviceCode) {
+        await showAlert('Device Login', session.message || 'Device code was not returned yet. Please try again in a moment.');
+        return;
+      }
+
+      const confirmed = await modalRef.value.showModal({
+        title: `${providerDetails.name} Device Login`,
+        message: `
+          <div style="text-align:left">
+            <p><strong>1.</strong> Open this URL in your browser:</p>
+            <p><code>${deviceUrl}</code></p>
+            <p><strong>2.</strong> Enter this one-time code:</p>
+            <p><code style="font-size:16px">${deviceCode}</code></p>
+            <p>Then return here and click <strong>I have logged in</strong>.</p>
+          </div>
+        `,
+        confirmText: 'I have logged in',
+        cancelText: 'Cancel',
+        showCancel: true,
+        confirmClass: 'btn-primary',
+      });
+      if (!confirmed) return;
+
+      const result = await store.dispatch('appAuth/pollProviderDeviceAuth', { providerId, sessionId: session.sessionId });
+      if (result?.state === 'success') {
+        await showAlert('Success', `${providerDetails.name} connected successfully.`);
+        await refreshHealth();
+      } else {
+        await showAlert('Connection Failed', result?.message || 'Device login not completed yet.');
+      }
+    } catch (error) {
+      console.error(`Error connecting ${providerDetails.name}:`, error);
+      await showAlert('Connection Error', `Failed to connect ${providerDetails.name}: ${error.message}`);
+    }
+  };
+
+  const disconnectProvider = async (providerId, providerDetails) => {
+    const confirmDisconnect = await modalRef.value.showModal({
+      title: 'Confirm Disconnection',
+      message: `Are you sure you want to disconnect from ${providerDetails.name}?`,
+      confirmText: 'Disconnect',
+      cancelText: 'Cancel',
+      confirmClass: 'btn-danger',
+    });
+    if (!confirmDisconnect) return;
+    try {
+      const result = await store.dispatch('appAuth/disconnectProvider', providerId);
+      if (result?.success) {
+        await showAlert('Success', `Successfully disconnected from ${providerDetails.name}`);
+        await refreshHealth();
+      } else {
+        await showAlert('Error', result?.error || 'Failed to disconnect.');
+      }
+    } catch (error) {
+      await showAlert('Error', `Failed to disconnect: ${error.message}`);
+    }
+  };
+
+  // ── remote provider flows (unchanged) ──────────────────────
 
   const connectOAuthApp = async (app) => {
     if (app.instructions) {
@@ -245,267 +413,7 @@ export function useProviderConnection(modalRef) {
     }
   };
 
-  const connectClaudeCode = async (providerDetails) => {
-    try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/claude-code/oauth/start`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      if (!data.authUrl) throw new Error('No authUrl returned');
-
-      if (window.electron?.openExternalUrl) {
-        window.electron.openExternalUrl(data.authUrl);
-      } else {
-        window.open(data.authUrl, '_blank');
-      }
-
-      const codeState = await showPrompt(
-        'Claude Code Authentication',
-        `<div style="text-align:left">
-          <p>A browser window has opened for Anthropic authentication.</p>
-          <p><strong>1.</strong> Sign in to your Anthropic account</p>
-          <p><strong>2.</strong> Click <strong>Authorize</strong></p>
-          <p><strong>3.</strong> Copy the code shown on the resulting page</p>
-          <p><strong>4.</strong> Paste it below</p>
-        </div>`,
-        '',
-        { confirmText: 'Connect', cancelText: 'Cancel', confirmClass: 'btn-primary', inputType: 'text' },
-      );
-      if (!codeState) return;
-
-      const exchangeResponse = await fetch(`${API_CONFIG.BASE_URL}/claude-code/oauth/exchange`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: data.sessionId, codeState }),
-      });
-      const exchangeResult = await exchangeResponse.json();
-
-      if (exchangeResult.success) {
-        localStorage.removeItem('Claude-Code_models');
-        await store.dispatch('appAuth/fetchConnectedApps');
-        await refreshHealth();
-        await showAlert('Success', 'Claude Code connected successfully.');
-      } else {
-        await showAlert('Connection Failed', exchangeResult.error || 'Failed to exchange authorization code.');
-      }
-    } catch (error) {
-      console.warn('Claude Code OAuth failed, falling back to paste-token:', error.message);
-      const token = await showPrompt(
-        `Connect to ${providerDetails.name}`,
-        'Could not complete Anthropic OAuth. Paste your Claude Code OAuth token (starts with sk-ant-):',
-        '',
-        { confirmText: 'Connect', cancelText: 'Cancel', confirmClass: 'btn-primary', inputType: 'password' },
-      );
-      if (!token) return;
-      try {
-        const result = await store.dispatch('appAuth/connectClaudeCodeManual', token);
-        if (result?.success) {
-          await showAlert('Success', result.message || 'Claude Code connected successfully.');
-          await store.dispatch('appAuth/fetchConnectedApps');
-          await refreshHealth();
-        } else {
-          await showAlert('Connection Failed', result?.error || 'Failed to connect Claude Code.');
-        }
-      } catch (manualError) {
-        await showAlert('Error', `Failed to connect Claude Code: ${manualError.message}`);
-      }
-    }
-  };
-
-  const disconnectClaudeCode = async (providerDetails) => {
-    const confirmDisconnect = await modalRef.value.showModal({
-      title: 'Confirm Disconnection',
-      message: `Are you sure you want to disconnect from ${providerDetails.name}?`,
-      confirmText: 'Disconnect',
-      cancelText: 'Cancel',
-      confirmClass: 'btn-danger',
-    });
-    if (!confirmDisconnect) return;
-    try {
-      const result = await store.dispatch('appAuth/disconnectClaudeCode');
-      if (result?.success) {
-        await showAlert('Success', `Successfully disconnected from ${providerDetails.name}`);
-        await refreshHealth();
-      } else {
-        await showAlert('Error', result?.error || 'Failed to disconnect.');
-      }
-    } catch (error) {
-      await showAlert('Error', `Failed to disconnect: ${error.message}`);
-    }
-  };
-
-  const connectCodex = async () => {
-    try {
-      const session = await store.dispatch('appAuth/startCodexDeviceAuth');
-      if (!session?.success) throw new Error(session?.error || 'Failed to start Codex device login');
-      if (session.state === 'error') {
-        await showAlert('Codex Device Login', session.message || 'Codex device login failed to start.');
-        return;
-      }
-
-      const deviceUrl = session.deviceUrl || 'https://auth.openai.com/codex/device';
-      const deviceCode = session.deviceCode || '(code unavailable)';
-      if (!session.deviceUrl || !session.deviceCode) {
-        await showAlert('Codex Device Login', session.message || 'Device code was not returned yet. Please try again in a moment.');
-        return;
-      }
-
-      const confirmed = await modalRef.value.showModal({
-        title: 'OpenAI Codex Device Login',
-        message: `
-          <div style="text-align:left">
-            <p><strong>1.</strong> Open this URL in your browser:</p>
-            <p><code>${deviceUrl}</code></p>
-            <p><strong>2.</strong> Enter this one-time code:</p>
-            <p><code style="font-size:16px">${deviceCode}</code></p>
-            <p>Then return here and click <strong>I have logged in</strong>.</p>
-          </div>
-        `,
-        confirmText: 'I have logged in',
-        cancelText: 'Cancel',
-        showCancel: true,
-        confirmClass: 'btn-primary',
-      });
-      if (!confirmed) return;
-
-      const result = await store.dispatch('appAuth/pollCodexDeviceAuth', { sessionId: session.sessionId });
-      if (result?.state === 'success') {
-        await showAlert('Success', 'OpenAI Codex CLI connected successfully.');
-        await refreshHealth();
-      } else {
-        await showAlert('Connection Failed', result?.message || 'Device login not completed yet.');
-      }
-    } catch (error) {
-      console.error('Error connecting OpenAI Codex:', error);
-      await showAlert('Connection Error', `Failed to connect OpenAI Codex: ${error.message}`);
-    }
-  };
-
-  const connectGeminiCli = async (providerDetails) => {
-    try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/oauth/start`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      if (!data.authUrl) throw new Error('No authUrl returned');
-
-      // Open Google sign-in in browser
-      if (window.electron?.openExternalUrl) {
-        window.electron.openExternalUrl(data.authUrl);
-      } else {
-        window.open(data.authUrl, '_blank');
-      }
-
-      // Show waiting modal while polling for completion
-      const confirmed = await modalRef.value.showModal({
-        title: 'Gemini CLI Authentication',
-        message: `<div style="text-align:left">
-          <p>A browser window has opened for Google authentication.</p>
-          <p><strong>1.</strong> Sign in to your Google account</p>
-          <p><strong>2.</strong> Click <strong>Allow</strong> to grant access</p>
-          <p><strong>3.</strong> Return here and click <strong>I have signed in</strong></p>
-        </div>`,
-        confirmText: 'I have signed in',
-        cancelText: 'Cancel',
-        showCancel: true,
-        confirmClass: 'btn-primary',
-      });
-      if (!confirmed) return;
-
-      // Poll the session status
-      const maxAttempts = 20;
-      for (let i = 0; i < maxAttempts; i++) {
-        const statusResponse = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/oauth/status?sessionId=${data.sessionId}`);
-        const status = await statusResponse.json();
-
-        if (status.status === 'success') {
-          localStorage.removeItem('Gemini_models');
-          localStorage.removeItem('Gemini-CLI_models');
-          await store.dispatch('appAuth/fetchConnectedApps');
-          await refreshHealth();
-          await showAlert('Success', 'Gemini CLI connected successfully via Google account.');
-          return;
-        }
-        if (status.status === 'error') {
-          await showAlert('Connection Failed', status.error || 'Google OAuth failed.');
-          return;
-        }
-        // Still pending — wait and retry
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-      await showAlert('Connection Failed', 'OAuth timed out. Please try again.');
-    } catch (error) {
-      console.warn('Gemini CLI OAuth failed, falling back to API key:', error.message);
-      const apiKey = await showPrompt(
-        `Connect to ${providerDetails?.name || 'Gemini CLI'}`,
-        'Could not complete Google OAuth. Paste your Gemini API key instead:',
-        '',
-        { confirmText: 'Connect', cancelText: 'Cancel', confirmClass: 'btn-primary', inputType: 'password' },
-      );
-      if (!apiKey) return;
-      try {
-        const result = await fetch(`${API_CONFIG.BASE_URL}/gemini-cli/connect`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey }),
-        });
-        const respData = await result.json();
-        if (respData.success) {
-          await showAlert('Success', 'Gemini CLI connected with API key.');
-          await store.dispatch('appAuth/fetchConnectedApps');
-          await refreshHealth();
-        } else {
-          await showAlert('Connection Failed', respData.error || 'Failed to save API key.');
-        }
-      } catch (manualError) {
-        await showAlert('Error', `Failed to connect Gemini CLI: ${manualError.message}`);
-      }
-    }
-  };
-
-  const disconnectGeminiCli = async (providerDetails) => {
-    const confirmDisconnect = await modalRef.value.showModal({
-      title: 'Confirm Disconnection',
-      message: `Are you sure you want to disconnect from ${providerDetails?.name || 'Gemini CLI'}?`,
-      confirmText: 'Disconnect',
-      cancelText: 'Cancel',
-      confirmClass: 'btn-danger',
-    });
-    if (!confirmDisconnect) return;
-    try {
-      const result = await store.dispatch('appAuth/disconnectGeminiCli');
-      if (result?.success) {
-        await showAlert('Success', `Successfully disconnected from ${providerDetails?.name || 'Gemini CLI'}`);
-        await refreshHealth();
-      } else {
-        await showAlert('Error', result?.error || 'Failed to disconnect.');
-      }
-    } catch (error) {
-      await showAlert('Error', `Failed to disconnect: ${error.message}`);
-    }
-  };
-
-  const disconnectCodex = async (providerDetails) => {
-    const confirmDisconnect = await modalRef.value.showModal({
-      title: 'Confirm Disconnection',
-      message: `Are you sure you want to disconnect from ${providerDetails.name}?`,
-      confirmText: 'Disconnect',
-      cancelText: 'Cancel',
-      confirmClass: 'btn-danger',
-    });
-    if (!confirmDisconnect) return;
-    try {
-      const result = await store.dispatch('appAuth/logoutCodex');
-      if (result?.success) {
-        await showAlert('Success', `Successfully disconnected from ${providerDetails.name}`);
-        await refreshHealth();
-      } else {
-        await showAlert('Error', result?.error || 'Failed to disconnect.');
-      }
-    } catch (error) {
-      await showAlert('Error', `Failed to disconnect: ${error.message}`);
-    }
-  };
-
-  // ── main entry point ─────────────────────────────────────
+  // ── main entry point (capability-driven) ───────────────────
 
   const handleProviderToggle = async (providerId) => {
     const providerDetails = await fetchProviderDetails(providerId);
@@ -518,18 +426,23 @@ export function useProviderConnection(modalRef) {
     const normalizedId = String(providerId || '').toLowerCase();
     const connected = isProviderConnected(providerId);
 
-    // Claude Code
-    if (normalizedId === 'claude-code') {
-      return connected ? disconnectClaudeCode(providerDetails) : connectClaudeCode(providerDetails);
+    // Check if this is a local CLI provider via capabilities
+    try {
+      const capsResult = await providerAuthService.getCapabilities(normalizedId);
+      if (capsResult?.local) {
+        if (connected) {
+          return disconnectProvider(normalizedId, providerDetails);
+        }
+        const caps = capsResult.capabilities || [];
+        if (caps.includes('oauth-pkce')) return connectOAuthPkce(normalizedId, providerDetails);
+        if (caps.includes('oauth-loopback')) return connectOAuthLoopback(normalizedId, providerDetails);
+        if (caps.includes('device-auth')) return connectDeviceAuth(normalizedId, providerDetails);
+        if (caps.includes('connect-apikey')) return promptApiKey(providerDetails);
+      }
+    } catch {
+      // Capabilities endpoint not available — fall through to generic handling
     }
-    // Codex CLI
-    if (normalizedId === 'openai-codex-cli') {
-      return connected ? disconnectCodex(providerDetails) : connectCodex();
-    }
-    // Gemini CLI
-    if (normalizedId === 'gemini-cli') {
-      return connected ? disconnectGeminiCli(providerDetails) : connectGeminiCli(providerDetails);
-    }
+
     // Generic providers
     if (connected) {
       return disconnectApp(providerDetails);

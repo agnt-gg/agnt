@@ -40,7 +40,7 @@ const API_KEY_MAP = {
 };
 
 // Providers to skip (static model lists or OAuth-only)
-const SKIP_PROVIDERS = ['openai-codex', 'openai-codex-cli', 'claude-code'];
+const SKIP_PROVIDERS = ['openai-codex', 'claude-code'];
 
 async function fetchModelsFromProvider(config, apiKey) {
   const url = new URL(`${config.baseURL}/models`);

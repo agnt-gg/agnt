@@ -9,8 +9,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Authentication](#authentication)
 - [Agent Routes](#agent-routes)
 - [Async Tool Routes](#async-tool-routes)
-- [Claude Code Auth Routes](#claude-code-auth-routes)
-- [Codex Auth Routes](#codex-auth-routes)
+- [Provider Auth Routes](#provider-auth-routes)
 - [Content Output Routes](#content-output-routes)
 - [Custom Provider Routes](#custom-provider-routes)
 - [Custom Tool Routes](#custom-tool-routes)
@@ -19,7 +18,6 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Evolution / Insight Routes](#evolution--insight-routes)
 - [Experiment Routes](#experiment-routes)
 - [FileSystem Routes](#filesystem-routes)
-- [Gemini CLI Auth Routes](#gemini-cli-auth-routes)
 - [Goal Routes](#goal-routes)
 - [Layout Routes](#layout-routes)
 - [MCP Routes](#mcp-routes)
@@ -411,17 +409,30 @@ Base path: `/api/async-tools`
 
 ---
 
-## Claude Code Auth Routes
+## Provider Auth Routes
 
-Base path: `/api/claude-code`
+Base path: `/api/providers`
 
-### Get Status
+All provider authentication is handled through a single unified router. The `:providerId` parameter identifies the provider (e.g., `claude-code`, `openai-codex`, `gemini-cli`, `openai`, `anthropic`, etc.). Local CLI providers use filesystem-backed credentials; remote providers proxy to agnt.gg.
 
-**GET** `/status`
+**Auth Dispatcher** (`AuthDispatcher.js`) maps each provider's `authScheme` to an auth manager and a set of capabilities:
+
+| Auth Scheme    | Local | Capabilities                                                          |
+| -------------- | ----- | --------------------------------------------------------------------- |
+| `claude-code`  | Yes   | status, connect-token, disconnect, refresh, oauth-pkce                |
+| `codex`        | Yes   | status, disconnect, device-auth                                       |
+| `gemini-cli`   | Yes   | status, connect-apikey, disconnect, refresh, oauth-loopback, set-auth-method, gcp-project |
+| `bearer`       | No    | status, connect-apikey, disconnect                                    |
+| `api-key`      | No    | status, connect-apikey, disconnect                                    |
+| `query-param`  | No    | status, connect-apikey, disconnect                                    |
+
+### Get Provider Auth Status
+
+**GET** `/:providerId/auth/status`
 
 - **Authentication**: None
-- **Description**: Check whether Claude Code credentials exist locally and whether the Anthropic API is usable
-- **Response**:
+- **Description**: Check whether credentials exist for this provider and whether its API is usable. For local CLI providers, checks filesystem credentials. For remote providers, returns basic info (use the connection health endpoint for remote status).
+- **Response** (local provider):
 
 ```json
 {
@@ -432,12 +443,117 @@ Base path: `/api/claude-code`
 }
 ```
 
-### Start OAuth Flow
+For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
-**GET** `/oauth/start`
+- **Response** (remote provider):
+
+```json
+{
+  "success": true,
+  "available": false,
+  "providerId": "openai",
+  "local": false,
+  "hint": "Use connection health endpoint for remote provider status."
+}
+```
+
+### Get Provider Capabilities
+
+**GET** `/:providerId/auth/capabilities`
 
 - **Authentication**: None
-- **Description**: Initiate the Anthropic OAuth flow. Returns an `authUrl` the frontend opens in the system browser. No localhost callback needed.
+- **Description**: Return the capabilities and metadata for a provider's auth scheme
+- **Response**:
+
+```json
+{
+  "success": true,
+  "providerId": "claude-code",
+  "providerName": "Claude Code",
+  "local": true,
+  "remote": false,
+  "capabilities": ["status", "connect-token", "disconnect", "refresh", "oauth-pkce"]
+}
+```
+
+### Connect Provider
+
+**POST** `/:providerId/auth/connect`
+
+- **Authentication**: None (local), Required (remote — proxied to agnt.gg)
+- **Description**: Save credentials for a provider. Body varies by auth scheme.
+- **Body** (claude-code — token):
+
+```json
+{
+  "token": "sk-ant-..."
+}
+```
+
+- **Body** (gemini-cli — API key):
+
+```json
+{
+  "apiKey": "AIza..."
+}
+```
+
+- **Body** (remote providers — proxied to agnt.gg):
+
+```json
+{
+  "apiKey": "sk-..."
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Disconnect Provider
+
+**POST** `/:providerId/auth/disconnect`
+
+- **Authentication**: None (local), Required (remote)
+- **Description**: Remove credentials for a provider. Local providers delete filesystem credentials; remote providers proxy to agnt.gg.
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Refresh Token
+
+**POST** `/:providerId/auth/refresh`
+
+- **Authentication**: None
+- **Description**: Refresh the access token using the stored refresh token. Only supported for local providers with the `refresh` capability (claude-code, gemini-cli).
+- **Response** (success):
+
+```json
+{
+  "success": true,
+  "refreshed": true,
+  "available": true,
+  "apiUsable": true
+}
+```
+
+- **Error** (401 — claude-code specific): `{ "code": "REAUTH_REQUIRED" }` if refresh token is revoked
+- **Error** (400): `{ "error": "Refresh not supported for this provider" }` if provider lacks `refresh` capability
+
+### Start OAuth Flow
+
+**GET** `/:providerId/auth/oauth/start`
+
+- **Authentication**: None
+- **Description**: Initiate an OAuth flow. For `claude-code`, starts Anthropic PKCE OAuth. For `gemini-cli`, starts Google loopback OAuth. Only supported for local providers.
 - **Response**:
 
 ```json
@@ -448,12 +564,12 @@ Base path: `/api/claude-code`
 }
 ```
 
-### Exchange OAuth Code
+### Exchange OAuth Code (claude-code PKCE)
 
-**POST** `/oauth/exchange`
+**POST** `/:providerId/auth/oauth/exchange`
 
 - **Authentication**: None
-- **Description**: Receive the code#state string the user copied from Anthropic's callback page. Parses it, exchanges the code for tokens, and saves credentials.
+- **Description**: Submit the code#state string copied from Anthropic's callback page. Only supported for providers with `oauth-pkce` capability.
 - **Body**:
 
 ```json
@@ -471,92 +587,29 @@ Base path: `/api/claude-code`
 }
 ```
 
-### Connect with Manual Token
+### Poll OAuth Status (gemini-cli loopback)
 
-**POST** `/connect`
-
-- **Authentication**: None
-- **Description**: Save a manually provided OAuth token
-- **Body**:
-
-```json
-{
-  "token": "sk-ant-..."
-}
-```
-
-- **Response**:
-
-```json
-{
-  "success": true
-}
-```
-
-### Refresh Token
-
-**POST** `/refresh`
+**GET** `/:providerId/auth/oauth/status?sessionId=...`
 
 - **Authentication**: None
-- **Description**: Refresh the Claude Code access token using the stored refresh token
-- **Response** (success):
-
-```json
-{
-  "success": true,
-  "refreshed": true,
-  "available": true,
-  "apiUsable": true
-}
-```
-
-- **Error** (401): `{ "code": "REAUTH_REQUIRED" }` if refresh token is revoked
-
-### Disconnect
-
-**POST** `/disconnect`
-
-- **Authentication**: None
-- **Description**: Remove Claude Code credentials
-- **Response**:
-
-```json
-{
-  "success": true
-}
-```
-
----
-
-## Codex Auth Routes
-
-Base path: `/api/codex`
-
-### Get Status
-
-**GET** `/status`
-
-- **Authentication**: None
-- **Description**: Check whether Codex CLI auth exists locally and whether it can call the OpenAI API
+- **Parameters**:
+  - `sessionId` (query, required): The session ID from the OAuth start endpoint
+- **Description**: Poll the loopback OAuth session state. Only supported for providers with `oauth-loopback` capability.
 - **Response**:
 
 ```json
 {
   "success": true,
-  "available": true,
-  "apiUsable": true,
-  "codexWorkdir": "/path/to/workdir",
-  "toolRunner": "/path/to/tool-runner",
-  "hint": "Codex auth is available and the OpenAI API is usable."
+  "state": "pending|completed|expired|error"
 }
 ```
 
-### Start Device Login
+### Start Device Auth (openai-codex)
 
-**POST** `/device/start`
+**POST** `/:providerId/auth/device/start`
 
 - **Authentication**: None
-- **Description**: Start Codex CLI device login flow. Returns a URL and code the user must enter in a browser.
+- **Description**: Start device login flow. Returns a URL and code the user enters in a browser. Only supported for providers with `device-auth` capability.
 - **Response**:
 
 ```json
@@ -572,14 +625,14 @@ Base path: `/api/codex`
 }
 ```
 
-### Poll Device Login Status
+### Poll Device Auth Status (openai-codex)
 
-**GET** `/device/status?sessionId=...`
+**GET** `/:providerId/auth/device/status?sessionId=...`
 
 - **Authentication**: None
 - **Parameters**:
-  - `sessionId` (query, required): The session ID from the start endpoint
-- **Description**: Poll the current device login session state
+  - `sessionId` (query, required): The session ID from the device start endpoint
+- **Description**: Poll the device login session state. Only supported for providers with `device-auth` capability.
 - **Response**:
 
 ```json
@@ -589,12 +642,42 @@ Base path: `/api/codex`
 }
 ```
 
-### Logout
+### Set Auth Method (gemini-cli)
 
-**POST** `/logout`
+**POST** `/:providerId/auth/set-auth-method`
 
 - **Authentication**: None
-- **Description**: Log out of the Codex CLI
+- **Description**: Switch between API key and OAuth authentication methods. Only supported for providers with `set-auth-method` capability.
+- **Body**:
+
+```json
+{
+  "method": "api-key|oauth"
+}
+```
+
+- **Response**:
+
+```json
+{
+  "success": true
+}
+```
+
+### Set GCP Project (gemini-cli)
+
+**POST** `/:providerId/auth/gcp-project`
+
+- **Authentication**: None
+- **Description**: Set the Google Cloud Project ID (required for workspace/organization accounts). Only supported for providers with `gcp-project` capability.
+- **Body**:
+
+```json
+{
+  "projectId": "my-gcp-project"
+}
+```
+
 - **Response**:
 
 ```json
@@ -2191,161 +2274,6 @@ Provides a sandboxed file system for the built-in code editor. All file paths ar
 
 ---
 
-## Gemini CLI Auth Routes
-
-Base path: `/api/gemini-cli`
-
-### Get Status
-
-**GET** `/status`
-
-- **Authentication**: None
-- **Description**: Check whether Gemini CLI auth exists locally and whether the Google AI API is usable
-- **Response**:
-
-```json
-{
-  "success": true,
-  "available": true,
-  "apiUsable": true,
-  "hint": "Gemini CLI is connected and the API is usable."
-}
-```
-
-### Start OAuth Flow
-
-**GET** `/oauth/start`
-
-- **Authentication**: None
-- **Description**: Initiate the Google OAuth loopback flow. Returns an `authUrl` the frontend opens in the system browser.
-- **Response**:
-
-```json
-{
-  "success": true,
-  "sessionId": "session-uuid",
-  "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?..."
-}
-```
-
-### Poll OAuth Status
-
-**GET** `/oauth/status?sessionId=...`
-
-- **Authentication**: None
-- **Parameters**:
-  - `sessionId` (query, required): The session ID from the start endpoint
-- **Description**: Poll the OAuth session state
-- **Response**:
-
-```json
-{
-  "success": true,
-  "state": "pending|completed|expired|error"
-}
-```
-
-### Connect with API Key
-
-**POST** `/connect`
-
-- **Authentication**: None
-- **Description**: Save a manually provided Google AI API key (alternative to OAuth)
-- **Body**:
-
-```json
-{
-  "apiKey": "AIza..."
-}
-```
-
-- **Response**:
-
-```json
-{
-  "success": true,
-  "message": "API key saved",
-  "apiUsable": true
-}
-```
-
-### Refresh Token
-
-**POST** `/refresh`
-
-- **Authentication**: None
-- **Description**: Refresh the Gemini CLI access token using the stored refresh token
-- **Response**:
-
-```json
-{
-  "success": true,
-  "refreshed": true,
-  "available": true,
-  "apiUsable": true
-}
-```
-
-### Set GCP Project
-
-**POST** `/gcp-project`
-
-- **Authentication**: None
-- **Description**: Set the Google Cloud Project ID (required for workspace accounts)
-- **Body**:
-
-```json
-{
-  "projectId": "my-gcp-project"
-}
-```
-
-- **Response**:
-
-```json
-{
-  "success": true
-}
-```
-
-### Set Auth Method
-
-**POST** `/set-auth-method`
-
-- **Authentication**: None
-- **Description**: Switch between API key and OAuth authentication methods
-- **Body**:
-
-```json
-{
-  "method": "api-key|oauth"
-}
-```
-
-- **Response**:
-
-```json
-{
-  "success": true
-}
-```
-
-### Disconnect
-
-**POST** `/disconnect`
-
-- **Authentication**: None
-- **Description**: Remove Gemini CLI credentials and log out
-- **Response**:
-
-```json
-{
-  "success": true
-}
-```
-
----
-
 ## Goal Routes
 
 Base path: `/api/goals`
@@ -3105,9 +3033,9 @@ Base path: `/api/models`
 
 **GET** `/:provider/models`
 
-- **Authentication**: Required (except for hardcoded providers)
+- **Authentication**: Required (except for hardcoded/static-model providers and CLI providers which use local auth)
 - **Parameters**:
-  - `provider` (path): Provider name (openrouter, anthropic, openai, gemini, grokai, groq, togetherai, cerebras, deepseek)
+  - `provider` (path): Provider name (openai, anthropic, gemini, grokai, groq, deepseek, openrouter, togetherai, cerebras, kimi, minimax, zai, openai-codex, claude-code, gemini-cli)
   - `category` (query): Filter by category (optional)
   - `useCache` (query): Use cached models (default: true)
   - `format` (query): Response format - 'names' or 'full' (default: 'names')
