@@ -529,18 +529,18 @@ export const TOOLS = {
         }
 
         // Sanitize the scraped content to remove control characters that break JSON
+        // Note: JSON.stringify properly escapes \n and \t, so they are safe to preserve
         const sanitizeText = (text) => {
           if (!text || typeof text !== 'string') return text;
           return text.replace(/[\x00-\x1F\x7F]/g, (match) => {
-            // Replace control characters with their escaped equivalents or remove them
             const charCode = match.charCodeAt(0);
             switch (charCode) {
               case 9:
                 return ' '; // tab -> space
               case 10:
-                return ' '; // newline -> space
+                return '\n'; // preserve newlines for structured content
               case 13:
-                return ' '; // carriage return -> space
+                return ''; // remove carriage return (\r\n → \n)
               default:
                 return ''; // remove other control characters
             }
@@ -716,7 +716,16 @@ export const TOOLS = {
           return JSON.stringify({ success: false, error: 'query is required for search operation.' });
         }
 
-        const lines = data.split('\n');
+        let lines = data.split('\n');
+
+        // If data is effectively single-line (very long lines), split into
+        // paragraphs/sentences so search results are meaningful
+        const avgLineLength = data.length / lines.length;
+        if (avgLineLength > 1000 && lines.length <= 5) {
+          lines = data.split(/(?<=[.!?])\s+(?=[A-Z])/);
+          lines = lines.filter(l => l.trim().length > 0);
+        }
+
         const matches = [];
         let pattern;
 
@@ -726,10 +735,24 @@ export const TOOLS = {
           return JSON.stringify({ success: false, error: `Invalid regex: ${e.message}` });
         }
 
+        // For non-regex multi-word queries, split into individual terms (AND match)
+        const searchTerms = (!regex && query.includes(' '))
+          ? query.toLowerCase().split(/\s+/).filter(t => t.length > 0)
+          : null;
+
         for (let i = 0; i < lines.length && matches.length < maxResults; i++) {
           const line = lines[i];
-          const isMatch = pattern ? pattern.test(line) : line.toLowerCase().includes(query.toLowerCase());
-          if (pattern) pattern.lastIndex = 0; // reset for global regex
+          let isMatch;
+          if (pattern) {
+            isMatch = pattern.test(line);
+            pattern.lastIndex = 0; // reset for global regex
+          } else if (searchTerms) {
+            // Multi-word: match if ALL terms are found in the line/paragraph
+            const lowerLine = line.toLowerCase();
+            isMatch = searchTerms.every(term => lowerLine.includes(term));
+          } else {
+            isMatch = line.toLowerCase().includes(query.toLowerCase());
+          }
 
           if (isMatch) {
             const ctxStart = Math.max(0, i - contextLines);
