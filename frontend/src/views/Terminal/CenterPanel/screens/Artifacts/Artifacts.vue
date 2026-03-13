@@ -208,6 +208,30 @@ const hashCode = (s) => {
   return Math.abs(h).toString(36);
 };
 
+// Protect math from showdown (which eats backslashes). HTML comments survive all contexts.
+const mathStore = [];
+const protectMath = (text) => {
+  mathStore.length = 0;
+  const save = (match) => { mathStore.push(match); return `<!--M${mathStore.length - 1}-->`; };
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
+  text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
+  text = text.replace(/\\\([\s\S]+?\\\)/g, save);
+  text = text.replace(/\$([^\$\n]+?)\$/g, save);
+  return text;
+};
+const restoreMath = (html) => {
+  return html.replace(/<!--M(\d+)-->/g, (_, i) => {
+    let m = (mathStore[parseInt(i)] || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    // Convert $/$$ delimiters to \(\)/\[\] which MathJax always supports
+    if (m.startsWith('$$') && m.endsWith('$$')) {
+      m = '\\[' + m.slice(2, -2) + '\\]';
+    } else if (m.startsWith('$') && m.endsWith('$')) {
+      m = '\\(' + m.slice(1, -1) + '\\)';
+    }
+    return m;
+  });
+};
+
 const mdConverter = new showdown.Converter({
   tables: true,
   strikethrough: true,
@@ -300,7 +324,8 @@ export default {
 
     const renderedMarkdown = computed(() => {
       if (!activeTab.value || !isMarkdownFile.value) return '';
-      return mdConverter.makeHtml(activeTab.value.content || '');
+      const safe = protectMath(activeTab.value.content || '');
+      return restoreMath(mdConverter.makeHtml(safe));
     });
 
     const getLanguageExt = (filePath) => {
@@ -345,7 +370,7 @@ export default {
 
     watch(activeTabPath, () => nextTick(() => {
       updatePreview();
-      if (isMarkdownFile.value) renderMarkdownViz();
+      // Markdown viz/math handled by watch(renderedMarkdown) — don't duplicate
     }));
 
     // ── Chart/Viz rendering for markdown preview ─────────────
@@ -561,18 +586,25 @@ export default {
       });
     };
 
+    let mathJaxTimer = null;
     const renderMathJax = () => {
-      if (!markdownPreviewRef.value || !window.MathJax) return;
-      try {
-        if (window.MathJax.typesetClear) {
-          window.MathJax.typesetClear([markdownPreviewRef.value]);
-        }
-        window.MathJax.typesetPromise([markdownPreviewRef.value]).catch((err) => {
-          console.error('MathJax rendering error:', err);
-        });
-      } catch (err) {
-        console.error('MathJax rendering error:', err);
-      }
+      clearTimeout(mathJaxTimer);
+      mathJaxTimer = setTimeout(() => {
+        const el = markdownPreviewRef.value;
+        if (!el || typeof MathJax === 'undefined' || !MathJax.typesetPromise) return;
+        // Remove any previous MathJax output so it re-processes fresh
+        el.querySelectorAll('mjx-container').forEach((mjx) => mjx.remove());
+        // Full-page typeset then clear state for future re-renders (matches response.js pattern)
+        MathJax.typesetPromise()
+          .then(() => {
+            el.querySelectorAll('mjx-container').forEach((mjx) => {
+              MathJax.typesetClear([mjx]);
+            });
+          })
+          .catch((err) => {
+            console.error('MathJax rendering error:', err);
+          });
+      }, 50);
     };
 
     const renderMarkdownViz = () => {
@@ -763,6 +795,7 @@ export default {
       document.removeEventListener('mousemove', onResize);
       document.removeEventListener('mouseup', stopResize);
       clearTimeout(previewTimer);
+      clearTimeout(mathJaxTimer);
       destroyVizInstances();
     });
 

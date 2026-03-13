@@ -1103,6 +1103,30 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     // Legacy alias for backward compatibility
     const sanitizeHTML = addTargetBlankToLinks;
 
+    // Protect math from showdown (which eats backslashes). HTML comments survive all contexts.
+    const mathStore = [];
+    const protectMath = (text) => {
+      mathStore.length = 0;
+      const save = (match) => { mathStore.push(match); return `<!--M${mathStore.length - 1}-->`; };
+      text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
+      text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
+      text = text.replace(/\\\([\s\S]+?\\\)/g, save);
+      text = text.replace(/\$([^\$\n]+?)\$/g, save);
+      return text;
+    };
+    const restoreMath = (html) => {
+      return html.replace(/<!--M(\d+)-->/g, (_, i) => {
+        let m = (mathStore[parseInt(i)] || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        // Convert $/$$ delimiters to \(\)/\[\] which MathJax always supports
+        if (m.startsWith('$$') && m.endsWith('$$')) {
+          m = '\\[' + m.slice(2, -2) + '\\]';
+        } else if (m.startsWith('$') && m.endsWith('$')) {
+          m = '\\(' + m.slice(1, -1) + '\\)';
+        }
+        return m;
+      });
+    };
+
     // Wrapper to suppress showdown's noisy "maximum nesting of 10 spans" console.error
     // This warning fires during streaming when incomplete markdown creates recursive span patterns - harmless
     const safeMarkdownToHtml = (text) => {
@@ -1112,7 +1136,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         origError.apply(console, args);
       };
       try {
-        return markdownConverter.makeHtml(text);
+        const safe = protectMath(text);
+        return restoreMath(markdownConverter.makeHtml(safe));
       } catch (e) {
         // Showdown can stack-overflow on pathological content (deeply nested spans, etc.)
         console.warn('[MessageItem] Markdown rendering failed, falling back to escaped text:', e.message);
@@ -1465,18 +1490,21 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           // Add image action buttons to assistant messages
           addImageActionButtons();
 
-          // Trigger MathJax rendering if available - simplified approach like response.js
-          if (window.MathJax) {
-            // Add a small delay to ensure DOM is fully updated before MathJax rendering
+          // Trigger MathJax rendering - remove stale output, full page scan, clear for re-render
+          if (typeof MathJax !== 'undefined' && MathJax.typesetPromise && messageRef.value) {
+            const el = messageRef.value;
             setTimeout(() => {
-              try {
-                window.MathJax.typesetPromise([messageRef.value]).catch((err) => {
+              el.querySelectorAll('mjx-container').forEach((mjx) => mjx.remove());
+              MathJax.typesetPromise()
+                .then(() => {
+                  el.querySelectorAll('mjx-container').forEach((mjx) => {
+                    MathJax.typesetClear([mjx]);
+                  });
+                })
+                .catch((err) => {
                   console.error('MathJax rendering error:', err);
                 });
-              } catch (err) {
-                console.error('MathJax rendering error:', err);
-              }
-            }, 10);
+            }, 50);
           }
         }
       });

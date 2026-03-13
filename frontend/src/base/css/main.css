@@ -844,7 +844,7 @@ mjx-container {
 }
 
 mjx-container.MathJax.CtxtMenu_Attached_0 {
-  display: flex !important;
+  display: inline-flex !important;
 }
 
 mjx-container[jax='CHTML'] {
