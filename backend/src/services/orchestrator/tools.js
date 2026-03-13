@@ -849,6 +849,108 @@ export const TOOLS = {
       return JSON.stringify({ success: false, error: `Unknown operation: "${operation}". Valid: list, stats, search, slice, json_path.` });
     },
   },
+  discover_tools: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'discover_tools',
+        description:
+          'Browse and activate additional tool categories on demand. Use "browse" to see all available categories and their status. Use "load" to activate tools from specific categories for the current conversation. You start with a minimal toolset — call this when you need capabilities not yet active.',
+        parameters: {
+          type: 'object',
+          properties: {
+            operation: {
+              type: 'string',
+              enum: ['browse', 'load'],
+              description:
+                '"browse": List all tool categories with descriptions and current status (active or available). "load": Activate tools from specified categories for the current session.',
+            },
+            categories: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Categories to load (for "load" operation). Valid: "core", "shell", "agnt_platform", "media", "email", "memory".',
+            },
+          },
+          required: ['operation'],
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      const { TOOL_GROUPS, GROUP_DESCRIPTIONS, getGuidanceForCategories } = await import('./toolSelector.js');
+      const { operation, categories } = args;
+
+      if (operation === 'browse') {
+        // Determine which groups are currently loaded
+        const loadedGroups = context?._loadedToolGroups || new Set();
+
+        const result = Object.entries(TOOL_GROUPS).map(([name, tools]) => ({
+          name,
+          tools,
+          description: GROUP_DESCRIPTIONS[name] || '',
+          status: loadedGroups.has(name) ? 'active' : 'available',
+        }));
+
+        return JSON.stringify({
+          success: true,
+          categories: result,
+          hint: 'To activate an available category, call discover_tools with operation="load" and categories=["category_name"]. Tools become usable immediately in your next response.',
+        });
+      }
+
+      if (operation === 'load') {
+        if (!categories || !Array.isArray(categories) || categories.length === 0) {
+          return JSON.stringify({
+            success: false,
+            error: 'The "load" operation requires a non-empty "categories" array. Valid: "core", "shell", "agnt_platform", "media", "email", "memory".',
+          });
+        }
+
+        // Validate category names
+        const validCategories = Object.keys(TOOL_GROUPS);
+        const invalid = categories.filter((c) => !validCategories.includes(c));
+        if (invalid.length > 0) {
+          return JSON.stringify({
+            success: false,
+            error: `Invalid categories: ${invalid.join(', ')}. Valid: ${validCategories.join(', ')}.`,
+          });
+        }
+
+        // Signal to the tool loop that new categories should be loaded
+        if (!context._requestedToolCategories) {
+          context._requestedToolCategories = new Set();
+        }
+        for (const cat of categories) {
+          context._requestedToolCategories.add(cat);
+        }
+
+        // Always include core when loading any other group
+        if (categories.some((c) => c !== 'core')) {
+          context._requestedToolCategories.add('core');
+        }
+
+        // Collect loaded tool names and guidance for the response
+        const loadedTools = [];
+        for (const cat of context._requestedToolCategories) {
+          loadedTools.push(...(TOOL_GROUPS[cat] || []));
+        }
+
+        const guidanceSections = getGuidanceForCategories(context._requestedToolCategories);
+
+        return JSON.stringify({
+          success: true,
+          message: `Loading ${loadedTools.length} tools from categories: ${[...context._requestedToolCategories].join(', ')}. These tools will be available in your next response.`,
+          loaded_tools: loadedTools,
+          guidance_loaded: [...guidanceSections],
+        });
+      }
+
+      return JSON.stringify({
+        success: false,
+        error: `Unknown operation: "${operation}". Valid: "browse", "load".`,
+      });
+    },
+  },
   file_operations: {
     schema: {
       type: 'function',

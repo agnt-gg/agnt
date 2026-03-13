@@ -577,6 +577,20 @@ async function universalChatHandler(req, res, context = {}) {
   const executionStartTime = Date.now();
   const toolExecutionIds = new Map(); // Map toolCallId -> toolExecutionId
 
+  // Extract latest user message text for tool selection keyword matching
+  const latestUserMessage = (() => {
+    if (message && typeof message === 'string') return message;
+    if (messageInput && messageInput.length > 0) {
+      for (let i = messageInput.length - 1; i >= 0; i--) {
+        const msg = messageInput[i];
+        if (msg && msg.role === 'user' && typeof msg.content === 'string') {
+          return msg.content;
+        }
+      }
+    }
+    return '';
+  })();
+
   // Initialize conversation context
   const conversationContext = {
     preservedContent: {},
@@ -600,6 +614,8 @@ async function universalChatHandler(req, res, context = {}) {
     goalContext,
     userId,
     conversationId,
+    // Latest user message text (for dynamic tool selection)
+    latestUserMessage,
     // AI provider settings
     provider: resolvedProvider,
     model,
@@ -627,36 +643,40 @@ async function universalChatHandler(req, res, context = {}) {
       });
     }
 
-    // Create agent execution record for tracking in Runs screen
+    // Create agent execution record for tracking in Runs screen (non-blocking)
     // Track all chat types except suggestions (agent, orchestrator, workflow, goal, tool)
-    if (chatType !== 'suggestions' && userId) {
-      try {
-        const initialPromptText = message || (originalMessages && originalMessages[originalMessages.length - 1]?.content) || '';
-        const agentNameForExecution = agentContext?.name || (chatType === 'agent' ? 'Agent Chat' : chatType === 'orchestrator' ? 'Orchestrator' : chatType.charAt(0).toUpperCase() + chatType.slice(1));
+    // This DB write does NOT need to complete before streaming starts — fire and resolve in background
+    const agentExecutionPromise = (chatType !== 'suggestions' && userId)
+      ? (async () => {
+          try {
+            const initialPromptText = message || (originalMessages && originalMessages[originalMessages.length - 1]?.content) || '';
+            const agentNameForExecution = agentContext?.name || (chatType === 'agent' ? 'Agent Chat' : chatType === 'orchestrator' ? 'Orchestrator' : chatType.charAt(0).toUpperCase() + chatType.slice(1));
 
-        agentExecutionId = await AgentExecutionModel.create(
-          userId,
-          agentId || null,
-          agentNameForExecution,
-          conversationId,
-          typeof initialPromptText === 'string' ? initialPromptText.substring(0, 500) : String(initialPromptText).substring(0, 500),
-          resolvedProvider,
-          model,
-          'running'
-        );
+            const execId = await AgentExecutionModel.create(
+              userId,
+              agentId || null,
+              agentNameForExecution,
+              conversationId,
+              typeof initialPromptText === 'string' ? initialPromptText.substring(0, 500) : String(initialPromptText).substring(0, 500),
+              resolvedProvider,
+              model,
+              'running'
+            );
 
-        sendEvent('agent_execution_started', {
-          executionId: agentExecutionId,
-          agentName: agentNameForExecution,
-          chatType,
-        });
+            agentExecutionId = execId;
 
-        console.log(`[Agent Execution] Created execution ${agentExecutionId} for ${chatType} chat`);
-      } catch (execError) {
-        console.error('[Agent Execution] Failed to create execution record:', execError);
-        // Continue without execution tracking - don't fail the chat
-      }
-    }
+            sendEvent('agent_execution_started', {
+              executionId: agentExecutionId,
+              agentName: agentNameForExecution,
+              chatType,
+            });
+
+            console.log(`[Agent Execution] Created execution ${agentExecutionId} for ${chatType} chat`);
+          } catch (execError) {
+            console.error('[Agent Execution] Failed to create execution record:', execError);
+          }
+        })()
+      : Promise.resolve();
 
     const client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
     const adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled });
@@ -944,6 +964,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
 
     messages.push(responseMessage);
+
+    // Ensure agent execution record is ready before tool loop needs it
+    await agentExecutionPromise;
 
     // Tool execution loop - LLM decides when to stop
     let currentRound = 0;
@@ -1420,6 +1443,33 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
       // Send tool execution summary for this round
       sendEvent('tool_executions', { assistantMessageId, tool_executions: toolExecutionDetails, round: currentRound });
+
+      // Dynamic tool loading: check if discover_tools requested new categories
+      if (conversationContext._requestedToolCategories && conversationContext._requestedToolCategories.size > 0) {
+        try {
+          const { getToolsForCategories } = await import('./orchestrator/toolSelector.js');
+          const allSchemas = await (await import('./orchestrator/tools.js')).getAvailableToolSchemas();
+          const newSchemas = getToolsForCategories(allSchemas, conversationContext._requestedToolCategories);
+          let addedCount = 0;
+          for (const schema of newSchemas) {
+            if (!finalToolSchemas.some((s) => s.function?.name === schema.function?.name)) {
+              finalToolSchemas.push(schema);
+              addedCount++;
+            }
+          }
+          // Track newly loaded groups
+          if (!conversationContext._loadedToolGroups) {
+            conversationContext._loadedToolGroups = new Set();
+          }
+          for (const cat of conversationContext._requestedToolCategories) {
+            conversationContext._loadedToolGroups.add(cat);
+          }
+          console.log(`[ToolSelector] Dynamically loaded ${addedCount} new tools from categories: ${[...conversationContext._requestedToolCategories].join(', ')}`);
+          conversationContext._requestedToolCategories.clear();
+        } catch (dynamicLoadErr) {
+          console.error('[ToolSelector] Failed to dynamically load tools:', dynamicLoadErr);
+        }
+      }
 
       // Apply context management before next LLM call
       const loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);

@@ -435,47 +435,70 @@ User: "Search for the latest AI news"
 You: [Call web_search tool]
 You: [NO TEXT RESPONSE] ❌ WRONG - WILL CAUSE INFINITE LOOP!`;
 
-export function getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection = '') {
-  const prompt = `Current date and time: ${currentDate}
+/**
+ * Helper — include a section only if its name is in the includedGuidance set,
+ * or if includedGuidance is null (legacy mode — include everything).
+ */
+function section(name, content, includedGuidance) {
+  if (includedGuidance === null || includedGuidance.has(name)) {
+    return content;
+  }
+  return '';
+}
+
+/**
+ * Build the orchestrator system prompt.
+ * @param {string} currentDate
+ * @param {string} availableToolsList
+ * @param {string} skillsCatalogSection
+ * @param {Set<string>|null} includedGuidance - Set of guidance section names to include, or null for all.
+ */
+export function getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection = '', includedGuidance = null) {
+  const parts = [];
+
+  parts.push(`Current date and time: ${currentDate}
 
 You are Annie, a helpful assistant with access to multiple tools. ALWAYS use tools to accomplish the user's request unless it is a very trivial task that can be done by yourself without them.
 
-You can and should use multiple tools in parallel as to accomplish complex tasks unless only one is needed. Use parallel processing where possible. When a user ask for a search, ALWAYS use the web_search AND the web_scrape tools together in conjunction to gather as much REAL info about a subject. Use links to traverse the web of information just like a web crawler.
+You can and should use multiple tools in parallel as to accomplish complex tasks unless only one is needed. Use parallel processing where possible. When a user ask for a search, ALWAYS use the web_search AND the web_scrape tools together in conjunction to gather as much REAL info about a subject. Use links to traverse the web of information just like a web crawler.`);
 
-${CRITICAL_IMAGE_HANDLING}
+  parts.push(section('CRITICAL_IMAGE_HANDLING', CRITICAL_IMAGE_HANDLING, includedGuidance));
+  parts.push(section('CRITICAL_IMAGE_GENERATION', CRITICAL_IMAGE_GENERATION, includedGuidance));
 
-${CRITICAL_IMAGE_GENERATION}
+  parts.push(`IMPORTANT: Provider names are automatically normalized to lowercase by the backend (e.g., "OpenAI" becomes "openai", "Anthropic" becomes "anthropic"). You don't need to worry about casing when working with provider names.`);
 
-IMPORTANT: Provider names are automatically normalized to lowercase by the backend (e.g., "OpenAI" becomes "openai", "Anthropic" becomes "anthropic"). You don't need to worry about casing when working with provider names.
+  parts.push(section('ASYNC_EXECUTION_GUIDANCE', ASYNC_EXECUTION_GUIDANCE, includedGuidance));
+  parts.push(section('OFFLOADED_DATA_GUIDANCE', OFFLOADED_DATA_GUIDANCE, includedGuidance));
+  parts.push(section('CRITICAL_TOOL_CALL_REQUIREMENTS', CRITICAL_TOOL_CALL_REQUIREMENTS, includedGuidance));
 
-${ASYNC_EXECUTION_GUIDANCE}
+  parts.push(`AVAILABLE TOOLS:\n${availableToolsList}`);
 
-${OFFLOADED_DATA_GUIDANCE}
+  // discover_tools guidance — always included (it's the meta-tool)
+  parts.push(`DYNAMIC TOOL LOADING:
+You start each conversation with a minimal set of tools to keep things fast and focused. Additional tool categories are available on demand.
 
-${CRITICAL_TOOL_CALL_REQUIREMENTS}
+If the user asks you to do something and you don't see the right tool in your AVAILABLE TOOLS list above, use discover_tools to find and activate what you need:
+1. Call discover_tools with operation="browse" to see all available categories and their status
+2. Call discover_tools with operation="load" and categories=["category_name"] to activate the tools you need
+3. The activated tools become available immediately in your next response
 
-AVAILABLE TOOLS:
-${availableToolsList}
-- execute_custom_agnt_tool: Executes a previously defined custom AGNT tool by its ID, using the provided input parameters. Custom tools are typically prompt-based and created via the ToolForge or AGNT tools API.
-- analyze_image: Analyze images using vision-capable AI models. Supports detailed image analysis, object detection, text extraction (OCR), and answering questions about images.
-- generate_image: Generate images using AI. Supports OpenAI DALL-E, Google Gemini, and Grok image generation.
-${skillsCatalogSection}
-${IMAGE_ANALYSIS_CAPABILITIES}
+DO NOT tell the user you lack a capability before checking discover_tools first. If a tool might exist, browse for it.
+DO NOT call discover_tools if the tools you need are already listed in AVAILABLE TOOLS above.
+When you have no tools loaded and the user's request is purely conversational (greetings, questions you can answer from knowledge, casual chat), just respond directly — no need to load tools.`);
 
-${IMAGE_GENERATION_CAPABILITIES}
+  if (skillsCatalogSection) {
+    parts.push(skillsCatalogSection);
+  }
 
-${RESPONSE_FORMATTING}
+  parts.push(section('IMAGE_ANALYSIS_CAPABILITIES', IMAGE_ANALYSIS_CAPABILITIES, includedGuidance));
+  parts.push(section('IMAGE_GENERATION_CAPABILITIES', IMAGE_GENERATION_CAPABILITIES, includedGuidance));
+  parts.push(section('RESPONSE_FORMATTING', RESPONSE_FORMATTING, includedGuidance));
+  parts.push(section('CRITICAL_IMAGE_REFERENCE_FORMATTING', CRITICAL_IMAGE_REFERENCE_FORMATTING, includedGuidance));
+  parts.push(section('IMPORTANT_GUIDELINES', IMPORTANT_GUIDELINES, includedGuidance));
+  parts.push(section('CHART_CHEATSHEET', CHART_CHEATSHEET, includedGuidance));
+  parts.push(section('MCP_TOOL_USE_RULES', MCP_TOOL_USE_RULES, includedGuidance));
+  parts.push(section('CRITICAL_TOOL_RESPONSE_RULES', CRITICAL_TOOL_RESPONSE_RULES, includedGuidance));
 
-${CRITICAL_IMAGE_REFERENCE_FORMATTING}
-
-${IMPORTANT_GUIDELINES}
-
-${CHART_CHEATSHEET}
-
-${MCP_TOOL_USE_RULES}
-
-${CRITICAL_TOOL_RESPONSE_RULES}
-`;
-
-  return prompt;
+  // Filter out empty sections and join
+  return parts.filter(Boolean).join('\n\n');
 }

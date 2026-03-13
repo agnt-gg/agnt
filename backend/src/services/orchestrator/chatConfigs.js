@@ -9,6 +9,7 @@ import { getAgentSystemContent } from './system-prompts/agent-chat.js';
 import { getWorkflowSystemContent } from './system-prompts/workflow-chat.js';
 import { ASYNC_EXECUTION_GUIDANCE } from './system-prompts/async-execution.js';
 import { SECTION_NAMES } from './apiReference.js';
+import { selectTools } from './toolSelector.js';
 
 /**
  * Configuration for different chat types in the universal handler
@@ -17,10 +18,46 @@ export const CHAT_CONFIGS = {
   orchestrator: {
     name: 'orchestrator',
     async getToolSchemas(context) {
-      return await getAvailableToolSchemas();
+      const allSchemas = await getAvailableToolSchemas();
+
+      // Extract latest user message text for keyword matching
+      const latestUserMessage = context.latestUserMessage || '';
+
+      // If images are uploaded, force-add media group
+      const hasImages = context.imageData && context.imageData.length > 0;
+
+      const { filteredSchemas, includedGuidance, matchedGroups } = selectTools(allSchemas, latestUserMessage);
+
+      // Force media group if images were uploaded
+      if (hasImages && !matchedGroups.has('media')) {
+        matchedGroups.add('media');
+        matchedGroups.add('core'); // core always accompanies other groups
+        const { getToolsForCategories, getGuidanceForCategories } = await import('./toolSelector.js');
+        const mediaSchemas = getToolsForCategories(allSchemas, ['media', 'core']);
+        for (const schema of mediaSchemas) {
+          if (!filteredSchemas.some((s) => s.function?.name === schema.function?.name)) {
+            filteredSchemas.push(schema);
+          }
+        }
+        const mediaGuidance = getGuidanceForCategories(['media', 'core']);
+        for (const g of mediaGuidance) {
+          includedGuidance.add(g);
+        }
+      }
+
+      // Store selection result on context for buildSystemPrompt to use
+      context._toolSelectionResult = { filteredSchemas, includedGuidance, matchedGroups };
+
+      // Track loaded groups on context for discover_tools browse
+      context._loadedToolGroups = matchedGroups;
+
+      return filteredSchemas;
     },
     async buildSystemPrompt(currentDate, context) {
       const availableToolsList = context.toolSchemas.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n');
+
+      // Get the includedGuidance from tool selection
+      const includedGuidance = context._toolSelectionResult?.includedGuidance || null;
 
       // Build skill catalog for progressive disclosure (Agent Skills standard)
       let skillsCatalogSection = '';
@@ -59,7 +96,7 @@ export const CHAT_CONFIGS = {
         console.warn('[chatConfigs] Failed to build skill catalog:', e.message);
       }
 
-      return getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection);
+      return getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection, includedGuidance);
     },
     maxToolRounds: 100,
     responseType: 'stream',
