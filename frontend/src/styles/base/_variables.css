@@ -109,7 +109,7 @@
   --border-radius-md: 8px;
   --border-radius-lg: 16px;
   --border-radius-xl: 24px;
-  --border-radius-full: 50%;
+  --border-radius-full: 8px;
 
   /* SHADOWS */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);

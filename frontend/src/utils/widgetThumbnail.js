@@ -37,7 +37,15 @@ function buildThemeStyleTag() {
 
   const lines = uniqueVars
     .map((prop) => {
-      const val = bodyStyle.getPropertyValue(prop).trim() || rootStyle.getPropertyValue(prop).trim();
+      let val = bodyStyle.getPropertyValue(prop).trim() || rootStyle.getPropertyValue(prop).trim();
+      // For screenshot capture: replace transparent background with solid RGB.
+      // When custom backgrounds are enabled, --color-background is 'transparent',
+      // but Puppeteer needs a solid value so widgets using var(--color-background)
+      // don't render as white.
+      if (prop === '--color-background' && (val === 'transparent' || val.startsWith('rgba(0'))) {
+        const rgb = bodyStyle.getPropertyValue('--color-background-rgb').trim() || rootStyle.getPropertyValue('--color-background-rgb').trim();
+        if (rgb) val = `rgb(${rgb})`;
+      }
       return val ? `  ${prop}: ${val};` : null;
     })
     .filter(Boolean);
