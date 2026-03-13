@@ -592,15 +592,9 @@ export default {
       mathJaxTimer = setTimeout(() => {
         const el = markdownPreviewRef.value;
         if (!el || typeof MathJax === 'undefined' || !MathJax.typesetPromise) return;
-        // Remove any previous MathJax output so it re-processes fresh
-        el.querySelectorAll('mjx-container').forEach((mjx) => mjx.remove());
-        // Full-page typeset then clear state for future re-renders (matches response.js pattern)
-        MathJax.typesetPromise()
-          .then(() => {
-            el.querySelectorAll('mjx-container').forEach((mjx) => {
-              MathJax.typesetClear([mjx]);
-            });
-          })
+        // Clear previous state and re-typeset scoped to this element only
+        MathJax.typesetClear([el]);
+        MathJax.typesetPromise([el])
           .catch((err) => {
             console.error('MathJax rendering error:', err);
           });

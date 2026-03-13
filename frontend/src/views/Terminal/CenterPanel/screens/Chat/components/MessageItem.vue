@@ -1490,17 +1490,12 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           // Add image action buttons to assistant messages
           addImageActionButtons();
 
-          // Trigger MathJax rendering - remove stale output, full page scan, clear for re-render
+          // Trigger MathJax rendering - scoped to this element only
           if (typeof MathJax !== 'undefined' && MathJax.typesetPromise && messageRef.value) {
             const el = messageRef.value;
             setTimeout(() => {
-              el.querySelectorAll('mjx-container').forEach((mjx) => mjx.remove());
-              MathJax.typesetPromise()
-                .then(() => {
-                  el.querySelectorAll('mjx-container').forEach((mjx) => {
-                    MathJax.typesetClear([mjx]);
-                  });
-                })
+              MathJax.typesetClear([el]);
+              MathJax.typesetPromise([el])
                 .catch((err) => {
                   console.error('MathJax rendering error:', err);
                 });
