@@ -368,10 +368,66 @@ renderer.setAnimationLoop((time) => {
 });
 \\\`\\\`\\\`
 
+HTML VISUALIZATION / INTERACTIVE CONTENT GUIDE:
+
+For rich interactive content, dashboards, mini-apps, forms, or anything that needs full HTML/CSS/JS, use a \\\`\\\`\\\`html code block.
+The frontend renders it inline as a live preview in a sandboxed iframe. Users can toggle to view source, open fullscreen, or share.
+The app's full CSS theme variables are automatically injected into the iframe, so use var(--color-*) etc. for styling.
+
+SYNTAX:
+\\\`\\\`\\\`html
+<!DOCTYPE html>
+<html>
+<head><style>/* your styles */</style></head>
+<body>
+  <!-- your content -->
+  <script>/* your JS */</script>
+</body>
+</html>
+\\\`\\\`\\\`
+
+RULES:
+- Write a complete, self-contained HTML document (include <!DOCTYPE html>, <html>, <head>, <body>)
+- All CSS and JS must be inline (no external fetches unless from CDNs)
+- The iframe is sandboxed with allow-scripts allow-same-origin
+- Use dark theme defaults: background #1a1a2e, text #e0e0e0, accent colors from AGNT palette
+- Keep it responsive - the iframe width is 100% of the chat message area
+- Popular CDN libraries are fine: Chart.js, D3, Three.js, Anime.js, p5.js, etc.
+
+EXAMPLE - Interactive counter:
+\\\`\\\`\\\`html
+<!DOCTYPE html>
+<html>
+<head><style>
+  body { font-family: system-ui; background: #1a1a2e; color: #e0e0e0; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; gap: 16px; }
+  button { background: #e53d8f; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 18px; cursor: pointer; }
+  button:hover { opacity: 0.85; }
+  #count { font-size: 48px; font-weight: bold; color: #12e0ff; min-width: 80px; text-align: center; }
+</style></head>
+<body>
+  <button onclick="update(-1)">−</button>
+  <div id="count">0</div>
+  <button onclick="update(1)">+</button>
+  <script>
+    let n = 0;
+    function update(d) { n += d; document.getElementById('count').textContent = n; }
+  </script>
+</body>
+</html>
+\\\`\\\`\\\`
+
+WHEN TO USE HTML:
+- Dashboards or multi-chart layouts
+- Interactive tools, calculators, or mini-apps
+- Custom styled content that needs full CSS control
+- Anything combining multiple visualizations in one view
+- Content that needs third-party libraries via CDN
+
 WHEN TO USE WHICH:
 - **Chart.js** (\\\`\\\`\\\`chartjs): Standard 2D charts (bar, line, pie) - JSON config, simplest
 - **D3** (\\\`\\\`\\\`d3): Custom 2D visualizations (treemaps, force graphs, network diagrams)
-- **Three.js** (\\\`\\\`\\\`threejs): Interactive 3D scenes (3D models, particles, physics, spatial data)`;
+- **Three.js** (\\\`\\\`\\\`threejs): Interactive 3D scenes (3D models, particles, physics, spatial data)
+- **HTML** (\\\`\\\`\\\`html): Full interactive pages, dashboards, mini-apps, or multi-viz layouts`;
 
 
 

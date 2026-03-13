@@ -196,6 +196,9 @@ const loadThreeJs = async () => {
       DragControls, TransformControls,
       FBXLoader, OBJLoader, MTLLoader, SVGLoader,
       RoundedBoxGeometry, ConvexGeometry, ParametricGeometry,
+      // Legacy aliases — LLMs often generate old Three.js class names
+      ParametricBufferGeometry: ParametricGeometry,
+      ConvexBufferGeometry: ConvexGeometry,
     };
   }
   return { THREE: _THREE, THREE_ADDONS: _THREE_ADDONS, OrbitControls: _OrbitControls };
@@ -209,14 +212,18 @@ const hashCode = (s) => {
 };
 
 // Protect math from showdown (which eats backslashes). HTML comments survive all contexts.
+// Fenced code blocks are excluded first so $/$$/\(\) inside code aren't corrupted.
 const mathStore = [];
 const protectMath = (text) => {
   mathStore.length = 0;
+  const codeBlocks = [];
+  text = text.replace(/```[\s\S]*?```/g, (m) => { codeBlocks.push(m); return `\n<!--CB${codeBlocks.length - 1}-->\n`; });
   const save = (match) => { mathStore.push(match); return `<!--M${mathStore.length - 1}-->`; };
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
   text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
   text = text.replace(/\\\([\s\S]+?\\\)/g, save);
   text = text.replace(/\$([^\$\n]+?)\$/g, save);
+  text = text.replace(/<!--CB(\d+)-->/g, (_, i) => codeBlocks[parseInt(i)] || '');
   return text;
 };
 const restoreMath = (html) => {
@@ -550,7 +557,7 @@ export default {
             const MAX_ARRAY_LENGTH = 10_000_000;
             const guardedTHREE = new Proxy(THREE, {
               get(target, prop) {
-                const val = target[prop];
+                const val = target[prop] ?? THREE_ADDONS[prop];
                 if (['BufferAttribute','Float32BufferAttribute','Uint16BufferAttribute','Uint32BufferAttribute','Int8BufferAttribute','Int16BufferAttribute','Int32BufferAttribute','Float64BufferAttribute','Uint8BufferAttribute','Uint8ClampedBufferAttribute'].includes(prop)) {
                   return new Proxy(val, {
                     construct(Target, args) {

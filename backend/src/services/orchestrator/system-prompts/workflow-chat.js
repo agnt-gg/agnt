@@ -173,10 +173,14 @@ A \`container\` variable (d3.select("#chart")) is pre-defined. D3 v7 is loaded.
 THREE.JS: For interactive 3D scenes, use a \\\`\\\`\\\`threejs code block with JavaScript.
 Pre-defined: THREE, scene, camera, renderer, controls, canvas. Just add objects to scene.
 
+HTML: For rich interactive content, dashboards, or mini-apps, use a \\\`\\\`\\\`html code block with a complete HTML document.
+Rendered inline as a live preview. Use dark theme defaults (background #1a1a2e, text #e0e0e0). CDN libraries are fine.
+
 WHEN TO USE WHICH:
 - Chart.js (\\\`\\\`\\\`chartjs): Standard 2D charts (bar, line, pie) - JSON config, simplest
 - D3 (\\\`\\\`\\\`d3): Custom 2D visualizations (treemaps, force graphs, network diagrams)
 - Three.js (\\\`\\\`\\\`threejs): Interactive 3D scenes (3D models, particles, spatial data)
+- HTML (\\\`\\\`\\\`html): Full interactive pages, dashboards, mini-apps, or multi-viz layouts
 
 ${
   workflowState && workflowState.nodes

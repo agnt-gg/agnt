@@ -362,6 +362,9 @@ const loadThreeJs = async () => {
       RoundedBoxGeometry,
       ConvexGeometry,
       ParametricGeometry,
+      // Legacy aliases — LLMs often generate old Three.js class names
+      ParametricBufferGeometry: ParametricGeometry,
+      ConvexBufferGeometry: ConvexGeometry,
     };
   }
   return { THREE: _THREE, THREE_ADDONS: _THREE_ADDONS, OrbitControls: _OrbitControls };
@@ -460,6 +463,40 @@ export default {
     // Get Vuex store for auth token
     const store = useStore();
 
+    // Build theme CSS tag by extracting all CSS custom properties from the live document.
+    // Injected into iframes so HTML/D3/Three.js/Chart.js content can use var(--color-*) etc.
+    const themeStyleTag = ref('');
+    function buildThemeStyleTag() {
+      const vars = [];
+      try {
+        for (const sheet of document.styleSheets) {
+          try {
+            for (const rule of sheet.cssRules) {
+              if (rule.style) {
+                for (let i = 0; i < rule.style.length; i++) {
+                  const prop = rule.style[i];
+                  if (prop.startsWith('--')) vars.push(prop);
+                }
+              }
+            }
+          } catch (_) { /* cross-origin */ }
+        }
+      } catch (_) {}
+      const unique = [...new Set(vars)];
+      const rootStyle = getComputedStyle(document.documentElement);
+      const bodyStyle = getComputedStyle(document.body);
+      const lines = unique.map((prop) => {
+        const val = bodyStyle.getPropertyValue(prop).trim() || rootStyle.getPropertyValue(prop).trim();
+        return val ? `  ${prop}: ${val};` : null;
+      }).filter(Boolean);
+      themeStyleTag.value = `<style id="agnt-theme">:root{${lines.join('')}}</style>`;
+    }
+    watch(
+      () => store.state.theme?.currentTheme,
+      () => nextTick(() => requestAnimationFrame(buildThemeStyleTag)),
+      { immediate: true },
+    );
+
     const messageRef = ref(null);
     const showPreviewModal = ref(false);
     const previewHTML = ref('');
@@ -518,10 +555,23 @@ export default {
         });
     };
 
+    // Inject theme CSS variables + scrollbar hide into an HTML string so iframes match the app theme
+    const noScrollCSS = '<style>html,body{scrollbar-width:none;-ms-overflow-style:none;overflow:hidden}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}</style>';
+    const injectTheme = (html) => {
+      const inject = (themeStyleTag.value || '') + noScrollCSS;
+      if (/<head[^>]*>/i.test(html)) {
+        return html.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
+      }
+      if (/<html[^>]*>/i.test(html)) {
+        return html.replace(/<html([^>]*)>/i, `<html$1><head>${inject}</head>`);
+      }
+      return inject + html;
+    };
+
     // Open preview modal with HTML in iframe
     const openPreviewModal = (html) => {
       // Store the raw HTML - srcdoc attribute will handle rendering
-      previewHTML.value = html;
+      previewHTML.value = injectTheme(html);
       showPreviewModal.value = true;
 
       // Prevent body scroll when modal is open
@@ -631,7 +681,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       const html = buildVizHTML(container, type);
       if (!html) return;
       vizModalTitle.value = type === 'chartjs' ? 'Chart.js' : type === 'd3' ? 'D3 Visualization' : '3D Scene';
-      vizModalHTML.value = html;
+      vizModalHTML.value = injectTheme(html);
       showVizModal.value = true;
       document.body.style.overflow = 'hidden';
     };
@@ -808,46 +858,108 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             const pre = codeBlock.parentElement;
             if (!pre) return;
 
-            // Mark as processed
             codeBlock.setAttribute('data-buttons-added', 'true');
-
-            // Get the raw HTML code
             const htmlCode = codeBlock.textContent || '';
 
-            // Create button container
+            // Create a wrapper that replaces the <pre> block
+            const wrapper = document.createElement('div');
+            wrapper.className = 'html-inline-preview-wrapper';
+
+            // Scrollable container for the iframe (caps visible height at 800px)
+            const iframeScroller = document.createElement('div');
+            iframeScroller.className = 'html-inline-iframe-scroller';
+
+            // Inline iframe showing rendered HTML (default view)
+            const iframe = document.createElement('iframe');
+            iframe.className = 'html-inline-iframe';
+            iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+            iframe.setAttribute('frameborder', '0');
+            iframe.srcdoc = injectTheme(htmlCode);
+            // Auto-size iframe to fit its content (no cap — scroller handles overflow)
+            iframe.onload = () => {
+              try {
+                const doc = iframe.contentDocument || iframe.contentWindow?.document;
+                if (doc?.body) {
+                  iframe.style.height = (doc.body.scrollHeight + 2) + 'px';
+                }
+              } catch (e) { /* cross-origin — keep default height */ }
+            };
+            iframeScroller.appendChild(iframe);
+
+            // Hidden code block (toggled via Code button)
+            const codePre = pre.cloneNode(true);
+            codePre.style.display = 'none';
+            codePre.classList.add('html-inline-code');
+
+            // Button bar
             const buttonContainer = document.createElement('div');
             buttonContainer.className = 'html-code-actions';
 
-            // Create Copy button
+            // Copy button
             const copyBtn = document.createElement('button');
             copyBtn.className = 'html-action-btn copy-btn';
             copyBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Copy</span>';
             copyBtn.onclick = (e) => {
               e.stopPropagation();
               copyHTMLCode(htmlCode);
-              // Visual feedback
               copyBtn.innerHTML = '<span class="btn-icon">✓</span><span class="btn-text">Copied!</span>';
               setTimeout(() => {
                 copyBtn.innerHTML = '<span class="btn-icon">📋</span><span class="btn-text">Copy</span>';
               }, 2000);
             };
 
-            // Create Preview button
-            const previewBtn = document.createElement('button');
-            previewBtn.className = 'html-action-btn preview-btn';
-            previewBtn.innerHTML = '<span class="btn-icon">👁</span><span class="btn-text">Preview</span>';
-            previewBtn.onclick = (e) => {
+            // Code toggle button
+            const codeBtn = document.createElement('button');
+            codeBtn.className = 'html-action-btn code-toggle-btn';
+            codeBtn.innerHTML = '<span class="btn-icon">{ }</span><span class="btn-text">Code</span>';
+            codeBtn.onclick = (e) => {
+              e.stopPropagation();
+              const showingCode = codePre.style.display !== 'none';
+              codePre.style.display = showingCode ? 'none' : '';
+              iframe.style.display = showingCode ? '' : 'none';
+              codeBtn.innerHTML = showingCode
+                ? '<span class="btn-icon">{ }</span><span class="btn-text">Code</span>'
+                : '<span class="btn-icon">👁</span><span class="btn-text">Preview</span>';
+            };
+
+            // Fullscreen button
+            const fsBtn = document.createElement('button');
+            fsBtn.className = 'html-action-btn preview-btn';
+            fsBtn.innerHTML = '<span class="btn-icon">⛶</span><span class="btn-text">Fullscreen</span>';
+            fsBtn.onclick = (e) => {
               e.stopPropagation();
               openPreviewModal(htmlCode);
             };
 
-            // Add buttons to container
-            buttonContainer.appendChild(copyBtn);
-            buttonContainer.appendChild(previewBtn);
+            // Left group: Copy + Code
+            const leftGroup = document.createElement('div');
+            leftGroup.className = 'html-actions-group';
+            leftGroup.appendChild(copyBtn);
+            leftGroup.appendChild(codeBtn);
 
-            // Add container to pre element
-            pre.style.position = 'relative';
-            pre.appendChild(buttonContainer);
+            // Share button — opens the share modal (same as fullscreen header)
+            const shareBtn = document.createElement('button');
+            shareBtn.className = 'html-action-btn share-btn';
+            shareBtn.innerHTML = '<span class="btn-icon">🚀</span><span class="btn-text">Share</span>';
+            shareBtn.onclick = (e) => {
+              e.stopPropagation();
+              openShareModal(htmlCode);
+            };
+
+            // Right group: Share + Fullscreen
+            const rightGroup = document.createElement('div');
+            rightGroup.className = 'html-actions-group';
+            rightGroup.appendChild(shareBtn);
+            rightGroup.appendChild(fsBtn);
+
+            buttonContainer.appendChild(leftGroup);
+            buttonContainer.appendChild(rightGroup);
+
+            wrapper.appendChild(buttonContainer);
+            wrapper.appendChild(iframeScroller);
+            wrapper.appendChild(codePre);
+
+            pre.replaceWith(wrapper);
           });
         }
       });
@@ -1104,14 +1216,20 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     const sanitizeHTML = addTargetBlankToLinks;
 
     // Protect math from showdown (which eats backslashes). HTML comments survive all contexts.
+    // Fenced code blocks are excluded first so $/$$/\(\) inside code aren't corrupted.
     const mathStore = [];
     const protectMath = (text) => {
       mathStore.length = 0;
+      // Temporarily replace fenced code blocks so math regexes skip them
+      const codeBlocks = [];
+      text = text.replace(/```[\s\S]*?```/g, (m) => { codeBlocks.push(m); return `\n<!--CB${codeBlocks.length - 1}-->\n`; });
       const save = (match) => { mathStore.push(match); return `<!--M${mathStore.length - 1}-->`; };
       text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
       text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
       text = text.replace(/\\\([\s\S]+?\\\)/g, save);
       text = text.replace(/\$([^\$\n]+?)\$/g, save);
+      // Restore code blocks
+      text = text.replace(/<!--CB(\d+)-->/g, (_, i) => codeBlocks[parseInt(i)] || '');
       return text;
     };
     const restoreMath = (html) => {
@@ -1375,7 +1493,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               const MAX_ARRAY_LENGTH = 10_000_000; // 10M elements max
               const guardedTHREE = new Proxy(THREE, {
                 get(target, prop) {
-                  const val = target[prop];
+                  // Fall back to addons for classes removed from core (e.g. ParametricGeometry)
+                  const val = target[prop] ?? THREE_ADDONS[prop];
                   // Wrap BufferAttribute constructors to cap array sizes
                   if (
                     prop === 'BufferAttribute' ||
@@ -1462,6 +1581,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         }
       });
       threeInstances.value = [];
+      renderedChartIds.clear();
+      renderedD3Ids.clear();
+      renderedThreeIds.clear();
     };
 
     const highlightCode = () => {
@@ -1575,31 +1697,27 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           return sanitizeHTML(props.message.content);
         }
 
-        // Check for incomplete code blocks during streaming
-        // Count opening and closing code fence markers
-        const openingFences = (props.message.content.match(/```/g) || []).length;
+        // Handle incomplete code blocks (odd number of ``` fences)
+        const openingFences = (content.match(/```/g) || []).length;
 
-        // If we have an odd number of code fences, we have an incomplete code block
-        // Return the raw content wrapped in a pre tag to prevent premature rendering
         if (openingFences % 2 !== 0) {
-          // Find the last opening fence
-          const lastFenceIndex = props.message.content.lastIndexOf('```');
+          if (props.status) {
+            // Still streaming — split: render completed part as markdown, show tail as raw code
+            const lastFenceIndex = content.lastIndexOf('```');
+            const completedContent = content.substring(0, lastFenceIndex);
+            const incompleteBlock = content.substring(lastFenceIndex);
 
-          // Split content into completed part and incomplete code block
-          const completedContent = props.message.content.substring(0, lastFenceIndex);
-          const incompleteBlock = props.message.content.substring(lastFenceIndex);
-
-          // Process the completed content as markdown
-          let renderedCompleted = '';
-          if (completedContent.trim()) {
-            let processedCompleted = completedContent.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
-            renderedCompleted = safeMarkdownToHtml(processedCompleted);
-            // Add target="_blank" to links in the completed content
-            renderedCompleted = addTargetBlankToLinks(renderedCompleted);
+            let renderedCompleted = '';
+            if (completedContent.trim()) {
+              let processedCompleted = completedContent.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
+              renderedCompleted = safeMarkdownToHtml(processedCompleted);
+              renderedCompleted = addTargetBlankToLinks(renderedCompleted);
+            }
+            return renderedCompleted + '<pre><code>' + incompleteBlock.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
+          } else {
+            // Finished — AI was cut off mid-block. Close the fence so it renders properly.
+            content += '\n```';
           }
-
-          // Return completed markdown + raw incomplete block in a pre tag
-          return renderedCompleted + '<pre><code>' + incompleteBlock.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
         }
 
         // Default: Process as Markdown (removed auto-detection to prevent false positives)
@@ -1645,6 +1763,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             clearTimeout(renderTimer);
             renderTimer = null;
           }
+          // Destroy stale chart/viz instances before DOM is replaced by v-html
+          destroyChartInstances();
           renderedContent.value = renderMessageContent();
           lastRenderTime = Date.now();
         } else {
@@ -2599,14 +2719,59 @@ span.nodeLabel p {
   color: var(--color-light-med-navy);
 }
 
+/* HTML Inline Preview */
+.message-text :deep(.html-inline-preview-wrapper) {
+  position: relative;
+  border: 1px solid rgba(var(--green-rgb), 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0;
+  padding: 0 12px 12px;
+  background: var(--color-background);
+}
+.message-text :deep(.html-inline-preview-wrapper:last-child) {
+  margin-bottom: 0;
+}
+.message-text :deep(* + .html-inline-preview-wrapper) {
+  margin-top: 12px;
+}
+.message-text :deep(.html-inline-iframe-scroller) {
+  max-height: 800px;
+  overflow: auto;
+  border-radius: 0;
+  scrollbar-width: none;
+}
+.message-text :deep(.html-inline-iframe-scroller::-webkit-scrollbar) {
+  display: none;
+}
+.message-text :deep(.html-inline-iframe) {
+  width: 100%;
+  height: 120px; /* initial — auto-sized on load via JS */
+  min-height: unset;
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  display: block;
+}
+.message-text :deep(.html-inline-code) {
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
 /* HTML Code Action Buttons */
 .message-text :deep(.html-code-actions) {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  background: var(--color-background-primary);
+  border-bottom: 1px solid rgba(var(--green-rgb), 0.1);
+  z-index: 10;
+}
+.message-text :deep(.html-actions-group) {
   display: flex;
   gap: 8px;
-  z-index: 10;
 }
 
 .message-text :deep(.html-action-btn) {
@@ -2738,7 +2903,7 @@ span.nodeLabel p {
   width: 100%;
   height: 100%;
   border: none;
-  background: white;
+  background: var(--color-background);
 }
 
 /* Ensure preview content is styled appropriately */
