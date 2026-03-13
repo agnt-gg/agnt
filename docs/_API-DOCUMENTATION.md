@@ -415,6 +415,8 @@ Base path: `/api/providers`
 
 All provider authentication is handled through a single unified router. The `:providerId` parameter identifies the provider (e.g., `claude-code`, `openai-codex`, `gemini-cli`, `openai`, `anthropic`, etc.). Local CLI providers use filesystem-backed credentials; remote providers proxy to agnt.gg.
 
+**Note:** An unknown `:providerId` returns 404: `{ "success": false, "error": "Unknown provider: <id>" }`.
+
 **Auth Dispatcher** (`AuthDispatcher.js`) maps each provider's `authScheme` to an auth manager and a set of capabilities:
 
 | Auth Scheme    | Local | Capabilities                                                          |
@@ -481,7 +483,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 **POST** `/:providerId/auth/connect`
 
 - **Authentication**: None (local), Required (remote — proxied to agnt.gg)
-- **Description**: Save credentials for a provider. Body varies by auth scheme.
+- **Description**: Save credentials for a provider. Body and response vary by auth scheme.
 - **Body** (claude-code — token):
 
 ```json
@@ -506,13 +508,29 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 }
 ```
 
-- **Response**:
+- **Response** (claude-code):
 
 ```json
 {
-  "success": true
+  "success": true,
+  "message": "Token saved successfully",
+  "apiUsable": true
 }
 ```
+
+- **Response** (gemini-cli):
+
+```json
+{
+  "success": true,
+  "message": "Gemini CLI connected successfully",
+  "apiUsable": true
+}
+```
+
+- **Response** (remote providers): Proxied from agnt.gg
+- **Error** (400): Missing or invalid credentials for the auth scheme
+- **Error** (400): `{ "error": "Connect not supported for <providerId>" }` if local provider has no connect handler
 
 ### Disconnect Provider
 
@@ -545,8 +563,9 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 }
 ```
 
-- **Error** (401 — claude-code specific): `{ "code": "REAUTH_REQUIRED" }` if refresh token is revoked
 - **Error** (400): `{ "error": "Refresh not supported for this provider" }` if provider lacks `refresh` capability
+- **Error** (401 — claude-code specific): `{ "code": "REAUTH_REQUIRED", "error": "..." }` if refresh token is revoked
+- **Error** (502): `{ "code": "REFRESH_FAILED", "error": "..." }` if token refresh fails upstream
 
 ### Start OAuth Flow
 
@@ -554,6 +573,7 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 - **Authentication**: None
 - **Description**: Initiate an OAuth flow. For `claude-code`, starts Anthropic PKCE OAuth. For `gemini-cli`, starts Google loopback OAuth. Only supported for local providers.
+- **Error** (400): `{ "error": "OAuth start not supported for remote providers" }` if provider is not local
 - **Response**:
 
 ```json
@@ -587,6 +607,10 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 }
 ```
 
+- **Error** (400): `{ "error": "OAuth exchange not supported for this provider" }` if provider lacks `oauth-pkce` capability
+- **Error** (400): `{ "error": "sessionId and codeState are required" }` if body is incomplete
+- **Error** (400): `{ "error": "Could not parse the authorization code. Please copy the full code from the Anthropic page and try again." }` if code/state parsing fails
+
 ### Poll OAuth Status (gemini-cli loopback)
 
 **GET** `/:providerId/auth/oauth/status?sessionId=...`
@@ -604,6 +628,9 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 }
 ```
 
+- **Error** (400): `{ "error": "Missing sessionId" }` if query param missing
+- **Error** (400): `{ "error": "OAuth status polling not supported for this provider" }` if provider lacks `oauth-loopback` capability
+
 ### Start Device Auth (openai-codex)
 
 **POST** `/:providerId/auth/device/start`
@@ -619,11 +646,14 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
   "deviceUrl": "https://auth.openai.com/device",
   "deviceCode": "ABCD-1234",
   "state": "pending",
+  "message": null,
   "startedAt": "2024-01-01T00:00:00Z",
   "expiresAt": "2024-01-01T00:15:00Z",
   "hint": "Open the URL, enter the code, then return here. We will poll for completion."
 }
 ```
+
+- **Error** (400): `{ "error": "Device auth not supported for this provider" }` if provider lacks `device-auth` capability
 
 ### Poll Device Auth Status (openai-codex)
 
@@ -642,12 +672,15 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 }
 ```
 
+- **Error** (400): `{ "error": "sessionId is required" }` if query param missing or not a string
+- **Error** (400): `{ "error": "Device auth not supported for this provider" }` if provider lacks `device-auth` capability
+
 ### Set Auth Method (gemini-cli)
 
 **POST** `/:providerId/auth/set-auth-method`
 
 - **Authentication**: None
-- **Description**: Switch between API key and OAuth authentication methods. Only supported for providers with `set-auth-method` capability.
+- **Description**: Switch between API key and OAuth authentication methods. When switching to `api-key`, removes OAuth credentials from `~/.gemini/oauth_creds.json`. When switching to `oauth`, removes API key from `~/.gemini/.env`. Only supported for providers with `set-auth-method` capability.
 - **Body**:
 
 ```json
@@ -660,9 +693,14 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 ```json
 {
-  "success": true
+  "success": true,
+  "available": true,
+  "apiUsable": true
 }
 ```
+
+- **Error** (400): `{ "error": "method must be \"api-key\" or \"oauth\"" }` if method is invalid
+- **Error** (400): `{ "error": "set-auth-method not supported for this provider" }` if provider lacks capability
 
 ### Set GCP Project (gemini-cli)
 
@@ -682,9 +720,13 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 ```json
 {
-  "success": true
+  "success": true,
+  "projectId": "my-gcp-project"
 }
 ```
+
+- **Error** (400): `{ "error": "Missing projectId" }` if body is incomplete
+- **Error** (400): `{ "error": "GCP project not supported for this provider" }` if provider lacks capability
 
 ---
 
@@ -921,6 +963,8 @@ Base path: `/api/content-outputs`
 
 Base path: `/api/custom-providers`
 
+Manage user-created custom OpenAI-compatible providers (e.g., local Ollama, LM Studio, or any OpenAI-compatible API endpoint).
+
 ### Get All Custom Providers
 
 **GET** `/`
@@ -934,13 +978,13 @@ Base path: `/api/custom-providers`
   "success": true,
   "providers": [
     {
-      "id": "provider-id",
-      "provider_name": "Custom Provider",
-      "base_url": "https://api.example.com",
-      "api_key": "encrypted-key",
-      "userId": "user-id",
-      "createdAt": "2024-01-01T00:00:00Z",
-      "updatedAt": "2024-01-01T00:00:00Z"
+      "id": "uuid",
+      "user_id": "user-uuid",
+      "provider_name": "Local LM Studio",
+      "base_url": "http://localhost:1234",
+      "is_active": 1,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
     }
   ],
   "count": 1
@@ -962,23 +1006,29 @@ Base path: `/api/custom-providers`
 }
 ```
 
-- **Response**:
+- `provider_name` (required): Display name
+- `base_url` (required): API base URL
+- `api_key` (optional): API key for authentication
+
+- **Response** (201 Created):
 
 ```json
 {
   "success": true,
   "provider": {
-    "id": "provider-id",
+    "id": "uuid",
+    "user_id": "user-uuid",
     "provider_name": "Custom Provider",
     "base_url": "https://api.example.com",
-    "api_key": "encrypted-key",
-    "userId": "user-id",
-    "createdAt": "2024-01-01T00:00:00Z",
-    "updatedAt": "2024-01-01T00:00:00Z"
+    "is_active": 1,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
   },
   "message": "Custom provider created successfully"
 }
 ```
+
+- **Error** (400): `{ "error": "Missing required fields: provider_name, base_url" }`
 
 ### Get Custom Provider by ID
 
@@ -986,7 +1036,7 @@ Base path: `/api/custom-providers`
 
 - **Authentication**: Required
 - **Parameters**:
-  - `id` (path): Provider ID
+  - `id` (path): Provider UUID
 - **Description**: Retrieve a specific custom provider by ID
 - **Response**:
 
@@ -994,16 +1044,18 @@ Base path: `/api/custom-providers`
 {
   "success": true,
   "provider": {
-    "id": "provider-id",
+    "id": "uuid",
+    "user_id": "user-uuid",
     "provider_name": "Custom Provider",
     "base_url": "https://api.example.com",
-    "api_key": "encrypted-key",
-    "userId": "user-id",
-    "createdAt": "2024-01-01T00:00:00Z",
-    "updatedAt": "2024-01-01T00:00:00Z"
+    "is_active": 1,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
   }
 }
 ```
+
+- **Error** (404): `{ "error": "Provider not found" }`
 
 ### Update Custom Provider
 
@@ -1011,14 +1063,15 @@ Base path: `/api/custom-providers`
 
 - **Authentication**: Required
 - **Parameters**:
-  - `id` (path): Provider ID
-- **Body**:
+  - `id` (path): Provider UUID
+- **Body** (all fields optional):
 
 ```json
 {
   "provider_name": "Updated Provider Name",
   "base_url": "https://api.updated.com",
-  "api_key": "new-api-key"
+  "api_key": "new-api-key",
+  "is_active": 1
 }
 ```
 
@@ -1028,17 +1081,19 @@ Base path: `/api/custom-providers`
 {
   "success": true,
   "provider": {
-    "id": "provider-id",
+    "id": "uuid",
+    "user_id": "user-uuid",
     "provider_name": "Updated Provider Name",
     "base_url": "https://api.updated.com",
-    "api_key": "encrypted-new-key",
-    "userId": "user-id",
-    "createdAt": "2024-01-01T00:00:00Z",
-    "updatedAt": "2024-01-01T00:00:00Z"
+    "is_active": 1,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
   },
   "message": "Custom provider updated successfully"
 }
 ```
+
+- **Error** (404): Provider not found
 
 ### Delete Custom Provider
 
@@ -1046,7 +1101,7 @@ Base path: `/api/custom-providers`
 
 - **Authentication**: Required
 - **Parameters**:
-  - `id` (path): Provider ID
+  - `id` (path): Provider UUID
 - **Description**: Delete a custom provider by ID
 - **Response**:
 
@@ -1057,12 +1112,14 @@ Base path: `/api/custom-providers`
 }
 ```
 
+- **Error** (404): Provider not found
+
 ### Get Provider Templates
 
 **GET** `/templates`
 
 - **Authentication**: None
-- **Description**: Get pre-configured templates for common custom providers (e.g., Ollama, LM Studio, vLLM)
+- **Description**: Get all pre-configured provider templates for creating custom providers. Includes cloud APIs (Mistral, Fireworks, Perplexity, etc.) and local inference servers (Ollama, LM Studio).
 - **Response**:
 
 ```json
@@ -1070,16 +1127,27 @@ Base path: `/api/custom-providers`
   "success": true,
   "templates": [
     {
-      "name": "Ollama",
-      "base_url": "http://localhost:11434/v1",
-      "description": "Local Ollama instance"
+      "key": "ollama",
+      "name": "Ollama (Local)",
+      "baseURL": "http://localhost:11434/v1",
+      "defaultModel": "llama3.2",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "requiresApiKey": false,
+      "description": "Ollama — Run open-source LLMs locally"
     },
     {
-      "name": "LM Studio",
-      "base_url": "http://localhost:1234/v1",
-      "description": "Local LM Studio instance"
+      "key": "mistral",
+      "name": "Mistral AI",
+      "baseURL": "https://api.mistral.ai/v1",
+      "defaultModel": "mistral-large-latest",
+      "supportsTools": true,
+      "supportsVision": true,
+      "supportsStreaming": true,
+      "description": "Mistral AI — European AI lab with efficient, high-quality models"
     }
-  ]
+  ],
+  "count": 10
 }
 ```
 
@@ -1088,6 +1156,7 @@ Base path: `/api/custom-providers`
 **POST** `/test`
 
 - **Authentication**: Required
+- **Description**: Test connection to a custom provider without saving it. Normalizes the URL (adds `/v1` if needed) and calls the `/models` endpoint.
 - **Body**:
 
 ```json
@@ -1097,43 +1166,47 @@ Base path: `/api/custom-providers`
 }
 ```
 
-- **Response**:
+- `base_url` (required): API base URL to test
+- `api_key` (optional): API key for authentication
+
+- **Response** (success):
 
 ```json
 {
   "success": true,
-  "message": "Connection successful",
-  "latency": 150,
-  "models": ["model1", "model2"]
+  "modelsCount": 15,
+  "models": ["model-1", "model-2", "model-3", "model-4", "model-5"]
 }
 ```
 
-### Get Provider Models
+**Note:** Returns at most 5 model IDs as a preview.
+
+- **Response** (connection failure):
+
+```json
+{
+  "success": false,
+  "error": "HTTP 401: Unauthorized"
+}
+```
+
+- **Error** (400): `{ "error": "Missing required fields: base_url" }`
+
+### Get Custom Provider Models
 
 **GET** `/:id/models`
 
 - **Authentication**: Required
 - **Parameters**:
-  - `id` (path): Provider ID
-- **Description**: Fetch available models from a custom provider
+  - `id` (path): Provider UUID
+- **Description**: Fetch all available models from a custom provider
 - **Response**:
 
 ```json
 {
   "success": true,
-  "models": [
-    {
-      "id": "model-id",
-      "name": "Model Name",
-      "description": "Model description",
-      "context_length": 4096,
-      "pricing": {
-        "prompt": 0.001,
-        "completion": 0.002
-      }
-    }
-  ],
-  "count": 1
+  "models": ["model-1", "model-2", "model-3"],
+  "count": 3
 }
 ```
 
@@ -3029,32 +3102,62 @@ Base path: `/api/mcp`
 
 Base path: `/api/models`
 
+Also mounted at `/api/openrouter` for legacy backward compatibility (all routes below work at both base paths).
+
+### List Available Providers
+
+To discover all available built-in providers, request models for an unknown provider name. The error response includes the full list:
+
+**GET** `/:provider/models` (with an invalid provider name)
+
+```json
+{
+  "success": false,
+  "error": "Unknown provider: invalid",
+  "availableProviders": [
+    "openai", "anthropic", "gemini", "grokai", "groq", "deepseek",
+    "openrouter", "togetherai", "cerebras", "kimi", "minimax", "zai",
+    "openai-codex", "claude-code", "gemini-cli"
+  ]
+}
+```
+
+Alternatively, the [Provider Health](#get-provider-health) endpoint returns status for all providers, and [Provider Templates](#get-provider-templates) lists additional custom-provider-ready templates.
+
 ### Get Models by Provider
 
 **GET** `/:provider/models`
 
-- **Authentication**: Required (except for hardcoded/static-model providers and CLI providers which use local auth)
+- **Authentication**: Required (except for static-model providers like `openai-codex` and CLI providers which use local auth)
 - **Parameters**:
-  - `provider` (path): Provider name (openai, anthropic, gemini, grokai, groq, deepseek, openrouter, togetherai, cerebras, kimi, minimax, zai, openai-codex, claude-code, gemini-cli)
-  - `category` (query): Filter by category (optional)
-  - `useCache` (query): Use cached models (default: true)
-  - `format` (query): Response format - 'names' or 'full' (default: 'names')
+  - `provider` (path): Provider key or display name. Keys: `openai`, `anthropic`, `gemini`, `grokai` (alias: `grok`), `groq`, `deepseek`, `openrouter`, `togetherai`, `cerebras`, `kimi`, `minimax`, `zai`, `openai-codex`, `claude-code`, `gemini-cli`. Display names like `"Z-AI"` or `"Grok AI"` are also resolved.
+  - `category` (query, optional): Filter by category — `all` (default), `programming`, `creative`, `reasoning`
+  - `useCache` (query, optional): Use cached models — `true` (default) or `false`
+  - `format` (query, optional): Response format — `names` (default, array of model ID strings) or `full` (array of model objects with metadata)
 - **Description**: Fetch available models from a specific provider
-- **Response**:
+- **Response** (`format=names`, default):
+
+```json
+{
+  "success": true,
+  "models": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+  "cached": true,
+  "count": 3
+}
+```
+
+- **Response** (`format=full`):
 
 ```json
 {
   "success": true,
   "models": [
     {
-      "id": "model-id",
-      "name": "Model Name",
-      "description": "Model description",
-      "context_length": 4096,
-      "pricing": {
-        "prompt": 0.001,
-        "completion": 0.002
-      }
+      "id": "gpt-4o",
+      "name": "gpt-4o",
+      "description": "",
+      "createdAt": "2024-05-13T00:00:00Z",
+      "ownedBy": "openai"
     }
   ],
   "cached": true,
@@ -3062,22 +3165,26 @@ Base path: `/api/models`
 }
 ```
 
+- **Error** (400): `{ "error": "Unknown provider: <name>", "availableProviders": [...] }` if provider not found
+- **Error** (400): Provider-specific auth errors (e.g., CLI not connected, API key not found)
+- **Error** (401): `{ "error": "Authentication required to fetch <provider> models" }` if JWT missing for standard providers
+
 ### Refresh Models Cache
 
 **POST** `/:provider/models/refresh`
 
-- **Authentication**: Required
+- **Authentication**: Required (same rules as GET)
 - **Parameters**:
-  - `provider` (path): Provider name
-- **Description**: Refresh the models cache for a specific provider
+  - `provider` (path): Provider key or display name
+- **Description**: Clear the models cache and fetch fresh models from the provider API
 - **Response**:
 
 ```json
 {
   "success": true,
-  "models": ["model1", "model2"],
+  "models": ["gpt-4o", "gpt-4-turbo"],
   "count": 2,
-  "message": "Provider models cache refreshed successfully"
+  "message": "openai models cache refreshed successfully"
 }
 ```
 
@@ -3085,17 +3192,15 @@ Base path: `/api/models`
 
 **GET** `/models`
 
-- **Authentication**: Required
-- **Description**: Legacy endpoint for OpenRouter models (backward compatibility)
-- **Response**: Same as `/:provider/models` for openrouter
+- **Description**: Legacy endpoint — redirects internally to `/:provider/models` with `provider=openrouter`
+- **Response**: Same as `GET /:provider/models` for openrouter
 
 ### Refresh OpenRouter Models (Legacy)
 
 **POST** `/models/refresh`
 
-- **Authentication**: Required
-- **Description**: Legacy endpoint for refreshing OpenRouter models
-- **Response**: Same as `/:provider/models/refresh` for openrouter
+- **Description**: Legacy endpoint — redirects internally to `/:provider/models/refresh` with `provider=openrouter`
+- **Response**: Same as `POST /:provider/models/refresh` for openrouter
 
 ### Get Provider Metadata (All Models)
 
@@ -3103,8 +3208,8 @@ Base path: `/api/models`
 
 - **Authentication**: None
 - **Parameters**:
-  - `provider` (path): Provider name
-- **Description**: Get metadata for all models from a specific provider
+  - `provider` (path): Provider key
+- **Description**: Get metadata (cost, context window, capabilities) for all models from a specific provider. Sourced from static configuration, not live API calls.
 - **Response**:
 
 ```json
@@ -3112,16 +3217,20 @@ Base path: `/api/models`
   "success": true,
   "provider": "openai",
   "metadata": {
-    "gpt-4": {
-      "contextLength": 128000,
-      "maxOutput": 4096,
-      "inputCost": 0.03,
-      "outputCost": 0.06,
+    "gpt-4o": {
+      "contextWindow": 128000,
+      "maxOutputTokens": 16384,
+      "inputCostPer1M": 2.5,
+      "outputCostPer1M": 10.0,
+      "supportsVision": true,
+      "supportsTools": true,
       "reasoning": false
     }
   }
 }
 ```
+
+**Note:** Returns `null` metadata for providers without configured model metadata.
 
 ### Get Model Metadata (Single Model)
 
@@ -3129,72 +3238,84 @@ Base path: `/api/models`
 
 - **Authentication**: None
 - **Parameters**:
-  - `provider` (path): Provider name
+  - `provider` (path): Provider key
   - `modelId` (path): Model ID
   - `inputTokens` (query, optional): Input token count for cost estimate
   - `outputTokens` (query, optional): Output token count for cost estimate
-- **Description**: Get metadata for a specific model, optionally with cost estimate
+- **Description**: Get metadata for a specific model, optionally with cost estimate. The `cost` field is only included when both `inputTokens` and `outputTokens` are provided.
 - **Response**:
 
 ```json
 {
   "success": true,
   "provider": "openai",
-  "model": "gpt-4",
+  "model": "gpt-4o",
   "metadata": {
-    "contextLength": 128000,
-    "maxOutput": 4096,
-    "inputCost": 0.03,
-    "outputCost": 0.06
+    "contextWindow": 128000,
+    "maxOutputTokens": 16384,
+    "inputCostPer1M": 2.5,
+    "outputCostPer1M": 10.0,
+    "supportsVision": true,
+    "supportsTools": true
   },
   "reasoning": false,
   "cost": {
-    "inputCost": 0.0015,
-    "outputCost": 0.003,
-    "totalCost": 0.0045
+    "inputCost": 0.0025,
+    "outputCost": 0.01,
+    "totalCost": 0.0125
   }
 }
 ```
+
+- **Response** (model not found in metadata): `{ "success": true, "provider": "openai", "model": "unknown-model", "metadata": null }`
 
 ### Get Provider Health
 
 **GET** `/provider-health`
 
 - **Authentication**: None
-- **Description**: Get cached provider health status for all configured providers
+- **Description**: Get cached provider health status for all configured providers. Returns the last-known status without making new API calls.
 - **Response**:
 
 ```json
 {
   "success": true,
+  "overall": "degraded",
   "healthy": 8,
+  "degraded": 0,
   "unhealthy": 1,
+  "unknown": 0,
   "total": 9,
   "providers": {
-    "openai": { "status": "healthy", "latency": 150 },
-    "anthropic": { "status": "healthy", "latency": 200 },
-    "gemini": { "status": "error", "error": "Invalid API key" }
+    "openai": { "status": "healthy", "lastChecked": "2024-01-01T00:00:00Z" },
+    "anthropic": { "status": "healthy", "lastChecked": "2024-01-01T00:00:00Z" },
+    "gemini": { "status": "unhealthy", "error": "Invalid API key", "lastChecked": "2024-01-01T00:00:00Z" }
   }
 }
 ```
+
+The `overall` field is one of: `healthy`, `degraded` (some unhealthy/degraded), `critical` (all unhealthy), `unknown`.
 
 ### Check Provider Health (Live)
 
 **POST** `/provider-health/check`
 
-- **Authentication**: Conditional (may need API keys)
-- **Description**: Run live health checks against all configured providers. More expensive than the cached GET endpoint.
+- **Authentication**: Optional (if `Authorization: Bearer <JWT>` is provided, the user's stored API keys are used for more accurate health checks)
+- **Description**: Run fresh live health checks against all configured providers. More expensive than the cached GET endpoint — makes actual API calls.
 - **Response**:
 
 ```json
 {
   "success": true,
-  "healthy": 8,
-  "unhealthy": 1,
+  "overall": "healthy",
+  "healthy": 9,
+  "degraded": 0,
+  "unhealthy": 0,
+  "unknown": 0,
   "total": 9,
   "providers": {
-    "openai": { "status": "healthy", "latency": 150 },
-    "anthropic": { "status": "healthy", "latency": 200 }
+    "openai": { "status": "healthy", "lastChecked": "2024-01-01T00:00:00Z" },
+    "anthropic": { "status": "healthy", "lastChecked": "2024-01-01T00:00:00Z" }
   }
 }
 ```
@@ -3204,7 +3325,7 @@ Base path: `/api/models`
 **GET** `/models/categories`
 
 - **Authentication**: None
-- **Description**: Get available model categories
+- **Description**: Get available model categories for filtering
 - **Response**:
 
 ```json
