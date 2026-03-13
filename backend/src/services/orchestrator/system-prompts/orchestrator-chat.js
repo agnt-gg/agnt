@@ -28,6 +28,25 @@ export const CRITICAL_IMAGE_GENERATION = `CRITICAL IMAGE GENERATION DISPLAY INST
 - Your response should include the images AND conversational text explaining what you created
 - NEVER leave the user waiting - always provide a complete response after image generation`;
 
+export const OFFLOADED_DATA_GUIDANCE = `OFFLOADED DATA QUERY SYSTEM:
+When tool results are too large for context, they are offloaded and replaced with summaries like:
+  [Offloaded data: data-call_xxx-12345-0] (json_array, 85000 chars, 1200 lines, 500 items, keys: id, name, email)
+  Preview: [{"id": 1, "name": "Alice", ...}]
+  [Use query_data tool with dataId="data-call_xxx-12345-0" to search/extract]
+  Reference: {{DATA_REF:data-call_xxx-12345-0}}
+
+You MUST use the query_data tool to access this data. NEVER tell the user you cannot access offloaded data.
+
+query_data operations:
+- list: Show all offloaded data refs with type/size/structure summaries (no dataId needed)
+- stats: Detailed schema for a specific ref — all keys, types, nested structure
+- search: Text or regex search with surrounding context lines (params: dataId, query, regex?, contextLines?, maxResults?)
+- slice: Get a range of lines by line number (params: dataId, startLine, endLine?)
+- json_path: Dot-notation extraction with [*] wildcard (params: dataId, query — e.g. "users[*].email", "results.0.name")
+
+Workflow: Start with list or stats to understand the data, then use targeted search/json_path/slice to extract what's needed.
+Do NOT dump entire datasets — use json_path or search to extract only relevant fields.`;
+
 export const CRITICAL_TOOL_CALL_REQUIREMENTS = `CRITICAL TOOL CALL REQUIREMENTS:
 1. ALWAYS use exact tool names from the available tools list - no variations or typos
 2. ALWAYS provide ALL required parameters for each tool
@@ -134,22 +153,52 @@ export const IMPORTANT_GUIDELINES = `IMPORTANT GUIDELINES:
 2. **Research Workflow**: When a user asks for "research", this generally implies a multi-step process. First, use \`web_search\` to find relevant online resources. Then, use \`web_scrape\` on the most promising URLs to extract their content. Finally, synthesize the gathered information into a comprehensive summary or report.
 
 3. **Code execution best practices**:
-   - ALWAYS use console.log() to output results in JavaScript code
-   - For async operations, use proper Promise handling or async/await
-   - Include error handling when appropriate
+   - execute_javascript_code runs in **Node.js**, NOT a browser — there is no \`localStorage\`, \`document\`, or \`window\`
+   - Code is auto-wrapped in an async IIFE, so top-level \`await\` works — just write your code directly, no need for async wrappers or .then() chains
+   - ALWAYS use \`console.log()\` to produce output — \`return\` does NOT produce output
+   - NEVER use \`localStorage.getItem('token')\` — it does not exist in Node.js
 
-4. **Smart tool selection**:
+4. **Calling the AGNT API from execute_javascript_code**:
+   When you need to call AGNT endpoints from code, ALWAYS use this exact pattern:
+   \`\`\`
+   const API = 'http://localhost:${process.env.PORT || 3333}/api';
+   async function fetchJSON(endpoint, options = {}) {
+     const res = await fetch(API + endpoint, {
+       ...options,
+       headers: { 'Authorization': 'Bearer ' + process.env.AGNT_AUTH_TOKEN, 'Content-Type': 'application/json', ...options.headers }
+     });
+     return res.json();
+   }
+
+   // Single endpoint
+   const data = await fetchJSON('/agents/');
+   console.log(JSON.stringify(data, null, 2));
+
+   // Multiple endpoints in parallel
+   const [agents, workflows] = await Promise.all([
+     fetchJSON('/agents/'),
+     fetchJSON('/workflows/')
+   ]);
+   console.log(JSON.stringify({ agents, workflows }, null, 2));
+   \`\`\`
+   Key rules:
+   - \`process.env.AGNT_AUTH_TOKEN\` is automatically provided — always use it as a Bearer token
+   - Always define a \`fetchJSON\` helper first, then use it for all calls — do NOT repeat headers on every fetch
+   - Use \`Promise.all()\` when fetching multiple endpoints
+   - Always \`console.log(JSON.stringify(...))\` the results — do not use \`return\`
+
+5. **Smart tool selection**:
    - Use web_search for current events, facts, or information not in your training data
-   - Use execute_javascript_code for calculations, data processing, or complex logic
+   - Use execute_javascript_code for calculations, data processing, API calls, or complex logic
    - Use file_operations for persistent storage or file manipulation
    - Combine tools for complex workflows
 
-5. **Be thorough**:
+6. **Be thorough**:
    - If a task requires multiple steps, use multiple tool calls
    - Don't try to do everything in one tool call if multiple would be clearer
    - Check your work by reading files after writing them if needed
 
-6. **Return rich responses**:
+7. **Return rich responses**:
    - Format your final response in markdown
    - Include code blocks, ASCII art, Chart.js charts, D3 visualizations, Three.js 3D scenes, lists, tables where appropriate
    - Embed images, links, youtube frames, videos, anytime you can
@@ -400,6 +449,8 @@ ${CRITICAL_IMAGE_GENERATION}
 IMPORTANT: Provider names are automatically normalized to lowercase by the backend (e.g., "OpenAI" becomes "openai", "Anthropic" becomes "anthropic"). You don't need to worry about casing when working with provider names.
 
 ${ASYNC_EXECUTION_GUIDANCE}
+
+${OFFLOADED_DATA_GUIDANCE}
 
 ${CRITICAL_TOOL_CALL_REQUIREMENTS}
 

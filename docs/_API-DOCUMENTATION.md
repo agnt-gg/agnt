@@ -53,6 +53,71 @@ The authentication middleware (`authenticateToken`) will:
 - Store token and user data in session for backend operations
 - Continue as unauthenticated if no valid token is provided
 
+### Token Storage & Access
+
+The JWT token is **not stored in the database**. It lives in two places depending on context:
+
+| Context | Where the token lives | How to access it |
+| --- | --- | --- |
+| Frontend / Widgets (browser) | `localStorage` | `localStorage.getItem('token')` |
+| Backend services (Express) | `req.headers.authorization` or `req.session.userToken` | Passed as `authToken` parameter between services |
+| Orchestrator tools (spawned Node.js) | `process.env.AGNT_AUTH_TOKEN` | Automatically injected by the orchestrator |
+
+### Frontend / Widgets (browser context)
+
+Widgets run in iframes with `allow-same-origin`, so they share the AGNT frontend's `localStorage`. The user's token is already stored there — just read it:
+
+```js
+const API = 'http://localhost:3333/api';
+function getToken() { try { return localStorage.getItem('token') || null; } catch(e) { return null; } }
+function apiFetch(url, options = {}) {
+  const token = getToken();
+  const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...options.headers };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  return fetch(url, { ...options, headers });
+}
+
+// Example: get all agents
+const res = await apiFetch(API + '/agents/');
+const data = await res.json();
+```
+
+### Backend Services (Express context)
+
+Inside Express route handlers and services, the token arrives via the request header and is cached in the session by the `authenticateToken` middleware:
+
+```js
+// In a route handler — token from the request
+const authToken = req.headers.authorization; // "Bearer <token>"
+
+// Or from session (set automatically by middleware after first auth)
+const sessionData = getUserTokenFromSession(req);
+// sessionData = { token: "<jwt>", user: { id, email, auth_type } }
+
+// Services receive it as a parameter — just pass it along
+const result = await someService.doWork(args, authToken);
+```
+
+### Orchestrator Tools (spawned Node.js context)
+
+When the orchestrator's `execute_javascript_code` tool runs code, it spawns an isolated Node.js process. There is no `req`, no session, and no `localStorage`. The orchestrator automatically injects the user's token as an environment variable:
+
+```js
+const API = 'http://localhost:3333/api';
+const TOKEN = process.env.AGNT_AUTH_TOKEN; // automatically provided
+
+const res = await fetch(API + '/agents/', {
+  headers: {
+    'Authorization': 'Bearer ' + TOKEN,
+    'Content-Type': 'application/json'
+  }
+});
+const data = await res.json();
+console.log(JSON.stringify(data, null, 2));
+```
+
+> **Important:** Each context has its own way to get the token — don't mix them. `localStorage` only exists in the browser. `req.session` only exists in Express handlers. `process.env.AGNT_AUTH_TOKEN` only exists in orchestrator-spawned processes.
+
 ---
 
 ## Agent Routes

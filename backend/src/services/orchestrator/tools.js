@@ -66,21 +66,21 @@ export const TOOLS = {
       function: {
         name: 'execute_javascript_code',
         description:
-          'Executes arbitrary JavaScript code and returns the output. The code should "return" the output to produce output. This environment supports standard JavaScript features, including `fetch` for making HTTP requests. Remember that `fetch` returns a Promise.',
+          'Executes JavaScript code in Node.js (NOT a browser — no localStorage/document/window). Code is auto-wrapped in async IIFE so top-level await works. Use console.log() for output (return does nothing). For AGNT API calls: define a fetchJSON helper using process.env.AGNT_AUTH_TOKEN (auto-provided) as Bearer token, then call it. Pattern: `async function fetchJSON(ep, opts={}) { const r = await fetch("http://localhost:' + (process.env.PORT || 3333) + '/api"+ep, {...opts, headers:{"Authorization":"Bearer "+process.env.AGNT_AUTH_TOKEN,"Content-Type":"application/json",...opts.headers}}); return r.json(); } const data = await fetchJSON("/agents/"); console.log(JSON.stringify(data,null,2));`',
         parameters: {
           type: 'object',
           properties: {
             code: {
               type: 'string',
               description:
-                "The JavaScript code to execute. For example, 'console.log(1 + 1);' or 'fetch(\"https://api.example.com/data\").then(res => res.json()).then(data => console.log(data));'. Ensure `await` is used for Promises if the script is not an IIFE async function, or use .then() chains.",
+                "JavaScript code to execute in Node.js. Top-level await works. Use console.log() for output. For AGNT API calls, always define a fetchJSON() helper with process.env.AGNT_AUTH_TOKEN as Bearer token — never use localStorage (doesn't exist in Node.js).",
             },
           },
           required: ['code'],
         },
       },
     },
-    execute: async ({ code: codeString }) => {
+    execute: async ({ code: codeString }, authToken) => {
       // Renamed 'code' to 'codeString' to match original helper
       return new Promise((resolve) => {
         // Removed reject, always resolve with JSON string
@@ -89,7 +89,20 @@ export const TOOLS = {
         }
         console.log(`Tool call: executeJavaScriptCode with code: \n${codeString}`);
 
-        const nodeProcess = spawn('node', ['-e', codeString], { timeout: 5000 }); // 5 second timeout
+        // Wrap in async IIFE so top-level await works
+        const wrappedCode = `(async () => {\n${codeString}\n})().catch(e => { console.error(e); process.exit(1); });`;
+
+        // Pass auth token as env var so code can call AGNT API endpoints
+        const env = { ...process.env };
+        if (authToken) {
+          let token = authToken;
+          if (token.toLowerCase().startsWith('bearer ')) {
+            token = token.substring(7);
+          }
+          env.AGNT_AUTH_TOKEN = token;
+        }
+
+        const nodeProcess = spawn('node', ['-e', wrappedCode], { timeout: 30000, env }); // 30 second timeout
         let stdout = '';
         let stderr = '';
 
@@ -117,7 +130,7 @@ export const TOOLS = {
         // Handle timeout explicitly
         nodeProcess.on('timeout', () => {
           nodeProcess.kill();
-          resolve(JSON.stringify({ success: false, error: 'Code execution timed out after 5 seconds.' }));
+          resolve(JSON.stringify({ success: false, error: 'Code execution timed out after 30 seconds.' }));
         });
       });
     },
@@ -558,6 +571,282 @@ export const TOOLS = {
           codeContent: '',
         });
       }
+    },
+  },
+  query_data: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'query_data',
+        description:
+          'Search, slice, and inspect offloaded data that was too large for the context window. Use this tool to explore data referenced by {{DATA_REF:...}} placeholders instead of telling the user you cannot access it. Operations: "list" (show all refs), "stats" (detailed schema), "search" (text/regex search), "slice" (get line range), "json_path" (dot-notation extraction).',
+        parameters: {
+          type: 'object',
+          properties: {
+            operation: {
+              type: 'string',
+              enum: ['list', 'stats', 'search', 'slice', 'json_path'],
+              description:
+                'Operation to perform. "list": show all offloaded refs with summaries. "stats": detailed schema for a specific ref. "search": text/regex search within data. "slice": get a range of lines. "json_path": dot-notation path extraction (e.g. "items[*].name").',
+            },
+            dataId: {
+              type: 'string',
+              description: 'The data reference ID (e.g. "data-call_abc-17733-0"). Required for all operations except "list".',
+            },
+            query: {
+              type: 'string',
+              description: 'For "search": substring or regex pattern to find. For "json_path": dot-notation path like "users[*].email" or "results.0.name".',
+            },
+            regex: {
+              type: 'boolean',
+              description: 'For "search": treat query as regex pattern. Default false.',
+            },
+            contextLines: {
+              type: 'number',
+              description: 'For "search": number of surrounding lines to include with each match. Default 1.',
+            },
+            maxResults: {
+              type: 'number',
+              description: 'For "search": maximum number of matches to return. Default 20.',
+            },
+            startLine: {
+              type: 'number',
+              description: 'For "slice": starting line number (1-based). Default 1.',
+            },
+            endLine: {
+              type: 'number',
+              description: 'For "slice": ending line number (inclusive). Default startLine + 99.',
+            },
+          },
+          required: ['operation'],
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      const MAX_RESULT_CHARS = 15000;
+      const { operation, dataId, query, regex = false, contextLines = 1, maxResults = 20, startLine = 1, endLine } = args;
+
+      const preserved = context?.preservedContent || {};
+      const summaries = context?.dataRefSummaries || {};
+
+      // --- list ---
+      if (operation === 'list') {
+        const refs = Object.keys(preserved);
+        if (refs.length === 0) {
+          return JSON.stringify({ success: true, message: 'No offloaded data references in this conversation.', refs: [] });
+        }
+        const refList = refs.map(id => {
+          const s = summaries[id];
+          return s
+            ? { dataId: id, type: s.type, size: s.size, lineCount: s.lineCount, structure: s.structure }
+            : { dataId: id, size: preserved[id]?.length || 0 };
+        });
+        return JSON.stringify({ success: true, count: refList.length, refs: refList });
+      }
+
+      // All other operations require dataId
+      if (!dataId) {
+        return JSON.stringify({ success: false, error: 'dataId is required for this operation. Use operation="list" to see available refs.' });
+      }
+      const data = preserved[dataId];
+      if (!data) {
+        const available = Object.keys(preserved);
+        return JSON.stringify({
+          success: false,
+          error: `Data reference "${dataId}" not found.`,
+          available_refs: available.length > 0 ? available : 'No offloaded data in this conversation.',
+        });
+      }
+
+      // Helper to cap output size
+      function cap(str) {
+        if (str.length <= MAX_RESULT_CHARS) return str;
+        return str.substring(0, MAX_RESULT_CHARS) + `\n...[truncated at ${MAX_RESULT_CHARS} chars, total ${str.length}]`;
+      }
+
+      // --- stats ---
+      if (operation === 'stats') {
+        const s = summaries[dataId];
+        const lines = data.split('\n');
+        const result = {
+          success: true,
+          dataId,
+          size: data.length,
+          lineCount: lines.length,
+          type: s?.type || 'text',
+          structure: s?.structure || null,
+        };
+
+        // For JSON data, provide deeper schema analysis
+        try {
+          const parsed = JSON.parse(data.trim());
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // Collect all unique keys across first 50 items
+            const allKeys = new Set();
+            const keyTypes = {};
+            const sampleSize = Math.min(parsed.length, 50);
+            for (let i = 0; i < sampleSize; i++) {
+              if (typeof parsed[i] === 'object' && parsed[i] !== null) {
+                for (const [k, v] of Object.entries(parsed[i])) {
+                  allKeys.add(k);
+                  keyTypes[k] = typeof v;
+                }
+              }
+            }
+            result.schema = { keys: [...allKeys], keyTypes, sampledItems: sampleSize, totalItems: parsed.length };
+          } else if (typeof parsed === 'object' && parsed !== null) {
+            // Map top-level keys to their types and sizes
+            const keyInfo = {};
+            for (const [k, v] of Object.entries(parsed)) {
+              const t = Array.isArray(v) ? 'array' : typeof v;
+              keyInfo[k] = { type: t };
+              if (t === 'array') keyInfo[k].length = v.length;
+              if (t === 'string') keyInfo[k].length = v.length;
+            }
+            result.schema = { keys: Object.keys(parsed), keyInfo };
+          }
+        } catch { /* not JSON */ }
+
+        return JSON.stringify(result);
+      }
+
+      // --- search ---
+      if (operation === 'search') {
+        if (!query) {
+          return JSON.stringify({ success: false, error: 'query is required for search operation.' });
+        }
+
+        const lines = data.split('\n');
+        const matches = [];
+        let pattern;
+
+        try {
+          pattern = regex ? new RegExp(query, 'gi') : null;
+        } catch (e) {
+          return JSON.stringify({ success: false, error: `Invalid regex: ${e.message}` });
+        }
+
+        for (let i = 0; i < lines.length && matches.length < maxResults; i++) {
+          const line = lines[i];
+          const isMatch = pattern ? pattern.test(line) : line.toLowerCase().includes(query.toLowerCase());
+          if (pattern) pattern.lastIndex = 0; // reset for global regex
+
+          if (isMatch) {
+            const ctxStart = Math.max(0, i - contextLines);
+            const ctxEnd = Math.min(lines.length - 1, i + contextLines);
+            const contextBlock = [];
+            for (let j = ctxStart; j <= ctxEnd; j++) {
+              contextBlock.push({ line: j + 1, text: lines[j], match: j === i });
+            }
+            matches.push({ lineNumber: i + 1, context: contextBlock });
+          }
+        }
+
+        const result = {
+          success: true,
+          dataId,
+          query,
+          matchCount: matches.length,
+          totalLines: lines.length,
+          matches,
+        };
+
+        return cap(JSON.stringify(result));
+      }
+
+      // --- slice ---
+      if (operation === 'slice') {
+        const lines = data.split('\n');
+        const start = Math.max(1, startLine);
+        const end = Math.min(lines.length, endLine || start + 99);
+
+        const slicedLines = [];
+        for (let i = start - 1; i < end; i++) {
+          slicedLines.push({ line: i + 1, text: lines[i] });
+        }
+
+        const result = {
+          success: true,
+          dataId,
+          startLine: start,
+          endLine: end,
+          totalLines: lines.length,
+          lines: slicedLines,
+        };
+
+        return cap(JSON.stringify(result));
+      }
+
+      // --- json_path ---
+      if (operation === 'json_path') {
+        if (!query) {
+          return JSON.stringify({ success: false, error: 'query is required for json_path operation. Use dot-notation like "items[*].name".' });
+        }
+
+        try {
+          const parsed = JSON.parse(data.trim());
+
+          // Simple dot-notation path resolver with [*] wildcard and [n] index support
+          function resolve(obj, pathStr) {
+            const segments = [];
+            // Parse path: split on dots, handle bracket notation
+            const raw = pathStr.replace(/\[(\*|\d+)\]/g, '.$1');
+            for (const seg of raw.split('.')) {
+              if (seg !== '') segments.push(seg);
+            }
+
+            function walk(current, segIndex) {
+              if (segIndex >= segments.length) return [current];
+              const seg = segments[segIndex];
+
+              if (seg === '*') {
+                // Wildcard: iterate array or object values
+                if (Array.isArray(current)) {
+                  return current.flatMap(item => walk(item, segIndex + 1));
+                } else if (typeof current === 'object' && current !== null) {
+                  return Object.values(current).flatMap(v => walk(v, segIndex + 1));
+                }
+                return [];
+              }
+
+              // Numeric index
+              if (/^\d+$/.test(seg)) {
+                const idx = parseInt(seg, 10);
+                if (Array.isArray(current) && idx < current.length) {
+                  return walk(current[idx], segIndex + 1);
+                }
+                return [];
+              }
+
+              // Object key
+              if (typeof current === 'object' && current !== null && seg in current) {
+                return walk(current[seg], segIndex + 1);
+              }
+
+              return [];
+            }
+
+            return walk(obj, 0);
+          }
+
+          const values = resolve(parsed, query);
+
+          const result = {
+            success: true,
+            dataId,
+            path: query,
+            resultCount: values.length,
+            values: values.length > 100 ? values.slice(0, 100) : values,
+            truncated: values.length > 100,
+          };
+
+          return cap(JSON.stringify(result));
+        } catch (e) {
+          return JSON.stringify({ success: false, error: `json_path failed: ${e.message}. Ensure the data is valid JSON.` });
+        }
+      }
+
+      return JSON.stringify({ success: false, error: `Unknown operation: "${operation}". Valid: list, stats, search, slice, json_path.` });
     },
   },
   file_operations: {
@@ -2831,7 +3120,7 @@ export const TOOLS = {
       function: {
         name: 'get_agnt_api',
         description:
-          'Look up AGNT backend API endpoints. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements.',
+          'Look up AGNT backend API endpoints. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements. AGNT auth works by reading the existing token from localStorage.getItem(\'token\') and sending it as Authorization: Bearer <token> on every request. This is how all AGNT API calls authenticate — no API keys or separate login needed.',
         parameters: {
           type: 'object',
           properties: {
@@ -3096,6 +3385,7 @@ export const TOOLS = {
     },
   },
 };
+
 
 /**
  * Async execution parameters injected into every tool schema.

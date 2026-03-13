@@ -13,17 +13,34 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCS_PATH = path.resolve(__dirname, '../../../../docs/_API-DOCUMENTATION.md');
 
 const BOILERPLATE = `// -- AGNT API Helper --
-// Drop this into your widget <script> to call any AGNT endpoint.
-const API = 'http://localhost:${process.env.PORT || 3333}/api';
-function getToken() { try { return localStorage.getItem('token') || null; } catch(e) { return null; } }
-function headers() { return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json', 'Accept': 'application/json' }; }
+// Use the correct auth method for your context:
+//
+// FRONTEND / WIDGETS (browser): Token lives in localStorage
+// BACKEND / NODE.JS (server):   Token lives in process.env.AGNT_AUTH_TOKEN
 
-// Usage examples:
-// const res = await fetch(API + '/agents/', { headers: headers() });
+const API = 'http://localhost:${process.env.PORT || 3333}/api';
+
+// --- Frontend / Widget usage (browser context) ---
+function getToken() { try { return localStorage.getItem('token') || null; } catch(e) { return null; } }
+function apiFetch(url, options = {}) {
+  const token = getToken();
+  const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...options.headers };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  return fetch(url, { ...options, headers });
+}
+
+// --- Backend / Node.js usage (server context) ---
+// const TOKEN = process.env.AGNT_AUTH_TOKEN;
+// const res = await fetch(API + '/agents/', {
+//   headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
+// });
+
+// Usage examples (frontend):
+// const res = await apiFetch(API + '/agents/');
 // const data = await res.json();
 //
-// const res = await fetch(API + '/workflows/save', {
-//   method: 'POST', headers: headers(),
+// const res = await apiFetch(API + '/workflows/save', {
+//   method: 'POST',
 //   body: JSON.stringify({ name: 'My Workflow', nodes: [], edges: [] })
 // });`;
 

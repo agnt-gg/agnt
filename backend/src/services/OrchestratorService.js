@@ -127,6 +127,71 @@ function sanitizeMessageHistory(messages) {
 }
 
 /**
+ * Generate a compact summary of offloaded data so the LLM knows what it contains
+ * @param {string} data - The raw data string
+ * @param {string} dataId - The data reference ID
+ * @returns {object} - Summary with type, structure, preview
+ */
+function generateDataSummary(data, dataId) {
+  const summary = {
+    dataId,
+    size: data.length,
+    lineCount: data.split('\n').length,
+    type: 'text',
+    preview: '',
+    structure: null,
+  };
+
+  // Detect data type
+  const trimmed = data.trim();
+
+  // Try JSON first
+  try {
+    const parsed = JSON.parse(trimmed);
+
+    if (Array.isArray(parsed)) {
+      summary.type = 'json_array';
+      summary.structure = {
+        itemCount: parsed.length,
+      };
+
+      // Get keys from first item if it's an object
+      if (parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0] !== null) {
+        summary.structure.keys = Object.keys(parsed[0]);
+      }
+
+      // Sample first 2-3 items as preview
+      const sampleItems = parsed.slice(0, 3);
+      const sampleStr = JSON.stringify(sampleItems, null, 2);
+      summary.preview = sampleStr.length > 500 ? sampleStr.substring(0, 500) + '...' : sampleStr;
+    } else if (typeof parsed === 'object' && parsed !== null) {
+      summary.type = 'json_object';
+      summary.structure = {
+        topLevelKeys: Object.keys(parsed),
+      };
+
+      // Preview first 500 chars of stringified
+      const objStr = JSON.stringify(parsed, null, 2);
+      summary.preview = objStr.length > 500 ? objStr.substring(0, 500) + '...' : objStr;
+    }
+  } catch {
+    // Not JSON — check for HTML
+    if (trimmed.startsWith('<!') || trimmed.startsWith('<html') || /<\w+[\s>]/.test(trimmed.substring(0, 200))) {
+      summary.type = 'html';
+      const titleMatch = trimmed.match(/<title[^>]*>(.*?)<\/title>/i);
+      if (titleMatch) {
+        summary.structure = { title: titleMatch[1] };
+      }
+    }
+
+    // Preview first 500 chars for text/html
+    summary.preview = trimmed.length > 500 ? trimmed.substring(0, 500) + '...' : trimmed;
+  }
+
+  return summary;
+}
+
+/**
  * Offload large data from tool results and replace with references
  * This prevents large text content from bloating the context window
  * @param {string} toolResult - The tool result (JSON string)
@@ -141,6 +206,11 @@ function offloadLargeData(toolResult, toolCallId, conversationContext, threshold
   try {
     const result = typeof toolResult === 'string' ? JSON.parse(toolResult) : toolResult;
 
+    // Ensure dataRefSummaries exists
+    if (!conversationContext.dataRefSummaries) {
+      conversationContext.dataRefSummaries = {};
+    }
+
     // Recursively scan object for large string fields
     function scanAndReplace(obj, path = '') {
       if (typeof obj === 'string') {
@@ -154,16 +224,38 @@ function offloadLargeData(toolResult, toolCallId, conversationContext, threshold
           }
           conversationContext.preservedContent[dataId] = obj;
 
+          // Generate and store summary
+          const summary = generateDataSummary(obj, dataId);
+          conversationContext.dataRefSummaries[dataId] = summary;
+
           offloadedData.push({
             id: dataId,
             size: obj.length,
             path: path,
+            summary: summary,
           });
 
-          console.log(`[Data Offload] Offloaded ${obj.length} chars to ${dataId} (path: ${path})`);
+          console.log(`[Data Offload] Offloaded ${obj.length} chars to ${dataId} (path: ${path}, type: ${summary.type})`);
 
-          // Replace with reference
-          return `{{DATA_REF:${dataId}}}`;
+          // Build rich replacement with summary info for LLM
+          const structureInfo = summary.type === 'json_array' && summary.structure
+            ? `${summary.structure.itemCount} items` + (summary.structure.keys ? `, keys: ${summary.structure.keys.join(', ')}` : '')
+            : summary.type === 'json_object' && summary.structure
+              ? `keys: ${summary.structure.topLevelKeys.join(', ')}`
+              : summary.type === 'html' && summary.structure?.title
+                ? `title: "${summary.structure.title}"`
+                : '';
+
+          const lines = [
+            `[Offloaded data: ${dataId}] (${summary.type}, ${summary.size} chars, ${summary.lineCount} lines${structureInfo ? ', ' + structureInfo : ''})`,
+          ];
+          if (summary.preview) {
+            lines.push(`Preview: ${summary.preview.substring(0, 300).replace(/\n/g, ' ')}`);
+          }
+          lines.push(`[Use query_data tool with dataId="${dataId}" to search/extract]`);
+          lines.push(`Reference: {{DATA_REF:${dataId}}}`);
+
+          return lines.join('\n');
         }
         return obj;
       } else if (Array.isArray(obj)) {
@@ -488,6 +580,7 @@ async function universalChatHandler(req, res, context = {}) {
   // Initialize conversation context
   const conversationContext = {
     preservedContent: {},
+    dataRefSummaries: {},
     llmClient: null,
     openai: null,
     // Context-specific data
@@ -1116,6 +1209,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
                 fullContent: fullContent,
                 size: data.size,
                 path: data.path,
+                summary: data.summary || null,
               });
             });
 

@@ -428,7 +428,7 @@ Always be helpful, creative, and guide users through the tool creation process s
           type: 'function',
           function: {
             name: 'get_agnt_api',
-            description: 'Look up AGNT backend API endpoints so you can build widgets that fetch live data. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements.',
+            description: 'Look up AGNT backend API endpoints so you can build widgets that fetch live data. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements. AGNT auth works by reading the existing token from localStorage.getItem(\'token\') and sending it as Authorization: Bearer <token> on every request — this is how all AGNT API calls authenticate, no API keys or separate login needed.',
             parameters: {
               type: 'object',
               properties: {
@@ -526,8 +526,26 @@ WIDGET TYPES:
 USING get_agnt_api:
 - When building widgets that display live data from AGNT (agents, workflows, executions, goals, etc.), use \`get_agnt_api\` to look up the available endpoints
 - Call with no args first to see the full overview, then call with a section name for details
-- Widgets run in iframes with allow-same-origin, so \`localStorage.getItem('token')\` works for auth
 - Use \`http://localhost:${process.env.PORT || 3333}/api\` as the API base URL — this points directly to the AGNT backend server (NOT the frontend dev server)
+
+HOW AGNT API CALLS WORK:
+All AGNT API calls follow the same pattern. Widgets run in iframes with allow-same-origin, which means they share the AGNT frontend's localStorage. The user's auth token is already stored there — this is how AGNT handles authentication. You MUST use this pattern for every API call:
+
+1. Read the token from \`localStorage.getItem('token')\` — it is always available
+2. Include it as \`Authorization: Bearer <token>\` on every request
+3. There are NO API keys, NO separate login flows, NO credentials to configure — the token from localStorage IS the auth mechanism
+
+Every widget you generate that calls the AGNT API MUST include this helper and use it for all fetch calls:
+\`\`\`js
+function getToken() { try { return localStorage.getItem('token') || null; } catch(e) { return null; } }
+function apiFetch(url, options = {}) {
+  const token = getToken();
+  const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...options.headers };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  return fetch(url, { ...options, headers });
+}
+\`\`\`
+Always use \`apiFetch()\` instead of raw \`fetch()\` for AGNT API requests. This is not optional — endpoints that require auth will reject requests without the Bearer token.
 
 Always be helpful and guide users through the widget creation process step by step.`;
     },
