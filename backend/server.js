@@ -291,17 +291,26 @@ async function deferredInit() {
       if (terminalStatuses.includes(statusData.status) && statusData.userId) {
         import('./src/services/evolution/InsightTriggers.js').then(({ default: InsightTriggers }) => {
           // Look up the latest execution for this workflow to get the execution ID
-          import('./src/models/database/index.js').then(({ default: db }) => {
-            db.get(
-              'SELECT id FROM workflow_executions WHERE workflow_id = ? ORDER BY start_time DESC LIMIT 1',
-              [workflowId],
-              (err, row) => {
-                if (err || !row) return;
-                InsightTriggers.onWorkflowExecutionCompleted(row.id, statusData.userId, { workflowId }).catch(e => {
-                  console.error('[InsightTriggers] Workflow insight extraction failed (non-critical):', e.message);
-                });
-              }
-            );
+          Promise.all([
+            import('./src/models/database/index.js'),
+            import('./src/models/UserModel.js'),
+          ]).then(async ([{ default: db }, { default: UserModel }]) => {
+            const row = await new Promise((resolve) => {
+              db.get(
+                'SELECT id FROM workflow_executions WHERE workflow_id = ? ORDER BY start_time DESC LIMIT 1',
+                [workflowId],
+                (err, r) => resolve(err ? null : r)
+              );
+            });
+            if (!row) return;
+            const userSettings = await UserModel.getUserSettings(statusData.userId);
+            InsightTriggers.onWorkflowExecutionCompleted(row.id, statusData.userId, {
+              workflowId,
+              provider: userSettings?.selectedProvider,
+              model: userSettings?.selectedModel,
+            }).catch(e => {
+              console.error('[InsightTriggers] Workflow insight extraction failed (non-critical):', e.message);
+            });
           }).catch(() => {});
         }).catch(() => {});
       }

@@ -34,7 +34,7 @@ import widgetChat from './features/widgetChat';
 import skills from './features/skills';
 import skillforge from './features/skillforge';
 import experiments from './features/experiments';
-import codeChat from './features/codeChat';
+import artifactChat from './features/artifactChat';
 import insights from './features/insights';
 
 const store = createStore({
@@ -153,7 +153,7 @@ const store = createStore({
     skills,
     skillforge,
     experiments,
-    codeChat,
+    artifactChat,
     insights,
   },
 });

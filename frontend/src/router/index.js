@@ -139,10 +139,10 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'SkillsScreen' },
     },
     {
-      path: '/code-editor',
-      name: 'TerminalCodeEditor',
+      path: '/artifacts',
+      name: 'TerminalArtifacts',
       component: Terminal,
-      meta: { requiresAuth: true, terminalScreen: 'CodeEditorScreen' },
+      meta: { requiresAuth: true, terminalScreen: 'ArtifactsScreen' },
     },
     {
       path: '/ball-jumper',

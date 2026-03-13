@@ -510,6 +510,14 @@ Rules:
     const providerConfig = getProviderConfig(rawProvider);
     const normalizedProvider = providerConfig ? providerConfig.key : rawProvider.toLowerCase();
 
+    // Validate that the model belongs to the resolved provider.
+    // If mismatched (e.g. stale DB default), pick the first available model.
+    const ProviderRegistry = await import('../ai/ProviderRegistry.js');
+    const providerModels = ProviderRegistry.getTextModels(normalizedProvider);
+    if (providerModels.length > 0 && !providerModels.includes(model)) {
+      model = providerModels[0];
+    }
+
     const client = await createLlmClient(normalizedProvider, userId);
     const adapter = await createLlmAdapter(normalizedProvider, client, model);
     const result = await adapter.call(messages, []);

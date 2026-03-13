@@ -1,7 +1,7 @@
 <template>
-  <div class="code-editor-panel">
+  <div class="artifacts-panel">
     <div class="panel-header">
-      <h2 class="title">/ Code Editor</h2>
+      <h2 class="title">/ Artifacts</h2>
       <div class="right-tabs">
         <Tooltip text="Clear Chat History" width="auto" position="bottom">
           <button class="tab-button clear-chat-button" @click="handleClearChat">
@@ -13,7 +13,7 @@
     </div>
 
     <div class="panel-content">
-      <CodeChatContainer :sessionId="sessionId" />
+      <ArtifactChatContainer :sessionId="sessionId" />
     </div>
   </div>
 </template>
@@ -21,19 +21,19 @@
 <script>
 import { computed } from 'vue';
 import { useStore } from 'vuex';
-import CodeChatContainer from './CodeChatContainer.vue';
+import ArtifactChatContainer from './ArtifactChatContainer.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
-  name: 'CodeEditorPanel',
-  components: { CodeChatContainer, Tooltip },
+  name: 'ArtifactsPanel',
+  components: { ArtifactChatContainer, Tooltip },
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
-    const sessionId = 'code-editor';
+    const sessionId = 'artifacts';
 
     const handleClearChat = () => {
-      store.dispatch('codeChat/clearConversation', sessionId);
+      store.dispatch('artifactChat/clearConversation', sessionId);
       emit('panel-action', 'clear-chat');
     };
 
@@ -43,7 +43,7 @@ export default {
 </script>
 
 <style scoped>
-.code-editor-panel {
+.artifacts-panel {
   display: flex;
   flex-direction: column;
   background: transparent;

@@ -1,9 +1,9 @@
 <template>
-  <div class="code-chat-container">
+  <div class="artifact-chat-container">
     <div class="chat-messages" ref="chatMessagesRef">
       <div v-if="formattedChatMessages.length === 0" class="empty-state">
-        <i class="fas fa-code"></i>
-        <p>Hi! I'm Annie, your coding assistant. I can help you create, edit, and explore files!</p>
+        <i class="fas fa-cube"></i>
+        <p>Hi! I'm Annie, your artifacts assistant. I can help you create, edit, and explore files — code, docs, charts, and more!</p>
       </div>
 
       <TransitionGroup name="message" tag="div" class="message-flow" v-else>
@@ -59,10 +59,10 @@ import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/component
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 export default {
-  name: 'CodeChatContainer',
+  name: 'ArtifactChatContainer',
   components: { MessageItem, ProcessingState, Tooltip },
   props: {
-    sessionId: { type: String, default: 'code-editor' },
+    sessionId: { type: String, default: 'artifacts' },
   },
   setup(props) {
     const store = useStore();
@@ -72,12 +72,12 @@ export default {
     let abortController = null;
 
     let localMessageIdCounter = 0;
-    const generateMessageId = () => `code-msg-${Date.now()}-${localMessageIdCounter++}`;
+    const generateMessageId = () => `artifact-msg-${Date.now()}-${localMessageIdCounter++}`;
 
-    const chatMessages = computed(() => store.getters['codeChat/getMessages'](props.sessionId));
-    const formattedChatMessages = computed(() => store.getters['codeChat/getFormattedMessages'](props.sessionId));
-    const isProcessing = computed(() => store.getters['codeChat/isStreaming']);
-    const currentConversationId = computed(() => store.getters['codeChat/getConversationId'](props.sessionId));
+    const chatMessages = computed(() => store.getters['artifactChat/getMessages'](props.sessionId));
+    const formattedChatMessages = computed(() => store.getters['artifactChat/getFormattedMessages'](props.sessionId));
+    const isProcessing = computed(() => store.getters['artifactChat/isStreaming']);
+    const currentConversationId = computed(() => store.getters['artifactChat/getConversationId'](props.sessionId));
 
     const scrollToBottom = () => {
       nextTick(() => {
@@ -87,7 +87,7 @@ export default {
       });
     };
 
-    // Listen for open file context updates from CodeEditor
+    // Listen for open file context updates from Artifacts screen
     const openFileContext = ref({ path: null, content: null });
 
     const handleOpenFileUpdate = (e) => {
@@ -96,15 +96,15 @@ export default {
 
     onMounted(() => {
       if (props.sessionId) {
-        store.dispatch('codeChat/initializeConversation', props.sessionId);
+        store.dispatch('artifactChat/initializeConversation', props.sessionId);
       }
       focusInput();
       scrollToBottom();
-      window.addEventListener('code-editor-open-file', handleOpenFileUpdate);
+      window.addEventListener('artifacts-open-file', handleOpenFileUpdate);
     });
 
     onUnmounted(() => {
-      window.removeEventListener('code-editor-open-file', handleOpenFileUpdate);
+      window.removeEventListener('artifacts-open-file', handleOpenFileUpdate);
     });
 
     const sendChatMessage = async () => {
@@ -117,7 +117,7 @@ export default {
         timestamp: Date.now(),
       };
 
-      store.dispatch('codeChat/addMessage', { sessionId: props.sessionId, message: userMessage });
+      store.dispatch('artifactChat/addMessage', { sessionId: props.sessionId, message: userMessage });
       const messageToSend = chatInput.value.trim();
       chatInput.value = '';
 
@@ -129,12 +129,12 @@ export default {
         abortController.abort();
         abortController = null;
       }
-      store.dispatch('codeChat/setStreaming', false);
+      store.dispatch('artifactChat/setStreaming', false);
       focusInput();
     };
 
     const processAssistantResponse = async (userInput) => {
-      store.dispatch('codeChat/setStreaming', true);
+      store.dispatch('artifactChat/setStreaming', true);
       abortController = new AbortController();
       const token = localStorage.getItem('token');
 
@@ -146,7 +146,7 @@ export default {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/code-chat`, {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/artifact-chat`, {
           method: 'POST',
           headers,
           signal: abortController.signal,
@@ -173,7 +173,7 @@ export default {
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
-              store.dispatch('codeChat/setStreaming', false);
+              store.dispatch('artifactChat/setStreaming', false);
               break;
             }
 
@@ -202,18 +202,18 @@ export default {
       } catch (error) {
         if (error.name === 'AbortError') {
           // User stopped the stream — not an error
-          store.dispatch('codeChat/setStreaming', false);
+          store.dispatch('artifactChat/setStreaming', false);
           return;
         }
-        console.error('Error calling code chat API:', error);
+        console.error('Error calling artifact chat API:', error);
         const errorMsg = {
           id: generateMessageId(),
           role: 'assistant',
           content: `Sorry, I encountered an error: ${error.message}`,
           timestamp: Date.now(),
         };
-        store.dispatch('codeChat/addMessage', { sessionId: props.sessionId, message: errorMsg });
-        store.dispatch('codeChat/setStreaming', false);
+        store.dispatch('artifactChat/addMessage', { sessionId: props.sessionId, message: errorMsg });
+        store.dispatch('artifactChat/setStreaming', false);
       } finally {
         abortController = null;
         focusInput();
@@ -223,13 +223,13 @@ export default {
     const handleStreamEvent = (eventName, data) => {
       switch (eventName) {
         case 'conversation_started':
-          store.dispatch('codeChat/setConversationId', { sessionId: props.sessionId, conversationId: data.conversationId });
+          store.dispatch('artifactChat/setConversationId', { sessionId: props.sessionId, conversationId: data.conversationId });
           break;
 
         case 'assistant_message': {
           const assistantMessage = { ...data, role: 'assistant', toolCalls: [] };
-          store.dispatch('codeChat/addMessage', { sessionId: props.sessionId, message: assistantMessage });
-          store.dispatch('codeChat/setMessageStatus', {
+          store.dispatch('artifactChat/addMessage', { sessionId: props.sessionId, message: assistantMessage });
+          store.dispatch('artifactChat/setMessageStatus', {
             sessionId: props.sessionId,
             messageId: data.id,
             status: { type: 'thinking', text: 'Annie is thinking...' },
@@ -238,7 +238,7 @@ export default {
         }
 
         case 'content_delta':
-          store.commit('codeChat/APPEND_MESSAGE_CONTENT', {
+          store.commit('artifactChat/APPEND_MESSAGE_CONTENT', {
             sessionId: props.sessionId,
             messageId: data.assistantMessageId,
             delta: data.delta,
@@ -246,18 +246,18 @@ export default {
           break;
 
         case 'tool_start':
-          store.dispatch('codeChat/addToolCall', {
+          store.dispatch('artifactChat/addToolCall', {
             sessionId: props.sessionId,
             messageId: data.assistantMessageId,
             toolCall: { ...data.toolCall },
           });
-          store.dispatch('codeChat/setRunningTool', {
+          store.dispatch('artifactChat/setRunningTool', {
             sessionId: props.sessionId,
             messageId: data.assistantMessageId,
             toolCallId: data.toolCall.id,
             running: true,
           });
-          store.dispatch('codeChat/setMessageStatus', {
+          store.dispatch('artifactChat/setMessageStatus', {
             sessionId: props.sessionId,
             messageId: data.assistantMessageId,
             status: { type: 'tool', text: `Running ${data.toolCall.name}...` },
@@ -265,13 +265,13 @@ export default {
           break;
 
         case 'tool_end': {
-          store.dispatch('codeChat/updateToolCall', {
+          store.dispatch('artifactChat/updateToolCall', {
             sessionId: props.sessionId,
             messageId: data.assistantMessageId,
             toolCallId: data.toolCall.id,
             toolCall: data.toolCall,
           });
-          store.dispatch('codeChat/setRunningTool', {
+          store.dispatch('artifactChat/setRunningTool', {
             sessionId: props.sessionId,
             messageId: data.assistantMessageId,
             toolCallId: data.toolCall.id,
@@ -297,8 +297,8 @@ export default {
           break;
 
         case 'final_content':
-          store.commit('codeChat/PERSIST_CONVERSATIONS');
-          store.dispatch('codeChat/clearMessageStatus', {
+          store.commit('artifactChat/PERSIST_CONVERSATIONS');
+          store.dispatch('artifactChat/clearMessageStatus', {
             sessionId: props.sessionId,
             messageId: data.assistantMessageId,
           });
@@ -311,13 +311,13 @@ export default {
             content: `An error occurred: ${data.error}`,
             timestamp: Date.now(),
           };
-          store.dispatch('codeChat/addMessage', { sessionId: props.sessionId, message: errorMsg });
-          store.dispatch('codeChat/setStreaming', false);
+          store.dispatch('artifactChat/addMessage', { sessionId: props.sessionId, message: errorMsg });
+          store.dispatch('artifactChat/setStreaming', false);
           break;
         }
 
         case 'done':
-          store.dispatch('codeChat/setStreaming', false);
+          store.dispatch('artifactChat/setStreaming', false);
           focusInput();
           break;
       }
@@ -326,7 +326,7 @@ export default {
     };
 
     const handleFrontendEvent = (eventType, eventData) => {
-      // Dispatch file_written events so CodeEditor can update open tabs
+      // Dispatch file_written events so Artifacts screen can update open tabs
       if (eventType === 'file_written') {
         window.dispatchEvent(new CustomEvent('code-file-written', { detail: eventData }));
       }
@@ -334,16 +334,16 @@ export default {
 
     const getMessageStatus = (message) => {
       if (!message || message.role !== 'assistant') return null;
-      return store.getters['codeChat/getMessageStatus'](props.sessionId, message.id);
+      return store.getters['artifactChat/getMessageStatus'](props.sessionId, message.id);
     };
 
     const getRunningToolsForMessage = (message) => {
       if (!message || !message.toolCalls) return [];
-      return store.getters['codeChat/getRunningToolsForMessage'](props.sessionId, message.id);
+      return store.getters['artifactChat/getRunningToolsForMessage'](props.sessionId, message.id);
     };
 
     const toggleToolCallExpansion = (messageId, toolCallIndex) => {
-      store.dispatch('codeChat/toggleToolCallExpansion', { sessionId: props.sessionId, messageId, toolCallIndex });
+      store.dispatch('artifactChat/toggleToolCallExpansion', { sessionId: props.sessionId, messageId, toolCallIndex });
     };
 
     const focusInput = () => {
@@ -371,7 +371,7 @@ export default {
 </script>
 
 <style scoped>
-.code-chat-container {
+.artifact-chat-container {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -520,7 +520,7 @@ export default {
   transform: scale(1.05);
 }
 
-.code-chat-container :deep(.message-wrapper) {
+.artifact-chat-container :deep(.message-wrapper) {
   max-width: 100%;
 }
 </style>

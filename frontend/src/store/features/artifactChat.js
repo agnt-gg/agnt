@@ -1,10 +1,10 @@
 // Load persisted conversations from localStorage
 const loadPersistedConversations = () => {
   try {
-    const persisted = localStorage.getItem('codeChatConversations');
+    const persisted = localStorage.getItem('artifactChatConversations');
     return persisted ? JSON.parse(persisted) : {};
   } catch (error) {
-    console.error('Error loading persisted code conversations:', error);
+    console.error('Error loading persisted artifact conversations:', error);
     return {};
   }
 };
@@ -18,9 +18,9 @@ const saveConversations = (conversations) => {
         filteredConversations[sessionId] = conversation;
       }
     }
-    localStorage.setItem('codeChatConversations', JSON.stringify(filteredConversations));
+    localStorage.setItem('artifactChatConversations', JSON.stringify(filteredConversations));
   } catch (error) {
-    console.error('Error saving code conversations to localStorage:', error);
+    console.error('Error saving artifact conversations to localStorage:', error);
   }
 };
 
@@ -245,9 +245,9 @@ export default {
       if (!sessionId) return;
       if (!state.conversations[sessionId]) {
         const welcomeMessage = {
-          id: `code-welcome-${Date.now()}`,
+          id: `artifact-welcome-${Date.now()}`,
           role: 'assistant',
-          content: "Hi! I'm Annie, your coding assistant. I can help you create, edit, and explore files in your workspace. What would you like to work on?",
+          content: "Hi! I'm Annie, your artifacts assistant. I can help you create, edit, and explore files in your workspace — code, documents, visualizations, and more. What would you like to work on?",
           timestamp: Date.now(),
         };
         commit('SET_CONVERSATION', { sessionId, messages: [welcomeMessage] });
@@ -297,9 +297,9 @@ export default {
     clearConversation({ commit }, sessionId) {
       if (!sessionId) return;
       const welcomeMessage = {
-        id: `code-welcome-${Date.now()}`,
+        id: `artifact-welcome-${Date.now()}`,
         role: 'assistant',
-        content: "Hi! I'm Annie, your coding assistant. I can help you create, edit, and explore files in your workspace. What would you like to work on?",
+        content: "Hi! I'm Annie, your artifacts assistant. I can help you create, edit, and explore files in your workspace — code, documents, visualizations, and more. What would you like to work on?",
         timestamp: Date.now(),
       };
       commit('CLEAR_CONVERSATION', sessionId);

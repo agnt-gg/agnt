@@ -68,7 +68,7 @@ const ALL_LEFT_PANELS = [
   'AgentForgePanel', 'ToolForgePanel', 'WorkflowForgePanel',
   'ConnectorsPanel', 'MarketplacePanel', 'TracesPanel',
   'SettingsPanel', 'SkillsPanel', 'WidgetManagerPanel',
-  'WidgetForgePanel', 'CodeEditorPanel', 'GoalsPanel',
+  'WidgetForgePanel', 'ArtifactsPanel', 'GoalsPanel',
   'ExperimentsPanel', 'ExperimentForgePanel', 'EvalDatasetsPanel', 'ExperimentInsightsPanel',
 ];
 let panelsPreloaded = false;

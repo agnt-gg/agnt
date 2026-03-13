@@ -249,7 +249,7 @@ const MAIN_SECTIONS = [
       { screen: 'ToolForgeScreen', label: 'TOOL FORGE' },
     ],
   },
-  { id: 'code', icon: 'fas fa-code', label: 'Code Editor', screens: [{ screen: 'CodeEditorScreen', label: 'CODE EDITOR' }] },
+  { id: 'artifacts', icon: 'fas fa-cube', label: 'Artifacts', screens: [{ screen: 'ArtifactsScreen', label: 'ARTIFACTS' }] },
   {
     id: 'lab',
     icon: 'fas fa-flask',

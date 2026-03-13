@@ -479,6 +479,15 @@ async function universalChatHandler(req, res, context = {}) {
     }
   }
 
+  // Keep DB in sync with the provider/model the frontend is actually using,
+  // so background processes (InsightEngine, etc.) always have current values.
+  UserModel.updateUserSettings(userId, {
+    selectedProvider: resolvedProvider,
+    selectedModel: model,
+  }).catch(e => {
+    console.warn('[Chat] Failed to sync provider/model to DB (non-critical):', e.message);
+  });
+
   // Validate message input (different formats for different handlers)
   const messageInput = originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
   if (!messageInput) {
@@ -1103,7 +1112,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
                 return await executeToolFunction(functionName, args, authToken, conversationContext);
               } else if (chatType === 'widget') {
                 return await executeWidgetFunction(functionName, args, authToken, conversationContext);
-              } else if (chatType === 'code') {
+              } else if (chatType === 'artifact') {
                 return await executeCodeFunction(functionName, args);
               } else {
                 // Default to orchestrator tools
@@ -1150,7 +1159,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
             rawFunctionResponse = await executeToolFunction(functionName, functionArgs, authToken, conversationContext);
           } else if (chatType === 'widget') {
             rawFunctionResponse = await executeWidgetFunction(functionName, functionArgs, authToken, conversationContext);
-          } else if (chatType === 'code') {
+          } else if (chatType === 'artifact') {
             rawFunctionResponse = await executeCodeFunction(functionName, functionArgs);
           } else {
             // Default to orchestrator tools
@@ -1723,6 +1732,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
         InsightTriggers.onChatCompleted(agentExecutionId, userId, {
           agentId,
           conversationId,
+          provider: normalizedProvider,
+          model,
         }).catch(err => {
           console.error('[InsightTriggers] Chat insight extraction failed (non-critical):', err.message);
         });
