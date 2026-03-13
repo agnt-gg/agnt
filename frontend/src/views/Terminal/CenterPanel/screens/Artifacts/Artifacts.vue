@@ -30,44 +30,46 @@
 
         <!-- Body: editor + divider + preview -->
         <div class="ce-body" ref="bodyRef" :class="{ 'is-resizing': isResizing }">
-          <!-- Editor half -->
-          <div class="ce-editor-half" :style="{ width: editorWidth + '%' }">
-            <!-- Info bar -->
-            <div class="ce-info" v-if="activeTab">
-              <span class="ce-filepath">{{ activeTab.path }}</span>
-              <button class="ce-save-btn" :disabled="!activeTab.isDirty || isSaving" @click="saveActiveFile">
-                <i :class="isSaving ? 'fas fa-spinner fa-spin' : 'fas fa-save'"></i>
-                {{ isSaving ? 'Saving...' : 'Save' }}
-              </button>
+          <!-- Editor half (toggled) -->
+          <template v-if="showCode">
+            <div class="ce-editor-half" :style="{ width: editorWidth + '%' }">
+              <!-- Info bar -->
+              <div class="ce-info" v-if="activeTab">
+                <span class="ce-filepath">{{ activeTab.path }}</span>
+                <button class="ce-save-btn" :disabled="!activeTab.isDirty || isSaving" @click="saveActiveFile">
+                  <i :class="isSaving ? 'fas fa-spinner fa-spin' : 'fas fa-save'"></i>
+                  {{ isSaving ? 'Saving...' : 'Save' }}
+                </button>
+              </div>
+
+              <!-- Editor -->
+              <div class="ce-editor" v-if="activeTab">
+                <Codemirror
+                  :key="activeTab.path"
+                  :model-value="activeTab.content"
+                  :style="{ height: '100%', width: '100%' }"
+                  :indent-with-tab="true"
+                  :tab-size="2"
+                  :extensions="editorExtensions"
+                  @update:model-value="handleEditorChange"
+                />
+              </div>
+
+              <!-- Empty state -->
+              <div class="ce-empty" v-else>
+                <i class="fas fa-code"></i>
+                <p>Open a file from the file tree or ask Annie to create one</p>
+                <span class="ce-shortcut">Files are stored in ~/.agnt/projects/</span>
+              </div>
             </div>
 
-            <!-- Editor -->
-            <div class="ce-editor" v-if="activeTab">
-              <Codemirror
-                :key="activeTab.path"
-                :model-value="activeTab.content"
-                :style="{ height: '100%', width: '100%' }"
-                :indent-with-tab="true"
-                :tab-size="2"
-                :extensions="editorExtensions"
-                @update:model-value="handleEditorChange"
-              />
-            </div>
-
-            <!-- Empty state -->
-            <div class="ce-empty" v-else>
-              <i class="fas fa-code"></i>
-              <p>Open a file from the file tree or ask Annie to create one</p>
-              <span class="ce-shortcut">Files are stored in ~/.agnt/projects/</span>
-            </div>
-          </div>
-
-          <!-- Draggable divider -->
-          <div
-            class="ce-divider"
-            :class="{ active: isResizing }"
-            @mousedown="startResize"
-          ></div>
+            <!-- Draggable divider -->
+            <div
+              class="ce-divider"
+              :class="{ active: isResizing }"
+              @mousedown="startResize"
+            ></div>
+          </template>
 
           <!-- Preview half -->
           <div class="ce-preview-half">
@@ -77,6 +79,11 @@
                 Preview
               </span>
               <div class="ce-preview-actions">
+                <Tooltip :text="showCode ? 'Hide source' : 'Show source'">
+                  <button class="ce-preview-btn" :class="{ active: showCode }" @click="showCode = !showCode">
+                    <i class="fas fa-code"></i>
+                  </button>
+                </Tooltip>
                 <Tooltip text="Refresh preview">
                   <button class="ce-preview-btn" @click="refreshPreview">
                     <i class="fas fa-sync-alt"></i>
@@ -204,6 +211,7 @@ const hashCode = (s) => {
 const mdConverter = new showdown.Converter({
   tables: true,
   strikethrough: true,
+  literalMidWordUnderscores: true,
   tasklists: true,
   ghCodeBlocks: true,
   simpleLineBreaks: true,
@@ -270,6 +278,7 @@ export default {
     const isSaving = ref(false);
     const editorWidth = ref(50);
     const isResizing = ref(false);
+    const showCode = ref(false);
 
     // Chart/viz instance tracking for cleanup
     const chartInstances = ref([]);
@@ -312,8 +321,17 @@ export default {
     };
 
     const refreshPreview = () => {
-      updatePreview();
-      if (isMarkdownFile.value) renderMarkdownViz();
+      if (isHtmlFile.value && previewFrame.value) {
+        // Force iframe reload by clearing then re-setting srcdoc
+        previewFrame.value.srcdoc = '';
+        nextTick(() => updatePreview());
+      } else {
+        updatePreview();
+      }
+      if (isMarkdownFile.value) {
+        destroyVizInstances();
+        renderMarkdownViz();
+      }
     };
 
     let previewTimer = null;
@@ -543,11 +561,26 @@ export default {
       });
     };
 
+    const renderMathJax = () => {
+      if (!markdownPreviewRef.value || !window.MathJax) return;
+      try {
+        if (window.MathJax.typesetClear) {
+          window.MathJax.typesetClear([markdownPreviewRef.value]);
+        }
+        window.MathJax.typesetPromise([markdownPreviewRef.value]).catch((err) => {
+          console.error('MathJax rendering error:', err);
+        });
+      } catch (err) {
+        console.error('MathJax rendering error:', err);
+      }
+    };
+
     const renderMarkdownViz = () => {
       nextTick(() => {
         renderChartJsInPreview();
         renderD3InPreview();
         renderThreeJsInPreview();
+        renderMathJax();
       });
     };
 
@@ -557,7 +590,7 @@ export default {
       renderMarkdownViz();
     });
 
-    // ── Resize ───────────────────────────────────────────────
+    // ── Divider resize ───────────────────────────────────────
     let resizeStartX = 0;
     let resizeStartWidth = 0;
 
@@ -580,6 +613,11 @@ export default {
       isResizing.value = false;
       document.removeEventListener('mousemove', onResize);
       document.removeEventListener('mouseup', stopResize);
+      // Re-render charts at new size after divider drag
+      if (isMarkdownFile.value) {
+        destroyVizInstances();
+        renderMarkdownViz();
+      }
     };
 
     // ── File operations ───────────────────────────────────────
@@ -739,6 +777,7 @@ export default {
       isSaving,
       editorWidth,
       isResizing,
+      showCode,
       isHtmlFile,
       isMarkdownFile,
       isTextFile,
@@ -1003,6 +1042,11 @@ export default {
   background: rgba(var(--primary-rgb), 0.08);
 }
 
+.ce-preview-btn.active {
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.12);
+}
+
 .ce-preview-content {
   flex: 1 1 0%;
   min-height: 0;
@@ -1029,45 +1073,6 @@ export default {
   line-height: 1.7;
   scrollbar-width: thin;
 }
-
-.ce-markdown-preview h1 { font-size: 1.6em; color: var(--color-green); margin: 0 0 12px; border-bottom: 1px solid var(--terminal-border-color); padding-bottom: 8px; }
-.ce-markdown-preview h2 { font-size: 1.3em; color: var(--color-green); margin: 20px 0 8px; }
-.ce-markdown-preview h3 { font-size: 1.1em; color: var(--color-green); margin: 16px 0 6px; }
-.ce-markdown-preview p { margin: 0 0 12px; }
-.ce-markdown-preview a { color: var(--color-primary); }
-.ce-markdown-preview strong { color: var(--color-light-0, #eee); }
-.ce-markdown-preview code {
-  background: rgba(0, 0, 0, 0.3);
-  padding: 2px 5px;
-  border-radius: 3px;
-  font-size: 0.9em;
-  font-family: var(--font-family-mono);
-}
-.ce-markdown-preview pre {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 4px;
-  padding: 12px;
-  overflow-x: auto;
-  margin: 0 0 12px;
-}
-.ce-markdown-preview pre code {
-  background: none;
-  padding: 0;
-}
-.ce-markdown-preview ul, .ce-markdown-preview ol { margin: 0 0 12px; padding-left: 24px; }
-.ce-markdown-preview li { margin: 4px 0; }
-.ce-markdown-preview blockquote {
-  border-left: 3px solid var(--color-primary);
-  margin: 0 0 12px;
-  padding: 4px 16px;
-  color: var(--color-text-muted);
-}
-.ce-markdown-preview table { border-collapse: collapse; width: 100%; margin: 0 0 12px; }
-.ce-markdown-preview th, .ce-markdown-preview td { border: 1px solid var(--terminal-border-color); padding: 6px 10px; text-align: left; }
-.ce-markdown-preview th { background: rgba(0, 0, 0, 0.2); color: var(--color-green); }
-.ce-markdown-preview img { max-width: 100%; border-radius: 4px; }
-.ce-markdown-preview hr { border: none; border-top: 1px solid var(--terminal-border-color); margin: 16px 0; }
 
 .ce-text-preview {
   flex: 1;
@@ -1115,6 +1120,137 @@ export default {
 
 .ce-editor .cm-scroller {
   overflow: auto;
+}
+
+/* Markdown element styles (unscoped so v-html content is styled) */
+.ce-markdown-preview p {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+.ce-markdown-preview p:last-child {
+  margin-bottom: 0;
+}
+
+.ce-markdown-preview h1,
+.ce-markdown-preview h2,
+.ce-markdown-preview h3,
+.ce-markdown-preview h4,
+.ce-markdown-preview h5,
+.ce-markdown-preview h6 {
+  color: var(--color-text);
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1em;
+  margin-bottom: 0.75em;
+}
+
+.ce-markdown-preview img {
+  width: 100%;
+  max-width: 100%;
+}
+
+.ce-markdown-preview pre {
+  background-color: var(--color-darker-1);
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  border: 1px solid var(--terminal-border-color);
+  margin-top: 0;
+  margin-bottom: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ce-markdown-preview code {
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+}
+
+.ce-markdown-preview pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  font-size: 0.9em;
+}
+
+.ce-markdown-preview code:not(pre code) {
+  background-color: rgba(127, 129, 147, 0.15);
+  padding: 0 2px;
+  border-radius: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: bold;
+  color: var(--color-primary);
+  border: 1px solid rgba(127, 129, 147, 0.1);
+}
+
+.ce-markdown-preview ul,
+.ce-markdown-preview ol {
+  margin-top: 0.5em;
+  margin-bottom: 1em;
+  padding-left: 2em;
+}
+
+.ce-markdown-preview li {
+  margin-bottom: 0.5em;
+  line-height: 1.6;
+}
+
+.ce-markdown-preview blockquote {
+  margin: 1em 0;
+  padding: 0.8em 1.5em;
+  border-left: 4px solid var(--color-blue);
+  background-color: rgba(18, 224, 255, 0.03);
+  color: var(--color-light-med-navy);
+  border-radius: 0 4px 4px 0;
+}
+
+.ce-markdown-preview table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  border: 1px solid rgba(127, 129, 147, 0.15);
+  border-radius: 6px;
+  margin: 1.5em 0;
+}
+
+.ce-markdown-preview th,
+.ce-markdown-preview td {
+  border: 1px solid rgba(127, 129, 147, 0.15);
+  padding: 0.75em 1em;
+  text-align: left;
+}
+
+.ce-markdown-preview th {
+  background-color: rgba(127, 129, 147, 0.08);
+  font-weight: 600;
+  color: var(--color-light-med-navy);
+}
+
+.ce-markdown-preview a {
+  color: var(--color-primary);
+  transition: color 0.2s ease;
+}
+
+.ce-markdown-preview a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.ce-markdown-preview strong,
+.ce-markdown-preview b {
+  font-weight: 600;
+}
+
+.ce-markdown-preview em,
+.ce-markdown-preview i {
+  font-style: italic;
+}
+
+.ce-markdown-preview hr {
+  border: none;
+  border-top: 1px solid var(--terminal-border-color);
+  margin: 16px 0;
 }
 
 /* Chart.js containers in markdown preview */
