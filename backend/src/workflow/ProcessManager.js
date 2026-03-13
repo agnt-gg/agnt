@@ -180,6 +180,22 @@ class ProcessManager extends EventEmitter {
 
       console.log(`Queued ${totalQueued} workflows for restart. Beginning processing...`);
 
+      // Reset stale error workflows to stopped — they aren't running and shouldn't
+      // appear as active in the frontend panel
+      try {
+        await dbRunWithRetry(() => {
+          return new Promise((resolve, reject) => {
+            db.run("UPDATE workflows SET status = 'stopped' WHERE status = 'error'", (err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          });
+        });
+        console.log('Reset stale error workflows to stopped');
+      } catch (err) {
+        console.error('Error resetting stale error workflows:', err);
+      }
+
       // Start polling for restarted workflows
       if (totalQueued > 0) {
         this.EmailReceiver.startPolling();

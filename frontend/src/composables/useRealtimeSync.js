@@ -190,7 +190,13 @@ export function useRealtimeSync() {
     socket.on('workflow:status_changed', (data) => {
       console.log('[Realtime] Workflow status changed:', data);
       if (data.id && data.status) {
-        store.commit('workflows/UPDATE_WORKFLOW_STATUS', { id: data.id, status: data.status });
+        const existing = store.state.workflows.workflows.find((w) => w.id === data.id);
+        if (existing) {
+          store.commit('workflows/UPDATE_WORKFLOW_STATUS', { id: data.id, status: data.status });
+        } else if (['running', 'listening', 'error'].includes(data.status)) {
+          // Workflow not in store yet — fetch active workflows to pick it up
+          store.dispatch('workflows/fetchWorkflows', { activeOnly: true });
+        }
       }
     });
 

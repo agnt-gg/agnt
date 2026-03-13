@@ -47,7 +47,7 @@ class InsightModel {
   /**
    * Find all insights for a user, with optional filters.
    */
-  static findByUserId(userId, { targetType, targetId, status, category, limit = 100 } = {}) {
+  static findByUserId(userId, { targetType, targetId, status, category, limit = 1000 } = {}) {
     let query = 'SELECT * FROM insights WHERE user_id = ?';
     const params = [userId];
 

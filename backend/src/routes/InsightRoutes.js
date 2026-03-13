@@ -19,7 +19,7 @@ InsightRoutes.get('/', authenticateToken, async (req, res) => {
     const { targetType, targetId, status, category, limit } = req.query;
     const insights = await InsightModel.findByUserId(userId, {
       targetType, targetId, status, category,
-      limit: parseInt(limit) || 100,
+      limit: parseInt(limit) || 1000,
     });
     res.json({ success: true, insights });
   } catch (error) {

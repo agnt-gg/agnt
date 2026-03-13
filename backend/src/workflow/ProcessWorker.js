@@ -32,6 +32,20 @@ class ProcessWorker extends EventEmitter {
         await this._updateWorkflowStatusAndEmit(workflow.id, 'error', false, activeWorkflows);
       });
 
+      // Listen for status changes during execution (running → listening, etc.)
+      // so the frontend gets real-time updates via WebSocket
+      engine.on('statusChanged', (status) => {
+        this.processManager.emit('workflowStatusUpdate', workflow.id, {
+          status,
+          isActive: status !== 'stopped',
+          userId,
+          queueLength: this.processManager.queue.length,
+          activeWorkflowsCount: activeWorkflows.size,
+          workersCount: this.processManager.workers.length,
+          busyWorkersCount: this.processManager.workers.filter((w) => w.isBusy).length,
+        });
+      });
+
       // Add the engine to activeWorkflows BEFORE setting up listeners
       // This prevents a race condition where webhooks can arrive before
       // the workflow is registered in activeWorkflows
@@ -43,7 +57,7 @@ class ProcessWorker extends EventEmitter {
 
       if (Object.keys(engine.errors).length > 0) {
         this.emit('workflowError', engine.errors);
-        await this._updateWorkflowStatus(workflow.id, 'error');
+        await this._updateWorkflowStatusAndEmit(workflow.id, 'error', false, activeWorkflows);
       } else {
         await this._updateWorkflowStatusAndEmit(workflow.id, 'listening', false, activeWorkflows);
       }

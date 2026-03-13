@@ -445,6 +445,14 @@ class WorkflowEngine extends EventEmitter {
       }
       this.isRunning = false;
 
+      // After all triggers processed, restore 'listening' status if the workflow
+      // is still alive. Execution errors are recorded in ExecutionModel — the
+      // workflow status should reflect its operational state (listening for triggers),
+      // not the result of the last execution.
+      if (!this.stopRequested && this.isListening) {
+        await this._updateWorkflowStatus('listening');
+      }
+
       // Check if more items were added while processing
       if (this.triggerQueue.length > 0) {
         setImmediate(() => this._handleTriggerQueue());
@@ -457,6 +465,8 @@ class WorkflowEngine extends EventEmitter {
   async _updateWorkflowStatus(status) {
     try {
       await dbRunWithRetry(() => WorkflowModel.updateStatus(this.workflowId, status));
+      // Emit statusChanged so ProcessWorker can broadcast to frontend
+      this.emit('statusChanged', status);
     } catch (error) {
       console.error(`Error updating workflow status: ${error.message}`);
       throw error;
