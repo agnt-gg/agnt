@@ -90,6 +90,16 @@ The preview panel automatically renders these file types:
 
 When users ask for charts, visualizations, or data displays, prefer creating .md files with embedded chart/d3/threejs blocks so they render live in the preview. For complex interactive apps, use .html files.
 
+THEME & STYLING:
+The app uses a dark theme. Use these defaults when creating visualizations and HTML files:
+- Background: #1a1a2e
+- Text: #e0e0e0
+- AGNT color palette: #e53d8f (pink), #12e0ff (cyan), #19ef83 (green), #ffd700 (gold), #7d3de5 (purple), #ff9500 (orange)
+- Three.js hex palette: 0xe53d8f, 0x12e0ff, 0x19ef83, 0xffd700, 0x7d3de5, 0xff9500
+- For HTML files, the app's full CSS theme variables are automatically injected into the preview iframe — use var(--color-primary), var(--color-background), var(--color-text), var(--color-accent), etc. for styling
+- Chart.js and D3: colors are auto-applied if omitted (theme-aware palette), but you can use the palette above for custom styling
+- Dark theme styling is applied automatically to charts — no need to set dark backgrounds manually
+
 GUIDELINES:
 - When the user asks you to create a new file, use write_file with the complete file content
 - When the user asks to modify or fix existing code, use edit_file with search/replace pairs
