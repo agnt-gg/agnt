@@ -125,6 +125,38 @@ class BaseAdapter {
 }
 
 /**
+ * Sanitize tool schemas so strict providers (OpenAI/Azure via OpenRouter) don't
+ * reject the entire request for minor schema issues like missing `items` on arrays.
+ */
+function sanitizeToolSchemas(tools) {
+  if (!tools || tools.length === 0) return tools;
+
+  function fixProperties(obj) {
+    if (!obj || typeof obj !== 'object') return;
+    if (obj.type === 'array' && !obj.items) {
+      obj.items = { type: 'string' };
+    }
+    if (obj.properties) {
+      for (const prop of Object.values(obj.properties)) {
+        fixProperties(prop);
+      }
+    }
+    if (obj.items && typeof obj.items === 'object') {
+      fixProperties(obj.items);
+    }
+  }
+
+  return tools.map((tool) => {
+    // Deep clone to avoid mutating originals
+    const t = JSON.parse(JSON.stringify(tool));
+    if (t.function?.parameters) {
+      fixProperties(t.function.parameters);
+    }
+    return t;
+  });
+}
+
+/**
  * Adapter for OpenAI and compatible APIs (Groq, TogetherAI, etc.).
  */
 class OpenAiLikeAdapter extends BaseAdapter {
@@ -135,6 +167,8 @@ class OpenAiLikeAdapter extends BaseAdapter {
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
     // Extra body params for providers that need custom parameters (e.g., Z.AI thinking mode)
     this.extraBody = options.extraBody || null;
+    // Provider key — used to gate provider-specific request params (e.g., stream_options)
+    this.provider = options.provider || null;
   }
 
   /**
@@ -208,6 +242,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
   async call(messages, tools) {
     let lastError;
     let currentMessages = messages;
+    const sanitizedTools = sanitizeToolSchemas(tools);
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
       currentMessages = currentMessages.map((msg) =>
@@ -220,8 +255,8 @@ class OpenAiLikeAdapter extends BaseAdapter {
         const requestParams = {
           model: this.model,
           messages: currentMessages,
-          tools: tools.length > 0 ? tools : undefined,
-          tool_choice: tools.length > 0 ? 'auto' : undefined,
+          tools: sanitizedTools.length > 0 ? sanitizedTools : undefined,
+          tool_choice: sanitizedTools.length > 0 ? 'auto' : undefined,
         };
         // Pass extra body params for providers that need them (e.g., Z.AI thinking)
         if (this.extraBody) {
@@ -421,11 +456,17 @@ Please carefully check the tool schema and ensure all parameters match the expec
         // Z.AI GLM-5 network_error workaround: large tool payloads (121KB+) cause
         // Z.AI's server to abort during inference. Limit tools to reduce payload size.
         // TODO: Remove this cap once Z.AI fixes GLM-5 tool handling
-        let effectiveTools = tools;
-        if (this.model === 'glm-5' && tools.length > 20) {
-          console.warn(`[GLM-5 Workaround] Reducing tools from ${tools.length} to 20 to avoid Z.AI network_error`);
-          effectiveTools = tools.slice(0, 20);
+        let effectiveTools = sanitizeToolSchemas(tools);
+        if (this.model === 'glm-5' && effectiveTools.length > 20) {
+          console.warn(`[GLM-5 Workaround] Reducing tools from ${effectiveTools.length} to 20 to avoid Z.AI network_error`);
+          effectiveTools = effectiveTools.slice(0, 20);
         }
+
+        // Only include stream_options for providers whose APIs natively support it.
+        // OpenRouter and other proxies may forward unsupported params to upstream
+        // providers, causing 400 "Provider returned error".
+        const STREAM_OPTIONS_PROVIDERS = new Set(['openai', 'openai-codex', 'deepseek', 'groq']);
+        const supportsStreamOptions = this.provider && STREAM_OPTIONS_PROVIDERS.has(this.provider);
 
         const requestParams = {
           model: this.model,
@@ -433,7 +474,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           tools: effectiveTools.length > 0 ? effectiveTools : undefined,
           tool_choice: effectiveTools.length > 0 ? 'auto' : undefined,
           stream: true,
-          stream_options: { include_usage: true },
+          ...(supportsStreamOptions ? { stream_options: { include_usage: true } } : {}),
         };
         // Pass extra body params for providers that need them (e.g., Z.AI thinking)
         if (this.extraBody) {
@@ -712,8 +753,10 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
         // Check if this is the last attempt or if the error is not retryable
         if (attempt === this.maxRetries || (!this.isRetryableError(error) && !this.isTokenLimitError(error))) {
           console.error(`LLM streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
+            provider: this.provider,
             status: error.status,
             message: error.message,
+            errorBody: error.error || null,
           });
 
           // Parse the error to get a user-friendly message
@@ -3569,7 +3612,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
         console.log(`[LLM Adapter] Using OpenAIResponsesAdapter for model: ${model} (Responses API)`);
         return new OpenAIResponsesAdapter(client, model);
       }
-      return new OpenAiLikeAdapter(client, model);
+      return new OpenAiLikeAdapter(client, model, { provider: 'openai' });
 
     case 'openai-codex':
       // Codex models use the ChatGPT backend Responses API (different from standard OpenAI).
@@ -3577,7 +3620,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
         console.log(`[LLM Adapter] Using CodexResponsesAdapter for codex model: ${model} (ChatGPT backend)`);
         return new CodexResponsesAdapter(client, model);
       }
-      return new OpenAiLikeAdapter(client, model);
+      return new OpenAiLikeAdapter(client, model, { provider: 'openai-codex' });
 
     case 'deepseek':
     case 'grokai':
@@ -3587,7 +3630,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'minimax':
     case 'openrouter':
     case 'togetherai':
-      return new OpenAiLikeAdapter(client, model);
+      return new OpenAiLikeAdapter(client, model, { provider: lowerCaseProvider });
 
     case 'zai': {
       // Z.AI GLM-5 and GLM-4.7 have thinking enabled by default.
@@ -3600,6 +3643,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
         console.log(`[LLM Adapter] Z.AI reasoning model: ${model}, thinking: ${useThinking ? 'enabled' : 'disabled'}`);
       }
       return new OpenAiLikeAdapter(client, model, {
+        provider: 'zai',
         extraBody: supportsReasoning
           ? { thinking: { type: useThinking ? 'enabled' : 'disabled' } }
           : null,
