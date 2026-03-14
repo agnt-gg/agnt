@@ -1,14 +1,34 @@
 /**
  * Dynamic Tool Selector — Fewest Tools First
  *
- * Starts with the minimum tools needed based on keyword matching.
- * Provides a `discover_tools` meta-tool for the LLM to dynamically
- * browse and load additional tool categories mid-conversation.
+ * DEFAULT_TOOLS: always available in every conversation.
+ * TOOL_GROUPS: keyword-triggered sets of native tools.
+ * Everything else (registry/plugin tools NOT in DEFAULT_TOOLS):
+ *   automatically gated, discoverable via discover_tools browse/load.
  */
 
 /**
- * Tool groups — each group maps to an array of native tool names.
- * Registry/plugin tools are always included (user explicitly installed them).
+ * Tools always available without keyword matching or discovery.
+ * Any tool not listed here AND not in a matched TOOL_GROUP is hidden
+ * until the LLM explicitly loads it via discover_tools.
+ */
+export const DEFAULT_TOOLS = new Set([
+  'discover_tools',
+  'custom_api',
+  'mcp_client',
+  'agnt_agent',
+  'execute_javascript',
+  'execute_python',
+  'random_number',
+  'file_system_operation',
+  'database_operation',
+  'web_search',
+  'web_scrape',
+]);
+
+/**
+ * Tool groups — keyword-triggered sets of native tools.
+ * When a user message matches a group's trigger, its tools become available.
  */
 export const TOOL_GROUPS = {
   core: [
@@ -112,15 +132,20 @@ export const ALWAYS_INCLUDED_GUIDANCE = new Set([
 ]);
 
 /**
- * Set of all native tool names across all groups.
- * Used to distinguish native tools (which we filter) from registry/plugin tools (which always pass through).
+ * Set of all tool names that live inside TOOL_GROUPS.
  */
-const ALL_NATIVE_TOOL_NAMES = new Set(
+const ALL_GROUPED_TOOL_NAMES = new Set(
   Object.values(TOOL_GROUPS).flat()
 );
 
 /**
  * Select tools for the orchestrator based on keyword matching against the user message.
+ *
+ * Inclusion rules (in order):
+ *   1. DEFAULT_TOOLS → always included
+ *   2. Tool is in a keyword-matched TOOL_GROUP → included
+ *   3. Tool was previously loaded via discover_tools → included (handled by caller)
+ *   4. Everything else → filtered out (available via discover_tools)
  *
  * @param {Array} allSchemas - All available tool schemas (native + registry + plugin)
  * @param {string} userMessage - The latest user message text
@@ -142,11 +167,11 @@ export function selectTools(allSchemas, userMessage) {
     matchedGroups.add('core');
   }
 
-  // Build the set of native tool names that should be included
-  const includedToolNames = new Set();
+  // Build the set of tool names included via matched groups
+  const includedGroupToolNames = new Set();
   for (const group of matchedGroups) {
     for (const toolName of TOOL_GROUPS[group]) {
-      includedToolNames.add(toolName);
+      includedGroupToolNames.add(toolName);
     }
   }
 
@@ -160,21 +185,21 @@ export function selectTools(allSchemas, userMessage) {
   }
 
   // Filter schemas:
-  // - Native tools: only include if they're in a matched group
-  // - Registry/plugin tools: always include (user explicitly installed them)
-  // - discover_tools: always include (handled separately in chatConfigs)
+  //   - DEFAULT_TOOLS: always included
+  //   - In a matched group: included
+  //   - Everything else: filtered out
   const filteredSchemas = allSchemas.filter((schema) => {
     const name = schema.function?.name;
     if (!name) return false;
 
-    // discover_tools is always included
-    if (name === 'discover_tools') return true;
+    // Always-available defaults
+    if (DEFAULT_TOOLS.has(name)) return true;
 
-    // Non-native tools (registry/plugin) are always included
-    if (!ALL_NATIVE_TOOL_NAMES.has(name)) return true;
+    // In a keyword-matched group
+    if (includedGroupToolNames.has(name)) return true;
 
-    // Native tools: only include if in a matched group
-    return includedToolNames.has(name);
+    // Everything else is gated behind discover_tools
+    return false;
   });
 
   console.log(
@@ -188,14 +213,22 @@ export function selectTools(allSchemas, userMessage) {
 
 /**
  * Get tool schemas for specific categories (used by discover_tools load operation).
+ * Supports TOOL_GROUP names and the special "installed" category which
+ * returns all non-default, non-grouped tools (registry + plugin tools).
  *
  * @param {Array} allSchemas - All available tool schemas
  * @param {Iterable<string>} categories - Category names to load
  * @returns {Array} Matching tool schemas
  */
 export function getToolsForCategories(allSchemas, categories) {
+  const catSet = new Set(categories);
+
+  // If "installed" is requested, return all non-default tools not in any group
+  const includeInstalled = catSet.has('installed');
+
+  // Collect tool names from named groups
   const targetNames = new Set();
-  for (const cat of categories) {
+  for (const cat of catSet) {
     const tools = TOOL_GROUPS[cat];
     if (tools) {
       for (const name of tools) {
@@ -206,7 +239,17 @@ export function getToolsForCategories(allSchemas, categories) {
 
   return allSchemas.filter((schema) => {
     const name = schema.function?.name;
-    return name && targetNames.has(name);
+    if (!name) return false;
+
+    // Named group match
+    if (targetNames.has(name)) return true;
+
+    // "installed" category: include if not a default and not in any static group
+    if (includeInstalled && !DEFAULT_TOOLS.has(name) && !ALL_GROUPED_TOOL_NAMES.has(name)) {
+      return true;
+    }
+
+    return false;
   });
 }
 
@@ -225,4 +268,17 @@ export function getGuidanceForCategories(categories) {
     }
   }
   return guidance;
+}
+
+/**
+ * Build the list of non-default, non-grouped tool names from available schemas.
+ * Used by discover_tools browse to show the dynamic "installed" category.
+ *
+ * @param {Array} allSchemas - All available tool schemas
+ * @returns {string[]} Tool names in the "installed" bucket
+ */
+export function getInstalledToolNames(allSchemas) {
+  return allSchemas
+    .map((s) => s.function?.name)
+    .filter((name) => name && !DEFAULT_TOOLS.has(name) && !ALL_GROUPED_TOOL_NAMES.has(name));
 }

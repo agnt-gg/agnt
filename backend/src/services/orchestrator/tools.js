@@ -892,7 +892,7 @@ export const TOOLS = {
               type: 'array',
               items: { type: 'string' },
               description:
-                'Categories to load (for "load" operation). Valid: "core", "shell", "agnt_platform", "media", "email", "memory".',
+                'Categories to load (for "load" operation). Use group names (e.g. "core", "shell", "media") or "installed" to load all installed registry/plugin tools.',
             },
           },
           required: ['operation'],
@@ -900,37 +900,57 @@ export const TOOLS = {
       },
     },
     execute: async (args, authToken, context) => {
-      const { TOOL_GROUPS, GROUP_DESCRIPTIONS, getGuidanceForCategories } = await import('./toolSelector.js');
+      const { TOOL_GROUPS, GROUP_DESCRIPTIONS, getGuidanceForCategories, getInstalledToolNames } = await import('./toolSelector.js');
+      const { getAvailableToolSchemas } = await import('./tools.js');
       const { operation, categories } = args;
 
       if (operation === 'browse') {
-        // Determine which groups are currently loaded
         const loadedGroups = context?._loadedToolGroups || new Set();
 
-        const result = Object.entries(TOOL_GROUPS).map(([name, tools]) => ({
+        // Static groups
+        const groupResults = Object.entries(TOOL_GROUPS).map(([name, tools]) => ({
           name,
           tools,
           description: GROUP_DESCRIPTIONS[name] || '',
           status: loadedGroups.has(name) ? 'active' : 'available',
         }));
 
+        // Dynamic "installed" category — all registry/plugin tools not in defaults or groups
+        let installedTools = [];
+        try {
+          const allSchemas = await getAvailableToolSchemas();
+          installedTools = getInstalledToolNames(allSchemas);
+        } catch (e) {
+          // Non-fatal
+        }
+
+        if (installedTools.length > 0) {
+          groupResults.push({
+            name: 'installed',
+            tools: installedTools,
+            description: 'Installed registry and plugin tools (not loaded by default)',
+            status: loadedGroups.has('installed') ? 'active' : 'available',
+          });
+        }
+
         return JSON.stringify({
           success: true,
-          categories: result,
-          hint: 'To activate an available category, call discover_tools with operation="load" and categories=["category_name"]. Tools become usable immediately in your next response.',
+          categories: groupResults,
+          hint: 'To activate an available category, call discover_tools with operation="load" and categories=["category_name"]. Use "installed" to load all registry/plugin tools. Tools become usable immediately in your next response.',
         });
       }
 
       if (operation === 'load') {
         if (!categories || !Array.isArray(categories) || categories.length === 0) {
+          const validCategories = [...Object.keys(TOOL_GROUPS), 'installed'];
           return JSON.stringify({
             success: false,
-            error: 'The "load" operation requires a non-empty "categories" array. Valid: "core", "shell", "agnt_platform", "media", "email", "memory".',
+            error: `The "load" operation requires a non-empty "categories" array. Valid: ${validCategories.join(', ')}.`,
           });
         }
 
-        // Validate category names
-        const validCategories = Object.keys(TOOL_GROUPS);
+        // Validate category names ("installed" is a valid virtual category)
+        const validCategories = [...Object.keys(TOOL_GROUPS), 'installed'];
         const invalid = categories.filter((c) => !validCategories.includes(c));
         if (invalid.length > 0) {
           return JSON.stringify({
@@ -952,10 +972,19 @@ export const TOOLS = {
           context._requestedToolCategories.add('core');
         }
 
-        // Collect loaded tool names and guidance for the response
+        // Collect loaded tool names for the response
         const loadedTools = [];
         for (const cat of context._requestedToolCategories) {
-          loadedTools.push(...(TOOL_GROUPS[cat] || []));
+          if (cat === 'installed') {
+            try {
+              const allSchemas = await getAvailableToolSchemas();
+              loadedTools.push(...getInstalledToolNames(allSchemas));
+            } catch (e) {
+              // Non-fatal
+            }
+          } else {
+            loadedTools.push(...(TOOL_GROUPS[cat] || []));
+          }
         }
 
         const guidanceSections = getGuidanceForCategories(context._requestedToolCategories);
