@@ -6,6 +6,7 @@ import SkillApplicator from '../services/evolution/applicators/SkillApplicator.j
 import WorkflowApplicator from '../services/evolution/applicators/WorkflowApplicator.js';
 import ToolApplicator from '../services/evolution/applicators/ToolApplicator.js';
 import InsightTriggers from '../services/evolution/InsightTriggers.js';
+import EvolutionSettingsModel from '../models/EvolutionSettingsModel.js';
 import { authenticateToken } from './Middleware.js';
 
 const InsightRoutes = express.Router();
@@ -65,6 +66,34 @@ InsightRoutes.get('/source/:sourceType/:sourceId', authenticateToken, async (req
     res.status(500).json({ error: 'Failed to fetch source insights' });
   }
 });
+
+// ==================== EVOLUTION SETTINGS ====================
+
+// GET /api/insights/settings — Get evolution settings
+InsightRoutes.get('/settings', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const settings = await EvolutionSettingsModel.get(userId);
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('[Insight Route] Settings error:', error);
+    res.status(500).json({ error: 'Failed to fetch evolution settings' });
+  }
+});
+
+// POST /api/insights/settings — Update evolution settings
+InsightRoutes.post('/settings', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const settings = await EvolutionSettingsModel.update(userId, req.body);
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('[Insight Route] Settings update error:', error);
+    res.status(500).json({ error: 'Failed to update evolution settings' });
+  }
+});
+
+// ==================== SINGLE INSIGHT ====================
 
 // GET /api/insights/:id — Get a single insight
 InsightRoutes.get('/:id', authenticateToken, async (req, res) => {

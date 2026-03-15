@@ -27,7 +27,15 @@
           @update:searchQuery="(v) => (searchQuery = v)"
           @update:layout="(v) => (currentLayout = v)"
           @create="handleCreate"
-        />
+        >
+          <template #extra-buttons>
+            <Tooltip text="Evolution Settings" width="auto">
+              <button class="wm-btn" @click="openSettings">
+                <i class="fas fa-cog"></i>
+              </button>
+            </Tooltip>
+          </template>
+        </ScreenToolbar>
 
         <!-- View switcher + filter tabs -->
         <div class="tab-bar">
@@ -423,6 +431,100 @@
         </div>
       </Teleport>
 
+      <!-- ═══ EVOLUTION SETTINGS MODAL ═══ -->
+      <Teleport to="body">
+        <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3><i class="fas fa-cog settings-icon"></i> Evolution Settings</h3>
+              <button class="modal-close" @click="showSettingsModal = false"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+              <!-- Master toggle -->
+              <div class="settings-group">
+                <div class="setting-row master-row">
+                  <div class="setting-info">
+                    <span class="setting-label">Automated Insights</span>
+                    <span class="setting-desc">Extract insights from traces automatically</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" :checked="settingsForm.insightsEnabled" @change="settingsForm.insightsEnabled = $event.target.checked" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Source toggles -->
+              <div class="settings-group" :class="{ disabled: !settingsForm.insightsEnabled }">
+                <div class="settings-group-title">Insight Sources</div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <span class="setting-label"><i class="fas fa-comments"></i> Agent Chats</span>
+                    <span class="setting-desc">Analyze agent conversations for patterns, memory, and prompt refinements</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" :checked="settingsForm.insightSources.agent_chat" :disabled="!settingsForm.insightsEnabled" @change="settingsForm.insightSources.agent_chat = $event.target.checked" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <span class="setting-label"><i class="fas fa-bullseye"></i> Goals</span>
+                    <span class="setting-desc">Extract patterns and antipatterns from completed goals</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" :checked="settingsForm.insightSources.goal" :disabled="!settingsForm.insightsEnabled" @change="settingsForm.insightSources.goal = $event.target.checked" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <span class="setting-label"><i class="fas fa-project-diagram"></i> Workflows</span>
+                    <span class="setting-desc">Identify bottlenecks and optimization opportunities in workflow runs</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" :checked="settingsForm.insightSources.workflow" :disabled="!settingsForm.insightsEnabled" @change="settingsForm.insightSources.workflow = $event.target.checked" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <span class="setting-label"><i class="fas fa-wrench"></i> Tool Usage Rollups</span>
+                    <span class="setting-desc">Aggregate tool failure rates and usage patterns periodically</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" :checked="settingsForm.insightSources.tool_rollup" :disabled="!settingsForm.insightsEnabled" @change="settingsForm.insightSources.tool_rollup = $event.target.checked" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Auto-apply -->
+              <div class="settings-group" :class="{ disabled: !settingsForm.insightsEnabled }">
+                <div class="settings-group-title">Automation</div>
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <span class="setting-label"><i class="fas fa-brain"></i> Auto-apply Memory Insights</span>
+                    <span class="setting-desc">Automatically store extracted memory facts to agent memory</span>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" :checked="settingsForm.autoApplyMemory" :disabled="!settingsForm.insightsEnabled" @change="settingsForm.autoApplyMemory = $event.target.checked" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="modal-btn cancel" @click="showSettingsModal = false">Cancel</button>
+              <button class="modal-btn save" :disabled="savingSettings" @click="saveSettings">
+                <i :class="savingSettings ? 'fas fa-spinner fa-spin' : 'fas fa-check'"></i>
+                {{ savingSettings ? 'Saving...' : 'Save' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
+
       <SimpleModal ref="simpleModal" />
     </template>
   </BaseScreen>
@@ -461,9 +563,18 @@ const selectedInsight = ref(null);
 // Modals
 const showForgeModal = ref(false);
 const showGenerateModal = ref(false);
+const showSettingsModal = ref(false);
 const launching = ref(false);
 const generating = ref(false);
 const rollingUp = ref(false);
+const savingSettings = ref(false);
+
+// Settings form
+const settingsForm = ref({
+  insightsEnabled: false,
+  insightSources: { agent_chat: true, goal: true, workflow: true, tool_rollup: true },
+  autoApplyMemory: true,
+});
 
 // Forge form
 const forgeForm = ref({
@@ -647,6 +758,33 @@ const triggerRollup = async () => {
     console.error('Rollup failed:', err);
   } finally {
     rollingUp.value = false;
+  }
+};
+
+// ═══ SETTINGS ═══
+
+const openSettings = async () => {
+  const settings = await store.dispatch('insights/fetchEvolutionSettings');
+  if (settings) {
+    settingsForm.value = {
+      insightsEnabled: settings.insightsEnabled ?? true,
+      insightSources: { ...settings.insightSources },
+      autoApplyMemory: settings.autoApplyMemory ?? true,
+    };
+  }
+  showSettingsModal.value = true;
+};
+
+const saveSettings = async () => {
+  if (savingSettings.value) return;
+  savingSettings.value = true;
+  try {
+    await store.dispatch('insights/updateEvolutionSettings', settingsForm.value);
+    showSettingsModal.value = false;
+  } catch (err) {
+    console.error('Failed to save settings:', err);
+  } finally {
+    savingSettings.value = false;
   }
 };
 
@@ -1269,4 +1407,115 @@ select.form-input option { background: var(--terminal-bg); color: var(--color-te
 }
 .modal-btn.save:disabled { opacity: 0.5; cursor: not-allowed; }
 .modal-btn.save:not(:disabled):hover { opacity: 0.85; }
+
+/* ── Settings Modal ── */
+.settings-icon {
+  color: var(--color-grey);
+  margin-right: 4px;
+  font-size: 0.9em;
+}
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: opacity 0.2s;
+}
+.settings-group.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.settings-group-title {
+  font-size: 0.7em;
+  color: var(--color-grey);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  margin-bottom: 4px;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.setting-row:hover {
+  background: rgba(var(--green-rgb), 0.03);
+}
+.setting-row.master-row {
+  padding: 12px 8px;
+}
+.setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.setting-label {
+  font-size: 0.9em;
+  color: var(--color-text);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.setting-label i {
+  font-size: 0.85em;
+  color: var(--color-grey);
+  width: 16px;
+  text-align: center;
+}
+.setting-desc {
+  font-size: 0.75em;
+  color: var(--color-grey);
+  line-height: 1.3;
+}
+
+/* Toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: rgba(150, 150, 150, 0.25);
+  border-radius: 20px;
+  transition: all 0.2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background: var(--color-grey);
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: rgba(var(--green-rgb), 0.35);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: var(--color-green);
+}
+.toggle-switch input:disabled + .toggle-slider {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 </style>

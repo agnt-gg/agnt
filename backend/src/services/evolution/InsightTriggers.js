@@ -1,4 +1,5 @@
 import InsightEngine from './InsightEngine.js';
+import EvolutionSettingsModel from '../../models/EvolutionSettingsModel.js';
 import { broadcastToUser } from '../../utils/realtimeSync.js';
 
 /**
@@ -12,6 +13,11 @@ class InsightTriggers {
    */
   static async onChatCompleted(executionId, userId, context = {}) {
     try {
+      // Check if agent_chat insights are enabled
+      if (!await EvolutionSettingsModel.isSourceEnabled(userId, 'agent_chat')) {
+        return;
+      }
+
       const { agentId, conversationId, provider, model } = context;
 
       console.log(`[InsightTriggers] Chat completed: ${executionId} for agent ${agentId || 'orchestrator'}`);
@@ -24,9 +30,12 @@ class InsightTriggers {
       });
 
       if (insightIds.length > 0) {
-        // Auto-apply high-confidence memory insights (only for specific agents)
+        // Auto-apply high-confidence memory insights (only for specific agents, if enabled)
         if (agentId && agentId !== 'agent-chat') {
-          await this._autoApplyMemoryInsights(userId, agentId);
+          const settings = await EvolutionSettingsModel.get(userId);
+          if (settings.autoApplyMemory) {
+            await this._autoApplyMemoryInsights(userId, agentId);
+          }
         }
 
         // Broadcast to frontend
@@ -48,6 +57,14 @@ class InsightTriggers {
    */
   static async onGoalCompleted(goalId, userId, provider = null, model = null) {
     try {
+      // Check if goal insights are enabled
+      if (!await EvolutionSettingsModel.isSourceEnabled(userId, 'goal')) {
+        // Still trigger SkillForge pipeline even if insights disabled
+        const SkillForgeOrchestrator = (await import('../goal/SkillForgeOrchestrator.js')).default;
+        const forgeResult = await SkillForgeOrchestrator.onGoalCompleted(goalId, userId, provider, model);
+        return { insightIds: [], forgeResult };
+      }
+
       console.log(`[InsightTriggers] Goal completed: ${goalId}`);
 
       // Extract insights from goal traces
@@ -78,6 +95,11 @@ class InsightTriggers {
    */
   static async onWorkflowExecutionCompleted(executionId, userId, context = {}) {
     try {
+      // Check if workflow insights are enabled
+      if (!await EvolutionSettingsModel.isSourceEnabled(userId, 'workflow')) {
+        return [];
+      }
+
       console.log(`[InsightTriggers] Workflow execution completed: ${executionId}`);
 
       const insightIds = await InsightEngine.extract('workflow', executionId, userId, context);
@@ -102,6 +124,11 @@ class InsightTriggers {
    */
   static async onPeriodicRollup(userId) {
     try {
+      // Check if tool rollup insights are enabled
+      if (!await EvolutionSettingsModel.isSourceEnabled(userId, 'tool_call')) {
+        return [];
+      }
+
       console.log(`[InsightTriggers] Running periodic tool usage rollup for user ${userId}`);
 
       const insightIds = await InsightEngine.extract('tool_call', 'aggregate', userId, {});

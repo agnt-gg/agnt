@@ -674,6 +674,14 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
+      // Evolution settings — controls automated insight extraction
+      db.run(`CREATE TABLE IF NOT EXISTS evolution_settings (
+        user_id TEXT PRIMARY KEY,
+        settings TEXT NOT NULL DEFAULT '{}',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+
       // Goal iteration history for AGI loop
       db.run(`CREATE TABLE IF NOT EXISTS goal_iterations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

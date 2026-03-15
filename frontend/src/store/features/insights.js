@@ -14,6 +14,7 @@ export default {
     targetInsights: [],
     sourceInsights: [],
     agentMemories: [],
+    evolutionSettings: null,
     isLoading: false,
     error: null,
   },
@@ -23,6 +24,7 @@ export default {
     SET_TARGET_INSIGHTS(state, insights) { state.targetInsights = insights || []; },
     SET_SOURCE_INSIGHTS(state, insights) { state.sourceInsights = insights || []; },
     SET_AGENT_MEMORIES(state, memories) { state.agentMemories = memories || []; },
+    SET_EVOLUTION_SETTINGS(state, settings) { state.evolutionSettings = settings; },
     SET_LOADING(state, val) { state.isLoading = val; },
     SET_ERROR(state, err) { state.error = err; },
     REMOVE_INSIGHT(state, id) { state.insights = state.insights.filter(i => i.id !== id); },
@@ -174,6 +176,42 @@ export default {
       }
     },
 
+    // ==================== EVOLUTION SETTINGS ====================
+
+    async fetchEvolutionSettings({ commit }) {
+      try {
+        const res = await fetch(`${API_CONFIG.BASE_URL}/insights/settings`, {
+          credentials: 'include',
+          headers: getAuthHeaders(),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        commit('SET_EVOLUTION_SETTINGS', data.settings);
+        return data.settings;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        return null;
+      }
+    },
+
+    async updateEvolutionSettings({ commit }, settings) {
+      try {
+        const res = await fetch(`${API_CONFIG.BASE_URL}/insights/settings`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(settings),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        commit('SET_EVOLUTION_SETTINGS', data.settings);
+        return data.settings;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        throw error;
+      }
+    },
+
     // ==================== AGENT MEMORY ====================
 
     async fetchAgentMemories({ commit }, agentId) {
@@ -246,6 +284,7 @@ export default {
     agentMemories: state => state.agentMemories,
     isLoading: state => state.isLoading,
     error: state => state.error,
+    evolutionSettings: state => state.evolutionSettings,
     pendingInsights: state => state.insights.filter(i => i.status === 'pending'),
     pendingCount: state => state.stats?.statusCounts?.pending || 0,
     insightsByTarget: state => (targetType) => state.insights.filter(i => i.target_type === targetType),
