@@ -182,6 +182,18 @@ app.get('/api/updates/check', async (req, res) => {
   }
 });
 
+// Releases endpoint - proxies to agnt.gg to avoid CORS issues
+app.get('/api/releases', async (req, res) => {
+  try {
+    const response = await fetch('https://agnt.gg/releases.json');
+    const data = await response.json();
+    res.status(200).json(data);
+  } catch (error) {
+    console.error('Error fetching releases:', error);
+    res.status(500).json({ error: 'Failed to fetch releases', releases: [], roadmap: [] });
+  }
+});
+
 // Catch-all route for client-side routing (only if frontend exists)
 if (frontendExists) {
   app.get('*', (req, res) => {

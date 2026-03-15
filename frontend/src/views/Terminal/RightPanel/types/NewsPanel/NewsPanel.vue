@@ -39,37 +39,64 @@
         </div>
       </div>
 
-      <!-- Latest News Section -->
-      <div class="news-section">
+      <!-- Latest Release Section -->
+      <div v-if="loadingReleases" class="news-section">
         <h4 class="section-title">Latest Updates</h4>
-
-        <div class="news-item featured">
-          <!-- <div class="news-date">November 2025</div> -->
-          <h5 class="news-title">🚀 Major Platform Update</h5>
-          <h4 class="news-title">AGNT v{{ appVersion || '...' }}</h4>
-          <ul class="news-list">
-            <li>Plugin System <span style="color: var(--color-primary)">[New]</span></li>
-            <li>Plugin Marketplace <span style="color: var(--color-primary)">[New]</span></li>
-            <li>Share Creation Links <span style="color: var(--color-primary)">[New]</span></li>
-          </ul>
-          <div class="news-tags">
-            <span class="tag">Backwards Compatable Release</span>
+        <div class="news-item">
+          <div class="loading-placeholder">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>Loading releases...</span>
           </div>
         </div>
       </div>
 
-      <!-- Coming Soon Section -->
-      <div class="news-section">
-        <h4 class="section-title">Coming Soon</h4>
+      <template v-else-if="latestRelease">
+        <div class="news-section">
+          <h4 class="section-title">Latest Updates</h4>
 
-        <div class="roadmap-item">
-          <div class="roadmap-status in-progress">In Progress</div>
-          <ul class="news-list">
-            <li>AGNT RTS Game Layer</li>
-            <li>$AGNT Holder Game Perks</li>
-          </ul>
+          <div class="news-item featured">
+            <div class="news-date">{{ latestRelease.date }}</div>
+            <h5 class="news-title">{{ latestRelease.title }}</h5>
+            <ul class="news-list">
+              <li v-for="feature in displayedFeatures" :key="feature.name">
+                {{ feature.name }}
+                <span :class="'feature-status-' + feature.status">{{ statusLabel(feature.status) }}</span>
+              </li>
+            </ul>
+            <button v-if="latestRelease.features.length > 5 && !showAllFeatures" class="show-more-btn" @click="showAllFeatures = true">
+              + {{ latestRelease.features.length - 5 }} more
+            </button>
+            <div v-if="latestRelease.tags && latestRelease.tags.length" class="news-tags">
+              <span class="tag" v-for="tag in latestRelease.tags" :key="tag">{{ tag }}</span>
+            </div>
+          </div>
         </div>
-      </div>
+
+        <!-- Previous Releases -->
+        <div v-if="previousReleases.length" class="news-section">
+          <h4 class="section-title">Previous Releases</h4>
+          <div v-for="release in previousReleases" :key="release.version" class="news-item previous-release" @click="toggleRelease(release.version)">
+            <div class="previous-release-header">
+              <div>
+                <div class="news-date">{{ release.date }}</div>
+                <h5 class="news-title">v{{ release.version }}</h5>
+              </div>
+              <i class="fas" :class="expandedRelease === release.version ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+            </div>
+            <template v-if="expandedRelease === release.version">
+              <ul class="news-list">
+                <li v-for="feature in release.features" :key="feature.name">
+                  {{ feature.name }}
+                  <span :class="'feature-status-' + feature.status">{{ statusLabel(feature.status) }}</span>
+                </li>
+              </ul>
+              <div v-if="release.tags && release.tags.length" class="news-tags">
+                <span class="tag" v-for="tag in release.tags" :key="tag">{{ tag }}</span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
 
       <!-- Resources Section -->
       <ResourcesSection />
@@ -78,7 +105,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG } from '@/tt.config.js';
@@ -95,6 +122,42 @@ export default {
     const latestVersion = ref('');
     const updateAvailable = ref(false);
     const checkingUpdate = ref(false);
+
+    // Releases data
+    const releases = ref([]);
+    const loadingReleases = ref(true);
+    const showAllFeatures = ref(false);
+    const expandedRelease = ref(null);
+
+    const latestRelease = computed(() => releases.value[0] || null);
+    const previousReleases = computed(() => releases.value.slice(1, 4));
+    const displayedFeatures = computed(() => {
+      if (!latestRelease.value) return [];
+      return showAllFeatures.value
+        ? latestRelease.value.features
+        : latestRelease.value.features.slice(0, 5);
+    });
+
+    const statusLabel = (status) => {
+      const labels = { 'new': '[New]', 'updated': '[Updated]', 'bug': '[Fix]' };
+      return labels[status] || '';
+    };
+
+    const toggleRelease = (version) => {
+      expandedRelease.value = expandedRelease.value === version ? null : version;
+    };
+
+    const fetchReleases = async () => {
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/releases`);
+        const data = await response.json();
+        releases.value = data.releases || [];
+      } catch (error) {
+        console.error('[NewsPanel] Error fetching releases:', error);
+      } finally {
+        loadingReleases.value = false;
+      }
+    };
 
     const checkForUpdates = async () => {
       checkingUpdate.value = true;
@@ -139,8 +202,8 @@ export default {
       // Fetch version using shared composable
       await fetchVersion();
 
-      // Check for updates on mount
-      await checkForUpdates();
+      // Fetch releases and check for updates in parallel
+      await Promise.all([fetchReleases(), checkForUpdates()]);
     });
 
     return {
@@ -150,6 +213,15 @@ export default {
       checkingUpdate,
       checkForUpdates,
       openDownloads,
+      releases,
+      latestRelease,
+      previousReleases,
+      displayedFeatures,
+      loadingReleases,
+      showAllFeatures,
+      expandedRelease,
+      statusLabel,
+      toggleRelease,
     };
   },
 };
@@ -346,54 +418,7 @@ body.dark .feature-item {
   line-height: 1.4;
 }
 
-/* Roadmap Items */
-.roadmap-item {
-  padding: 12px;
-  background: transparent;
-  border: 1px solid var(--color-light-navy);
-  border-radius: 8px;
-  margin-bottom: 8px;
-}
 
-body.dark .roadmap-item {
-  background: rgba(0, 0, 0, 10%);
-  border: 1px solid var(--terminal-border-color);
-}
-
-.roadmap-status {
-  display: inline-block;
-  font-size: 0.75em;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
-}
-
-.roadmap-status.in-progress {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--color-blue);
-}
-
-.roadmap-status.planned {
-  background: rgba(168, 85, 247, 0.2);
-  color: var(--color-violet);
-}
-
-.roadmap-item h5 {
-  font-size: 0.95em;
-  font-weight: 600;
-  color: var(--color-text);
-  margin: 0 0 4px 0;
-}
-
-.roadmap-item p {
-  font-size: 0.85em;
-  color: var(--color-light-med-navy);
-  margin: 0;
-  line-height: 1.4;
-}
 
 /* Version Card Styles */
 .version-section {
@@ -525,5 +550,73 @@ body.dark .check-btn {
 .check-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Feature status labels */
+.feature-status-new {
+  color: var(--color-green);
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+.feature-status-updated {
+  color: var(--color-blue);
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+.feature-status-bug {
+  color: var(--color-orange, #f59e0b);
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+/* Show more button */
+.show-more-btn {
+  background: none;
+  border: none;
+  color: var(--color-green);
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 8px;
+}
+
+.show-more-btn:hover {
+  text-decoration: underline;
+}
+
+/* Previous releases */
+.previous-release {
+  cursor: pointer;
+  padding: 12px 16px;
+}
+
+.previous-release .news-title {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.previous-release-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.previous-release-header i {
+  color: var(--color-light-med-navy);
+  font-size: 0.75em;
+}
+
+
+/* Loading placeholder */
+.loading-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-light-med-navy);
+  font-size: 0.9em;
+  padding: 8px 0;
 }
 </style>
