@@ -18,6 +18,10 @@ const formatDate = (date) => {
   return `${months[date.getMonth()]} ${date.getDate()}`;
 };
 
+const toLocalDateString = (date) => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
 // Calculate level from AGNT score with max level 100
 // Memoized to avoid recalculating for same score
 const levelCache = new Map();
@@ -93,7 +97,7 @@ const fillMissingDates = (data, startDate, endDate) => {
   const end = new Date(endDate);
 
   while (currentDate < end) {
-    const dateString = currentDate.toISOString().split('T')[0];
+    const dateString = toLocalDateString(currentDate);
     const existing = dateMap.get(dateString);
     result.push({
       date: formatDate(currentDate),
@@ -495,8 +499,8 @@ export default {
         const response = await axios.post(
           `${API_CONFIG.BASE_URL}/executions/activity`,
           {
-            startDate: startDate.toISOString().split('T')[0],
-            endDate: endDate.toISOString().split('T')[0],
+            startDate: toLocalDateString(startDate),
+            endDate: toLocalDateString(endDate),
           },
           {
             headers: { Authorization: `Bearer ${token}` },
@@ -602,8 +606,8 @@ export default {
         const response = await axios.post(
           `${API_CONFIG.BASE_URL}/executions/activity`,
           {
-            startDate: startDate.toISOString().split('T')[0],
-            endDate: endDate.toISOString().split('T')[0],
+            startDate: toLocalDateString(startDate),
+            endDate: toLocalDateString(endDate),
           },
           {
             headers: { Authorization: `Bearer ${token}` },

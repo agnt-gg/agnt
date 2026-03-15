@@ -174,7 +174,7 @@ class ExecutionModel {
           SUM(estimated_cost) as estimated_cost
         FROM (
           SELECT
-            DATE(we.start_time) as date,
+            DATE(we.start_time, 'localtime') as date,
             we.credits_used,
             COALESCE((SELECT SUM(ne.input_tokens + ne.output_tokens) FROM node_executions ne WHERE ne.execution_id = we.id), 0) as total_tokens,
             0 as estimated_cost
@@ -182,7 +182,7 @@ class ExecutionModel {
           WHERE we.user_id = ? AND we.start_time BETWEEN ? AND ?
           UNION ALL
           SELECT
-            DATE(start_time) as date,
+            DATE(start_time, 'localtime') as date,
             credits_used,
             COALESCE(total_tokens, 0) as total_tokens,
             COALESCE(estimated_cost, 0) as estimated_cost

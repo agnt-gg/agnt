@@ -1368,6 +1368,7 @@ ${execution.log}
       handleCustomDateChange,
       handleSortChange,
       toggleSortDirection,
+      panelProps,
     };
   },
 };

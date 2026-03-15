@@ -1323,7 +1323,7 @@ ${execution.log}
 </script>
 
 <style scoped>
-.ui-panel.runs-panel {
+.ui-panel.traces-panel {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1903,8 +1903,6 @@ ${execution.log}
   display: flex;
   flex-direction: column;
   gap: 20px;
-  height: 100%;
-  min-height: 0;
 }
 
 .panel-section {

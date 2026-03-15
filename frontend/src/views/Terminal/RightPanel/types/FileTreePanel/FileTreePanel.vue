@@ -679,7 +679,7 @@ export default {
 }
 
 .delete-dialog {
-  background: var(--color-darker-0);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 20px 24px;
