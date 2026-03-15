@@ -174,6 +174,11 @@ export default {
           icon: 'brain',
           label: 'Skills',
         },
+        {
+          screen: 'MemoryScreen',
+          icon: 'memory',
+          label: 'Memory',
+        },
       ],
       system: [
         {
@@ -310,6 +315,7 @@ export default {
         integrations: 'fas fa-plug',
         settings: 'fas fa-cog',
         brain: 'fas fa-brain',
+        memory: 'fas fa-database',
         dna: 'fas fa-dna',
         flask: 'fas fa-flask',
       };

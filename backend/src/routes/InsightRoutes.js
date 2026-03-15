@@ -93,7 +93,116 @@ InsightRoutes.post('/settings', authenticateToken, async (req, res) => {
   }
 });
 
-// ==================== SINGLE INSIGHT ====================
+// POST /api/insights/rollup — Trigger periodic tool usage rollup
+InsightRoutes.post('/rollup', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const insightIds = await InsightTriggers.onPeriodicRollup(userId);
+    res.json({ success: true, count: insightIds.length, insightIds });
+  } catch (error) {
+    console.error('[Insight Route] Rollup error:', error);
+    res.status(500).json({ error: 'Failed to run rollup' });
+  }
+});
+
+// ==================== AGENT MEMORY ====================
+
+// GET /api/insights/memory — Get all memories for the current user (across all agents)
+InsightRoutes.get('/memory', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const memories = await AgentMemoryModel.findByUserId(userId);
+    res.json({ success: true, memories });
+  } catch (error) {
+    console.error('[Insight Route] All memories error:', error);
+    res.status(500).json({ error: 'Failed to fetch all memories' });
+  }
+});
+
+// GET /api/insights/memory/:agentId — Get all memories for an agent
+InsightRoutes.get('/memory/:agentId', authenticateToken, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { memoryType } = req.query;
+    const memories = await AgentMemoryModel.findByAgentId(agentId, { memoryType });
+    res.json({ success: true, memories });
+  } catch (error) {
+    console.error('[Insight Route] Memory list error:', error);
+    res.status(500).json({ error: 'Failed to fetch agent memories' });
+  }
+});
+
+// POST /api/insights/memory/:agentId — Add a memory to an agent
+InsightRoutes.post('/memory/:agentId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { agentId } = req.params;
+    const { memoryType, content } = req.body;
+
+    if (!content) return res.status(400).json({ error: 'Content is required' });
+
+    const id = await AgentMemoryModel.create({
+      agentId,
+      userId,
+      memoryType: memoryType || 'fact',
+      content,
+    });
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('[Insight Route] Memory create error:', error);
+    res.status(500).json({ error: 'Failed to create memory' });
+  }
+});
+
+// PUT /api/insights/memory/entry/:id — Update a memory entry
+InsightRoutes.put('/memory/entry/:id', authenticateToken, async (req, res) => {
+  try {
+    const { content, relevanceScore, memoryType } = req.body;
+    const changes = await AgentMemoryModel.update(req.params.id, { content, relevanceScore, memoryType });
+    res.json({ success: true, updated: changes > 0 });
+  } catch (error) {
+    console.error('[Insight Route] Memory update error:', error);
+    res.status(500).json({ error: 'Failed to update memory' });
+  }
+});
+
+// DELETE /api/insights/memory/entry/:id — Delete a memory entry
+InsightRoutes.delete('/memory/entry/:id', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const changes = await AgentMemoryModel.delete(req.params.id, userId);
+    res.json({ success: true, deleted: changes > 0 });
+  } catch (error) {
+    console.error('[Insight Route] Memory delete error:', error);
+    res.status(500).json({ error: 'Failed to delete memory' });
+  }
+});
+
+// DELETE /api/insights/memory/orphaned — Delete all memories whose agents no longer exist
+InsightRoutes.delete('/memory/orphaned', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const AgentModel = (await import('../models/AgentModel.js')).default;
+    const memories = await AgentMemoryModel.findByUserId(userId, { limit: 10000 });
+    const agents = await AgentModel.findAllByUserId(userId);
+    const agentIds = new Set(agents.map(a => a.id));
+    const specialIds = new Set(['orchestrator', '__orchestrator__']);
+
+    let deleted = 0;
+    for (const mem of memories) {
+      if (!agentIds.has(mem.agent_id) && !specialIds.has(mem.agent_id)) {
+        await AgentMemoryModel.delete(mem.id, userId);
+        deleted++;
+      }
+    }
+    res.json({ success: true, deleted });
+  } catch (error) {
+    console.error('[Insight Route] Orphaned memory cleanup error:', error);
+    res.status(500).json({ error: 'Failed to clean up orphaned memories' });
+  }
+});
+
+// ==================== SINGLE INSIGHT (must be after all named routes) ====================
 
 // GET /api/insights/:id — Get a single insight
 InsightRoutes.get('/:id', authenticateToken, async (req, res) => {
@@ -161,79 +270,6 @@ InsightRoutes.delete('/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('[Insight Route] Delete error:', error);
     res.status(500).json({ error: 'Failed to delete insight' });
-  }
-});
-
-// POST /api/insights/rollup — Trigger periodic tool usage rollup
-InsightRoutes.post('/rollup', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const insightIds = await InsightTriggers.onPeriodicRollup(userId);
-    res.json({ success: true, count: insightIds.length, insightIds });
-  } catch (error) {
-    console.error('[Insight Route] Rollup error:', error);
-    res.status(500).json({ error: 'Failed to run rollup' });
-  }
-});
-
-// ==================== AGENT MEMORY ====================
-
-// GET /api/insights/memory/:agentId — Get all memories for an agent
-InsightRoutes.get('/memory/:agentId', authenticateToken, async (req, res) => {
-  try {
-    const { agentId } = req.params;
-    const { memoryType } = req.query;
-    const memories = await AgentMemoryModel.findByAgentId(agentId, { memoryType });
-    res.json({ success: true, memories });
-  } catch (error) {
-    console.error('[Insight Route] Memory list error:', error);
-    res.status(500).json({ error: 'Failed to fetch agent memories' });
-  }
-});
-
-// POST /api/insights/memory/:agentId — Add a memory to an agent
-InsightRoutes.post('/memory/:agentId', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { agentId } = req.params;
-    const { memoryType, content } = req.body;
-
-    if (!content) return res.status(400).json({ error: 'Content is required' });
-
-    const id = await AgentMemoryModel.create({
-      agentId,
-      userId,
-      memoryType: memoryType || 'fact',
-      content,
-    });
-    res.json({ success: true, id });
-  } catch (error) {
-    console.error('[Insight Route] Memory create error:', error);
-    res.status(500).json({ error: 'Failed to create memory' });
-  }
-});
-
-// PUT /api/insights/memory/entry/:id — Update a memory entry
-InsightRoutes.put('/memory/entry/:id', authenticateToken, async (req, res) => {
-  try {
-    const { content, relevanceScore, memoryType } = req.body;
-    const changes = await AgentMemoryModel.update(req.params.id, { content, relevanceScore, memoryType });
-    res.json({ success: true, updated: changes > 0 });
-  } catch (error) {
-    console.error('[Insight Route] Memory update error:', error);
-    res.status(500).json({ error: 'Failed to update memory' });
-  }
-});
-
-// DELETE /api/insights/memory/entry/:id — Delete a memory entry
-InsightRoutes.delete('/memory/entry/:id', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const changes = await AgentMemoryModel.delete(req.params.id, userId);
-    res.json({ success: true, deleted: changes > 0 });
-  } catch (error) {
-    console.error('[Insight Route] Memory delete error:', error);
-    res.status(500).json({ error: 'Failed to delete memory' });
   }
 });
 

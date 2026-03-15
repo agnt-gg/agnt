@@ -1,8 +1,5 @@
 import InsightModel from '../../../models/InsightModel.js';
 import AgentModel from '../../../models/AgentModel.js';
-import { createLlmClient } from '../../ai/LlmService.js';
-import { createLlmAdapter } from '../../orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../../ai/providerConfigs.js';
 import db from '../../../models/database/index.js';
 
 /**
@@ -32,7 +29,7 @@ class AgentApplicator {
     let result;
     switch (insight.category) {
       case 'prompt_refinement':
-        result = await this._applyPromptRefinement(agent, insight, userId, provider, model);
+        result = await this._applyPromptRefinement(agent, insight, userId);
         break;
       case 'skill_recommendation':
         result = await this._applySkillRecommendation(agent, insight, userId);
@@ -54,85 +51,30 @@ class AgentApplicator {
   }
 
   /**
-   * Apply a prompt refinement insight — merge the refinement into the agent's system prompt.
+   * Apply a prompt refinement insight — store as a dynamic memory instead of rewriting the prompt.
+   * The memory will be automatically injected into future conversations via the memory system.
    */
-  static async _applyPromptRefinement(agent, insight, userId, provider = null, model = null) {
-    const currentPrompt = agent.system_prompt || agent.systemPrompt || '';
-
-    if (!currentPrompt) {
-      return { applied: false, reason: 'Agent has no system prompt to refine' };
-    }
-
-    const messages = [
-      {
-        role: 'system',
-        content: `You are a prompt engineering expert. Merge improvements into agent system prompts.
-
-Rules:
-- Integrate the improvement naturally into the existing prompt
-- Do not remove existing functionality
-- Keep the same tone and structure
-- Return ONLY the updated system prompt text, nothing else`,
-      },
-      {
-        role: 'user',
-        content: `CURRENT SYSTEM PROMPT:\n${currentPrompt}\n\nIMPROVEMENT TO APPLY:\nTitle: ${insight.title}\nDescription: ${insight.description}`,
-      },
-    ];
-
+  static async _applyPromptRefinement(agent, insight, userId) {
     try {
-      let resolvedProvider = provider;
-      let resolvedModel = model;
-      if (!resolvedProvider || !resolvedModel) {
-        const UserModel = (await import('../../../models/UserModel.js')).default;
-        const userSettings = await UserModel.getUserSettings(userId);
-        if (!resolvedProvider) resolvedProvider = userSettings?.selectedProvider;
-        if (!resolvedModel) resolvedModel = userSettings?.selectedModel;
+      const AgentMemoryModel = (await import('../../../models/AgentMemoryModel.js')).default;
+      const content = `${insight.title}: ${insight.description}`;
+
+      const existing = await AgentMemoryModel.findDuplicate(agent.id, content);
+      if (existing) {
+        await AgentMemoryModel.update(existing.id, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
+      } else {
+        await AgentMemoryModel.create({
+          agentId: agent.id,
+          userId,
+          memoryType: 'prompt_guidance',
+          content,
+        });
       }
-      if (!resolvedProvider || !resolvedModel) {
-        return { applied: false, reason: 'No provider/model configured' };
-      }
-
-      const _cfg = getProviderConfig(resolvedProvider);
-      const normalizedProvider = _cfg ? _cfg.key : resolvedProvider.toLowerCase();
-      const client = await createLlmClient(normalizedProvider, userId);
-      const adapter = await createLlmAdapter(normalizedProvider, client, resolvedModel);
-      const result = await adapter.call(messages, []);
-
-      let updatedPrompt = '';
-      if (result.responseMessage?.content) {
-        if (typeof result.responseMessage.content === 'string') {
-          updatedPrompt = result.responseMessage.content;
-        } else if (Array.isArray(result.responseMessage.content)) {
-          updatedPrompt = result.responseMessage.content.map(block => block.text || '').join('');
-        }
-      }
-
-      if (!updatedPrompt || updatedPrompt.length < 20) {
-        return { applied: false, reason: 'LLM returned invalid prompt' };
-      }
-
-      // Clean LLM output
-      let cleanedPrompt = updatedPrompt
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/^```[\s\S]*?\n/, '')
-        .replace(/\n```\s*$/, '')
-        .trim();
-
-      // Save the updated agent
-      await AgentModel.createOrUpdate(agent.id, {
-        ...agent,
-        assignedTools: agent.assignedTools || [],
-        assignedWorkflows: agent.assignedWorkflows || [],
-        assignedSkills: agent.assignedSkills || [],
-        systemPrompt: cleanedPrompt,
-      }, agent.created_by);
 
       return {
         applied: true,
         type: 'prompt_refinement',
-        previousPromptLength: currentPrompt.length,
-        newPromptLength: cleanedPrompt.length,
+        note: 'Stored as dynamic memory — will be injected in future conversations',
       };
     } catch (error) {
       return { applied: false, reason: error.message };

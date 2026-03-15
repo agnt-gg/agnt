@@ -105,10 +105,13 @@ class InsightEngine {
         confidence: raw.confidence || 0.5,
       });
 
-      // If this is a memory-type insight and we have a specific agent, store in agent_memory
-      if (raw.category === 'memory' && agentId && !isOrchestratorChat) {
-        await this._storeAgentMemory(agentId, userId, raw, conversationId);
-      }
+      // Store ALL insights as memories — the memory system is the universal learning mechanism
+      const memoryType = raw.category === 'memory'
+        ? (raw.memoryType || 'fact')
+        : this._insightToMemoryType(raw.category, 'agent_chat');
+      const memContent = raw.memoryContent || raw.description;
+      const memAgentId = isOrchestratorChat ? 'orchestrator' : agentId;
+      await this._storeMemory(memAgentId, userId, memContent, memoryType, conversationId);
 
       if (insightId) stored.push(insightId);
     }
@@ -130,7 +133,7 @@ class InsightEngine {
 
     const stored = [];
 
-    // Convert patterns to insights
+    // Convert patterns to insights + memories
     for (const pattern of (analysis.patterns || [])) {
       const insightId = await this._storeInsightWithDedup(userId, {
         sourceType: 'goal',
@@ -144,10 +147,11 @@ class InsightEngine {
         evidence: { type: pattern.type, toolSequence: pattern.toolSequence, effectiveness: pattern.effectiveness, evidence: pattern.evidence },
         confidence: pattern.effectiveness || 0.5,
       });
+      await this._storeMemory('orchestrator', userId, `[Pattern] ${pattern.name}: ${pattern.description}`, 'pattern');
       if (insightId) stored.push(insightId);
     }
 
-    // Convert antipatterns to insights
+    // Convert antipatterns to insights + memories
     for (const ap of (analysis.antipatterns || [])) {
       const insightId = await this._storeInsightWithDedup(userId, {
         sourceType: 'goal',
@@ -161,10 +165,11 @@ class InsightEngine {
         evidence: { avoidWhen: ap.avoidWhen, evidence: ap.evidence },
         confidence: 0.6,
       });
+      await this._storeMemory('orchestrator', userId, `[Avoid] ${ap.name}: ${ap.description}`, 'pattern');
       if (insightId) stored.push(insightId);
     }
 
-    // Convert higher-order insights
+    // Convert higher-order insights + memories
     for (const insight of (analysis.insights || [])) {
       const insightId = await this._storeInsightWithDedup(userId, {
         sourceType: 'goal',
@@ -177,6 +182,7 @@ class InsightEngine {
         description: insight,
         confidence: 0.4,
       });
+      await this._storeMemory('orchestrator', userId, insight, 'prompt_guidance');
       if (insightId) stored.push(insightId);
     }
 
@@ -226,6 +232,8 @@ class InsightEngine {
         evidence: raw.evidence,
         confidence: raw.confidence || 0.5,
       });
+      const memType = this._insightToMemoryType(raw.category, 'workflow');
+      await this._storeMemory('orchestrator', userId, `[${raw.category}] ${raw.title}: ${raw.description}`, memType);
       if (insightId) stored.push(insightId);
     }
 
@@ -266,6 +274,7 @@ class InsightEngine {
       const failRate = stat.fail_count / stat.call_count;
       if (failRate > 0.3) {
         // High failure rate tool
+        const toolDescription = `Tool "${stat.tool_name}" has a ${Math.round(failRate * 100)}% failure rate over ${stat.call_count} calls in the last 7 days.`;
         const insightId = await this._storeInsightWithDedup(userId, {
           sourceType: 'tool_call',
           sourceId: 'aggregate',
@@ -274,10 +283,11 @@ class InsightEngine {
           targetId: stat.tool_name,
           category: 'bottleneck',
           title: `High failure rate: ${stat.tool_name}`,
-          description: `Tool "${stat.tool_name}" has a ${Math.round(failRate * 100)}% failure rate over ${stat.call_count} calls in the last 7 days.`,
+          description: toolDescription,
           evidence: { callCount: stat.call_count, successCount: stat.success_count, failCount: stat.fail_count, avgDuration: stat.avg_duration_sec },
           confidence: Math.min(0.9, 0.5 + (stat.call_count / 50)),
         });
+        await this._storeMemory('orchestrator', userId, `[Tool Issue] ${toolDescription}`, 'tool_insight');
         if (insightId) stored.push(insightId);
       }
     }
@@ -465,29 +475,42 @@ Rules:
   }
 
   /**
-   * Store a memory fact in agent_memory table.
+   * Map insight category + source type to a memory type.
    */
-  static async _storeAgentMemory(agentId, userId, raw, conversationId) {
-    try {
-      const content = raw.memoryContent || raw.description;
+  static _insightToMemoryType(category, sourceType) {
+    if (category === 'memory') return null; // caller provides via raw.memoryType
+    if (category === 'prompt_refinement') return 'prompt_guidance';
+    if (category === 'tool_preference') return 'tool_insight';
+    if (category === 'pattern') return 'pattern';
+    if (category === 'antipattern') return 'pattern';
+    if (category === 'bottleneck') return sourceType === 'workflow' ? 'workflow_insight' : 'tool_insight';
+    if (category === 'parameter_tune') return 'workflow_insight';
+    return 'fact';
+  }
 
-      // Check for duplicate
-      const existing = await AgentMemoryModel.findDuplicate(agentId, content);
+  /**
+   * Store a memory in the agent_memory table with deduplication.
+   * Used by all extraction methods to persist learnings.
+   */
+  static async _storeMemory(agentId, userId, content, memoryType, conversationId = null) {
+    try {
+      const resolvedAgentId = agentId || 'orchestrator';
+
+      const existing = await AgentMemoryModel.findDuplicate(resolvedAgentId, content);
       if (existing) {
-        // Update relevance score
         await AgentMemoryModel.update(existing.id, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
         return existing.id;
       }
 
       return await AgentMemoryModel.create({
-        agentId,
+        agentId: resolvedAgentId,
         userId,
-        memoryType: raw.memoryType || 'fact',
+        memoryType,
         content,
         sourceConversationId: conversationId,
       });
     } catch (error) {
-      console.error('[InsightEngine] Failed to store agent memory:', error.message);
+      console.error('[InsightEngine] Failed to store memory:', error.message);
       return null;
     }
   }

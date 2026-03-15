@@ -3443,8 +3443,8 @@ export const TOOLS = {
           properties: {
             memory_type: {
               type: 'string',
-              enum: ['fact', 'preference', 'correction', 'context'],
-              description: 'Type of memory: fact (about the user), preference (how they like things), correction (they corrected you), context (background info)',
+              enum: ['fact', 'preference', 'correction', 'context', 'pattern', 'tool_insight', 'workflow_insight', 'prompt_guidance'],
+              description: 'Type of memory: fact (about the user), preference (how they like things), correction (they corrected you), context (background info), pattern (successful patterns), tool_insight (tool usage learnings), workflow_insight (workflow optimizations), prompt_guidance (prompt improvements)',
             },
             content: {
               type: 'string',
@@ -3458,12 +3458,12 @@ export const TOOLS = {
     execute: async (args, authToken, context) => {
       try {
         const { memory_type, content } = args;
-        const agentId = context?.agentId;
+        const agentId = context?.agentId || 'orchestrator';
         const userId = context?.userId;
         const conversationId = context?.conversationId;
 
-        if (!agentId || !userId) {
-          return JSON.stringify({ success: false, error: 'Agent context required for memory storage' });
+        if (!userId) {
+          return JSON.stringify({ success: false, error: 'User context required for memory storage' });
         }
 
         const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
@@ -3502,7 +3502,7 @@ export const TOOLS = {
           properties: {
             memory_type: {
               type: 'string',
-              enum: ['fact', 'preference', 'correction', 'context'],
+              enum: ['fact', 'preference', 'correction', 'context', 'pattern', 'tool_insight', 'workflow_insight', 'prompt_guidance'],
               description: 'Optional filter by memory type',
             },
           },
@@ -3512,11 +3512,7 @@ export const TOOLS = {
     execute: async (args, authToken, context) => {
       try {
         const { memory_type } = args;
-        const agentId = context?.agentId;
-
-        if (!agentId) {
-          return JSON.stringify({ success: false, error: 'Agent context required' });
-        }
+        const agentId = context?.agentId || 'orchestrator';
 
         const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
         const memories = await AgentMemoryModel.findByAgentId(agentId, { memoryType: memory_type, limit: 30 });

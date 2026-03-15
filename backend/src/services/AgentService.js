@@ -181,6 +181,14 @@ class AgentService {
         return res.status(404).json({ error: 'Agent not found' });
       }
 
+      // Clean up orphaned agent memories
+      try {
+        const AgentMemoryModel = (await import('../models/AgentMemoryModel.js')).default;
+        await AgentMemoryModel.deleteByAgentId(id);
+      } catch (e) {
+        console.warn(`[AgentService] Failed to clean up memories for agent ${id}:`, e.message);
+      }
+
       // Broadcast real-time deletion to user's connected clients (all tabs)
       broadcastToUser(userId, RealtimeEvents.AGENT_DELETED, {
         id: id,

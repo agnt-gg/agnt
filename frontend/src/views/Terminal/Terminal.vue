@@ -80,6 +80,7 @@ const screenLoaders = [
   ['SkillsScreen', () => import('./CenterPanel/screens/Skills/Skills.vue')],
   ['ArtifactsScreen', () => import('./CenterPanel/screens/Artifacts/Artifacts.vue')],
   ['ExperimentsScreen', () => import('./CenterPanel/screens/Experiments/Experiments.vue')],
+  ['MemoryScreen', () => import('./CenterPanel/screens/Memory/Memory.vue')],
 ];
 
 // Preload all screen chunks in parallel, register into reactive map as each resolves
@@ -146,6 +147,7 @@ export default {
         SkillsScreen: '/skills',
         ArtifactsScreen: '/artifacts',
         ExperimentsScreen: '/experiments',
+        MemoryScreen: '/memory',
       };
 
       if (screenName in screenRoutes) {

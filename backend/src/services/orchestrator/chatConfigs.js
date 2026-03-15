@@ -12,6 +12,31 @@ import { SECTION_NAMES } from './apiReference.js';
 import { selectTools } from './toolSelector.js';
 
 /**
+ * Load relevant memories and format as a system prompt section.
+ * Shared helper used by all chat types to inject dynamic learnings.
+ */
+async function loadMemorySection(userId, query, agentId = null) {
+  try {
+    if (!userId) return '';
+    const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
+    const memories = query
+      ? await AgentMemoryModel.findRelevant(agentId, userId, query, 15)
+      : agentId
+        ? await AgentMemoryModel.findByAgentId(agentId, { limit: 15 })
+        : await AgentMemoryModel.findByUserId(userId, { limit: 15 });
+    if (!memories.length) return '';
+    const lines = memories.map(m => {
+      const source = m.agent_id && m.agent_id !== 'orchestrator' ? ' (from agent)' : '';
+      return `- [${m.memory_type}] ${m.content}${source}`;
+    }).join('\n');
+    return `\n\n## Memory\nRelevant learnings from previous activity:\n${lines}`;
+  } catch (e) {
+    console.warn('[chatConfigs] Failed to load memories:', e.message);
+    return '';
+  }
+}
+
+/**
  * Configuration for different chat types in the universal handler
  */
 export const CHAT_CONFIGS = {
@@ -96,7 +121,15 @@ export const CHAT_CONFIGS = {
         console.warn('[chatConfigs] Failed to build skill catalog:', e.message);
       }
 
-      return getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection, includedGuidance);
+      // Load relevant user memories for the orchestrator
+      let memorySection = '';
+      try {
+        memorySection = await loadMemorySection(context.userId, context.latestUserMessage);
+      } catch (e) {
+        console.warn('[chatConfigs] Failed to load orchestrator memories:', e.message);
+      }
+
+      return getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection, includedGuidance, memorySection);
     },
     maxToolRounds: 100,
     responseType: 'stream',
@@ -167,18 +200,12 @@ export const CHAT_CONFIGS = {
       // This is chatting WITH a specific agent - use the agent's custom system prompt
       console.log(`Using custom system prompt for agent ${agentId}`);
 
-      // Load agent memory for injection into system prompt
+      // Load relevant agent memories (includes global/orchestrator memories)
       let memorySection = '';
       try {
-        const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
-        const memories = await AgentMemoryModel.findByAgentId(agentId, { limit: 20 });
-        if (memories.length > 0) {
-          // Increment access count for used memories
-          for (const mem of memories) {
-            AgentMemoryModel.incrementAccess(mem.id).catch(() => {});
-          }
-          const memoryLines = memories.map(m => `- [${m.memory_type}] ${m.content}`).join('\n');
-          memorySection = `\n\n## Your Memory\nYou have the following memories from previous conversations with this user:\n${memoryLines}\n\nUse these memories to provide more personalized and contextually aware responses. If you learn new facts or receive corrections, use the save_agent_memory tool to store them.`;
+        const memBase = await loadMemorySection(context.userId, context.latestUserMessage, agentId);
+        if (memBase) {
+          memorySection = memBase + '\n\nUse these memories to provide personalized responses. If you learn new facts or receive corrections, use the save_agent_memory tool to store them.';
         }
       } catch (e) {
         console.warn('[chatConfigs] Failed to load agent memories:', e.message);
@@ -219,8 +246,10 @@ Use your assigned tools effectively to help the user accomplish their goals.`;
       return await getWorkflowToolSchemas();
     },
     async buildSystemPrompt(currentDate, context) {
-      const { workflowId, workflowContext, workflowState } = context;
-      return await getWorkflowSystemContent(currentDate, workflowId, workflowContext, workflowState);
+      const { workflowId, workflowContext, workflowState, userId, latestUserMessage } = context;
+      const basePrompt = await getWorkflowSystemContent(currentDate, workflowId, workflowContext, workflowState);
+      const memorySection = await loadMemorySection(userId, latestUserMessage);
+      return basePrompt + memorySection;
     },
     maxToolRounds: 25,
     responseType: 'stream',
@@ -331,8 +360,9 @@ Use your assigned tools effectively to help the user accomplish their goals.`;
         },
       ];
     },
-    buildSystemPrompt(currentDate, context) {
-      const { toolId, toolContext, toolState } = context;
+    async buildSystemPrompt(currentDate, context) {
+      const { toolId, toolContext, toolState, userId, latestUserMessage } = context;
+      const memorySection = await loadMemorySection(userId, latestUserMessage);
       return `You are Annie, a helpful AI assistant specialized in creating and managing tools using AI-powered generation.
 You have access to powerful functions that can create, modify, and manage tools through natural language instructions.
 Current date: ${currentDate}
@@ -348,7 +378,7 @@ AVAILABLE FUNCTIONS:
 5. **list_tools** - Show all available tools
 6. **run_tool** - Execute a tool with specific parameters
 
-Always be helpful, creative, and guide users through the tool creation process step by step.`;
+Always be helpful, creative, and guide users through the tool creation process step by step.${memorySection}`;
     },
     maxToolRounds: 100, // Same as orchestrator
     responseType: 'stream',
@@ -480,8 +510,8 @@ Always be helpful, creative, and guide users through the tool creation process s
         },
       ];
     },
-    buildSystemPrompt(currentDate, context) {
-      const { widgetId, widgetContext, widgetState } = context;
+    async buildSystemPrompt(currentDate, context) {
+      const { widgetId, widgetContext, widgetState, userId, latestUserMessage } = context;
 
       // Build a concise summary of the current widget state for the system prompt
       let widgetSummary = 'No widget loaded.';
@@ -584,7 +614,7 @@ function apiFetch(url, options = {}) {
 \`\`\`
 Always use \`apiFetch()\` instead of raw \`fetch()\` for AGNT API requests. This is not optional — endpoints that require auth will reject requests without the Bearer token.
 
-Always be helpful and guide users through the widget creation process step by step.`;
+Always be helpful and guide users through the widget creation process step by step.${await loadMemorySection(userId, latestUserMessage)}`;
     },
     maxToolRounds: 100,
     responseType: 'stream',
@@ -596,7 +626,9 @@ Always be helpful and guide users through the widget creation process step by st
     async getToolSchemas(context) {
       return await getGoalToolSchemas();
     },
-    buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(currentDate, context) {
+      const { userId, latestUserMessage } = context;
+      const memorySection = await loadMemorySection(userId, latestUserMessage);
       return `You are Annie, a helpful AI assistant specialized in goal management and task orchestration.
 Current date: ${currentDate}
 
@@ -606,7 +638,7 @@ You have access to comprehensive goal management functions that allow you to:
 - Manage goal lifecycles (pause, resume, delete)
 - Track goal status and completion
 
-Always be proactive in helping users achieve their goals through structured task management.`;
+Always be proactive in helping users achieve their goals through structured task management.${memorySection}`;
     },
     maxToolRounds: 100, // Same as orchestrator
     responseType: 'stream',

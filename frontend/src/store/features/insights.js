@@ -214,6 +214,22 @@ export default {
 
     // ==================== AGENT MEMORY ====================
 
+    async fetchAllMemories({ commit }) {
+      try {
+        const res = await fetch(`${API_CONFIG.BASE_URL}/insights/memory`, {
+          credentials: 'include',
+          headers: getAuthHeaders(),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        commit('SET_AGENT_MEMORIES', data.memories);
+        return data.memories;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        return [];
+      }
+    },
+
     async fetchAgentMemories({ commit }, agentId) {
       try {
         const res = await fetch(`${API_CONFIG.BASE_URL}/insights/memory/${agentId}`, {
@@ -232,7 +248,8 @@ export default {
 
     async addAgentMemory({ dispatch }, { agentId, memoryType, content }) {
       try {
-        const res = await fetch(`${API_CONFIG.BASE_URL}/insights/memory/${agentId}`, {
+        const effectiveAgentId = agentId || 'orchestrator';
+        const res = await fetch(`${API_CONFIG.BASE_URL}/insights/memory/${effectiveAgentId}`, {
           method: 'POST',
           credentials: 'include',
           headers: getAuthHeaders(),
@@ -240,7 +257,7 @@ export default {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        dispatch('fetchAgentMemories', agentId);
+        dispatch('fetchAllMemories');
         return data.id;
       } catch (error) {
         throw error;
@@ -274,6 +291,16 @@ export default {
       } catch (error) {
         throw error;
       }
+    },
+
+    async deleteOrphanedMemories() {
+      const res = await fetch(`${API_CONFIG.BASE_URL}/insights/memory/orphaned`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
     },
   },
   getters: {

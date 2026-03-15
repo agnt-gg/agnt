@@ -509,7 +509,7 @@ function section(name, content, includedGuidance) {
  * @param {string} skillsCatalogSection
  * @param {Set<string>|null} includedGuidance - Set of guidance section names to include, or null for all.
  */
-export function getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection = '', includedGuidance = null) {
+export function getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection = '', includedGuidance = null, memorySection = '') {
   const parts = [];
 
   parts.push(`Current date and time: ${currentDate}
@@ -544,6 +544,10 @@ When you have no tools loaded and the user's request is purely conversational (g
 
   if (skillsCatalogSection) {
     parts.push(skillsCatalogSection);
+  }
+
+  if (memorySection) {
+    parts.push(memorySection);
   }
 
   parts.push(section('IMAGE_ANALYSIS_CAPABILITIES', IMAGE_ANALYSIS_CAPABILITIES, includedGuidance));

@@ -259,6 +259,7 @@ const MAIN_SECTIONS = [
       { screen: 'TracesScreen', label: 'TRACES' },
       { screen: 'ExperimentsScreen', label: 'EVOLUTION' },
       { screen: 'SkillsScreen', label: 'SKILLS' },
+      { screen: 'MemoryScreen', label: 'MEMORY' },
     ],
   },
 ];

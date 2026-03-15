@@ -157,6 +157,12 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'ExperimentsScreen' },
     },
     {
+      path: '/memory',
+      name: 'TerminalMemory',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'MemoryScreen' },
+    },
+    {
       path: '/oauth-callback',
       name: 'OAuthCallback',
       component: OAuthCallback,
