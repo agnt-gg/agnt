@@ -643,8 +643,21 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
             continue; // Retry the call
           }
 
-          // If we have accumulated content, we can continue with that
-          // Otherwise, we'll fall through to the recovery response
+          // If we have accumulated content, we can continue with that.
+          // Otherwise, return a recovery response with the error message.
+          if (!accumulatedContent && accumulatedToolCalls.length === 0) {
+            const userFriendlyError = parseApiErrorMessage(streamIteratorError);
+            return {
+              responseMessage: {
+                role: 'assistant',
+                content: `⚠️ **API Error:** ${userFriendlyError}\n\nPlease check your API configuration or try a different provider.`,
+                tool_calls: [],
+              },
+              toolCalls: [],
+              recoveredFromError: true,
+              recoveredError: streamIteratorError.message || 'Unknown stream error',
+            };
+          }
         }
 
         // CRITICAL: Use AJV validation to check tool calls BEFORE they reach execution

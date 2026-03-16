@@ -266,6 +266,8 @@ const disconnectApp = async (app) => {
     const data = await response.json();
     if (data.success) {
       app.connected = false;
+      await fetchConnectedApps();
+      store.dispatch('appAuth/checkConnectionHealth');
       await showAlert('Success', `Successfully disconnected from ${app.name}`);
     } else {
       throw new Error('Disconnection failed');
@@ -335,6 +337,8 @@ const saveApiKey = async (app, apiKey) => {
     const result = await response.json();
     if (result.success) {
       app.connected = true;
+      await fetchConnectedApps();
+      store.dispatch('appAuth/checkConnectionHealth');
       await showAlert('Success', `API key for ${app.name} saved successfully!`);
     } else {
       throw new Error(result.message || 'Failed to save API key');

@@ -1234,9 +1234,10 @@ export default {
         }
         const data = await response.json();
         if (data.success) {
-          // Refresh the connected apps list to update UI
+          // Refresh the connected apps list and health to update UI
           await store.dispatch('appAuth/fetchConnectedApps');
           await store.dispatch('appAuth/fetchAllProviders');
+          store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `Successfully disconnected from ${app.name}`);
 
           // Add to terminal log
@@ -1306,6 +1307,7 @@ export default {
         if (result.success) {
           app.connected = true;
           await store.dispatch('appAuth/fetchConnectedApps');
+          store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `API key for ${app.name} saved successfully!`);
         } else {
           throw new Error(result.message || 'Failed to save API key');
@@ -1328,6 +1330,7 @@ export default {
         const result = await store.dispatch(storeAction);
         if (result?.success) {
           await store.dispatch('appAuth/fetchConnectedApps');
+          store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `Successfully disconnected from ${app.name}`);
           terminalLines.value.push(`[Disconnect] Successfully disconnected from ${app.name}`);
           nextTick(() => baseScreenRef.value?.scrollToBottom());

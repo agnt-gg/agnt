@@ -235,6 +235,7 @@ const actions = {
     if (result?.success) {
       await dispatch('fetchProviderStatus', providerId);
       await dispatch('fetchConnectedApps');
+      dispatch('checkConnectionHealth');
     }
     return result;
   },
@@ -246,6 +247,7 @@ const actions = {
       commit('CLEAR_CODEX_DEVICE_SESSION');
       commit('CLEAR_CLAUDE_CODE_SETUP_SESSION');
       await dispatch('fetchConnectedApps');
+      dispatch('checkConnectionHealth');
       return result;
     } catch (error) {
       console.error(`Error disconnecting ${providerId}:`, error);
