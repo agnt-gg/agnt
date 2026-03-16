@@ -2,17 +2,20 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import axios from 'axios';
-import { spawn } from 'child_process';
 import generateUUID from '../../utils/generateUUID.js';
 
 const CODEX_AUTH_FILENAME = 'auth.json';
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
-const DEVICE_SESSION_TTL_MS = 20 * 60 * 1000; // 20 minutes
+const DEVICE_SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes (OpenAI device auth timeout)
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 
 // OpenAI Codex OAuth public client ID (same as official Codex CLI)
 const CODEX_OAUTH_CLIENT_ID = process.env.CODEX_OAUTH_CLIENT_ID || 'app_EMoamEEZ73f0CkXaXp7hrann';
 const CODEX_OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token';
+const CODEX_DEVICE_USERCODE_URL = 'https://auth.openai.com/api/accounts/deviceauth/usercode';
+const CODEX_DEVICE_TOKEN_URL = 'https://auth.openai.com/api/accounts/deviceauth/token';
+const CODEX_DEVICE_VERIFY_URL = 'https://auth.openai.com/codex/device';
+const CODEX_DEVICE_REDIRECT_URI = 'https://auth.openai.com/deviceauth/callback';
 
 function expandUserPath(inputPath) {
   if (!inputPath) return inputPath;
@@ -35,117 +38,6 @@ function resolveCodexHome() {
 
 function resolveCodexAuthPath() {
   return path.join(resolveCodexHome(), CODEX_AUTH_FILENAME);
-}
-
-function resolveCodexBin() {
-  const envBin = typeof process.env.CODEX_BIN === 'string' ? process.env.CODEX_BIN.trim() : '';
-  if (envBin) return envBin;
-
-  const isWindows = process.platform === 'win32';
-  const home = os.homedir();
-
-  // Helper to check multiple candidates and return first existing one
-  const findFirst = (candidates) => {
-    for (const candidate of candidates) {
-      if (candidate && fs.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-    return null;
-  };
-
-  // Helper to find latest version in a node versions directory
-  const findInNodeVersions = (baseDir, binSubpath) => {
-    try {
-      if (!fs.existsSync(baseDir)) return null;
-      const versions = fs
-        .readdirSync(baseDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-      for (let i = versions.length - 1; i >= 0; i -= 1) {
-        const candidate = path.join(baseDir, versions[i], binSubpath);
-        if (fs.existsSync(candidate)) {
-          return candidate;
-        }
-      }
-    } catch {
-      // Ignore errors
-    }
-    return null;
-  };
-
-  if (isWindows) {
-    const appData = process.env.APPDATA;
-    const localAppData = process.env.LOCALAPPDATA;
-
-    // Windows npm global install
-    if (appData) {
-      const npmGlobal = findFirst([
-        path.join(appData, 'npm', 'codex.cmd'),
-        path.join(appData, 'npm', 'codex'),
-      ]);
-      if (npmGlobal) return npmGlobal;
-    }
-
-    // Windows nvm (nvm-windows)
-    const nvmHome = process.env.NVM_HOME;
-    if (nvmHome) {
-      const nvmBin = findInNodeVersions(nvmHome, 'codex.cmd') || findInNodeVersions(nvmHome, 'codex');
-      if (nvmBin) return nvmBin;
-    }
-
-    // Windows fnm
-    if (localAppData) {
-      const fnmDir = path.join(localAppData, 'fnm_multishells');
-      if (fs.existsSync(fnmDir)) {
-        const fnmBin = findInNodeVersions(fnmDir, 'codex.cmd') || findInNodeVersions(fnmDir, 'codex');
-        if (fnmBin) return fnmBin;
-      }
-    }
-  } else {
-    // macOS / Linux
-
-    // Common global npm locations
-    const globalPaths = findFirst([
-      '/usr/local/bin/codex',
-      path.join(home, '.npm-global', 'bin', 'codex'),
-      path.join(home, '.local', 'bin', 'codex'),
-    ]);
-    if (globalPaths) return globalPaths;
-
-    // Homebrew (macOS)
-    if (process.platform === 'darwin') {
-      const brewPaths = findFirst([
-        '/opt/homebrew/bin/codex', // Apple Silicon
-        '/usr/local/bin/codex',    // Intel
-      ]);
-      if (brewPaths) return brewPaths;
-    }
-
-    // nvm (Linux/macOS)
-    const nvmNodeDir = path.join(home, '.nvm', 'versions', 'node');
-    const nvmBin = findInNodeVersions(nvmNodeDir, path.join('bin', 'codex'));
-    if (nvmBin) return nvmBin;
-
-    // fnm (Linux/macOS)
-    const fnmNodeDir = path.join(home, '.fnm', 'node-versions');
-    const fnmBin = findInNodeVersions(fnmNodeDir, path.join('installation', 'bin', 'codex'));
-    if (fnmBin) return fnmBin;
-
-    // volta
-    const voltaBin = path.join(home, '.volta', 'bin', 'codex');
-    if (fs.existsSync(voltaBin)) return voltaBin;
-
-    // asdf
-    const asdfNodeDir = path.join(home, '.asdf', 'installs', 'nodejs');
-    const asdfBin = findInNodeVersions(asdfNodeDir, path.join('bin', 'codex'));
-    if (asdfBin) return asdfBin;
-  }
-
-  // Fallback to PATH lookup
-  return 'codex';
 }
 
 function readCodexAuthFile() {
@@ -188,26 +80,10 @@ function decodeJwtPayload(token) {
   }
 }
 
-function stripAnsi(input) {
-  if (!input) return '';
-  // Basic ANSI escape stripping for CLI output parsing.
-  return String(input).replace(/\u001b\[[0-9;]*m/g, '');
-}
-
-function sanitizeUrl(url) {
-  if (!url) return null;
-  // Remove obvious HTML/tag noise and trailing punctuation.
-  let cleaned = String(url).trim();
-  cleaned = cleaned.replace(/[<>"'`]/g, '');
-  cleaned = cleaned.replace(/[)\],.;:!?]+$/g, '');
-  return cleaned;
-}
-
 class CodexAuthManager {
   constructor() {
     this.apiCheckCache = null;
     this.deviceSessions = new Map();
-    this.codexBin = resolveCodexBin();
   }
 
   getAuthPath() {
@@ -430,7 +306,6 @@ class CodexAuthManager {
         apiStatus: null,
         source: null,
         authPath,
-        codexBin: this.codexBin,
         checkedAt: new Date().toISOString(),
       };
     }
@@ -465,7 +340,6 @@ class CodexAuthManager {
       apiStatus,
       source: this._inferSource(),
       authPath,
-      codexBin: this.codexBin,
       checkedAt: new Date().toISOString(),
       tokenExpiry: expiry?.expiresAt || null,
     };
@@ -490,15 +364,14 @@ class CodexAuthManager {
     return null;
   }
 
+  // ─────────────────────────── NATIVE DEVICE AUTH ───────────────────────────
+  // Uses OpenAI's custom device auth endpoints directly via HTTP.
+  // No Codex CLI binary required.
+
   _cleanupExpiredSessions() {
     const now = Date.now();
     for (const [sessionId, session] of this.deviceSessions.entries()) {
       if (now - session.startedAtMs > DEVICE_SESSION_TTL_MS) {
-        try {
-          session.process?.kill('SIGTERM');
-        } catch {
-          // Best-effort cleanup.
-        }
         this.deviceSessions.delete(sessionId);
       }
     }
@@ -509,8 +382,7 @@ class CodexAuthManager {
     let latest = null;
     for (const session of this.deviceSessions.values()) {
       const isExpired = now - session.startedAtMs > DEVICE_SESSION_TTL_MS;
-      const isActive = session.exitCode === null && (session.state === 'starting' || session.state === 'pending');
-      if (!isExpired && isActive) {
+      if (!isExpired && session.state === 'pending') {
         if (!latest || session.startedAtMs > latest.startedAtMs) {
           latest = session;
         }
@@ -519,158 +391,112 @@ class CodexAuthManager {
     return latest;
   }
 
+  /**
+   * Start a native device auth session via OpenAI's HTTP API.
+   * No Codex CLI required — requests a device code directly from auth.openai.com.
+   *
+   * POST https://auth.openai.com/api/accounts/deviceauth/usercode
+   * Body: { client_id }
+   * Returns: { device_auth_id, user_code, interval }
+   */
   async startDeviceAuth() {
     this._cleanupExpiredSessions();
 
     // Reuse an existing active session to avoid repeated device-code requests (which can hit 429s).
-    const existingSession = this._getActiveSession();
-    if (existingSession) {
-      const deviceInfo = await this._waitForDeviceInfo(existingSession.id, 2000);
+    const existing = this._getActiveSession();
+    if (existing) {
       return {
-        sessionId: existingSession.id,
-        ...deviceInfo,
-        startedAt: new Date(existingSession.startedAtMs).toISOString(),
-        expiresAt: new Date(existingSession.startedAtMs + DEVICE_SESSION_TTL_MS).toISOString(),
+        success: true,
+        sessionId: existing.id,
+        deviceUrl: existing.deviceUrl,
+        deviceCode: existing.userCode,
+        state: existing.state,
+        message: 'Open the URL and enter the code to continue device login.',
+        startedAt: new Date(existing.startedAtMs).toISOString(),
+        expiresAt: new Date(existing.startedAtMs + DEVICE_SESSION_TTL_MS).toISOString(),
       };
     }
 
-    const sessionId = generateUUID();
-    const startedAtMs = Date.now();
+    try {
+      console.log('[CodexAuth] Requesting device code from OpenAI...');
 
-    const child = spawn(this.codexBin, ['login', '--device-auth'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
-      shell: true,
-    });
+      const response = await axios.post(
+        CODEX_DEVICE_USERCODE_URL,
+        { client_id: CODEX_OAUTH_CLIENT_ID },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 15000 },
+      );
 
-    const session = {
-      id: sessionId,
-      process: child,
-      startedAtMs,
-      deviceUrl: null,
-      deviceCode: null,
-      output: '',
-      errorOutput: '',
-      state: 'starting',
-      exitCode: null,
-      exitSignal: null,
-      lastError: null,
-    };
+      const { device_auth_id, user_code, usercode } = response.data;
+      const code = user_code || usercode;
 
-    this.deviceSessions.set(sessionId, session);
-
-    const parseChunk = (chunk) => {
-      const text = stripAnsi(chunk.toString());
-      session.output += text;
-
-      if (!session.lastError && /status\s+429|too many requests/i.test(text)) {
-        session.lastError = 'Codex device login is rate-limited (429 Too Many Requests). Please wait a minute and try again.';
-        session.state = 'error';
+      if (!device_auth_id || !code) {
+        return {
+          success: false,
+          state: 'error',
+          message: 'OpenAI did not return a device code. Please try again.',
+        };
       }
 
-      // Extract the device URL (first https URL in the output).
-      if (!session.deviceUrl) {
-        // Stop at whitespace OR common HTML/tag delimiters.
-        const urlMatch = text.match(/https?:\/\/[^\s<>"')\]]+/i);
-        if (urlMatch) {
-          session.deviceUrl = sanitizeUrl(urlMatch[0]);
-        }
-      }
+      const sessionId = generateUUID();
+      const startedAtMs = Date.now();
 
-      // Extract the device code (e.g., ABCD-1234).
-      if (!session.deviceCode) {
-        // Be generous with the device code length; Codex codes can vary.
-        const codeMatch = text.match(/\b[A-Z0-9]{4}-[A-Z0-9]{4,8}\b/i);
-        if (codeMatch) {
-          session.deviceCode = String(codeMatch[0]).toUpperCase();
-        }
-      }
-
-      if (session.deviceUrl && session.deviceCode && session.state === 'starting') {
-        session.state = 'pending';
-      }
-    };
-
-    child.stdout.on('data', parseChunk);
-    child.stderr.on('data', (chunk) => {
-      const text = stripAnsi(chunk.toString());
-      session.errorOutput += text;
-    });
-    child.on('error', (error) => {
-      session.lastError = error.message || String(error);
-      session.state = 'error';
-      console.warn('[CodexAuth] Failed to spawn codex CLI:', session.lastError);
-    });
-
-    child.on('exit', (code, signal) => {
-      session.exitCode = code;
-      session.exitSignal = signal;
-      if (session.state !== 'success') {
-        session.state = code === 0 ? 'completed' : 'error';
-      }
-    });
-
-    // Wait briefly for the CLI to print the device instructions.
-    const deviceInfo = await this._waitForDeviceInfo(sessionId, 8000);
-
-    return {
-      sessionId,
-      ...deviceInfo,
-      startedAt: new Date(startedAtMs).toISOString(),
-      expiresAt: new Date(startedAtMs + DEVICE_SESSION_TTL_MS).toISOString(),
-    };
-  }
-
-  _waitForDeviceInfo(sessionId, timeoutMs) {
-    return new Promise((resolve) => {
-      const start = Date.now();
-
-      const check = () => {
-        const session = this.deviceSessions.get(sessionId);
-        if (!session) {
-          console.warn(`[CodexAuth] Device session missing during wait: ${sessionId} (sessions=${this.deviceSessions.size})`);
-          return resolve({
-            deviceUrl: null,
-            deviceCode: null,
-            state: 'error',
-            message: 'Device auth session not found',
-          });
-        }
-
-        if (session.lastError && session.state === 'error' && !session.deviceUrl && !session.deviceCode) {
-          return resolve({
-            deviceUrl: null,
-            deviceCode: null,
-            state: 'error',
-            message: session.lastError,
-          });
-        }
-
-        if (session.deviceUrl && session.deviceCode) {
-          return resolve({
-            deviceUrl: session.deviceUrl,
-            deviceCode: session.deviceCode,
-            state: session.state,
-            message: 'Open the URL and enter the code to continue device login.',
-          });
-        }
-
-        if (Date.now() - start > timeoutMs) {
-          return resolve({
-            deviceUrl: session.deviceUrl,
-            deviceCode: session.deviceCode,
-            state: session.state,
-            message: 'Device login started. Waiting for device code from Codex CLI...',
-          });
-        }
-
-        setTimeout(check, 200);
+      const session = {
+        id: sessionId,
+        startedAtMs,
+        deviceAuthId: device_auth_id,
+        userCode: code,
+        deviceUrl: CODEX_DEVICE_VERIFY_URL,
+        state: 'pending',
+        lastError: null,
       };
 
-      check();
-    });
+      this.deviceSessions.set(sessionId, session);
+
+      console.log(`[CodexAuth] Device code issued: ${code} (session ${sessionId})`);
+
+      return {
+        success: true,
+        sessionId,
+        deviceUrl: CODEX_DEVICE_VERIFY_URL,
+        deviceCode: code,
+        state: 'pending',
+        message: 'Open the URL and enter the code to continue device login.',
+        startedAt: new Date(startedAtMs).toISOString(),
+        expiresAt: new Date(startedAtMs + DEVICE_SESSION_TTL_MS).toISOString(),
+      };
+    } catch (error) {
+      const status = error?.response?.status;
+      const errorDesc = error?.response?.data?.error_description || error?.response?.data?.error || error.message;
+
+      console.error('[CodexAuth] Failed to request device code:', { status, error: errorDesc });
+
+      if (status === 429) {
+        return {
+          success: false,
+          state: 'error',
+          message: 'Device login is rate-limited (429 Too Many Requests). Please wait a minute and try again.',
+        };
+      }
+
+      return {
+        success: false,
+        state: 'error',
+        message: `Failed to start device login: ${errorDesc}`,
+      };
+    }
   }
 
+  /**
+   * Poll the device auth session status.
+   * If the user has authorized, exchanges the authorization code for tokens.
+   *
+   * Poll: POST https://auth.openai.com/api/accounts/deviceauth/token
+   * Body: { device_auth_id, user_code }
+   * 403/404 = pending, 200 = authorized, 401 = denied
+   *
+   * Exchange: POST https://auth.openai.com/oauth/token
+   * Body: grant_type=authorization_code&code=...&code_verifier=...&client_id=...&redirect_uri=...
+   */
   async getDeviceSessionStatus(sessionId) {
     this._cleanupExpiredSessions();
 
@@ -683,73 +509,142 @@ class CodexAuthManager {
       };
     }
 
-    // If the process has exited, treat successful login as usable for Codex CLI even if the API is blocked.
-    if (session.exitCode !== null) {
-      const apiStatus = await this.checkApiUsable({ forceRefresh: true });
-      const hasAuth = apiStatus.available === true || Boolean(this.getAccessToken());
+    // Already completed
+    if (session.state === 'success') {
+      return { success: true, state: 'success', message: 'Device login complete.' };
+    }
+    if (session.state === 'error') {
+      return { success: false, state: 'error', message: session.lastError || 'Device login failed.' };
+    }
 
-      if (hasAuth) {
-        session.state = 'success';
-        const apiUsable = apiStatus.apiUsable === true;
-        const message = apiUsable
-          ? 'Device login complete and OpenAI API access is available.'
-          : 'Device login complete. OpenAI API access is not available, but Codex CLI should be usable.';
+    // Poll OpenAI's device token endpoint
+    try {
+      const pollResponse = await axios.post(
+        CODEX_DEVICE_TOKEN_URL,
+        { device_auth_id: session.deviceAuthId, user_code: session.userCode },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 10000 },
+      );
+
+      // 200 = user authorized, response contains authorization_code + PKCE params
+      const { authorization_code, code_verifier } = pollResponse.data;
+
+      if (!authorization_code) {
         return {
           success: true,
-          state: 'success',
-          message,
-          apiStatus,
+          state: 'pending',
+          message: 'Waiting for you to complete device login in the browser...',
         };
       }
 
-      session.state = 'error';
-      const statusDetail = apiStatus.apiStatus ? ` (API status: ${apiStatus.apiStatus})` : '';
+      console.log('[CodexAuth] Device authorized, exchanging code for tokens...');
+
+      // Exchange authorization code for OAuth tokens
+      const tokenResponse = await axios.post(
+        CODEX_OAUTH_TOKEN_URL,
+        new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: authorization_code,
+          redirect_uri: CODEX_DEVICE_REDIRECT_URI,
+          client_id: CODEX_OAUTH_CLIENT_ID,
+          code_verifier: code_verifier,
+        }).toString(),
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          timeout: 15000,
+        },
+      );
+
+      const { access_token, refresh_token, id_token } = tokenResponse.data;
+
+      if (!access_token) {
+        session.state = 'error';
+        session.lastError = 'Token exchange did not return an access token.';
+        return { success: false, state: 'error', message: session.lastError };
+      }
+
+      // Save tokens to ~/.codex/auth.json (compatible with Codex CLI)
+      const { data: authData } = readCodexAuthFile();
+      const updated = authData && typeof authData === 'object' ? { ...authData } : {};
+      updated.tokens = {
+        access_token,
+        ...(refresh_token ? { refresh_token } : {}),
+        ...(id_token ? { id_token } : {}),
+      };
+      writeCodexAuthFile(updated);
+
+      session.state = 'success';
+      this.apiCheckCache = null;
+
+      console.log('[CodexAuth] Device login complete, tokens saved.');
+
+      const apiStatus = await this.checkApiUsable({ forceRefresh: true });
+
       return {
-        success: false,
-        state: 'error',
-        message: `Device login completed but the OpenAI API is not usable${statusDetail}.`,
+        success: true,
+        state: 'success',
+        message: 'Device login complete and OpenAI Codex connected successfully.',
         apiStatus,
       };
-    }
+    } catch (error) {
+      const status = error?.response?.status;
 
-    return {
-      success: true,
-      state: session.state,
-      deviceUrl: session.deviceUrl,
-      deviceCode: session.deviceCode,
-      message: 'Waiting for you to complete device login in the browser...',
-    };
+      // 403/404 = authorization pending — user hasn't completed the flow yet
+      if (status === 403 || status === 404) {
+        return {
+          success: true,
+          state: 'pending',
+          deviceUrl: session.deviceUrl,
+          deviceCode: session.userCode,
+          message: 'Waiting for you to complete device login in the browser...',
+        };
+      }
+
+      // 401 = authorization denied
+      if (status === 401) {
+        const errorData = error?.response?.data;
+        const errorDesc = errorData?.error_description || errorData?.error || 'Authorization was denied.';
+        session.state = 'error';
+        session.lastError = errorDesc;
+        return { success: false, state: 'error', message: errorDesc };
+      }
+
+      // 429 = rate limited — treat as pending, will retry
+      if (status === 429) {
+        return {
+          success: true,
+          state: 'pending',
+          message: 'Rate limited by OpenAI. Will retry shortly...',
+        };
+      }
+
+      // Other errors
+      const errorDesc = error?.response?.data?.error || error.message;
+      console.error('[CodexAuth] Device poll error:', { status, error: errorDesc });
+
+      session.state = 'error';
+      session.lastError = `Failed to check device login status: ${errorDesc}`;
+      return { success: false, state: 'error', message: session.lastError };
+    }
   }
 
+  /**
+   * Logout — clear tokens from ~/.codex/auth.json.
+   * No CLI binary required.
+   */
   async logout() {
     try {
-      await new Promise((resolve, reject) => {
-        const spawnOptions = {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env: process.env,
-        };
-        // On Windows, .cmd files need shell: true to execute properly
-        if (process.platform === 'win32') {
-          spawnOptions.shell = true;
-        }
-        const child = spawn(this.codexBin, ['logout'], spawnOptions);
-        let stderr = '';
-        child.stderr.on('data', (chunk) => {
-          stderr += stripAnsi(chunk.toString());
-        });
-        child.on('exit', (code) => {
-          if (code === 0) resolve();
-          else reject(new Error(stderr || `codex logout exited with code ${code}`));
-        });
-      });
-
-      // Clear cached status after logout.
+      const { data: authData } = readCodexAuthFile();
+      if (authData && typeof authData === 'object') {
+        delete authData.tokens;
+        delete authData.OPENAI_API_KEY;
+        writeCodexAuthFile(authData);
+      }
       this.apiCheckCache = null;
       return { success: true };
     } catch (error) {
       return {
         success: false,
-        error: error.message || 'Failed to log out of Codex CLI',
+        error: error.message || 'Failed to log out',
       };
     }
   }
