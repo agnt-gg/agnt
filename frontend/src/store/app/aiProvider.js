@@ -485,7 +485,7 @@ export default {
     async fetchKimiModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Kimi', forceRefresh });
     },
-    async fetchMinimaxModels({ dispatch }, { forceRefresh = false } = {}) {
+    async fetchMiniMaxModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'MiniMax', forceRefresh });
     },
     async fetchZAIModels({ dispatch }, { forceRefresh = false } = {}) {

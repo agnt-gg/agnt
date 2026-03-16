@@ -1334,7 +1334,7 @@ export default {
         Groq: 'aiProvider/fetchGroqModels',
         Kimi: 'aiProvider/fetchKimiModels',
         Local: 'aiProvider/fetchLocalModels',
-        Minimax: 'aiProvider/fetchMinimaxModels',
+        MiniMax: 'aiProvider/fetchMiniMaxModels',
         OpenAI: 'aiProvider/fetchOpenAIModels',
         'OpenAI-Codex': 'aiProvider/fetchOpenAICodexModels',
         OpenRouter: 'aiProvider/fetchOpenRouterModels',
