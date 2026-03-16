@@ -13,12 +13,87 @@ const router = express.Router();
 // ─────────────────────────── AUTO-INSTANTIATE PROVIDER SERVICES ───────────────────────────
 // Instead of importing 14 individual provider singletons, we auto-create services from config.
 
+// ─────────────────────────── CODEX MODEL FETCHER ───────────────────────────
+// Fetches models from chatgpt.com/backend-api/codex/models using the Codex OAuth token.
+// This is a separate endpoint from api.openai.com/v1/models (which requires api.model.read scope).
+
+let codexModelsCache = null;
+let codexModelsCacheTime = 0;
+const CODEX_MODELS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+async function fetchCodexModels(token) {
+  const now = Date.now();
+  if (codexModelsCache && now - codexModelsCacheTime < CODEX_MODELS_CACHE_TTL) {
+    return codexModelsCache;
+  }
+
+  const config = getProviderConfig('openai-codex');
+  const fallback = (config?.fallbackModels || []).map((id) => ({
+    id, name: id, description: '', createdAt: null, ownedBy: 'openai-codex',
+  }));
+
+  try {
+    const accountId = CodexAuthManager.getChatGptAccountId();
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'originator': 'codex_cli_rs',
+    };
+    if (accountId) headers['ChatGPT-Account-ID'] = accountId;
+
+    const url = 'https://chatgpt.com/backend-api/codex/models?client_version=0.112.0';
+    console.log(`[ModelRoutes] Fetching Codex models from ${url} (account: ${accountId || 'none'})`);
+
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.warn(`[ModelRoutes] Codex models endpoint returned ${res.status}: ${body.slice(0, 200)}`);
+      return fallback;
+    }
+
+    const data = await res.json();
+    // Response format: { "models": [ { slug, display_name, description, context_window, priority, visibility, ... } ] }
+    const models = data.models;
+    if (!Array.isArray(models) || models.length === 0) {
+      console.warn('[ModelRoutes] Codex models response had no models array, raw keys:', Object.keys(data));
+      return fallback;
+    }
+
+    const mapped = models
+      .filter((m) => m.slug && m.visibility !== 'hide')
+      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
+      .map((m) => ({
+        id: m.slug,
+        name: m.display_name || m.slug,
+        description: m.description || '',
+        createdAt: null,
+        ownedBy: 'openai-codex',
+        contextWindow: m.context_window || null,
+      }));
+
+    console.log(`[ModelRoutes] Fetched ${mapped.length} Codex models: ${mapped.map((m) => m.id).join(', ')}`);
+
+    codexModelsCache = mapped;
+    codexModelsCacheTime = now;
+    return mapped;
+  } catch (error) {
+    console.warn(`[ModelRoutes] Failed to fetch Codex models: ${error.message}`);
+    return fallback;
+  }
+}
+
 const providerServices = {};
 for (const config of getAllProviderConfigs()) {
   const recommended = config.recommendedModels || config.fallbackModels.slice(0, 3);
-  if (config.staticModels) {
-    // Static model list — no API call needed (e.g., openai-codex)
-    // Order fallback models with recommended first
+  if (config.codexModelFetch) {
+    // Codex: dynamic fetch from chatgpt.com/backend-api/codex/models (handled in route)
+    providerServices[config.key] = {
+      fetchModels: async (token) => fetchCodexModels(token),
+      getModelNames: async (token) => (await fetchCodexModels(token)).map((m) => m.id),
+      isCacheValid: () => codexModelsCache && Date.now() - codexModelsCacheTime < CODEX_MODELS_CACHE_TTL,
+      clearCache: () => { codexModelsCache = null; codexModelsCacheTime = 0; },
+    };
+  } else if (config.staticModels) {
+    // Static model list — no API call needed
     const recSet = new Set(recommended);
     const orderedModels = [
       ...recommended.filter((id) => config.fallbackModels.includes(id)),
@@ -40,7 +115,7 @@ for (const config of getAllProviderConfigs()) {
   } else {
     providerServices[config.key] = new GenericProviderService({
       name: config.name,
-      baseURL: config.baseURL,
+      baseURL: config.modelsBaseURL || config.baseURL,
       fallbackModels: config.fallbackModels,
       recommendedModels: recommended,
       fallbackModelObjects: config.fallbackModelObjects || null,
@@ -96,21 +171,20 @@ router.get('/:provider/models', async (req, res) => {
 
     let apiKey = null;
 
-    // Codex CLI provider does not use the OpenAI API, but still requires local Codex login.
-    if (providerLower === 'openai-codex') {
-      const codexToken = CodexAuthManager.getAccessToken();
-      if (!codexToken) {
-        return res.status(400).json({
-          success: false,
-          error: 'OpenAI Codex CLI is not connected. Start device login from the provider setup.',
-        });
-      }
-    }
-
     // Only require authentication and API key for providers that need it
     if (!hasHardcodedModels) {
+      // OpenAI Codex: fetch models from api.openai.com using Codex OAuth token
+      if (providerLower === 'openai-codex') {
+        apiKey = await CodexAuthManager.ensureValidToken();
+        if (!apiKey) {
+          return res.status(400).json({
+            success: false,
+            error: 'OpenAI Codex is not connected. Start device login from the provider setup.',
+          });
+        }
+      }
       // Claude Code: use local Claude Code OAuth auth.
-      if (providerLower === 'claude-code') {
+      else if (providerLower === 'claude-code') {
         const ccStatus = await ClaudeCodeAuthManager.checkApiUsable();
         if (!ccStatus.available) {
           return res.status(400).json({

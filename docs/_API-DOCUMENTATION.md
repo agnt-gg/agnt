@@ -57,11 +57,11 @@ The authentication middleware (`authenticateToken`) will:
 
 The JWT token is **not stored in the database**. It lives in two places depending on context:
 
-| Context | Where the token lives | How to access it |
-| --- | --- | --- |
-| Frontend / Widgets (browser) | `localStorage` | `localStorage.getItem('token')` |
-| Backend services (Express) | `req.headers.authorization` or `req.session.userToken` | Passed as `authToken` parameter between services |
-| Orchestrator tools (spawned Node.js) | `process.env.AGNT_AUTH_TOKEN` | Automatically injected by the orchestrator |
+| Context                              | Where the token lives                                  | How to access it                                 |
+| ------------------------------------ | ------------------------------------------------------ | ------------------------------------------------ |
+| Frontend / Widgets (browser)         | `localStorage`                                         | `localStorage.getItem('token')`                  |
+| Backend services (Express)           | `req.headers.authorization` or `req.session.userToken` | Passed as `authToken` parameter between services |
+| Orchestrator tools (spawned Node.js) | `process.env.AGNT_AUTH_TOKEN`                          | Automatically injected by the orchestrator       |
 
 ### Frontend / Widgets (browser context)
 
@@ -69,10 +69,16 @@ Widgets run in iframes with `allow-same-origin`, so they share the AGNT frontend
 
 ```js
 const API = 'http://localhost:3333/api';
-function getToken() { try { return localStorage.getItem('token') || null; } catch(e) { return null; } }
+function getToken() {
+  try {
+    return localStorage.getItem('token') || null;
+  } catch (e) {
+    return null;
+  }
+}
 function apiFetch(url, options = {}) {
   const token = getToken();
-  const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...options.headers };
+  const headers = { Accept: 'application/json', 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = 'Bearer ' + token;
   return fetch(url, { ...options, headers });
 }
@@ -108,9 +114,9 @@ const TOKEN = process.env.AGNT_AUTH_TOKEN; // automatically provided
 
 const res = await fetch(API + '/agents/', {
   headers: {
-    'Authorization': 'Bearer ' + TOKEN,
-    'Content-Type': 'application/json'
-  }
+    Authorization: 'Bearer ' + TOKEN,
+    'Content-Type': 'application/json',
+  },
 });
 const data = await res.json();
 console.log(JSON.stringify(data, null, 2));
@@ -484,14 +490,14 @@ All provider authentication is handled through a single unified router. The `:pr
 
 **Auth Dispatcher** (`AuthDispatcher.js`) maps each provider's `authScheme` to an auth manager and a set of capabilities:
 
-| Auth Scheme    | Local | Capabilities                                                          |
-| -------------- | ----- | --------------------------------------------------------------------- |
-| `claude-code`  | Yes   | status, connect-token, disconnect, refresh, oauth-pkce                |
-| `codex`        | Yes   | status, disconnect, device-auth                                       |
-| `gemini-cli`   | Yes   | status, connect-apikey, disconnect, refresh, oauth-loopback, set-auth-method, gcp-project |
-| `bearer`       | No    | status, connect-apikey, disconnect                                    |
-| `api-key`      | No    | status, connect-apikey, disconnect                                    |
-| `query-param`  | No    | status, connect-apikey, disconnect                                    |
+| Auth Scheme   | Local | Capabilities                                                                              |
+| ------------- | ----- | ----------------------------------------------------------------------------------------- |
+| `claude-code` | Yes   | status, connect-token, disconnect, refresh, oauth-pkce                                    |
+| `codex`       | Yes   | status, disconnect, device-auth                                                           |
+| `gemini-cli`  | Yes   | status, connect-apikey, disconnect, refresh, oauth-loopback, set-auth-method, gcp-project |
+| `bearer`      | No    | status, connect-apikey, disconnect                                                        |
+| `api-key`     | No    | status, connect-apikey, disconnect                                                        |
+| `query-param` | No    | status, connect-apikey, disconnect                                                        |
 
 ### Get Provider Auth Status
 
@@ -3180,9 +3186,21 @@ To discover all available built-in providers, request models for an unknown prov
   "success": false,
   "error": "Unknown provider: invalid",
   "availableProviders": [
-    "openai", "anthropic", "gemini", "grokai", "groq", "deepseek",
-    "openrouter", "togetherai", "cerebras", "kimi", "minimax", "zai",
-    "openai-codex", "claude-code", "gemini-cli"
+    "openai",
+    "anthropic",
+    "gemini",
+    "grokai",
+    "groq",
+    "deepseek",
+    "openrouter",
+    "togetherai",
+    "cerebras",
+    "kimi",
+    "minimax",
+    "zai",
+    "openai-codex",
+    "claude-code",
+    "gemini-cli"
   ]
 }
 ```
@@ -5448,6 +5466,7 @@ Base path: `/api/workflows`
 **GET** `/health`
 
 - **Authentication**: None
+- **Handler**: `WorkflowService.healthCheck`
 - **Description**: Check if the workflow service is running
 - **Response**:
 
@@ -5462,6 +5481,7 @@ Base path: `/api/workflows`
 **GET** `/`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.getAllWorkflows`
 - **Description**: Retrieve all workflows for the authenticated user
 - **Response**:
 
@@ -5480,11 +5500,33 @@ Base path: `/api/workflows`
 ]
 ```
 
+### Get All Workflows Summary
+
+**GET** `/summary`
+
+- **Authentication**: Required
+- **Handler**: `WorkflowService.getAllWorkflowsSummary`
+- **Description**: Retrieve a lightweight summary of all workflows for the authenticated user (no full workflow_data). This is registered **before** any `/:id` routes in Express to avoid path conflicts.
+- **Response**:
+
+```json
+[
+  {
+    "id": "workflow-id",
+    "name": "Workflow Name",
+    "status": "active",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
 ### Save Workflow
 
 **POST** `/save`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.saveWorkflow`
 - **Body**:
 
 ```json
@@ -5516,11 +5558,22 @@ Base path: `/api/workflows`
 }
 ```
 
+### Analyze Dependencies
+
+**POST** `/analyze-dependencies`
+
+- **Authentication**: Required
+- **Handler**: `WorkflowService.analyzeDependencies`
+- **Description**: Analyze node dependencies within a workflow. This is registered **before** any `/:id` routes in Express to avoid path conflicts.
+- **Body**: Workflow data with nodes and edges
+- **Response**: Dependency analysis result
+
 ### Get Workflow by ID
 
 **GET** `/:id`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.getWorkflowById`
 - **Parameters**:
   - `id` (path): Workflow ID
 - **Description**: Retrieve a specific workflow by ID
@@ -5545,6 +5598,7 @@ Base path: `/api/workflows`
 **PUT** `/:id`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.updateWorkflow`
 - **Parameters**:
   - `id` (path): Workflow ID
 - **Body**:
@@ -5583,6 +5637,7 @@ Base path: `/api/workflows`
 **DELETE** `/:id`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.deleteWorkflow`
 - **Parameters**:
   - `id` (path): Workflow ID
 - **Description**: Delete a workflow by ID
@@ -5600,6 +5655,7 @@ Base path: `/api/workflows`
 **PUT** `/:id/name`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.renameWorkflow`
 - **Parameters**:
   - `id` (path): Workflow ID
 - **Body**:
@@ -5634,6 +5690,7 @@ Base path: `/api/workflows`
 **GET** `/:id/status`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.fetchWorkflowState`
 - **Parameters**:
   - `id` (path): Workflow ID
 - **Description**: Fetch the current state of a workflow
@@ -5650,14 +5707,17 @@ Base path: `/api/workflows`
 }
 ```
 
-### Start Workflow
+> **Note**: The status values are `active`, `inactive`, or `error`. There is no `completed`, `failed`, or `progress` field. This endpoint returns the workflow's activation state, not an execution progress tracker.
+
+### Activate Workflow (Start)
 
 **POST** `/:id/start`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.activateWorkflow`
 - **Parameters**:
   - `id` (path): Workflow ID
-- **Description**: Activate a workflow
+- **Description**: Activate a workflow so it begins listening for triggers (e.g., timer, webhook). This does **not** accept runtime `inputs` — it toggles the workflow's active state.
 - **Response**:
 
 ```json
@@ -5668,14 +5728,15 @@ Base path: `/api/workflows`
 }
 ```
 
-### Stop Workflow
+### Deactivate Workflow (Stop)
 
 **POST** `/:id/stop`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowService.deactivateWorkflow`
 - **Parameters**:
   - `id` (path): Workflow ID
-- **Description**: Deactivate a workflow
+- **Description**: Deactivate a workflow so it stops listening for triggers. This does **not** cancel a currently-running execution — it toggles the workflow's active state to inactive.
 - **Response**:
 
 ```json
@@ -5686,40 +5747,20 @@ Base path: `/api/workflows`
 }
 ```
 
-### Get All Workflows Summary
+---
 
-**GET** `/summary`
+### Workflow Version Control Routes
 
-- **Authentication**: Required
-- **Description**: Retrieve a lightweight summary of all workflows for the authenticated user (no full workflow_data)
-- **Response**:
-
-```json
-[
-  {
-    "id": "workflow-id",
-    "name": "Workflow Name",
-    "status": "active",
-    "created_at": "2024-01-01T00:00:00Z",
-    "updated_at": "2024-01-01T00:00:00Z"
-  }
-]
-```
-
-### Analyze Dependencies
-
-**POST** `/analyze-dependencies`
-
-- **Authentication**: Required
-- **Description**: Analyze node dependencies within a workflow
-- **Body**: Workflow data with nodes and edges
-- **Response**: Dependency analysis result
+> These endpoints manage workflow version history, checkpoints, and comparisons.
+>
+> **⚠️ Known Route-Ordering Issue**: In the current `WorkflowRoutes.js`, the `/:workflowId/versions/:versionId` route is registered **before** `/:workflowId/versions/compare` and `/:workflowId/versions/stats`. Because Express matches top-down, requests to `/compare` or `/stats` may be caught by the `:versionId` parameter (with `versionId = "compare"` or `"stats"`). This should be fixed by moving `compare` and `stats` above the `:versionId` route, or by adding a regex constraint to `:versionId`.
 
 ### List Workflow Versions
 
 **GET** `/:workflowId/versions`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowVersionService.getVersionHistory`
 - **Parameters**:
   - `workflowId` (path): Workflow ID
   - `limit` (query, optional): Max versions to return (default: 50)
@@ -5749,9 +5790,10 @@ Base path: `/api/workflows`
 **GET** `/:workflowId/versions/:versionId`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowVersionService.getVersion`
 - **Parameters**:
   - `workflowId` (path): Workflow ID
-  - `versionId` (path): Version number
+  - `versionId` (path): Version number (integer)
 - **Description**: Get the full data for a specific workflow version
 - **Response**:
 
@@ -5760,7 +5802,7 @@ Base path: `/api/workflows`
   "success": true,
   "version": {
     "version_number": 3,
-    "workflow_state": { ... },
+    "workflow_state": { "...": "..." },
     "source": "manual",
     "change_description": "Checkpoint before refactor",
     "is_checkpoint": true,
@@ -5777,6 +5819,7 @@ Base path: `/api/workflows`
 **POST** `/:workflowId/revert`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowVersionService.revertToVersion`
 - **Parameters**:
   - `workflowId` (path): Workflow ID
 - **Description**: Revert a workflow to a previous version. Broadcasts `workflow:reverted` via WebSocket.
@@ -5788,13 +5831,14 @@ Base path: `/api/workflows`
 }
 ```
 
+- **Validation**: `versionId` is required (returns 400 if missing)
 - **Response**:
 
 ```json
 {
   "success": true,
   "revertedToVersion": 3,
-  "workflowState": { ... }
+  "workflowState": { "...": "..." }
 }
 ```
 
@@ -5803,6 +5847,7 @@ Base path: `/api/workflows`
 **POST** `/:workflowId/checkpoint`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowVersionService.createCheckpoint`
 - **Parameters**:
   - `workflowId` (path): Workflow ID
 - **Description**: Save a named checkpoint of the current workflow state
@@ -5811,10 +5856,11 @@ Base path: `/api/workflows`
 ```json
 {
   "name": "Before big changes",
-  "currentWorkflowState": { ... }
+  "currentWorkflowState": { "...": "..." }
 }
 ```
 
+- **Validation**: Both `name` and `currentWorkflowState` are required (returns 400 if either is missing)
 - **Response**:
 
 ```json
@@ -5830,11 +5876,14 @@ Base path: `/api/workflows`
 **GET** `/:workflowId/versions/compare?versionA=1&versionB=3`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowVersionService.compareVersions`
 - **Parameters**:
   - `workflowId` (path): Workflow ID
   - `versionA` (query, required): First version number
   - `versionB` (query, required): Second version number
 - **Description**: Get a diff between two workflow versions
+- **Validation**: Both `versionA` and `versionB` are required (returns 400 if either is missing)
+- **⚠️ Note**: This route may be shadowed by `/:workflowId/versions/:versionId` — see route-ordering issue above.
 - **Response**:
 
 ```json
@@ -5855,9 +5904,11 @@ Base path: `/api/workflows`
 **GET** `/:workflowId/versions/stats`
 
 - **Authentication**: Required
+- **Handler**: `WorkflowVersionService.getStorageStats`
 - **Parameters**:
   - `workflowId` (path): Workflow ID
 - **Description**: Get storage statistics for a workflow's version history
+- **⚠️ Note**: This route may be shadowed by `/:workflowId/versions/:versionId` — see route-ordering issue above.
 - **Response**:
 
 ```json
@@ -5930,13 +5981,13 @@ socket.emit('authenticate', { userId: 'user-id' });
 
 ### Events
 
-| Event | Direction | Description |
-|-------|-----------|-------------|
-| `authenticate` | Client → Server | Authenticate the socket connection |
-| `authenticated` | Server → Client | Confirmation of successful authentication |
-| `disconnect` | Bidirectional | Client disconnected |
+| Event               | Direction       | Description                                   |
+| ------------------- | --------------- | --------------------------------------------- |
+| `authenticate`      | Client → Server | Authenticate the socket connection            |
+| `authenticated`     | Server → Client | Confirmation of successful authentication     |
+| `disconnect`        | Bidirectional   | Client disconnected                           |
 | `workflow:reverted` | Server → Client | Broadcast when a workflow version is reverted |
-| `PLUGIN_INSTALLED` | Server → Client | Broadcast when a plugin is installed |
+| `PLUGIN_INSTALLED`  | Server → Client | Broadcast when a plugin is installed          |
 
 Real-time updates are broadcast via the `global.io` object throughout the backend.
 
