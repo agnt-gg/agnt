@@ -5,9 +5,9 @@ frontend/node_modules/
 backend/node_modules/
 
 # Plugin builds (generated during build, not stored in git)
-desktop/backend/plugins/plugin-builds/*.agnt
-desktop/backend/plugins/dev/*/node_modules/
-desktop/backend/plugins/installed/
+backend/plugins/plugin-builds/
+backend/plugins/dev/*/node_modules/
+backend/plugins/installed/
 
 # Claude
 .claude/

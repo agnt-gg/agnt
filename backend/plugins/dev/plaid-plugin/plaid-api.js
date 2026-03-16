@@ -1,13 +1,4 @@
 import { Configuration, PlaidApi, PlaidEnvironments, TransferType, TransferNetwork, ACHClass } from 'plaid';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get app path for importing core modules
-// APP_PATH is set by Electron, fallback for dev mode
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 /**
  * Plaid API Plugin Tool
@@ -29,14 +20,9 @@ class PlaidAPI {
   /**
    * Create an authenticated Plaid API client using stored credentials
    */
-  async getClient(userId) {
-    const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-    const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
-    const AuthManager = AuthManagerModule.default;
-
-    const credentials = await AuthManager.getValidAccessToken(userId, 'plaid');
+  getClient(credentials) {
     if (!credentials) {
-      throw new Error('Plaid credentials not found. Please add your Plaid API keys in Settings > Connected Apps.');
+      throw new Error('Not connected to Plaid. Connect in Settings → Connections.');
     }
 
     let clientId, secret, environment;
@@ -90,8 +76,8 @@ class PlaidAPI {
     console.log('[PlaidPlugin] Executing Plaid API with action:', params.action);
 
     try {
-      params.userId = workflowEngine.userId;
-      const { client, environment } = await this.getClient(params.userId);
+      const credentials = params.__auth?.token;
+      const { client, environment } = this.getClient(credentials);
 
       if (!params.accessToken && params.action !== 'LIST_TRANSFERS') {
         throw new Error('accessToken is required. Connect a bank account first using the Plaid Link tool.');

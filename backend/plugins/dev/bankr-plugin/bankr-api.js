@@ -1,10 +1,3 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '..', '..', '..');
-
 const BANKR_API_BASE = 'https://api.bankr.bot';
 
 /**
@@ -30,26 +23,6 @@ class BankrAPI {
     this.name = 'bankr_api';
   }
 
-  // ─── Auth ──────────────────────────────────────────────────────────────
-
-  /**
-   * Resolve the Bankr API key from AGNT's AuthManager.
-   * Users store their bk_... key via Settings → Connections.
-   */
-  async getApiKey(workflowEngine) {
-    try {
-      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-      const normalizedPath = `file://${authManagerPath.replace(/\\/g, '/')}`;
-      const AuthManagerModule = await import(normalizedPath);
-      const AuthManager = AuthManagerModule.default;
-      const apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, 'bankr');
-      return apiKey;
-    } catch (error) {
-      console.error('[BankrPlugin] Auth error:', error.message);
-      return null;
-    }
-  }
-
   // ─── Main execute ──────────────────────────────────────────────────────
 
   async execute(params, inputData, workflowEngine) {
@@ -57,12 +30,9 @@ class BankrAPI {
     console.log(`[BankrPlugin] Executing action: ${action}`);
 
     try {
-      const apiKey = await this.getApiKey(workflowEngine);
+      const apiKey = params.__auth?.token;
       if (!apiKey) {
-        throw new Error(
-          'Bankr API key not found. Please add your Bankr API key (bk_...) in Settings → Connections → Bankr. ' +
-          'Get your key at https://bankr.bot/api'
-        );
+        throw new Error('Not connected to Bankr. Connect in Settings → Connections.');
       }
 
       const headers = {

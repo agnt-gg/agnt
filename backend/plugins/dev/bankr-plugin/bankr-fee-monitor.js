@@ -1,10 +1,4 @@
 import EventEmitter from 'events';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '..', '..', '..');
 
 const BANKR_API_BASE = 'https://api.bankr.bot';
 
@@ -35,23 +29,6 @@ class BankrFeeMonitor extends EventEmitter {
   }
 
   /**
-   * Resolve the Bankr API key from AGNT's AuthManager.
-   */
-  async getApiKey(userId) {
-    try {
-      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-      const normalizedPath = `file://${authManagerPath.replace(/\\/g, '/')}`;
-      const AuthManagerModule = await import(normalizedPath);
-      const AuthManager = AuthManagerModule.default;
-      const apiKey = await AuthManager.getValidAccessToken(userId, 'bankr');
-      return apiKey;
-    } catch (error) {
-      console.error('[BankrPlugin:bankr-fee-monitor] Auth error:', error.message);
-      return null;
-    }
-  }
-
-  /**
    * Setup the trigger — called when workflow starts.
    * Begins periodic polling of fee status.
    */
@@ -64,10 +41,10 @@ class BankrFeeMonitor extends EventEmitter {
       throw new Error('tokenName is required for the fee monitor trigger (e.g., "AGENT")');
     }
 
-    this.apiKey = await this.getApiKey(engine.userId);
+    this.apiKey = node.parameters.__auth?.token;
     if (!this.apiKey) {
       throw new Error(
-        'Bankr API key not found. Please add your Bankr API key (bk_...) in Settings → Connections → Bankr. ' +
+        'Not connected to Bankr. Connect in Settings → Connections. ' +
         'Get your key at https://bankr.bot/api'
       );
     }

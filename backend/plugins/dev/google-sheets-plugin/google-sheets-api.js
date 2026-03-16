@@ -1,13 +1,4 @@
 import { google } from 'googleapis';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get app path for importing core modules
-// APP_PATH is set by Electron, fallback for dev mode
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 
 /**
@@ -25,16 +16,8 @@ class GoogleSheetsAPI {
     console.log('[GoogleSheetsPlugin] Executing Google Sheets API with params:', JSON.stringify(params, null, 2));
 
     try {
-      // Import AuthManager dynamically to avoid path issues
-      const AuthManagerModule = await import(`file://${path.join(APP_PATH, 'backend/src/services/auth/AuthManager.js').replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const userId = workflowEngine.userId;
-      const accessToken = await AuthManager.getValidAccessToken(userId, 'google');
-
-      if (!accessToken) {
-        throw new Error('No valid access token. User needs to authenticate with Google.');
-      }
+      const accessToken = params.__auth?.token;
+      if (!accessToken) throw new Error('Not connected to Google. Connect in Settings → Connections.');
 
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });

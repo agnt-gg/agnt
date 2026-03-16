@@ -357,6 +357,17 @@ class PluginManager {
         // Setup function - called when workflow starts listening
         setup: async (engine, node) => {
           if (triggerInstance.setup) {
+            // Auto-resolve auth for triggers that declare authProvider
+            const toolSchema = this.getPluginToolSchema(toolType);
+            if (toolSchema?.authProvider && engine.getAuth) {
+              try {
+                const token = await engine.getAuth(toolSchema.authProvider);
+                if (!node.parameters) node.parameters = {};
+                node.parameters.__auth = { token, provider: toolSchema.authProvider };
+              } catch (authError) {
+                console.warn(`[PluginManager] Auth failed for trigger ${toolType}:`, authError.message);
+              }
+            }
             await triggerInstance.setup(engine, node);
           }
         },

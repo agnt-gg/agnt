@@ -1,13 +1,4 @@
 import axios from 'axios';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get app path for importing core modules
-// APP_PATH is set by Electron, fallback for dev mode
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 
 /**
@@ -25,14 +16,9 @@ class FirecrawlAPI {
     console.log('[FirecrawlPlugin] Executing Firecrawl API with params:', JSON.stringify(params, null, 2));
 
     try {
-      // Import AuthManager dynamically to avoid path issues
-      const AuthManagerModule = await import(`file://${path.join(APP_PATH, 'backend/src/services/auth/AuthManager.js').replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, 'firecrawl');
-
+      const apiKey = params.__auth?.token;
       if (!apiKey) {
-        throw new Error('No valid API key found. Please configure your Firecrawl API key.');
+        throw new Error('Not connected to Firecrawl. Connect in Settings → Connections.');
       }
 
       const response = await axios.post(

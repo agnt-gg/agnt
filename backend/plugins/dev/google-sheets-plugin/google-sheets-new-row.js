@@ -1,14 +1,5 @@
 import EventEmitter from 'events';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get app path for importing core modules
-// APP_PATH is set by Electron, fallback for dev mode
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 
 /**
@@ -82,31 +73,17 @@ class GoogleSheetsNewRow extends EventEmitter {
   }
 
   /**
-   * Get Google OAuth credentials
+   * Get Google OAuth credentials using engine.getAuth() for fresh tokens
    */
   async getGoogleAuth() {
-    try {
-      // Import AuthManager dynamically to avoid path issues
-      const AuthManagerModule = await import(`file://${path.join(APP_PATH, 'backend/src/services/auth/AuthManager.js').replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const userId = this.workflowEngine.userId;
-      const accessToken = await AuthManager.getValidAccessToken(userId, 'google');
-
-      if (!accessToken) {
-        throw new Error('No valid access token found. User needs to authenticate with Google.');
-      }
-
-      const auth = new google.auth.OAuth2();
-      auth.setCredentials({
-        access_token: accessToken,
-      });
-
-      return auth;
-    } catch (error) {
-      console.error('[GoogleSheetsPlugin] Error getting Google auth:', error);
-      throw error;
+    const accessToken = await this.workflowEngine.getAuth('google');
+    if (!accessToken) {
+      throw new Error('Not connected to Google. Connect in Settings → Connections.');
     }
+
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    return auth;
   }
 
   /**

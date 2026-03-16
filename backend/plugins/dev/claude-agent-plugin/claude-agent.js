@@ -1,14 +1,5 @@
 import { query, tool } from '@anthropic-ai/claude-agent-sdk';
-import { fileURLToPath } from 'url';
 import { z } from 'zod';
-import path from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get app path for importing core modules
-// APP_PATH is set by Electron, fallback for dev mode
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 
 /**
@@ -26,12 +17,9 @@ class ClaudeAgent {
 
     try {
       // 1. Resolve API Key
-      const AuthManagerModule = await import(`file://${path.join(APP_PATH, 'backend/src/services/auth/AuthManager.js').replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, 'anthropic');
+      const apiKey = params.__auth?.token;
       if (!apiKey) {
-        throw new Error('Anthropic API key not found. Please add it in AGNT settings.');
+        throw new Error('Not connected to Anthropic. Connect in Settings → Connections.');
       }
 
       // Set API key for the SDK (SDK often expects it in env or via config)

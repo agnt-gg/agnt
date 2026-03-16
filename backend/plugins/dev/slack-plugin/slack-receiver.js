@@ -1,14 +1,5 @@
 import { WebClient } from '@slack/web-api';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import EventEmitter from 'events';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get app path for importing core modules
-// APP_PATH is set by Electron, fallback for dev mode
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 
 /**
@@ -34,34 +25,20 @@ class SlackReceiver extends EventEmitter {
   }
 
   /**
-   * Initialize the Slack client with user credentials
+   * Initialize the Slack client with a pre-resolved token
    */
-  async initialize(userId) {
-    // Always re-initialize to ensure fresh, valid credentials
+  async initialize(token, userId) {
     this.initialized = false;
 
-    try {
-      console.log(`[SlackPlugin] Initializing Slack receiver for user ${userId}`);
-
-      // Import AuthManager dynamically to avoid path issues
-      const AuthManagerModule = await import(`file://${path.join(APP_PATH, 'backend/src/services/auth/AuthManager.js').replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const token = await AuthManager.getValidAccessToken(userId, 'slack');
-      if (!token) {
-        throw new Error(`No valid Slack token found for user ${userId}`);
-      }
-
-      this.client = new WebClient(token);
-      this.currentUserId = userId;
-      this.initialized = true;
-
-      console.log(`[SlackPlugin] Slack receiver initialized for user ${userId}`);
-    } catch (error) {
-      console.error('[SlackPlugin] Error initializing Slack client:', error);
-      this.initialized = false;
-      throw error;
+    if (!token) {
+      throw new Error('Not connected to Slack. Connect in Settings → Connections.');
     }
+
+    console.log(`[SlackPlugin] Initializing Slack receiver for user ${userId}`);
+    this.client = new WebClient(token);
+    this.currentUserId = userId;
+    this.initialized = true;
+    console.log(`[SlackPlugin] Slack receiver initialized for user ${userId}`);
   }
 
   /**
@@ -74,8 +51,9 @@ class SlackReceiver extends EventEmitter {
       throw new Error('Slack trigger node is missing required channelId parameter');
     }
 
-    // Initialize the client
-    await this.initialize(engine.userId);
+    // Initialize the client with pre-resolved auth token
+    const token = node.parameters.__auth?.token;
+    await this.initialize(token, engine.userId);
 
     // Store in engine receivers for cleanup
     engine.receivers.slack = this;
@@ -209,10 +187,8 @@ class SlackReceiver extends EventEmitter {
     }
 
     try {
-      // Import AuthManager to get fresh token
-      const AuthManagerModule = await import(`file://${path.join(APP_PATH, 'backend/src/services/auth/AuthManager.js').replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-      const token = await AuthManager.getValidAccessToken(engine.userId, 'slack');
+      // Get fresh token for file download
+      const token = engine.getAuth ? await engine.getAuth('slack') : null;
 
       // Dynamic import of node-fetch
       const fetch = (await import('node-fetch')).default;

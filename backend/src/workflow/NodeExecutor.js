@@ -21,19 +21,6 @@ class NodeExecutor {
     let output;
 
     try {
-      // IF AUTH REQUIRED DO AUTH
-      if (node.requiresOAuth) {
-        const accessToken = await AuthManager.getValidAccessToken(this.workflowEngine.userId, node.oauthProvider);
-        if (!accessToken) {
-          throw new Error(`OAuth tokens not found for provider: ${node.oauthProvider}`);
-        }
-
-        // Add the access token to the resolved parameters
-        resolvedParams.accessToken = accessToken;
-      }
-
-      console.log('CREDITS CHECKED');
-
       // IF TRIGGER - TRY FILE-BASED FIRST, THEN FALL BACK TO TOOL CONFIG
       if (node.category === 'trigger') {
         let triggerProcessed = false;
@@ -153,6 +140,22 @@ class NodeExecutor {
         }
 
         const resolvedParams = this.workflowEngine.parameterResolver.resolveParameters(node.parameters);
+
+        // Auto-inject auth token if tool declares authProvider
+        const schema = action.constructor?.schema
+          || PluginManager.getPluginToolSchema(node.type);
+        if (schema?.authProvider) {
+          try {
+            const token = await AuthManager.getValidAccessToken(
+              this.workflowEngine.userId,
+              schema.authProvider
+            );
+            resolvedParams.__auth = { token, provider: schema.authProvider };
+          } catch (authError) {
+            console.warn(`[NodeExecutor] Auth failed for ${schema.authProvider}:`, authError.message);
+            resolvedParams.__auth = { token: null, provider: schema.authProvider };
+          }
+        }
 
         // Runtime parameter validation happens in BaseAction.execute()
         output = await action.execute(resolvedParams, inputData, this.workflowEngine);

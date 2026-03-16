@@ -1,14 +1,5 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import crypto from 'crypto';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Get app path for importing core modules
-// APP_PATH is set by Electron, fallback for dev mode
-const APP_PATH = process.env.APP_PATH || path.join(__dirname, '../../..');
 
 /**
  * Discord API Plugin Tool
@@ -25,14 +16,9 @@ class DiscordAPI {
     console.log('[DiscordPlugin] Executing Discord API with params:', JSON.stringify(params, null, 2));
 
     try {
-      // Import AuthManager dynamically using APP_PATH for correct resolution
-      const authManagerPath = path.join(APP_PATH, 'backend', 'src', 'services', 'auth', 'AuthManager.js');
-      const AuthManagerModule = await import(`file://${authManagerPath.replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const accessToken = await AuthManager.getValidAccessToken(workflowEngine.userId, 'discord');
+      const accessToken = params.__auth?.token;
       if (!accessToken) {
-        throw new Error('No valid access token found. Please reconnect to Discord.');
+        throw new Error('Not connected to Discord. Connect in Settings → Connections.');
       }
 
       const client = new Client({

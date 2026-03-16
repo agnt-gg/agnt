@@ -28,16 +28,8 @@ class YouTubeAPI {
     console.log('[YouTubePlugin] Executing with params:', JSON.stringify(params, null, 2));
 
     try {
-      // Import AuthManager dynamically
-      const AuthManagerModule = await import(`file://${path.join(APP_PATH, 'backend/src/services/auth/AuthManager.js').replace(/\\/g, '/')}`);
-      const AuthManager = AuthManagerModule.default;
-
-      const userId = workflowEngine.userId;
-      const accessToken = await AuthManager.getValidAccessToken(userId, 'google');
-
-      if (!accessToken) {
-        throw new Error('No valid access token. User needs to authenticate with Google.');
-      }
+      const accessToken = params.__auth?.token;
+      if (!accessToken) throw new Error('Not connected to Google. Connect in Settings → Connections.');
 
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });

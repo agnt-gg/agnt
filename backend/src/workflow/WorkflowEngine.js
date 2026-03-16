@@ -8,6 +8,7 @@ import EdgeEvaluator from './EdgeEvaluator.js';
 import ParameterResolver from './ParameterResolver.js';
 import Counter from '../tools/library/utilities/counter.js';
 import ExecutionModel from '../models/ExecutionModel.js';
+import AuthManager from '../services/auth/AuthManager.js';
 import runWorkflowAction from '../tools/library/controls/run-workflow.js';
 
 dotenv.config();
@@ -43,6 +44,10 @@ class WorkflowEngine extends EventEmitter {
   }
 
   // PUBLIC METHODS
+  async getAuth(providerId) {
+    return AuthManager.getValidAccessToken(this.userId, providerId);
+  }
+
   async setupWorkflowListeners() {
     if (!this.workflow?.nodes) {
       throw new Error(`Invalid workflow data for workflow ${this.workflowId}`);
