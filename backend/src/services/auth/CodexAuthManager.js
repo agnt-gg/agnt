@@ -8,6 +8,11 @@ import generateUUID from '../../utils/generateUUID.js';
 const CODEX_AUTH_FILENAME = 'auth.json';
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const DEVICE_SESSION_TTL_MS = 20 * 60 * 1000; // 20 minutes
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
+
+// OpenAI Codex OAuth public client ID (same as official Codex CLI)
+const CODEX_OAUTH_CLIENT_ID = process.env.CODEX_OAUTH_CLIENT_ID || 'app_EMoamEEZ73f0CkXaXp7hrann';
+const CODEX_OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token';
 
 function expandUserPath(inputPath) {
   if (!inputPath) return inputPath;
@@ -154,6 +159,35 @@ function readCodexAuthFile() {
   }
 }
 
+function writeCodexAuthFile(data) {
+  const authPath = resolveCodexAuthPath();
+  const codexHome = resolveCodexHome();
+  try {
+    if (!fs.existsSync(codexHome)) {
+      fs.mkdirSync(codexHome, { recursive: true });
+    }
+    fs.writeFileSync(authPath, JSON.stringify(data, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    console.error('[CodexAuth] Failed to write auth file:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Decode a JWT payload without verification (for reading exp/claims).
+ */
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+  } catch {
+    return null;
+  }
+}
+
 function stripAnsi(input) {
   if (!input) return '';
   // Basic ANSI escape stripping for CLI output parsing.
@@ -231,8 +265,161 @@ class CodexAuthManager {
     return refreshToken || null;
   }
 
-  async checkApiUsable({ forceRefresh = false } = {}) {
+  /**
+   * Check if the current OAuth access token is expired or expiring soon.
+   * Returns true if token needs refresh, false if still valid.
+   * API keys (sk-*) never expire and always return false.
+   */
+  isTokenExpiringSoon() {
+    const token = this.getOAuthToken();
+    if (!token) return false;
+
+    // API keys don't expire
+    if (token.startsWith('sk-')) return false;
+
+    const payload = decodeJwtPayload(token);
+    if (!payload?.exp) return false;
+
+    const expiresAtMs = payload.exp * 1000;
+    return Date.now() + TOKEN_REFRESH_MARGIN_MS >= expiresAtMs;
+  }
+
+  /**
+   * Get the expiry time of the current OAuth token.
+   * Returns { expiresAt, expiresInMs, expired } or null if not a JWT.
+   */
+  getTokenExpiry() {
+    const token = this.getOAuthToken();
+    if (!token) return null;
+    if (token.startsWith('sk-')) return null;
+
+    const payload = decodeJwtPayload(token);
+    if (!payload?.exp) return null;
+
+    const expiresAtMs = payload.exp * 1000;
+    return {
+      expiresAt: new Date(expiresAtMs).toISOString(),
+      expiresInMs: expiresAtMs - Date.now(),
+      expired: Date.now() >= expiresAtMs,
+    };
+  }
+
+  /**
+   * Refresh the OAuth access token using the refresh token.
+   * OpenAI uses refresh token rotation — each refresh returns a new refresh_token.
+   * The new tokens are saved back to ~/.codex/auth.json.
+   *
+   * Endpoint: POST https://auth.openai.com/oauth/token
+   * Content-Type: application/x-www-form-urlencoded
+   * Body: grant_type=refresh_token&refresh_token=...&client_id=...
+   */
+  async refreshAccessToken() {
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) {
+      return { success: false, error: 'No refresh token available. Please reconnect with device login.' };
+    }
+
+    try {
+      console.log('[CodexAuth] Refreshing OAuth access token...');
+
+      const response = await axios.post(
+        CODEX_OAUTH_TOKEN_URL,
+        new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: CODEX_OAUTH_CLIENT_ID,
+        }).toString(),
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          timeout: 15000,
+        },
+      );
+
+      const { access_token, refresh_token: newRefreshToken, id_token } = response.data;
+
+      if (!access_token) {
+        return { success: false, error: 'Token refresh response missing access_token.' };
+      }
+
+      // Read current auth file and update tokens
+      const { data: authData } = readCodexAuthFile();
+      const updated = authData && typeof authData === 'object' ? { ...authData } : {};
+      updated.tokens = {
+        ...(updated.tokens || {}),
+        access_token,
+        // OpenAI uses refresh token rotation — always save the new one
+        ...(newRefreshToken ? { refresh_token: newRefreshToken } : {}),
+        ...(id_token ? { id_token } : {}),
+      };
+
+      const saved = writeCodexAuthFile(updated);
+      if (!saved) {
+        return { success: false, error: 'Tokens refreshed but failed to save to auth file.' };
+      }
+
+      // Clear cached API check so next status check uses the new token
+      this.apiCheckCache = null;
+
+      const expiry = this.getTokenExpiry();
+      console.log('[CodexAuth] Token refreshed successfully, expires:', expiry?.expiresAt || 'unknown');
+
+      return {
+        success: true,
+        accessToken: access_token,
+        expiresAt: expiry?.expiresAt || null,
+        rotatedRefreshToken: Boolean(newRefreshToken),
+      };
+    } catch (error) {
+      const status = error?.response?.status;
+      const errorData = error?.response?.data;
+      const errorDesc = errorData?.error_description || errorData?.error || error.message;
+
+      console.error('[CodexAuth] Token refresh failed:', { status, error: errorDesc });
+
+      // Refresh token already used (rotation) or revoked — user must re-authenticate
+      if (status === 400 || status === 401) {
+        return {
+          success: false,
+          revoked: true,
+          error: `Token refresh failed (${status}): ${errorDesc}. Please reconnect with device login.`,
+        };
+      }
+
+      return {
+        success: false,
+        error: `Token refresh failed: ${errorDesc}`,
+      };
+    }
+  }
+
+  /**
+   * Ensure the OAuth token is valid. If expiring soon, attempt auto-refresh.
+   * Returns the current (possibly refreshed) access token, or null.
+   */
+  async ensureValidToken() {
     const token = this.getAccessToken();
+    if (!token) return null;
+
+    // API keys don't expire
+    if (token.startsWith('sk-')) return token;
+
+    // Check if OAuth token needs refresh
+    if (this.isTokenExpiringSoon()) {
+      console.log('[CodexAuth] Access token expiring soon, attempting refresh...');
+      const result = await this.refreshAccessToken();
+      if (result.success) {
+        return this.getAccessToken();
+      }
+      console.warn('[CodexAuth] Auto-refresh failed:', result.error);
+      // Return the existing token anyway — it might still work for a few more minutes
+    }
+
+    return token;
+  }
+
+  async checkApiUsable({ forceRefresh = false } = {}) {
+    // Auto-refresh expired OAuth tokens before checking
+    const token = await this.ensureValidToken();
     const authPath = this.getAuthPath();
 
     if (!token) {
@@ -270,6 +457,7 @@ class CodexAuthManager {
       apiUsable = false;
     }
 
+    const expiry = this.getTokenExpiry();
     const value = {
       available: true,
       cliUsable: true,
@@ -279,6 +467,7 @@ class CodexAuthManager {
       authPath,
       codexBin: this.codexBin,
       checkedAt: new Date().toISOString(),
+      tokenExpiry: expiry?.expiresAt || null,
     };
 
     this.apiCheckCache = {
@@ -348,22 +537,11 @@ class CodexAuthManager {
     const sessionId = generateUUID();
     const startedAtMs = Date.now();
 
-    let child;
-    if (process.platform === 'win32') {
-      // On Windows, run codex directly with shell: true
-      child = spawn(this.codexBin, ['login', '--device-auth'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: process.env,
-        shell: true,
-      });
-    } else {
-      // Use `script` to allocate a pseudo-terminal; Codex CLI may not print device instructions without a TTY.
-      const command = `${this.codexBin} login --device-auth`;
-      child = spawn('script', ['-eqfc', command, '/dev/null'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: process.env,
-      });
-    }
+    const child = spawn(this.codexBin, ['login', '--device-auth'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env,
+      shell: true,
+    });
 
     const session = {
       id: sessionId,

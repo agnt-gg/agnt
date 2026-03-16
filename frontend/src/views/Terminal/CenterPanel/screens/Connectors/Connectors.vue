@@ -1452,6 +1452,136 @@ export default {
       }
     }
 
+    async function connectCodexProvider(app) {
+      try {
+        const session = await store.dispatch('appAuth/startCodexDeviceAuth');
+        if (!session?.success) {
+          throw new Error(session?.error || 'Failed to start Codex device login');
+        }
+        if (session.state === 'error') {
+          await showAlert('Codex Device Login', session.message || 'Codex device login failed to start.');
+          return;
+        }
+
+        const deviceUrl = session.deviceUrl || 'https://auth.openai.com/codex/device';
+        const deviceCode = session.deviceCode || '(code unavailable)';
+
+        if (!session.deviceUrl || !session.deviceCode) {
+          await showAlert('Codex Device Login', session.message || 'Device code was not returned yet. Please try again in a moment.');
+          return;
+        }
+
+        const confirmed = await modalRef.value?.showModal({
+          title: 'OpenAI Codex Device Login',
+          message: `
+            <div style="text-align:left">
+              <p><strong>1.</strong> Open this URL in your browser:</p>
+              <p><code>${deviceUrl}</code></p>
+              <p><strong>2.</strong> Enter this one-time code:</p>
+              <p><code style="font-size:16px">${deviceCode}</code></p>
+              <p>Then return here and click <strong>I have logged in</strong>.</p>
+            </div>
+          `,
+          confirmText: 'I have logged in',
+          cancelText: 'Cancel',
+          showCancel: true,
+          confirmClass: 'btn-primary',
+        });
+
+        if (!confirmed) return;
+
+        const result = await store.dispatch('appAuth/pollCodexDeviceAuth', { sessionId: session.sessionId });
+        if (result?.state === 'success') {
+          await store.dispatch('appAuth/fetchConnectedApps');
+          await showAlert('Success', 'OpenAI Codex connected successfully.');
+          terminalLines.value.push('[Connect] OpenAI Codex connected via device login');
+          nextTick(() => baseScreenRef.value?.scrollToBottom());
+        } else {
+          await showAlert('Connection Failed', result?.message || 'Device login not completed yet.');
+        }
+      } catch (error) {
+        console.error('Error connecting OpenAI Codex:', error);
+        await showAlert('Connection Error', `Failed to connect to OpenAI Codex: ${error.message}`);
+      }
+    }
+
+    async function connectClaudeCodeProvider(app) {
+      try {
+        const data = await providerAuthService.startOAuth('claude-code');
+        if (!data.authUrl) throw new Error('No authUrl returned');
+
+        if (window.electron?.openExternalUrl) {
+          window.electron.openExternalUrl(data.authUrl);
+        } else {
+          window.open(data.authUrl, '_blank');
+        }
+
+        const codeState = await showPrompt(
+          'Claude Code Authentication',
+          `<div style="text-align:left">
+            <p>A browser window has opened for Anthropic authentication.</p>
+            <p><strong>1.</strong> Sign in to your Anthropic account</p>
+            <p><strong>2.</strong> Click <strong>Authorize</strong></p>
+            <p><strong>3.</strong> Copy the code shown on the resulting page</p>
+            <p><strong>4.</strong> Paste it below</p>
+          </div>`,
+          '',
+          {
+            confirmText: 'Connect',
+            cancelText: 'Cancel',
+            confirmClass: 'btn-primary',
+            inputType: 'text',
+          },
+        );
+
+        if (!codeState) return;
+
+        const exchangeResult = await providerAuthService.exchangeOAuth('claude-code', {
+          sessionId: data.sessionId,
+          codeState,
+        });
+
+        if (exchangeResult.success) {
+          localStorage.removeItem('Claude-Code_models');
+          await store.dispatch('appAuth/fetchConnectedApps');
+          await showAlert('Success', 'Claude Code connected successfully.');
+          terminalLines.value.push('[Connect] Claude Code connected via OAuth');
+          nextTick(() => baseScreenRef.value?.scrollToBottom());
+        } else {
+          await showAlert('Connection Failed', exchangeResult.error || 'Failed to exchange authorization code.');
+        }
+      } catch (error) {
+        console.warn('Claude Code OAuth failed, falling back to paste-token:', error.message);
+        const token = await showPrompt(
+          `Connect to ${app.name}`,
+          'Could not complete Anthropic OAuth. Paste your Claude Code OAuth token (starts with sk-ant-):',
+          '',
+          {
+            confirmText: 'Connect',
+            cancelText: 'Cancel',
+            confirmClass: 'btn-primary',
+            inputType: 'password',
+          },
+        );
+
+        if (!token) return;
+
+        try {
+          const result = await store.dispatch('appAuth/connectClaudeCodeManual', token);
+          if (result?.success) {
+            await showAlert('Success', result.message || 'Claude Code connected successfully.');
+            await store.dispatch('appAuth/fetchConnectedApps');
+            terminalLines.value.push('[Connect] Claude Code connected via manual token');
+            nextTick(() => baseScreenRef.value?.scrollToBottom());
+          } else {
+            await showAlert('Connection Failed', result?.error || 'Failed to connect Claude Code.');
+          }
+        } catch (manualError) {
+          await showAlert('Connection Error', `Failed to connect Claude Code: ${manualError.message}`);
+        }
+      }
+    }
+
     function handleOAuthAppClick(app) {
       const appId = (app.id || '').toLowerCase();
       if (app.connected) {
@@ -1465,6 +1595,10 @@ export default {
         } else {
           disconnectApp(app);
         }
+      } else if (appId === 'openai-codex') {
+        connectCodexProvider(app);
+      } else if (appId === 'claude-code') {
+        connectClaudeCodeProvider(app);
       } else if (appId === 'gemini-cli') {
         connectGeminiCli(app);
       } else if (app.connectionType === 'oauth') {

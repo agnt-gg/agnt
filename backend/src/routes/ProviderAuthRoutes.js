@@ -178,7 +178,7 @@ router.post('/:providerId/auth/refresh', async (req, res) => {
       return res.json({ success: true, refreshed: true, ...status });
     }
 
-    // Claude Code specific: revoked token handling
+    // Revoked/expired refresh token — user must re-authenticate
     if (result.revoked) {
       return res.status(401).json({ success: false, code: 'REAUTH_REQUIRED', error: result.error });
     }

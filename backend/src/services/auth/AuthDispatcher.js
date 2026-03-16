@@ -22,7 +22,7 @@ const AUTH_SCHEME_MAP = {
   'codex': {
     manager: CodexAuthManager,
     local: true,
-    caps: ['status', 'disconnect', 'device-auth'],
+    caps: ['status', 'disconnect', 'device-auth', 'refresh'],
   },
   'gemini-cli': {
     manager: GeminiCliAuthManager,

@@ -246,12 +246,18 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
 
   // OpenAI Codex — uses Codex OAuth token with ChatGPT backend
   if (lowerCaseProvider === 'openai-codex') {
-    const oauthToken = CodexAuthManager.getOAuthToken();
-    if (!oauthToken) {
-      throw new Error(
-        'OpenAI Codex requires OAuth authentication. Use device login to connect.'
-      );
+    // Auto-refresh expired tokens before creating the client
+    const oauthToken = await CodexAuthManager.ensureValidToken();
+    if (!oauthToken || oauthToken.startsWith('sk-')) {
+      // ensureValidToken returns API keys too — but Codex Responses API needs OAuth
+      const rawOAuth = CodexAuthManager.getOAuthToken();
+      if (!rawOAuth) {
+        throw new Error(
+          'OpenAI Codex requires OAuth authentication. Use device login to connect.'
+        );
+      }
     }
+    const effectiveToken = CodexAuthManager.getOAuthToken() || oauthToken;
     const accountId = CodexAuthManager.getChatGptAccountId();
     const headers = {
       'OpenAI-Beta': 'responses=experimental',
@@ -260,7 +266,7 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
       headers['chatgpt-account-id'] = accountId;
     }
     return new OpenAI({
-      apiKey: oauthToken,
+      apiKey: effectiveToken,
       baseURL: 'https://chatgpt.com/backend-api/codex',
       defaultHeaders: headers,
     });

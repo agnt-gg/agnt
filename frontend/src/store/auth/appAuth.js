@@ -347,6 +347,9 @@ const actions = {
     }
     return result;
   },
+  async refreshCodexToken({ dispatch }) {
+    return dispatch('refreshProviderToken', 'openai-codex');
+  },
   async refreshClaudeCodeToken({ dispatch }) {
     return dispatch('refreshProviderToken', 'claude-code');
   },
