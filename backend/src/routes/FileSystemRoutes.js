@@ -207,6 +207,29 @@ router.post('/rename', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/filesystem/raw?path=<relPath>
+// Serve a file with its native content-type (images, videos, etc.)
+router.get('/raw', authenticateToken, async (req, res) => {
+  try {
+    const root = await getWorkspaceRoot();
+    const relPath = req.query.path;
+    if (!relPath) return res.status(400).json({ error: 'path is required' });
+
+    const absPath = validatePath(relPath, root);
+
+    // Verify the file exists
+    await fs.stat(absPath);
+
+    // Use express sendFile for proper content-type detection and streaming
+    const resolvedPath = path.resolve(absPath);
+    res.sendFile(resolvedPath);
+  } catch (error) {
+    console.error('FileSystem raw read error:', error);
+    if (error.code === 'ENOENT') return res.status(404).json({ error: 'File not found' });
+    res.status(error.message === 'Path traversal not allowed' ? 403 : 500).json({ error: error.message });
+  }
+});
+
 // DELETE /api/filesystem/file?path=<relPath>
 // Delete a file or empty directory
 router.delete('/file', authenticateToken, async (req, res) => {

@@ -1220,13 +1220,16 @@ IMPORTANT: The image data is already available in the system context. You don't 
           }
 
           // Offload large data to prevent context window overflow
-          // Use 50000 char threshold - most web scrapes will NOT be offloaded
-          const { modifiedResult: dataOffloadedResult, offloadedData } = offloadLargeData(
-            functionResponseContent,
-            toolCall.id,
-            conversationContext,
-            50000 // 50000 character threshold - only very large content gets offloaded
-          );
+          // Skip for artifact chat — the LLM needs full file content for edit_file search strings
+          const skipOffload = chatType === 'artifact';
+          const { modifiedResult: dataOffloadedResult, offloadedData } = skipOffload
+            ? { modifiedResult: functionResponseContent, offloadedData: [] }
+            : offloadLargeData(
+              functionResponseContent,
+              toolCall.id,
+              conversationContext,
+              50000 // 50000 character threshold - only very large content gets offloaded
+            );
           if (offloadedData.length > 0) {
             console.log(`[Data Offload] Offloaded ${offloadedData.length} large data field(s) from ${functionName} tool result`);
 
@@ -1259,8 +1262,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
           // Hard cap on tool result size to prevent context window overflow
           // Even after data offloading, some tools return massive results with many sub-50k fields
+          // Skip for artifact chat — LLM needs full file content for accurate edits
           const MAX_TOOL_RESULT_CHARS = 100000; // ~28k tokens
-          if (functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
+          if (!skipOffload && functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
             console.log(`[Context Protection] Tool ${functionName} result too large (${functionResponseContent.length} chars), truncating to ${MAX_TOOL_RESULT_CHARS}`);
             try {
               const parsed = JSON.parse(functionResponseContent);

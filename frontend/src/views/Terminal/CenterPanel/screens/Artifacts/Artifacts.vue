@@ -89,6 +89,11 @@
                     <i class="fas fa-sync-alt"></i>
                   </button>
                 </Tooltip>
+                <Tooltip text="Share to AGNT Creations" v-if="isHtmlFile">
+                  <button class="ce-preview-btn" @click="openShareModal" :disabled="isSharing">
+                    <i class="fas fa-share-alt"></i>
+                  </button>
+                </Tooltip>
               </div>
             </div>
             <div class="ce-preview-content">
@@ -99,6 +104,46 @@
                 sandbox="allow-scripts allow-same-origin"
               ></iframe>
               <div v-else-if="isMarkdownFile && activeTab" ref="markdownPreviewRef" class="ce-markdown-preview" v-html="renderedMarkdown"></div>
+              <div v-else-if="isImageFile && activeTab" class="ce-media-preview">
+                <img :src="rawFileUrl" :alt="activeTab.name" />
+              </div>
+              <div v-else-if="isVideoFile && activeTab" class="ce-media-preview">
+                <video :src="rawFileUrl" controls />
+              </div>
+              <div v-else-if="isAudioFile && activeTab" class="ce-media-preview ce-audio-preview">
+                <canvas ref="audioCanvasRef" class="ce-audio-canvas"></canvas>
+                <p class="ce-audio-name">{{ activeTab.name }}</p>
+                <audio ref="audioPlayerRef" :src="rawFileUrl" crossorigin="anonymous" controls @play="startVisualizer" @pause="stopVisualizer" @ended="stopVisualizer" />
+              </div>
+              <iframe
+                v-else-if="isPdfFile && activeTab"
+                :src="rawFileUrl"
+                class="ce-pdf-preview"
+              ></iframe>
+              <div v-else-if="isEpubFile && activeTab" class="ce-epub-wrapper">
+                <div ref="epubContainerRef" class="ce-epub-container"></div>
+                <div class="ce-epub-nav">
+                  <button class="ce-preview-btn" @click="epubPrev"><i class="fas fa-chevron-left"></i></button>
+                  <button class="ce-preview-btn" @click="epubNext"><i class="fas fa-chevron-right"></i></button>
+                </div>
+              </div>
+              <div v-else-if="is3DFile && activeTab" ref="modelContainerRef" class="ce-3d-preview"></div>
+              <div v-else-if="isSpreadsheetFile && activeTab" class="ce-spreadsheet-preview">
+                <table class="ce-spreadsheet">
+                  <thead>
+                    <tr>
+                      <th class="ce-row-num">#</th>
+                      <th v-for="(h, ci) in spreadsheetData.headers" :key="ci">{{ h }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, ri) in spreadsheetData.rows" :key="ri">
+                      <td class="ce-row-num">{{ ri + 1 }}</td>
+                      <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
               <div v-else-if="isTextFile && activeTab" class="ce-text-preview">{{ activeTab.content }}</div>
               <div v-else-if="activeTab" class="ce-preview-empty">
                 <i class="fas fa-eye-slash"></i>
@@ -114,10 +159,79 @@
       </div>
     </template>
   </BaseScreen>
+
+  <!-- Share Modal - Teleported to body -->
+  <Teleport to="body">
+    <div v-if="showShareModal" class="share-modal-overlay" @click="closeShareModal">
+      <div class="share-modal" @click.stop>
+        <div class="share-modal-header">
+          <h3>Share to AGNT Creations</h3>
+          <button class="share-modal-close" @click="closeShareModal">&times;</button>
+        </div>
+
+        <div v-if="isSharing" class="share-modal-loading">
+          <div class="share-spinner"></div>
+          <p>Sharing your creation...</p>
+        </div>
+
+        <div v-else-if="shareError" class="share-modal-error">
+          <div class="error-icon">Failed</div>
+          <p>{{ shareError }}</p>
+          <button class="share-retry-btn" @click="retryShare">Try Again</button>
+        </div>
+
+        <div v-else-if="shareResult" class="share-modal-success">
+          <p class="success-message">Your creation has been shared!</p>
+          <div class="share-options">
+            <div class="share-option">
+              <label>Link</label>
+              <div class="share-input">
+                <input type="text" :value="shareResult.url" readonly ref="shareLinkInput" />
+                <button class="share-copy-btn" @click="copyShareLink">
+                  {{ copiedLink ? 'Copied!' : 'Copy' }}
+                </button>
+              </div>
+            </div>
+            <div class="share-option">
+              <label>Embed</label>
+              <div class="share-input">
+                <input type="text" :value="shareEmbedCode" readonly ref="shareEmbedInput" />
+                <button class="share-copy-btn" @click="copyEmbedCode">
+                  {{ copiedEmbed ? 'Copied!' : 'Copy' }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="share-actions">
+            <button class="share-action-btn view-btn" @click="openInBrowser(shareResult.url)">
+              <span>View</span>
+            </button>
+            <button class="share-action-btn edit-btn" @click="openInBrowser(shareResult.editUrl)">
+              <span>Edit</span>
+            </button>
+          </div>
+        </div>
+
+        <div v-else class="share-modal-form">
+          <div class="share-form-field">
+            <label for="shareTitle">Title</label>
+            <input type="text" id="shareTitle" v-model="shareTitle" placeholder="My Creation" @keyup.enter="submitShare" />
+          </div>
+          <div class="share-form-actions">
+            <button class="share-cancel-btn" @click="closeShareModal">Cancel</button>
+            <button class="share-submit-btn" @click="submitShare" :disabled="!shareTitle.trim()">
+              <span>Share</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { useStore } from 'vuex';
 import { Codemirror } from 'vue-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -127,6 +241,7 @@ import showdown from 'showdown';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, saveFile } from '@/services/fileSystemService.js';
+import { API_CONFIG } from '@/tt.config.js';
 
 // Lazy-loaded heavy library caches
 let _Chart = null;
@@ -169,6 +284,10 @@ const loadThreeJs = async () => {
       { RoundedBoxGeometry },
       { ConvexGeometry },
       { ParametricGeometry },
+      { STLLoader },
+      { PLYLoader },
+      { ColladaLoader },
+      { ThreeMFLoader },
     ] = await Promise.all([
       import('three'),
       import('three/examples/jsm/controls/OrbitControls.js'),
@@ -187,6 +306,10 @@ const loadThreeJs = async () => {
       import('three/examples/jsm/geometries/RoundedBoxGeometry.js'),
       import('three/examples/jsm/geometries/ConvexGeometry.js'),
       import('three/examples/jsm/geometries/ParametricGeometry.js'),
+      import('three/examples/jsm/loaders/STLLoader.js'),
+      import('three/examples/jsm/loaders/PLYLoader.js'),
+      import('three/examples/jsm/loaders/ColladaLoader.js'),
+      import('three/examples/jsm/loaders/3MFLoader.js'),
     ]);
     _THREE = threeModule;
     _OrbitControls = OrbitControls;
@@ -195,6 +318,7 @@ const loadThreeJs = async () => {
       EffectComposer, RenderPass, UnrealBloomPass,
       DragControls, TransformControls,
       FBXLoader, OBJLoader, MTLLoader, SVGLoader,
+      STLLoader, PLYLoader, ColladaLoader, ThreeMFLoader,
       RoundedBoxGeometry, ConvexGeometry, ParametricGeometry,
       // Legacy aliases — LLMs often generate old Three.js class names
       ParametricBufferGeometry: ParametricGeometry,
@@ -293,7 +417,50 @@ const LANG_MAP = {
 
 const HTML_PREVIEW_EXTS = new Set(['html', 'htm', 'svg']);
 const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdx']);
-const TEXT_EXTS = new Set(['txt', 'log', 'csv', 'tsv', 'ini', 'cfg', 'conf', 'env', 'yaml', 'yml', 'toml']);
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif']);
+const VIDEO_EXTS = new Set(['mp4', 'webm', 'ogg', 'mov', 'mkv']);
+const AUDIO_EXTS = new Set(['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus']);
+const PDF_EXTS = new Set(['pdf']);
+const EPUB_EXTS = new Set(['epub']);
+const MODEL3D_EXTS = new Set(['glb', 'gltf', 'fbx', 'obj', 'stl', 'ply', 'dae', '3mf']);
+const SPREADSHEET_EXTS = new Set(['csv', 'tsv']);
+const TEXT_EXTS = new Set(['txt', 'log', 'ini', 'cfg', 'conf', 'env', 'yaml', 'yml', 'toml']);
+
+/**
+ * Parse CSV/TSV content into rows, handling quoted fields with commas/newlines.
+ */
+function parseDelimited(content, delimiter) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (content[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      row.push(field); field = '';
+    } else if (ch === '\n' || (ch === '\r' && content[i + 1] === '\n')) {
+      if (ch === '\r') i++;
+      row.push(field); field = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+    } else {
+      field += ch;
+    }
+  }
+  row.push(field);
+  if (row.length > 1 || row[0] !== '') rows.push(row);
+  return rows;
+}
 
 export default {
   name: 'ArtifactsScreen',
@@ -311,6 +478,199 @@ export default {
     const isResizing = ref(false);
     const showCode = ref(false);
 
+    // Share to AGNT Creations state
+    const store = useStore();
+    const showShareModal = ref(false);
+    const isSharing = ref(false);
+    const shareError = ref(null);
+    const shareResult = ref(null);
+    const shareTitle = ref('');
+    const copiedLink = ref(false);
+    const copiedEmbed = ref(false);
+    const shareLinkInput = ref(null);
+    const shareEmbedInput = ref(null);
+    const CREATIONS_API_URL = 'https://agnt.gg/api/previews';
+
+    const shareEmbedCode = computed(() => {
+      if (shareResult.value && shareResult.value.id) {
+        return `<iframe src="https://agnt.gg/creations/${shareResult.value.id}/embed" width="100%" height="500" frameborder="0"></iframe>`;
+      }
+      return '';
+    });
+
+    const openShareModal = () => {
+      shareTitle.value = activeTab.value?.name || 'My Creation';
+      shareError.value = null;
+      shareResult.value = null;
+      copiedLink.value = false;
+      copiedEmbed.value = false;
+      showShareModal.value = true;
+    };
+
+    const closeShareModal = () => {
+      showShareModal.value = false;
+      shareTitle.value = '';
+      shareError.value = null;
+      shareResult.value = null;
+      isSharing.value = false;
+    };
+
+    const submitShare = async () => {
+      if (!activeTab.value?.content || !shareTitle.value.trim()) return;
+      isSharing.value = true;
+      shareError.value = null;
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        const token = store.state.userAuth?.token;
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const response = await fetch(CREATIONS_API_URL, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            html: activeTab.value.content,
+            title: shareTitle.value.trim(),
+            source: 'desktop-app',
+          }),
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Failed to share (${response.status})`);
+        }
+        shareResult.value = await response.json();
+      } catch (error) {
+        shareError.value = error.message || 'Failed to share. Please try again.';
+      } finally {
+        isSharing.value = false;
+      }
+    };
+
+    const retryShare = () => { shareError.value = null; submitShare(); };
+
+    const copyShareLink = async () => {
+      if (!shareResult.value?.url) return;
+      try {
+        await navigator.clipboard.writeText(shareResult.value.url);
+        copiedLink.value = true;
+        setTimeout(() => { copiedLink.value = false; }, 2000);
+      } catch (e) { /* */ }
+    };
+
+    const copyEmbedCode = async () => {
+      if (!shareEmbedCode.value) return;
+      try {
+        await navigator.clipboard.writeText(shareEmbedCode.value);
+        copiedEmbed.value = true;
+        setTimeout(() => { copiedEmbed.value = false; }, 2000);
+      } catch (e) { /* */ }
+    };
+
+    const openInBrowser = (url) => { if (url) window.open(url, '_blank'); };
+
+    // ── Audio visualizer ────────────────────────────────────
+    const audioPlayerRef = ref(null);
+    const audioCanvasRef = ref(null);
+    // WeakMap tracks which <audio> elements already have a MediaElementSource
+    // (an element can only be connected once — ever — to a single AudioContext)
+    const audioSourceMap = new WeakMap();
+    let audioCtx = null;
+    let audioAnalyser = null;
+    let audioAnimId = null;
+
+    const drawVisualizer = () => {
+      const canvas = audioCanvasRef.value;
+      const analyser = audioAnalyser;
+      if (!canvas || !analyser) return;
+
+      const ctx = canvas.getContext('2d');
+      const primaryColor = getComputedStyle(document.body).getPropertyValue('--color-primary').trim() || '#19ef83';
+
+      const draw = () => {
+        audioAnimId = requestAnimationFrame(draw);
+
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+          canvas.width = rect.width * dpr;
+          canvas.height = rect.height * dpr;
+        }
+        const W = rect.width;
+        const H = rect.height;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteTimeDomainData(dataArray);
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Waveform line with glow
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = primaryColor;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = primaryColor;
+        ctx.beginPath();
+
+        const sliceWidth = W / bufferLength;
+        let x = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = (v * H) / 2;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+          x += sliceWidth;
+        }
+        ctx.lineTo(W, H / 2);
+        ctx.stroke();
+
+        // Subtle fill under the waveform
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = primaryColor;
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      };
+      draw();
+    };
+
+    const startVisualizer = () => {
+      const audio = audioPlayerRef.value;
+      if (!audio) return;
+
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          audioAnalyser = audioCtx.createAnalyser();
+          audioAnalyser.fftSize = 2048;
+          audioAnalyser.connect(audioCtx.destination);
+        }
+
+        // Each <audio> element can only have one MediaElementSource ever created for it
+        if (!audioSourceMap.has(audio)) {
+          const source = audioCtx.createMediaElementSource(audio);
+          source.connect(audioAnalyser);
+          audioSourceMap.set(audio, source);
+        }
+
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        stopVisualizer(); // cancel any prior animation loop
+        drawVisualizer();
+      } catch (e) {
+        // If visualizer fails, audio still plays normally without crossorigin
+        console.warn('[AudioViz] Could not start visualizer:', e.message);
+      }
+    };
+
+    const stopVisualizer = () => {
+      if (audioAnimId) {
+        cancelAnimationFrame(audioAnimId);
+        audioAnimId = null;
+      }
+    };
+
     // Chart/viz instance tracking for cleanup
     const chartInstances = ref([]);
     const threeInstances = ref([]);
@@ -327,12 +687,237 @@ export default {
 
     const isHtmlFile = computed(() => HTML_PREVIEW_EXTS.has(fileExt.value));
     const isMarkdownFile = computed(() => MARKDOWN_EXTS.has(fileExt.value));
+    const isImageFile = computed(() => IMAGE_EXTS.has(fileExt.value));
+    const isVideoFile = computed(() => VIDEO_EXTS.has(fileExt.value));
+    const isAudioFile = computed(() => AUDIO_EXTS.has(fileExt.value));
+    const isPdfFile = computed(() => PDF_EXTS.has(fileExt.value));
+    const isEpubFile = computed(() => EPUB_EXTS.has(fileExt.value));
+    const is3DFile = computed(() => MODEL3D_EXTS.has(fileExt.value));
+    const isSpreadsheetFile = computed(() => SPREADSHEET_EXTS.has(fileExt.value));
     const isTextFile = computed(() => TEXT_EXTS.has(fileExt.value));
+
+    const spreadsheetData = computed(() => {
+      if (!activeTab.value || !isSpreadsheetFile.value) return { headers: [], rows: [] };
+      const delimiter = fileExt.value === 'tsv' ? '\t' : ',';
+      const all = parseDelimited(activeTab.value.content || '', delimiter);
+      if (all.length === 0) return { headers: [], rows: [] };
+      return { headers: all[0], rows: all.slice(1) };
+    });
+
+    const rawFileUrl = computed(() => {
+      if (!activeTab.value) return '';
+      return `${API_CONFIG.BASE_URL}/filesystem/raw?path=${encodeURIComponent(activeTab.value.path)}`;
+    });
 
     const renderedMarkdown = computed(() => {
       if (!activeTab.value || !isMarkdownFile.value) return '';
       const safe = protectMath(activeTab.value.content || '');
       return restoreMath(mdConverter.makeHtml(safe));
+    });
+
+    // ── EPUB reader ───────────────────────────────────────
+    const epubContainerRef = ref(null);
+    let epubBook = null;
+    let epubRendition = null;
+
+    const loadEpub = async () => {
+      destroyEpub();
+      if (!isEpubFile.value || !activeTab.value || !epubContainerRef.value) return;
+
+      try {
+        const ePub = (await import('epubjs')).default;
+        epubBook = ePub(rawFileUrl.value, { openAs: 'epub' });
+        epubRendition = epubBook.renderTo(epubContainerRef.value, {
+          width: '100%',
+          height: '100%',
+          spread: 'none',
+          flow: 'scrolled-doc',
+        });
+        await epubRendition.display();
+
+        epubRendition.themes.default({
+          'body': { color: 'var(--color-text, #ccc) !important', background: 'transparent !important', 'font-family': 'system-ui, sans-serif', 'line-height': '1.7', padding: '0 8px !important' },
+          'p': { color: 'var(--color-text, #ccc) !important' },
+          'h1, h2, h3, h4, h5, h6': { color: 'var(--color-white, #fff) !important' },
+          'a': { color: 'var(--color-primary, #19ef83) !important' },
+          'img': { 'max-width': '100% !important' },
+        });
+      } catch (e) {
+        console.error('[EPUB] Failed to load:', e);
+      }
+    };
+
+    const destroyEpub = () => {
+      if (epubRendition) { epubRendition.destroy(); epubRendition = null; }
+      if (epubBook) { epubBook.destroy(); epubBook = null; }
+    };
+
+    const epubPrev = () => { if (epubRendition) epubRendition.prev(); };
+    const epubNext = () => { if (epubRendition) epubRendition.next(); };
+
+    watch([activeTabPath, isEpubFile], () => {
+      nextTick(() => loadEpub());
+    });
+
+    // ── 3D model viewer ──────────────────────────────────
+    const modelContainerRef = ref(null);
+    let modelRenderer = null;
+    let modelScene = null;
+    let modelCamera = null;
+    let modelControls = null;
+    let modelAnimId = null;
+
+    // Read a CSS variable as a Three.js Color
+    const cssColor = (varName, fallback) => {
+      const raw = getComputedStyle(document.body).getPropertyValue(varName).trim();
+      return raw || fallback;
+    };
+    const load3DModel = async () => {
+      destroy3DModel();
+      if (!is3DFile.value || !activeTab.value || !modelContainerRef.value) return;
+
+      try {
+        const { THREE, THREE_ADDONS, OrbitControls } = await loadThreeJs();
+        const container = modelContainerRef.value;
+        const rect = container.getBoundingClientRect();
+
+        const bgColor = new THREE.Color(cssColor('--color-background', '#10101f'));
+        const primaryColor = new THREE.Color(cssColor('--color-primary', '#19ef83'));
+        const secondaryColor = new THREE.Color(cssColor('--color-secondary', '#333355'));
+
+        // Scene
+        modelScene = new THREE.Scene();
+        modelScene.background = null;
+
+
+        // Lights
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        modelScene.add(ambient);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 10, 7);
+        modelScene.add(dirLight);
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        backLight.position.set(-5, 5, -5);
+        modelScene.add(backLight);
+
+        // Camera (Z-up)
+        modelCamera = new THREE.PerspectiveCamera(50, rect.width / rect.height, 0.01, 1000);
+        modelCamera.up.set(0, 0, 1);
+        modelCamera.position.set(3, 3, 3);
+
+        // Renderer
+        modelRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        modelRenderer.setPixelRatio(window.devicePixelRatio);
+        modelRenderer.setSize(rect.width, rect.height);
+        container.appendChild(modelRenderer.domElement);
+
+        // Controls
+        modelControls = new OrbitControls(modelCamera, modelRenderer.domElement);
+        modelControls.enableDamping = true;
+        modelControls.dampingFactor = 0.1;
+
+        // Load model
+        const url = rawFileUrl.value;
+        const ext = fileExt.value;
+        let object = null;
+
+        // Default material uses theme primary color
+        const defaultMaterial = () => new THREE.MeshStandardMaterial({ color: primaryColor, metalness: 0.3, roughness: 0.6 });
+
+        if (ext === 'glb' || ext === 'gltf') {
+          const loader = new THREE_ADDONS.GLTFLoader();
+          const gltf = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+          object = gltf.scene;
+        } else if (ext === 'fbx') {
+          const loader = new THREE_ADDONS.FBXLoader();
+          object = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+        } else if (ext === 'obj') {
+          const loader = new THREE_ADDONS.OBJLoader();
+          object = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+        } else if (ext === 'stl') {
+          const loader = new THREE_ADDONS.STLLoader();
+          const geometry = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+          object = new THREE.Mesh(geometry, defaultMaterial());
+        } else if (ext === 'ply') {
+          const loader = new THREE_ADDONS.PLYLoader();
+          const geometry = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+          geometry.computeVertexNormals();
+          const material = geometry.hasAttribute('color')
+            ? new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.2, roughness: 0.6 })
+            : defaultMaterial();
+          object = new THREE.Mesh(geometry, material);
+        } else if (ext === 'dae') {
+          const loader = new THREE_ADDONS.ColladaLoader();
+          const collada = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+          object = collada.scene;
+        } else if (ext === '3mf') {
+          const loader = new THREE_ADDONS.ThreeMFLoader();
+          object = await new Promise((res, rej) => loader.load(url, res, undefined, rej));
+        }
+
+        if (!object) return;
+        modelScene.add(object);
+
+        // Auto-frame: center XY, sit bottom at Z=0
+        const box = new THREE.Box3().setFromObject(object);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3()).length();
+        object.position.x -= center.x;
+        object.position.y -= center.y;
+        object.position.z -= box.min.z;
+
+        // Recompute bounds after repositioning
+        const fittedBox = new THREE.Box3().setFromObject(object);
+        const midZ = (fittedBox.min.z + fittedBox.max.z) / 2;
+
+        modelCamera.position.set(size, size, midZ + size * 0.25);
+        modelCamera.lookAt(0, 0, midZ);
+        modelControls.target.set(0, 0, midZ);
+        modelCamera.near = size * 0.001;
+        modelCamera.far = size * 100;
+        modelCamera.updateProjectionMatrix();
+
+        // Animation loop
+        const animate = () => {
+          modelAnimId = requestAnimationFrame(animate);
+          modelControls.update();
+          modelRenderer.render(modelScene, modelCamera);
+        };
+        animate();
+
+        // Handle resize
+        const ro = new ResizeObserver(() => {
+          const r = container.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) return;
+          modelCamera.aspect = r.width / r.height;
+          modelCamera.updateProjectionMatrix();
+          modelRenderer.setSize(r.width, r.height);
+        });
+        ro.observe(container);
+        container._ro = ro;
+      } catch (e) {
+        console.error('[3D] Failed to load model:', e);
+      }
+    };
+
+    const destroy3DModel = () => {
+      if (modelAnimId) { cancelAnimationFrame(modelAnimId); modelAnimId = null; }
+      if (modelControls) { modelControls.dispose(); modelControls = null; }
+      if (modelRenderer) {
+        modelRenderer.dispose();
+        if (modelRenderer.domElement?.parentNode) modelRenderer.domElement.parentNode.removeChild(modelRenderer.domElement);
+        modelRenderer = null;
+      }
+      if (modelContainerRef.value?._ro) {
+        modelContainerRef.value._ro.disconnect();
+        delete modelContainerRef.value._ro;
+      }
+      modelScene = null;
+      modelCamera = null;
+    };
+
+    watch([activeTabPath, is3DFile], () => {
+      nextTick(() => load3DModel());
     });
 
     const getLanguageExt = (filePath) => {
@@ -532,7 +1117,7 @@ export default {
             container.appendChild(canvas);
 
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a1a2e);
+            scene.background = new THREE.Color(cssColor('--color-background', '#10101f'));
             const camera = new THREE.PerspectiveCamera(60, canvas.width / canvas.height, 0.1, 1000);
             camera.position.set(3, 3, 5);
             camera.lookAt(0, 0, 0);
@@ -662,6 +1247,8 @@ export default {
       );
     };
 
+    const isBinaryExt = (ext) => IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext) || AUDIO_EXTS.has(ext) || PDF_EXTS.has(ext) || EPUB_EXTS.has(ext) || MODEL3D_EXTS.has(ext);
+
     const openFile = async (filePath) => {
       const existing = openTabs.value.find((t) => t.path === filePath);
       if (existing) {
@@ -671,15 +1258,18 @@ export default {
       }
 
       try {
-        const data = await getFile(filePath);
         const name = filePath.split('/').pop();
-        const tab = {
-          path: filePath,
-          name,
-          content: data.content,
-          savedContent: data.content,
-          isDirty: false,
-        };
+        const ext = name.split('.').pop()?.toLowerCase() || '';
+        let tab;
+
+        if (isBinaryExt(ext)) {
+          // Binary files — don't read content, just open the tab for preview
+          tab = { path: filePath, name, content: '', savedContent: '', isDirty: false };
+        } else {
+          const data = await getFile(filePath);
+          tab = { path: filePath, name, content: data.content, savedContent: data.content, isDirty: false };
+        }
+
         openTabs.value.push(tab);
         activeTabPath.value = filePath;
         broadcastOpenFile(tab);
@@ -798,6 +1388,10 @@ export default {
       clearTimeout(previewTimer);
       clearTimeout(mathJaxTimer);
       destroyVizInstances();
+      destroyEpub();
+      destroy3DModel();
+      stopVisualizer();
+      if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; audioAnalyser = null; }
     });
 
     return {
@@ -814,7 +1408,24 @@ export default {
       showCode,
       isHtmlFile,
       isMarkdownFile,
+      isImageFile,
+      isVideoFile,
+      isAudioFile,
+      isPdfFile,
+      isEpubFile,
+      epubContainerRef,
+      epubPrev,
+      epubNext,
+      is3DFile,
+      modelContainerRef,
+      isSpreadsheetFile,
+      spreadsheetData,
       isTextFile,
+      rawFileUrl,
+      audioPlayerRef,
+      audioCanvasRef,
+      startVisualizer,
+      stopVisualizer,
       renderedMarkdown,
       editorExtensions,
       switchTab,
@@ -824,6 +1435,24 @@ export default {
       handlePanelAction,
       startResize,
       refreshPreview,
+      // Share
+      showShareModal,
+      isSharing,
+      shareError,
+      shareResult,
+      shareTitle,
+      shareEmbedCode,
+      copiedLink,
+      copiedEmbed,
+      shareLinkInput,
+      shareEmbedInput,
+      openShareModal,
+      closeShareModal,
+      submitShare,
+      retryShare,
+      copyShareLink,
+      copyEmbedCode,
+      openInBrowser,
     };
   },
 };
@@ -1122,6 +1751,158 @@ export default {
   scrollbar-width: thin;
 }
 
+.ce-media-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--color-darkest);
+  padding: 16px;
+}
+
+.ce-media-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.ce-media-preview video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 4px;
+  outline: none;
+}
+
+.ce-audio-preview {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ce-audio-canvas {
+  width: 100%;
+  max-width: 500px;
+  height: 140px;
+  border-radius: 8px;
+  background: rgba(var(--primary-rgb, 25, 239, 131), 0.04);
+  border: 1px solid rgba(var(--primary-rgb, 25, 239, 131), 0.1);
+}
+
+.ce-audio-name {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.ce-media-preview audio {
+  width: 100%;
+  max-width: 500px;
+  outline: none;
+}
+
+.ce-pdf-preview {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
+.ce-epub-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-darker-1);
+}
+
+.ce-epub-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ce-epub-nav {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+.ce-epub-nav .ce-preview-btn {
+  font-size: 14px;
+  padding: 4px 12px;
+}
+
+.ce-3d-preview {
+  flex: 1;
+  min-height: 0;
+  background: var(--color-background);
+  cursor: grab;
+}
+
+.ce-3d-preview:active {
+  cursor: grabbing;
+}
+
+.ce-spreadsheet-preview {
+  flex: 1;
+  overflow: auto;
+  background: var(--color-darker-1);
+  scrollbar-width: thin;
+}
+
+.ce-spreadsheet {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: var(--font-family-mono);
+}
+
+.ce-spreadsheet thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ce-spreadsheet th {
+  background: var(--color-darkest);
+  color: var(--color-text, #ccc);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--terminal-border-color);
+  white-space: nowrap;
+}
+
+.ce-spreadsheet td {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(var(--primary-rgb, 25, 239, 131), 0.06);
+  color: var(--color-text, #ccc);
+  white-space: nowrap;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ce-spreadsheet tbody tr:hover td {
+  background: rgba(var(--primary-rgb, 25, 239, 131), 0.04);
+}
+
+.ce-row-num {
+  color: var(--color-text-muted) !important;
+  font-size: 11px;
+  opacity: 0.5;
+  text-align: right !important;
+  user-select: none;
+  padding-right: 8px !important;
+  min-width: 36px;
+  border-right: 1px solid var(--terminal-border-color) !important;
+}
+
 .ce-preview-empty {
   flex: 1;
   display: flex;
@@ -1380,4 +2161,187 @@ export default {
 .ce-markdown-preview .threejs-container .threejs-canvas:active {
   cursor: grabbing;
 }
+
+/* Share Modal Styles */
+.share-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+  animation: modal-fade-in 0.2s ease;
+}
+.share-modal {
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 450px;
+  animation: modal-slide-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.share-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+.share-modal-header h3 {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--color-white);
+}
+.share-modal-close {
+  background: none;
+  border: none;
+  color: var(--color-light-med-navy);
+  font-size: 1.5em;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+.share-modal-close:hover { color: var(--color-red); }
+.share-modal-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 16px;
+}
+.share-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--terminal-border-color);
+  border-top-color: var(--color-green);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+.share-modal-loading p { color: var(--color-light-med-navy); font-size: 0.95em; margin: 0; }
+.share-modal-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px;
+  gap: 16px;
+  text-align: center;
+}
+.share-modal-error .error-icon { font-size: 1.2em; color: var(--color-red); font-weight: 600; }
+.share-modal-error p { color: var(--color-red); font-size: 0.95em; margin: 0; }
+.share-retry-btn {
+  padding: 10px 24px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 6px;
+  color: var(--color-red);
+  font-size: 0.9em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.share-retry-btn:hover { background: rgba(255, 107, 107, 0.2); border-color: var(--color-red); }
+.share-modal-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+  gap: 20px;
+}
+.share-modal-success .success-message { color: var(--color-green); font-size: 1em; font-weight: 500; margin: 0; }
+.share-options { width: 100%; display: flex; flex-direction: column; gap: 16px; }
+.share-option { display: flex; flex-direction: column; gap: 8px; }
+.share-option label { font-size: 0.8em; font-weight: 500; color: var(--color-light-med-navy); text-transform: uppercase; letter-spacing: 0.05em; }
+.share-input { display: flex; gap: 8px; }
+.share-input input {
+  flex: 1;
+  background: var(--color-darkest);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--color-white);
+  font-family: var(--font-family-mono);
+  font-size: 0.85em;
+}
+.share-input input:focus { outline: none; border-color: var(--color-green); }
+.share-copy-btn {
+  padding: 10px 16px;
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  border-radius: 6px;
+  color: var(--color-green);
+  font-size: 0.85em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.share-copy-btn:hover { background: rgba(var(--green-rgb), 0.2); border-color: var(--color-green); }
+.share-actions { display: flex; gap: 12px; width: 100%; margin-top: 8px; }
+.share-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.share-action-btn.view-btn { background: rgba(18, 224, 255, 0.1); border: 1px solid rgba(18, 224, 255, 0.3); color: var(--color-blue); }
+.share-action-btn.view-btn:hover { background: rgba(18, 224, 255, 0.2); border-color: var(--color-blue); }
+.share-action-btn.edit-btn { background: rgba(127, 129, 147, 0.1); border: 1px solid rgba(127, 129, 147, 0.3); color: var(--color-light-med-navy); }
+.share-action-btn.edit-btn:hover { background: rgba(127, 129, 147, 0.2); border-color: var(--color-light-med-navy); }
+.share-modal-form { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+.share-form-field { display: flex; flex-direction: column; gap: 8px; }
+.share-form-field label { font-size: 0.85em; font-weight: 500; color: var(--color-light-med-navy); }
+.share-form-field input {
+  background: var(--color-darkest);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  padding: 12px 14px;
+  color: var(--color-white);
+  font-size: 0.95em;
+}
+.share-form-field input:focus { outline: none; border-color: var(--color-green); }
+.share-form-field input::placeholder { color: var(--color-duller-navy); }
+.share-form-actions { display: flex; gap: 12px; justify-content: flex-end; }
+.share-cancel-btn {
+  padding: 10px 20px;
+  background: transparent;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-light-med-navy);
+  font-size: 0.9em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.share-cancel-btn:hover { background: rgba(127, 129, 147, 0.1); border-color: var(--color-light-med-navy); }
+.share-submit-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--color-green);
+  border: none;
+  border-radius: 6px;
+  color: var(--color-darkest);
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.share-submit-btn:hover:not(:disabled) { background: #15d975; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3); }
+.share-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-slide-up { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
