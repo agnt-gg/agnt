@@ -467,17 +467,7 @@ async function universalChatHandler(req, res, context = {}) {
   const normalizedProvider = resolvedProvider.toLowerCase();
   let model = resolvedModel;
 
-  // Guardrail: Codex CLI accounts do not support every OpenAI model name.
-  if (normalizedProvider === 'openai-codex') {
-    const supportedModels = ProviderRegistry.getTextModels(normalizedProvider);
-    if (Array.isArray(supportedModels) && supportedModels.length > 0 && !supportedModels.includes(model)) {
-      const fallbackModel = supportedModels[0] || 'gpt-5-codex';
-      console.warn(
-        `[Codex CLI] Model '${model}' is not supported for Codex CLI. Falling back to '${fallbackModel}'.`
-      );
-      model = fallbackModel;
-    }
-  }
+
 
   // Keep DB in sync with the provider/model the frontend is actually using,
   // so background processes (InsightEngine, etc.) always have current values.

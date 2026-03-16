@@ -2805,7 +2805,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
    */
   supportsReasoning() {
     const modelLower = this.model.toLowerCase();
-    return this.reasoningModels.has(this.model) || modelLower.startsWith('o1') || modelLower.startsWith('o3') || modelLower.startsWith('gpt-5');
+    return this.reasoningModels.has(this.model) || /^o\d/.test(modelLower) || modelLower.startsWith('gpt-5');
   }
 
   /**
@@ -3270,8 +3270,16 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   constructor(client, model) {
     super(client, model);
-    // Codex models all support reasoning
-    this.reasoningModels = new Set(['gpt-5-codex', 'gpt-5', 'gpt-5.1-codex-max', 'o1', 'o3']);
+    // Codex reasoning models — match by prefix so new models work automatically
+    this.reasoningModels = new Set();
+  }
+
+  /**
+   * All gpt-5+ and o-series Codex models support reasoning.
+   */
+  supportsReasoning() {
+    const m = this.model.toLowerCase();
+    return m.startsWith('gpt-5') || /^o\d/.test(m);
   }
 
   /**
@@ -3531,17 +3539,13 @@ function requiresResponsesApi(model) {
 
   const modelLower = model.toLowerCase();
 
-  // GPT-5 models
+  // GPT-5+ models (gpt-5, gpt-5.1-codex, gpt-5.2-codex, gpt-5.3-codex, gpt-5.4, etc.)
   if (modelLower.startsWith('gpt-5')) return true;
 
-  // o-series reasoning models
-  if (modelLower.startsWith('o1')) return true;
-  if (modelLower.startsWith('o3')) return true;
+  // o-series reasoning models (o1, o3, o4, and future o-series)
+  if (/^o\d/.test(modelLower)) return true;
 
-  // Specific model names
-  const responsesApiModels = ['gpt-5', 'gpt-5.1-codex-max', 'o1', 'o1-mini', 'o1-preview', 'o3', 'o3-mini', 'o3-preview'];
-
-  return responsesApiModels.includes(modelLower);
+  return false;
 }
 
 /**
