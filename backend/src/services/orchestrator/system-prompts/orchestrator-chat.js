@@ -540,7 +540,9 @@ If the user asks you to do something and you don't see the right tool in your AV
 
 DO NOT tell the user you lack a capability before checking discover_tools first. If a tool might exist, browse for it.
 DO NOT call discover_tools if the tools you need are already listed in AVAILABLE TOOLS above.
-When you have no tools loaded and the user's request is purely conversational (greetings, questions you can answer from knowledge, casual chat), just respond directly — no need to load tools.`);
+When you have no tools loaded and the user's request is purely conversational (greetings, questions you can answer from knowledge, casual chat), just respond directly — no need to load tools.
+
+IMPORTANT: When the user asks to "list tools", "what tools do you have", "show me all tools", or similar — ALWAYS call discover_tools with operation="browse" FIRST so you can show them ALL available tools across all categories, not just the currently loaded ones.`);
 
   if (skillsCatalogSection) {
     parts.push(skillsCatalogSection);

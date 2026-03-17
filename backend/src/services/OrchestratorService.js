@@ -398,6 +398,7 @@ async function universalChatHandler(req, res, context = {}) {
     goalId,
     goalContext,
     reasoningEnabled: rawReasoningEnabled,
+    enabledTools: rawEnabledTools,
   } = req.body;
 
   // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
@@ -615,6 +616,14 @@ async function universalChatHandler(req, res, context = {}) {
     conversationId,
     // Latest user message text (for dynamic tool selection)
     latestUserMessage,
+    // User-selected enabled tools from frontend tool selector
+    enabledTools: (() => {
+      if (!rawEnabledTools) return null;
+      try {
+        const parsed = typeof rawEnabledTools === 'string' ? JSON.parse(rawEnabledTools) : rawEnabledTools;
+        return Array.isArray(parsed) && parsed.length > 0 ? new Set(parsed) : null;
+      } catch { return null; }
+    })(),
     // AI provider settings
     provider: resolvedProvider,
     model,
@@ -1156,28 +1165,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
             rawFunctionResponse = await executeTool(functionName, functionArgs, authToken, conversationContext);
           }
 
-          // Handle web scraping content preservation (from streamHandler)
-          if (functionName === 'web_scrape') {
-            try {
-              const fullResult = JSON.parse(rawFunctionResponse);
-              if (fullResult.success) {
-                if (!conversationContext.preservedContent) {
-                  conversationContext.preservedContent = {};
-                }
-                conversationContext.preservedContent.lastWebScrape = {
-                  url: fullResult.url,
-                  fullContent: rawFunctionResponse,
-                  timestamp: Date.now(),
-                };
-                console.log(`Preserved FULL web scrape content BEFORE truncation (${rawFunctionResponse.length} chars)`);
-              }
-            } catch (e) {
-              console.log('Could not parse web scrape result for content preservation:', e.message);
-            }
-          }
-
           functionResponseContent = rawFunctionResponse;
-          console.log(`NO TRUNCATION - using full content for ${functionName} (${rawFunctionResponse.length} chars)`);
 
           // Preserve frontend events before any offloading/truncation mangles the content
           // Then strip them from functionResponseContent — they contain full source_code
@@ -2778,4 +2766,95 @@ function generateWidgetFrontendEvents(widgetData, operationType) {
   return events;
 }
 
+async function getAvailableTools(req, res) {
+  try {
+    const { DEFAULT_TOOLS, TOOL_GROUPS, GROUP_DESCRIPTIONS } = await import('./orchestrator/toolSelector.js');
+    const { getAvailableToolSchemas } = await import('./orchestrator/tools.js');
+    const toolRegistry = (await import('./orchestrator/toolRegistry.js')).default;
+    await toolRegistry.ensureInitialized();
+
+    const allSchemas = await getAvailableToolSchemas();
+
+    // Build schema lookup map
+    const schemaMap = new Map();
+    for (const schema of allSchemas) {
+      const name = schema.function?.name;
+      if (name) {
+        schemaMap.set(name, { name, description: schema.function.description || '' });
+      }
+    }
+
+    // Collect all built-in tool names (defaults + groups) into one set, deduped
+    const builtInNames = new Set(DEFAULT_TOOLS);
+    for (const tools of Object.values(TOOL_GROUPS)) {
+      for (const name of tools) builtInNames.add(name);
+    }
+
+    const accountedFor = new Set();
+
+    // Category: Built In (all defaults + group tools combined)
+    const builtInTools = [...builtInNames].map(name => {
+      accountedFor.add(name);
+      return { name, description: schemaMap.get(name)?.description || '' };
+    });
+
+    // Category: Plugins (from toolRegistry plugin tools)
+    const pluginTools = toolRegistry.getAllPluginTools().map(t => {
+      const name = t.openApiSchema?.function?.name || t.type.replace(/-/g, '_');
+      accountedFor.add(name);
+      return {
+        name,
+        description: t.description || schemaMap.get(name)?.description || '',
+        pluginName: t.pluginName || null,
+      };
+    });
+
+    // Category: Installed (registry tools not in built-in/plugins)
+    const installedTools = [];
+    for (const [name, info] of schemaMap) {
+      if (!accountedFor.has(name)) {
+        accountedFor.add(name);
+        installedTools.push({ name, description: info.description });
+      }
+    }
+
+    // Build response — nothing is locked, everything toggleable
+    const categories = [
+      {
+        id: 'builtin',
+        name: 'Built In',
+        description: 'Default system tools, platform tools, media, shell, email, and memory',
+        locked: false,
+        tools: builtInTools,
+      },
+    ];
+
+    if (pluginTools.length > 0) {
+      categories.push({
+        id: 'plugins',
+        name: 'Plugins',
+        description: 'Tools from installed plugins',
+        locked: false,
+        tools: pluginTools,
+      });
+    }
+
+    if (installedTools.length > 0) {
+      categories.push({
+        id: 'installed',
+        name: 'Installed',
+        description: 'Additional registered tools',
+        locked: false,
+        tools: installedTools,
+      });
+    }
+
+    res.json({ categories });
+  } catch (error) {
+    console.error('Error getting available tools:', error);
+    res.status(500).json({ error: 'Failed to get available tools' });
+  }
+}
+
 export default universalChatHandler;
+export { getAvailableTools };

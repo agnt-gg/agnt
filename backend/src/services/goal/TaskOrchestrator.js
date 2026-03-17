@@ -608,6 +608,11 @@ Begin working on this task now.`;
       let identicalReplanCount = 0;
       let lastReplanHash = null;
 
+      // Keep/discard tracking (monotone improvement guarantee)
+      let bestScore = 0;
+      let bestIteration = 0;
+      let bestTaskSnapshot = null;
+
       for (let iteration = 1; iteration <= maxIterations; iteration++) {
         const iterationStart = Date.now();
 
@@ -627,6 +632,8 @@ Begin working on this task now.`;
           iteration,
           maxIterations,
           phase: 'executing',
+          bestScore,
+          bestIteration,
         });
 
         // Phase 1: Execute tasks
@@ -654,6 +661,27 @@ Begin working on this task now.`;
 
         const iterationDuration = Date.now() - iterationStart;
 
+        const currentScore = evaluation.scores?.overall || 0;
+        const isImprovement = currentScore > bestScore;
+
+        // Update best tracking if improved
+        if (isImprovement) {
+          bestScore = currentScore;
+          bestIteration = iteration;
+          // Snapshot current tasks for potential revert
+          const currentTasks = await TaskModel.findByGoalId(goalId);
+          bestTaskSnapshot = currentTasks.map(t => ({
+            id: t.id,
+            title: t.title,
+            description: t.description,
+            status: t.status,
+            output: t.output,
+          }));
+          console.log(`[AGI Loop] New best score: ${bestScore}% at iteration ${iteration}`);
+        } else {
+          console.log(`[AGI Loop] No improvement (${currentScore}% <= best ${bestScore}%) — will try different approach`);
+        }
+
         // Phase 3: Check if passed
         if (evaluation.passed) {
           console.log(`[AGI Loop] Goal ${goalId} PASSED at iteration ${iteration} (${evaluation.scores.overall}%)`);
@@ -672,6 +700,7 @@ Begin working on this task now.`;
             goalId,
             iteration,
             score: evaluation.scores.overall,
+            bestScore: evaluation.scores.overall,
             passed: true,
           });
 
@@ -691,11 +720,20 @@ Begin working on this task now.`;
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_REPLAN, {
           goalId,
           iteration,
-          score: evaluation.scores.overall,
+          score: currentScore,
+          bestScore,
+          bestIteration,
+          isImprovement,
           phase: 'replanning',
         });
 
-        const replannedTasks = await this._replanFailedTasks(goalId, evaluation, userId, provider, model);
+        const replannedTasks = await this._replanFailedTasks(goalId, evaluation, userId, provider, model, {
+          bestScore,
+          bestIteration,
+          isImprovement,
+          bestTaskSnapshot,
+          currentIteration: iteration,
+        });
 
         // Guard: detect identical re-plans
         const replanHash = JSON.stringify(replannedTasks.map((t) => t.title + t.description).sort());
@@ -739,7 +777,10 @@ Begin working on this task now.`;
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_END, {
           goalId,
           iteration,
-          score: evaluation.scores.overall,
+          score: currentScore,
+          bestScore,
+          bestIteration,
+          isImprovement,
           replannedCount: replannedTasks.length,
           duration: iterationDuration,
         });
@@ -772,7 +813,7 @@ Begin working on this task now.`;
    * Re-plan failed/low-scoring tasks using LLM analysis.
    * Resets failed tasks to pending with updated descriptions.
    */
-  static async _replanFailedTasks(goalId, evaluation, userId, provider = null, model = null) {
+  static async _replanFailedTasks(goalId, evaluation, userId, provider = null, model = null, loopContext = {}) {
     const goal = await GoalModel.findOne(goalId);
     const tasks = await TaskModel.findByGoalId(goalId);
     const worldState = await GoalModel.getWorldState(goalId);
@@ -794,7 +835,24 @@ Begin working on this task now.`;
     }
 
     // Use LLM to generate improved task descriptions
+    const { bestScore = 0, bestIteration = 0, isImprovement = true, currentIteration = 0 } = loopContext;
+
+    // Get iteration history from world state for context
+    const iterationHistory = worldState?.iterationHistory || [];
+    const historyContext = iterationHistory.length > 0
+      ? `\nITERATION HISTORY (what has been tried before):\n${iterationHistory.map(h =>
+          `  Iteration #${h.iteration}: ${h.score}% ${h.passed ? '(PASSED)' : '(FAILED)'}`
+        ).join('\n')}`
+      : '';
+
+    const approachGuidance = !isImprovement
+      ? `\n⚠️ CRITICAL: The previous iteration scored ${evaluation.scores?.overall || 0}% which is WORSE than the best score of ${bestScore}% (iteration #${bestIteration}).
+The previous approach did NOT work. You MUST try a fundamentally DIFFERENT strategy.
+Do NOT repeat or slightly vary the same approach. Think about what went wrong and try something new.`
+      : '';
+
     const prompt = `You are re-planning failed tasks for an autonomous goal execution system.
+This is iteration #${currentIteration}. Best score so far: ${bestScore}% (iteration #${bestIteration}).
 
 GOAL: ${goal.title}
 DESCRIPTION: ${goal.description}
@@ -804,10 +862,12 @@ ${JSON.stringify(goal.success_criteria, null, 2)}
 
 CURRENT WORLD STATE (what has been accomplished so far):
 ${JSON.stringify(worldState, null, 2)}
+${historyContext}
 
 EVALUATION FEEDBACK:
 Score: ${evaluation.scores?.overall || 0}%
 Feedback: ${evaluation.feedback || 'No feedback available'}
+${approachGuidance}
 
 FAILED/LOW-SCORING TASKS:
 ${failedTasks
@@ -840,6 +900,7 @@ Rules:
 - Make descriptions more specific based on what failed
 - Incorporate feedback from the evaluation
 - Build upon what was already accomplished (world state)
+- If the previous approach didn't improve the score, try a fundamentally different strategy
 - Return ONLY the JSON array`;
 
     try {

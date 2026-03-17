@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { authenticateToken } from './Middleware.js';
 import multer from 'multer';
 
-import universalChatHandler from '../services/OrchestratorService.js';
+import universalChatHandler, { getAvailableTools } from '../services/OrchestratorService.js';
 
 const router = express.Router();
 
@@ -22,6 +22,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 router.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
+
+// Available tools for frontend tool selector
+router.get('/tools', authenticateToken, getAvailableTools);
 
 // Universal chat handler - all routes stream by default with clean names
 router.post('/chat', authenticateToken, upload.array('files'), universalChatHandler);

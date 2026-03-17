@@ -855,6 +855,11 @@ export default {
           if (reasoningEnabled) {
             formData.append('reasoningEnabled', 'true');
           }
+          // Send enabled tools from tool selector
+          const savedTools = localStorage.getItem('agnt_enabled_tools');
+          if (savedTools) {
+            formData.append('enabledTools', savedTools);
+          }
 
           files.forEach((file) => {
             formData.append('files', file);
@@ -875,6 +880,7 @@ export default {
             provider: provider,
             model: model,
             reasoningEnabled: reasoningEnabled || undefined,
+            enabledTools: JSON.parse(localStorage.getItem('agnt_enabled_tools') || '[]'),
           });
         }
 

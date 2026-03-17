@@ -106,6 +106,11 @@
                 <i class="fas fa-robot"></i>
               </button>
             </Tooltip>
+            <Tooltip text="Tool Settings" width="auto">
+              <button v-if="!isStreaming" @click="toggleToolSelector" class="chat-tools-button">
+                <i class="fas fa-wrench"></i>
+              </button>
+            </Tooltip>
             <Tooltip :text="isListening ? 'Stop recording' : 'Start voice input'" width="auto">
               <button
                 v-if="isSupported && !isStreaming"
@@ -179,6 +184,15 @@
         @close="closeProviderSelector"
       />
     </Teleport>
+
+    <!-- Tool Selector Dropdown -->
+    <Teleport to="body">
+      <ChatToolSelector
+        v-if="isToolSelectorOpen"
+        :isOpen="isToolSelectorOpen"
+        @close="closeToolSelector"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -189,6 +203,7 @@ import LeftPanel from '../LeftPanel/LeftPanel.vue';
 import RightPanel from '../RightPanel/RightPanel.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import ChatProviderSelector from './screens/Chat/components/ChatProviderSelector.vue';
+import ChatToolSelector from './screens/Chat/components/ChatToolSelector.vue';
 // import PromoBanner from '@/views/_components/common/PromoBanner.vue';
 import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
@@ -196,7 +211,7 @@ import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 
 export default {
   name: 'BaseScreen',
-  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, RateLimitBanner, Tooltip },
+  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip },
   props: {
     activeRightPanel: {
       type: [String, null],
@@ -292,6 +307,9 @@ export default {
     const isProviderSelectorOpen = ref(false);
     const providerSelectorButtonRef = ref(null);
     const providerSelectorStyle = ref({});
+
+    // --- Tool Selector State ---
+    const isToolSelectorOpen = ref(false);
 
     // --- Streaming State ---
     // Mirror property (state.isStreaming) is kept in sync by SCOPED_SET_STREAMING
@@ -441,6 +459,15 @@ export default {
 
     const closeProviderSelector = () => {
       isProviderSelectorOpen.value = false;
+    };
+
+    const toggleToolSelector = () => {
+      isProviderSelectorOpen.value = false;
+      isToolSelectorOpen.value = !isToolSelectorOpen.value;
+    };
+
+    const closeToolSelector = () => {
+      isToolSelectorOpen.value = false;
     };
 
     const handlePaste = async (event) => {
@@ -1063,6 +1090,10 @@ export default {
       providerSelectorStyle,
       toggleProviderSelector,
       closeProviderSelector,
+      // Tool selector
+      isToolSelectorOpen,
+      toggleToolSelector,
+      closeToolSelector,
     };
   },
 };
@@ -1690,7 +1721,8 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   .chat-send-button,
   .chat-stop-button,
   .chat-attach-button,
-  .chat-provider-button {
+  .chat-provider-button,
+  .chat-tools-button {
     width: 32px;
     height: 32px;
     margin-left: 6px;
@@ -1929,6 +1961,28 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   background: rgba(127, 129, 147, 0.3);
   cursor: not-allowed;
   transform: none;
+}
+
+.chat-tools-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-darker-2);
+  color: var(--color-light-med-navy);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.chat-tools-button:hover:not(:disabled) {
+  background: var(--color-darker-0);
+  color: var(--color-accent, #00ff88);
+  transform: scale(1.05);
 }
 
 body[data-page='terminal-goals'] .scrollable-content {

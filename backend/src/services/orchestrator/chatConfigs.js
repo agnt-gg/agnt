@@ -53,6 +53,16 @@ export const CHAT_CONFIGS = {
 
       const { filteredSchemas, includedGuidance, matchedGroups } = selectTools(allSchemas, latestUserMessage);
 
+      // Apply user's tool selector choices — remove any tools the user disabled
+      if (context.enabledTools) {
+        for (let i = filteredSchemas.length - 1; i >= 0; i--) {
+          const name = filteredSchemas[i].function?.name;
+          if (name && !context.enabledTools.has(name)) {
+            filteredSchemas.splice(i, 1);
+          }
+        }
+      }
+
       // Force media group if images were uploaded
       if (hasImages && !matchedGroups.has('media')) {
         matchedGroups.add('media');

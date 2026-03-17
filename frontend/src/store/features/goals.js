@@ -1150,7 +1150,13 @@ const actions = {
       case 'goal:iteration_start':
         commit('SET_LIVE_ITERATION', {
           goalId,
-          data: { iteration: data.iteration, phase: 'executing', maxIterations: data.maxIterations },
+          data: {
+            iteration: data.iteration,
+            phase: 'executing',
+            maxIterations: data.maxIterations,
+            bestScore: data.bestScore,
+            bestIteration: data.bestIteration,
+          },
         });
         commit('UPDATE_GOAL', { id: goalId, current_iteration: data.iteration, loop_status: 'executing' });
         break;
@@ -1166,7 +1172,14 @@ const actions = {
       case 'goal:iteration_replan':
         commit('SET_LIVE_ITERATION', {
           goalId,
-          data: { iteration: data.iteration, phase: 'replanning', score: data.score },
+          data: {
+            iteration: data.iteration,
+            phase: 'replanning',
+            score: data.score,
+            bestScore: data.bestScore,
+            bestIteration: data.bestIteration,
+            isImprovement: data.isImprovement,
+          },
         });
         commit('UPDATE_GOAL', { id: goalId, loop_status: 'replanning' });
         break;
@@ -1185,6 +1198,9 @@ const actions = {
             iteration: data.iteration,
             phase: 'completed',
             score: data.score,
+            bestScore: data.bestScore,
+            bestIteration: data.bestIteration,
+            isImprovement: data.isImprovement,
             replannedCount: data.replannedCount,
             duration: data.duration,
           },
@@ -1193,11 +1209,20 @@ const actions = {
 
       case 'goal:loop_completed':
         commit('UPDATE_GOAL', { id: goalId, status: 'validated', loop_status: 'completed' });
-        commit('CLEAR_LIVE_ITERATION', goalId);
+        // Keep live iteration for the widget to show final state before clearing
+        commit('SET_LIVE_ITERATION', {
+          goalId,
+          data: {
+            iteration: data.iteration,
+            phase: 'passed',
+            score: data.score,
+            bestScore: data.bestScore || data.score,
+          },
+        });
         break;
 
       case 'goal:loop_error':
-        commit('UPDATE_GOAL', { id: goalId, loop_status: 'error' });
+        commit('UPDATE_GOAL', { id: goalId, loop_status: data.error?.includes('Max iterations') ? 'max_iterations' : 'error' });
         commit('CLEAR_LIVE_ITERATION', goalId);
         break;
     }

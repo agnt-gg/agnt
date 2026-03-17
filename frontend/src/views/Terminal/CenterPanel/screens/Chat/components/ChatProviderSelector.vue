@@ -4,9 +4,9 @@
       <div class="dropdown-header">
         <span class="dropdown-title">AI Provider</span>
         <Tooltip text="Close" width="auto">
-        <button @click="closeDropdown" class="close-btn">
-          <i class="fas fa-times"></i>
-        </button>
+          <button @click="closeDropdown" class="close-btn">
+            <i class="fas fa-times"></i>
+          </button>
         </Tooltip>
       </div>
 
@@ -73,23 +73,23 @@
         <!-- Custom Provider Actions Row -->
         <div class="custom-provider-row">
           <Tooltip text="Add Custom Provider" width="auto">
-          <button @click="openCustomProviderDialog" class="btn-add-custom">
-            <i class="fas fa-plus"></i>
-            <span>Add Custom</span>
-          </button>
+            <button @click="openCustomProviderDialog" class="btn-add-custom">
+              <i class="fas fa-plus"></i>
+              <span>Add Custom</span>
+            </button>
           </Tooltip>
 
           <!-- Edit/Delete buttons for custom providers -->
           <div v-if="isCustomProviderSelected" class="custom-provider-actions">
             <Tooltip text="Edit" width="auto">
-            <button @click="editCurrentProvider" class="btn-edit-provider">
-              <i class="fas fa-edit"></i>
-            </button>
+              <button @click="editCurrentProvider" class="btn-edit-provider">
+                <i class="fas fa-edit"></i>
+              </button>
             </Tooltip>
             <Tooltip text="Delete" width="auto">
-            <button @click="deleteCurrentProvider" class="btn-delete-provider">
-              <i class="fas fa-trash"></i>
-            </button>
+              <button @click="deleteCurrentProvider" class="btn-delete-provider">
+                <i class="fas fa-trash"></i>
+              </button>
             </Tooltip>
           </div>
         </div>
@@ -271,9 +271,12 @@ export default {
     };
 
     // Sync selects immediately when dropdown opens
-    watch(() => props.isOpen, (open) => {
-      if (open) updateCustomSelects();
-    });
+    watch(
+      () => props.isOpen,
+      (open) => {
+        if (open) updateCustomSelects();
+      },
+    );
 
     // Watch for provider changes to fetch models
     watch(selectedProvider, async (newProvider, oldProvider) => {
@@ -513,7 +516,7 @@ export default {
 
 .provider-dropdown {
   margin-top: -60px;
-  margin-left: -210px;
+  margin-left: -156px;
   background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
@@ -665,7 +668,7 @@ export default {
   user-select: none;
 }
 
-.toggle-label input[type="checkbox"] {
+.toggle-label input[type='checkbox'] {
   display: none;
 }
 
@@ -688,7 +691,9 @@ export default {
   position: absolute;
   top: 2px;
   left: 2px;
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 
 .toggle-label input:checked + .toggle-switch {

@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 import AGNT from '../../libs/agnt2.js';
 import scrapeUtil from '../../utils/webScrape.js';
 import toolRegistry from './toolRegistry.js';
+import { getGoalToolSchemas, executeGoalTool } from './goalTools.js';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import CodexCliService from '../ai/CodexCliService.js';
@@ -658,10 +659,62 @@ export const TOOLS = {
         });
       }
 
-      // Helper to cap output size
+      // Helper to sanitize control characters from text content
+      function sanitizeText(text) {
+        if (typeof text !== 'string') return text;
+        return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+      }
+
+      // Helper to cap output size (produces valid JSON when truncating)
       function cap(str) {
         if (str.length <= MAX_RESULT_CHARS) return str;
-        return str.substring(0, MAX_RESULT_CHARS) + `\n...[truncated at ${MAX_RESULT_CHARS} chars, total ${str.length}]`;
+        // Truncate and wrap in valid JSON instead of appending raw text to broken JSON
+        const totalSize = str.length;
+        try {
+          // Try to parse, then re-serialize with a truncation note
+          const parsed = JSON.parse(str);
+          parsed._truncated = true;
+          parsed._totalChars = totalSize;
+          // Remove lines/matches arrays down to fit
+          if (parsed.lines) {
+            const overhead = JSON.stringify({ ...parsed, lines: [] }).length + 100;
+            const budget = MAX_RESULT_CHARS - overhead;
+            const trimmedLines = [];
+            let used = 0;
+            for (const line of parsed.lines) {
+              const lineStr = JSON.stringify(line);
+              if (used + lineStr.length > budget) break;
+              trimmedLines.push(line);
+              used += lineStr.length;
+            }
+            parsed.lines = trimmedLines;
+            parsed._truncatedLines = `Showing ${trimmedLines.length} of requested lines`;
+          }
+          if (parsed.matches) {
+            const overhead = JSON.stringify({ ...parsed, matches: [] }).length + 100;
+            const budget = MAX_RESULT_CHARS - overhead;
+            const trimmedMatches = [];
+            let used = 0;
+            for (const match of parsed.matches) {
+              const matchStr = JSON.stringify(match);
+              if (used + matchStr.length > budget) break;
+              trimmedMatches.push(match);
+              used += matchStr.length;
+            }
+            parsed.matches = trimmedMatches;
+            parsed.matchCount = trimmedMatches.length;
+            parsed._truncatedMatches = true;
+          }
+          return JSON.stringify(parsed);
+        } catch {
+          // Fallback: return a safe JSON error object
+          return JSON.stringify({
+            success: true,
+            _truncated: true,
+            _totalChars: totalSize,
+            error: `Result too large (${totalSize} chars). Try a smaller slice range or more specific search.`,
+          });
+        }
       }
 
       // --- stats ---
@@ -759,7 +812,7 @@ export const TOOLS = {
             const ctxEnd = Math.min(lines.length - 1, i + contextLines);
             const contextBlock = [];
             for (let j = ctxStart; j <= ctxEnd; j++) {
-              contextBlock.push({ line: j + 1, text: lines[j], match: j === i });
+              contextBlock.push({ line: j + 1, text: sanitizeText(lines[j]), match: j === i });
             }
             matches.push({ lineNumber: i + 1, context: contextBlock });
           }
@@ -785,7 +838,7 @@ export const TOOLS = {
 
         const slicedLines = [];
         for (let i = start - 1; i < end; i++) {
-          slicedLines.push({ line: i + 1, text: lines[i] });
+          slicedLines.push({ line: i + 1, text: sanitizeText(lines[i]) });
         }
 
         const result = {
@@ -906,20 +959,29 @@ export const TOOLS = {
 
       if (operation === 'browse') {
         const loadedGroups = context?._loadedToolGroups || new Set();
+        const userEnabledTools = context?.enabledTools || null; // From frontend tool selector
 
-        // Static groups
-        const groupResults = Object.entries(TOOL_GROUPS).map(([name, tools]) => ({
-          name,
-          tools,
-          description: GROUP_DESCRIPTIONS[name] || '',
-          status: loadedGroups.has(name) ? 'active' : 'available',
-        }));
+        // Static groups — filter by user's tool selector if set
+        const groupResults = Object.entries(TOOL_GROUPS).map(([name, tools]) => {
+          const filteredTools = userEnabledTools
+            ? tools.filter(t => userEnabledTools.has(t))
+            : tools;
+          return {
+            name,
+            tools: filteredTools,
+            description: GROUP_DESCRIPTIONS[name] || '',
+            status: loadedGroups.has(name) ? 'active' : 'available',
+          };
+        }).filter(g => g.tools.length > 0);
 
-        // Dynamic "installed" category — all registry/plugin tools not in defaults or groups
+        // Dynamic "installed" category — filter by user's tool selector
         let installedTools = [];
         try {
           const allSchemas = await getAvailableToolSchemas();
           installedTools = getInstalledToolNames(allSchemas);
+          if (userEnabledTools) {
+            installedTools = installedTools.filter(t => userEnabledTools.has(t));
+          }
         } catch (e) {
           // Non-fatal
         }
@@ -1106,61 +1168,12 @@ export const TOOLS = {
                 });
               }
 
-              // SPECIAL HANDLING: Check if we have preserved full web scrape content that should be used instead
-              let contentToWrite = content;
-
-              // If the content looks like it might be truncated web scrape data and we have preserved full content
-              if (context && context.preservedContent && context.preservedContent.lastWebScrape) {
-                try {
-                  // Try to parse the content being written
-                  const parsedContent = JSON.parse(content);
-                  const preservedData = JSON.parse(context.preservedContent.lastWebScrape.fullContent);
-
-                  // Check various conditions that indicate we should use preserved content:
-                  // 1. URL matches and content is exactly "..."
-                  // 2. URL matches and content contains truncation markers
-                  // 3. URL matches and content is shorter than preserved content
-                  // 4. Content has _truncated flag
-                  if (
-                    parsedContent.url &&
-                    preservedData.url === parsedContent.url &&
-                    (parsedContent.textContent === '...' ||
-                      parsedContent._truncated === true ||
-                      (parsedContent.textContent && parsedContent.textContent.includes('[Content truncated')) ||
-                      (parsedContent.textContent && parsedContent.textContent.includes('...')) ||
-                      (preservedData.textContent && parsedContent.textContent && parsedContent.textContent.length < preservedData.textContent.length))
-                  ) {
-                    // Use the full preserved content instead
-                    contentToWrite = context.preservedContent.lastWebScrape.fullContent;
-                    console.log(
-                      `Using preserved FULL web scrape content for file write (${contentToWrite.length} chars instead of ${content.length} chars)`
-                    );
-
-                    // Clear the preserved content after use to prevent reuse
-                    delete context.preservedContent.lastWebScrape;
-                  }
-                } catch (e) {
-                  // If parsing fails, check if raw content matches URL pattern
-                  if (context.preservedContent.lastWebScrape.url && content.includes(context.preservedContent.lastWebScrape.url)) {
-                    // Content mentions the same URL, likely related
-                    contentToWrite = context.preservedContent.lastWebScrape.fullContent;
-                    console.log(
-                      `Using preserved full web scrape content based on URL match (${contentToWrite.length} chars instead of ${content.length} chars)`
-                    );
-                    delete context.preservedContent.lastWebScrape;
-                  } else {
-                    console.log('Could not parse content for full content substitution, using original');
-                  }
-                }
-              }
-
-              // CRITICAL FIX: Automatically create directory structure before writing file
+              // Create directory structure before writing file
               const fileDir = path.dirname(filePath);
               await fs.mkdir(fileDir, { recursive: true });
-              console.log(`[file_operations] Created directory structure: ${fileDir}`);
 
-              await fs.writeFile(filePath, contentToWrite, encoding);
-              result = { operation, path: filePath, bytesWritten: Buffer.from(contentToWrite, encoding).length };
+              await fs.writeFile(filePath, content, encoding);
+              result = { operation, path: filePath, bytesWritten: Buffer.from(content, encoding).length };
               break;
             case 'list':
               const items = await fs.readdir(filePath, { withFileTypes: true });
@@ -1952,6 +1965,8 @@ export const TOOLS = {
               type: 'string',
               enum: [
                 'create_goal',
+                'create_and_run_goal',
+                'execute_goal_autonomous',
                 'list_all_goals',
                 'get_goal_details',
                 'get_goal_status',
@@ -1960,7 +1975,7 @@ export const TOOLS = {
                 'resume_goal_action',
                 'delete_goal_action',
               ],
-              description: 'The goal management operation to perform.',
+              description: 'The goal management operation to perform. Use "create_and_run_goal" when the user wants to optimize, research, or iterate on something autonomously — it creates the goal AND immediately launches an autonomous execution loop. Use "execute_goal_autonomous" to launch autonomous mode on an existing goal.',
             },
             goal_id: {
               type: 'string',
@@ -1985,6 +2000,10 @@ export const TOOLS = {
               description:
                 'An object representing the success criteria for \'create_goal\'. For example: {"metric": "task completion", "target": "100%"}. This object will be stored with the goal.',
               additionalProperties: true,
+            },
+            max_iterations: {
+              type: 'number',
+              description: "Maximum number of autonomous iterations for 'create_and_run_goal' or 'execute_goal_autonomous'. Default: 20.",
             },
           },
           required: ['operation'],
@@ -2066,6 +2085,89 @@ export const TOOLS = {
             url += `/${goal_id}`;
             options.method = 'DELETE';
             break;
+
+          case 'create_and_run_goal': {
+            if (!title) return JSON.stringify({ success: false, error: "Title is required for 'create_and_run_goal'." });
+            // Step 1: Create the goal
+            url += '/create';
+            options.method = 'POST';
+            requestBody = { text: title };
+            if (description) requestBody.text = `${title}: ${description}`;
+            if (priority) requestBody.priority = priority;
+            if (success_criteria) requestBody.success_criteria = success_criteria;
+            options.body = JSON.stringify(requestBody);
+
+            const createResp = await fetch(url, options);
+            if (!createResp.ok) {
+              const errText = await createResp.text();
+              return JSON.stringify({ success: false, error: `Failed to create goal: ${errText}` });
+            }
+            const createData = await createResp.json();
+            const newGoalId = createData.goal?.goalId;
+            if (!newGoalId) {
+              return JSON.stringify({ success: false, error: 'Goal created but no ID returned' });
+            }
+
+            // Step 2: Launch autonomous execution
+            const maxIter = args.max_iterations || 20;
+            const autoUrl = `${GOALS_API_BASE_URL}/${newGoalId}/execute-autonomous`;
+            const autoResp = await fetch(autoUrl, {
+              method: 'POST',
+              headers: options.headers,
+              body: JSON.stringify({ maxIterations: maxIter }),
+            });
+            if (!autoResp.ok) {
+              const errText = await autoResp.text();
+              return JSON.stringify({
+                success: true,
+                autonomous: false,
+                operation,
+                data: createData,
+                warning: `Goal created but autonomous start failed: ${errText}`,
+              });
+            }
+
+            return JSON.stringify({
+              success: true,
+              autonomous: true,
+              operation,
+              goal: {
+                id: newGoalId,
+                title: createData.goal?.title,
+                description: createData.goal?.description,
+                status: 'executing',
+                priority: priority || 'medium',
+                tasks: createData.goal?.tasks || [],
+                task_count: createData.goal?.tasks?.length || 0,
+                max_iterations: maxIter,
+              },
+              message: `Goal "${createData.goal?.title}" created and autonomous execution started with ${maxIter} max iterations.`,
+            });
+          }
+
+          case 'execute_goal_autonomous': {
+            if (!goal_id) return JSON.stringify({ success: false, error: "goal_id is required for 'execute_goal_autonomous'." });
+            const maxIterations = args.max_iterations || 20;
+            url += `/${goal_id}/execute-autonomous`;
+            options.method = 'POST';
+            options.body = JSON.stringify({ maxIterations });
+
+            const execResp = await fetch(url, options);
+            if (!execResp.ok) {
+              const errText = await execResp.text();
+              return JSON.stringify({ success: false, error: `Failed to start autonomous execution: ${errText}` });
+            }
+
+            return JSON.stringify({
+              success: true,
+              autonomous: true,
+              operation,
+              goal_id,
+              max_iterations: maxIterations,
+              status: 'executing',
+              message: `Autonomous execution started for goal ${goal_id} with ${maxIterations} max iterations.`,
+            });
+          }
 
           default:
             return JSON.stringify({ success: false, error: `Unknown agnt_goals operation: ${operation}` });
@@ -3590,11 +3692,12 @@ export async function getAvailableToolSchemas() {
   await toolRegistry.ensureInitialized();
 
   const nativeToolSchemas = Object.values(TOOLS).map((tool) => tool.schema);
+  const goalToolSchemas = getGoalToolSchemas();
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
 
   // Combine and deduplicate by function name to ensure unique tool names
-  const allSchemas = [...nativeToolSchemas, ...registryToolSchemas, ...pluginToolSchemas];
+  const allSchemas = [...nativeToolSchemas, ...goalToolSchemas, ...registryToolSchemas, ...pluginToolSchemas];
   const uniqueSchemas = [];
   const seenNames = new Set();
 
@@ -3685,6 +3788,13 @@ export async function executeTool(toolName, args, authToken, context) {
   try {
     // CRITICAL: Resolve data references in arguments before execution
     const resolvedArgs = resolveDataReferences(args, context);
+
+    // Check if this is a goal tool from goalTools.js
+    const goalToolNames = new Set(getGoalToolSchemas().map(s => s.function.name));
+    if (goalToolNames.has(toolName)) {
+      console.log(`Executing goal tool: ${toolName}`);
+      return await executeGoalTool(toolName, resolvedArgs, authToken, context);
+    }
 
     const nativeTool = TOOLS[toolName];
     if (nativeTool) {
@@ -3782,7 +3892,8 @@ export async function executeTool(toolName, args, authToken, context) {
             error: `OAuth token not found or invalid for provider '${registryTool.authConfig.authProvider}'. Please connect the application in your settings.`,
           });
         }
-        params.accessToken = accessToken;
+        params.__auth = { token: accessToken, provider: registryTool.authConfig.authProvider };
+        params.accessToken = accessToken; // Legacy: pre-migration plugins still read this
       }
 
       const inputData = {};

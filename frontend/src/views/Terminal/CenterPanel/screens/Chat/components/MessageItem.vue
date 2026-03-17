@@ -118,6 +118,15 @@
                 <pre class="error-content"><code v-html="toolCall.error"></code></pre>
               </div>
             </div>
+
+            <!-- Inline Goal Progress Widget for autonomous goals -->
+            <GoalProgressWidget
+              v-if="isAutonomousGoalTool(toolCall)"
+              :goalId="extractGoalId(toolCall)"
+              :goalTitle="extractGoalTitle(toolCall)"
+              :taskCount="extractTaskCount(toolCall)"
+              :maxIterations="extractMaxIterations(toolCall)"
+            />
           </div>
         </div>
 
@@ -269,6 +278,7 @@ import defaultAvatar from '@/assets/images/annie-avatar.png';
 // Lazy-load ProviderSetup - only shown conditionally (message.showProviderSetup)
 // This defers the crypto-js dependency (~40KB) from the critical render path
 const ProviderSetup = defineAsyncComponent(() => import('./ProviderSetup.vue'));
+import GoalProgressWidget from './GoalProgressWidget.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/../user.config.js';
 
@@ -423,6 +433,7 @@ export default {
   components: {
     ProviderSetup,
     Tooltip,
+    GoalProgressWidget,
   },
   props: {
     message: {
@@ -556,7 +567,7 @@ export default {
     };
 
     // Inject theme CSS variables + scrollbar hide into an HTML string so iframes match the app theme
-    const noScrollCSS = '<style>html,body{scrollbar-width:none;-ms-overflow-style:none;overflow:hidden}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}</style>';
+    const noScrollCSS = '<style>html,body{scrollbar-width:none;-ms-overflow-style:none}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}</style>';
     const injectTheme = (html) => {
       const inject = (themeStyleTag.value || '') + noScrollCSS;
       if (/<head[^>]*>/i.test(html)) {
@@ -880,7 +891,13 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               try {
                 const doc = iframe.contentDocument || iframe.contentWindow?.document;
                 if (doc?.body) {
-                  iframe.style.height = (doc.body.scrollHeight + 2) + 'px';
+                  // Temporarily override viewport-relative heights so we can measure true content size
+                  const tmpStyle = doc.createElement('style');
+                  tmpStyle.textContent = 'html,body{height:auto!important;min-height:0!important;overflow:visible!important}';
+                  (doc.head || doc.documentElement).appendChild(tmpStyle);
+                  const h = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight);
+                  tmpStyle.remove();
+                  if (h > 50) iframe.style.height = (h + 2) + 'px';
                 }
               } catch (e) { /* cross-origin — keep default height */ }
             };
@@ -1853,6 +1870,55 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       return props.runningTools.includes(toolCallId);
     };
 
+    // Helper functions for GoalProgressWidget detection
+    const _parseToolResult = (toolCall) => {
+      if (!toolCall.result) return null;
+      try {
+        const result = typeof toolCall.result === 'string' ? JSON.parse(toolCall.result) : toolCall.result;
+        // Handle agnt_goals meta-tool: result is nested under .data
+        if (toolCall.name === 'agnt_goals' && result.data) {
+          return typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+        }
+        return result;
+      } catch {
+        return null;
+      }
+    };
+
+    const isAutonomousGoalTool = (toolCall) => {
+      // Direct tool names
+      const directMatch = toolCall.name === 'create_and_run_goal' || toolCall.name === 'execute_goal_autonomous';
+      // agnt_goals meta-tool with autonomous operations
+      const metaMatch = toolCall.name === 'agnt_goals' && toolCall.args &&
+        (toolCall.args.operation === 'create_and_run_goal' || toolCall.args.operation === 'execute_goal_autonomous');
+
+      if (!directMatch && !metaMatch) return false;
+
+      const result = _parseToolResult(toolCall);
+      if (!result) return false;
+      return result.success && (result.autonomous || result.goal?.id || result.goal_id);
+    };
+
+    const extractGoalId = (toolCall) => {
+      const result = _parseToolResult(toolCall);
+      return result?.goal?.id || result?.goal_id || '';
+    };
+
+    const extractGoalTitle = (toolCall) => {
+      const result = _parseToolResult(toolCall);
+      return result?.goal?.title || 'Autonomous Goal';
+    };
+
+    const extractTaskCount = (toolCall) => {
+      const result = _parseToolResult(toolCall);
+      return result?.goal?.task_count || 0;
+    };
+
+    const extractMaxIterations = (toolCall) => {
+      const result = _parseToolResult(toolCall);
+      return result?.goal?.max_iterations || 20;
+    };
+
     const isAsyncToolRunning = (toolCall) => {
       if (!toolCall.result) return false;
 
@@ -2056,6 +2122,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       formatTime,
       isExpanded,
       isRunning,
+      isAutonomousGoalTool,
+      extractGoalId,
+      extractGoalTitle,
+      extractTaskCount,
+      extractMaxIterations,
       isAsyncToolRunning,
       stopAsyncTool,
       toggleToolCall,
@@ -3626,7 +3697,6 @@ span.nodeLabel p {
 .message-text :deep(.chartjs-container) {
   width: 100%;
   max-width: 100%;
-  max-height: 400px;
   padding: 16px;
   margin: 12px 0;
   background-color: var(--color-darker-1);
@@ -3640,7 +3710,6 @@ span.nodeLabel p {
 }
 
 .message-text :deep(.chartjs-container canvas) {
-  max-height: 360px !important;
   width: 100% !important;
 }
 

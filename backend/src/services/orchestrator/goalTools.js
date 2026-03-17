@@ -287,6 +287,72 @@ export function getGoalToolSchemas() {
         },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'create_and_run_goal',
+        description: 'Create a new goal and immediately launch autonomous execution. Use this when the user wants to optimize, research, or iterate on something autonomously. The system will create the goal, break it into tasks, and run an autonomous loop that executes, evaluates, replans, and repeats until the goal passes or max iterations are reached. Progress is streamed in real-time.',
+        parameters: {
+          type: 'object',
+          properties: {
+            text: {
+              type: 'string',
+              description: 'The goal description. Be specific about what to optimize/research and what success looks like.',
+            },
+            max_iterations: {
+              type: 'number',
+              description: 'Maximum number of autonomous iterations (default: 20). Each iteration executes tasks, evaluates, and replans.',
+              default: 20,
+            },
+            priority: {
+              type: 'string',
+              enum: ['low', 'medium', 'high', 'urgent'],
+              description: 'Priority level for the goal',
+              default: 'high',
+            },
+            provider: {
+              type: 'string',
+              description: 'AI provider to use (optional)',
+            },
+            model: {
+              type: 'string',
+              description: 'AI model to use (optional)',
+            },
+          },
+          required: ['text'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'execute_goal_autonomous',
+        description: 'Launch autonomous execution on an existing goal. The system will run an iterative loop: execute tasks, evaluate results, replan failed tasks, and repeat until the goal passes or max iterations are reached.',
+        parameters: {
+          type: 'object',
+          properties: {
+            goal_id: {
+              type: 'string',
+              description: 'The ID of the goal to execute autonomously',
+            },
+            max_iterations: {
+              type: 'number',
+              description: 'Maximum number of autonomous iterations (default: 20)',
+              default: 20,
+            },
+            provider: {
+              type: 'string',
+              description: 'AI provider to use (optional)',
+            },
+            model: {
+              type: 'string',
+              description: 'AI model to use (optional)',
+            },
+          },
+          required: ['goal_id'],
+        },
+      },
+    },
   ];
 }
 
@@ -333,6 +399,12 @@ export async function executeGoalTool(functionName, args, authToken, context) {
 
       case 'save_as_golden_standard':
         return await handleSaveAsGoldenStandard(args, authToken, context);
+
+      case 'create_and_run_goal':
+        return await handleCreateAndRunGoal(args, authToken, context);
+
+      case 'execute_goal_autonomous':
+        return await handleExecuteGoalAutonomous(args, authToken, context);
 
       default:
         return JSON.stringify({
@@ -844,6 +916,105 @@ async function handleSaveAsGoldenStandard(args, authToken, context) {
     return JSON.stringify({
       success: false,
       error: `Failed to save as golden standard: ${error.message}`,
+    });
+  }
+}
+
+async function handleCreateAndRunGoal(args, authToken, context) {
+  const { text, max_iterations = 20, priority = 'high', provider, model } = args;
+
+  try {
+    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+
+    // Step 1: Create the goal
+    const createResponse = await fetch(`${API_BASE_URL}/api/goals/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authToken,
+      },
+      body: JSON.stringify({ text, priority, provider, model }),
+    });
+
+    if (!createResponse.ok) {
+      const errorData = await createResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to create goal: HTTP ${createResponse.status}`);
+    }
+
+    const createData = await createResponse.json();
+    const goalId = createData.goal.goalId;
+
+    // Step 2: Immediately launch autonomous execution
+    const execResponse = await fetch(`${API_BASE_URL}/api/goals/${goalId}/execute-autonomous`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authToken,
+      },
+      body: JSON.stringify({ maxIterations: max_iterations, provider, model }),
+    });
+
+    if (!execResponse.ok) {
+      const errorData = await execResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to start autonomous execution: HTTP ${execResponse.status}`);
+    }
+
+    return JSON.stringify({
+      success: true,
+      autonomous: true,
+      goal: {
+        id: goalId,
+        title: createData.goal.title,
+        description: createData.goal.description,
+        status: 'executing',
+        priority,
+        tasks: createData.goal.tasks || [],
+        task_count: createData.goal.tasks?.length || 0,
+        max_iterations,
+      },
+      message: `Goal "${createData.goal.title}" created and autonomous execution started with ${max_iterations} max iterations. The system will iterate automatically — executing, evaluating, and replanning until success or max iterations reached.`,
+    });
+  } catch (error) {
+    console.error('Error in create_and_run_goal:', error);
+    return JSON.stringify({
+      success: false,
+      error: `Failed to create and run goal: ${error.message}`,
+    });
+  }
+}
+
+async function handleExecuteGoalAutonomous(args, authToken, context) {
+  const { goal_id, max_iterations = 20, provider, model } = args;
+
+  try {
+    const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3333';
+    const response = await fetch(`${API_BASE_URL}/api/goals/${goal_id}/execute-autonomous`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authToken,
+      },
+      body: JSON.stringify({ maxIterations: max_iterations, provider, model }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return JSON.stringify({
+      success: true,
+      autonomous: true,
+      goal_id,
+      max_iterations,
+      status: 'executing',
+      message: `Autonomous execution started for goal ${goal_id} with ${max_iterations} max iterations. The system will iterate automatically.`,
+    });
+  } catch (error) {
+    console.error('Error starting autonomous execution:', error);
+    return JSON.stringify({
+      success: false,
+      error: `Failed to start autonomous execution: ${error.message}`,
     });
   }
 }
