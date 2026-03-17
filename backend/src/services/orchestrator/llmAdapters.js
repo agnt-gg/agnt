@@ -643,6 +643,39 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
             continue; // Retry the call
           }
 
+          // CRITICAL: Check for in-progress tool calls with incomplete JSON arguments.
+          // When a stream breaks mid-tool-call, accumulatedToolCalls may contain entries
+          // with partial/unparseable JSON arguments. Try to salvage or retry.
+          const hasInProgressToolCalls = accumulatedToolCalls.some((tc) => {
+            if (!tc?.function?.arguments) return false;
+            try {
+              JSON.parse(tc.function.arguments);
+              return false; // Valid JSON, this tool call is complete
+            } catch {
+              return true; // Invalid JSON, this tool call was cut off
+            }
+          });
+
+          if (hasInProgressToolCalls && attempt < this.maxRetries) {
+            console.warn(`[Stream Recovery] Found in-progress tool calls with incomplete JSON (attempt ${attempt + 1}), retrying`);
+            const delay = this.calculateDelay(attempt);
+            await this.sleep(delay);
+            continue; // Retry the call
+          }
+
+          // Filter out any tool calls with unparseable arguments
+          if (hasInProgressToolCalls) {
+            console.warn(`[Stream Recovery] Dropping ${accumulatedToolCalls.length} tool call(s) with incomplete JSON after max retries`);
+            accumulatedToolCalls = accumulatedToolCalls.filter((tc) => {
+              try {
+                JSON.parse(tc.function.arguments);
+                return true;
+              } catch {
+                return false;
+              }
+            });
+          }
+
           // If we have accumulated content, we can continue with that.
           // Otherwise, return a recovery response with the error message.
           if (!accumulatedContent && accumulatedToolCalls.length === 0) {
@@ -1353,21 +1386,57 @@ Please carefully check the tool schema and ensure all parameters match the expec
         } catch (streamIteratorError) {
           // CRITICAL: Handle stream parsing errors gracefully
           // The Anthropic SDK sometimes throws "Unexpected end of JSON input" errors
-          // when parsing SSE events. If we have accumulated content, continue with it.
+          // when parsing SSE events.
           streamParseError = streamIteratorError;
           console.error('[Anthropic] Stream iterator error:', streamIteratorError.message);
           console.log('[Anthropic] Accumulated content so far:', accumulatedContent.length, 'chars');
           console.log('[Anthropic] Accumulated tool calls so far:', accumulatedToolCalls.length);
 
-          // If we have content or tool calls, we can continue
-          // Otherwise, we'll need to retry or return an error
+          // CRITICAL: Check for in-progress tool_use blocks that never got content_block_stop.
+          // These are tool calls the LLM was generating when the stream broke.
+          const inProgressToolBlocks = contentBlocks.filter(
+            (b) => b.type === 'tool_use' && b._inputJsonString !== undefined
+          );
+
+          if (inProgressToolBlocks.length > 0) {
+            console.log(`[Anthropic] Found ${inProgressToolBlocks.length} in-progress tool call(s) cut off by stream error`);
+
+            // Try to salvage tool calls with complete-enough JSON
+            for (const block of inProgressToolBlocks) {
+              try {
+                block.input = JSON.parse(block._inputJsonString);
+                delete block._inputJsonString;
+                accumulatedToolCalls.push({
+                  id: block.id,
+                  type: 'function',
+                  function: {
+                    name: block.name,
+                    arguments: JSON.stringify(block.input),
+                  },
+                });
+                console.log(`[Anthropic] Salvaged complete tool call: ${block.name}`);
+              } catch {
+                console.warn(`[Anthropic] Tool call "${block.name}" has incomplete JSON (${(block._inputJsonString || '').length} chars), cannot salvage`);
+              }
+            }
+
+            // If we still have unsalvaged tool calls and retries left, retry the whole request
+            const salvagedCount = accumulatedToolCalls.length;
+            const unsalvagedCount = inProgressToolBlocks.length - salvagedCount;
+            if (unsalvagedCount > 0 && attempt < this.maxRetries) {
+              console.warn(`[Anthropic] ${unsalvagedCount} tool call(s) could not be salvaged, retrying (attempt ${attempt + 1}/${this.maxRetries + 1})`);
+              const delay = this.calculateDelay(attempt);
+              await this.sleep(delay);
+              continue; // Retry the call
+            }
+          }
+
+          // If we have nothing at all, throw to trigger retry
           if (accumulatedContent.length === 0 && accumulatedToolCalls.length === 0) {
-            // No content accumulated, this is a real error - throw to trigger retry
             throw streamIteratorError;
           }
 
-          // We have some content, continue with what we have
-          console.log('[Anthropic] Continuing with accumulated content despite stream error');
+          console.log(`[Anthropic] Continuing with ${accumulatedContent.length} chars content and ${accumulatedToolCalls.length} tool calls after stream error`);
         }
 
         // Log successful retry if this wasn't the first attempt
