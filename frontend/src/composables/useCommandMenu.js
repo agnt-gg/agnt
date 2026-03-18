@@ -17,6 +17,7 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags }
   const triggerIndex = ref(-1); // position of trigger char in input string
   const query = ref('');
   const selectedIndex = ref(0);
+  const lastSelectedItem = ref(null); // tracks most recent selection for parent to consume
 
   // --- Default providers ---
   const defaultCommands = () => [
@@ -169,9 +170,19 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags }
       inputRef.value = before + prefix + item.name + ' ' + after;
     }
 
+    lastSelectedItem.value = item;
     close();
 
     // Return the selected item so the parent can act on it
+    return item;
+  }
+
+  /**
+   * Consume and clear the last selected item (one-shot read).
+   */
+  function consumeLastSelected() {
+    const item = lastSelectedItem.value;
+    lastSelectedItem.value = null;
     return item;
   }
 
@@ -207,6 +218,7 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags }
     query,
     items,
     selectedIndex,
+    lastSelectedItem,
 
     // Methods
     handleInput,
@@ -214,5 +226,6 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags }
     select,
     close,
     getCaretCoords,
+    consumeLastSelected,
   };
 }

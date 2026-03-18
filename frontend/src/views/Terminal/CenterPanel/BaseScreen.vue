@@ -404,11 +404,24 @@ export default {
       // Don't clear or emit if input is empty and no files
       if (!input && selectedFiles.value.length === 0) return;
 
-      emit('submit-input', input, selectedFiles.value);
-      // Let the parent component clear the input if submission is successful
-      // currentUserInput.value = ""; // Consider moving clear to parent handler
-      scrollToBottom(); // Scroll after potential line add from parent
-      focusInput(); // Refocus after submit
+      // Resolve @ mentioned agents: use tracked selections, or parse from input text
+      let agents = [...mentionedAgents.value];
+      if (agents.length === 0 && input.includes('@')) {
+        const allAgents = store.state.agents.agents || [];
+        for (const a of allAgents) {
+          if (input.includes(`@${a.name}`) && !agents.some(x => x.id === a.id)) {
+            agents.push({ id: a.id, name: a.name });
+          }
+        }
+      }
+
+      emit('submit-input', input, selectedFiles.value, agents.length > 0 ? agents : null);
+
+      // Reset mentioned agents after submission
+      mentionedAgents.value = [];
+
+      scrollToBottom();
+      focusInput();
     };
 
     const handlePanelAction = async (action, payload) => {
@@ -495,6 +508,9 @@ export default {
 
     const commandMenuPosition = ref({ bottom: 0, left: 0, width: 400 });
 
+    // Track all @ mentioned agents so we can pass them with submit
+    const mentionedAgents = ref([]);
+
     const handleTextareaInput = () => {
       autoResizeTextarea();
       if (textareaRef.value) {
@@ -520,6 +536,14 @@ export default {
 
     const onCommandMenuSelect = (item) => {
       commandMenu.select(item);
+
+      // Track agent mentions for routing (accumulate, don't replace)
+      if (item.type === 'agent') {
+        if (!mentionedAgents.value.some(a => a.id === item.id)) {
+          mentionedAgents.value.push({ id: item.id, name: item.name });
+        }
+      }
+
       nextTick(() => {
         autoResizeTextarea();
         focusInput();

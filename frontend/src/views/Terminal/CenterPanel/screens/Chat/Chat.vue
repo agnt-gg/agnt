@@ -54,6 +54,7 @@
                 :runningTools="getRunningToolsForMessage(message)"
                 :imageCache="imageCache"
                 :dataCache="dataCache"
+                :avatarUrl="message.agentIcon && (message.agentIcon.startsWith('http') || message.agentIcon.startsWith('data:') || message.agentIcon.startsWith('/')) ? message.agentIcon : null"
                 @toggle-tool="toggleToolCallExpansion"
                 @provider-connected="handleProviderConnected"
                 @edit-message="handleEditMessage"
@@ -61,7 +62,7 @@
             </TransitionGroup>
 
             <!-- Processing State -->
-            <ProcessingState v-if="isProcessing" text="Annie is working..." />
+            <ProcessingState v-if="isProcessing" :text="`${activeAgentName} is working...`" />
           </div>
         </div>
 
@@ -172,6 +173,18 @@ export default {
     const isProcessing = ref(false);
     let localMessageIdCounter = 0;
     const generateMessageId = () => `msg-${Date.now()}-${localMessageIdCounter++}`;
+
+    // Resolve the active agent name from the most recent assistant message (for @ mention responses)
+    // If the latest assistant message has no agentName, it's Annie (the default orchestrator)
+    const activeAgentName = computed(() => {
+      const msgs = displayMessages.value;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant') {
+          return msgs[i].agentName || 'Annie';
+        }
+      }
+      return 'Annie';
+    });
 
     // No provider tutorial
     const noProviderTutorial = ref({
@@ -399,13 +412,58 @@ export default {
       isMonitoringCollapsed.value = !isMonitoringCollapsed.value;
     };
 
-    const handleUserInputSubmit = async (input, files = null) => {
+    const handleUserInputSubmit = async (input, files = null, mentionedAgents = null) => {
       if (!input || !input.trim()) return;
 
       const command = input.trim().toLowerCase();
       if (command === 'clear' || command === 'cls') {
         clearConversation();
         return;
+      }
+
+      // --- Handle slash commands (client-side actions) ---
+      const slashMatch = input.trim().match(/^\/(\S+)/);
+      if (slashMatch && (!mentionedAgents || mentionedAgents.length === 0)) {
+        const cmd = slashMatch[1].toLowerCase().replace(/\s+/g, '-');
+        switch (cmd) {
+          case 'new-chat':
+          case 'newchat':
+          case 'new':
+            clearConversation();
+            clearInput();
+            return;
+          case 'clear':
+          case 'clear-chat':
+          case 'clearchat':
+            clearConversation();
+            clearInput();
+            return;
+          case 'export':
+          case 'export-chat':
+          case 'exportchat':
+            clearInput();
+            saveConversation();
+            return;
+          case 'help':
+            clearInput();
+            store.commit('chat/SCOPED_ADD_MESSAGE', {
+              conversationId: store.state.chat.activeConversationId || 'main',
+              message: {
+                id: `help-${Date.now()}`,
+                role: 'assistant',
+                content: `**Available Commands**\n\n` +
+                  `- \`/new-chat\` — Start a new conversation\n` +
+                  `- \`/clear\` — Clear current conversation\n` +
+                  `- \`/export\` — Save conversation to outputs\n` +
+                  `- \`/help\` — Show this help message\n\n` +
+                  `**Mentions**\n\n` +
+                  `- \`@AgentName\` — Direct your message to a specific agent\n`,
+                timestamp: Date.now(),
+              },
+            });
+            return;
+        }
+        // Unknown slash command — fall through and send as a regular message
       }
 
       // Ensure a conversation slot exists for the active conversation
@@ -461,13 +519,18 @@ export default {
 
       clearInput();
 
-      await store.dispatch('chat/startStreamingConversation', {
-        userInput: input,
-        files: files,
-        provider: store.state.aiProvider.selectedProvider,
-        model: store.state.aiProvider.selectedModel,
-        reasoningEnabled: store.state.aiProvider.reasoningEnabled,
-      });
+      // If multiple agents are mentioned, send a request to each one sequentially
+      const agents = mentionedAgents && mentionedAgents.length > 0 ? mentionedAgents : [null];
+      for (const agent of agents) {
+        await store.dispatch('chat/startStreamingConversation', {
+          userInput: input,
+          files: files,
+          provider: store.state.aiProvider.selectedProvider,
+          model: store.state.aiProvider.selectedModel,
+          reasoningEnabled: store.state.aiProvider.reasoningEnabled,
+          mentionedAgent: agent,
+        });
+      }
     };
 
     // Edit & resend: truncate from edited message, re-add with new content, resend
@@ -504,25 +567,29 @@ export default {
         case 'conversation_started':
           currentConversationId.value = data.conversationId;
           break;
-        case 'assistant_message':
+        case 'assistant_message': {
           // Clear thinking state from previous messages — only one can be "thinking"
           for (const msgId of Object.keys(messageStates.value)) {
             if (messageStates.value[msgId]?.type === 'thinking') {
               delete messageStates.value[msgId];
             }
           }
+          const name = data.agentName || 'Annie';
           messageStates.value[data.id] = {
             type: 'thinking',
-            text: 'Annie is thinking...',
+            text: `${name} is thinking...`,
           };
           break;
-        case 'reasoning_delta':
+        }
+        case 'reasoning_delta': {
           // Update thinking status to show model is actively reasoning
+          const rName = activeAgentName.value;
           messageStates.value[data.assistantMessageId] = {
             type: 'thinking',
-            text: 'Annie is reasoning...',
+            text: `${rName} is reasoning...`,
           };
           break;
+        }
         case 'tool_start':
           runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = true;
           messageStates.value[data.assistantMessageId] = {
@@ -530,13 +597,14 @@ export default {
             text: `Running ${data.toolCall.name}...`,
           };
           break;
-        case 'tool_end':
+        case 'tool_end': {
           runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = false;
           const message = displayMessages.value.find((m) => m.id === data.assistantMessageId);
           if (message && !isAnyToolRunningInMessage(message)) {
+            const teName = message.agentName || activeAgentName.value;
             messageStates.value[data.assistantMessageId] = {
               type: 'thinking',
-              text: 'Annie is processing results...',
+              text: `${teName} is processing results...`,
             };
           }
           if (data.toolCall.error) {
@@ -547,6 +615,7 @@ export default {
             });
           }
           break;
+        }
         case 'context_status':
           contextStatus.value = {
             currentTokens: data.currentTokens,
@@ -780,6 +849,8 @@ export default {
             metadata: msg.metadata || [],
             toolCalls: msg.toolCalls || [],
             files: msg.files || [], // Include uploaded files (reference images)
+            agentName: msg.agentName || undefined,
+            agentIcon: msg.agentIcon || undefined,
           })),
           createdAt: displayMessages.value[0]?.timestamp || Date.now(),
           updatedAt: Date.now(),
@@ -1391,7 +1462,7 @@ export default {
       { immediate: true }
     );
 
-    // Watch for remote streaming to show "Annie is thinking..." in message bubble
+    // Watch for remote streaming to show thinking state in message bubble
     watch(
       () => store.state.chat.isRemoteStreaming,
       (remoteStreaming) => {
@@ -1399,9 +1470,10 @@ export default {
           // Find the last assistant message (the one being streamed from other tab)
           const lastAssistantMsg = [...displayMessages.value].reverse().find(m => m.role === 'assistant');
           if (lastAssistantMsg) {
+            const rsName = lastAssistantMsg.agentName || 'Annie';
             messageStates.value[lastAssistantMsg.id] = {
               type: 'thinking',
-              text: 'Annie is thinking...',
+              text: `${rsName} is thinking...`,
             };
           }
         }
@@ -1467,6 +1539,7 @@ export default {
       getRunningToolsForMessage,
       clearConversation,
       saveConversation,
+      activeAgentName,
       useTutorial,
       initializeScreen,
       isMobile,
