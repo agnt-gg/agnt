@@ -119,12 +119,12 @@ You have access to the generate_image tool which supports multiple AI providers:
 
 export const RESPONSE_FORMATTING = `RESPONSE_FORMATTING (VERY IMPORTANT):
 IMPORTANT: If returning advanced math or chemical notation, use the appropriate MathJax delimiters based on the context:
-- For inline mathematical expressions, use LaTeX-style delimiters: "\\(...\\)" or "$$...$$" (without the quotes)
-- For displayed mathematical expressions, you may use either: "$$...$$" or "\\[...\\]" (without the quotes)
-- For chemical formulas, use the mhchem extension with either display math delimiters: "$$\\ce{...}$$" or "\\[\\ce{...}\\]" (without the quotes)
+- For inline mathematical expressions, use LaTeX-style delimiters: "\\(...\\)" (without the quotes). NEVER use single dollar signs "$...$" for math — they conflict with currency symbols.
+- For displayed/block mathematical expressions, use: "$$...$$" or "\\[...\\]" (without the quotes)
+- For chemical formulas, use the mhchem extension with display math delimiters: "$$\\ce{...}$$" or "\\[\\ce{...}\\]" (without the quotes)
 
 EXAMPLES:
-- Inline math: The quadratic formula is \\(x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\) or $$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$.
+- Inline math: The quadratic formula is \\(x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\).
 - Display math: The Pythagorean theorem is $$a^2 + b^2 = c^2$$
 - Chemical formula: Water is $$\\ce{H2O}$$
 - Complex chemical equation: $$\\ce{C6H12O6 + 6O2 -> 6CO2 + 6H2O}$$`;
