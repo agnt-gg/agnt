@@ -876,7 +876,7 @@ export default {
      * Start a streaming conversation that persists across screen changes.
      * Supports multiple concurrent streams — each conversation gets its own slot.
      */
-    async startStreamingConversation({ commit, state, dispatch, rootState }, { userInput, files = [], provider, model, reasoningEnabled = false }) {
+    async startStreamingConversation({ commit, state, dispatch, rootState }, { userInput, files = [], provider, model, reasoningEnabled = false, mentionedAgent = null }) {
       // Determine which conversation to stream in
       let convId = state.activeConversationId || state.currentConversationId || `temp-${Date.now()}`;
 
@@ -922,6 +922,9 @@ export default {
           headers['Authorization'] = `Bearer ${token}`;
         }
 
+        // Resolve agentId from @ mention or existing conversation context
+        const resolvedAgentId = mentionedAgent?.id || conv.agentId || null;
+
         // Use FormData if files are present, otherwise use JSON
         if (files && files.length > 0) {
           const formData = new FormData();
@@ -934,6 +937,9 @@ export default {
           formData.append('model', model);
           if (reasoningEnabled) {
             formData.append('reasoningEnabled', 'true');
+          }
+          if (resolvedAgentId) {
+            formData.append('agentId', resolvedAgentId);
           }
           // Send enabled tools from tool selector
           const savedTools = localStorage.getItem('agnt_enabled_tools');
@@ -955,6 +961,7 @@ export default {
             provider: provider,
             model: model,
             reasoningEnabled: reasoningEnabled || undefined,
+            agentId: resolvedAgentId || undefined,
             enabledTools: JSON.parse(localStorage.getItem('agnt_enabled_tools') || '[]'),
           });
         }
@@ -1307,6 +1314,8 @@ export default {
             toolCalls: msg.toolCalls || [],
             contentParts: msg.contentParts || [],
             files: msg.files || [],
+            agentName: msg.agentName || undefined,
+            agentIcon: msg.agentIcon || undefined,
           })),
           createdAt: messages[0]?.timestamp || Date.now(),
           updatedAt: Date.now(),

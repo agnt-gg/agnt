@@ -2356,19 +2356,42 @@ export const TOOLS = {
         },
       },
     },
-    execute: async ({ operation, agent_id, agent_data }, authToken) => {
+    execute: async ({ operation, agent_id: rawAgentId, agent_data }, authToken) => {
+      let agent_id = rawAgentId;
       console.log(`Tool call: agnt_agents with operation: ${operation}`);
 
       if (!authToken) {
         return JSON.stringify({ success: false, error: 'User authentication token is required for AGNT agent operations.' });
       }
-      // Original check: if (!process.env.AGNT_API_KEY) return JSON.stringify({ success: false, error: "AGNT_API_KEY not found in environment variables." });
 
       let userApiKey = authToken;
       if (authToken.toLowerCase().startsWith('bearer ')) {
         userApiKey = authToken.substring(7);
       }
       const agnt = new AGNT(userApiKey); // Uses user's token
+
+      // Resolve agent_id: if the LLM passed a name instead of a UUID, look it up
+      if (agent_id && !agent_id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i)) {
+        try {
+          const agents = await agnt.agents.list();
+          const list = Array.isArray(agents) ? agents : agents?.agents || [];
+          const exactMatch = list.find(
+            (a) => a.name && a.name.toLowerCase() === agent_id.toLowerCase()
+          );
+          const partialMatch = !exactMatch && list.find(
+            (a) => a.name && a.name.toLowerCase().includes(agent_id.toLowerCase())
+          );
+          const match = exactMatch || partialMatch;
+          if (match) {
+            console.log(`[agnt_agents] Resolved agent name "${agent_id}" → ID "${match.id}" (${match.name})`);
+            agent_id = match.id;
+          } else {
+            console.warn(`[agnt_agents] No agent found matching name "${agent_id}". Available: ${list.map(a => a.name).join(', ')}`);
+          }
+        } catch (e) {
+          console.warn(`[agnt_agents] Failed to resolve agent name "${agent_id}":`, e.message);
+        }
+      }
 
       try {
         let result;
@@ -2599,7 +2622,7 @@ export const TOOLS = {
       function: {
         name: 'agnt_chat',
         description:
-          'Enables chatting with AGNT agents. *YOU MUST USE THE ACTUAL AGENT ID. LOOK IT UP FIRST!* *CHECK FOR AND USE EXISTING AGENTS FIRST BEFORE CREATING A NEW ONE* Allows listing available agents, sending messages to agents, getting streaming responses, and retrieving agent information for chat context. User authentication is required. ALWAYS list the agents first so you know what ID to send the chat request to.',
+          'Enables chatting with AGNT agents. Allows listing available agents, sending messages to agents, getting streaming responses, and retrieving agent information for chat context. User authentication is required. You can pass either the agent UUID or the agent name as agent_id — names are automatically resolved to IDs.',
         parameters: {
           type: 'object',
           properties: {
@@ -2611,12 +2634,12 @@ export const TOOLS = {
             agent_id: {
               type: 'string',
               description:
-                "The ID of the agent to interact with. Required for 'get_agent_info', 'send_message', 'send_message_stream', and 'get_suggestions'.",
+                "The agent to interact with — can be the agent's UUID or display name. Required for 'get_agent_info', 'send_message', 'send_message_stream', and 'get_suggestions'.",
             },
             message: {
               type: 'string',
               description:
-                "The message to send to the agent. Required for 'send_message' and 'send_message_stream' *YOU MUST USE THE ACTUAL AGENT ID. LOOK IT UP FIRST!*.",
+                "The message to send to the agent. Required for 'send_message' and 'send_message_stream'.",
             },
             history: {
               type: 'array',
@@ -2655,10 +2678,11 @@ export const TOOLS = {
       },
     },
     execute: async (
-      { operation, agent_id, message, history = [], provider, model, last_user_message = '', last_assistant_message = '' },
+      { operation, agent_id: rawAgentId, message, history = [], provider, model, last_user_message = '', last_assistant_message = '' },
       authToken,
       context
     ) => {
+      let agent_id = rawAgentId;
       console.log(`Tool call: agnt_chat with operation: ${operation}`);
 
       if (!authToken) {
@@ -2684,6 +2708,34 @@ export const TOOLS = {
       try {
         let result;
         const API_BASE_URL = `http://localhost:${process.env.PORT || 3333}/api`;
+
+        // Resolve agent_id: if the LLM passed a name instead of a UUID, look it up via API
+        if (agent_id && !agent_id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i)) {
+          try {
+            const listResp = await fetch(`${API_BASE_URL}/agents`, {
+              headers: { Authorization: authToken },
+            });
+            if (listResp.ok) {
+              const listData = await listResp.json();
+              const allAgents = listData.agents || [];
+              const exactMatch = allAgents.find(
+                (a) => a.name.toLowerCase() === agent_id.toLowerCase()
+              );
+              const partialMatch = !exactMatch && allAgents.find(
+                (a) => a.name.toLowerCase().includes(agent_id.toLowerCase())
+              );
+              const match = exactMatch || partialMatch;
+              if (match) {
+                console.log(`[agnt_chat] Resolved agent name "${agent_id}" → ID "${match.id}" (${match.name})`);
+                agent_id = match.id;
+              } else {
+                console.warn(`[agnt_chat] No agent found matching name "${agent_id}". Available: ${allAgents.map(a => a.name).join(', ')}`);
+              }
+            }
+          } catch (e) {
+            console.warn(`[agnt_chat] Failed to resolve agent name "${agent_id}":`, e.message);
+          }
+        }
 
         switch (operation) {
           case 'list_available_agents':
@@ -2845,7 +2897,27 @@ export const TOOLS = {
                 return JSON.stringify({ success: false, error: `Agent chat failed: ${response.statusText}`, details: errorText });
               }
 
-              result = await response.json();
+              // The chat endpoint returns an SSE stream — read it and collect the full response
+              const sseText = await response.text();
+              let fullContent = '';
+              const toolResults = [];
+              for (const block of sseText.split('\n\n')) {
+                if (!block.startsWith('event: ')) continue;
+                const newlineIdx = block.indexOf('\n');
+                const eventName = block.substring(7, newlineIdx).trim();
+                const dataStr = block.substring(newlineIdx + 6); // skip "\ndata:"
+                try {
+                  const data = JSON.parse(dataStr);
+                  if (eventName === 'content_delta' && data.delta) {
+                    fullContent += data.delta;
+                  } else if (eventName === 'final_content' && data.content) {
+                    fullContent = data.content;
+                  } else if (eventName === 'tool_end' && data.toolCall) {
+                    toolResults.push({ name: data.toolCall.name, result: data.toolCall.result });
+                  }
+                } catch { /* skip unparseable lines */ }
+              }
+              result = { response: fullContent || '(no response)', toolResults: toolResults.length > 0 ? toolResults : undefined };
             } catch (error) {
               return JSON.stringify({ success: false, error: `Failed to send message to agent: ${error.message}` });
             }

@@ -2015,6 +2015,16 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       // Wrap tables in a scrollable container
       renderedHtml = renderedHtml.replace(/<table\b/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
 
+      // Style @mentions as pills — match known agent names to avoid false positives in code
+      const agentNames = (store.state.agents.agents || []).map(a => a.name).filter(Boolean);
+      for (const name of agentNames) {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        renderedHtml = renderedHtml.replace(
+          new RegExp(`@${escaped}(?=[\\s.,!?;:&<]|$)`, 'g'),
+          `<span class="mention-pill">@${name}</span>`
+        );
+      }
+
       return addTargetBlankToLinks(renderedHtml);
     };
 
@@ -2601,6 +2611,19 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 }
 .message-text :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+.message-text :deep(.mention-pill) {
+  display: inline-block;
+  background: var(--color-primary, #6c5ce7);
+  color: #fff;
+  padding: 1px 8px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: baseline;
+  line-height: 1.5;
 }
 
 .message-text :deep(pre) {

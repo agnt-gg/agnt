@@ -200,7 +200,8 @@ export const CHAT_CONFIGS = {
       return [];
     },
     async buildSystemPrompt(currentDate, context) {
-      const { agentId, agentContext, agentState, toolSchemas } = context;
+      const { agentId, agentState, toolSchemas } = context;
+      let { agentContext } = context;
 
       // Check if this is agent management chat (AgentForge)
       const isAgentManagement = agentId === 'agent-chat';
@@ -213,6 +214,25 @@ export const CHAT_CONFIGS = {
 
       // This is chatting WITH a specific agent - use the agent's custom system prompt
       console.log(`Using custom system prompt for agent ${agentId}`);
+
+      // If agentContext wasn't provided (e.g. @ mention from orchestrator chat),
+      // load the agent from DB to build context
+      if (!agentContext && agentId) {
+        try {
+          const AgentModel = (await import('../../models/AgentModel.js')).default;
+          const agent = await AgentModel.findOne(agentId);
+          if (agent) {
+            agentContext = {
+              name: agent.name,
+              description: agent.description,
+              systemPrompt: agent.systemPrompt || '',
+            };
+            console.log(`[Agent @mention] Loaded agent context from DB: ${agent.name}`);
+          }
+        } catch (e) {
+          console.warn(`[chatConfigs] Failed to load agent ${agentId} from DB:`, e.message);
+        }
+      }
 
       // Load relevant agent memories (includes global/orchestrator memories)
       let memorySection = '';
@@ -237,9 +257,13 @@ export const CHAT_CONFIGS = {
           ? toolSchemas.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n')
           : '- No tools assigned to this agent';
 
+      const agentName = agentContext?.name || 'AI Agent';
+      const agentDesc = agentContext?.description ? `\n${agentContext.description}\n` : '';
+
       return `Current date and time: ${currentDate}
 
-You are an AI agent with specific assigned tools. Use only the tools assigned to you.
+You are ${agentName}, an AI agent with specific assigned tools.${agentDesc}
+Use only the tools assigned to you.
 
 AVAILABLE TOOLS:
 ${toolsList}

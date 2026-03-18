@@ -777,6 +777,39 @@ async function universalChatHandler(req, res, context = {}) {
       messages.unshift({ role: 'system', content: systemPrompt });
     }
 
+    // Resolve agent metadata for @ mention responses (avatar + name for SSE event)
+    let agentMeta = {};
+    if (chatType === 'agent' && agentId && agentId !== 'agent-chat') {
+      try {
+        const agent = agentContext?.name
+          ? { name: agentContext.name, icon: agentContext.icon || null }
+          : await (async () => {
+              const AgentModel = (await import('../models/AgentModel.js')).default;
+              const a = await AgentModel.findOne(agentId);
+              return a ? { name: a.name, icon: a.icon || null } : null;
+            })();
+        if (agent) {
+          agentMeta = { agentName: agent.name, agentIcon: agent.icon || null };
+        }
+      } catch (e) {
+        console.warn('[Chat] Failed to resolve agent metadata for message:', e.message);
+      }
+    }
+
+    // When an @ mentioned agent responds in an existing conversation, the history
+    // contains messages from the orchestrator (Annie). Inject a strong identity
+    // override right before the last user message so the LLM doesn't continue as Annie.
+    if (chatType === 'agent' && agentId && agentId !== 'agent-chat') {
+      const agentName = agentMeta.agentName || 'the requested agent';
+      const lastUserIdx = messages.length - 1;
+      if (lastUserIdx > 0 && messages[lastUserIdx].role === 'user') {
+        messages.splice(lastUserIdx, 0, {
+          role: 'system',
+          content: `[Identity Switch] The user has @mentioned ${agentName}. You MUST respond as ${agentName} — NOT as Annie or any other assistant. Use ${agentName}'s personality, knowledge, and capabilities. Do not reference Annie or claim to be a different agent.`,
+        });
+      }
+    }
+
     // CRITICAL: If images were uploaded but model doesn't support vision, inject a system message
     // that FORCES the LLM to use the analyze_image tool
     if (imageData.length > 0 && !modelSupportsVision) {
@@ -874,7 +907,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
       tokenAccumulator.totalTokens += input + output;
     }
 
-    // Initial LLM call with streaming
     // Send initial assistant message
     sendEvent('assistant_message', {
       id: assistantMessageId,
@@ -883,6 +915,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       content: '',
       toolCalls: [],
       timestamp: Date.now(),
+      ...agentMeta,
     });
 
     let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError, usage: initialUsage } = await adapter.callStream(
