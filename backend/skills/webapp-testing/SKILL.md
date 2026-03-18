@@ -1,14 +1,7 @@
-# Webapp Testing
-
-## Description
-Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs.
-
-## Source
-anthropics (anthropics/skills)
-
-## When to Use
-Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs.
-
+---
+name: webapp-testing
+description: "Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs."
+allowed-tools: Bash Read Write Edit Glob Grep
 ---
 
 # Web Application Testing

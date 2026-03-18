@@ -1,14 +1,7 @@
-# Test Driven Development
-
-## Description
-Use when implementing any feature or bugfix, before writing implementation code
-
-## Source
-obra (obra/superpowers)
-
-## When to Use
-Use when implementing any feature or bugfix, before writing implementation code
-
+---
+name: test-driven-development
+description: "Use when implementing any feature or bugfix, before writing implementation code"
+allowed-tools: Bash Read Write Edit Glob Grep
 ---
 
 # Test-Driven Development (TDD)

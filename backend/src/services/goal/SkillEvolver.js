@@ -60,14 +60,16 @@ class SkillEvolver {
   static async _createAndTestSkill(candidate, traceAnalysis, sourceGoalId, userId) {
     // Create draft skill in DB
     const skillId = generateUUID();
+    const { toKebabCase } = await import('../../utils/skillValidation.js');
     await SkillModel.createOrUpdate(skillId, {
       name: candidate.name,
+      slug: toKebabCase(candidate.name),
       description: candidate.description,
       instructions: candidate.instructions,
       category: candidate.category || 'general',
       icon: 'fas fa-flask',
-      allowedTools: JSON.stringify(candidate.allowedTools || []),
-      metadata: JSON.stringify({
+      allowedTools: candidate.allowedTools || [],
+      metadata: {
         skillforge: {
           status: 'draft',
           currentVersion: 1,
@@ -75,7 +77,7 @@ class SkillEvolver {
           sourceGoals: [sourceGoalId],
           generation: 1,
         },
-      }),
+      },
     }, userId);
 
     // Create version record
@@ -144,8 +146,8 @@ class SkillEvolver {
         instructions: candidate.instructions,
         category: candidate.category || 'general',
         icon: 'fas fa-flask',
-        allowedTools: JSON.stringify(candidate.allowedTools || []),
-        metadata: JSON.stringify(metadata),
+        allowedTools: candidate.allowedTools || [],
+        metadata,
       }, userId);
 
       // Promote to Gold Standard if exceptional
@@ -296,7 +298,7 @@ class SkillEvolver {
         category: existingSkill.category,
         icon: existingSkill.icon,
         allowedTools: existingSkill.allowed_tools,
-        metadata: JSON.stringify(metadata),
+        metadata,
       }, userId);
 
       if (treatmentSes >= this.GOLD_STANDARD_THRESHOLD) {

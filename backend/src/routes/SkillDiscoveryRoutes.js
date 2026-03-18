@@ -115,12 +115,13 @@ SkillDiscoveryRoutes.post('/:name/import', authenticateToken, async (req, res) =
 
     const skillData = {
       name: displayName,
+      slug: skill.name, // kebab-case canonical name for lookups
       description: skill.description,
       instructions: skill.instructions || '',
       license: skill.frontmatter.license || '',
       compatibility: skill.frontmatter.compatibility || '',
-      metadata: skill.frontmatter.metadata ? JSON.stringify(skill.frontmatter.metadata) : '',
-      allowedTools: skill.frontmatter['allowed-tools'] || '',
+      metadata: skill.frontmatter.metadata || {},
+      allowedTools: skill.frontmatter['allowed-tools'] || [],
       category: 'general',
       icon: 'fas fa-puzzle-piece',
     };

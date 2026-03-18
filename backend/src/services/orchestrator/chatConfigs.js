@@ -100,28 +100,32 @@ export const CHAT_CONFIGS = {
         const { buildSkillCatalog, buildSkillActivationInstructions } = await import('../SkillService.js');
         const catalogEntries = [];
 
-        // Add all DB skills
-        if (context.userId) {
-          const SkillModel = (await import('../../models/SkillModel.js')).default;
-          const dbSkills = await SkillModel.findAll(context.userId);
-          for (const s of dbSkills) {
-            catalogEntries.push({ name: s.name, description: s.description, source: 'database' });
-          }
-        }
-
-        // Add filesystem-discovered skills
+        // Add filesystem-discovered skills first (canonical kebab-case names)
+        const seenNames = new Set();
         try {
           const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
           if (SkillDiscoveryService.initialized) {
             const discovered = SkillDiscoveryService.getSkillCatalog();
             for (const ds of discovered) {
-              if (!catalogEntries.some((e) => e.name === ds.name)) {
-                catalogEntries.push(ds);
-              }
+              catalogEntries.push(ds);
+              seenNames.add(ds.name);
             }
           }
         } catch (e) {
           // Discovery service may not be initialized
+        }
+
+        // Add DB skills (deduplicate by slug)
+        if (context.userId) {
+          const SkillModel = (await import('../../models/SkillModel.js')).default;
+          const dbSkills = await SkillModel.findAll(context.userId);
+          for (const s of dbSkills) {
+            const key = s.slug || s.name;
+            if (!seenNames.has(key)) {
+              catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database' });
+              seenNames.add(key);
+            }
+          }
         }
 
         if (catalogEntries.length > 0) {

@@ -78,8 +78,37 @@ You have the above skills assigned. Follow the instructions defined in each skil
   async getAllSkills(req, res) {
     try {
       const userId = req.user.userId;
-      const skills = await SkillModel.findAll(userId);
-      res.json({ skills });
+      const dbSkills = await SkillModel.findAll(userId);
+
+      // Merge filesystem-discovered skills so the UI sees everything
+      let filesystemSkills = [];
+      try {
+        const { default: SkillDiscoveryService } = await import('./SkillDiscoveryService.js');
+        if (SkillDiscoveryService.initialized) {
+          const dbSlugs = new Set(dbSkills.map((s) => s.slug).filter(Boolean));
+          filesystemSkills = Array.from(SkillDiscoveryService.skills.values())
+            .filter((s) => !dbSlugs.has(s.name)) // Don't duplicate DB skills
+            .map((s) => ({
+              id: `fs-${s.name}`,
+              name: s.displayName || s.name,
+              slug: s.name,
+              description: s.description || '',
+              instructions: s.instructions || '',
+              icon: 'fas fa-puzzle-piece',
+              category: s.frontmatter?.metadata?.category || 'general',
+              is_builtin: 0,
+              is_filesystem: 1,
+              scope: s.scope,
+              client: s.client,
+              trusted: s.trusted,
+              dir_path: s.dirPath,
+            }));
+        }
+      } catch {
+        // Discovery not available
+      }
+
+      res.json({ skills: [...dbSkills, ...filesystemSkills] });
     } catch (error) {
       console.error('Error fetching skills:', error);
       res.status(500).json({ error: 'Failed to fetch skills' });
@@ -232,14 +261,15 @@ You have the above skills assigned. Follow the instructions defined in each skil
 
       const skillData = {
         name: displayName,
+        slug: sanitizedName, // kebab-case canonical name
         description,
         instructions: parsed.instructions || '',
         category: parsed.frontmatter.category || 'general',
         icon: parsed.frontmatter.icon || 'fas fa-puzzle-piece',
         license: parsed.frontmatter.license || '',
         compatibility: parsed.frontmatter.compatibility || '',
-        metadata: parsed.frontmatter.metadata ? JSON.stringify(parsed.frontmatter.metadata) : '',
-        allowedTools: parsed.frontmatter['allowed-tools'] || '',
+        metadata: parsed.frontmatter.metadata || {},
+        allowedTools: parsed.frontmatter['allowed-tools'] || [],
       };
 
       const id = generateUUID();

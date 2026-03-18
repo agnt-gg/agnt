@@ -262,24 +262,30 @@ class AgentService {
     try {
       const catalogEntries = [];
 
-      // Add agent's assigned DB skills to catalog
-      if (agent.assignedSkills && agent.assignedSkills.length > 0) {
-        const skillRecords = await SkillModel.findByIds(agent.assignedSkills);
-        for (const s of skillRecords) {
-          catalogEntries.push({ name: s.name, description: s.description, source: 'database' });
-        }
-      }
-
-      // Add filesystem-discovered skills to catalog (if discovery service is initialized)
+      // Add filesystem-discovered skills to catalog first (they use canonical kebab-case names)
+      const seenNames = new Set();
       if (SkillDiscoveryService.initialized) {
         const discoveredCatalog = SkillDiscoveryService.getSkillCatalog();
         for (const ds of discoveredCatalog) {
-          // Avoid duplicates: skip discovered skills that share a name with DB skills
-          if (!catalogEntries.some((e) => e.name === ds.name)) {
-            catalogEntries.push(ds);
+          catalogEntries.push(ds);
+          seenNames.add(ds.name);
+        }
+      }
+
+      // Add agent's assigned skills to catalog (resolve from DB, deduplicate by slug)
+      if (agent.assignedSkills && agent.assignedSkills.length > 0) {
+        const skillRecords = await SkillModel.findByIds(agent.assignedSkills);
+        for (const s of skillRecords) {
+          const key = s.slug || s.name;
+          if (!seenNames.has(key)) {
+            catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database' });
+            seenNames.add(key);
           }
         }
       }
+
+      // Note: filesystem-discovered skills are already in the catalog above.
+      // DB-only skills (user-created, SkillEvolver) are added via assignedSkills.
 
       if (catalogEntries.length > 0) {
         const catalog = buildSkillCatalog(catalogEntries);

@@ -1,4 +1,10 @@
 ---
+name: pdfkit-generation
+description: "Generate professional PDFs with PDFKit in Node.js. Use when creating pitch decks, reports, or styled documents with AGNT branding. Covers large script handling, Unicode-safe characters, and brand design patterns."
+allowed-tools: Bash Read Write Edit
+---
+
+---
 name: "PDFKit Generation"
 description: "Generate professional PDFs with PDFKit in Node.js. Use when creating pitch decks, reports, or styled documents with AGNT branding. Covers large script handling, Unicode-safe characters, and brand design patterns."
 category: "document-processing"
@@ -374,3 +380,4 @@ Before starting PDF generation:
 ---
 
 *Key insight: Always write PDF generation scripts to files and execute via shell commands. Never pass large scripts directly to code execution tools.*
+

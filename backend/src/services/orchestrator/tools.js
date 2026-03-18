@@ -17,6 +17,13 @@ import ParameterResolver from '../../workflow/ParameterResolver.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Cached lazy imports — resolved once, reused forever
+let _codeToolsMod = null;
+async function _getCodeTools() {
+  if (!_codeToolsMod) _codeToolsMod = await import('./codeTools.js');
+  return _codeToolsMod;
+}
+
 /**
  * Resolve data references in tool arguments
  * Replaces {{DATA_REF:id}} patterns with actual data from preserved content
@@ -82,28 +89,37 @@ export const TOOLS = {
       },
     },
     execute: async ({ code: codeString }, authToken) => {
-      // Renamed 'code' to 'codeString' to match original helper
+      if (!codeString || typeof codeString !== 'string') {
+        return JSON.stringify({ success: false, error: 'Invalid code provided. Code must be a non-empty string.' });
+      }
+      console.log(`Tool call: executeJavaScriptCode with code: \n${codeString}`);
+
+      const wrappedCode = `(async () => {\n${codeString}\n})().catch(e => { console.error(e); process.exit(1); });`;
+
+      const env = { ...process.env };
+      if (authToken) {
+        let token = authToken;
+        if (token.toLowerCase().startsWith('bearer ')) {
+          token = token.substring(7);
+        }
+        env.AGNT_AUTH_TOKEN = token;
+      }
+
+      // Resolve workspace path for NODE_PATH (cached import)
+      let workspaceCwd;
+      try {
+        const { getWorkspaceRootPath } = await _getCodeTools();
+        workspaceCwd = await getWorkspaceRootPath();
+        const workspaceNodeModules = path.join(workspaceCwd, 'node_modules');
+        env.NODE_PATH = env.NODE_PATH
+          ? workspaceNodeModules + path.delimiter + env.NODE_PATH
+          : workspaceNodeModules;
+      } catch (e) {
+        console.warn('[execute_javascript_code] Could not resolve workspace path:', e.message);
+      }
+
       return new Promise((resolve) => {
-        // Removed reject, always resolve with JSON string
-        if (!codeString || typeof codeString !== 'string') {
-          return resolve(JSON.stringify({ success: false, error: 'Invalid code provided. Code must be a non-empty string.' }));
-        }
-        console.log(`Tool call: executeJavaScriptCode with code: \n${codeString}`);
-
-        // Wrap in async IIFE so top-level await works
-        const wrappedCode = `(async () => {\n${codeString}\n})().catch(e => { console.error(e); process.exit(1); });`;
-
-        // Pass auth token as env var so code can call AGNT API endpoints
-        const env = { ...process.env };
-        if (authToken) {
-          let token = authToken;
-          if (token.toLowerCase().startsWith('bearer ')) {
-            token = token.substring(7);
-          }
-          env.AGNT_AUTH_TOKEN = token;
-        }
-
-        const nodeProcess = spawn('node', ['-e', wrappedCode], { timeout: 30000, env }); // 30 second timeout
+        const nodeProcess = spawn('node', ['-e', wrappedCode], { timeout: 30000, env, cwd: workspaceCwd });
         let stdout = '';
         let stderr = '';
 
@@ -128,7 +144,6 @@ export const TOOLS = {
           resolve(JSON.stringify({ success: false, error: `Failed to start subprocess: ${err.message}` }));
         });
 
-        // Handle timeout explicitly
         nodeProcess.on('timeout', () => {
           nodeProcess.kill();
           resolve(JSON.stringify({ success: false, error: 'Code execution timed out after 30 seconds.' }));
@@ -142,7 +157,7 @@ export const TOOLS = {
       function: {
         name: 'execute_shell_command',
         description:
-          'Executes a shell command in a specified directory. Useful for running build tools, package managers (like npm, pip), or other system commands.',
+          'Executes a shell command in a specified directory. Useful for running build tools, package managers (like npm, pip), or other system commands. Defaults to the workspace directory.',
         parameters: {
           type: 'object',
           properties: {
@@ -152,7 +167,7 @@ export const TOOLS = {
             },
             cwd: {
               type: 'string',
-              description: "The working directory from which to run the command. Defaults to the server's root directory if not specified.",
+              description: 'The working directory from which to run the command. Defaults to the workspace directory. For npm install, always use the workspace.',
               default: '.',
             },
           },
@@ -161,7 +176,6 @@ export const TOOLS = {
       },
     },
     execute: async ({ command, cwd = '.' }) => {
-      console.log(`Tool call: execute_shell_command with command: "${command}" in directory: "${cwd}"`);
       if (!command) {
         return JSON.stringify({ success: false, error: 'Command is required.' });
       }
@@ -171,12 +185,49 @@ export const TOOLS = {
         return JSON.stringify({ success: false, error: "Relative paths with '..' are not allowed in cwd." });
       }
 
+      // Resolve workspace root as default cwd (cached import)
+      let resolvedCwd = cwd;
+      let workspaceRoot;
+      try {
+        const { getWorkspaceRootPath } = await _getCodeTools();
+        workspaceRoot = await getWorkspaceRootPath();
+        if (cwd === '.') {
+          resolvedCwd = workspaceRoot;
+        }
+      } catch (e) {
+        console.warn('[execute_shell_command] Could not resolve workspace path:', e.message);
+      }
+
+      // Guard: block npm install in the AGNT application directory
+      const appRoot = path.resolve(__dirname, '../../../');
+      const resolvedAbsCwd = path.resolve(resolvedCwd);
+      if (/\bnpm\s+install\b/i.test(command) && resolvedAbsCwd.startsWith(appRoot)) {
+        return JSON.stringify({
+          success: false,
+          error: 'npm install should not target the AGNT application directory. Use the workspace directory instead.',
+          suggested_cwd: workspaceRoot || 'workspace root',
+          hint: 'Skill dependencies are auto-installed when you activate a skill. For manual installs, use your workspace directory.',
+        });
+      }
+
+      console.log(`Tool call: execute_shell_command with command: "${command}" in directory: "${resolvedCwd}"`);
+
       return new Promise((resolve) => {
+        // Set NODE_PATH so spawned scripts can find workspace packages
+        const env = { ...process.env };
+        if (workspaceRoot) {
+          const workspaceNodeModules = path.join(workspaceRoot, 'node_modules');
+          env.NODE_PATH = env.NODE_PATH
+            ? workspaceNodeModules + path.delimiter + env.NODE_PATH
+            : workspaceNodeModules;
+        }
+
         // Use shell: true for convenience, which allows using shell syntax like '&&', '|', etc.
         const childProcess = spawn(command, {
           shell: true,
-          cwd: cwd,
+          cwd: resolvedCwd,
           timeout: 120000, // 2 minutes, as installs can be slow
+          env,
         });
 
         let stdout = '';
@@ -3452,29 +3503,31 @@ export const TOOLS = {
           // SkillDiscoveryService may not be initialized yet
         }
 
-        // Fall back to database skills
+        // Fall back to database skills (lookup by slug first, then name)
         if (!skillContent) {
           try {
             const SkillModel = (await import('../../models/SkillModel.js')).default;
-            const userId = context.userId;
-            if (userId) {
-              const dbSkills = await SkillModel.findAll(userId);
-              const match = dbSkills.find(
-                (s) => s.name === skill_name || s.name.toLowerCase().replace(/\s+/g, '-') === skill_name
+            // Try slug-based lookup first (fast, indexed)
+            let match = await SkillModel.findBySlug(skill_name);
+            // Fall back to scanning by name (for user-created skills without slugs)
+            if (!match && context.userId) {
+              const dbSkills = await SkillModel.findAll(context.userId);
+              match = dbSkills.find(
+                (s) => s.name === skill_name || s.slug === skill_name
               );
-              if (match) {
-                skillContent = {
-                  name: match.name,
-                  description: match.description,
-                  instructions: match.instructions,
-                  frontmatter: {
-                    license: match.license,
-                    compatibility: match.compatibility,
-                    'allowed-tools': match.allowed_tools,
-                  },
-                };
-                source = 'database';
-              }
+            }
+            if (match) {
+              skillContent = {
+                name: match.slug || match.name,
+                description: match.description,
+                instructions: match.instructions,
+                frontmatter: {
+                  license: match.license,
+                  compatibility: match.compatibility,
+                  'allowed-tools': match.allowed_tools,
+                },
+              };
+              source = 'database';
             }
           } catch (e) {
             console.error('[activate_skill] DB lookup error:', e.message);

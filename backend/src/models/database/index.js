@@ -619,6 +619,10 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)`);
 
+      // Migration: add slug column for kebab-case canonical name lookup
+      db.run(`ALTER TABLE skills ADD COLUMN slug TEXT`, () => {});
+      db.run(`CREATE INDEX IF NOT EXISTS idx_skills_slug ON skills(slug)`);
+
       // ==================== SKILLFORGE TABLES ====================
       // Skill version history — tracks evolutionary lineage of skills
       db.run(`CREATE TABLE IF NOT EXISTS skill_versions (

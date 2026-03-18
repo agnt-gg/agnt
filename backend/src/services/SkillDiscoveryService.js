@@ -1,8 +1,9 @@
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { parseSkillMd, isValidSkillName } from '../utils/skillValidation.js';
+import { parseSkillMd, isValidSkillName, toKebabCase } from '../utils/skillValidation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,15 +16,33 @@ const SKIP_DIRS = new Set([
 const MAX_SCAN_DEPTH = 5;
 const MAX_DIRECTORIES = 2000;
 
+// All known agent skill client directories (project-level and user-level).
+// The agentskills.io standard says each client scans its own dir + the cross-client .agents/ dir.
+// We scan ALL of them so skills from any ecosystem work in AGNT.
+const CLIENT_SKILL_DIRS = [
+  '.agnt/skills',       // AGNT (us)
+  '.claude/skills',     // Claude Code
+  '.codex/skills',      // OpenAI Codex
+  '.cursor/skills',     // Cursor
+  '.windsurf/skills',   // Windsurf
+  '.copilot/skills',    // VS Code / Copilot
+  '.kilocode/skills',   // KiloCode
+  '.github/skills',     // GitHub Copilot (project-level)
+  '.agents/skills',     // Cross-client standard
+];
+
 /**
  * SkillDiscoveryService - Discovers Agent Skills from the filesystem
  * following the agentskills.io standard.
  *
- * Scan locations (priority order, highest first):
- *   1. Project-level client-specific: <project>/.agnt/skills/
- *   2. Project-level cross-client:    <project>/.agents/skills/
- *   3. User-level client-specific:    ~/.agnt/skills/
- *   4. User-level cross-client:       ~/.agents/skills/
+ * Scans all known agent skill directories at both project and user level,
+ * plus ancestor directories up to the git root for monorepo support.
+ *
+ * Priority order (highest → lowest):
+ *   1. Project-level (all client dirs)
+ *   2. Ancestor directories up to git root
+ *   3. User-level ~/.agnt/skills/ (AGNT home — bootstrapped builtins live here)
+ *   4. User-level (all other client dirs)
  */
 class SkillDiscoveryService {
   constructor() {
@@ -37,72 +56,95 @@ class SkillDiscoveryService {
 
   /**
    * Initialize scan locations and run initial discovery.
-   * Auto-registers builtin skills into the database.
+   * Auto-registers bootstrapped builtin skills into the database.
    * @param {string} [projectRoot] - Optional project/workspace root path
    */
   async init(projectRoot) {
     this.scanLocations = this._buildScanLocations(projectRoot);
     await this.discoverAll();
     this.initialized = true;
-    console.log(`[SkillDiscovery] Initialized. Found ${this.skills.size} skills from filesystem.`);
-
-    // Auto-register builtin skills into the database
-    await this._autoRegisterBuiltinSkills();
+    console.log(`[SkillDiscovery] Initialized. Found ${this.skills.size} skills across ${this.scanLocations.length} scan locations.`);
   }
 
   /**
-   * Build the ordered list of scan locations.
+   * Build the ordered list of scan locations across all known ecosystems.
    */
   _buildScanLocations(projectRoot) {
     const locations = [];
     const homeDir = os.homedir();
+    let priority = 0;
 
-    if (projectRoot) {
-      // Project-level (higher priority)
+    // --- User-level: cross-client and other ecosystems (lowest priority) ---
+    for (const dir of CLIENT_SKILL_DIRS) {
+      // .agnt/skills gets higher user-level priority (it's our home)
+      if (dir === '.agnt/skills') continue;
       locations.push({
-        path: path.join(projectRoot, '.agnt', 'skills'),
-        scope: 'project',
-        client: 'agnt',
-        priority: 4,
-        trusted: false, // Project-level skills may be untrusted (from cloned repos)
-      });
-      locations.push({
-        path: path.join(projectRoot, '.agents', 'skills'),
-        scope: 'project',
-        client: 'cross-client',
-        priority: 3,
-        trusted: false,
+        path: path.join(homeDir, dir),
+        scope: 'user',
+        client: dir.split('/')[0].replace('.', ''),
+        priority: priority++,
+        trusted: true,
       });
     }
 
-    // User-level (lower priority)
+    // AGNT user-level gets highest user-level priority (bootstrapped builtins live here)
     locations.push({
       path: path.join(homeDir, '.agnt', 'skills'),
       scope: 'user',
       client: 'agnt',
-      priority: 2,
-      trusted: true,
-    });
-    locations.push({
-      path: path.join(homeDir, '.agents', 'skills'),
-      scope: 'user',
-      client: 'cross-client',
-      priority: 1,
+      priority: priority++,
       trusted: true,
     });
 
-    // Builtin skills bundled with AGNT (lowest priority — user/project skills override)
-    const builtinSkillsPath = path.resolve(__dirname, '../../skills');
-    locations.push({
-      path: builtinSkillsPath,
-      scope: 'builtin',
-      client: 'agnt',
-      priority: 0,
-      trusted: true,
-      looseFiles: true, // Scan loose .md files, not just SKILL.md in subdirs
-    });
+    // --- Ancestor directories (monorepo support) ---
+    if (projectRoot) {
+      const gitRoot = this._findGitRoot(projectRoot);
+      const stopAt = gitRoot || path.parse(projectRoot).root;
+      let current = path.dirname(projectRoot);
+
+      while (current !== stopAt && current !== path.dirname(current)) {
+        for (const dir of CLIENT_SKILL_DIRS) {
+          locations.push({
+            path: path.join(current, dir),
+            scope: 'ancestor',
+            client: dir.split('/')[0].replace('.', ''),
+            priority: priority,
+            trusted: false,
+          });
+        }
+        priority++;
+        current = path.dirname(current);
+      }
+
+      // --- Project-level: all ecosystems (highest priority) ---
+      for (const dir of CLIENT_SKILL_DIRS) {
+        locations.push({
+          path: path.join(projectRoot, dir),
+          scope: 'project',
+          client: dir.split('/')[0].replace('.', ''),
+          priority: priority,
+          trusted: false,
+        });
+      }
+      priority++;
+    }
 
     return locations;
+  }
+
+  /**
+   * Find the git root by walking up from startDir.
+   */
+  _findGitRoot(startDir) {
+    let dir = startDir;
+    while (dir !== path.dirname(dir)) {
+      try {
+        fsSync.accessSync(path.join(dir, '.git'));
+        return dir;
+      } catch { /* not here */ }
+      dir = path.dirname(dir);
+    }
+    return null;
   }
 
   /**
@@ -117,7 +159,7 @@ class SkillDiscoveryService {
       const discovered = new Map();
       let totalDirsScanned = 0;
 
-      // Scan in reverse priority order so higher-priority overwrites lower
+      // Scan in ascending priority order so higher-priority overwrites lower
       const sortedLocations = [...this.scanLocations].sort((a, b) => a.priority - b.priority);
 
       for (const location of sortedLocations) {
@@ -126,7 +168,6 @@ class SkillDiscoveryService {
         try {
           await fs.access(location.path);
         } catch {
-          // Directory doesn't exist, skip
           continue;
         }
 
@@ -136,12 +177,8 @@ class SkillDiscoveryService {
         for (const skill of skills.found) {
           const existing = discovered.get(skill.name);
           if (existing) {
-            // Higher priority wins
             if (skill.priority > existing.priority) {
-              console.log(`[SkillDiscovery] Skill "${skill.name}" from ${skill.scope}/${skill.client} overrides ${existing.scope}/${existing.client}`);
               discovered.set(skill.name, skill);
-            } else {
-              console.log(`[SkillDiscovery] Skill "${skill.name}" collision: keeping ${existing.scope}/${existing.client} over ${skill.scope}/${skill.client}`);
             }
           } else {
             discovered.set(skill.name, skill);
@@ -159,7 +196,6 @@ class SkillDiscoveryService {
 
   /**
    * Recursively scan a directory for skills (subdirectories containing SKILL.md).
-   * Also picks up loose .md files if the location has looseFiles enabled.
    */
   async _scanDirectory(dirPath, location, depth, globalDirCount) {
     const result = { found: [], dirsScanned: 0 };
@@ -175,23 +211,10 @@ class SkillDiscoveryService {
       return result;
     }
 
-    // Scan loose .md files in this directory (for builtin skills)
-    if (location.looseFiles && depth === 0) {
-      for (const entry of entries) {
-        if (!entry.isFile()) continue;
-        if (!entry.name.endsWith('.md')) continue;
-
-        const filePath = path.join(dirPath, entry.name);
-        const skill = await this._parseLooseSkillFile(filePath, location);
-        if (skill) {
-          result.found.push(skill);
-        }
-      }
-    }
-
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (SKIP_DIRS.has(entry.name)) continue;
+      if (entry.name.startsWith('.')) continue; // Skip hidden dirs inside skill locations
       if (globalDirCount + result.dirsScanned >= MAX_DIRECTORIES) break;
 
       result.dirsScanned++;
@@ -202,7 +225,6 @@ class SkillDiscoveryService {
         const skillMdPath = path.join(subDir, 'SKILL.md');
         await fs.access(skillMdPath);
 
-        // Found a skill directory - parse it
         const skill = await this._parseSkillDirectory(subDir, skillMdPath, location);
         if (skill) {
           result.found.push(skill);
@@ -219,44 +241,6 @@ class SkillDiscoveryService {
   }
 
   /**
-   * Parse a loose .md or SKILL.md skill file using the shared parser.
-   * Supports both YAML frontmatter (agentskills.io) and loose markdown formats.
-   */
-  async _parseLooseSkillFile(filePath, location) {
-    try {
-      const content = await fs.readFile(filePath, 'utf-8');
-      const parsed = parseSkillMd(content);
-
-      const name = parsed.frontmatter.name || path.basename(filePath, '.md').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      const displayName = parsed.frontmatter.displayName || name;
-
-      if (!parsed.frontmatter.description) {
-        console.warn(`[SkillDiscovery] Skipping ${filePath}: no description found`);
-        return null;
-      }
-
-      return {
-        name,
-        displayName,
-        description: parsed.frontmatter.description,
-        instructions: parsed.instructions,
-        frontmatter: parsed.frontmatter,
-        dirPath: path.dirname(filePath),
-        skillMdPath: filePath,
-        scope: location.scope,
-        client: location.client,
-        priority: location.priority,
-        trusted: location.trusted,
-        validName: isValidSkillName(name),
-        discoveredAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      console.error(`[SkillDiscovery] Failed to parse skill file ${filePath}:`, error.message);
-      return null;
-    }
-  }
-
-  /**
    * Parse a skill directory containing SKILL.md.
    */
   async _parseSkillDirectory(dirPath, skillMdPath, location) {
@@ -266,21 +250,15 @@ class SkillDiscoveryService {
 
       if (parsed.errors.length > 0) {
         console.warn(`[SkillDiscovery] Errors parsing ${skillMdPath}:`, parsed.errors);
-        // If description is missing, skip (essential for catalog)
         if (!parsed.frontmatter.description) {
           return null;
         }
       }
 
-      if (parsed.warnings.length > 0) {
-        console.warn(`[SkillDiscovery] Warnings for ${skillMdPath}:`, parsed.warnings);
-      }
-
-      // Use directory name as fallback for name
+      // Use directory name as fallback for name (spec: name must match dir name)
       const dirName = path.basename(dirPath);
       const name = parsed.frontmatter.name || dirName;
 
-      // Check if name matches directory name (spec requirement)
       if (parsed.frontmatter.name && parsed.frontmatter.name !== dirName) {
         console.warn(`[SkillDiscovery] Skill name "${parsed.frontmatter.name}" doesn't match directory "${dirName}" at ${dirPath}`);
       }
@@ -308,11 +286,10 @@ class SkillDiscoveryService {
 
   /**
    * Get the compact catalog for progressive disclosure (Tier 1).
-   * Returns name + description only.
+   * Returns name + description for ALL discovered skills.
    */
   getSkillCatalog() {
     return Array.from(this.skills.values())
-      .filter((skill) => skill.scope !== 'builtin') // Builtins are auto-registered in DB
       .map((skill) => ({
         name: skill.name,
         description: skill.description,
@@ -401,7 +378,6 @@ class SkillDiscoveryService {
     const skill = this.skills.get(skillName);
     if (!skill) return null;
 
-    // Security: ensure the resolved path is within the skill directory
     const fullPath = path.resolve(skill.dirPath, resourcePath);
     if (!fullPath.startsWith(path.resolve(skill.dirPath))) {
       throw new Error('Resource path escapes skill directory');
@@ -420,58 +396,6 @@ class SkillDiscoveryService {
   isProjectLevel(name) {
     const skill = this.skills.get(name);
     return skill ? skill.scope === 'project' : false;
-  }
-
-  /**
-   * Auto-register builtin skills into the database so they appear in the UI.
-   * Uses is_builtin=1 and a deterministic ID to prevent duplicates.
-   */
-  async _autoRegisterBuiltinSkills() {
-    const builtinSkills = Array.from(this.skills.values()).filter((s) => s.scope === 'builtin');
-    if (builtinSkills.length === 0) return;
-
-    try {
-      const { default: SkillModel } = await import('../models/SkillModel.js');
-      let registered = 0;
-
-      for (const skill of builtinSkills) {
-        // Deterministic ID so re-runs update instead of duplicate
-        const id = `builtin-${skill.name}`;
-
-        try {
-          const existing = await SkillModel.findById(id);
-          if (existing) {
-            // Fix icon if it was set to an emoji (not a valid CSS class)
-            if (existing.icon && !existing.icon.startsWith('fa')) {
-              await SkillModel.createOrUpdate(id, { ...existing, icon: 'fas fa-puzzle-piece', isBuiltin: 1 }, existing.user_id || 'system');
-            }
-            continue;
-          }
-
-          await SkillModel.createOrUpdate(id, {
-            name: skill.displayName || skill.name,
-            description: skill.description,
-            instructions: skill.instructions || '',
-            license: skill.frontmatter?.license || '',
-            compatibility: skill.frontmatter?.compatibility || '',
-            metadata: JSON.stringify(skill.frontmatter?.metadata || {}),
-            allowedTools: JSON.stringify(skill.frontmatter?.['allowed-tools'] || []),
-            icon: 'fas fa-puzzle-piece',
-            category: skill.frontmatter?.metadata?.category || 'general',
-            isBuiltin: 1,
-          }, 'system');
-          registered++;
-        } catch (err) {
-          console.warn(`[SkillDiscovery] Failed to register builtin skill "${skill.name}":`, err.message);
-        }
-      }
-
-      if (registered > 0) {
-        console.log(`[SkillDiscovery] Auto-registered ${registered} builtin skills into database.`);
-      }
-    } catch (error) {
-      console.warn('[SkillDiscovery] Auto-registration failed (non-fatal):', error.message);
-    }
   }
 
   /**

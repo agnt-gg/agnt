@@ -1,6 +1,7 @@
 /**
  * Skill validation and parsing utilities for the Agent Skills standard (agentskills.io)
  */
+import yaml from 'js-yaml';
 
 /**
  * Validate a skill name against the Agent Skills specification.
@@ -31,6 +32,8 @@ export function toKebabCase(name) {
 
 /**
  * Parse a SKILL.md file content into structured data.
+ * Uses js-yaml for robust YAML parsing (handles multiline, colons, block scalars, etc.).
+ * Falls back to loose markdown format for files without YAML frontmatter.
  * Returns { frontmatter, instructions, errors, warnings }.
  */
 export function parseSkillMd(content) {
@@ -49,80 +52,37 @@ export function parseSkillMd(content) {
   // Parse YAML frontmatter (between --- delimiters)
   const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
   if (!fmMatch) {
-    // Fallback: parse loose markdown format (# Title, ## Description, ## When to Use, --- separator)
+    // Fallback: parse loose markdown format (# Title, ## Description, --- separator)
     return _parseLooseFormat(content, result);
   }
 
   const yamlStr = fmMatch[1];
   result.instructions = fmMatch[2].trim();
 
-  // Simple YAML parser for frontmatter fields
-  const parsed = {};
-  let currentKey = null;
-  let currentArray = null;
-  let inMetadata = false;
-
-  for (const line of yamlStr.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    // Array item
-    if (trimmed.startsWith('- ') && currentKey) {
-      if (!currentArray) currentArray = [];
-      currentArray.push(trimmed.slice(2).replace(/^["']|["']$/g, ''));
-      continue;
-    }
-
-    // Save previous array
-    if (currentKey && currentArray) {
-      parsed[currentKey] = currentArray;
-      currentArray = null;
-    }
-
-    // Nested key (indented) for metadata
-    if (line.startsWith('  ') && inMetadata) {
-      const nestedMatch = trimmed.match(/^([\w][\w-]*)\s*:\s*(.*)$/);
-      if (nestedMatch) {
-        if (!parsed.metadata) parsed.metadata = {};
-        parsed.metadata[nestedMatch[1]] = nestedMatch[2].replace(/^["']|["']$/g, '');
-      }
-      continue;
-    }
-
-    // Top-level key: value
-    const kvMatch = trimmed.match(/^([\w-]+)\s*:\s*(.*)$/);
-    if (kvMatch) {
-      currentKey = kvMatch[1];
-      inMetadata = currentKey === 'metadata';
-      const val = kvMatch[2].replace(/^["']|["']$/g, '').trim();
-      if (val) {
-        parsed[currentKey] = val;
-      }
-    }
+  // Parse YAML with js-yaml (handles multiline, colons in values, block scalars, nested objects)
+  let parsed = {};
+  try {
+    parsed = yaml.load(yamlStr) || {};
+  } catch (yamlError) {
+    result.warnings.push(`YAML parse warning: ${yamlError.message}`);
+    // Fallback to simple regex parser for malformed YAML
+    parsed = _fallbackYamlParse(yamlStr);
   }
 
-  // Save trailing array
-  if (currentKey && currentArray) {
-    parsed[currentKey] = currentArray;
-  }
-
-  // Map parsed YAML to frontmatter
+  // Map parsed YAML to frontmatter (spec fields only: name, description, license, compatibility, metadata, allowed-tools)
   result.frontmatter = {
-    name: parsed.name || null,
-    description: parsed.description || null,
-    license: parsed.license || null,
-    compatibility: parsed.compatibility || null,
-    metadata: parsed.metadata || null,
+    name: _str(parsed.name),
+    description: _str(parsed.description),
+    license: _str(parsed.license),
+    compatibility: _str(parsed.compatibility),
+    metadata: parsed.metadata && typeof parsed.metadata === 'object' ? parsed.metadata : null,
     'allowed-tools': null,
   };
 
   // Handle allowed-tools: support both space-delimited string and YAML array
-  if (parsed['allowed-tools']) {
-    if (Array.isArray(parsed['allowed-tools'])) {
-      result.frontmatter['allowed-tools'] = parsed['allowed-tools'].join(' ');
-    } else {
-      result.frontmatter['allowed-tools'] = parsed['allowed-tools'];
-    }
+  const at = parsed['allowed-tools'];
+  if (at) {
+    result.frontmatter['allowed-tools'] = Array.isArray(at) ? at.join(' ') : String(at);
   }
 
   // Validate required fields
@@ -144,6 +104,53 @@ export function parseSkillMd(content) {
 }
 
 /**
+ * Coerce a value to string or null. Handles numbers, booleans, etc. from YAML.
+ */
+function _str(val) {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'string') return val || null;
+  return String(val);
+}
+
+/**
+ * Fallback regex-based YAML parser for malformed YAML that js-yaml rejects.
+ * Handles simple key:value pairs and one level of nesting for metadata.
+ */
+function _fallbackYamlParse(yamlStr) {
+  const parsed = {};
+  let currentKey = null;
+  let inMetadata = false;
+
+  for (const line of yamlStr.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    // Nested key (indented) for metadata
+    if (line.startsWith('  ') && inMetadata) {
+      const nestedMatch = trimmed.match(/^([\w][\w.-]*)\s*:\s*(.*)$/);
+      if (nestedMatch) {
+        if (!parsed.metadata) parsed.metadata = {};
+        parsed.metadata[nestedMatch[1]] = nestedMatch[2].replace(/^["']|["']$/g, '');
+      }
+      continue;
+    }
+
+    // Top-level key: value
+    const kvMatch = trimmed.match(/^([\w-]+)\s*:\s*(.*)$/);
+    if (kvMatch) {
+      currentKey = kvMatch[1];
+      inMetadata = currentKey === 'metadata';
+      const val = kvMatch[2].replace(/^["']|["']$/g, '').trim();
+      if (val) {
+        parsed[currentKey] = val;
+      }
+    }
+  }
+
+  return parsed;
+}
+
+/**
  * Parse a loose markdown skill file (no YAML frontmatter).
  * Expected format: # Name, ## Description, optional ## When to Use / ## Source, then --- separator before instructions body.
  * Compatible with community skill formats (e.g., Anthropic skills, obra/superpowers).
@@ -158,13 +165,16 @@ function _parseLooseFormat(content, result) {
     ? displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     : null;
 
-  // Extract ## sections
+  // Extract ## sections from header only (before --- separator)
+  const separatorLineIndex = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  const headerLines = separatorLineIndex !== -1 ? lines.slice(0, separatorLineIndex) : lines;
+
   let description = '';
   let source = '';
   const sections = {};
   let currentSection = null;
 
-  for (const line of lines) {
+  for (const line of headerLines) {
     const sectionMatch = line.match(/^## (.+)/);
     if (sectionMatch) {
       currentSection = sectionMatch[1].trim().toLowerCase();
@@ -220,46 +230,24 @@ function _parseLooseFormat(content, result) {
  * Serialize a skill object into SKILL.md format (YAML frontmatter + markdown body).
  */
 export function serializeSkillMd(skill) {
-  const yamlLines = [];
+  const fm = {};
 
-  // Required fields
-  if (skill.name) yamlLines.push(`name: ${quoteYamlValue(skill.name)}`);
-  if (skill.description) yamlLines.push(`description: ${quoteYamlValue(skill.description)}`);
-
-  // Optional fields
-  if (skill.license) yamlLines.push(`license: ${quoteYamlValue(skill.license)}`);
-  if (skill.compatibility) yamlLines.push(`compatibility: ${quoteYamlValue(skill.compatibility)}`);
+  if (skill.name) fm.name = skill.name;
+  if (skill.description) fm.description = skill.description;
+  if (skill.license) fm.license = skill.license;
+  if (skill.compatibility) fm.compatibility = skill.compatibility;
 
   // allowed-tools as space-delimited string per spec
   const allowedTools = normalizeAllowedTools(skill.allowed_tools || skill.allowedTools);
-  if (allowedTools) {
-    yamlLines.push(`allowed-tools: ${quoteYamlValue(allowedTools)}`);
-  }
+  if (allowedTools) fm['allowed-tools'] = allowedTools;
 
-  // Metadata as nested YAML
+  // Metadata as nested map
   const metadata = normalizeMetadata(skill.metadata);
-  if (metadata && Object.keys(metadata).length > 0) {
-    yamlLines.push('metadata:');
-    for (const [k, v] of Object.entries(metadata)) {
-      yamlLines.push(`  ${k}: ${quoteYamlValue(String(v))}`);
-    }
-  }
+  if (metadata && Object.keys(metadata).length > 0) fm.metadata = metadata;
 
-  const frontmatter = `---\n${yamlLines.join('\n')}\n---`;
+  const frontmatter = `---\n${yaml.dump(fm, { lineWidth: -1, quotingType: '"', forceQuotes: false }).trim()}\n---`;
   const body = skill.instructions || '';
   return `${frontmatter}\n\n${body}\n`;
-}
-
-/**
- * Quote a YAML value if it contains characters that could break parsing.
- */
-function quoteYamlValue(val) {
-  if (!val) return '""';
-  // Quote if contains colons, quotes, or special YAML chars
-  if (/[:#{}[\],&*?|>!%@`]/.test(val) || val.includes('"') || val.includes("'")) {
-    return `"${val.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-  }
-  return val;
 }
 
 /**
@@ -268,12 +256,10 @@ function quoteYamlValue(val) {
 function normalizeAllowedTools(tools) {
   if (!tools) return null;
   if (typeof tools === 'string') {
-    // Could be JSON array string or already space-delimited
     try {
       const parsed = JSON.parse(tools);
       if (Array.isArray(parsed)) return parsed.join(' ');
     } catch (e) {
-      // Already a string (possibly space-delimited)
       return tools.trim() || null;
     }
   }

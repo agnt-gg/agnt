@@ -259,6 +259,14 @@ async function deferredInit() {
     console.warn('[Server] Codex thread cache initialization failed (non-fatal):', error);
   }
 
+  // Bootstrap builtin skills to ~/.agnt/skills/ (first run or app update)
+  try {
+    const { bootstrapBuiltinSkills } = await import('./src/utils/builtinSkillBootstrap.js');
+    await bootstrapBuiltinSkills();
+  } catch (error) {
+    console.warn('[Server] Builtin skill bootstrap failed (non-fatal):', error);
+  }
+
   // Initialize Agent Skills discovery (agentskills.io standard)
   try {
     const { default: SkillDiscoveryService } = await import('./src/services/SkillDiscoveryService.js');

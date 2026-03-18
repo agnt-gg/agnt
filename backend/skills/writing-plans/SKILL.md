@@ -1,14 +1,7 @@
-# Writing Plans
-
-## Description
-Use when you have a spec or requirements for a multi-step task, before touching code
-
-## Source
-obra (obra/superpowers)
-
-## When to Use
-Use when you have a spec or requirements for a multi-step task, before touching code
-
+---
+name: writing-plans
+description: "Use when you have a spec or requirements for a multi-step task, before touching code"
+allowed-tools: Read
 ---
 
 # Writing Plans

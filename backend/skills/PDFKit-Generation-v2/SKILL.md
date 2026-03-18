@@ -1,9 +1,7 @@
-# PDFKit Generation v2
-
-## Description
-
-Generate professional PDFs using PDFKit in Node.js with AGNT brand styling, embedded images, and proper handling of large scripts. Use this skill when creating pitch decks, reports, branded documents, or styled PDFs. Also use when the user mentions PDF generation, document creation with images, or wants to produce any kind of professional PDF output — even if they don't explicitly say "PDFKit." This skill covers the critical workflow for bypassing command-line size limits, image embedding (Sharp + file path), Unicode-safe character usage, ES module compatibility, and reusable design patterns.
-
+---
+name: pdfkit-generation-v2
+description: Generate professional PDFs using PDFKit in Node.js with AGNT brand styling, embedded images, and proper handling of large scripts. Use this skill when creating pitch decks, reports, branded documents, or styled PDFs. Also use when the user mentions PDF generation, document creation with images, or wants to produce any kind of professional PDF output.
+allowed-tools: Bash Read Write Edit
 ---
 
 # PDFKit Generation Guide v2
