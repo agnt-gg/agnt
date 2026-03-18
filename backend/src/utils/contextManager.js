@@ -93,7 +93,37 @@ function truncateContent(content, maxTokens) {
 }
 
 /**
- * Summarize old messages to save tokens
+ * Group messages into atomic units that must stay together.
+ * An assistant message with tool_calls + its following tool result messages form one unit.
+ * Everything else is its own unit.
+ */
+function groupMessageUnits(messages) {
+  const units = [];
+  let i = 0;
+  while (i < messages.length) {
+    const msg = messages[i];
+    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+      // Collect this assistant message + all following tool results
+      const group = [msg];
+      let j = i + 1;
+      while (j < messages.length && messages[j].role === 'tool') {
+        group.push(messages[j]);
+        j++;
+      }
+      units.push(group);
+      i = j;
+    } else {
+      units.push([msg]);
+      i++;
+    }
+  }
+  return units;
+}
+
+/**
+ * Summarize old messages to save tokens.
+ * Keeps system message + recent message units (respecting tool call/result pairs).
+ * Builds a meaningful summary of discarded messages.
  */
 function summarizeMessages(messages, maxSummaryTokens = 500) {
   if (messages.length <= 2) return messages;
@@ -101,22 +131,53 @@ function summarizeMessages(messages, maxSummaryTokens = 500) {
   const totalTokens = estimateMessagesTokens(messages);
   if (totalTokens <= maxSummaryTokens) return messages;
 
-  // Keep first (system) and last few messages, summarize the middle
-  const systemMessage = messages[0];
-  const recentMessages = messages.slice(-3); // Keep last 3 messages
-  const middleMessages = messages.slice(1, -3);
+  const systemMessage = messages[0]?.role === 'system' ? messages[0] : null;
+  const nonSystemMessages = systemMessage ? messages.slice(1) : [...messages];
+  const units = groupMessageUnits(nonSystemMessages);
 
-  if (middleMessages.length === 0) return messages;
+  if (units.length <= 1) return messages;
 
-  // Create summary of middle messages
-  const summaryContent = `[Previous conversation summary: ${middleMessages.length} messages covering various topics and tool usage. Key context preserved in recent messages.]`;
+  // Keep as many recent units as fit, working backwards
+  const systemTokens = systemMessage ? estimateMessagesTokens([systemMessage]) : 0;
+  const summaryReserve = 200; // tokens for the summary message
+  let budget = maxSummaryTokens - systemTokens - summaryReserve;
+  const keptUnits = [];
+  for (let i = units.length - 1; i >= 0; i--) {
+    const unitTokens = estimateMessagesTokens(units[i]);
+    if (budget - unitTokens < 0 && keptUnits.length > 0) break;
+    keptUnits.unshift(units[i]);
+    budget -= unitTokens;
+  }
 
-  const summaryMessage = {
-    role: 'system',
-    content: summaryContent,
-  };
+  const discardedUnits = units.slice(0, units.length - keptUnits.length);
+  if (discardedUnits.length === 0) return messages;
 
-  return [systemMessage, summaryMessage, ...recentMessages];
+  // Build meaningful summary from discarded messages
+  const toolNames = new Set();
+  let userTopics = [];
+  for (const unit of discardedUnits) {
+    for (const msg of unit) {
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        msg.tool_calls.forEach((tc) => {
+          const name = tc.function?.name || tc.name;
+          if (name) toolNames.add(name);
+        });
+      }
+      if (msg.role === 'user' && msg.content) {
+        userTopics.push(msg.content.substring(0, 80));
+      }
+    }
+  }
+  const toolList = toolNames.size > 0 ? ` Tools used: ${[...toolNames].join(', ')}.` : '';
+  const topicList = userTopics.length > 0
+    ? ` User topics: ${userTopics.map((t) => `"${t}"`).join('; ')}.`
+    : '';
+  const summaryContent = `[Previous conversation: ${discardedUnits.length} message groups were summarized to fit context.${toolList}${topicList} The conversation continues below with recent context.]`;
+
+  const summaryMessage = { role: 'system', content: summaryContent };
+  const recentMessages = keptUnits.flat();
+
+  return [systemMessage, summaryMessage, ...recentMessages].filter(Boolean);
 }
 
 /**
@@ -175,20 +236,19 @@ function manageContext(messages, model, tools = [], provider = null) {
       currentTokens = estimateMessagesTokens(managedMessages);
     }
 
-    // Strategy 3: Keep system message + most recent messages (preserving order)
+    // Strategy 3: Keep system message + most recent message units (preserving tool call pairs)
     if (currentTokens > availableTokens) {
       const systemMessage = managedMessages.find((m) => m.role === 'system');
-      // Keep messages in their original order - just take the most recent ones
-      // This preserves the required assistant->tool message pairing
       const nonSystemMessages = managedMessages.filter((m) => m.role !== 'system');
-      // Keep the last N messages that fit, working backwards
+      // Group messages into atomic units (assistant+tool pairs stay together)
+      const units = groupMessageUnits(nonSystemMessages);
       let kept = [];
       let keptTokens = estimateMessagesTokens(systemMessage ? [systemMessage] : []);
-      for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
-        const msgTokens = estimateMessagesTokens([nonSystemMessages[i]]);
-        if (keptTokens + msgTokens > availableTokens) break;
-        kept.unshift(nonSystemMessages[i]);
-        keptTokens += msgTokens;
+      for (let i = units.length - 1; i >= 0; i--) {
+        const unitTokens = estimateMessagesTokens(units[i]);
+        if (keptTokens + unitTokens > availableTokens && kept.length > 0) break;
+        kept.unshift(...units[i]);
+        keptTokens += unitTokens;
       }
 
       managedMessages = [systemMessage, ...kept].filter(Boolean);

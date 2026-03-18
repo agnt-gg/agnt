@@ -8,9 +8,9 @@
  * API failures (keeps existing fallbacks).
  *
  * Usage:
- *   node scripts/update-fallback-models.js                   # Update all providers
- *   node scripts/update-fallback-models.js --provider groq    # Update specific provider
- *   node scripts/update-fallback-models.js --dry-run          # Show changes without writing
+ *   node src/services/ai/scripts/update-fallback-models.js                   # Update all providers
+ *   node src/services/ai/scripts/update-fallback-models.js --provider groq    # Update specific provider
+ *   node src/services/ai/scripts/update-fallback-models.js --dry-run          # Show changes without writing
  *
  * Requires API keys in .env (loaded automatically).
  */
@@ -123,7 +123,7 @@ const dryRun = !!args['dry-run'];
 const targetProvider = args.provider || null;
 
 // Dynamic import of providerConfigs
-const configPath = resolve(__dirname, '../src/services/ai/providerConfigs.js');
+const configPath = resolve(__dirname, '../providerConfigs.js');
 const { getAllProviderConfigs } = await import(`file://${configPath.replace(/\\/g, '/')}`);
 
 const allConfigs = getAllProviderConfigs();

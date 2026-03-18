@@ -56,6 +56,7 @@
                 :dataCache="dataCache"
                 @toggle-tool="toggleToolCallExpansion"
                 @provider-connected="handleProviderConnected"
+                @edit-message="handleEditMessage"
               />
             </TransitionGroup>
 
@@ -463,6 +464,34 @@ export default {
       await store.dispatch('chat/startStreamingConversation', {
         userInput: input,
         files: files,
+        provider: store.state.aiProvider.selectedProvider,
+        model: store.state.aiProvider.selectedModel,
+        reasoningEnabled: store.state.aiProvider.reasoningEnabled,
+      });
+    };
+
+    // Edit & resend: truncate from edited message, re-add with new content, resend
+    const handleEditMessage = async ({ messageId, newContent }) => {
+      const convId = store.state.chat.activeConversationId;
+      if (!convId || store.state.chat.isStreaming) return;
+
+      // Truncate conversation from this message onward
+      store.commit('chat/SCOPED_TRUNCATE_FROM', { conversationId: convId, messageId });
+
+      // Add the edited message as a new user message
+      const editedMessage = {
+        id: generateMessageId(),
+        role: 'user',
+        content: newContent,
+        timestamp: Date.now(),
+      };
+      store.commit('chat/SCOPED_ADD_MESSAGE', { conversationId: convId, message: editedMessage });
+
+      nextTick(() => scrollToBottom());
+
+      // Resend from this point
+      await store.dispatch('chat/startStreamingConversation', {
+        userInput: newContent,
         provider: store.state.aiProvider.selectedProvider,
         model: store.state.aiProvider.selectedModel,
         reasoningEnabled: store.state.aiProvider.reasoningEnabled,
@@ -1446,6 +1475,7 @@ export default {
       systemActivities,
       clearActivities,
       handleUserInputSubmit,
+      handleEditMessage,
       handlePanelAction,
       handleScreenChange,
       handleProviderConnected,

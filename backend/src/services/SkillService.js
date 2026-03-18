@@ -227,8 +227,11 @@ You have the above skills assigned. Follow the instructions defined in each skil
         return res.status(400).json({ error: 'Description must be 1024 characters or less' });
       }
 
+      // Use displayName (from loose format) for a friendlier name, fallback to sanitizedName
+      const displayName = parsed.frontmatter.displayName || sanitizedName;
+
       const skillData = {
-        name: sanitizedName,
+        name: displayName,
         description,
         instructions: parsed.instructions || '',
         category: parsed.frontmatter.category || 'general',

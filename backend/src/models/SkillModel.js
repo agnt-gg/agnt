@@ -68,8 +68,8 @@ class SkillModel {
   static delete(id, userId) {
     return new Promise((resolve, reject) => {
       db.run(
-        `DELETE FROM skills WHERE id = ? AND (user_id = ? OR is_builtin = 0)`,
-        [id, userId],
+        `DELETE FROM skills WHERE id = ?`,
+        [id],
         function (err) {
           if (err) reject(err);
           else resolve(this.changes);

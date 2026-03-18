@@ -2,6 +2,60 @@ import { Message, ChatWindow } from '@/views/_components/base/ChatWindow';
 import { API_CONFIG } from '@/tt.config.js';
 
 const MAX_MESSAGES = 100; // Limit messages to prevent memory leaks
+const MAX_TOOL_RESULT_CHARS = 2000; // Cap tool results in history to avoid huge payloads
+
+/**
+ * Build chat history with proper tool call messages.
+ * Sends OpenAI-compatible format: assistant messages with tool_calls,
+ * followed by role:"tool" result messages. The backend adapters handle
+ * converting to provider-specific formats (Anthropic, Gemini, etc.).
+ */
+function buildChatHistory(messages) {
+  const result = [];
+  const validMessages = messages.filter(
+    (msg) => msg && msg.role && (msg.role === 'user' || msg.role === 'assistant')
+  );
+
+  for (const msg of validMessages) {
+    if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+      // Assistant message with tool_calls attached
+      result.push({
+        role: 'assistant',
+        content: msg.content || '',
+        tool_calls: msg.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.name,
+            arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
+          },
+        })),
+      });
+
+      // Tool result messages
+      for (const tc of msg.toolCalls) {
+        if (tc.result !== undefined || tc.error) {
+          let content;
+          if (tc.error) {
+            content = JSON.stringify({ error: tc.error });
+          } else if (typeof tc.result === 'string') {
+            content = tc.result;
+          } else {
+            content = JSON.stringify(tc.result ?? '');
+          }
+          if (content.length > MAX_TOOL_RESULT_CHARS) {
+            content = content.substring(0, MAX_TOOL_RESULT_CHARS) + '\n[...truncated]';
+          }
+          result.push({ role: 'tool', tool_call_id: tc.id, content });
+        }
+      }
+    } else {
+      result.push({ role: msg.role, content: msg.content || '' });
+    }
+  }
+
+  return result;
+}
 const MAX_IMAGE_CACHE = 50; // LRU limit for image cache
 const MAX_DATA_CACHE = 50; // LRU limit for data cache
 const MAX_AGENT_CONVERSATIONS = 20; // LRU limit for agent conversation cache
@@ -187,6 +241,14 @@ export default {
       const message = state.messages.find((m) => m.id === messageId);
       if (message) {
         message.content = (message.content || '') + delta;
+        // Track content parts for interleaved rendering
+        if (!message.contentParts) message.contentParts = [];
+        const lastPart = message.contentParts[message.contentParts.length - 1];
+        if (lastPart && lastPart.type === 'text') {
+          lastPart.text += delta;
+        } else {
+          message.contentParts.push({ type: 'text', text: delta });
+        }
       }
     },
     APPEND_MESSAGE_REASONING(state, { messageId, delta }) {
@@ -196,8 +258,6 @@ export default {
       }
     },
     ADD_TOOL_CALL(state, { messageId, toolCall }) {
-      console.log('[ADD_TOOL_CALL] Called with messageId:', messageId, 'toolCall:', toolCall);
-      console.log('[ADD_TOOL_CALL] Current messages:', state.messages.map(m => ({ id: m.id, role: m.role })));
       const message = state.messages.find((m) => m.id === messageId);
       if (message) {
         if (!message.toolCalls) {
@@ -206,10 +266,10 @@ export default {
         // Avoid adding duplicates
         if (!message.toolCalls.some((tc) => tc.id === toolCall.id)) {
           message.toolCalls.push(toolCall);
-          console.log('[ADD_TOOL_CALL] Added tool call, message.toolCalls now:', message.toolCalls);
+          // Track content parts for interleaved rendering
+          if (!message.contentParts) message.contentParts = [];
+          message.contentParts.push({ type: 'tool_call', toolCallId: toolCall.id });
         }
-      } else {
-        console.warn('[ADD_TOOL_CALL] Message not found for id:', messageId);
       }
     },
     UPDATE_TOOL_CALL_RESULT(state, { messageId, toolCallId, result, error, status }) {
@@ -558,12 +618,36 @@ export default {
       }
     },
 
+    /**
+     * Remove all messages from a given message ID onward (inclusive).
+     * Used for "edit and resend" — truncates conversation back to that point.
+     */
+    SCOPED_TRUNCATE_FROM(state, { conversationId, messageId }) {
+      const conv = state.conversations[conversationId];
+      if (!conv) return;
+      const idx = conv.messages.findIndex(m => m.id === messageId);
+      if (idx !== -1) {
+        conv.messages.splice(idx);
+      }
+      if (state.activeConversationId === conversationId) {
+        state.messages = conv.messages;
+      }
+    },
+
     SCOPED_APPEND_MESSAGE_CONTENT(state, { conversationId, messageId, delta }) {
       const conv = state.conversations[conversationId];
       if (!conv) return;
       const message = conv.messages.find(m => m.id === messageId);
       if (message) {
         message.content = (message.content || '') + delta;
+        // Track content parts for interleaved rendering
+        if (!message.contentParts) message.contentParts = [];
+        const lastPart = message.contentParts[message.contentParts.length - 1];
+        if (lastPart && lastPart.type === 'text') {
+          lastPart.text += delta;
+        } else {
+          message.contentParts.push({ type: 'text', text: delta });
+        }
       }
     },
 
@@ -584,6 +668,9 @@ export default {
         if (!message.toolCalls) message.toolCalls = [];
         if (!message.toolCalls.some(tc => tc.id === toolCall.id)) {
           message.toolCalls.push(toolCall);
+          // Track content parts for interleaved rendering
+          if (!message.contentParts) message.contentParts = [];
+          message.contentParts.push({ type: 'tool_call', toolCallId: toolCall.id });
         }
       }
     },
@@ -809,14 +896,16 @@ export default {
       commit('SCOPED_SET_STREAMING', { conversationId: convId, value: true });
 
       const token = localStorage.getItem('token');
-      // Read messages from the conversation slot
+      // Read messages from the conversation slot — includes tool call context
       const conv = state.conversations[convId];
-      const chatHistory = conv.messages
-        .filter((msg) => msg && msg.role && (msg.role === 'user' || msg.role === 'assistant'))
-        .map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }));
+      const chatHistory = buildChatHistory(conv.messages);
+
+      // Remove duplicate trailing user message if it matches what we're about to send
+      const deduped = chatHistory.length > 0 &&
+        chatHistory[chatHistory.length - 1].content === userInput &&
+        chatHistory[chatHistory.length - 1].role === 'user'
+        ? chatHistory.slice(0, -1)
+        : chatHistory;
 
       // Create abort controller for this stream
       const abortController = new AbortController();
@@ -837,16 +926,7 @@ export default {
         if (files && files.length > 0) {
           const formData = new FormData();
           formData.append('message', userInput);
-          formData.append(
-            'history',
-            JSON.stringify(
-              chatHistory.length > 0 &&
-                chatHistory[chatHistory.length - 1].content === userInput &&
-                chatHistory[chatHistory.length - 1].role === 'user'
-                ? chatHistory.slice(0, -1)
-                : chatHistory
-            )
-          );
+          formData.append('history', JSON.stringify(deduped));
           if (conv.conversationId && !conv.conversationId.startsWith('temp-')) {
             formData.append('conversationId', conv.conversationId);
           }
@@ -870,12 +950,7 @@ export default {
           headers['Content-Type'] = 'application/json';
           body = JSON.stringify({
             message: userInput,
-            history:
-              chatHistory.length > 0 &&
-              chatHistory[chatHistory.length - 1].content === userInput &&
-              chatHistory[chatHistory.length - 1].role === 'user'
-                ? chatHistory.slice(0, -1)
-                : chatHistory,
+            history: deduped,
             conversationId: conv.conversationId && !conv.conversationId.startsWith('temp-') ? conv.conversationId : undefined,
             provider: provider,
             model: model,
@@ -1230,6 +1305,7 @@ export default {
             timestamp: msg.timestamp,
             metadata: msg.metadata || [],
             toolCalls: msg.toolCalls || [],
+            contentParts: msg.contentParts || [],
             files: msg.files || [],
           })),
           createdAt: messages[0]?.timestamp || Date.now(),
@@ -1469,12 +1545,14 @@ export default {
 
       const token = localStorage.getItem('token');
       const conv = state.conversations[convId];
-      const chatHistory = conv.messages
-        .filter((msg) => msg && msg.role && (msg.role === 'user' || msg.role === 'assistant'))
-        .map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }));
+      const chatHistory = buildChatHistory(conv.messages);
+
+      // Remove duplicate trailing user message if it matches what we're about to send
+      const deduped = chatHistory.length > 0 &&
+        chatHistory[chatHistory.length - 1].content === userInput &&
+        chatHistory[chatHistory.length - 1].role === 'user'
+        ? chatHistory.slice(0, -1)
+        : chatHistory;
 
       const abortController = new AbortController();
       commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: convId, controller: abortController });
@@ -1489,10 +1567,7 @@ export default {
 
         const body = JSON.stringify({
           message: userInput,
-          history:
-            chatHistory.length > 0 && chatHistory[chatHistory.length - 1].content === userInput && chatHistory[chatHistory.length - 1].role === 'user'
-              ? chatHistory.slice(0, -1)
-              : chatHistory,
+          history: deduped,
           provider: provider,
           model: model,
         });

@@ -49,8 +49,8 @@ export function parseSkillMd(content) {
   // Parse YAML frontmatter (between --- delimiters)
   const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
   if (!fmMatch) {
-    result.errors.push('Missing YAML frontmatter (--- delimiters)');
-    return result;
+    // Fallback: parse loose markdown format (# Title, ## Description, ## When to Use, --- separator)
+    return _parseLooseFormat(content, result);
   }
 
   const yamlStr = fmMatch[1];
@@ -138,6 +138,79 @@ export function parseSkillMd(content) {
     result.errors.push('Missing required "description" field in frontmatter');
   } else if (result.frontmatter.description.length > 1024) {
     result.warnings.push('Description exceeds 1024 character recommendation');
+  }
+
+  return result;
+}
+
+/**
+ * Parse a loose markdown skill file (no YAML frontmatter).
+ * Expected format: # Name, ## Description, optional ## When to Use / ## Source, then --- separator before instructions body.
+ * Compatible with community skill formats (e.g., Anthropic skills, obra/superpowers).
+ */
+function _parseLooseFormat(content, result) {
+  const lines = content.split('\n');
+
+  // Extract name from first # heading
+  const nameMatch = lines.find((l) => /^# /.test(l));
+  const displayName = nameMatch ? nameMatch.replace(/^# /, '').trim() : null;
+  const kebabName = displayName
+    ? displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    : null;
+
+  // Extract ## sections
+  let description = '';
+  let source = '';
+  const sections = {};
+  let currentSection = null;
+
+  for (const line of lines) {
+    const sectionMatch = line.match(/^## (.+)/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1].trim().toLowerCase();
+      sections[currentSection] = [];
+      continue;
+    }
+    if (currentSection && !line.match(/^# /)) {
+      sections[currentSection].push(line);
+    }
+  }
+
+  // Pull description from ## Description section (first non-empty line)
+  if (sections['description']) {
+    description = sections['description'].find((l) => l.trim())?.trim() || '';
+  }
+
+  // Pull source if available
+  if (sections['source']) {
+    source = sections['source'].find((l) => l.trim())?.trim() || '';
+  }
+
+  // Instructions: everything after the --- separator, or the whole file if none
+  const separatorIndex = content.indexOf('\n---\n');
+  const instructions = separatorIndex !== -1 ? content.substring(separatorIndex + 5).trim() : content;
+
+  result.frontmatter = {
+    name: kebabName || null,
+    description: description || null,
+    displayName: displayName || null,
+    license: null,
+    compatibility: null,
+    metadata: source ? { source } : null,
+    'allowed-tools': null,
+  };
+  result.instructions = instructions;
+
+  if (!result.frontmatter.name) {
+    result.errors.push('Missing skill name (no # heading found)');
+  } else if (!isValidSkillName(result.frontmatter.name)) {
+    result.warnings.push(
+      `Name "${result.frontmatter.name}" does not conform to Agent Skills spec (kebab-case, 1-64 chars)`
+    );
+  }
+
+  if (!result.frontmatter.description) {
+    result.errors.push('Missing required "description" (no ## Description section found)');
   }
 
   return result;

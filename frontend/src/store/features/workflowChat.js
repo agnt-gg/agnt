@@ -84,6 +84,14 @@ export default {
         const message = conversation.messages.find((m) => m.id === messageId);
         if (message) {
           message.content = (message.content || '') + delta;
+          // Track content parts for interleaved rendering
+          if (!message.contentParts) message.contentParts = [];
+          const lastPart = message.contentParts[message.contentParts.length - 1];
+          if (lastPart && lastPart.type === 'text') {
+            lastPart.text += delta;
+          } else {
+            message.contentParts.push({ type: 'text', text: delta });
+          }
         }
       }
     },
@@ -101,6 +109,9 @@ export default {
           // Avoid adding duplicates
           if (!message.toolCalls.some((tc) => tc.id === toolCall.id)) {
             message.toolCalls.push(toolCall);
+            // Track content parts for interleaved rendering
+            if (!message.contentParts) message.contentParts = [];
+            message.contentParts.push({ type: 'tool_call', toolCallId: toolCall.id });
             saveConversations(state.conversations);
           }
         }

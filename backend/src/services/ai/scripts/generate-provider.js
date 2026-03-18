@@ -8,14 +8,14 @@
  * adding one config object — this script generates that object.
  *
  * Usage:
- *   node scripts/generate-provider.js \
+ *   node src/services/ai/scripts/generate-provider.js \
  *     --name "DeepInfra" \
  *     --key "deepinfra" \
  *     --url "https://api.deepinfra.com/v1/openai" \
  *     --fallback-models "meta-llama/Meta-Llama-3.1-70B-Instruct,mistralai/Mixtral-8x7B"
  *
  *   # Dry run (shows what would be generated)
- *   node scripts/generate-provider.js --name "Test" --key "test" --url "http://localhost:8000/v1" --dry-run
+ *   node src/services/ai/scripts/generate-provider.js --name "Test" --key "test" --url "http://localhost:8000/v1" --dry-run
  */
 
 import { readFileSync } from 'fs';
@@ -59,7 +59,7 @@ function validateInputs(opts) {
 
   // Check for duplicate keys
   try {
-    const configPath = resolve(__dirname, '../src/services/ai/providerConfigs.js');
+    const configPath = resolve(__dirname, '../providerConfigs.js');
     const configContent = readFileSync(configPath, 'utf-8');
     if (configContent.includes(`key: '${opts.key}'`)) {
       errors.push(`--key "${opts.key}" already exists in providerConfigs.js`);
@@ -143,7 +143,7 @@ Provider Template Generator
 ============================
 
 Usage:
-  node scripts/generate-provider.js --name <name> --key <key> --url <baseURL> [options]
+  node src/services/ai/scripts/generate-provider.js --name <name> --key <key> --url <baseURL> [options]
 
 Required:
   --name              Provider display name (e.g., "DeepInfra")

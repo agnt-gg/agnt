@@ -1,13 +1,126 @@
 <template>
-  <div class="message-wrapper" :class="[message.role, { compact }]" ref="messageRef">
+  <div class="message-wrapper" :class="[message.role, { compact, editing: isEditing }]" ref="messageRef">
     <img v-if="message.role === 'assistant' && showAvatar" :src="assistantAvatar" alt="Assistant Avatar" class="message-avatar" />
     <div class="message-content">
       <div class="message-card">
+        <!-- Edit mode for user messages -->
+        <div v-if="isEditing" class="message-edit-container">
+          <textarea
+            ref="editTextarea"
+            v-model="editText"
+            class="message-edit-textarea"
+            @keydown="handleEditKeydown"
+            @input="autoResizeEdit"
+            rows="1"
+          ></textarea>
+          <div class="message-edit-actions">
+            <button class="edit-cancel-btn" @click="cancelEditing">Cancel</button>
+            <button class="edit-send-btn" @click="submitEdit" :disabled="!editText.trim()">
+              Send
+            </button>
+          </div>
+        </div>
+
+        <template v-else>
+        <!-- Edit button for user messages -->
+        <button v-if="message.role === 'user' && !status" class="message-edit-btn" @click="startEditing" title="Edit & resend">
+          <i class="fas fa-pen"></i>
+        </button>
+
         <div v-if="status" class="status-indicator" :class="status.type">
           <div class="status-spinner"></div>
           <span class="status-text">{{ status.text }}</span>
         </div>
-        <p v-if="renderedContent" class="message-text" v-html="renderedContent"></p>
+        <!-- Interleaved content: text and tool calls rendered in order -->
+        <template v-for="(part, partIdx) in renderedParts" :key="partIdx">
+          <p v-if="part.type === 'text' && part.html" class="message-text" v-html="part.html"></p>
+          <div v-else-if="part.type === 'tool_calls'" class="tool-execution-details">
+            <div v-for="tc in part.items" :key="`${message.id}-${tc.index}`" class="tool-call-item">
+              <div class="top-tool-bar">
+                <div class="tool-header" @click="toggleToolCall(tc.index)">
+                  <span class="tool-expansion-icon">
+                    {{ isExpanded(tc.index) ? '▾' : '▸' }}
+                  </span>
+                  <span class="tool-icon">⚙️</span>
+                  <span class="tool-label">{{ tc.toolCall.name }}</span>
+                </div>
+
+                <div v-if="isRunning(tc.toolCall.id)" class="tool-running">
+                  <div class="spinner"></div>
+                  <span>Executing...</span>
+                </div>
+
+                <!-- Stop button for async tools -->
+                <Tooltip text="Stop async tool">
+                  <button v-if="isAsyncToolRunning(tc.toolCall)" @click="stopAsyncTool(tc.toolCall)" class="stop-async-tool-btn">
+                    <i class="fas fa-stop"></i>
+                  </button>
+                </Tooltip>
+              </div>
+
+              <div v-if="isExpanded(tc.index)" class="tool-call-content">
+                <div class="tool-params">
+                  <div class="params-label">Input Parameters:</div>
+                  <pre class="params-content"><code class="language-json" v-html="formatJSON(tc.toolCall.args)"></code></pre>
+                </div>
+                <div v-if="tc.toolCall.result" class="tool-result">
+                  <div class="result-label">Output:</div>
+
+                  <!-- Image Gallery for image generation results -->
+                  <div v-if="hasImages(tc.toolCall.result)" class="tool-images">
+                    <div v-if="extractImages(tc.toolCall.result).length === 1" class="single-image-container">
+                      <img :src="extractImages(tc.toolCall.result)[0]" alt="Generated Image" class="generated-image" />
+                      <div class="image-actions">
+                        <button @click="downloadImage(extractImages(tc.toolCall.result)[0], 'generated-image.png')" class="image-action-btn">
+                          <span class="btn-icon">📥</span>
+                          <span class="btn-text">Download</span>
+                        </button>
+                        <button @click="copyImageToClipboard(extractImages(tc.toolCall.result)[0])" class="image-action-btn">
+                          <span class="btn-icon">📋</span>
+                          <span class="btn-text">Copy</span>
+                        </button>
+                        <button @click="openImageInNewTab(extractImages(tc.toolCall.result)[0])" class="image-action-btn">
+                          <span class="btn-icon">🔍</span>
+                          <span class="btn-text">Open</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div v-else class="image-grid">
+                      <div v-for="(img, idx) in extractImages(tc.toolCall.result)" :key="idx" class="grid-item">
+                        <img :src="img" :alt="`Generated Image ${idx + 1}`" class="grid-image" @click="openImageInNewTab(img)" />
+                        <div class="grid-item-actions">
+                          <Tooltip text="Download" width="auto">
+                            <button @click="downloadImage(img, `generated-image-${idx + 1}.png`)" class="grid-action-btn">📥</button>
+                          </Tooltip>
+                          <Tooltip text="Copy" width="auto">
+                            <button @click="copyImageToClipboard(img)" class="grid-action-btn">📋</button>
+                          </Tooltip>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Regular JSON output for non-image results -->
+                  <pre v-else class="result-content"><code class="language-json" v-html="formatJSON(tc.toolCall.result)"></code></pre>
+                </div>
+                <div v-if="tc.toolCall.error" class="tool-error">
+                  <div class="error-label">Error:</div>
+                  <pre class="error-content"><code v-html="tc.toolCall.error"></code></pre>
+                </div>
+              </div>
+
+              <!-- Inline Goal Progress Widget for autonomous goals -->
+              <GoalProgressWidget
+                v-if="isAutonomousGoalTool(tc.toolCall)"
+                :goalId="extractGoalId(tc.toolCall)"
+                :goalTitle="extractGoalTitle(tc.toolCall)"
+                :taskCount="extractTaskCount(tc.toolCall)"
+                :maxIterations="extractMaxIterations(tc.toolCall)"
+              />
+            </div>
+          </div>
+        </template>
 
         <!-- Uploaded Files Preview (for user messages) -->
         <div v-if="message.files && message.files.length > 0 && message.role === 'user'" class="uploaded-files-preview">
@@ -42,99 +155,12 @@
           </div>
         </div>
 
-        <!-- Tool Execution Details -->
-        <div v-if="message.toolCalls && message.toolCalls.length > 0" class="tool-execution-details">
-          <div v-for="(toolCall, index) in message.toolCalls" :key="`${message.id}-${index}`" class="tool-call-item">
-            <div class="top-tool-bar">
-              <div class="tool-header" @click="toggleToolCall(index)">
-                <span class="tool-expansion-icon">
-                  {{ isExpanded(index) ? '▾' : '▸' }}
-                </span>
-                <span class="tool-icon">⚙️</span>
-                <span class="tool-label">{{ toolCall.name }}</span>
-              </div>
-
-              <div v-if="isRunning(toolCall.id)" class="tool-running">
-                <div class="spinner"></div>
-                <span>Executing...</span>
-              </div>
-
-              <!-- Stop button for async tools -->
-              <Tooltip text="Stop async tool">
-                <button v-if="isAsyncToolRunning(toolCall)" @click="stopAsyncTool(toolCall)" class="stop-async-tool-btn">
-                  <i class="fas fa-stop"></i>
-                </button>
-              </Tooltip>
-            </div>
-
-            <div v-if="isExpanded(index)" class="tool-call-content">
-              <div class="tool-params">
-                <div class="params-label">Input Parameters:</div>
-                <pre class="params-content"><code class="language-json" v-html="formatJSON(toolCall.args)"></code></pre>
-              </div>
-              <div v-if="toolCall.result" class="tool-result">
-                <div class="result-label">Output:</div>
-
-                <!-- Image Gallery for image generation results -->
-                <div v-if="hasImages(toolCall.result)" class="tool-images">
-                  <div v-if="extractImages(toolCall.result).length === 1" class="single-image-container">
-                    <img :src="extractImages(toolCall.result)[0]" alt="Generated Image" class="generated-image" />
-                    <div class="image-actions">
-                      <button @click="downloadImage(extractImages(toolCall.result)[0], 'generated-image.png')" class="image-action-btn">
-                        <span class="btn-icon">📥</span>
-                        <span class="btn-text">Download</span>
-                      </button>
-                      <button @click="copyImageToClipboard(extractImages(toolCall.result)[0])" class="image-action-btn">
-                        <span class="btn-icon">📋</span>
-                        <span class="btn-text">Copy</span>
-                      </button>
-                      <button @click="openImageInNewTab(extractImages(toolCall.result)[0])" class="image-action-btn">
-                        <span class="btn-icon">🔍</span>
-                        <span class="btn-text">Open</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div v-else class="image-grid">
-                    <div v-for="(img, idx) in extractImages(toolCall.result)" :key="idx" class="grid-item">
-                      <img :src="img" :alt="`Generated Image ${idx + 1}`" class="grid-image" @click="openImageInNewTab(img)" />
-                      <div class="grid-item-actions">
-                        <Tooltip text="Download" width="auto">
-                          <button @click="downloadImage(img, `generated-image-${idx + 1}.png`)" class="grid-action-btn">📥</button>
-                        </Tooltip>
-                        <Tooltip text="Copy" width="auto">
-                          <button @click="copyImageToClipboard(img)" class="grid-action-btn">📋</button>
-                        </Tooltip>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Regular JSON output for non-image results -->
-                <pre v-else class="result-content"><code class="language-json" v-html="formatJSON(toolCall.result)"></code></pre>
-              </div>
-              <div v-if="toolCall.error" class="tool-error">
-                <div class="error-label">Error:</div>
-                <pre class="error-content"><code v-html="toolCall.error"></code></pre>
-              </div>
-            </div>
-
-            <!-- Inline Goal Progress Widget for autonomous goals -->
-            <GoalProgressWidget
-              v-if="isAutonomousGoalTool(toolCall)"
-              :goalId="extractGoalId(toolCall)"
-              :goalTitle="extractGoalTitle(toolCall)"
-              :taskCount="extractTaskCount(toolCall)"
-              :maxIterations="extractMaxIterations(toolCall)"
-            />
-          </div>
-        </div>
-
         <div v-if="message.metadata && message.metadata.length > 0" class="message-metadata">
           <span v-for="data in message.metadata" :key="data" class="metadata-tag">
             {{ data }}
           </span>
         </div>
+        </template><!-- end v-else (non-editing mode) -->
       </div>
       <span class="message-time">{{ formatTime(message.timestamp) }}</span>
     </div>
@@ -469,7 +495,7 @@ export default {
       default: false,
     },
   },
-  emits: ['toggle-tool', 'provider-connected', 'open-html-preview'],
+  emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message'],
   setup(props, { emit }) {
     // Get Vuex store for auth token
     const store = useStore();
@@ -490,16 +516,20 @@ export default {
                 }
               }
             }
-          } catch (_) { /* cross-origin */ }
+          } catch (_) {
+            /* cross-origin */
+          }
         }
       } catch (_) {}
       const unique = [...new Set(vars)];
       const rootStyle = getComputedStyle(document.documentElement);
       const bodyStyle = getComputedStyle(document.body);
-      const lines = unique.map((prop) => {
-        const val = bodyStyle.getPropertyValue(prop).trim() || rootStyle.getPropertyValue(prop).trim();
-        return val ? `  ${prop}: ${val};` : null;
-      }).filter(Boolean);
+      const lines = unique
+        .map((prop) => {
+          const val = bodyStyle.getPropertyValue(prop).trim() || rootStyle.getPropertyValue(prop).trim();
+          return val ? `  ${prop}: ${val};` : null;
+        })
+        .filter(Boolean);
       themeStyleTag.value = `<style id="agnt-theme">:root{${lines.join('')}}</style>`;
     }
     watch(
@@ -509,6 +539,52 @@ export default {
     );
 
     const messageRef = ref(null);
+
+    // Edit message state
+    const isEditing = ref(false);
+    const editText = ref('');
+    const editTextarea = ref(null);
+
+    const startEditing = () => {
+      editText.value = props.message.content || '';
+      isEditing.value = true;
+      nextTick(() => {
+        if (editTextarea.value) {
+          editTextarea.value.focus();
+          // Auto-resize
+          editTextarea.value.style.height = 'auto';
+          editTextarea.value.style.height = editTextarea.value.scrollHeight + 'px';
+        }
+      });
+    };
+
+    const cancelEditing = () => {
+      isEditing.value = false;
+      editText.value = '';
+    };
+
+    const submitEdit = () => {
+      if (!editText.value.trim()) return;
+      isEditing.value = false;
+      emit('edit-message', { messageId: props.message.id, newContent: editText.value.trim() });
+    };
+
+    const handleEditKeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submitEdit();
+      } else if (e.key === 'Escape') {
+        cancelEditing();
+      }
+    };
+
+    const autoResizeEdit = () => {
+      if (editTextarea.value) {
+        editTextarea.value.style.height = 'auto';
+        editTextarea.value.style.height = editTextarea.value.scrollHeight + 'px';
+      }
+    };
+
     const showPreviewModal = ref(false);
     const previewHTML = ref('');
     const previewIframe = ref(null);
@@ -567,7 +643,8 @@ export default {
     };
 
     // Inject theme CSS variables + scrollbar hide into an HTML string so iframes match the app theme
-    const noScrollCSS = '<style>html,body{scrollbar-width:none;-ms-overflow-style:none}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}</style>';
+    const noScrollCSS =
+      '<style>html,body{scrollbar-width:none;-ms-overflow-style:none}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}</style>';
     const injectTheme = (html) => {
       const inject = (themeStyleTag.value || '') + noScrollCSS;
       if (/<head[^>]*>/i.test(html)) {
@@ -897,9 +974,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
                   (doc.head || doc.documentElement).appendChild(tmpStyle);
                   const h = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight);
                   tmpStyle.remove();
-                  if (h > 50) iframe.style.height = (h + 2) + 'px';
+                  if (h > 50) iframe.style.height = h + 2 + 'px';
                 }
-              } catch (e) { /* cross-origin — keep default height */ }
+              } catch (e) {
+                /* cross-origin — keep default height */
+              }
             };
             iframeScroller.appendChild(iframe);
 
@@ -1239,8 +1318,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       mathStore.length = 0;
       // Temporarily replace fenced code blocks so math regexes skip them
       const codeBlocks = [];
-      text = text.replace(/```[\s\S]*?```/g, (m) => { codeBlocks.push(m); return `\n<!--CB${codeBlocks.length - 1}-->\n`; });
-      const save = (match) => { mathStore.push(match); return `<!--M${mathStore.length - 1}-->`; };
+      text = text.replace(/```[\s\S]*?```/g, (m) => {
+        codeBlocks.push(m);
+        return `\n<!--CB${codeBlocks.length - 1}-->\n`;
+      });
+      const save = (match) => {
+        mathStore.push(match);
+        return `<!--M${mathStore.length - 1}-->`;
+      };
       text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
       text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
       text = text.replace(/\\\([\s\S]+?\\\)/g, save);
@@ -1634,10 +1719,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             const el = messageRef.value;
             setTimeout(() => {
               MathJax.typesetClear([el]);
-              MathJax.typesetPromise([el])
-                .catch((err) => {
-                  console.error('MathJax rendering error:', err);
-                });
+              MathJax.typesetPromise([el]).catch((err) => {
+                console.error('MathJax rendering error:', err);
+              });
             }, 50);
           }
         }
@@ -1662,117 +1746,137 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     });
 
     // Core render function - extracted from computed for throttling
-    const renderMessageContent = () => {
-      if (typeof props.message.content === 'string') {
-        if (props.message.content.toLowerCase() === 'null' || props.message.content.toLowerCase() === 'undefined') {
-          return '';
+    // Render a single text segment through the markdown/HTML pipeline
+    const renderTextSegment = (text) => {
+      if (!text || typeof text !== 'string') return '';
+      if (text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') return '';
+
+      // USER MESSAGES: Display as plain text, only use code block if it looks like code
+      if (props.message.role === 'user') {
+        const looksLikeCode =
+          text.includes('<!DOCTYPE') ||
+          text.includes('<html') ||
+          text.includes('<script') ||
+          text.includes('<style') ||
+          (text.includes('<') && text.includes('>') && text.split('\n').length > 3) ||
+          (text.includes('function') && text.includes('{') && text.includes('}')) ||
+          (text.includes('const') && text.includes('=') && text.split('\n').length > 2) ||
+          (text.includes('import') && text.includes('from')) ||
+          text.match(/^```/m);
+
+        const escapedContent = text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+
+        if (looksLikeCode) {
+          return `<pre><code>${escapedContent}</code></pre>`;
+        } else {
+          return escapedContent.replace(/\n/g, '<br>');
         }
-
-        let content = props.message.content;
-
-        if (!content) {
-          return '';
-        }
-
-        // USER MESSAGES: Display as plain text, only use code block if it looks like code
-        if (props.message.role === 'user') {
-          const content = props.message.content;
-
-          // Detect if content looks like code (has HTML tags, multiple lines of code-like syntax, etc.)
-          const looksLikeCode =
-            content.includes('<!DOCTYPE') ||
-            content.includes('<html') ||
-            content.includes('<script') ||
-            content.includes('<style') ||
-            (content.includes('<') && content.includes('>') && content.split('\n').length > 3) ||
-            (content.includes('function') && content.includes('{') && content.includes('}')) ||
-            (content.includes('const') && content.includes('=') && content.split('\n').length > 2) ||
-            (content.includes('import') && content.includes('from')) ||
-            content.match(/^```/m); // User explicitly used code fences
-
-          // Escape HTML entities
-          const escapedContent = content
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-
-          if (looksLikeCode) {
-            // Wrap in pre/code block for code-like content
-            return `<pre><code>${escapedContent}</code></pre>`;
-          } else {
-            // Regular text - preserve line breaks but don't use code block
-            return escapedContent.replace(/\n/g, '<br>');
-          }
-        }
-
-        // ASSISTANT MESSAGES: Process as markdown/HTML
-        // Check if message has explicit contentType metadata
-        if (props.message.contentType === 'html') {
-          // Explicitly marked as HTML - sanitize and return
-          return sanitizeHTML(props.message.content);
-        }
-
-        // Handle incomplete code blocks (odd number of ``` fences)
-        const openingFences = (content.match(/```/g) || []).length;
-
-        if (openingFences % 2 !== 0) {
-          if (props.status) {
-            // Still streaming — split: render completed part as markdown, show tail as raw code
-            const lastFenceIndex = content.lastIndexOf('```');
-            const completedContent = content.substring(0, lastFenceIndex);
-            const incompleteBlock = content.substring(lastFenceIndex);
-
-            let renderedCompleted = '';
-            if (completedContent.trim()) {
-              let processedCompleted = completedContent.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
-              renderedCompleted = safeMarkdownToHtml(processedCompleted);
-              renderedCompleted = addTargetBlankToLinks(renderedCompleted);
-            }
-            return renderedCompleted + '<pre><code>' + incompleteBlock.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
-          } else {
-            // Finished — AI was cut off mid-block. Close the fence so it renders properly.
-            content += '\n```';
-          }
-        }
-
-        // Default: Process as Markdown (removed auto-detection to prevent false positives)
-        // Fix spacing issues when sentences are concatenated during streaming
-        // Add space between sentence endings (. ! ? :) and capital letters
-        let processedContent = props.message.content.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3'); // Don't add space if there's already a newline
-
-        let renderedHtml = safeMarkdownToHtml(processedContent);
-
-        // CRITICAL: Resolve image references AFTER markdown conversion
-        // This ensures the HTML structure is complete before we replace image references
-        const imageRefPattern = /\{\{IMAGE_REF:([^}]+)\}\}/g;
-
-        renderedHtml = renderedHtml.replace(imageRefPattern, (match, imageId) => {
-          const cached = props.imageCache.get(imageId);
-          if (cached && cached.data) {
-            return cached.data;
-          }
-          return '';
-        });
-
-        // Wrap tables in a scrollable container so wide tables don't bleed
-        renderedHtml = renderedHtml.replace(/<table\b/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
-
-        // Add target="_blank" to all links in markdown-generated HTML
-        return addTargetBlankToLinks(renderedHtml);
       }
-      return '';
+
+      // ASSISTANT MESSAGES: Process as markdown/HTML
+      if (props.message.contentType === 'html') {
+        return sanitizeHTML(text);
+      }
+
+      let content = text;
+
+      // Handle incomplete code blocks (odd number of ``` fences)
+      const openingFences = (content.match(/```/g) || []).length;
+
+      if (openingFences % 2 !== 0) {
+        if (props.status) {
+          const lastFenceIndex = content.lastIndexOf('```');
+          const completedContent = content.substring(0, lastFenceIndex);
+          const incompleteBlock = content.substring(lastFenceIndex);
+
+          let renderedCompleted = '';
+          if (completedContent.trim()) {
+            let processedCompleted = completedContent.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
+            renderedCompleted = safeMarkdownToHtml(processedCompleted);
+            renderedCompleted = addTargetBlankToLinks(renderedCompleted);
+          }
+          return renderedCompleted + '<pre><code>' + incompleteBlock.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
+        } else {
+          content += '\n```';
+        }
+      }
+
+      let processedContent = content.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
+      let renderedHtml = safeMarkdownToHtml(processedContent);
+
+      // Resolve image references AFTER markdown conversion
+      const imageRefPattern = /\{\{IMAGE_REF:([^}]+)\}\}/g;
+      renderedHtml = renderedHtml.replace(imageRefPattern, (match, imageId) => {
+        const cached = props.imageCache.get(imageId);
+        if (cached && cached.data) {
+          return cached.data;
+        }
+        return '';
+      });
+
+      // Wrap tables in a scrollable container
+      renderedHtml = renderedHtml.replace(/<table\b/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
+
+      return addTargetBlankToLinks(renderedHtml);
+    };
+
+    // Build display parts from contentParts (with fallback for old messages)
+    const getDisplayParts = () => {
+      const parts = props.message.contentParts;
+      if (parts && parts.length > 0) {
+        return parts;
+      }
+      // Fallback for old messages without contentParts
+      const result = [];
+      if (props.message.content) {
+        result.push({ type: 'text', text: props.message.content });
+      }
+      if (props.message.toolCalls && props.message.toolCalls.length > 0) {
+        for (const tc of props.message.toolCalls) {
+          result.push({ type: 'tool_call', toolCallId: tc.id });
+        }
+      }
+      return result;
+    };
+
+    // Build rendered parts array, grouping consecutive tool calls
+    const buildRenderedParts = () => {
+      const displayParts = getDisplayParts();
+      const grouped = [];
+      for (const part of displayParts) {
+        if (part.type === 'tool_call') {
+          const tc = props.message.toolCalls?.find((t) => t.id === part.toolCallId);
+          if (!tc) continue;
+          const tcIndex = props.message.toolCalls.indexOf(tc);
+          const last = grouped[grouped.length - 1];
+          if (last && last.type === 'tool_calls') {
+            last.items.push({ toolCall: tc, index: tcIndex });
+          } else {
+            grouped.push({ type: 'tool_calls', items: [{ toolCall: tc, index: tcIndex }] });
+          }
+        } else if (part.type === 'text') {
+          const html = renderTextSegment(part.text);
+          if (html) {
+            grouped.push({ type: 'text', html });
+          }
+        }
+      }
+      return grouped;
     };
 
     // Throttled rendering: during streaming, cap markdown re-renders to ~15fps
-    const renderedContent = ref('');
+    const renderedParts = ref([]);
     let renderTimer = null;
     let lastRenderTime = 0;
     const RENDER_INTERVAL = 66; // ~15fps during streaming
 
     watch(
-      () => [props.message.content, props.status, props.imageCache],
+      () => [props.message.content, props.message.contentParts?.length, props.message.toolCalls?.length, props.status, props.imageCache],
       () => {
         if (!props.status) {
           // Not streaming - render immediately
@@ -1782,7 +1886,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           }
           // Destroy stale chart/viz instances before DOM is replaced by v-html
           destroyChartInstances();
-          renderedContent.value = renderMessageContent();
+          renderedParts.value = buildRenderedParts();
           lastRenderTime = Date.now();
         } else {
           // Streaming - throttle renders
@@ -1790,17 +1894,15 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           const elapsed = now - lastRenderTime;
 
           if (elapsed >= RENDER_INTERVAL) {
-            // Enough time passed, render now
-            renderedContent.value = renderMessageContent();
+            renderedParts.value = buildRenderedParts();
             lastRenderTime = now;
             if (renderTimer) {
               clearTimeout(renderTimer);
               renderTimer = null;
             }
           } else if (!renderTimer) {
-            // Schedule a render for later
             renderTimer = setTimeout(() => {
-              renderedContent.value = renderMessageContent();
+              renderedParts.value = buildRenderedParts();
               lastRenderTime = Date.now();
               renderTimer = null;
             }, RENDER_INTERVAL - elapsed);
@@ -1889,7 +1991,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       // Direct tool names
       const directMatch = toolCall.name === 'create_and_run_goal' || toolCall.name === 'execute_goal_autonomous';
       // agnt_goals meta-tool with autonomous operations
-      const metaMatch = toolCall.name === 'agnt_goals' && toolCall.args &&
+      const metaMatch =
+        toolCall.name === 'agnt_goals' &&
+        toolCall.args &&
         (toolCall.args.operation === 'create_and_run_goal' || toolCall.args.operation === 'execute_goal_autonomous');
 
       if (!directMatch && !metaMatch) return false;
@@ -2117,7 +2221,16 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
     return {
       messageRef,
-      renderedContent,
+      renderedParts,
+      // Edit message
+      isEditing,
+      editText,
+      editTextarea,
+      startEditing,
+      cancelEditing,
+      submitEdit,
+      handleEditKeydown,
+      autoResizeEdit,
       formatJSON,
       formatTime,
       isExpanded,
@@ -2284,6 +2397,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   min-height: 388px;
   margin-bottom: 16px;
   border-radius: 8px;
+}
+
+.message-text :deep(iframe.html-inline-iframe) {
+  max-height: 800px;
 }
 
 .message-text :deep(p) {
@@ -2817,7 +2934,7 @@ span.nodeLabel p {
 }
 .message-text :deep(.html-inline-iframe) {
   width: 100%;
-  height: 120px; /* initial — auto-sized on load via JS */
+  /* height: 120px;  */
   min-height: unset;
   margin-bottom: 0;
   border: none;
@@ -3816,5 +3933,116 @@ span.nodeLabel p {
   background: transparent;
   border: none;
   border-radius: 0;
+}
+
+/* ========== Edit Message ========== */
+.message-card {
+  position: relative;
+}
+
+.message-edit-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--color-med-navy);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  z-index: 1;
+}
+
+.message-wrapper:hover .message-edit-btn {
+  opacity: 0.6;
+}
+
+.message-edit-btn:hover {
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* When editing, user message stretches full width */
+.message-wrapper.user.editing {
+  max-width: 100%;
+  align-self: stretch;
+}
+
+.message-wrapper.user.editing .message-card {
+  width: 100%;
+  margin-left: 0;
+}
+
+.message-edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.message-edit-textarea {
+  width: 100%;
+  min-height: 40px;
+  max-height: 300px;
+  padding: 10px 12px;
+  background: var(--color-darker-2, #1a1a2e);
+  border: 1px solid var(--color-primary, #6c63ff);
+  border-radius: 8px;
+  color: var(--color-bright-light-navy, #e0e0e0);
+  font-family: inherit;
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.message-edit-textarea:focus {
+  border-color: var(--color-primary, #6c63ff);
+  box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.15);
+}
+
+.message-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.edit-cancel-btn,
+.edit-send-btn {
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.edit-cancel-btn {
+  background: transparent;
+  color: var(--color-med-navy, #8b949e);
+  border: 1px solid var(--terminal-border-color, #30363d);
+}
+
+.edit-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.edit-send-btn {
+  background: var(--color-primary, #6c63ff);
+  color: #fff;
+}
+
+.edit-send-btn:hover {
+  opacity: 0.9;
+}
+
+.edit-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

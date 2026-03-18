@@ -962,13 +962,66 @@ class AnthropicAdapter extends BaseAdapter {
     }));
   }
 
+  /**
+   * Convert OpenAI-format history messages to Anthropic format.
+   * - assistant messages with tool_calls → content array with tool_use blocks
+   * - role:"tool" messages → role:"user" with tool_result content blocks
+   * - Merge consecutive same-role messages (Anthropic requires alternating)
+   */
+  _normalizeHistoryMessages(messages) {
+    const converted = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && !Array.isArray(msg.content)) {
+        // Convert OpenAI-format tool_calls to Anthropic tool_use content blocks
+        const content = [];
+        if (msg.content) {
+          content.push({ type: 'text', text: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) });
+        }
+        for (const tc of msg.tool_calls) {
+          let input = {};
+          try {
+            input = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : (tc.function?.arguments || {});
+          } catch {
+            input = { raw: tc.function?.arguments };
+          }
+          content.push({ type: 'tool_use', id: tc.id, name: tc.function?.name || 'unknown', input });
+        }
+        converted.push({ role: 'assistant', content });
+      } else if (msg.role === 'tool') {
+        // Convert OpenAI-format tool result to Anthropic tool_result content block
+        converted.push({
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: msg.tool_call_id, content: msg.content || '' }],
+        });
+      } else {
+        converted.push(msg);
+      }
+    }
+
+    // Merge consecutive same-role messages (Anthropic requires alternating user/assistant)
+    const merged = [];
+    for (const msg of converted) {
+      const last = merged[merged.length - 1];
+      if (last && last.role === msg.role) {
+        const lastContent = Array.isArray(last.content) ? last.content : [{ type: 'text', text: String(last.content || '') }];
+        const msgContent = Array.isArray(msg.content) ? msg.content : [{ type: 'text', text: String(msg.content || '') }];
+        last.content = [...lastContent, ...msgContent];
+      } else {
+        merged.push({ ...msg });
+      }
+    }
+
+    return merged;
+  }
+
   async call(messages, tools) {
     let lastError;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
         const systemPrompt = messages.find((m) => m.role === 'system')?.content || '';
-        const conversationMessages = messages.filter((m) => m.role !== 'system');
+        const conversationMessages = this._normalizeHistoryMessages(messages.filter((m) => m.role !== 'system'));
 
         // Build system parameter: Claude Code OAuth requires identity prompt as first block
         let systemParam;
@@ -1177,10 +1230,12 @@ Please carefully check the tool schema and ensure all parameters match the expec
       try {
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
 
+        // Normalize OpenAI-format history messages (role:"tool", tool_calls) to Anthropic format
+        const normalizedMessages = this._normalizeHistoryMessages(currentMessages.filter((m) => m.role !== 'system'));
+
         // CRITICAL: Clean up any _inputJsonString fields from message history before sending to Anthropic
         // This can happen if messages are reused across retries or if deletion failed
-        const conversationMessages = currentMessages
-          .filter((m) => m.role !== 'system')
+        const conversationMessages = normalizedMessages
           .map((msg) => {
             if (msg.role === 'assistant' && Array.isArray(msg.content)) {
               return {
@@ -2216,6 +2271,27 @@ class GeminiAdapter extends BaseAdapter {
 
       // Handle different content formats
       let parts = [];
+
+      // Convert OpenAI-format tool_calls on assistant messages to Gemini functionCall parts
+      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && !msg.parts) {
+        if (msg.content) {
+          parts.push({ text: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) });
+        }
+        for (const tc of msg.tool_calls) {
+          let args = {};
+          try { args = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : (tc.function?.arguments || {}); } catch { args = {}; }
+          parts.push({ functionCall: { name: tc.function?.name || 'unknown', args } });
+        }
+        return { role, parts };
+      }
+
+      // Convert OpenAI-format tool result messages to Gemini functionResponse parts
+      if (msg.role === 'tool' && msg.tool_call_id) {
+        let response = {};
+        try { response = typeof msg.content === 'string' ? JSON.parse(msg.content) : (msg.content || {}); } catch { response = { result: msg.content }; }
+        parts.push({ functionResponse: { name: msg.name || 'tool', response } });
+        return { role, parts };
+      }
 
       // Check if message already has parts (vision images added or function responses)
       if (msg.parts) {
