@@ -18,19 +18,23 @@
           ],
           processEscapes: true,
           processEnvironments: true,
-          packages: { '[+]': ['mhchem'] }, // Enable mhchem package
+          packages: { '[+]': ['mhchem'] },
+        },
+        options: {
+          // Disable auto-typesetting via MutationObserver — we call typesetPromise()
+          // explicitly per-message. The observer causes flicker with morphdom streaming.
+          MutationObserver: null,
         },
         svg: {
           fontCache: 'global',
         },
         loader: {
-          load: ['[tex]/mhchem'], // Load mhchem extension
+          load: ['[tex]/mhchem'],
         },
         startup: {
+          typeset: false,
           pageReady: () => {
-            return MathJax.startup.defaultPageReady().then(() => {
-              // console.log('MathJax initial typesetting complete');
-            });
+            return MathJax.startup.defaultPageReady();
           },
         },
       };

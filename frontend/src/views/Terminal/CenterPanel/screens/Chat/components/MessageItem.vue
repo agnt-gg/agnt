@@ -33,7 +33,7 @@
         </div>
         <!-- Interleaved content: text and tool calls rendered in order -->
         <template v-for="(part, partIdx) in renderedParts" :key="partIdx">
-          <p v-if="part.type === 'text' && part.html" class="message-text" v-html="part.html"></p>
+          <div v-if="part.type === 'text' && part.html" class="message-text" v-morph-html="part.html"></div>
           <div v-else-if="part.type === 'tool_calls'" class="tool-execution-details">
             <div v-for="tc in part.items" :key="`${message.id}-${tc.index}`" class="tool-call-item">
               <div class="top-tool-bar">
@@ -306,7 +306,65 @@ import defaultAvatar from '@/assets/images/annie-avatar.png';
 const ProviderSetup = defineAsyncComponent(() => import('./ProviderSetup.vue'));
 import GoalProgressWidget from './GoalProgressWidget.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import morphdom from 'morphdom';
 import { API_CONFIG } from '@/../user.config.js';
+
+// --- v-morph-html directive ---
+// Uses morphdom to diff/patch DOM instead of innerHTML replacement (v-html).
+// Preserves stateful elements (Chart.js canvases, iframes, MathJax) during streaming.
+const PRESERVE_SELECTORS = [
+  '.chartjs-container[data-source-code]',
+  '.d3-container[data-source-code]',
+  '.threejs-container[data-source-code]',
+  '.html-inline-preview-wrapper',
+  '[data-buttons-added]',
+  '[data-image-buttons-added]',
+  '[data-viz-buttons]',
+  '.math-container[data-math-rendered]',
+].join(',');
+
+function shouldPreserve(el) {
+  if (!el || el.nodeType !== 1) return false;
+  if (el.tagName === 'CANVAS') return true;
+  if (el.tagName === 'IFRAME') return true;
+  try { return el.matches(PRESERVE_SELECTORS); } catch { return false; }
+}
+
+const vMorphHtml = {
+  mounted(el, binding) {
+    el.innerHTML = binding.value || '';
+    el._morphHtml = binding.value;
+  },
+  updated(el, binding) {
+    const newHtml = binding.value || '';
+    if (newHtml === el._morphHtml) return;
+    el._morphHtml = newHtml;
+
+    if (!el.childNodes.length) {
+      el.innerHTML = newHtml;
+      return;
+    }
+
+    const wrapper = document.createElement(el.tagName);
+    wrapper.innerHTML = newHtml;
+
+    morphdom(el, wrapper, {
+      childrenOnly: true,
+      onBeforeElUpdated(fromEl, toEl) {
+        if (shouldPreserve(fromEl)) return false;
+        if (fromEl.tagName === 'CODE' && fromEl.classList.contains('hljs') && fromEl.textContent === toEl.textContent) return false;
+        return true;
+      },
+      onBeforeNodeDiscarded(node) {
+        if (node.nodeType === 1 && shouldPreserve(node)) return false;
+        if (node.nodeType === 1) {
+          try { if (node.matches('.viz-action-buttons, .assistant-image-wrapper, .html-code-actions')) return false; } catch {}
+        }
+        return true;
+      },
+    });
+  },
+};
 
 // Lazy-loaded heavy library caches (loaded on first use)
 let _hljs = null;
@@ -460,6 +518,9 @@ export default {
     ProviderSetup,
     Tooltip,
     GoalProgressWidget,
+  },
+  directives: {
+    'morph-html': vMorphHtml,
   },
   props: {
     message: {
@@ -1311,17 +1372,131 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     // Legacy alias for backward compatibility
     const sanitizeHTML = addTargetBlankToLinks;
 
+    // --- Fenced code block extraction (handles nested fences) ---
+    // Showdown can't handle nested fences (```markdown containing ```bash etc.)
+    // We extract outermost blocks first, let showdown process the rest, then restore.
+    // Uses a stack: ```lang pushes, bare ``` pops. When stack empties, outermost block is complete.
+    const fencedBlockStore = [];
+
+    const extractFencedBlocks = (text) => {
+      fencedBlockStore.length = 0;
+      const lines = text.split('\n');
+      const result = [];
+      const fenceStack = []; // stack of { char, len }
+      let blockLines = [];
+      let blockLang = '';
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const stripped = line.trimStart();
+        const fenceMatch = stripped.match(/^(`{3,}|~{3,})(.*)/);
+
+        if (!fenceMatch) {
+          if (fenceStack.length > 0) {
+            blockLines.push(line);
+          } else {
+            result.push(line);
+          }
+          continue;
+        }
+
+        const char = fenceMatch[1][0];
+        const len = fenceMatch[1].length;
+        const info = fenceMatch[2].trim();
+
+        // Closing fence: no info string, same char, >= same length as top of stack
+        if (!info && fenceStack.length > 0) {
+          const top = fenceStack[fenceStack.length - 1];
+          if (top.char === char && len >= top.len) {
+            fenceStack.pop();
+            if (fenceStack.length === 0) {
+              // Outermost fence closed — save the block
+              fencedBlockStore.push({ content: blockLines.join('\n'), lang: blockLang });
+              result.push(`<!--CBLK${fencedBlockStore.length - 1}-->`);
+              blockLines = [];
+              blockLang = '';
+              continue;
+            } else {
+              // Inner fence closed — keep as block content
+              blockLines.push(line);
+              continue;
+            }
+          }
+        }
+
+        // Opening fence
+        if (fenceStack.length === 0) {
+          // Outermost opening
+          blockLang = info.split(/\s/)[0] || '';
+          blockLines = [];
+        } else {
+          // Inner opening — keep as block content
+          blockLines.push(line);
+        }
+        fenceStack.push({ char, len });
+      }
+
+      // Unclosed outermost fence (streaming)
+      if (fenceStack.length > 0 && blockLines.length > 0) {
+        fencedBlockStore.push({ content: blockLines.join('\n'), lang: blockLang, unclosed: true });
+        result.push(`<!--CBLK${fencedBlockStore.length - 1}-->`);
+      }
+
+      return result.join('\n');
+    };
+
+    const restoreFencedBlocks = (html) => {
+      const hashCode = (s) => {
+        let h = 0;
+        for (let i = 0; i < s.length; i++) {
+          h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+        }
+        return Math.abs(h).toString(36);
+      };
+      let vizIdx = 0;
+
+      return html.replace(/(?:<p>\s*)?<!--CBLK(\d+)-->(?:\s*<\/p>)?/g, (_, idx) => {
+        const block = fencedBlockStore[parseInt(idx)];
+        if (!block) return '';
+
+        const escaped = block.content
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+
+        // Sanitize language name to prevent injection
+        const safeLang = (block.lang || '').replace(/[^a-zA-Z0-9_+-]/g, '');
+
+        // Unclosed blocks (still streaming) — show as code until closing fence arrives
+        if (block.unclosed) {
+          const langClass = safeLang ? ` class="${safeLang} language-${safeLang}"` : '';
+          return `<pre><code${langClass}>${escaped}</code></pre>`;
+        }
+
+        // Handle special viz languages (morphdom preserves these during streaming)
+        if (safeLang === 'chartjs') {
+          const id = 'chart-' + hashCode(block.content) + '-' + vizIdx++;
+          return `<div class="chartjs-container" data-chart-id="${id}"><canvas id="${id}"></canvas><code class="chartjs-config" style="display:none">${escaped}</code></div>`;
+        }
+        if (safeLang === 'd3') {
+          const id = 'd3-' + hashCode(block.content) + '-' + vizIdx++;
+          return `<div class="d3-container" data-d3-id="${id}"><code class="d3-code" style="display:none">${escaped}</code></div>`;
+        }
+        if (safeLang === 'threejs') {
+          const id = 'three-' + hashCode(block.content) + '-' + vizIdx++;
+          return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${escaped}</code></div>`;
+        }
+
+        const langClass = safeLang ? ` class="${safeLang} language-${safeLang}"` : '';
+        return `<pre><code${langClass}>${escaped}</code></pre>`;
+      });
+    };
+
     // Protect math from showdown (which eats backslashes). HTML comments survive all contexts.
-    // Fenced code blocks are excluded first so $/$$/\(\) inside code aren't corrupted.
+    // Code blocks are already extracted upstream, so only inline math needs protection here.
     const mathStore = [];
     const protectMath = (text) => {
       mathStore.length = 0;
-      // Temporarily replace fenced code blocks so math regexes skip them
-      const codeBlocks = [];
-      text = text.replace(/```[\s\S]*?```/g, (m) => {
-        codeBlocks.push(m);
-        return `\n<!--CB${codeBlocks.length - 1}-->\n`;
-      });
       const save = (match) => {
         mathStore.push(match);
         return `<!--M${mathStore.length - 1}-->`;
@@ -1330,18 +1505,25 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
       text = text.replace(/\\\([\s\S]+?\\\)/g, save);
       text = text.replace(/\$([^\$\n]+?)\$/g, save);
-      // Restore code blocks
-      text = text.replace(/<!--CB(\d+)-->/g, (_, i) => codeBlocks[parseInt(i)] || '');
       return text;
     };
     const restoreMath = (html) => {
+      let mathIdx = 0;
       return html.replace(/<!--M(\d+)-->/g, (_, i) => {
         let m = (mathStore[parseInt(i)] || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-        // Convert $/$$ delimiters to \(\)/\[\] which MathJax always supports
+        // Hash the content for a stable ID across re-renders
+        let h = 0;
+        for (let c = 0; c < m.length; c++) h = ((h << 5) - h + m.charCodeAt(c)) | 0;
+        const id = 'math-' + Math.abs(h).toString(36) + '-' + mathIdx++;
+        // Wrap in stable container — morphdom preserves these after MathJax typesets them
         if (m.startsWith('$$') && m.endsWith('$$')) {
-          m = '\\[' + m.slice(2, -2) + '\\]';
+          return `<div class="math-container" id="${id}">\\[${m.slice(2, -2)}\\]</div>`;
+        } else if (m.startsWith('\\[') && m.endsWith('\\]')) {
+          return `<div class="math-container" id="${id}">${m}</div>`;
+        } else if (m.startsWith('\\(') && m.endsWith('\\)')) {
+          return `<span class="math-container" id="${id}">${m}</span>`;
         } else if (m.startsWith('$') && m.endsWith('$')) {
-          m = '\\(' + m.slice(1, -1) + '\\)';
+          return `<span class="math-container" id="${id}">\\(${m.slice(1, -1)}\\)</span>`;
         }
         return m;
       });
@@ -1356,8 +1538,15 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         origError.apply(console, args);
       };
       try {
-        const safe = protectMath(text);
-        return restoreMath(markdownConverter.makeHtml(safe));
+        // 1. Extract fenced code blocks (handles nested fences that showdown can't)
+        const withoutBlocks = extractFencedBlocks(text);
+        // 2. Protect math from showdown mangling
+        const safe = protectMath(withoutBlocks);
+        // 3. Convert markdown → HTML
+        let html = restoreMath(markdownConverter.makeHtml(safe));
+        // 4. Restore code blocks as proper <pre><code> (or viz containers)
+        html = restoreFencedBlocks(html);
+        return html;
       } catch (e) {
         // Showdown can stack-overflow on pathological content (deeply nested spans, etc.)
         console.warn('[MessageItem] Markdown rendering failed, falling back to escaped text:', e.message);
@@ -1662,6 +1851,21 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       });
     };
 
+    // Typeset individual math containers — same pattern as charts.
+    // Each .math-container has a stable ID so morphdom preserves it after typesetting.
+    const renderMathElements = () => {
+      nextTick(() => {
+        if (!messageRef.value || typeof MathJax === 'undefined' || !MathJax.typesetPromise) return;
+        const containers = messageRef.value.querySelectorAll('.math-container:not([data-math-rendered])');
+        if (containers.length === 0) return;
+        const els = Array.from(containers);
+        els.forEach((el) => el.setAttribute('data-math-rendered', 'true'));
+        MathJax.typesetPromise(els).catch((err) => {
+          console.error('MathJax rendering error:', err);
+        });
+      });
+    };
+
     const destroyChartInstances = () => {
       chartInstances.value.forEach((instance) => {
         try {
@@ -1700,29 +1904,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             });
           }
 
-          // Only render charts/D3 when message is fully streamed (status is null)
+          // morphdom preserves rendered viz/math elements — safe to render during streaming
+          renderChartJsDiagrams();
+          renderD3Diagrams();
+          renderThreeJsDiagrams();
+          renderMathElements();
+
+          // Imperative DOM manipulation (replaceWith, appendChild) conflicts with
+          // morphdom during streaming — render once when message is complete.
           if (!props.status) {
-            renderChartJsDiagrams();
-            renderD3Diagrams();
-            renderThreeJsDiagrams();
             addVizActionButtons();
-          }
-
-          // Add HTML code action buttons
-          addHTMLCodeButtons();
-
-          // Add image action buttons to assistant messages
-          addImageActionButtons();
-
-          // Trigger MathJax rendering - scoped to this element only
-          if (typeof MathJax !== 'undefined' && MathJax.typesetPromise && messageRef.value) {
-            const el = messageRef.value;
-            setTimeout(() => {
-              MathJax.typesetClear([el]);
-              MathJax.typesetPromise([el]).catch((err) => {
-                console.error('MathJax rendering error:', err);
-              });
-            }, 50);
+            addHTMLCodeButtons();
+            addImageActionButtons();
           }
         }
       });
@@ -1884,8 +2077,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             clearTimeout(renderTimer);
             renderTimer = null;
           }
-          // Destroy stale chart/viz instances before DOM is replaced by v-html
-          destroyChartInstances();
+          // morphdom preserves chart/viz instances — no need to destroy before re-render
           renderedParts.value = buildRenderedParts();
           lastRenderTime = Date.now();
         } else {

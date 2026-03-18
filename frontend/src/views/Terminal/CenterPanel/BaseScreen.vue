@@ -84,8 +84,8 @@
               :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : 'Type a message or command...'"
               rows="1"
               :disabled="isInputDisabled"
-              @input="autoResizeTextarea"
-              @keydown.enter.exact.prevent="triggerSubmit"
+              @input="handleTextareaInput"
+              @keydown="handleTextareaKeydown"
               @paste="handlePaste"
             ></textarea>
             <input
@@ -193,6 +193,20 @@
         @close="closeToolSelector"
       />
     </Teleport>
+
+    <!-- Command Menu (@mentions, /commands, #references) -->
+    <Teleport to="body">
+      <CommandMenu
+        :isOpen="commandMenu.isOpen.value"
+        :items="commandMenu.items.value"
+        :selectedIndex="commandMenu.selectedIndex.value"
+        :triggerChar="commandMenu.triggerChar.value"
+        :query="commandMenu.query.value"
+        :position="commandMenuPosition"
+        @select="onCommandMenuSelect"
+        @hover="commandMenu.selectedIndex.value = $event"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -207,11 +221,13 @@ import ChatToolSelector from './screens/Chat/components/ChatToolSelector.vue';
 // import PromoBanner from '@/views/_components/common/PromoBanner.vue';
 import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
+import { useCommandMenu } from '@/composables/useCommandMenu';
 
 export default {
   name: 'BaseScreen',
-  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip },
+  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, CommandMenu },
   props: {
     activeRightPanel: {
       type: [String, null],
@@ -468,6 +484,46 @@ export default {
 
     const closeToolSelector = () => {
       isToolSelectorOpen.value = false;
+    };
+
+    // --- Command Menu (@mentions, /commands, #references) ---
+    const commandMenu = useCommandMenu(currentUserInput, {
+      getAgents: () => store.state.agents.agents || [],
+      getCommands: null, // uses defaults
+      getHashtags: null, // uses defaults
+    });
+
+    const commandMenuPosition = ref({ bottom: 0, left: 0, width: 400 });
+
+    const handleTextareaInput = () => {
+      autoResizeTextarea();
+      if (textareaRef.value) {
+        commandMenu.handleInput(textareaRef.value);
+        // Update menu position relative to textarea
+        if (commandMenu.isOpen.value) {
+          commandMenuPosition.value = commandMenu.getCaretCoords(textareaRef.value);
+        }
+      }
+    };
+
+    const handleTextareaKeydown = (event) => {
+      // Let the command menu handle keys first when open
+      if (commandMenu.handleKeydown(event)) {
+        return;
+      }
+      // Default: Enter sends message
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        triggerSubmit();
+      }
+    };
+
+    const onCommandMenuSelect = (item) => {
+      commandMenu.select(item);
+      nextTick(() => {
+        autoResizeTextarea();
+        focusInput();
+      });
     };
 
     const handlePaste = async (event) => {
@@ -1094,6 +1150,12 @@ export default {
       isToolSelectorOpen,
       toggleToolSelector,
       closeToolSelector,
+      // Command menu
+      commandMenu,
+      commandMenuPosition,
+      handleTextareaInput,
+      handleTextareaKeydown,
+      onCommandMenuSelect,
     };
   },
 };

@@ -1203,26 +1203,8 @@ export default {
       window.removeEventListener('trigger-new-chat', clearConversation);
     });
 
-    watch(
-      displayMessages,
-      (newMessages, oldMessages) => {
-        nextTick(() => {
-          if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-            // Add a small delay to ensure DOM is fully updated before MathJax rendering
-            cleanup.setTimeout(() => {
-              try {
-                MathJax.typesetPromise().catch((err) => {
-                  console.error('MathJax rendering error:', err);
-                });
-              } catch (err) {
-                console.error('MathJax rendering error:', err);
-              }
-            }, 10);
-          }
-        });
-      },
-      { deep: true }
-    );
+    // MathJax typesetting is handled per-message in MessageItem.vue (after streaming completes).
+    // A global watcher here would fire on every stream chunk, causing flicker with morphdom.
 
     // Watch for route query parameter changes to load saved outputs
     watch(

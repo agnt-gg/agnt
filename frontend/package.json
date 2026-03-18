@@ -28,6 +28,7 @@
     "highlight.js": "^11.10.0",
     "js-beautify": "^1.15.4",
     "lodash-es": "^4.17.21",
+    "morphdom": "^2.7.8",
     "readline": "^1.3.0",
     "showdown": "^2.1.0",
     "socket.io-client": "^4.8.1",
