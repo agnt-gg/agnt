@@ -3157,7 +3157,7 @@ span.nodeLabel p {
 .message-text :deep(.html-inline-iframe) {
   width: 100%;
   /* height: 120px;  */
-  min-height: unset;
+  min-height: 480px;
   min-width: 707px;
   margin-bottom: 0;
   border: none;
