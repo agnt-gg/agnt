@@ -519,18 +519,18 @@ export default {
 
       clearInput();
 
-      // If multiple agents are mentioned, send a request to each one sequentially
+      // If multiple agents are mentioned, send requests in parallel
       const agents = mentionedAgents && mentionedAgents.length > 0 ? mentionedAgents : [null];
-      for (const agent of agents) {
-        await store.dispatch('chat/startStreamingConversation', {
+      await Promise.all(agents.map(agent =>
+        store.dispatch('chat/startStreamingConversation', {
           userInput: input,
           files: files,
           provider: store.state.aiProvider.selectedProvider,
           model: store.state.aiProvider.selectedModel,
           reasoningEnabled: store.state.aiProvider.reasoningEnabled,
           mentionedAgent: agent,
-        });
-      }
+        })
+      ));
     };
 
     // Edit & resend: truncate from edited message, re-add with new content, resend

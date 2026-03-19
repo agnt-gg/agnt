@@ -58,8 +58,18 @@
             <span>No AI provider connected. Select a provider to start chatting.</span>
           </div>
 
-          <!-- Scrollable content area for file chips -->
+          <!-- Scrollable content area for file and mention chips -->
           <div class="input-scrollable-area">
+            <!-- Agent mention chips -->
+            <div v-if="mentionedAgents.length > 0" class="mention-chips">
+              <div v-for="(agent, index) in mentionedAgents" :key="agent.id" class="mention-chip">
+                <span class="mention-at">@</span>
+                <span class="mention-name">{{ agent.name }}</span>
+                <button @click="removeMentionedAgent(index)" class="mention-remove-btn">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
             <!-- File preview chips -->
             <div v-if="selectedFiles.length > 0" class="file-preview-chips">
               <div v-for="(file, index) in selectedFiles" :key="index" class="file-chip">
@@ -449,6 +459,7 @@ export default {
     const clearInput = () => {
       currentUserInput.value = '';
       selectedFiles.value = [];
+      mentionedAgents.value = [];
       nextTick(autoResizeTextarea);
     };
 
@@ -469,6 +480,10 @@ export default {
 
     const removeFile = (index) => {
       selectedFiles.value.splice(index, 1);
+    };
+
+    const removeMentionedAgent = (index) => {
+      mentionedAgents.value.splice(index, 1);
     };
 
     const toggleProviderSelector = () => {
@@ -1180,6 +1195,9 @@ export default {
       handleTextareaInput,
       handleTextareaKeydown,
       onCommandMenuSelect,
+      // Agent mentions
+      mentionedAgents,
+      removeMentionedAgent,
     };
   },
 };
@@ -1937,6 +1955,50 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   word-break: break-word;
   margin-bottom: 4px; /* Space between lines */
   font-size: 0.85em;
+}
+
+/* Agent Mention Chips */
+.mention-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 8px 0 8px;
+}
+
+.mention-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: var(--color-primary, #6c5ce7);
+  border-radius: 14px;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: #fff;
+  transition: all 0.2s ease;
+}
+
+.mention-chip:hover {
+  filter: brightness(1.15);
+}
+
+.mention-at {
+  opacity: 0.75;
+}
+
+.mention-remove-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.8em;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.mention-remove-btn:hover {
+  color: #fff;
 }
 
 /* File Upload Styles */

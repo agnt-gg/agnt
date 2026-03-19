@@ -1964,11 +1964,23 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#039;');
 
+        let userHtml;
         if (looksLikeCode) {
-          return `<pre><code>${escapedContent}</code></pre>`;
+          userHtml = `<pre><code>${escapedContent}</code></pre>`;
         } else {
-          return escapedContent.replace(/\n/g, '<br>');
+          userHtml = escapedContent.replace(/\n/g, '<br>');
         }
+
+        // Style @mentions as pills in user messages
+        const agentNames = (store.state.agents.agents || []).map(a => a.name).filter(Boolean);
+        for (const name of agentNames) {
+          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          userHtml = userHtml.replace(
+            new RegExp(`@${escaped}(?=[\\s.,!?;:&<]|$)`, 'g'),
+            `<span class="mention-pill">@${name}</span>`
+          );
+        }
+        return userHtml;
       }
 
       // ASSISTANT MESSAGES: Process as markdown/HTML

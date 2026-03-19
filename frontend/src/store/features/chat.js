@@ -881,8 +881,9 @@ export default {
       let convId = state.activeConversationId || state.currentConversationId || `temp-${Date.now()}`;
 
       // Per-conversation guard: only block if THIS conversation is already streaming
+      // Allow concurrent streams for multi-agent @ mentions
       const existingConv = state.conversations[convId];
-      if (existingConv && existingConv.isStreaming) {
+      if (existingConv && existingConv.isStreaming && !mentionedAgent) {
         console.warn('[Chat] This conversation is already streaming, ignoring new request');
         return;
       }
@@ -1001,8 +1002,10 @@ export default {
         // Track the current conversation ID (may change on conversation_started event)
         let activeConvId = capturedConvId;
 
-        // Process stream in background - continues even if component unmounts
-        const processStream = async () => {
+        // Process stream — returns a promise that resolves when the stream ends
+        // so callers can await sequential streams (e.g. multi-agent mentions)
+        const processStream = () => new Promise((resolveStream) => {
+          (async () => {
           try {
             while (true) {
               const { done, value } = await reader.read();
@@ -1010,6 +1013,7 @@ export default {
                 commit('SCOPED_SET_STREAMING', { conversationId: activeConvId, value: false });
                 commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
                 commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: activeConvId, controller: null });
+                resolveStream();
                 break;
               }
 
@@ -1066,10 +1070,12 @@ export default {
               commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
               commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: activeConvId, controller: null });
             }
+            resolveStream();
           }
-        };
+          })();
+        });
 
-        processStream();
+        await processStream();
       } catch (error) {
         console.error('Error starting stream:', error);
         commit('SCOPED_SET_STREAMING', { conversationId: capturedConvId, value: false });
