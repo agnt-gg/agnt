@@ -1505,7 +1505,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
       text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
       text = text.replace(/\\\([\s\S]+?\\\)/g, save);
-      text = text.replace(/\$([^\$\n]+?)\$/g, save);
       return text;
     };
     const restoreMath = (html) => {
@@ -1523,8 +1522,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           return `<div class="math-container" id="${id}">${m}</div>`;
         } else if (m.startsWith('\\(') && m.endsWith('\\)')) {
           return `<span class="math-container" id="${id}">${m}</span>`;
-        } else if (m.startsWith('$') && m.endsWith('$')) {
-          return `<span class="math-container" id="${id}">\\(${m.slice(1, -1)}\\)</span>`;
         }
         return m;
       });

@@ -346,7 +346,6 @@ const protectMath = (text) => {
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
   text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
   text = text.replace(/\\\([\s\S]+?\\\)/g, save);
-  text = text.replace(/\$([^\$\n]+?)\$/g, save);
   text = text.replace(/<!--CB(\d+)-->/g, (_, i) => codeBlocks[parseInt(i)] || '');
   return text;
 };
@@ -356,8 +355,6 @@ const restoreMath = (html) => {
     // Convert $/$$ delimiters to \(\)/\[\] which MathJax always supports
     if (m.startsWith('$$') && m.endsWith('$$')) {
       m = '\\[' + m.slice(2, -2) + '\\]';
-    } else if (m.startsWith('$') && m.endsWith('$')) {
-      m = '\\(' + m.slice(1, -1) + '\\)';
     }
     return m;
   });
