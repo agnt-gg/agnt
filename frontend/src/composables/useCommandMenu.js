@@ -10,7 +10,7 @@ import { ref, computed, watch, nextTick } from 'vue';
  * @param {Function} options.getCommands - () => Array<{ id, name, description, icon }>
  * @param {Function} options.getHashtags - () => Array<{ id, name, description, icon }>
  */
-export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags } = {}) {
+export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags, orchestratorAvatar } = {}) {
   // --- State ---
   const isOpen = ref(false);
   const triggerChar = ref(null); // '@' | '/' | '#'
@@ -37,14 +37,25 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags }
     let source = [];
 
     if (triggerChar.value === '@') {
-      const agents = getAgents ? getAgents() : [];
-      source = agents.map((a) => ({
-        id: a.id,
-        name: a.name,
-        description: a.description || '',
-        icon: a.avatar || 'fas fa-robot',
+      const orchestrator = {
+        id: 'orchestrator',
+        name: 'Annie',
+        description: 'Orchestrator — main AI assistant',
+        icon: orchestratorAvatar || 'fas fa-brain',
         type: 'agent',
-      }));
+        subtype: 'orchestrator',
+      };
+      const agents = getAgents ? getAgents() : [];
+      source = [
+        orchestrator,
+        ...agents.map((a) => ({
+          id: a.id,
+          name: a.name,
+          description: a.description || '',
+          icon: a.avatar || 'fas fa-robot',
+          type: 'agent',
+        })),
+      ];
     } else if (triggerChar.value === '/') {
       source = (getCommands ? getCommands() : defaultCommands()).map((c) => ({
         ...c,

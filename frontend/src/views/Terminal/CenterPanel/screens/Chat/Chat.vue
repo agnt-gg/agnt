@@ -568,12 +568,6 @@ export default {
           currentConversationId.value = data.conversationId;
           break;
         case 'assistant_message': {
-          // Clear thinking state from previous messages — only one can be "thinking"
-          for (const msgId of Object.keys(messageStates.value)) {
-            if (messageStates.value[msgId]?.type === 'thinking') {
-              delete messageStates.value[msgId];
-            }
-          }
           const name = data.agentName || 'Annie';
           messageStates.value[data.id] = {
             type: 'thinking',
@@ -582,8 +576,9 @@ export default {
           break;
         }
         case 'reasoning_delta': {
-          // Update thinking status to show model is actively reasoning
-          const rName = activeAgentName.value;
+          // Use the specific message's agentName, not the global activeAgentName
+          const msg = displayMessages.value.find(m => m.id === data.assistantMessageId);
+          const rName = msg?.agentName || 'Annie';
           messageStates.value[data.assistantMessageId] = {
             type: 'thinking',
             text: `${rName} is reasoning...`,
@@ -601,7 +596,7 @@ export default {
           runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = false;
           const message = displayMessages.value.find((m) => m.id === data.assistantMessageId);
           if (message && !isAnyToolRunningInMessage(message)) {
-            const teName = message.agentName || activeAgentName.value;
+            const teName = message.agentName || 'Annie';
             messageStates.value[data.assistantMessageId] = {
               type: 'thinking',
               text: `${teName} is processing results...`,

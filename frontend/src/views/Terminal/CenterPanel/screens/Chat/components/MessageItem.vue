@@ -2627,10 +2627,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
 .message-text :deep(.mention-pill) {
   display: inline-block;
-  background: var(--color-primary, #6c5ce7);
-  color: #fff;
-  padding: 1px 8px;
-  border-radius: 12px;
+  background-color: rgba(var(--primary-rgb), 0.15);
+  color: var(--color-primary);
+  padding: 2px 8px 1px;
+  border-radius: 16px;
   font-size: 0.85em;
   font-weight: 600;
   white-space: nowrap;

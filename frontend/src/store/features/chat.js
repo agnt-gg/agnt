@@ -894,7 +894,14 @@ export default {
         commit('SET_ACTIVE_CONVERSATION', convId);
       }
 
+      // Track concurrent streams so isStreaming stays true until ALL finish
+      const conv0 = state.conversations[convId];
+      conv0._activeStreams = (conv0._activeStreams || 0) + 1;
+
       commit('SCOPED_SET_STREAMING', { conversationId: convId, value: true });
+
+      // For concurrent agent streams, skip conversation_started migration after the first
+      const skipMigration = !!(mentionedAgent && existingConv && existingConv.isStreaming);
 
       const token = localStorage.getItem('token');
       // Read messages from the conversation slot — includes tool call context
@@ -1010,7 +1017,14 @@ export default {
             while (true) {
               const { done, value } = await reader.read();
               if (done) {
-                commit('SCOPED_SET_STREAMING', { conversationId: activeConvId, value: false });
+                // Decrement concurrent stream counter; only clear isStreaming when all done
+                const doneConv = state.conversations[activeConvId];
+                if (doneConv) {
+                  doneConv._activeStreams = Math.max(0, (doneConv._activeStreams || 1) - 1);
+                  if (doneConv._activeStreams === 0) {
+                    commit('SCOPED_SET_STREAMING', { conversationId: activeConvId, value: false });
+                  }
+                }
                 commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
                 commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: activeConvId, controller: null });
                 resolveStream();
@@ -1031,11 +1045,17 @@ export default {
                     const data = JSON.parse(dataLine);
 
                     // Handle conversation_started: migrate temp ID to server-assigned ID
+                    // Skip migration for concurrent agent streams (first stream handles it)
                     if (eventName === 'conversation_started' && data.conversationId) {
-                      const oldId = activeConvId;
-                      if (oldId !== data.conversationId) {
-                        commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
-                        activeConvId = data.conversationId;
+                      if (!skipMigration) {
+                        const oldId = activeConvId;
+                        if (oldId !== data.conversationId) {
+                          commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
+                          activeConvId = data.conversationId;
+                        }
+                      } else {
+                        // Use the current conversation ID (already migrated by first stream)
+                        activeConvId = state.activeConversationId || activeConvId;
                       }
                     }
 
@@ -1066,9 +1086,16 @@ export default {
               console.log('Stream aborted by user');
             } else {
               console.error('Error processing stream:', error);
-              commit('SCOPED_SET_STREAMING', { conversationId: activeConvId, value: false });
               commit('SCOPED_SET_STREAM_READER', { conversationId: activeConvId, reader: null });
               commit('SCOPED_SET_ABORT_CONTROLLER', { conversationId: activeConvId, controller: null });
+            }
+            // Decrement counter on error too
+            const errConv = state.conversations[activeConvId];
+            if (errConv) {
+              errConv._activeStreams = Math.max(0, (errConv._activeStreams || 1) - 1);
+              if (errConv._activeStreams === 0) {
+                commit('SCOPED_SET_STREAMING', { conversationId: activeConvId, value: false });
+              }
             }
             resolveStream();
           }

@@ -24,7 +24,7 @@
           <span class="item-name">{{ item.name }}</span>
           <span v-if="item.description" class="item-description">{{ item.description }}</span>
         </div>
-        <span class="item-type-badge">{{ item.type }}</span>
+        <span class="item-type-badge">{{ item.subtype || item.type }}</span>
       </div>
     </div>
 

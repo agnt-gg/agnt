@@ -58,18 +58,8 @@
             <span>No AI provider connected. Select a provider to start chatting.</span>
           </div>
 
-          <!-- Scrollable content area for file and mention chips -->
+          <!-- Scrollable content area for file chips -->
           <div class="input-scrollable-area">
-            <!-- Agent mention chips -->
-            <div v-if="mentionedAgents.length > 0" class="mention-chips">
-              <div v-for="(agent, index) in mentionedAgents" :key="agent.id" class="mention-chip">
-                <span class="mention-at">@</span>
-                <span class="mention-name">{{ agent.name }}</span>
-                <button @click="removeMentionedAgent(index)" class="mention-remove-btn">
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-            </div>
             <!-- File preview chips -->
             <div v-if="selectedFiles.length > 0" class="file-preview-chips">
               <div v-for="(file, index) in selectedFiles" :key="index" class="file-chip">
@@ -87,17 +77,23 @@
           <!-- Input line with textarea and buttons on same row -->
           <div class="terminal-line input-line" :class="{ 'is-expanded': isTextareaExpanded }">
             <span v-if="showPrompt" class="prompt">> </span>
-            <textarea
-              ref="textareaRef"
-              class="chat-input-textarea"
-              v-model="currentUserInput"
-              :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : 'Type a message or command...'"
-              rows="1"
-              :disabled="isInputDisabled"
-              @input="handleTextareaInput"
-              @keydown="handleTextareaKeydown"
-              @paste="handlePaste"
-            ></textarea>
+            <div class="input-highlight-container">
+              <div class="input-backdrop" ref="inputBackdropRef">
+                <div class="input-highlights" v-html="inputHighlightsHtml"></div>
+              </div>
+              <textarea
+                ref="textareaRef"
+                class="chat-input-textarea"
+                v-model="currentUserInput"
+                :placeholder="isInputDisabled ? 'Connect a provider to start chatting...' : 'Type a message or command...'"
+                rows="1"
+                :disabled="isInputDisabled"
+                @input="handleTextareaInput"
+                @keydown="handleTextareaKeydown"
+                @paste="handlePaste"
+                @scroll="handleTextareaScroll"
+              ></textarea>
+            </div>
             <input
               ref="fileInputRef"
               type="file"
@@ -234,6 +230,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 import { useCommandMenu } from '@/composables/useCommandMenu';
+import annieAvatar from '@/assets/images/annie-avatar.png';
 
 export default {
   name: 'BaseScreen',
@@ -414,16 +411,11 @@ export default {
       // Don't clear or emit if input is empty and no files
       if (!input && selectedFiles.value.length === 0) return;
 
-      // Resolve @ mentioned agents: use tracked selections, or parse from input text
-      let agents = [...mentionedAgents.value];
-      if (agents.length === 0 && input.includes('@')) {
-        const allAgents = store.state.agents.agents || [];
-        for (const a of allAgents) {
-          if (input.includes(`@${a.name}`) && !agents.some(x => x.id === a.id)) {
-            agents.push({ id: a.id, name: a.name });
-          }
-        }
-      }
+      // Use only the tracked agent selections (by ID) — never parse text
+      // Orchestrator (id: 'orchestrator') becomes null so it routes to default chat
+      const agents = mentionedAgents.value.map(a =>
+        a.id === 'orchestrator' ? null : a
+      );
 
       emit('submit-input', input, selectedFiles.value, agents.length > 0 ? agents : null);
 
@@ -519,15 +511,45 @@ export default {
       getAgents: () => store.state.agents.agents || [],
       getCommands: null, // uses defaults
       getHashtags: null, // uses defaults
+      orchestratorAvatar: annieAvatar,
     });
 
     const commandMenuPosition = ref({ bottom: 0, left: 0, width: 400 });
 
     // Track all @ mentioned agents so we can pass them with submit
     const mentionedAgents = ref([]);
+    const inputBackdropRef = ref(null);
+
+    // Highlights HTML: same text as textarea but with @mentions wrapped in <mark>
+    // All text is color:transparent — only <mark> background shows through
+    const inputHighlightsHtml = computed(() => {
+      let text = currentUserInput.value || '';
+      // HTML-escape
+      text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // Highlight known agent @mentions
+      const agents = store.state.agents.agents || [];
+      for (const a of agents) {
+        if (!a.name) continue;
+        const escaped = a.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        text = text.replace(
+          new RegExp(`@${escaped}`, 'g'),
+          `<mark>@${a.name}</mark>`
+        );
+      }
+      // Fix trailing newline (textarea vs div rendering difference)
+      text = text.replace(/\n$/g, '\n\n');
+      return text;
+    });
+
+    const handleTextareaScroll = () => {
+      if (textareaRef.value && inputBackdropRef.value) {
+        inputBackdropRef.value.scrollTop = textareaRef.value.scrollTop;
+      }
+    };
 
     const handleTextareaInput = () => {
       autoResizeTextarea();
+      handleTextareaScroll();
       if (textareaRef.value) {
         commandMenu.handleInput(textareaRef.value);
         // Update menu position relative to textarea
@@ -537,9 +559,21 @@ export default {
       }
     };
 
+    const trackAgentMention = (item) => {
+      // Track all agent selections by ID, including orchestrator (id: 'orchestrator')
+      // Orchestrator sends as null agentId (default chat), real agents send their UUID
+      if (item && item.type === 'agent') {
+        if (!mentionedAgents.value.some(a => a.id === item.id)) {
+          mentionedAgents.value.push({ id: item.id, name: item.name });
+        }
+      }
+    };
+
     const handleTextareaKeydown = (event) => {
       // Let the command menu handle keys first when open
       if (commandMenu.handleKeydown(event)) {
+        // Check if a menu item was just selected via keyboard (Enter/Tab)
+        trackAgentMention(commandMenu.consumeLastSelected());
         return;
       }
       // Default: Enter sends message
@@ -551,13 +585,7 @@ export default {
 
     const onCommandMenuSelect = (item) => {
       commandMenu.select(item);
-
-      // Track agent mentions for routing (accumulate, don't replace)
-      if (item.type === 'agent') {
-        if (!mentionedAgents.value.some(a => a.id === item.id)) {
-          mentionedAgents.value.push({ id: item.id, name: item.name });
-        }
-      }
+      trackAgentMention(item);
 
       nextTick(() => {
         autoResizeTextarea();
@@ -1198,6 +1226,9 @@ export default {
       // Agent mentions
       mentionedAgents,
       removeMentionedAgent,
+      inputBackdropRef,
+      inputHighlightsHtml,
+      handleTextareaScroll,
     };
   },
 };
@@ -1416,11 +1447,16 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 }
 
 .chat-input-textarea {
-  flex: 1;
-  background: transparent !important;
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  margin: 0;
   border: none !important;
-  border-color: transparent !important;
-  outline: none;
+  border-radius: 0;
+  background-color: transparent;
+  outline: none !important;
+  box-shadow: none !important;
   resize: none;
   color: var(--color-text);
   font-family: inherit;
@@ -1431,7 +1467,6 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--color-duller-navy) transparent;
-  align-self: center;
 }
 
 .chat-input-textarea::-webkit-scrollbar {
@@ -1457,7 +1492,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 
 /* When textarea is expanded, remove center alignment */
 .input-line.is-expanded .prompt,
-.input-line.is-expanded .chat-input-textarea {
+.input-line.is-expanded .input-highlight-container {
   align-self: flex-end;
 }
 
@@ -1957,48 +1992,43 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   font-size: 0.85em;
 }
 
-/* Agent Mention Chips */
-.mention-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 8px 0 8px;
+/* Highlight-within-textarea: container + backdrop + highlights behind textarea */
+.input-highlight-container {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  align-self: center;
 }
 
-.mention-chip {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  background: var(--color-primary, #6c5ce7);
-  border-radius: 14px;
-  font-size: 0.82em;
-  font-weight: 600;
-  color: #fff;
-  transition: all 0.2s ease;
+.input-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: auto;
+  pointer-events: none;
 }
 
-.mention-chip:hover {
-  filter: brightness(1.15);
+.input-highlights {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: transparent;
+  font-family: inherit;
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  padding: 0;
+  margin: 0;
+  border: 0;
 }
 
-.mention-at {
-  opacity: 0.75;
-}
-
-.mention-remove-btn {
-  background: none;
+.input-highlights :deep(mark) {
+  color: transparent;
+  background-color: rgba(var(--primary-rgb), 0.2);
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
   border: none;
-  color: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 0.8em;
-  line-height: 1;
-  transition: color 0.15s;
-}
-
-.mention-remove-btn:hover {
-  color: #fff;
 }
 
 /* File Upload Styles */
