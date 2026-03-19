@@ -575,6 +575,7 @@ async function handleExecuteGoal(args, authToken, context) {
       body: JSON.stringify({
         provider,
         model,
+        conversationId: context?.conversationId || null,
       }),
     });
 
@@ -951,7 +952,7 @@ async function handleCreateAndRunGoal(args, authToken, context) {
         'Content-Type': 'application/json',
         Authorization: authToken,
       },
-      body: JSON.stringify({ maxIterations: max_iterations, provider, model }),
+      body: JSON.stringify({ maxIterations: max_iterations, provider, model, conversationId: context?.conversationId || null }),
     });
 
     if (!execResponse.ok) {
@@ -994,7 +995,7 @@ async function handleExecuteGoalAutonomous(args, authToken, context) {
         'Content-Type': 'application/json',
         Authorization: authToken,
       },
-      body: JSON.stringify({ maxIterations: max_iterations, provider, model }),
+      body: JSON.stringify({ maxIterations: max_iterations, provider, model, conversationId: context?.conversationId || null }),
     });
 
     if (!response.ok) {

@@ -527,6 +527,31 @@ You can and should use multiple tools in parallel as to accomplish complex tasks
   parts.push(section('OFFLOADED_DATA_GUIDANCE', OFFLOADED_DATA_GUIDANCE, includedGuidance));
   parts.push(section('CRITICAL_TOOL_CALL_REQUIREMENTS', CRITICAL_TOOL_CALL_REQUIREMENTS, includedGuidance));
 
+  parts.push(`TASK DELEGATION:
+For any non-trivial task, create a Goal and delegate to agents:
+
+1. DO IT YOURSELF only if: simple question, quick search, single tool call, casual conversation
+2. CREATE A GOAL for everything else:
+   - Use create_and_run_goal with a clear description of what needs to be done
+   - This creates a goal, breaks it into tasks, assigns agents, and starts autonomous execution — all in one step
+   - Tell the user: "I've started working on that — I'll let you know when it's done"
+   - You are immediately free for the next request
+
+3. For more control, use the step-by-step approach:
+   - Use create_goal with clear description
+   - Review the generated tasks with get_goal_details
+   - Use execute_goal or execute_goal_autonomous to start execution
+   - Monitor with get_goal_status or list_goals
+
+4. CHECKING ON GOALS:
+   - Use list_goals to see all active goals
+   - Use get_goal_details or get_goal_status for specific goal progress
+   - Use evaluate_goal to check quality against success criteria
+
+Goals run autonomously in the background with evaluation and replanning.
+When a goal completes, results are automatically sent back to this conversation.
+You are the manager — delegate and orchestrate, don't do the work yourself.`);
+
   parts.push(`AVAILABLE TOOLS:\n${availableToolsList}`);
 
   // discover_tools guidance — always included (it's the meta-tool)

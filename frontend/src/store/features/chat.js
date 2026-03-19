@@ -1906,8 +1906,14 @@ export default {
               commit('REMOVE_MESSAGE', assistantMessageId);
             }
           }
+          // Only autosave if this conversation already has a savedOutputId.
+          // Without one, autosave would create a duplicate content output.
+          // The backend already persists autonomous messages via ConversationLogModel.
           if (dispatch) {
-            dispatch('autosaveConversation', { debounce: true, conversationId: targetConvId });
+            const targetConv = targetConvId ? state.conversations[targetConvId] : null;
+            if (targetConv?.savedOutputId) {
+              dispatch('autosaveConversation', { debounce: true, conversationId: targetConvId });
+            }
           }
           break;
 

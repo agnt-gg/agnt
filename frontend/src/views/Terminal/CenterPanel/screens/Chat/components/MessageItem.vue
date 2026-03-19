@@ -15,152 +15,150 @@
           ></textarea>
           <div class="message-edit-actions">
             <button class="edit-cancel-btn" @click="cancelEditing">Cancel</button>
-            <button class="edit-send-btn" @click="submitEdit" :disabled="!editText.trim()">
-              Send
-            </button>
+            <button class="edit-send-btn" @click="submitEdit" :disabled="!editText.trim()">Send</button>
           </div>
         </div>
 
         <template v-else>
-        <!-- Edit button for user messages -->
-        <button v-if="message.role === 'user' && !status" class="message-edit-btn" @click="startEditing" title="Edit & resend">
-          <i class="fas fa-pen"></i>
-        </button>
+          <!-- Edit button for user messages -->
+          <button v-if="message.role === 'user' && !status" class="message-edit-btn" @click="startEditing" title="Edit & resend">
+            <i class="fas fa-pen"></i>
+          </button>
 
-        <div v-if="status" class="status-indicator" :class="status.type">
-          <div class="status-spinner"></div>
-          <span class="status-text">{{ status.text }}</span>
-        </div>
-        <!-- Interleaved content: text and tool calls rendered in order -->
-        <template v-for="(part, partIdx) in renderedParts" :key="partIdx">
-          <div v-if="part.type === 'text' && part.html" class="message-text" v-morph-html="part.html"></div>
-          <div v-else-if="part.type === 'tool_calls'" class="tool-execution-details">
-            <div v-for="tc in part.items" :key="`${message.id}-${tc.index}`" class="tool-call-item">
-              <div class="top-tool-bar">
-                <div class="tool-header" @click="toggleToolCall(tc.index)">
-                  <span class="tool-expansion-icon">
-                    {{ isExpanded(tc.index) ? '▾' : '▸' }}
-                  </span>
-                  <span class="tool-icon">⚙️</span>
-                  <span class="tool-label">{{ tc.toolCall.name }}</span>
+          <div v-if="status" class="status-indicator" :class="status.type">
+            <div class="status-spinner"></div>
+            <span class="status-text">{{ status.text }}</span>
+          </div>
+          <!-- Interleaved content: text and tool calls rendered in order -->
+          <template v-for="(part, partIdx) in renderedParts" :key="partIdx">
+            <div v-if="part.type === 'text' && part.html" class="message-text" v-morph-html="part.html"></div>
+            <div v-else-if="part.type === 'tool_calls'" class="tool-execution-details">
+              <div v-for="tc in part.items" :key="`${message.id}-${tc.index}`" class="tool-call-item">
+                <div class="top-tool-bar">
+                  <div class="tool-header" @click="toggleToolCall(tc.index)">
+                    <span class="tool-expansion-icon">
+                      {{ isExpanded(tc.index) ? '▾' : '▸' }}
+                    </span>
+                    <span class="tool-icon">⚙️</span>
+                    <span class="tool-label">{{ tc.toolCall.name }}</span>
+                  </div>
+
+                  <div v-if="isRunning(tc.toolCall.id)" class="tool-running">
+                    <div class="spinner"></div>
+                    <span>Executing...</span>
+                  </div>
+
+                  <!-- Stop button for async tools -->
+                  <Tooltip text="Stop async tool">
+                    <button v-if="isAsyncToolRunning(tc.toolCall)" @click="stopAsyncTool(tc.toolCall)" class="stop-async-tool-btn">
+                      <i class="fas fa-stop"></i>
+                    </button>
+                  </Tooltip>
                 </div>
 
-                <div v-if="isRunning(tc.toolCall.id)" class="tool-running">
-                  <div class="spinner"></div>
-                  <span>Executing...</span>
-                </div>
+                <div v-if="isExpanded(tc.index)" class="tool-call-content">
+                  <div class="tool-params">
+                    <div class="params-label">Input Parameters:</div>
+                    <pre class="params-content"><code class="language-json" v-html="formatJSON(tc.toolCall.args)"></code></pre>
+                  </div>
+                  <div v-if="tc.toolCall.result" class="tool-result">
+                    <div class="result-label">Output:</div>
 
-                <!-- Stop button for async tools -->
-                <Tooltip text="Stop async tool">
-                  <button v-if="isAsyncToolRunning(tc.toolCall)" @click="stopAsyncTool(tc.toolCall)" class="stop-async-tool-btn">
-                    <i class="fas fa-stop"></i>
-                  </button>
-                </Tooltip>
-              </div>
-
-              <div v-if="isExpanded(tc.index)" class="tool-call-content">
-                <div class="tool-params">
-                  <div class="params-label">Input Parameters:</div>
-                  <pre class="params-content"><code class="language-json" v-html="formatJSON(tc.toolCall.args)"></code></pre>
-                </div>
-                <div v-if="tc.toolCall.result" class="tool-result">
-                  <div class="result-label">Output:</div>
-
-                  <!-- Image Gallery for image generation results -->
-                  <div v-if="hasImages(tc.toolCall.result)" class="tool-images">
-                    <div v-if="extractImages(tc.toolCall.result).length === 1" class="single-image-container">
-                      <img :src="extractImages(tc.toolCall.result)[0]" alt="Generated Image" class="generated-image" />
-                      <div class="image-actions">
-                        <button @click="downloadImage(extractImages(tc.toolCall.result)[0], 'generated-image.png')" class="image-action-btn">
-                          <span class="btn-icon">📥</span>
-                          <span class="btn-text">Download</span>
-                        </button>
-                        <button @click="copyImageToClipboard(extractImages(tc.toolCall.result)[0])" class="image-action-btn">
-                          <span class="btn-icon">📋</span>
-                          <span class="btn-text">Copy</span>
-                        </button>
-                        <button @click="openImageInNewTab(extractImages(tc.toolCall.result)[0])" class="image-action-btn">
-                          <span class="btn-icon">🔍</span>
-                          <span class="btn-text">Open</span>
-                        </button>
+                    <!-- Image Gallery for image generation results -->
+                    <div v-if="hasImages(tc.toolCall.result)" class="tool-images">
+                      <div v-if="extractImages(tc.toolCall.result).length === 1" class="single-image-container">
+                        <img :src="extractImages(tc.toolCall.result)[0]" alt="Generated Image" class="generated-image" />
+                        <div class="image-actions">
+                          <button @click="downloadImage(extractImages(tc.toolCall.result)[0], 'generated-image.png')" class="image-action-btn">
+                            <span class="btn-icon">📥</span>
+                            <span class="btn-text">Download</span>
+                          </button>
+                          <button @click="copyImageToClipboard(extractImages(tc.toolCall.result)[0])" class="image-action-btn">
+                            <span class="btn-icon">📋</span>
+                            <span class="btn-text">Copy</span>
+                          </button>
+                          <button @click="openImageInNewTab(extractImages(tc.toolCall.result)[0])" class="image-action-btn">
+                            <span class="btn-icon">🔍</span>
+                            <span class="btn-text">Open</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
 
-                    <div v-else class="image-grid">
-                      <div v-for="(img, idx) in extractImages(tc.toolCall.result)" :key="idx" class="grid-item">
-                        <img :src="img" :alt="`Generated Image ${idx + 1}`" class="grid-image" @click="openImageInNewTab(img)" />
-                        <div class="grid-item-actions">
-                          <Tooltip text="Download" width="auto">
-                            <button @click="downloadImage(img, `generated-image-${idx + 1}.png`)" class="grid-action-btn">📥</button>
-                          </Tooltip>
-                          <Tooltip text="Copy" width="auto">
-                            <button @click="copyImageToClipboard(img)" class="grid-action-btn">📋</button>
-                          </Tooltip>
+                      <div v-else class="image-grid">
+                        <div v-for="(img, idx) in extractImages(tc.toolCall.result)" :key="idx" class="grid-item">
+                          <img :src="img" :alt="`Generated Image ${idx + 1}`" class="grid-image" @click="openImageInNewTab(img)" />
+                          <div class="grid-item-actions">
+                            <Tooltip text="Download" width="auto">
+                              <button @click="downloadImage(img, `generated-image-${idx + 1}.png`)" class="grid-action-btn">📥</button>
+                            </Tooltip>
+                            <Tooltip text="Copy" width="auto">
+                              <button @click="copyImageToClipboard(img)" class="grid-action-btn">📋</button>
+                            </Tooltip>
+                          </div>
                         </div>
                       </div>
                     </div>
+
+                    <!-- Regular JSON output for non-image results -->
+                    <pre v-else class="result-content"><code class="language-json" v-html="formatJSON(tc.toolCall.result)"></code></pre>
                   </div>
-
-                  <!-- Regular JSON output for non-image results -->
-                  <pre v-else class="result-content"><code class="language-json" v-html="formatJSON(tc.toolCall.result)"></code></pre>
+                  <div v-if="tc.toolCall.error" class="tool-error">
+                    <div class="error-label">Error:</div>
+                    <pre class="error-content"><code v-html="tc.toolCall.error"></code></pre>
+                  </div>
                 </div>
-                <div v-if="tc.toolCall.error" class="tool-error">
-                  <div class="error-label">Error:</div>
-                  <pre class="error-content"><code v-html="tc.toolCall.error"></code></pre>
+
+                <!-- Inline Goal Progress Widget for autonomous goals -->
+                <GoalProgressWidget
+                  v-if="isAutonomousGoalTool(tc.toolCall)"
+                  :goalId="extractGoalId(tc.toolCall)"
+                  :goalTitle="extractGoalTitle(tc.toolCall)"
+                  :taskCount="extractTaskCount(tc.toolCall)"
+                  :maxIterations="extractMaxIterations(tc.toolCall)"
+                />
+              </div>
+            </div>
+          </template>
+
+          <!-- Uploaded Files Preview (for user messages) -->
+          <div v-if="message.files && message.files.length > 0 && message.role === 'user'" class="uploaded-files-preview">
+            <div v-for="(file, idx) in message.files" :key="idx" class="uploaded-file-item">
+              <!-- Image preview -->
+              <div v-if="file.type.startsWith('image/')" class="uploaded-image-preview">
+                <img :src="getFilePreviewUrl(file)" :alt="file.name" class="preview-image" />
+                <div class="file-info">
+                  <span class="file-name">{{ file.name }}</span>
+                  <span class="file-size">{{ formatFileSize(file.size) }}</span>
                 </div>
               </div>
-
-              <!-- Inline Goal Progress Widget for autonomous goals -->
-              <GoalProgressWidget
-                v-if="isAutonomousGoalTool(tc.toolCall)"
-                :goalId="extractGoalId(tc.toolCall)"
-                :goalTitle="extractGoalTitle(tc.toolCall)"
-                :taskCount="extractTaskCount(tc.toolCall)"
-                :maxIterations="extractMaxIterations(tc.toolCall)"
-              />
-            </div>
-          </div>
-        </template>
-
-        <!-- Uploaded Files Preview (for user messages) -->
-        <div v-if="message.files && message.files.length > 0 && message.role === 'user'" class="uploaded-files-preview">
-          <div v-for="(file, idx) in message.files" :key="idx" class="uploaded-file-item">
-            <!-- Image preview -->
-            <div v-if="file.type.startsWith('image/')" class="uploaded-image-preview">
-              <img :src="getFilePreviewUrl(file)" :alt="file.name" class="preview-image" />
-              <div class="file-info">
-                <span class="file-name">{{ file.name }}</span>
-                <span class="file-size">{{ formatFileSize(file.size) }}</span>
-              </div>
-            </div>
-            <!-- Non-image file preview -->
-            <div v-else class="uploaded-file-info">
-              <span class="file-icon">📄</span>
-              <div class="file-details">
-                <span class="file-name">{{ file.name }}</span>
-                <span class="file-size">{{ formatFileSize(file.size) }}</span>
+              <!-- Non-image file preview -->
+              <div v-else class="uploaded-file-info">
+                <span class="file-icon">📄</span>
+                <div class="file-details">
+                  <span class="file-name">{{ file.name }}</span>
+                  <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Provider Setup UI -->
-        <ProviderSetup v-if="message.showProviderSetup" @provider-connected="handleProviderConnected" />
+          <!-- Provider Setup UI -->
+          <ProviderSetup v-if="message.showProviderSetup" @provider-connected="handleProviderConnected" />
 
-        <!-- Provider Note (shown after provider buttons) -->
-        <div v-if="message.showProviderNote" class="provider-note">
-          <div class="note-icon">💡</div>
-          <div class="note-text">
-            <strong>Local Models:</strong> Any models running at <code>http://127.0.0.1:1234</code> will be automatically detected.
+          <!-- Provider Note (shown after provider buttons) -->
+          <div v-if="message.showProviderNote" class="provider-note">
+            <div class="note-icon">💡</div>
+            <div class="note-text">
+              <strong>Local Models:</strong> Any models running at <code>http://127.0.0.1:1234</code> will be automatically detected.
+            </div>
           </div>
-        </div>
 
-        <div v-if="message.metadata && message.metadata.length > 0" class="message-metadata">
-          <span v-for="data in message.metadata" :key="data" class="metadata-tag">
-            {{ data }}
-          </span>
-        </div>
-        </template><!-- end v-else (non-editing mode) -->
+          <div v-if="message.metadata && message.metadata.length > 0" class="message-metadata">
+            <span v-for="data in message.metadata" :key="data" class="metadata-tag">
+              {{ data }}
+            </span>
+          </div> </template
+        ><!-- end v-else (non-editing mode) -->
       </div>
       <span class="message-time">{{ formatTime(message.timestamp) }}</span>
     </div>
@@ -327,7 +325,11 @@ function shouldPreserve(el) {
   if (!el || el.nodeType !== 1) return false;
   if (el.tagName === 'CANVAS') return true;
   if (el.tagName === 'IFRAME') return true;
-  try { return el.matches(PRESERVE_SELECTORS); } catch { return false; }
+  try {
+    return el.matches(PRESERVE_SELECTORS);
+  } catch {
+    return false;
+  }
 }
 
 const vMorphHtml = {
@@ -358,7 +360,9 @@ const vMorphHtml = {
       onBeforeNodeDiscarded(node) {
         if (node.nodeType === 1 && shouldPreserve(node)) return false;
         if (node.nodeType === 1) {
-          try { if (node.matches('.viz-action-buttons, .assistant-image-wrapper, .html-code-actions')) return false; } catch {}
+          try {
+            if (node.matches('.viz-action-buttons, .assistant-image-wrapper, .html-code-actions')) return false;
+          } catch {}
         }
         return true;
       },
@@ -1459,10 +1463,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         const block = fencedBlockStore[parseInt(idx)];
         if (!block) return '';
 
-        const escaped = block.content
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
+        const escaped = block.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
         // Sanitize language name to prevent injection
         const safeLang = (block.lang || '').replace(/[^a-zA-Z0-9_+-]/g, '');
@@ -1972,13 +1973,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         }
 
         // Style @mentions as pills in user messages
-        const agentNames = (store.state.agents.agents || []).map(a => a.name).filter(Boolean);
+        const agentNames = (store.state.agents.agents || []).map((a) => a.name).filter(Boolean);
         for (const name of agentNames) {
           const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          userHtml = userHtml.replace(
-            new RegExp(`@${escaped}(?=[\\s.,!?;:&<]|$)`, 'g'),
-            `<span class="mention-pill">@${name}</span>`
-          );
+          userHtml = userHtml.replace(new RegExp(`@${escaped}(?=[\\s.,!?;:&<]|$)`, 'g'), `<span class="mention-pill">@${name}</span>`);
         }
         return userHtml;
       }
@@ -2028,13 +2026,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       renderedHtml = renderedHtml.replace(/<table\b/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
 
       // Style @mentions as pills — match known agent names to avoid false positives in code
-      const agentNames = (store.state.agents.agents || []).map(a => a.name).filter(Boolean);
+      const agentNames = (store.state.agents.agents || []).map((a) => a.name).filter(Boolean);
       for (const name of agentNames) {
         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        renderedHtml = renderedHtml.replace(
-          new RegExp(`@${escaped}(?=[\\s.,!?;:&<]|$)`, 'g'),
-          `<span class="mention-pill">@${name}</span>`
-        );
+        renderedHtml = renderedHtml.replace(new RegExp(`@${escaped}(?=[\\s.,!?;:&<]|$)`, 'g'), `<span class="mention-pill">@${name}</span>`);
       }
 
       return addTargetBlankToLinks(renderedHtml);
@@ -3163,6 +3158,7 @@ span.nodeLabel p {
   width: 100%;
   /* height: 120px;  */
   min-height: unset;
+  min-width: 707px;
   margin-bottom: 0;
   border: none;
   border-radius: 0;
@@ -4179,7 +4175,9 @@ span.nodeLabel p {
   border-radius: 4px;
   font-size: 11px;
   opacity: 0;
-  transition: opacity 0.15s ease, background 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    background 0.15s ease;
   z-index: 1;
 }
 
@@ -4246,7 +4244,9 @@ span.nodeLabel p {
   font-weight: 500;
   cursor: pointer;
   border: none;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .edit-cancel-btn {

@@ -2482,8 +2482,8 @@ ${execution.log}
 }
 
 .execution-type-badge.goal-badge {
-  background: rgba(239, 68, 68, 0.15);
-  color: rgb(248, 113, 113);
+  background: rgba(234, 179, 8, 0.15);
+  color: rgb(250, 204, 21);
 }
 
 .execution-type-badge.workflow-badge {

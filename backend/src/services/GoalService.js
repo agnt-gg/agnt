@@ -48,12 +48,12 @@ class GoalService {
     try {
       const { goalId } = req.params;
       const userId = req.user.userId;
-      const { provider, model } = req.body || {};
+      const { provider, model, conversationId } = req.body || {};
 
       console.log('Starting goal execution:', goalId);
 
       // Start execution using TaskOrchestrator
-      const execution = await TaskOrchestrator.executeGoal(goalId, userId, null, provider, model);
+      const execution = await TaskOrchestrator.executeGoal(goalId, userId, null, provider, model, conversationId || null);
 
       res.status(200).json({
         message: 'Goal execution started',
@@ -354,12 +354,12 @@ class GoalService {
     try {
       const { goalId } = req.params;
       const userId = req.user.userId;
-      const { maxIterations = 50, provider, model } = req.body;
+      const { maxIterations = 50, provider, model, conversationId } = req.body;
 
       console.log(`Starting autonomous goal execution: ${goalId} (max ${maxIterations} iterations)`);
 
       // Start autonomous execution (non-blocking — runs in background)
-      TaskOrchestrator.executeGoalAutonomous(goalId, userId, { maxIterations, provider, model });
+      TaskOrchestrator.executeGoalAutonomous(goalId, userId, { maxIterations, provider, model, conversationId: conversationId || null });
 
       res.status(200).json({
         message: 'Autonomous goal execution started',

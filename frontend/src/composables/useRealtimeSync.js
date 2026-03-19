@@ -394,6 +394,11 @@ export function useRealtimeSync() {
       }
     });
 
+    // Goal task-level progress
+    socket.on('goal:task_updated', (data) => {
+      store.dispatch('goals/handleTaskUpdate', data);
+    });
+
     // AGI Loop events - goal iteration progress
     const agiLoopEvents = [
       'goal:iteration_start',

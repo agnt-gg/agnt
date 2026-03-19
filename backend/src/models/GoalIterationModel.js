@@ -2,19 +2,21 @@ import db from './database/index.js';
 
 class GoalIterationModel {
   static create(goalId, iterationNumber, evaluationScore, passed, worldState, replannedTasks, gitHash, durationMs) {
+    const stateJson = JSON.stringify(worldState || {});
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO goal_iterations (goal_id, iteration_number, evaluation_score, evaluation_passed, world_state_snapshot, replanned_tasks, git_commit_hash, duration_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO goal_iterations (goal_id, iteration_number, evaluation_score, evaluation_passed, world_state_snapshot, replanned_tasks, git_commit_hash, duration_ms, state)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           goalId,
           iterationNumber,
           evaluationScore,
           passed ? 1 : 0,
-          JSON.stringify(worldState || {}),
+          stateJson,
           JSON.stringify(replannedTasks || []),
           gitHash,
           durationMs,
+          stateJson, // Legacy 'state' column (NOT NULL in older databases)
         ],
         function (err) {
           if (err) reject(err);

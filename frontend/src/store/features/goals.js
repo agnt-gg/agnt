@@ -22,6 +22,8 @@ const state = {
   // AGI Loop state
   iterations: {}, // goalId -> iteration[]
   liveIteration: {}, // goalId -> { iteration, phase, score }
+  // Task-level progress
+  goalTaskProgress: {}, // goalId -> { total, completed, running, failed, tasks: { taskId -> { title, status, agentName } } }
 };
 
 const getters = {
@@ -78,6 +80,9 @@ const getters = {
   // AGI Loop getters
   getIterations: (state) => (goalId) => state.iterations[goalId] || [],
   getLiveIteration: (state) => (goalId) => state.liveIteration[goalId] || null,
+
+  // Task progress getter
+  getGoalTaskProgress: (state) => (goalId) => state.goalTaskProgress[goalId] || null,
 };
 
 const mutations = {
@@ -180,6 +185,37 @@ const mutations = {
   CLEAR_LIVE_ITERATION(state, goalId) {
     const { [goalId]: _, ...rest } = state.liveIteration;
     state.liveIteration = rest;
+  },
+
+  SET_GOAL_TASK_PROGRESS(state, { goalId, taskId, title, status, agentName, error }) {
+    const existing = state.goalTaskProgress[goalId] || { total: 0, completed: 0, running: 0, failed: 0, tasks: {} };
+    const tasks = { ...existing.tasks };
+
+    // Track previous status to adjust counters
+    const prev = tasks[taskId]?.status;
+
+    tasks[taskId] = { title, status, agentName: agentName || tasks[taskId]?.agentName, error };
+
+    // Recount from task statuses (most reliable)
+    const taskList = Object.values(tasks);
+    const progress = {
+      total: taskList.length,
+      completed: taskList.filter(t => t.status === 'completed').length,
+      running: taskList.filter(t => t.status === 'running').length,
+      failed: taskList.filter(t => t.status === 'failed').length,
+      tasks,
+    };
+
+    state.goalTaskProgress = { ...state.goalTaskProgress, [goalId]: progress };
+  },
+
+  INIT_GOAL_TASK_COUNT(state, { goalId, total }) {
+    if (!state.goalTaskProgress[goalId]) {
+      state.goalTaskProgress = { ...state.goalTaskProgress, [goalId]: { total, completed: 0, running: 0, failed: 0, tasks: {} } };
+    } else {
+      const existing = state.goalTaskProgress[goalId];
+      state.goalTaskProgress = { ...state.goalTaskProgress, [goalId]: { ...existing, total } };
+    }
   },
 };
 
@@ -550,6 +586,18 @@ const actions = {
         // Update individual task details
         if (status.allTasks) {
           updateData.tasks = status.allTasks;
+
+          // Also hydrate goalTaskProgress for the widget
+          commit('INIT_GOAL_TASK_COUNT', { goalId, total: status.allTasks.length });
+          for (const task of status.allTasks) {
+            commit('SET_GOAL_TASK_PROGRESS', {
+              goalId,
+              taskId: task.id,
+              title: task.title,
+              status: task.status,
+              agentName: task.agent_name || null,
+            });
+          }
         }
 
         commit('UPDATE_GOAL', updateData);
@@ -1140,6 +1188,45 @@ const actions = {
       console.error('Error reverting iteration:', error);
       throw error;
     }
+  },
+
+  // Fetch current goal task status from API and hydrate goalTaskProgress
+  // Called on widget mount so returning to a chat shows accurate state
+  async fetchGoalTaskProgress({ commit }, goalId) {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}/status`, {
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) return;
+
+      const status = await response.json();
+      if (!status.allTasks || status.allTasks.length === 0) return;
+
+      // Hydrate goalTaskProgress from the API response
+      commit('INIT_GOAL_TASK_COUNT', { goalId, total: status.allTasks.length });
+      for (const task of status.allTasks) {
+        commit('SET_GOAL_TASK_PROGRESS', {
+          goalId,
+          taskId: task.id,
+          title: task.title,
+          status: task.status,
+          agentName: task.agent_name || null,
+        });
+      }
+    } catch (error) {
+      console.error(`[Goals] Failed to fetch task progress for goal ${goalId}:`, error);
+    }
+  },
+
+  // Handle real-time task progress from Socket.IO
+  handleTaskUpdate({ commit }, data) {
+    const { goalId, taskId, title, status, agentName, error } = data;
+    commit('SET_GOAL_TASK_PROGRESS', { goalId, taskId, title, status, agentName, error });
   },
 
   // Handle real-time AGI loop events from Socket.IO

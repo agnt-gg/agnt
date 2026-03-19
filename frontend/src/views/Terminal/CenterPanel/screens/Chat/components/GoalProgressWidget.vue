@@ -6,66 +6,58 @@
         <span class="gpw-title">{{ goalTitle }}</span>
         <span class="gpw-status-badge" :class="statusClass">{{ statusLabel }}</span>
       </div>
-      <div class="gpw-subtitle" v-if="goalId">
-        Goal {{ goalId.substring(0, 8) }}
-      </div>
+      <div class="gpw-subtitle" v-if="goalId">Goal {{ goalId.substring(0, 8) }}</div>
     </div>
 
     <div class="gpw-body">
-      <!-- Progress bar -->
+      <!-- Task progress bar -->
       <div class="gpw-progress-section">
         <div class="gpw-progress-bar-container">
           <div class="gpw-progress-bar" :style="{ width: progressPercent + '%' }"></div>
         </div>
         <div class="gpw-progress-stats">
-          <span class="gpw-iteration" v-if="liveData">
-            Iteration {{ liveData.iteration }}<span v-if="maxIterations">/{{ maxIterations }}</span>
-          </span>
-          <span class="gpw-phase" v-if="liveData">
-            {{ phaseLabel }}
-          </span>
+          <span class="gpw-task-count">{{ completedTaskCount }}/{{ totalTaskCount }} tasks</span>
+          <span class="gpw-phase" v-if="currentPhase">{{ currentPhase }}</span>
         </div>
       </div>
 
-      <!-- Score display -->
+      <!-- Task list -->
+      <div class="gpw-task-list" v-if="taskEntries.length > 0">
+        <div v-for="task in taskEntries" :key="task.id" class="gpw-task-item" :class="task.status">
+          <span class="gpw-task-indicator">
+            <span v-if="task.status === 'completed'" class="gpw-check">&#10003;</span>
+            <span v-else-if="task.status === 'running'" class="gpw-spinner"></span>
+            <span v-else-if="task.status === 'failed'" class="gpw-x">&#10005;</span>
+            <span v-else class="gpw-dot"></span>
+          </span>
+          <span class="gpw-task-title">{{ task.title }}</span>
+          <span class="gpw-task-agent" v-if="task.agentName">{{ task.agentName }}</span>
+        </div>
+      </div>
+
+      <!-- Score display (shows after evaluation) -->
       <div class="gpw-scores" v-if="hasScores">
         <div class="gpw-score-item">
-          <span class="gpw-score-label">Current</span>
+          <span class="gpw-score-label">Score</span>
           <span class="gpw-score-value" :class="scoreClass(currentScore)">{{ currentScore }}%</span>
         </div>
-        <div class="gpw-score-item" v-if="bestScore > 0">
+        <div class="gpw-score-item" v-if="bestScore > 0 && bestScore !== currentScore">
           <span class="gpw-score-label">Best</span>
           <span class="gpw-score-value gpw-best">{{ bestScore }}%</span>
         </div>
       </div>
 
-      <!-- Iteration history sparkline -->
-      <div class="gpw-history" v-if="iterationHistory.length > 1">
-        <div class="gpw-history-label">Score History</div>
-        <div class="gpw-sparkline">
-          <div
-            v-for="(entry, idx) in iterationHistory"
-            :key="idx"
-            class="gpw-spark-bar"
-            :style="{ height: Math.max(entry.score, 5) + '%' }"
-            :class="{ improved: entry.isImprovement, current: idx === iterationHistory.length - 1 }"
-            :title="`#${entry.iteration}: ${entry.score}%`"
-          ></div>
-        </div>
-      </div>
-
-      <!-- Task count -->
-      <div class="gpw-tasks" v-if="taskCount > 0">
-        <span class="gpw-tasks-label">Tasks:</span>
-        <span class="gpw-tasks-count">{{ taskCount }}</span>
+      <!-- Iteration info (compact, secondary) -->
+      <div class="gpw-iteration-info" v-if="liveData && liveData.iteration > 1">
+        <span class="gpw-iteration-label"
+          >Iteration {{ liveData.iteration }}<span v-if="maxIterations">/{{ maxIterations }}</span></span
+        >
       </div>
     </div>
 
     <!-- Completed / Error state -->
     <div class="gpw-footer" v-if="isTerminal">
-      <div v-if="isCompleted" class="gpw-completed">
-        Passed at iteration {{ completedIteration }} with {{ finalScore }}%
-      </div>
+      <div v-if="isCompleted" class="gpw-completed">Completed — {{ finalScore }}% score</div>
       <div v-else-if="isError" class="gpw-error">
         {{ errorMessage }}
       </div>
@@ -100,11 +92,7 @@ export default {
   setup(props) {
     const store = useStore();
 
-    // Track iteration history locally (accumulates from WebSocket events)
-    const iterationHistory = ref([]);
     const bestScore = ref(0);
-    const completedIteration = ref(0);
-    const finalScore = ref(0);
     const errorMessage = ref('');
 
     // Get live iteration data from goals store
@@ -117,35 +105,71 @@ export default {
       return store.getters['goals/getGoalById']?.(props.goalId) || null;
     });
 
-    const currentScore = computed(() => {
-      return liveData.value?.score || 0;
+    // Get task progress from store (updated in real-time via WebSocket)
+    const taskProgress = computed(() => {
+      return store.getters['goals/getGoalTaskProgress']?.(props.goalId) || null;
     });
 
-    const hasScores = computed(() => {
-      return currentScore.value > 0 || bestScore.value > 0;
+    // Task-based progress
+    const totalTaskCount = computed(() => {
+      return taskProgress.value?.total || props.taskCount || 0;
+    });
+
+    const completedTaskCount = computed(() => {
+      return taskProgress.value?.completed || 0;
     });
 
     const progressPercent = computed(() => {
-      if (!liveData.value || !props.maxIterations) return 0;
-      return Math.round((liveData.value.iteration / props.maxIterations) * 100);
+      if (totalTaskCount.value === 0) return 0;
+      return Math.round((completedTaskCount.value / totalTaskCount.value) * 100);
     });
 
-    const phaseLabel = computed(() => {
+    // Task entries for the live task list
+    const taskEntries = computed(() => {
+      if (!taskProgress.value?.tasks) return [];
+      return Object.entries(taskProgress.value.tasks).map(([id, t]) => ({
+        id,
+        title: t.title,
+        status: t.status,
+        agentName: t.agentName,
+      }));
+    });
+
+    // Current phase label based on task state
+    const currentPhase = computed(() => {
+      const tp = taskProgress.value;
+      if (tp && tp.running > 0) return `${tp.running} running...`;
+      if (tp && tp.failed > 0 && tp.completed < tp.total) return `${tp.failed} failed`;
+
+      // Fall back to iteration phase for evaluation/replanning
       const phase = liveData.value?.phase;
-      const labels = {
-        executing: 'Executing tasks...',
-        evaluating: 'Evaluating results...',
-        replanning: 'Replanning approach...',
-        checkpointing: 'Checkpointing...',
-        completed: 'Iteration complete',
-      };
-      return labels[phase] || phase || '';
+      if (phase === 'evaluating') return 'Evaluating...';
+      if (phase === 'replanning') return 'Replanning...';
+      return '';
+    });
+
+    // Score from evaluation stored on the goal object (survives navigation)
+    const evaluationScore = computed(() => {
+      return goal.value?.evaluation?.scores?.overall || 0;
+    });
+
+    const currentScore = computed(() => {
+      return liveData.value?.score || evaluationScore.value || 0;
+    });
+
+    // Final score: best available from any source
+    const finalScore = computed(() => {
+      return Math.max(bestScore.value, currentScore.value, evaluationScore.value);
+    });
+
+    const hasScores = computed(() => {
+      return finalScore.value > 0;
     });
 
     const isCompleted = computed(() => {
       const status = goal.value?.status;
       const loopStatus = goal.value?.loop_status;
-      return status === 'validated' || loopStatus === 'completed';
+      return status === 'validated' || status === 'completed' || loopStatus === 'completed';
     });
 
     const isError = computed(() => {
@@ -156,7 +180,9 @@ export default {
     const isTerminal = computed(() => isCompleted.value || isError.value);
 
     const isRunning = computed(() => {
-      return liveData.value && !isTerminal.value;
+      if (isTerminal.value) return false;
+      // Running if: tasks are running, or we have live iteration data, or goal status says executing
+      return taskProgress.value?.running > 0 || !!liveData.value || goal.value?.status === 'executing';
     });
 
     const statusClass = computed(() => {
@@ -186,67 +212,64 @@ export default {
       return 'gpw-score-low';
     };
 
-    // Watch for live iteration changes and build history
-    watch(liveData, (newData, oldData) => {
-      if (!newData) return;
-
-      // When a new iteration ends, record it
-      if (newData.phase === 'completed' && newData.score !== undefined) {
-        const exists = iterationHistory.value.find(h => h.iteration === newData.iteration);
-        if (!exists) {
-          const isImprovement = newData.score > bestScore.value;
-          iterationHistory.value.push({
-            iteration: newData.iteration,
-            score: Math.round(newData.score),
-            isImprovement,
-          });
-          if (isImprovement) {
-            bestScore.value = Math.round(newData.score);
-          }
-        }
-      }
-
-      // Track best score from replanning events
-      if (newData.phase === 'replanning' && newData.score !== undefined) {
-        const score = Math.round(newData.score);
-        if (score > bestScore.value) {
-          bestScore.value = score;
-        }
-      }
-    }, { deep: true });
-
-    // Watch for goal completion
-    watch(goal, (newGoal) => {
-      if (!newGoal) return;
-      if (newGoal.status === 'validated' && newGoal.loop_status === 'completed') {
-        finalScore.value = bestScore.value;
-        completedIteration.value = liveData.value?.iteration || iterationHistory.value.length;
-      }
-      if (newGoal.loop_status === 'error' || newGoal.loop_status === 'stuck') {
-        errorMessage.value = newGoal.loop_status === 'stuck'
-          ? 'Stuck: identical replans detected'
-          : 'Autonomous loop encountered an error';
-      }
-      if (newGoal.loop_status === 'max_iterations') {
-        errorMessage.value = 'Max iterations reached';
-      }
-    }, { deep: true });
-
-    // On mount, try to fetch goal if not in store
+    // On mount, fetch current task status from API so the widget
+    // renders correctly even when navigating back to a chat mid-goal
     onMounted(() => {
+      if (props.goalId) {
+        store.dispatch('goals/fetchGoalTaskProgress', props.goalId).catch(() => {});
+      }
+      if (props.taskCount > 0 && props.goalId) {
+        store.commit('goals/INIT_GOAL_TASK_COUNT', { goalId: props.goalId, total: props.taskCount });
+      }
       if (!goal.value && props.goalId) {
         store.dispatch('goals/fetchGoals').catch(() => {});
       }
     });
 
+    // Track scores from live iteration data
+    watch(
+      liveData,
+      (newData) => {
+        if (!newData) return;
+        if (newData.score !== undefined) {
+          const score = Math.round(newData.score);
+          if (score > bestScore.value) {
+            bestScore.value = score;
+          }
+        }
+      },
+      { deep: true },
+    );
+
+    // Watch for goal error states
+    watch(
+      goal,
+      (newGoal) => {
+        if (!newGoal) return;
+        if (newGoal.loop_status === 'error' || newGoal.loop_status === 'stuck') {
+          errorMessage.value = newGoal.loop_status === 'stuck' ? 'Stuck: identical replans detected' : 'Autonomous loop encountered an error';
+        }
+        if (newGoal.loop_status === 'max_iterations') {
+          errorMessage.value = 'Max iterations reached';
+        }
+      },
+      { deep: true },
+    );
+
     return {
       liveData,
       goal,
+      taskProgress,
+      totalTaskCount,
+      completedTaskCount,
+      progressPercent,
+      taskEntries,
+      currentPhase,
       currentScore,
       hasScores,
       bestScore,
-      progressPercent,
-      phaseLabel,
+      finalScore,
+      errorMessage,
       isCompleted,
       isError,
       isTerminal,
@@ -254,10 +277,6 @@ export default {
       statusClass,
       statusIcon,
       statusLabel,
-      iterationHistory,
-      completedIteration,
-      finalScore,
-      errorMessage,
       scoreClass,
     };
   },
@@ -266,7 +285,7 @@ export default {
 
 <style scoped>
 .goal-progress-widget {
-  margin-top: 10px;
+  margin: 1px 8px 8px;
   border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
   border-radius: 8px;
   padding: 12px 14px;
@@ -395,6 +414,89 @@ export default {
   font-style: italic;
 }
 
+/* Task list */
+.gpw-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gpw-task-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-text-secondary, #888);
+  padding: 2px 0;
+}
+
+.gpw-task-item.completed {
+  color: var(--color-text-primary, #e0e0e0);
+}
+
+.gpw-task-item.running {
+  color: var(--color-accent, #00ff88);
+}
+
+.gpw-task-item.failed {
+  color: #ef4444;
+}
+
+.gpw-task-indicator {
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.gpw-check {
+  color: #22c55e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gpw-x {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gpw-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.gpw-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(0, 255, 136, 0.3);
+  border-top-color: var(--color-accent, #00ff88);
+  border-radius: 50%;
+  animation: gpw-spin 0.8s linear infinite;
+}
+
+@keyframes gpw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gpw-task-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gpw-task-agent {
+  font-size: 9px;
+  color: var(--color-text-secondary, #666);
+  flex-shrink: 0;
+}
+
 /* Scores */
 .gpw-scores {
   display: flex;
@@ -419,55 +521,32 @@ export default {
   font-weight: 700;
 }
 
-.gpw-score-good { color: #22c55e; }
-.gpw-score-mid { color: #eab308; }
-.gpw-score-low { color: #ef4444; }
-.gpw-best { color: var(--color-accent, #00ff88); }
-
-/* Sparkline */
-.gpw-history {
-  margin-top: 4px;
+.gpw-score-good {
+  color: #22c55e;
+}
+.gpw-score-mid {
+  color: #eab308;
+}
+.gpw-score-low {
+  color: #ef4444;
+}
+.gpw-best {
+  color: var(--color-accent, #00ff88);
 }
 
-.gpw-history-label {
+/* Iteration info (compact secondary) */
+.gpw-iteration-info {
   font-size: 9px;
-  color: var(--color-text-secondary, #888);
+  color: var(--color-text-secondary, #666);
+}
+
+.gpw-iteration-label {
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
 }
 
-.gpw-sparkline {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 32px;
-}
-
-.gpw-spark-bar {
-  flex: 1;
-  min-width: 6px;
-  max-width: 16px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 2px 2px 0 0;
-  transition: height 0.3s ease;
-}
-
-.gpw-spark-bar.improved {
-  background: var(--color-accent, #00ff88);
-}
-
-.gpw-spark-bar.current {
-  background: var(--color-text-primary, #e0e0e0);
-}
-
-/* Tasks */
-.gpw-tasks {
-  font-size: 10px;
-  color: var(--color-text-secondary, #888);
-}
-
-.gpw-tasks-count {
+.gpw-task-count {
+  font-weight: 600;
   color: var(--color-text-primary, #e0e0e0);
 }
 

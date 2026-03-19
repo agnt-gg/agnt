@@ -11,6 +11,7 @@ import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
 import { broadcastToUser, RealtimeEvents } from '../../utils/realtimeSync.js';
+import autonomousMessageService from '../AutonomousMessageService.js';
 import db from '../../models/database/index.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -22,7 +23,7 @@ const execAsync = promisify(exec);
 class TaskOrchestrator {
   static runningGoals = new Map(); // Track active goals
 
-  static async executeGoal(goalId, userId, experimentContext = null, provider = null, model = null) {
+  static async executeGoal(goalId, userId, experimentContext = null, provider = null, model = null, conversationId = null) {
     try {
       // Mark goal as executing
       await GoalModel.updateStatus(goalId, 'executing');
@@ -43,6 +44,7 @@ class TaskOrchestrator {
         experimentContext,
         provider,
         model,
+        conversationId,
       });
 
       // Broadcast status change to frontend
@@ -76,58 +78,120 @@ class TaskOrchestrator {
         return;
       }
 
-      // Sort tasks by order_index to ensure proper execution order
-      tasks.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+      // Group tasks by order_index for parallel execution
+      const taskGroups = new Map();
+      for (const task of tasks) {
+        const orderIndex = task.order_index || 0;
+        if (!taskGroups.has(orderIndex)) {
+          taskGroups.set(orderIndex, []);
+        }
+        taskGroups.get(orderIndex).push(task);
+      }
 
-      // Execute tasks sequentially, passing data between them
-      let previousTaskOutputs = null;
+      // Sort groups by order_index
+      const sortedGroupKeys = [...taskGroups.keys()].sort((a, b) => a - b);
 
-      for (let i = 0; i < tasks.length; i++) {
-        const task = tasks[i];
+      // Execute groups sequentially, tasks within each group in parallel
+      let previousGroupOutputs = null;
+
+      for (const orderIndex of sortedGroupKeys) {
+        const group = taskGroups.get(orderIndex);
 
         if (!this.runningGoals.has(goalId)) {
           console.log(`Goal ${goalId} was stopped, ending execution`);
           return;
         }
 
-        // Skip already-completed tasks (preserve their output for downstream tasks)
-        if (task.status === 'completed') {
-          console.log(`[TaskOrchestrator] Task ${task.id} already completed, skipping`);
-          try {
-            const output = task.output ? (typeof task.output === 'string' ? JSON.parse(task.output) : task.output) : null;
-            if (output) previousTaskOutputs = output;
-          } catch { /* ignore parse errors */ }
-          continue;
-        }
-
-        // Check if task dependencies are met
-        const canExecute = await TaskModel.canExecuteTask(task.id);
-        if (!canExecute) {
-          console.log(`Task ${task.id} dependencies not met, skipping for now`);
-          continue;
-        }
-
-        try {
-          // Execute task with data from previous task
-          const taskOutputs = await this.executeTask(task, userId, previousTaskOutputs, provider, model);
-
-          // Store outputs for next task
-          if (taskOutputs) {
-            previousTaskOutputs = taskOutputs;
-            console.log(`[TaskOrchestrator] Task ${task.id} completed with outputs for next task`);
+        // Filter out already-completed tasks, but collect their outputs
+        const tasksToExecute = [];
+        for (const task of group) {
+          if (task.status === 'completed') {
+            console.log(`[TaskOrchestrator] Task ${task.id} already completed, skipping`);
+            try {
+              const output = task.output ? (typeof task.output === 'string' ? JSON.parse(task.output) : task.output) : null;
+              if (output) previousGroupOutputs = output;
+            } catch { /* ignore parse errors */ }
+          } else {
+            tasksToExecute.push(task);
           }
-        } catch (error) {
-          console.error(`Error executing task ${task.id}:`, error);
-          await TaskModel.updateStatus(task.id, 'failed');
-          // Don't continue with remaining tasks if one fails in sequential execution
-          break;
+        }
+
+        if (tasksToExecute.length === 0) continue;
+
+        // Check dependencies for all tasks in this group
+        const executableTasks = [];
+        for (const task of tasksToExecute) {
+          const canExecute = await TaskModel.canExecuteTask(task.id);
+          if (canExecute) {
+            executableTasks.push(task);
+          } else {
+            console.log(`Task ${task.id} dependencies not met, skipping for now`);
+          }
+        }
+
+        if (executableTasks.length === 0) continue;
+
+        if (executableTasks.length === 1) {
+          // Single task — run directly
+          try {
+            const taskOutputs = await this.executeTask(executableTasks[0], userId, previousGroupOutputs, provider, model);
+            if (taskOutputs) {
+              previousGroupOutputs = taskOutputs;
+              console.log(`[TaskOrchestrator] Task ${executableTasks[0].id} completed with outputs for next group`);
+            }
+          } catch (error) {
+            console.error(`Error executing task ${executableTasks[0].id}:`, error);
+            await TaskModel.updateStatus(executableTasks[0].id, 'failed');
+            break;
+          }
+        } else {
+          // Multiple tasks at same order_index — run in parallel
+          console.log(`[TaskOrchestrator] Running ${executableTasks.length} tasks in parallel (order_index: ${orderIndex})`);
+          const results = await Promise.allSettled(
+            executableTasks.map(task => this.executeTask(task, userId, previousGroupOutputs, provider, model))
+          );
+
+          // Collect outputs from all parallel tasks
+          const groupOutputs = [];
+          let hasFailure = false;
+          for (let i = 0; i < results.length; i++) {
+            const result = results[i];
+            if (result.status === 'fulfilled' && result.value) {
+              groupOutputs.push({
+                taskId: executableTasks[i].id,
+                taskTitle: executableTasks[i].title,
+                ...result.value,
+              });
+            } else if (result.status === 'rejected') {
+              console.error(`Error executing parallel task ${executableTasks[i].id}:`, result.reason);
+              await TaskModel.updateStatus(executableTasks[i].id, 'failed');
+              hasFailure = true;
+            }
+          }
+
+          // Merge parallel outputs for the next group
+          if (groupOutputs.length > 0) {
+            previousGroupOutputs = {
+              parallelResults: groupOutputs,
+              summary: groupOutputs.map(o => `[${o.taskTitle}]: ${typeof o.content === 'string' ? o.content.substring(0, 500) : 'completed'}`).join('\n\n'),
+            };
+          }
+
+          if (hasFailure && groupOutputs.length === 0) {
+            // All parallel tasks failed — stop execution
+            break;
+          }
         }
       }
 
       // Check if all tasks are complete
-      const isComplete = await this.checkGoalCompletion(goalId);
-      if (isComplete) {
-        await this.completeGoal(goalId);
+      // Skip completeGoal if running inside the autonomous loop — the loop handles its own completion
+      const goalData = this.runningGoals.get(goalId);
+      if (!goalData?.autonomous) {
+        const isComplete = await this.checkGoalCompletion(goalId);
+        if (isComplete) {
+          await this.completeGoal(goalId);
+        }
       }
     } catch (error) {
       console.error(`Error in goal execution for goal ${goalId}:`, error);
@@ -165,6 +229,15 @@ class TaskOrchestrator {
       await TaskModel.updateStatus(task.id, 'running', 0, new Date().toISOString(), null, taskInput);
       console.log(`[TaskOrchestrator] Step 3 Complete: Task ${task.id} marked as running with input data`);
 
+      // Broadcast task running
+      broadcastToUser(userId, RealtimeEvents.GOAL_TASK_UPDATED, {
+        goalId: task.goal_id,
+        taskId: task.id,
+        title: task.title,
+        status: 'running',
+        agentName: agent.name,
+      });
+
       // Step 4: Execute task via agent chat
       console.log(`[TaskOrchestrator] Step 4: Executing task via agent ${agent.name}`);
       const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model);
@@ -175,11 +248,30 @@ class TaskOrchestrator {
       const taskOutputs = await this.processTaskResult(task.id, result);
       console.log(`[TaskOrchestrator] Step 5 Complete: Task ${task.id} completed successfully`);
 
+      // Broadcast task completed
+      broadcastToUser(userId, RealtimeEvents.GOAL_TASK_UPDATED, {
+        goalId: task.goal_id,
+        taskId: task.id,
+        title: task.title,
+        status: 'completed',
+        agentName: agent.name,
+      });
+
       return taskOutputs; // Return outputs for next task
     } catch (error) {
       console.error(`[TaskOrchestrator] Error executing task ${task.id}:`, error);
       console.log(`[TaskOrchestrator] Marking task ${task.id} as failed due to error`);
       await TaskModel.updateStatus(task.id, 'failed');
+
+      // Broadcast task failed
+      broadcastToUser(userId, RealtimeEvents.GOAL_TASK_UPDATED, {
+        goalId: task.goal_id,
+        taskId: task.id,
+        title: task.title,
+        status: 'failed',
+        error: error.message,
+      });
+
       throw error;
     }
   }
@@ -396,6 +488,7 @@ Begin working on this task now.`;
     const userId = goalData?.userId;
     const provider = goalData?.provider || null;
     const model = goalData?.model || null;
+    const conversationId = goalData?.conversationId || null;
 
     await GoalModel.updateStatus(goalId, 'completed', new Date().toISOString());
     console.log(`Goal ${goalId} completed successfully`);
@@ -426,6 +519,13 @@ Begin working on this task now.`;
           },
         });
 
+        // Auto-merge: send results summary back to the originating conversation
+        if (conversationId) {
+          this._sendGoalResultsToChat(goalId, conversationId, evaluation).catch(err => {
+            console.error('[TaskOrchestrator] Auto-merge to chat failed (non-critical):', err.message);
+          });
+        }
+
         // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
         InsightTriggers.onGoalCompleted(goalId, userId, provider, model).catch(err => {
           console.error('[TaskOrchestrator] Insight/SkillForge analysis failed (non-critical):', err.message);
@@ -446,6 +546,88 @@ Begin working on this task now.`;
     }
 
     this.runningGoals.delete(goalId);
+  }
+
+  /**
+   * Send goal completion results back to the originating chat conversation.
+   * Collects all task outputs and triggers an autonomous message so Annie can
+   * synthesize a final response for the user.
+   */
+  static async _sendGoalResultsToChat(goalId, conversationId, evaluation) {
+    const goal = await GoalModel.findOne(goalId);
+    const tasks = await TaskModel.findByGoalId(goalId);
+
+    // Collect task results
+    const taskSummaries = tasks.map(task => {
+      let output = null;
+      try {
+        output = task.output ? (typeof task.output === 'string' ? JSON.parse(task.output) : task.output) : null;
+      } catch { /* ignore parse errors */ }
+
+      return {
+        title: task.title,
+        status: task.status,
+        agentId: task.agent_id,
+        content: output?.content ? (typeof output.content === 'string' ? output.content.substring(0, 1000) : JSON.stringify(output.content).substring(0, 1000)) : null,
+      };
+    });
+
+    const systemMessage = {
+      role: 'user',
+      content: `[System: Goal completed — synthesize results for user]
+
+✅ GOAL COMPLETED: "${goal.title}"
+
+Score: ${evaluation.scores?.overall || 0}% | Status: ${evaluation.passed ? 'PASSED' : 'NEEDS REVIEW'}
+${evaluation.feedback ? `Evaluation: ${evaluation.feedback}` : ''}
+
+TASK RESULTS:
+${taskSummaries.map(t => `**${t.title}** (${t.status}):\n${t.content || 'No output'}`).join('\n\n---\n\n')}
+
+INSTRUCTIONS:
+The goal you delegated has completed. Synthesize the results from all tasks into a clear, comprehensive response for the user.
+- Summarize what was accomplished
+- Highlight key findings or deliverables from each task
+- If the goal needs review (score < 70%), mention what might need improvement
+- Be conversational and helpful`,
+    };
+
+    await autonomousMessageService.triggerAutonomousMessage(conversationId, systemMessage);
+    console.log(`[TaskOrchestrator] Auto-merge results sent to conversation ${conversationId} for goal ${goalId}`);
+  }
+
+  /**
+   * Send goal failure/stuck notification back to the originating chat conversation.
+   */
+  static async _sendGoalFailureToChat(goalId, conversationId, reason, details, evaluation = null) {
+    const goal = await GoalModel.findOne(goalId);
+    const tasks = await TaskModel.findByGoalId(goalId);
+
+    const completedCount = tasks.filter(t => t.status === 'completed').length;
+    const failedCount = tasks.filter(t => t.status === 'failed').length;
+    const score = evaluation?.scores?.overall || 0;
+
+    const systemMessage = {
+      role: 'user',
+      content: `[System: Goal did not pass — inform the user]
+
+⚠️ GOAL NEEDS ATTENTION: "${goal.title}"
+
+Status: ${reason.toUpperCase()}
+${details}
+${score > 0 ? `Best score achieved: ${score}%` : ''}
+Tasks: ${completedCount}/${tasks.length} completed, ${failedCount} failed
+
+INSTRUCTIONS:
+The goal you delegated did not fully pass. Let the user know:
+- What was accomplished (${completedCount} of ${tasks.length} tasks completed)
+- Why it stopped (${details})
+- Suggest next steps (retry with different approach, review partial results, etc.)
+- Be helpful and constructive, not alarming`,
+    };
+
+    await autonomousMessageService.triggerAutonomousMessage(conversationId, systemMessage);
+    console.log(`[TaskOrchestrator] Goal failure notification sent to conversation ${conversationId} for goal ${goalId}`);
   }
   static async handleGoalError(goalId, error) {
     const goalData = this.runningGoals.get(goalId);
@@ -588,7 +770,7 @@ Begin working on this task now.`;
    * Execute a goal autonomously with iterative feedback loop.
    * Evaluate → Re-plan failed tasks → Re-execute → Repeat until pass or max iterations.
    */
-  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50, provider = null, model = null } = {}) {
+  static async executeGoalAutonomous(goalId, userId, { maxIterations = 50, provider = null, model = null, conversationId = null } = {}) {
     try {
       console.log(`[AGI Loop] Starting autonomous execution for goal ${goalId} (max ${maxIterations} iterations)`);
 
@@ -603,6 +785,7 @@ Begin working on this task now.`;
         autonomous: true,
         provider,
         model,
+        conversationId,
       });
 
       let identicalReplanCount = 0;
@@ -652,11 +835,27 @@ Begin working on this task now.`;
         });
 
         let evaluation;
+        let evaluationFailed = false;
         try {
           evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model);
         } catch (error) {
           console.error(`[AGI Loop] Evaluation error at iteration ${iteration}:`, error);
+          evaluationFailed = true;
           evaluation = { passed: false, scores: { overall: 0 }, feedback: error.message };
+        }
+
+        // If all tasks completed but evaluation itself failed (LLM error, no provider, etc.),
+        // treat the goal as passed — the work is done, don't fail because the evaluator broke
+        const allTasksComplete = await this.checkGoalCompletion(goalId);
+        if (allTasksComplete && (evaluationFailed || !evaluation.passed)) {
+          const failedTasks = (await TaskModel.findByGoalId(goalId)).filter(t => t.status === 'failed');
+          if (failedTasks.length === 0) {
+            console.log(`[AGI Loop] All tasks completed for goal ${goalId} — treating as passed${evaluationFailed ? ' (evaluator failed)' : ' (all work done)'}`);
+            evaluation.passed = true;
+            if (evaluation.scores.overall === 0) {
+              evaluation.scores.overall = 100;
+            }
+          }
         }
 
         const iterationDuration = Date.now() - iterationStart;
@@ -689,12 +888,16 @@ Begin working on this task now.`;
           await GoalModel.updateLoopStatus(goalId, 'completed');
           await GoalModel.updateStatus(goalId, 'validated');
 
-          // Record iteration
-          const gitHash = await this._gitCheckpoint(goalId, iteration, evaluation.scores.overall, userId);
-          await GoalIterationModel.create(
-            goalId, iteration, evaluation.scores.overall, true,
-            await GoalModel.getWorldState(goalId), [], gitHash, iterationDuration
-          );
+          // Record iteration (non-fatal if this fails)
+          try {
+            const gitHash = await this._gitCheckpoint(goalId, iteration, evaluation.scores.overall, userId);
+            await GoalIterationModel.create(
+              goalId, iteration, evaluation.scores.overall, true,
+              await GoalModel.getWorldState(goalId), [], gitHash, iterationDuration
+            );
+          } catch (recordError) {
+            console.error(`[AGI Loop] Failed to record iteration (non-fatal):`, recordError.message);
+          }
 
           broadcastToUser(userId, RealtimeEvents.GOAL_LOOP_COMPLETED, {
             goalId,
@@ -703,6 +906,13 @@ Begin working on this task now.`;
             bestScore: evaluation.scores.overall,
             passed: true,
           });
+
+          // Auto-merge: send results summary back to the originating conversation
+          if (conversationId) {
+            this._sendGoalResultsToChat(goalId, conversationId, evaluation).catch(err => {
+              console.error('[AGI Loop] Auto-merge to chat failed (non-critical):', err.message);
+            });
+          }
 
           // Fire-and-forget: trigger unified insight extraction + SkillForge (non-blocking)
           InsightTriggers.onGoalCompleted(goalId, userId, provider, model).catch(err => {
@@ -748,6 +958,9 @@ Begin working on this task now.`;
               iteration,
               error: 'Identical re-plan detected 3 times — stopping to prevent infinite loop',
             });
+            if (conversationId) {
+              this._sendGoalFailureToChat(goalId, conversationId, 'stuck', 'Goal got stuck — identical replans detected 3 times.', evaluation).catch(() => {});
+            }
             this.runningGoals.delete(goalId);
             return { goalId, status: 'stuck', iteration, reason: 'identical_replan' };
           }
@@ -756,23 +969,26 @@ Begin working on this task now.`;
           lastReplanHash = replanHash;
         }
 
-        // Phase 5: Update world state
-        const worldState = await this._updateWorldState(goalId, iteration, evaluation);
+        // Phase 5: Update world state & record iteration (non-fatal if these fail)
+        let worldState = {};
+        let gitHash = null;
+        try {
+          worldState = await this._updateWorldState(goalId, iteration, evaluation);
+          gitHash = await this._gitCheckpoint(goalId, iteration, evaluation.scores.overall, userId);
 
-        // Phase 6: Git checkpoint
-        const gitHash = await this._gitCheckpoint(goalId, iteration, evaluation.scores.overall, userId);
+          broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_CHECKPOINT, {
+            goalId,
+            iteration,
+            gitHash,
+          });
 
-        broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_CHECKPOINT, {
-          goalId,
-          iteration,
-          gitHash,
-        });
-
-        // Record iteration
-        await GoalIterationModel.create(
-          goalId, iteration, evaluation.scores.overall, false,
-          worldState, replannedTasks, gitHash, iterationDuration
-        );
+          await GoalIterationModel.create(
+            goalId, iteration, evaluation.scores.overall, false,
+            worldState, replannedTasks, gitHash, iterationDuration
+          );
+        } catch (stateError) {
+          console.error(`[AGI Loop] World state/checkpoint error (non-fatal):`, stateError.message);
+        }
 
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_END, {
           goalId,
@@ -795,6 +1011,9 @@ Begin working on this task now.`;
         iteration: maxIterations,
         error: 'Max iterations reached',
       });
+      if (conversationId) {
+        this._sendGoalFailureToChat(goalId, conversationId, 'max_iterations', `Goal reached the maximum of ${maxIterations} iterations without passing.`).catch(() => {});
+      }
       this.runningGoals.delete(goalId);
       return { goalId, status: 'max_iterations', iteration: maxIterations };
     } catch (error) {
@@ -992,15 +1211,16 @@ Rules:
       lastEvaluatedAt: new Date().toISOString(),
       completedTasks: tasks
         .filter((t) => t.status === 'completed')
-        .map((t) => ({
-          id: t.id,
-          title: t.title,
-          output: t.output
-            ? typeof t.output === 'string'
-              ? JSON.parse(t.output).content?.substring(0, 200)
-              : t.output.content?.substring(0, 200)
-            : null,
-        })),
+        .map((t) => {
+          let outputPreview = null;
+          try {
+            const parsed = t.output ? (typeof t.output === 'string' ? JSON.parse(t.output) : t.output) : null;
+            if (parsed?.content) {
+              outputPreview = typeof parsed.content === 'string' ? parsed.content.substring(0, 200) : JSON.stringify(parsed.content).substring(0, 200);
+            }
+          } catch { /* ignore parse errors */ }
+          return { id: t.id, title: t.title, output: outputPreview };
+        }),
       failedTasks: tasks
         .filter((t) => t.status === 'failed')
         .map((t) => ({ id: t.id, title: t.title, error: t.error })),

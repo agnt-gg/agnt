@@ -88,6 +88,9 @@ export const RealtimeEvents = {
   ASYNC_TOOL_COMPLETED: 'chat:async_tool_completed',
   ASYNC_TOOL_FAILED: 'chat:async_tool_failed',
 
+  // Goal Task Progress
+  GOAL_TASK_UPDATED: 'goal:task_updated',
+
   // AGI Loop (Goal Iterations)
   GOAL_ITERATION_START: 'goal:iteration_start',
   GOAL_ITERATION_EVALUATE: 'goal:iteration_evaluate',
