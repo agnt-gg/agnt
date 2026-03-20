@@ -394,6 +394,20 @@ RULES:
 - Keep it responsive - the iframe width is 100% of the chat message area
 - Popular CDN libraries are fine: Chart.js, D3, Three.js, Anime.js, p5.js, etc.
 
+DESIGN QUALITY (CRITICAL):
+- Every HTML output MUST look like it was crafted by a world-class design agency — bold, visually unique, and forward-thinking
+- Ultra high design quality is NON-NEGOTIABLE — think high-end architecture firm portfolio, not generic enterprise software
+- The aesthetic should feel like the world's leading design agencies: confident, distinctive, and visually striking
+- Use a base-2 spacing scale for all padding, margins, and gaps (2, 4, 8, 16, 24, 32, 48, 64px) — never arbitrary values
+- Establish clear typographic hierarchy: distinct sizes for headings, subheadings, body, and captions with consistent line-height
+- Generous whitespace — let content breathe, never feel cramped
+- Strong visual hierarchy: the user's eye should be guided naturally through the content
+- Consistent alignment and grid structure throughout the layout
+- Polished interactive states and smooth transitions on all interactive elements
+- Purposeful use of color: AGNT accent colors as highlights, not floods — accents on key UI elements and data points
+- Every element should feel intentional, refined, and professionally designed
+- NEVER produce generic or cookie-cutter layouts — every output should feel bespoke and premium
+
 EXAMPLE - Interactive counter:
 \\\`\\\`\\\`html
 <!DOCTYPE html>

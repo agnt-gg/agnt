@@ -2443,16 +2443,25 @@ RULES:
 - Include ALL JavaScript inside <script> tags
 - The HTML must be completely self-contained and render directly in an iframe with srcdoc
 - Use inline/hardcoded data — no template literals, no external variables, no params.*
-- Make it visually polished: modern CSS, gradients, animations, shadows, rounded corners
 - Use the app's font variables: var(--font-family-primary) for all UI text, var(--font-family-mono) for code/monospace text. Do NOT use system font stacks like -apple-system or 'Segoe UI'.
 ${useTheme ? '- Use the theme CSS variables provided below for ALL styling — do NOT hardcode colors' : '- Dark theme preferred (dark backgrounds, light text) unless the user specifies otherwise'}
+
+DESIGN QUALITY (CRITICAL — NON-NEGOTIABLE):
+- This widget MUST look like it was crafted by a world-class design agency — bold, visually unique, and forward-thinking
+- Think high-end architecture firm portfolio, not generic enterprise software — confident, distinctive, visually striking
+- Use a base-2 spacing scale for all padding, margins, and gaps (2, 4, 8, 16, 24, 32, 48, 64px) — never arbitrary values
+- Clear typographic hierarchy: distinct sizes for headings, subheadings, body, and captions with consistent line-height
+- Generous whitespace, strong visual hierarchy, consistent alignment and grid structure
+- Polished interactive states and smooth transitions on all interactive elements
+- Purposeful use of color: accent colors as highlights, not floods — accents on key UI elements and data points
+- Every element intentional, refined, and bespoke — NEVER generic or cookie-cutter
 ${themeSection}
 
 USER REQUEST: ${enhancedInstruction}`;
 
           const { responseMessage } = await adapter.call(
             [
-              { role: 'system', content: 'You generate widget HTML. Return ONLY the raw HTML document. No markdown, no JSON, no explanation — just the HTML starting with <!DOCTYPE html>. IMPORTANT: Output properly formatted, indented HTML with 2-space indentation. Do NOT minify the code.' },
+              { role: 'system', content: 'You generate widget HTML. Return ONLY the raw HTML document. No markdown, no JSON, no explanation — just the HTML starting with <!DOCTYPE html>. IMPORTANT: Output properly formatted, indented HTML with 2-space indentation. Do NOT minify the code. Every widget you produce must look like it was crafted by a world-class design agency — bold, visually unique, forward-thinking, and bespoke. Think high-end architecture firm portfolio, not generic enterprise software.' },
               { role: 'user', content: widgetGenPrompt },
             ],
             []

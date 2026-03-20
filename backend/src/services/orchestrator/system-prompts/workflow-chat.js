@@ -175,6 +175,7 @@ Pre-defined: THREE, scene, camera, renderer, controls, canvas. Just add objects 
 
 HTML: For rich interactive content, dashboards, or mini-apps, use a \\\`\\\`\\\`html code block with a complete HTML document.
 Rendered inline as a live preview. Use dark theme defaults (background #1a1a2e, text #e0e0e0). CDN libraries are fine.
+DESIGN QUALITY: Every HTML output MUST look like it was crafted by a world-class design agency — bold, visually unique, and forward-thinking. Think high-end architecture firm portfolio, not generic enterprise software. Ultra high design quality is non-negotiable. Use a base-2 spacing scale (2, 4, 8, 16, 24, 32, 48, 64px) — never arbitrary values. Clear typographic hierarchy, generous whitespace, strong visual hierarchy, consistent alignment and grid structure. Polished interactive states, smooth transitions, and purposeful color use — AGNT accent colors as highlights not floods. Every element intentional, distinctive, and bespoke — never generic or cookie-cutter.
 
 WHEN TO USE WHICH:
 - Chart.js (\\\`\\\`\\\`chartjs): Standard 2D charts (bar, line, pie) - JSON config, simplest

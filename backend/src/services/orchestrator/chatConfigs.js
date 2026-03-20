@@ -622,6 +622,20 @@ var(--font-size-xs) = 12px, var(--font-size-sm) = 14px, var(--font-size-md) = 16
 Font weights: var(--font-weight-light) = 300, var(--font-weight-normal) = 400, var(--font-weight-medium) = 500, var(--font-weight-semibold) = 600, var(--font-weight-bold) = 700.
 Border radii: var(--border-radius-xs) = 2px, var(--border-radius-sm) = 4px, var(--border-radius-md) = 8px, var(--border-radius-lg) = 16px, var(--border-radius-xl) = 24px.` : 'DISABLED — use standalone/custom styling with hardcoded colors. Always pass useThemeStyles: false.'}
 
+DESIGN QUALITY (CRITICAL):
+- Every widget MUST look like it was crafted by a world-class design agency — bold, visually unique, and forward-thinking
+- Ultra high design quality is NON-NEGOTIABLE — think high-end architecture firm portfolio, not generic enterprise software
+- The aesthetic should feel like the world's leading design agencies: confident, distinctive, and visually striking
+- Use a base-2 spacing scale for all padding, margins, and gaps (2, 4, 8, 16, 24, 32, 48, 64px) — never arbitrary values
+- Establish clear typographic hierarchy: distinct sizes for headings, subheadings, body, and captions with consistent line-height
+- Generous whitespace — let content breathe, never feel cramped
+- Strong visual hierarchy: the user's eye should be guided naturally through the content
+- Consistent alignment and grid structure throughout the layout
+- Polished interactive states and smooth transitions on all interactive elements
+- Purposeful use of color: accent colors as highlights, not floods — accents on key UI elements and data points
+- Every element should feel intentional, refined, and professionally designed
+- NEVER produce generic or cookie-cutter layouts — every output should feel bespoke and premium
+
 WIDGET TYPES:
 - **html** — Custom HTML/CSS/JS in a sandboxed iframe (most common)
 - **template** — Pre-built templates (metric-card, chart, list, etc.)
