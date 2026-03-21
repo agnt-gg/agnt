@@ -3,7 +3,7 @@ import { listWorkspaceFiles, getWorkspaceRootPath } from '../codeTools.js';
 /**
  * System prompt for code chat context
  */
-export async function getCodeSystemContent(currentDate, context = {}) {
+export async function getCodeSystemContent(context = {}) {
   const { codeContext } = context;
   const openFilePath = codeContext?.openFilePath || null;
   const openFileContent = codeContext?.openFileContent || null;
@@ -38,7 +38,6 @@ export async function getCodeSystemContent(currentDate, context = {}) {
   }
 
   return `You are Annie, a helpful AI assistant within AGNT's Artifacts workspace.
-Current date: ${currentDate}
 
 You help users create, edit, and explore artifacts — code, documents, visualizations, and any other files — in their workspace (${workspaceRootDisplay}).
 

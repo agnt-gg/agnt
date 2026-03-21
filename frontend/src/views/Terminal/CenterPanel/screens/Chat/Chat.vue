@@ -14,13 +14,7 @@
     <template #default>
       <div class="automation-interface" :class="{ 'mobile-view': isMobile }">
         <!-- Automation Engine Status -->
-        <EngineHeader
-          v-if="!isMobile"
-          :systemActivity="systemActivity"
-          :activeWorkflows="activeWorkflows"
-          :avgResponseTime="avgResponseTime"
-          :successRate="successRate"
-        />
+        <EngineHeader v-if="!isMobile" />
 
         <!-- Context Monitoring Panel -->
         <div v-if="!isMobile" class="monitoring-panel" :class="{ collapsed: isMonitoringCollapsed }">
@@ -31,12 +25,19 @@
             </span>
           </div>
           <div class="monitoring-content" v-show="!isMonitoringCollapsed">
-            <ContextMonitor :contextStatus="contextStatus" :lastManaged="lastContextManaged" />
+            <ContextMonitor
+              :contextStatus="contextStatus"
+              :lastManaged="lastContextManaged"
+              :tokenUsage="lastTokenUsage"
+              :cacheMetrics="lastCacheMetrics"
+              :estimatedCost="lastEstimatedCost"
+            />
             <SystemHealthPanel
-              :systemHealth="systemHealth"
               :contextManaged="contextManaged"
               :errorsCaught="errorsCaught"
               :toolTruncations="toolTruncations"
+              :toolsLoadedCount="toolsLoadedCount"
+              :cacheMetrics="lastCacheMetrics"
             />
             <ActivityFeed :activities="systemActivities" @clear="clearActivities" />
           </div>
@@ -320,12 +321,6 @@ export default {
     // Disable input when no provider connected
     const isInputDisabled = computed(() => !hasConnectedAIProvider.value);
 
-    // Business Metrics
-    const systemActivity = ref(94);
-    const activeWorkflows = computed(() => (store.getters['workflows/activeWorkflows'] || []).length);
-    const avgResponseTime = computed(() => (store.getters['userStats/agentActivityLastFetchTime'] ? 50 + Math.floor(Math.random() * 50) : 127));
-    const successRate = computed(() => store.getters['userStats/roiPercentage'] || 97);
-
     // Context Monitoring State
     const contextStatus = ref({
       currentTokens: 0,
@@ -335,15 +330,13 @@ export default {
       messagesCount: 0,
     });
     const lastContextManaged = ref(null);
-    const systemHealth = ref({
-      memoryUsage: null,
-      activeProcesses: ['EmailReceiver', 'WebhookReceiver'],
-      errorsCaught: 0,
-      uptime: null,
-    });
     const contextManaged = ref(false);
     const errorsCaught = ref(0);
     const toolTruncations = ref(0);
+    const toolsLoadedCount = ref(0);
+    const lastTokenUsage = ref(null);
+    const lastCacheMetrics = ref(null);
+    const lastEstimatedCost = ref(null);
     const systemActivities = ref([]);
 
     // Known context windows for common models (static data, no API call needed)
@@ -591,6 +584,10 @@ export default {
             type: 'tool',
             text: `Running ${data.toolCall.name}...`,
           };
+          addActivity({
+            type: 'tool',
+            text: `Running ${data.toolCall.name}`,
+          });
           break;
         case 'tool_end': {
           runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = false;
@@ -607,6 +604,11 @@ export default {
             addActivity({
               type: 'error',
               text: `Error handled in ${data.toolCall.name || 'tool'}: ${data.toolCall.error}`,
+            });
+          } else {
+            addActivity({
+              type: 'success',
+              text: `${data.toolCall.name} completed`,
             });
           }
           break;
@@ -664,6 +666,27 @@ export default {
             text: `System error handled: ${data.error}`,
           });
           isProcessing.value = false;
+          break;
+        case 'agent_execution_completed':
+          // Store token usage and cache metrics from completed execution
+          lastTokenUsage.value = data.tokenUsage || null;
+          lastCacheMetrics.value = data.cacheMetrics || null;
+          lastEstimatedCost.value = data.estimatedCost != null ? data.estimatedCost : null;
+          if (data.toolCallsCount > 0) {
+            toolsLoadedCount.value = data.toolCallsCount;
+          }
+          // Add token usage activity
+          if (data.tokenUsage) {
+            const t = data.tokenUsage;
+            let text = `Tokens: ${t.inputTokens?.toLocaleString()} in / ${t.outputTokens?.toLocaleString()} out`;
+            if (data.cacheMetrics && parseFloat(data.cacheMetrics.hitRate) > 0) {
+              text += ` (${data.cacheMetrics.hitRate}% cached)`;
+            }
+            if (data.estimatedCost > 0) {
+              text += ` · $${data.estimatedCost < 0.01 ? data.estimatedCost.toFixed(6) : data.estimatedCost.toFixed(4)}`;
+            }
+            addActivity({ type: 'system', text });
+          }
           break;
         case 'done':
           isProcessing.value = false;
@@ -1157,6 +1180,27 @@ export default {
       focusInput();
     };
 
+    // Reset all monitoring / health / cache / token state
+    const resetMonitoringState = () => {
+      const model = store.state.aiProvider?.selectedModel;
+      contextStatus.value = {
+        currentTokens: 0,
+        tokenLimit: getContextWindowForModel(model),
+        utilizationPercent: 0,
+        model: model || 'N/A',
+        messagesCount: 0,
+      };
+      lastContextManaged.value = null;
+      contextManaged.value = false;
+      errorsCaught.value = 0;
+      toolTruncations.value = 0;
+      toolsLoadedCount.value = 0;
+      lastTokenUsage.value = null;
+      lastCacheMetrics.value = null;
+      lastEstimatedCost.value = null;
+      systemActivities.value = [];
+    };
+
     const clearConversation = () => {
       // Clear local component state
       expandedToolCalls.value = {};
@@ -1177,16 +1221,8 @@ export default {
       clearInput();
       focusInput();
 
-      // Reset context monitor to show model's full context window with 0 tokens used
-      const model = store.state.aiProvider?.selectedModel;
-      contextStatus.value = {
-        currentTokens: 0,
-        tokenLimit: getContextWindowForModel(model),
-        utilizationPercent: 0,
-        model: model || 'N/A',
-        messagesCount: 0,
-      };
       suggestions.value = [...initialSuggestions];
+      resetMonitoringState();
 
       // Remove content-id query param to allow reloading the same conversation
       if (route.query['content-id']) {
@@ -1283,6 +1319,14 @@ export default {
           await nextTick();
           scrollToTop();
         }
+      }
+    );
+
+    // Reset monitoring when switching conversations
+    watch(
+      () => store.state.chat.activeConversationId,
+      () => {
+        resetMonitoringState();
       }
     );
 
@@ -1509,18 +1553,17 @@ export default {
       terminalLines,
       displayMessages,
       isProcessing,
-      systemActivity,
-      activeWorkflows,
-      avgResponseTime,
-      successRate,
       suggestions,
       isLoadingSuggestions,
       contextStatus,
       lastContextManaged,
-      systemHealth,
       contextManaged,
       errorsCaught,
       toolTruncations,
+      toolsLoadedCount,
+      lastTokenUsage,
+      lastCacheMetrics,
+      lastEstimatedCost,
       systemActivities,
       clearActivities,
       handleUserInputSubmit,

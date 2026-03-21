@@ -51,7 +51,30 @@ export const CHAT_CONFIGS = {
       // If images are uploaded, force-add media group
       const hasImages = context.imageData && context.imageData.length > 0;
 
-      const { filteredSchemas, includedGuidance, matchedGroups } = selectTools(allSchemas, latestUserMessage);
+      const { filteredSchemas, matchedGroups } = selectTools(allSchemas, latestUserMessage);
+
+      // Force media group if images were uploaded
+      if (hasImages && !matchedGroups.has('media')) {
+        matchedGroups.add('media');
+        matchedGroups.add('core');
+      }
+
+      // --- Additive-only tool groups (prompt caching) ---
+      // Merge newly matched groups with previously loaded groups so tools
+      // only grow, never shrink. This keeps the tools array stable for caching.
+      const previousGroups = context._loadedToolGroups || new Set();
+      const allGroups = new Set([...previousGroups, ...matchedGroups]);
+
+      // If new groups were added beyond what selectTools returned, pull in their tools
+      if (allGroups.size > matchedGroups.size) {
+        const { getToolsForCategories } = await import('./toolSelector.js');
+        const extraSchemas = getToolsForCategories(allSchemas, allGroups);
+        for (const schema of extraSchemas) {
+          if (!filteredSchemas.some((s) => s.function?.name === schema.function?.name)) {
+            filteredSchemas.push(schema);
+          }
+        }
+      }
 
       // Apply user's tool selector choices — remove any tools the user disabled
       if (context.enabledTools) {
@@ -63,87 +86,74 @@ export const CHAT_CONFIGS = {
         }
       }
 
-      // Force media group if images were uploaded
-      if (hasImages && !matchedGroups.has('media')) {
-        matchedGroups.add('media');
-        matchedGroups.add('core'); // core always accompanies other groups
-        const { getToolsForCategories, getGuidanceForCategories } = await import('./toolSelector.js');
-        const mediaSchemas = getToolsForCategories(allSchemas, ['media', 'core']);
-        for (const schema of mediaSchemas) {
-          if (!filteredSchemas.some((s) => s.function?.name === schema.function?.name)) {
-            filteredSchemas.push(schema);
-          }
-        }
-        const mediaGuidance = getGuidanceForCategories(['media', 'core']);
-        for (const g of mediaGuidance) {
-          includedGuidance.add(g);
-        }
-      }
+      // Persist the union of all loaded groups on context
+      context._loadedToolGroups = allGroups;
 
-      // Store selection result on context for buildSystemPrompt to use
-      context._toolSelectionResult = { filteredSchemas, includedGuidance, matchedGroups };
-
-      // Track loaded groups on context for discover_tools browse
-      context._loadedToolGroups = matchedGroups;
+      console.log(`[Cache] Tool groups: [${[...allGroups].join(', ')}] → ${filteredSchemas.length} tools (additive-only)`);
 
       return filteredSchemas;
     },
-    async buildSystemPrompt(currentDate, context) {
-      const availableToolsList = context.toolSchemas.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n');
-
-      // Get the includedGuidance from tool selection
-      const includedGuidance = context._toolSelectionResult?.includedGuidance || null;
-
-      // Build skill catalog for progressive disclosure (Agent Skills standard)
+    async buildSystemPrompt(context) {
+      // Freeze skill catalog per conversation — load once, reuse on subsequent turns
       let skillsCatalogSection = '';
-      try {
-        const { buildSkillCatalog, buildSkillActivationInstructions } = await import('../SkillService.js');
-        const catalogEntries = [];
-
-        // Add filesystem-discovered skills first (canonical kebab-case names)
-        const seenNames = new Set();
+      if (context._frozenSkillsCatalog !== undefined) {
+        skillsCatalogSection = context._frozenSkillsCatalog;
+      } else {
         try {
-          const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
-          if (SkillDiscoveryService.initialized) {
-            const discovered = SkillDiscoveryService.getSkillCatalog();
-            for (const ds of discovered) {
-              catalogEntries.push(ds);
-              seenNames.add(ds.name);
+          const { buildSkillCatalog, buildSkillActivationInstructions } = await import('../SkillService.js');
+          const catalogEntries = [];
+
+          // Add filesystem-discovered skills first (canonical kebab-case names)
+          const seenNames = new Set();
+          try {
+            const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
+            if (SkillDiscoveryService.initialized) {
+              const discovered = SkillDiscoveryService.getSkillCatalog();
+              for (const ds of discovered) {
+                catalogEntries.push(ds);
+                seenNames.add(ds.name);
+              }
             }
+          } catch (e) {
+            // Discovery service may not be initialized
+          }
+
+          // Add DB skills (deduplicate by slug)
+          if (context.userId) {
+            const SkillModel = (await import('../../models/SkillModel.js')).default;
+            const dbSkills = await SkillModel.findAll(context.userId);
+            for (const s of dbSkills) {
+              const key = s.slug || s.name;
+              if (!seenNames.has(key)) {
+                catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database' });
+                seenNames.add(key);
+              }
+            }
+          }
+
+          if (catalogEntries.length > 0) {
+            skillsCatalogSection = '\n' + buildSkillCatalog(catalogEntries) + '\n\n' + buildSkillActivationInstructions() + '\n';
           }
         } catch (e) {
-          // Discovery service may not be initialized
+          console.warn('[chatConfigs] Failed to build skill catalog:', e.message);
         }
-
-        // Add DB skills (deduplicate by slug)
-        if (context.userId) {
-          const SkillModel = (await import('../../models/SkillModel.js')).default;
-          const dbSkills = await SkillModel.findAll(context.userId);
-          for (const s of dbSkills) {
-            const key = s.slug || s.name;
-            if (!seenNames.has(key)) {
-              catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database' });
-              seenNames.add(key);
-            }
-          }
-        }
-
-        if (catalogEntries.length > 0) {
-          skillsCatalogSection = '\n' + buildSkillCatalog(catalogEntries) + '\n\n' + buildSkillActivationInstructions() + '\n';
-        }
-      } catch (e) {
-        console.warn('[chatConfigs] Failed to build skill catalog:', e.message);
+        context._frozenSkillsCatalog = skillsCatalogSection;
       }
 
-      // Load relevant user memories for the orchestrator
+      // Freeze memory per conversation — load once, reuse on subsequent turns
       let memorySection = '';
-      try {
-        memorySection = await loadMemorySection(context.userId, context.latestUserMessage);
-      } catch (e) {
-        console.warn('[chatConfigs] Failed to load orchestrator memories:', e.message);
+      if (context._frozenMemorySection !== undefined) {
+        memorySection = context._frozenMemorySection;
+      } else {
+        try {
+          memorySection = await loadMemorySection(context.userId, context.latestUserMessage);
+        } catch (e) {
+          console.warn('[chatConfigs] Failed to load orchestrator memories:', e.message);
+        }
+        context._frozenMemorySection = memorySection;
       }
 
-      return getOrchestratorSystemContent(currentDate, availableToolsList, skillsCatalogSection, includedGuidance, memorySection);
+      return getOrchestratorSystemContent(skillsCatalogSection, memorySection);
     },
     maxToolRounds: 100,
     responseType: 'stream',
@@ -199,7 +209,7 @@ export const CHAT_CONFIGS = {
       console.warn('No assigned tools found for agent, returning empty tool set');
       return [];
     },
-    async buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(context) {
       const { agentId, agentState, toolSchemas } = context;
       let { agentContext } = context;
 
@@ -209,7 +219,7 @@ export const CHAT_CONFIGS = {
       if (isAgentManagement) {
         // Use the agent management system prompt (Annie for creating/managing agents)
         console.log('Using agent management system prompt for AgentForge');
-        return getAgentSystemContent(currentDate, agentId, agentContext, agentState);
+        return getAgentSystemContent(agentId, agentContext, agentState);
       }
 
       // This is chatting WITH a specific agent - use the agent's custom system prompt
@@ -260,9 +270,7 @@ export const CHAT_CONFIGS = {
       const agentName = agentContext?.name || 'AI Agent';
       const agentDesc = agentContext?.description ? `\n${agentContext.description}\n` : '';
 
-      return `Current date and time: ${currentDate}
-
-You are ${agentName}, an AI agent with specific assigned tools.${agentDesc}
+      return `You are ${agentName}, an AI agent with specific assigned tools.${agentDesc}
 Use only the tools assigned to you.
 
 AVAILABLE TOOLS:
@@ -283,10 +291,15 @@ Use your assigned tools effectively to help the user accomplish their goals.`;
     async getToolSchemas(context) {
       return await getWorkflowToolSchemas();
     },
-    async buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(context) {
       const { workflowId, workflowContext, workflowState, userId, latestUserMessage } = context;
-      const basePrompt = await getWorkflowSystemContent(currentDate, workflowId, workflowContext, workflowState);
+      const basePrompt = await getWorkflowSystemContent(workflowId, workflowContext, workflowState);
+      // Freeze memory per conversation
+      if (context._frozenMemorySection !== undefined) {
+        return basePrompt + context._frozenMemorySection;
+      }
       const memorySection = await loadMemorySection(userId, latestUserMessage);
+      context._frozenMemorySection = memorySection;
       return basePrompt + memorySection;
     },
     maxToolRounds: 25,
@@ -398,12 +411,18 @@ Use your assigned tools effectively to help the user accomplish their goals.`;
         },
       ];
     },
-    async buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(context) {
       const { toolId, toolContext, toolState, userId, latestUserMessage } = context;
-      const memorySection = await loadMemorySection(userId, latestUserMessage);
+      // Freeze memory per conversation
+      let memorySection;
+      if (context._frozenMemorySection !== undefined) {
+        memorySection = context._frozenMemorySection;
+      } else {
+        memorySection = await loadMemorySection(userId, latestUserMessage);
+        context._frozenMemorySection = memorySection;
+      }
       return `You are Annie, a helpful AI assistant specialized in creating and managing tools using AI-powered generation.
 You have access to powerful functions that can create, modify, and manage tools through natural language instructions.
-Current date: ${currentDate}
 Tool ID: ${toolId}
 Tool context: ${JSON.stringify(toolContext)}
 Tool state: ${JSON.stringify(toolState)}
@@ -548,7 +567,7 @@ Always be helpful, creative, and guide users through the tool creation process s
         },
       ];
     },
-    async buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(context) {
       const { widgetId, widgetContext, widgetState, userId, latestUserMessage } = context;
 
       // Build a concise summary of the current widget state for the system prompt
@@ -571,7 +590,6 @@ Always be helpful, creative, and guide users through the tool creation process s
 
       return `You are Annie, a helpful AI assistant specialized in creating and managing dashboard widgets.
 You can help users build HTML widgets, template widgets, iframe widgets, and markdown widgets.
-Current date: ${currentDate}
 Widget ID: ${widgetId}
 
 CURRENT WIDGET STATE:
@@ -678,11 +696,17 @@ Always be helpful and guide users through the widget creation process step by st
     async getToolSchemas(context) {
       return await getGoalToolSchemas();
     },
-    async buildSystemPrompt(currentDate, context) {
+    async buildSystemPrompt(context) {
       const { userId, latestUserMessage } = context;
-      const memorySection = await loadMemorySection(userId, latestUserMessage);
+      // Freeze memory per conversation
+      let memorySection;
+      if (context._frozenMemorySection !== undefined) {
+        memorySection = context._frozenMemorySection;
+      } else {
+        memorySection = await loadMemorySection(userId, latestUserMessage);
+        context._frozenMemorySection = memorySection;
+      }
       return `You are Annie, a helpful AI assistant specialized in goal management and task orchestration.
-Current date: ${currentDate}
 
 You have access to comprehensive goal management functions that allow you to:
 - Create and break down goals into actionable tasks
@@ -702,8 +726,8 @@ Always be proactive in helping users achieve their goals through structured task
     async getToolSchemas(context) {
       return getCodeToolSchemas();
     },
-    async buildSystemPrompt(currentDate, context) {
-      return await getCodeSystemContent(currentDate, context);
+    async buildSystemPrompt(context) {
+      return await getCodeSystemContent(context);
     },
     maxToolRounds: 25,
     responseType: 'stream',
@@ -716,7 +740,7 @@ Always be proactive in helping users achieve their goals through structured task
       // Suggestions don't need tools, they just generate contextual suggestions
       return [];
     },
-    buildSystemPrompt(currentDate, context) {
+    buildSystemPrompt(context) {
       const { agentContext } = context;
       let availableToolsList = '';
 

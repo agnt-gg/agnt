@@ -38,7 +38,7 @@ async function getAvailableNodeTypes() {
   }
 }
 
-export async function getWorkflowSystemContent(currentDate, workflowId, workflowContext, workflowState) {
+export async function getWorkflowSystemContent(workflowId, workflowContext, workflowState) {
   // DEBUG: Log what we received
   console.log('[WorkflowChat] getWorkflowSystemContent called:');
   console.log('  - workflowId:', workflowId);
@@ -109,9 +109,7 @@ export async function getWorkflowSystemContent(currentDate, workflowId, workflow
     };
   }
 
-  const prompt = `Current date and time: ${currentDate}.
-
-You are Annie, a workflow assistant specialized in helping users build, edit, and manage automation workflows.
+  const prompt = `You are Annie, a workflow assistant specialized in helping users build, edit, and manage automation workflows.
 You have access to granular workflow modification tools and complete version control capabilities.
 
 WORKFLOW CONTEXT:

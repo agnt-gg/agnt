@@ -59,10 +59,12 @@ export default {
       const icons = {
         context: '🧠',
         tool: '⚙️',
+        success: '✅',
         error: '🛡️',
         system: '💻',
         recovery: '🔄',
         truncation: '✂️',
+        info: '📎',
         default: '📝',
       };
       return icons[type] || icons.default;
@@ -197,6 +199,16 @@ export default {
   border: 1px solid rgba(127, 129, 147, 0.1);
 }
 
+.activity-item.info {
+  background: rgba(var(--blue-rgb), 0.05);
+  border: 1px solid rgba(var(--blue-rgb), 0.1);
+}
+
+.activity-item.success {
+  background: rgba(var(--green-rgb), 0.05);
+  border: 1px solid rgba(var(--green-rgb), 0.1);
+}
+
 .activity-item.recovery {
   background: rgba(var(--green-rgb), 0.05);
   border: 1px solid rgba(var(--green-rgb), 0.1);
@@ -237,6 +249,10 @@ export default {
 
 .activity-item.error .activity-text,
 .activity-item.recovery .activity-text {
+  color: var(--color-green);
+}
+
+.activity-item.success .activity-text {
   color: var(--color-green);
 }
 

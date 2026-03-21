@@ -963,6 +963,75 @@ class AnthropicAdapter extends BaseAdapter {
   }
 
   /**
+   * Apply cache_control marker to a message's content.
+   * Handles string content, array content, and tool_result messages.
+   */
+  _applyCacheMarker(msg, marker) {
+    const content = msg.content;
+
+    // tool_result or empty content — mark at message level (not supported, skip)
+    if (content == null || content === '') return;
+
+    // String content → convert to content block array with marker
+    if (typeof content === 'string') {
+      msg.content = [{ type: 'text', text: content, cache_control: marker }];
+      return;
+    }
+
+    // Array content → mark the last block
+    if (Array.isArray(content) && content.length > 0) {
+      content[content.length - 1].cache_control = marker;
+    }
+  }
+
+  /**
+   * Strip all cache_control markers from conversation messages.
+   * Must be called before applying fresh markers to avoid exceeding
+   * Anthropic's 4-breakpoint limit across tool loop rounds.
+   */
+  _stripCacheMarkers(messages) {
+    for (const msg of messages) {
+      delete msg.cache_control;
+      const content = msg.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          delete block.cache_control;
+        }
+      }
+    }
+  }
+
+  /**
+   * Add rolling cache breakpoints to the last N conversation messages.
+   * This creates a rolling cache window: older turns cached, only newest is full-price.
+   * Uses 2 of the 4 available breakpoints (system + tools use the other 2).
+   *
+   * IMPORTANT: Always call _stripCacheMarkers first to clear stale markers
+   * from prior tool loop rounds — otherwise markers accumulate and exceed
+   * Anthropic's 4-breakpoint limit.
+   */
+  _applyRollingCacheBreakpoints(messages, count = 2) {
+    if (!messages || messages.length === 0) return;
+
+    // First, strip any existing cache_control from all messages
+    this._stripCacheMarkers(messages);
+
+    // Find indices of non-system messages (user + assistant)
+    const indices = [];
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role !== 'system') {
+        indices.push(i);
+      }
+    }
+
+    // Mark the last N messages
+    const toMark = indices.slice(-count);
+    for (const idx of toMark) {
+      this._applyCacheMarker(messages[idx], { type: 'ephemeral' });
+    }
+  }
+
+  /**
    * Convert OpenAI-format history messages to Anthropic format.
    * - assistant messages with tool_calls → content array with tool_use blocks
    * - role:"tool" messages → role:"user" with tool_result content blocks
@@ -1023,32 +1092,52 @@ class AnthropicAdapter extends BaseAdapter {
         const systemPrompt = messages.find((m) => m.role === 'system')?.content || '';
         const conversationMessages = this._normalizeHistoryMessages(messages.filter((m) => m.role !== 'system'));
 
-        // Build system parameter: Claude Code OAuth requires identity prompt as first block
+        // Build system parameter with cache_control for prompt caching.
+        // Anthropic allows max 4 cache_control breakpoints total across
+        // system + tools + messages. Budget them carefully.
         let systemParam;
+        let usedBreakpoints = 0;
         if (this.provider === 'claude-code') {
+          // claude-code: 2 system blocks, only cache the LAST one (1 breakpoint)
           const systemBlocks = [
-            {
-              type: 'text',
-              text: "You are Claude Code, Anthropic's official CLI for Claude.",
-              cache_control: { type: 'ephemeral' },
-            },
+            { type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." },
           ];
           if (systemPrompt) {
             systemBlocks.push({
               type: 'text',
               text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
+              cache_control: { type: 'ephemeral' },
             });
+          } else {
+            systemBlocks[0].cache_control = { type: 'ephemeral' };
           }
           systemParam = systemBlocks;
+          usedBreakpoints = 1;
         } else {
-          systemParam = systemPrompt;
+          systemParam = [{
+            type: 'text',
+            text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
+            cache_control: { type: 'ephemeral' },
+          }];
+          usedBreakpoints = 1;
         }
+
+        // Breakpoint on last tool
+        const anthropicTools = this._transformToolsToAnthropic(tools);
+        if (anthropicTools.length > 0) {
+          anthropicTools[anthropicTools.length - 1].cache_control = { type: 'ephemeral' };
+          usedBreakpoints++;
+        }
+
+        // Remaining breakpoints for rolling messages (max 4 total)
+        const messageBreakpoints = Math.max(0, 4 - usedBreakpoints);
+        this._applyRollingCacheBreakpoints(conversationMessages, messageBreakpoints);
 
         const response = await this.client.messages.create({
           model: this.model,
           system: systemParam,
           messages: conversationMessages,
-          tools: this._transformToolsToAnthropic(tools),
+          tools: anthropicTools,
           max_tokens: this._getMaxTokensForModel(), // Model-specific max tokens
         });
 
@@ -1275,33 +1364,53 @@ Please carefully check the tool schema and ensure all parameters match the expec
           }
         }
 
-        // Build system parameter: Claude Code OAuth requires identity prompt as first block
+        // Build system parameter with cache_control for prompt caching.
+        // Anthropic allows max 4 cache_control breakpoints total across
+        // system + tools + messages. Budget them carefully.
         let systemParam;
+        let usedBreakpoints = 0;
         if (this.provider === 'claude-code') {
+          // claude-code: 2 system blocks, only cache the LAST one (1 breakpoint)
           const systemBlocks = [
-            {
-              type: 'text',
-              text: "You are Claude Code, Anthropic's official CLI for Claude.",
-              cache_control: { type: 'ephemeral' },
-            },
+            { type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." },
           ];
           if (systemPrompt) {
             systemBlocks.push({
               type: 'text',
               text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
+              cache_control: { type: 'ephemeral' },
             });
+          } else {
+            systemBlocks[0].cache_control = { type: 'ephemeral' };
           }
           systemParam = systemBlocks;
+          usedBreakpoints = 1;
         } else {
-          systemParam = systemPrompt;
+          systemParam = [{
+            type: 'text',
+            text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
+            cache_control: { type: 'ephemeral' },
+          }];
+          usedBreakpoints = 1;
         }
+
+        // Breakpoint on last tool
+        const anthropicTools = this._transformToolsToAnthropic(tools);
+        if (anthropicTools.length > 0) {
+          anthropicTools[anthropicTools.length - 1].cache_control = { type: 'ephemeral' };
+          usedBreakpoints++;
+        }
+
+        // Remaining breakpoints for rolling messages (max 4 total)
+        const messageBreakpoints = Math.max(0, 4 - usedBreakpoints);
+        this._applyRollingCacheBreakpoints(conversationMessages, messageBreakpoints);
 
         const abortSignal = context.abortSignal;
         const stream = await this.client.messages.stream({
           model: this.model,
           system: systemParam,
           messages: conversationMessages,
-          tools: this._transformToolsToAnthropic(tools),
+          tools: anthropicTools,
           max_tokens: this._getMaxTokensForModel(), // Model-specific max tokens
         });
 
@@ -2724,7 +2833,8 @@ class GeminiAdapter extends BaseAdapter {
           contents: geminiMessages,
         });
 
-        // Stream chunks
+        // Stream chunks — capture usageMetadata from the last chunk
+        let geminiUsage = null;
         for await (const chunk of response) {
           if (abortSignal?.aborted) {
             console.log('[Gemini Stream] Aborted by client disconnect');
@@ -2768,6 +2878,15 @@ class GeminiAdapter extends BaseAdapter {
               }
             });
           }
+
+          // Capture usage metadata (typically present on the last chunk)
+          if (chunk.usageMetadata) {
+            geminiUsage = {
+              prompt_tokens: chunk.usageMetadata.promptTokenCount || 0,
+              completion_tokens: chunk.usageMetadata.candidatesTokenCount || 0,
+              total_tokens: chunk.usageMetadata.totalTokenCount || 0,
+            };
+          }
         }
 
         // Log successful retry if this wasn't the first attempt
@@ -2784,8 +2903,7 @@ class GeminiAdapter extends BaseAdapter {
         return {
           responseMessage: responseMessage,
           toolCalls: accumulatedToolCalls,
-          // Gemini streaming doesn't provide per-chunk usage metadata
-          usage: undefined,
+          usage: geminiUsage || undefined,
         };
       } catch (error) {
         lastError = error;
@@ -3478,6 +3596,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     let accumulatedContent = '';
     let accumulatedToolCalls = [];
     let responseId = null;
+    let streamUsage = null;
 
     for await (const event of stream) {
       if (abortSignal?.aborted) {
@@ -3525,10 +3644,14 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
             accumulatedToolCalls = finalToolCalls;
           }
         }
+        // Extract usage from completed response
+        if (event.response && event.response.usage) {
+          streamUsage = event.response.usage;
+        }
       }
     }
 
-    return { accumulatedContent, accumulatedToolCalls, responseId };
+    return { accumulatedContent, accumulatedToolCalls, responseId, usage: streamUsage || undefined };
   }
 
   /**
@@ -3546,7 +3669,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         console.log(`[Codex Responses] Input items: ${params.input.length}, Tools: ${params.tools?.length || 0}`);
 
         const stream = await this.client.responses.create(params);
-        const { accumulatedContent, accumulatedToolCalls, responseId } = await this._consumeStream(stream);
+        const { accumulatedContent, accumulatedToolCalls, responseId, usage } = await this._consumeStream(stream);
 
         if (attempt > 0) {
           console.log(`Codex Responses call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
@@ -3560,6 +3683,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           },
           toolCalls: accumulatedToolCalls,
           _responsesApiId: responseId,
+          usage,
         };
       } catch (error) {
         lastError = error;
@@ -3619,7 +3743,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
         const abortSignal = context.abortSignal;
         const stream = await this.client.responses.create(params);
-        const { accumulatedContent, accumulatedToolCalls } = await this._consumeStream(stream, onChunk, abortSignal);
+        const { accumulatedContent, accumulatedToolCalls, usage } = await this._consumeStream(stream, onChunk, abortSignal);
 
         if (attempt > 0) {
           console.log(`Codex Responses streaming call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
@@ -3632,6 +3756,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
             tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
           },
           toolCalls: accumulatedToolCalls,
+          usage,
         };
       } catch (error) {
         lastError = error;

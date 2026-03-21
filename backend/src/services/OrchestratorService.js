@@ -27,6 +27,21 @@ import AgentModel from '../models/AgentModel.js';
 import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled } from './unfirehose/UnfirehoseLogger.js';
 
 /**
+ * Inject the current date/time into the latest user message.
+ * This keeps the system prompt 100% stable for prompt caching while
+ * ensuring the LLM always knows the current date.
+ */
+function injectDateIntoLastUserMessage(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user' && typeof messages[i].content === 'string') {
+      const dateStr = new Date().toString();
+      messages[i].content = `[Current date: ${dateStr}]\n\n${messages[i].content}`;
+      return;
+    }
+  }
+}
+
+/**
  * Extract images from tool results and replace with references
  * This prevents base64 image data from bloating the context window
  */
@@ -636,7 +651,10 @@ async function universalChatHandler(req, res, context = {}) {
 
   // Token usage accumulator — tracks real LLM token consumption across all rounds
   // Declared before try/catch so it's accessible in the finally block
-  const tokenAccumulator = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  const tokenAccumulator = {
+    inputTokens: 0, outputTokens: 0, totalTokens: 0,
+    cacheReadTokens: 0, cacheCreationTokens: 0,
+  };
 
   try {
     // Process uploaded files
@@ -716,9 +734,8 @@ async function universalChatHandler(req, res, context = {}) {
       }
     }
 
-    // Build system prompt
-    const currentDate = new Date().toString();
-    let systemPrompt = await config.buildSystemPrompt(currentDate, {
+    // Build system prompt (no dynamic date — frozen for prompt caching)
+    let systemPrompt = await config.buildSystemPrompt({
       ...conversationContext,
       toolSchemas,
     });
@@ -798,15 +815,14 @@ async function universalChatHandler(req, res, context = {}) {
 
     // When an @ mentioned agent responds in an existing conversation, the history
     // contains messages from the orchestrator (Annie). Inject a strong identity
-    // override right before the last user message so the LLM doesn't continue as Annie.
+    // override into the last user message so the LLM doesn't continue as Annie.
+    // NOTE: Injected as a prefix to the user message (not a separate system message)
+    // because many providers reject or mishandle multiple system messages.
     if (chatType === 'agent' && agentId && agentId !== 'agent-chat') {
       const agentName = agentMeta.agentName || 'the requested agent';
       const lastUserIdx = messages.length - 1;
-      if (lastUserIdx > 0 && messages[lastUserIdx].role === 'user') {
-        messages.splice(lastUserIdx, 0, {
-          role: 'system',
-          content: `[Identity Switch] The user has @mentioned ${agentName}. You MUST respond as ${agentName} — NOT as Annie or any other assistant. Use ${agentName}'s personality, knowledge, and capabilities. Do not reference Annie or claim to be a different agent.`,
-        });
+      if (lastUserIdx > 0 && messages[lastUserIdx].role === 'user' && typeof messages[lastUserIdx].content === 'string') {
+        messages[lastUserIdx].content = `[Identity: You are ${agentName}. Respond as ${agentName} — NOT as Annie or any other assistant.]\n\n${messages[lastUserIdx].content}`;
       }
     }
 
@@ -815,7 +831,7 @@ async function universalChatHandler(req, res, context = {}) {
     if (imageData.length > 0 && !modelSupportsVision) {
       const imageFileNames = imageData.map((img) => img.filename).join(', ');
       const forceAnalyzeImageMessage = {
-        role: 'system',
+        role: 'user',
         content: `🚨 CRITICAL INSTRUCTION 🚨
 The user has uploaded ${imageData.length} image(s): ${imageFileNames}
 
@@ -872,6 +888,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
       });
     }
 
+    // Inject current date into the latest user message (keeps system prompt stable for caching)
+    injectDateIntoLastUserMessage(messages);
+
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
 
@@ -896,15 +915,40 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
 
     /**
-     * Normalize and accumulate token usage from any provider format
+     * Normalize and accumulate token usage from any provider format.
+     *
+     * Anthropic returns: input_tokens (uncached only) + cache_read_input_tokens + cache_creation_input_tokens
+     *   → true total input = input_tokens + cache_read + cache_creation
+     * OpenAI returns: prompt_tokens (total) with prompt_tokens_details.cached_tokens as a subset
+     *   → true total input = prompt_tokens (already includes cached)
      */
     function accumulateUsage(usage) {
       if (!usage) return;
-      const input = usage.prompt_tokens || usage.input_tokens || 0;
       const output = usage.completion_tokens || usage.output_tokens || 0;
-      tokenAccumulator.inputTokens += input;
       tokenAccumulator.outputTokens += output;
-      tokenAccumulator.totalTokens += input + output;
+
+      const cacheRead = usage.cache_read_input_tokens || 0;
+      const cacheWrite = usage.cache_creation_input_tokens || 0;
+
+      if (cacheRead > 0 || cacheWrite > 0) {
+        // Anthropic: input_tokens is ONLY the uncached portion
+        // Total input = uncached + cache_read + cache_creation
+        const uncached = usage.input_tokens || 0;
+        const totalInput = uncached + cacheRead + cacheWrite;
+        tokenAccumulator.inputTokens += totalInput;
+        tokenAccumulator.cacheReadTokens += cacheRead;
+        tokenAccumulator.cacheCreationTokens += cacheWrite;
+      } else {
+        // OpenAI / others: prompt_tokens is already the full total
+        const input = usage.prompt_tokens || usage.input_tokens || 0;
+        tokenAccumulator.inputTokens += input;
+        // OpenAI cached tokens (subset of prompt_tokens)
+        if (usage.prompt_tokens_details?.cached_tokens) {
+          tokenAccumulator.cacheReadTokens += usage.prompt_tokens_details.cached_tokens;
+        }
+      }
+
+      tokenAccumulator.totalTokens = tokenAccumulator.inputTokens + tokenAccumulator.outputTokens;
     }
 
     // Send initial assistant message
@@ -1028,7 +1072,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           toolCallError = `Failed to parse tool arguments: ${parseError.message}`;
           console.error(`Tool argument parsing failed for ${functionName}:`, toolCall.function.arguments, parseError);
 
-          sendEvent('tool_end', { assistantMessageId, toolCall: { id: toolCall.id, error: toolCallError } });
+          sendEvent('tool_end', { assistantMessageId, toolCall: { id: toolCall.id, name: functionName, error: toolCallError } });
 
           return {
             tool_call_id: toolCall.id,
@@ -1451,7 +1495,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           delete toolCallResult.frontendEvents;
         }
 
-        sendEvent('tool_end', { assistantMessageId, toolCall: { id: toolCall.id, result: toolCallResult, error: toolCallError } });
+        sendEvent('tool_end', { assistantMessageId, toolCall: { id: toolCall.id, name: functionName, result: toolCallResult, error: toolCallError } });
 
         return {
           tool_call_id: toolCall.id,
@@ -1495,8 +1539,18 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
       }
 
-      // Apply context management before next LLM call
-      const loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
+      // Apply context management before next LLM call — but only if critically close
+      // to the limit. Within a single turn's tool loop, the message prefix should stay
+      // stable to preserve prompt cache hits. Between turns, the prefix changes anyway.
+      let loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
+      const utilization = loopContextResult.contextWindow > 0
+        ? (loopContextResult.originalTokens / loopContextResult.contextWindow)
+        : 0;
+      if (utilization < 0.95 && loopContextResult.wasManaged) {
+        // Skip context management — utilization is below 95%, preserve cache
+        console.log(`[Cache] Skipping context management in tool loop to preserve cache (utilization: ${(utilization * 100).toFixed(1)}%)`);
+        loopContextResult = { ...loopContextResult, wasManaged: false, messages };
+      }
       if (loopContextResult.wasManaged) {
         console.log(`[Tool Loop] Context managed: ${loopContextResult.originalTokens} -> ${loopContextResult.managedTokens} tokens`);
         sendEvent('context_managed', {
@@ -1702,7 +1756,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
             totalTokens: tokenAccumulator.totalTokens,
             estimatedCost: costInfo?.totalCost || 0,
           };
-          console.log(`[Token Usage] ${tokenAccumulator.inputTokens} in / ${tokenAccumulator.outputTokens} out = ${tokenAccumulator.totalTokens} total tokens, est. cost: $${(tokenUsageForDb.estimatedCost || 0).toFixed(6)}`);
+          // Enhanced logging with cache metrics
+          const cacheInfo = (tokenAccumulator.cacheReadTokens > 0 || tokenAccumulator.cacheCreationTokens > 0)
+            ? ` (cache: ${tokenAccumulator.cacheReadTokens} read, ${tokenAccumulator.cacheCreationTokens} write, ${tokenAccumulator.inputTokens - tokenAccumulator.cacheReadTokens - tokenAccumulator.cacheCreationTokens} uncached)`
+            : '';
+          console.log(`[Token Usage] ${tokenAccumulator.inputTokens} in${cacheInfo} / ${tokenAccumulator.outputTokens} out = ${tokenAccumulator.totalTokens} total, est. cost: $${(tokenUsageForDb.estimatedCost || 0).toFixed(6)}`);
         }
 
         const computeSeconds = (Date.now() - executionStartTime) / 1000;
@@ -1722,6 +1780,15 @@ IMPORTANT: The image data is already available in the system context. You don't 
           status: finalStatus,
           toolCallsCount,
           tokenUsage: tokenAccumulator.totalTokens > 0 ? tokenAccumulator : undefined,
+          cacheMetrics: (tokenAccumulator.cacheReadTokens > 0 || tokenAccumulator.cacheCreationTokens > 0) ? {
+            cacheReadTokens: tokenAccumulator.cacheReadTokens,
+            cacheCreationTokens: tokenAccumulator.cacheCreationTokens,
+            uncachedTokens: tokenAccumulator.inputTokens - tokenAccumulator.cacheReadTokens - tokenAccumulator.cacheCreationTokens,
+            hitRate: tokenAccumulator.inputTokens > 0
+              ? ((tokenAccumulator.cacheReadTokens / tokenAccumulator.inputTokens) * 100).toFixed(1)
+              : '0',
+          } : undefined,
+          estimatedCost: tokenUsageForDb?.estimatedCost || 0,
         });
 
         console.log(`[Agent Execution] Completed execution ${agentExecutionId} with status ${finalStatus}, ${toolCallsCount} tool calls`);
@@ -1786,8 +1853,7 @@ async function handleSuggestions(req, res, config, userId, authToken) {
   }
 
   try {
-    const currentDate = new Date().toString();
-    const systemPrompt = await config.buildSystemPrompt(currentDate, { agentContext });
+    const systemPrompt = await config.buildSystemPrompt({ agentContext });
 
     const messages = [
       { role: 'system', content: systemPrompt },

@@ -2,7 +2,6 @@
   <div class="health-panel">
     <div class="health-header">
       <span class="panel-title">System Health</span>
-      <span class="uptime" v-if="systemHealth?.uptime">{{ systemHealth.uptime }}</span>
     </div>
 
     <div class="health-items">
@@ -24,16 +23,17 @@
         <span class="item-status">{{ toolTruncations }} managed</span>
       </div>
 
-      <div class="health-item" :class="getBackgroundStatus()">
+      <div class="health-item" :class="getToolsLoadedStatus()">
         <span class="indicator"></span>
-        <span class="item-label">Background Services</span>
-        <span class="item-status">{{ activeProcesses.length }} running</span>
+        <span class="item-label">Tool Calls</span>
+        <span class="item-status">{{ toolsLoadedCount || 0 }} this session</span>
       </div>
-    </div>
 
-    <div v-if="systemHealth?.memoryUsage" class="memory-info">
-      <span class="memory-label">Memory:</span>
-      <span class="memory-value">{{ systemHealth.memoryUsage }}</span>
+      <div class="health-item" :class="getCacheStatus()">
+        <span class="indicator"></span>
+        <span class="item-label">Cache</span>
+        <span class="item-status">{{ cacheStatusText }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -44,15 +44,6 @@ import { computed } from 'vue';
 export default {
   name: 'SystemHealthPanel',
   props: {
-    systemHealth: {
-      type: Object,
-      default: () => ({
-        memoryUsage: null,
-        activeProcesses: [],
-        errorsCaught: 0,
-        uptime: null,
-      }),
-    },
     contextManaged: {
       type: Boolean,
       default: false,
@@ -65,10 +56,27 @@ export default {
       type: Number,
       default: 0,
     },
+    toolsLoadedCount: {
+      type: Number,
+      default: 0,
+    },
+    cacheMetrics: {
+      type: Object,
+      default: null,
+    },
   },
   setup(props) {
-    const activeProcesses = computed(() => {
-      return props.systemHealth?.activeProcesses || ['EmailReceiver', 'WebhookReceiver'];
+    const cacheHitRate = computed(() => {
+      if (!props.cacheMetrics) return -1;
+      return parseFloat(props.cacheMetrics.hitRate || 0);
+    });
+
+    const cacheStatusText = computed(() => {
+      if (!props.cacheMetrics) return 'No data';
+      const rate = cacheHitRate.value;
+      if (rate >= 80) return `${rate}% hit rate`;
+      if (rate > 0) return `${rate}% hit rate`;
+      return 'No hits';
     });
 
     const getContextStatus = () => {
@@ -85,19 +93,27 @@ export default {
       return 'healthy';
     };
 
-    const getBackgroundStatus = () => {
-      const processCount = activeProcesses.value.length;
-      if (processCount >= 2) return 'healthy';
-      if (processCount === 1) return 'warning';
-      return 'error';
+    const getToolsLoadedStatus = () => {
+      if (props.toolsLoadedCount > 0) return 'healthy';
+      return 'idle';
+    };
+
+    const getCacheStatus = () => {
+      const rate = cacheHitRate.value;
+      if (rate < 0) return 'idle';
+      if (rate >= 80) return 'healthy';
+      if (rate >= 40) return 'warning';
+      if (rate > 0) return 'active';
+      return 'idle';
     };
 
     return {
-      activeProcesses,
+      cacheStatusText,
       getContextStatus,
       getErrorRecoveryStatus,
       getToolStatus,
-      getBackgroundStatus,
+      getToolsLoadedStatus,
+      getCacheStatus,
     };
   },
 };
@@ -109,7 +125,6 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 0;
   padding: 12px 16px;
-  /* margin-bottom: 8px; */
 }
 
 .health-header {
@@ -125,12 +140,6 @@ export default {
   color: var(--color-text);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-}
-
-.uptime {
-  font-size: 0.7em;
-  color: var(--color-text);
-  font-family: var(--font-family-mono);
 }
 
 .health-items {
@@ -241,30 +250,6 @@ export default {
 
 .health-item.error .item-status {
   color: var(--color-red);
-}
-
-.memory-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 12px;
-  padding: 6px 8px;
-  background: rgba(127, 129, 147, 0.05);
-  border: 1px solid rgba(127, 129, 147, 0.1);
-  border-radius: 6px;
-}
-
-.memory-label {
-  font-size: 0.7em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.memory-value {
-  font-size: 0.7em;
-  color: var(--color-text);
-  font-family: var(--font-family-mono);
 }
 
 @media (max-width: 768px) {
