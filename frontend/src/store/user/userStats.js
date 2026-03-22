@@ -392,52 +392,66 @@ export default {
         // Get user email for referral balance
         const userEmail = rootState.userAuth?.userEmail;
 
-        // Add request timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          controller.abort();
-          activeTimeouts.delete(timeoutId);
+        // Add request timeout - separate controllers so remote failure doesn't kill local
+        const localController = new AbortController();
+        const remoteController = new AbortController();
+        const localTimeoutId = setTimeout(() => {
+          localController.abort();
+          activeTimeouts.delete(localTimeoutId);
         }, 10000); // 10 second timeout
-        activeTimeouts.add(timeoutId);
+        const remoteTimeoutId = setTimeout(() => {
+          remoteController.abort();
+          activeTimeouts.delete(remoteTimeoutId);
+        }, 10000);
+        activeTimeouts.add(localTimeoutId);
+        activeTimeouts.add(remoteTimeoutId);
 
-        // Fetch stats and credits (NO referral balance here - it's fetched separately)
-        const requests = [
+        // Fetch stats and credits independently - remote failure shouldn't block local stats
+        const [statsResult, creditsResult] = await Promise.allSettled([
           axios.get(`${API_CONFIG.BASE_URL}/users/user-stats`, {
             headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
+            signal: localController.signal,
           }),
           axios.get(`${API_CONFIG.REMOTE_URL}/users/credits`, {
             headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
+            signal: remoteController.signal,
           }),
-        ];
+        ]);
 
-        const responses = await Promise.all(requests);
-        const [statsResponse, creditsResponse] = responses;
+        clearTimeout(localTimeoutId);
+        clearTimeout(remoteTimeoutId);
+        activeTimeouts.delete(localTimeoutId);
+        activeTimeouts.delete(remoteTimeoutId);
 
-        clearTimeout(timeoutId);
-        activeTimeouts.delete(timeoutId);
+        // --- Process Stats (local) ---
+        if (statsResult.status === 'fulfilled') {
+          const newStatsData = {
+            totalWorkflows: statsResult.value.data.totalWorkflows || 0,
+            totalCustomTools: statsResult.value.data.totalCustomTools || 0,
+            totalSecondsAutomated: statsResult.value.data.totalNodeExecutions || 0,
+            totalExecutions: statsResult.value.data.totalExecutions || 0,
+          };
 
-        // --- Process Stats & Tokens ---
-        const newTokens = creditsResponse.data.credits || 0;
-        const newStatsData = {
-          totalWorkflows: statsResponse.data.totalWorkflows || 0,
-          totalCustomTools: statsResponse.data.totalCustomTools || 0,
-          totalSecondsAutomated: statsResponse.data.totalNodeExecutions || 0, // Use totalNodeExecutions as seconds
-          totalExecutions: statsResponse.data.totalExecutions || 0, // Capture total executions from API
-        };
+          // --- Process Credits (remote) ---
+          const newTokens = creditsResult.status === 'fulfilled' ? (creditsResult.value.data.credits || 0) : state.tokens;
 
-        // Only commit SET_STATS if tokens or other stats changed
-        if (
-          newTokens !== state.tokens ||
-          newStatsData.totalWorkflows !== state.totalWorkflows ||
-          newStatsData.totalCustomTools !== state.totalCustomTools ||
-          newStatsData.totalSecondsAutomated !== state.totalSecondsAutomated ||
-          newStatsData.totalExecutions !== state.totalExecutions ||
-          0 !== state.tokensPerDay
-        ) {
-          // Commit using the 'tokens' key
-          commit('SET_STATS', { tokens: newTokens, ...newStatsData });
+          if (creditsResult.status === 'rejected' && !axios.isCancel(creditsResult.reason)) {
+            console.warn('[UserStats] Failed to fetch remote credits:', creditsResult.reason?.message);
+          }
+
+          // Only commit SET_STATS if tokens or other stats changed
+          if (
+            newTokens !== state.tokens ||
+            newStatsData.totalWorkflows !== state.totalWorkflows ||
+            newStatsData.totalCustomTools !== state.totalCustomTools ||
+            newStatsData.totalSecondsAutomated !== state.totalSecondsAutomated ||
+            newStatsData.totalExecutions !== state.totalExecutions ||
+            0 !== state.tokensPerDay
+          ) {
+            commit('SET_STATS', { tokens: newTokens, ...newStatsData });
+          }
+        } else if (!axios.isCancel(statsResult.reason)) {
+          console.warn('[UserStats] Failed to fetch local stats:', statsResult.reason?.message);
         }
 
         // Fetch referral balance and tree separately (don't overwrite with old endpoint)
@@ -456,15 +470,16 @@ export default {
           missedTokensYesterday: state.missedTokensYesterday,
         });
 
-        // Update cache timestamp
+        // Update cache timestamp even on partial failure to prevent rapid retries
         commit('SET_AGENT_ACTIVITY_META', { lastFetchTime: now });
       } catch (error) {
-        if (error.name === 'AbortError') {
-          console.warn('[UserStats] Request timeout for fetchStats');
+        if (axios.isCancel(error)) {
+          console.warn('[UserStats] Request canceled for fetchStats');
         } else {
           console.error('Error fetching user stats/game state:', error);
         }
-        // Optionally set error states for each part if needed
+        // Set cache timestamp on failure to prevent rapid retry loops
+        commit('SET_AGENT_ACTIVITY_META', { lastFetchTime: now });
         commit('SET_GAME_STATE_ERROR', error.message || 'Failed to fetch game state');
       }
     },
@@ -522,12 +537,13 @@ export default {
 
         commit('SET_AGENT_ACTIVITY_META', { isLoading: false, lastFetchTime: now });
       } catch (error) {
-        if (error.name === 'AbortError') {
-          console.warn('[UserStats] Request timeout for fetchAgentActivity');
+        if (axios.isCancel(error)) {
+          console.warn('[UserStats] Request canceled for fetchAgentActivity');
         } else {
           console.error('Error fetching agent activity:', error);
         }
-        commit('SET_AGENT_ACTIVITY_META', { isLoading: false, lastFetchTime: state.agentActivity.lastFetchTime });
+        // Set cache timestamp on failure to prevent rapid retry loops
+        commit('SET_AGENT_ACTIVITY_META', { isLoading: false, lastFetchTime: Date.now() });
       }
     },
 
@@ -646,12 +662,13 @@ export default {
 
         commit('SET_CREDITS_ACTIVITY_META', { isLoading: false, lastFetchTime: now });
       } catch (error) {
-        if (error.name === 'AbortError') {
-          console.warn('[UserStats] Request timeout for fetchCreditsActivity');
+        if (axios.isCancel(error)) {
+          console.warn('[UserStats] Request canceled for fetchCreditsActivity');
         } else {
           console.error('Error fetching credits activity:', error);
         }
-        commit('SET_CREDITS_ACTIVITY_META', { isLoading: false, lastFetchTime: state.creditsActivity.lastFetchTime });
+        // Set cache timestamp on failure to prevent rapid retry loops
+        commit('SET_CREDITS_ACTIVITY_META', { isLoading: false, lastFetchTime: Date.now() });
       }
     },
 
