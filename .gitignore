@@ -93,7 +93,7 @@ data/
 .chrome/
 build/chromium/
 
-package-lock.json
+# package-lock.json
 
 # Claude
 *.claude/
