@@ -16,9 +16,9 @@ jobs:
     name: Build Electron Full
     strategy:
       matrix:
-        os: [windows-2019, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
         include:
-          - os: windows-2019
+          - os: windows-latest
             platform: win
             artifact: AGNT*-win-*.exe
           - os: macos-latest
@@ -48,7 +48,7 @@ jobs:
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
       - name: Setup MSVC (Windows only - for native module builds)
-        if: matrix.os == 'windows-2019'
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Python (for native modules)
@@ -66,8 +66,8 @@ jobs:
         run: npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
       - name: Install frontend dependencies
         run: |
@@ -75,8 +75,8 @@ jobs:
           npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
       - name: Build frontend
         run: |
@@ -88,8 +88,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SETUPTOOLS_USE_DISTUTILS: local
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -108,9 +108,9 @@ jobs:
     name: Build Electron Lite
     strategy:
       matrix:
-        os: [windows-2019, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
         include:
-          - os: windows-2019
+          - os: windows-latest
             platform: win
             artifact: AGNT-Lite*-win-*.exe
           - os: macos-latest
@@ -140,7 +140,7 @@ jobs:
           # cache: 'npm'  # Disabled - package-lock.json is gitignored
 
       - name: Setup MSVC (Windows only - for native module builds)
-        if: matrix.os == 'windows-2019'
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Python (for native modules)
@@ -158,8 +158,8 @@ jobs:
         run: npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
       - name: Install frontend dependencies
         run: |
@@ -167,8 +167,8 @@ jobs:
           npm install
         env:
           SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
       - name: Build frontend
         run: |
@@ -180,8 +180,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SETUPTOOLS_USE_DISTUTILS: local
-          npm_config_msvs_version: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
-          GYP_MSVS_VERSION: ${{ matrix.os == 'windows-2019' && '2019' || '' }}
+          npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
+          GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
