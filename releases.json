@@ -1,13 +1,26 @@
 {
   "releases": [
     {
+      "version": "0.5.0",
+      "date": "March 14, 2026",
+      "title": "Artifacts, Evolution Engine, Widgets & Skills - AGNT v0.5.0",
+      "type": "minor",
+      "features": [
+        { "name": "Artifacts Screen with Inline HTML Preview, MathJax & AI Chat", "status": "new" },
+        { "name": "Widget Forge & Manager with AI Builder, Canvas Layout & Theme Injection", "status": "new" },
+        { "name": "Skills & SkillForge with Autonomous Evolution, Import/Export & Agent Assignment", "status": "new" },
+        { "name": "Evolution Engine with Experiments, Token Tracking, Traces & Insights", "status": "new" },
+        { "name": "AGI Loop, Goals Redesign & Concurrent Conversations", "status": "new" },
+        { "name": "Unified Provider Auth, Dynamic Tool Discovery & Performance Optimization", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.4.9",
       "date": "February 17, 2026",
       "title": "macOS Activate Crash Fix - AGNT v0.4.9",
       "type": "patch",
-      "features": [
-        { "name": "macOS Crash on Dock Icon Click Before App Ready", "status": "bug" }
-      ],
+      "features": [{ "name": "macOS Crash on Dock Icon Click Before App Ready", "status": "bug" }],
       "tags": ["Backwards Compatible"]
     },
     {
@@ -285,6 +298,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-02-17T13:00:00Z"
+    "lastUpdated": "2026-03-14T12:00:00Z"
   }
 }
