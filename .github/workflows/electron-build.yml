@@ -16,9 +16,9 @@ jobs:
     name: Build Electron Full
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-2022, macos-latest, ubuntu-latest]
         include:
-          - os: windows-latest
+          - os: windows-2022
             platform: win
             artifact: AGNT*-win-*.exe
           - os: macos-latest
@@ -54,18 +54,17 @@ jobs:
       - name: Setup Python (for native modules)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'  # Latest Python
+          python-version: '3.12'
 
       - name: Install Python setuptools with distutils (for native module building)
         run: |
           python -m pip install --upgrade pip
           python -m pip install setuptools wheel
-          # Setuptools provides distutils compatibility for Python 3.14+
 
       - name: Install dependencies
         run: npm install
         env:
-          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
@@ -74,7 +73,7 @@ jobs:
           cd frontend
           npm install
         env:
-          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
@@ -108,9 +107,9 @@ jobs:
     name: Build Electron Lite
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-2022, macos-latest, ubuntu-latest]
         include:
-          - os: windows-latest
+          - os: windows-2022
             platform: win
             artifact: AGNT-Lite*-win-*.exe
           - os: macos-latest
@@ -146,18 +145,17 @@ jobs:
       - name: Setup Python (for native modules)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'  # Latest Python
+          python-version: '3.12'
 
       - name: Install Python setuptools with distutils (for native module building)
         run: |
           python -m pip install --upgrade pip
           python -m pip install setuptools wheel
-          # Setuptools provides distutils compatibility for Python 3.14+
 
       - name: Install dependencies
         run: npm install
         env:
-          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
@@ -166,7 +164,7 @@ jobs:
           cd frontend
           npm install
         env:
-          SETUPTOOLS_USE_DISTUTILS: local  # Force setuptools' distutils for Python 3.14+
+          SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
 
