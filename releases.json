@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.5.1",
+      "date": "April 6, 2026",
+      "title": "Claude Code Billing Header, DB Optimizations & UI Fix - AGNT v0.5.1",
+      "type": "patch",
+      "features": [
+        { "name": "Claude Code Billing Header (cch) Hash Computation", "status": "new" },
+        { "name": "Dashboard Stats Query Optimization", "status": "updated" },
+        { "name": "Composite Database Indexes for Executions", "status": "updated" },
+        { "name": "Workflow Node Tooltip Removal", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.0",
       "date": "March 14, 2026",
       "title": "Artifacts, Evolution Engine, Widgets & Skills - AGNT v0.5.0",
@@ -298,6 +311,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-03-14T12:00:00Z"
+    "lastUpdated": "2026-04-06T12:00:00Z"
   }
 }
