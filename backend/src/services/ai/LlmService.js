@@ -8,6 +8,7 @@ import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../auth/GeminiCliAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { getProviderConfig } from './providerConfigs.js';
+import { createCchFetch } from './claudeBillingHeader.js';
 
 // ── Gemini OAuth Proxy ──────────────────────────────────────────────
 // Lightweight wrapper that mimics the GoogleGenAI SDK's client interface
@@ -231,6 +232,8 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
   }
 
   // Claude Code — uses Anthropic API with OAuth Bearer auth
+  // Injects a custom fetch that computes the cch hash on outgoing request
+  // bodies, replacing the cch=00000 placeholder with the real xxHash64 value.
   if (lowerCaseProvider === 'claude-code') {
     const oauthToken = await ClaudeCodeAuthManager.getAccessToken();
     if (!oauthToken) {
@@ -241,6 +244,7 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
       apiKey: null,
       authToken: oauthToken,
       ...(config?.sdkOptions || {}),
+      fetch: createCchFetch(),
     });
   }
 

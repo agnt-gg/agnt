@@ -4,25 +4,36 @@ class UserModel {
   static getUserStats(userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT 
-          (SELECT COUNT(*) FROM workflows WHERE user_id = ?) as totalWorkflows,
-          (SELECT COUNT(*) FROM workflow_executions WHERE user_id = ?) as totalExecutions,
-          (SELECT COUNT(*) FROM tools WHERE created_by = ?) as totalCustomTools,
-          (SELECT COUNT(*) FROM workflow_executions WHERE user_id = ? AND status = 'completed') as successfulExecutions,
-          (SELECT COUNT(*) FROM workflow_executions WHERE user_id = ? AND status = 'error') as failedExecutions,
-          (SELECT COUNT(*) FROM workflow_executions WHERE user_id = ? AND status = 'started') as startedExecutions,
-          (SELECT COUNT(*) FROM node_executions ne
-           JOIN workflow_executions e ON ne.execution_id = e.id
-           WHERE e.user_id = ?) as totalNodeExecutions,
-          (SELECT COUNT(*) FROM node_executions ne
-           JOIN workflow_executions e ON ne.execution_id = e.id
-           WHERE e.user_id = ? AND ne.status = 'completed') as successfulNodeExecutions,
-          (SELECT COUNT(*) FROM node_executions ne
-           JOIN workflow_executions e ON ne.execution_id = e.id
-           WHERE e.user_id = ? AND ne.status = 'error') as failedNodeExecutions,
-          (SELECT COUNT(*) FROM agents WHERE created_by = ?) as totalAgents
+        `SELECT
+          w.totalWorkflows,
+          t.totalCustomTools,
+          a.totalAgents,
+          COALESCE(we.totalExecutions, 0) as totalExecutions,
+          COALESCE(we.successfulExecutions, 0) as successfulExecutions,
+          COALESCE(we.failedExecutions, 0) as failedExecutions,
+          COALESCE(we.startedExecutions, 0) as startedExecutions,
+          COALESCE(ne.totalNodeExecutions, 0) as totalNodeExecutions,
+          COALESCE(ne.successfulNodeExecutions, 0) as successfulNodeExecutions,
+          COALESCE(ne.failedNodeExecutions, 0) as failedNodeExecutions
+        FROM
+          (SELECT COUNT(*) as totalWorkflows FROM workflows WHERE user_id = ?) w,
+          (SELECT COUNT(*) as totalCustomTools FROM tools WHERE created_by = ?) t,
+          (SELECT COUNT(*) as totalAgents FROM agents WHERE created_by = ?) a,
+          (SELECT
+            COUNT(*) as totalExecutions,
+            SUM(status = 'completed') as successfulExecutions,
+            SUM(status = 'error') as failedExecutions,
+            SUM(status = 'started') as startedExecutions
+          FROM workflow_executions WHERE user_id = ?) we,
+          (SELECT
+            COUNT(*) as totalNodeExecutions,
+            SUM(ne.status = 'completed') as successfulNodeExecutions,
+            SUM(ne.status = 'error') as failedNodeExecutions
+          FROM node_executions ne
+          JOIN workflow_executions e ON ne.execution_id = e.id
+          WHERE e.user_id = ?) ne
         `,
-        [userId, userId, userId, userId, userId, userId, userId, userId, userId, userId],
+        [userId, userId, userId, userId, userId],
         (err, row) => {
           if (err) reject(err);
           else {

@@ -12,6 +12,9 @@ backend/plugins/installed/
 # Claude
 .claude/
 
+# AGNT
+.agnt/
+
 # Build outputs
 dist/
 out/

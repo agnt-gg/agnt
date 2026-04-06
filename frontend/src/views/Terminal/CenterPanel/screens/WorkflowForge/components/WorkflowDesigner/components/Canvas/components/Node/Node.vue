@@ -1,5 +1,4 @@
 <template>
-  <Tooltip :text="node.title || node.text || 'Untitled Node'" width="auto">
     <div
       :class="[
         'node',
@@ -206,13 +205,11 @@
 
     <div class="node-delete-button" @click.stop="deleteNode">x</div>
     </div>
-  </Tooltip>
 </template>
 
 <script>
 import { inject } from 'vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
-import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import MediaPreview from '../Widgets/MediaPreview.vue';
 import HtmlPreview from '../Widgets/HtmlPreview.vue';
 import CodePreview from '../Widgets/CodePreview.vue';
@@ -225,7 +222,6 @@ export default {
   name: 'Node',
   components: {
     SvgIcon,
-    Tooltip,
     MediaPreview,
     HtmlPreview,
     CodePreview,

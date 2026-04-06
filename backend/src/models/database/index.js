@@ -293,6 +293,7 @@ function createTables() {
 
       // Index for faster workflow execution queries
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_id ON workflow_executions(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_status ON workflow_executions(user_id, status)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_workflow_id ON workflow_executions(workflow_id)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS node_executions (
@@ -311,6 +312,7 @@ function createTables() {
 
       // Index for faster node execution lookups by execution_id (CRITICAL for run details)
       db.run(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_id ON node_executions(execution_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_status ON node_executions(execution_id, status)`);
 
       // Goal system tables - extending existing architecture
       db.run(`CREATE TABLE IF NOT EXISTS goals (

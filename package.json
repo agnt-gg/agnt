@@ -52,8 +52,8 @@
     "express-session": "^1.18.0",
     "ffmpeg-static": "^5.3.0",
     "imap": "^0.8.17",
-    "jsdom": "^26.1.0",
     "js-yaml": "^4.1.0",
+    "jsdom": "^26.1.0",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
     "mailparser": "^3.7.1",
@@ -73,7 +73,8 @@
     "uuid": "^11.1.0",
     "vm2": "^3.9.19",
     "wavefile": "^11.0.0",
-    "ws": "^8.18.1"
+    "ws": "^8.18.1",
+    "xxhash-wasm": "^1.1.0"
   },
   "optionalDependencies": {
     "playwright": "^1.56.0",

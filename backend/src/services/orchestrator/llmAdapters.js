@@ -6,6 +6,7 @@ import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
 import { getProviderConfig, getModelMetadata } from '../ai/providerConfigs.js';
+import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 
 /**
  * Parse API error messages to extract user-friendly error details
@@ -19,13 +20,11 @@ function parseApiErrorMessage(error) {
   if (rawMessage.includes('<!DOCTYPE') || rawMessage.includes('<html') || rawMessage.includes('<HTML')) {
     // Extract status code if present at the start (e.g., "403 <!DOCTYPE html>...")
     const statusMatch = rawMessage.match(/^(\d{3})\s/);
-    const statusCode = statusMatch ? statusMatch[1] : (error.status || 'Unknown');
+    const statusCode = statusMatch ? statusMatch[1] : error.status || 'Unknown';
     // Try to extract a <title> from the HTML
     const titleMatch = rawMessage.match(/<title[^>]*>([^<]+)<\/title>/i);
     const title = titleMatch ? titleMatch[1].trim() : '';
-    return title
-      ? `HTTP ${statusCode}: ${title}`
-      : `HTTP ${statusCode} error from API. The server returned an HTML error page instead of JSON.`;
+    return title ? `HTTP ${statusCode}: ${title}` : `HTTP ${statusCode} error from API. The server returned an HTML error page instead of JSON.`;
   }
 
   // Try to extract JSON error from the message (common pattern: "400 {...}")
@@ -210,9 +209,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
     let currentMessages = messages;
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
-      currentMessages = currentMessages.map((msg) =>
-        msg?.role === 'developer' ? { ...msg, role: 'system' } : msg
-      );
+      currentMessages = currentMessages.map((msg) => (msg?.role === 'developer' ? { ...msg, role: 'system' } : msg));
     }
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -345,9 +342,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
     let currentMessages = messages;
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
-      currentMessages = currentMessages.map((msg) =>
-        msg?.role === 'developer' ? { ...msg, role: 'system' } : msg
-      );
+      currentMessages = currentMessages.map((msg) => (msg?.role === 'developer' ? { ...msg, role: 'system' } : msg));
     }
 
     // Handle vision images - inject into the last user message ONLY if model supports vision
@@ -564,18 +559,24 @@ Please carefully check the tool schema and ensure all parameters match the expec
           if (finishReason === 'network_error') {
             if (attempt < this.maxRetries) {
               const delay = this.calculateDelay(attempt);
-              console.warn(`[Stream Retry] Server returned finish_reason: network_error (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms`);
+              console.warn(
+                `[Stream Retry] Server returned finish_reason: network_error (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms`,
+              );
               await this.sleep(delay);
               continue; // retry the request
             } else {
-              console.error(`[Stream Error] Server returned network_error after ${this.maxRetries + 1} attempts. Z.AI may be experiencing issues with model: ${this.model}`);
+              console.error(
+                `[Stream Error] Server returned network_error after ${this.maxRetries + 1} attempts. Z.AI may be experiencing issues with model: ${this.model}`,
+              );
             }
           }
 
           // Fallback: if reasoning model returned reasoning_content but no content,
           // use the reasoning content as the response (e.g., Z.AI GLM-5 thinking mode)
           if (!accumulatedContent && accumulatedReasoningContent && accumulatedToolCalls.length === 0) {
-            console.warn(`[Stream Fallback] No content received but reasoning_content available (${accumulatedReasoningContent.length} chars). Using as response content.`);
+            console.warn(
+              `[Stream Fallback] No content received but reasoning_content available (${accumulatedReasoningContent.length} chars). Using as response content.`,
+            );
             accumulatedContent = accumulatedReasoningContent;
             if (onChunk) {
               onChunk({
@@ -606,7 +607,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           if (errorMessage.includes('context') && errorMessage.includes('overflow')) {
             console.error('LM Studio context overflow detected!');
             throw new Error(
-              `Your local model's context window is too small for this request. Please load a model with at least 8K context in LM Studio. Current error: ${errorMessage}`
+              `Your local model's context window is too small for this request. Please load a model with at least 8K context in LM Studio. Current error: ${errorMessage}`,
             );
           }
 
@@ -614,7 +615,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
           if (errorMessage.includes('keep') && errorMessage.includes('tokens')) {
             console.error('LM Studio token limit error detected!');
             throw new Error(
-              `Your local model's context window is too small. The request requires more tokens than your model supports. Please load a model with a larger context window (8K+ recommended) in LM Studio.`
+              `Your local model's context window is too small. The request requires more tokens than your model supports. Please load a model with a larger context window (8K+ recommended) in LM Studio.`,
             );
           }
 
@@ -1050,7 +1051,7 @@ class AnthropicAdapter extends BaseAdapter {
         for (const tc of msg.tool_calls) {
           let input = {};
           try {
-            input = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : (tc.function?.arguments || {});
+            input = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function?.arguments || {};
           } catch {
             input = { raw: tc.function?.arguments };
           }
@@ -1098,8 +1099,14 @@ class AnthropicAdapter extends BaseAdapter {
         let systemParam;
         let usedBreakpoints = 0;
         if (this.provider === 'claude-code') {
-          // claude-code: 2 system blocks, only cache the LAST one (1 breakpoint)
+          // claude-code: billing header + identity + system prompt
+          // The billing header with cch placeholder goes FIRST — the custom fetch
+          // in LlmService computes the real hash over the serialized body and
+          // replaces cch=00000 before the request is sent.
+          const firstUserMsg = extractFirstUserMessage(conversationMessages);
+          const billingBlock = buildBillingHeaderBlock(firstUserMsg);
           const systemBlocks = [
+            billingBlock,
             { type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." },
           ];
           if (systemPrompt) {
@@ -1109,16 +1116,18 @@ class AnthropicAdapter extends BaseAdapter {
               cache_control: { type: 'ephemeral' },
             });
           } else {
-            systemBlocks[0].cache_control = { type: 'ephemeral' };
+            systemBlocks[1].cache_control = { type: 'ephemeral' };
           }
           systemParam = systemBlocks;
           usedBreakpoints = 1;
         } else {
-          systemParam = [{
-            type: 'text',
-            text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
-            cache_control: { type: 'ephemeral' },
-          }];
+          systemParam = [
+            {
+              type: 'text',
+              text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
+              cache_control: { type: 'ephemeral' },
+            },
+          ];
           usedBreakpoints = 1;
         }
 
@@ -1324,29 +1333,28 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
         // CRITICAL: Clean up any _inputJsonString fields from message history before sending to Anthropic
         // This can happen if messages are reused across retries or if deletion failed
-        const conversationMessages = normalizedMessages
-          .map((msg) => {
-            if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-              return {
-                ...msg,
-                content: msg.content.map((block) => {
-                  // CRITICAL: Always create new block objects to prevent reference leaks
-                  if (block.type === 'tool_use') {
-                    // Remove _inputJsonString if it exists
-                    const { _inputJsonString, ...cleanBlock } = block;
-                    if (_inputJsonString) {
-                      console.warn(`[Anthropic] Cleaned _inputJsonString from tool_use block in message history (tool: ${block.name})`);
-                    }
-                    return cleanBlock;
+        const conversationMessages = normalizedMessages.map((msg) => {
+          if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+            return {
+              ...msg,
+              content: msg.content.map((block) => {
+                // CRITICAL: Always create new block objects to prevent reference leaks
+                if (block.type === 'tool_use') {
+                  // Remove _inputJsonString if it exists
+                  const { _inputJsonString, ...cleanBlock } = block;
+                  if (_inputJsonString) {
+                    console.warn(`[Anthropic] Cleaned _inputJsonString from tool_use block in message history (tool: ${block.name})`);
                   }
-                  // For non-tool_use blocks, create a shallow copy to prevent mutations
-                  return { ...block };
-                }),
-              };
-            }
-            // For non-assistant messages, create a shallow copy to prevent reference issues
-            return { ...msg, content: Array.isArray(msg.content) ? [...msg.content] : msg.content };
-          });
+                  return cleanBlock;
+                }
+                // For non-tool_use blocks, create a shallow copy to prevent mutations
+                return { ...block };
+              }),
+            };
+          }
+          // For non-assistant messages, create a shallow copy to prevent reference issues
+          return { ...msg, content: Array.isArray(msg.content) ? [...msg.content] : msg.content };
+        });
 
         // Defensive check: Verify no _inputJsonString fields remain
         for (let i = 0; i < conversationMessages.length; i++) {
@@ -1370,8 +1378,14 @@ Please carefully check the tool schema and ensure all parameters match the expec
         let systemParam;
         let usedBreakpoints = 0;
         if (this.provider === 'claude-code') {
-          // claude-code: 2 system blocks, only cache the LAST one (1 breakpoint)
+          // claude-code: billing header + identity + system prompt
+          // The billing header with cch placeholder goes FIRST — the custom fetch
+          // in LlmService computes the real hash over the serialized body and
+          // replaces cch=00000 before the request is sent.
+          const firstUserMsg = extractFirstUserMessage(conversationMessages);
+          const billingBlock = buildBillingHeaderBlock(firstUserMsg);
           const systemBlocks = [
+            billingBlock,
             { type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." },
           ];
           if (systemPrompt) {
@@ -1381,16 +1395,18 @@ Please carefully check the tool schema and ensure all parameters match the expec
               cache_control: { type: 'ephemeral' },
             });
           } else {
-            systemBlocks[0].cache_control = { type: 'ephemeral' };
+            systemBlocks[1].cache_control = { type: 'ephemeral' };
           }
           systemParam = systemBlocks;
           usedBreakpoints = 1;
         } else {
-          systemParam = [{
-            type: 'text',
-            text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
-            cache_control: { type: 'ephemeral' },
-          }];
+          systemParam = [
+            {
+              type: 'text',
+              text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
+              cache_control: { type: 'ephemeral' },
+            },
+          ];
           usedBreakpoints = 1;
         }
 
@@ -1558,9 +1574,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
           // CRITICAL: Check for in-progress tool_use blocks that never got content_block_stop.
           // These are tool calls the LLM was generating when the stream broke.
-          const inProgressToolBlocks = contentBlocks.filter(
-            (b) => b.type === 'tool_use' && b._inputJsonString !== undefined
-          );
+          const inProgressToolBlocks = contentBlocks.filter((b) => b.type === 'tool_use' && b._inputJsonString !== undefined);
 
           if (inProgressToolBlocks.length > 0) {
             console.log(`[Anthropic] Found ${inProgressToolBlocks.length} in-progress tool call(s) cut off by stream error`);
@@ -1580,7 +1594,9 @@ Please carefully check the tool schema and ensure all parameters match the expec
                 });
                 console.log(`[Anthropic] Salvaged complete tool call: ${block.name}`);
               } catch {
-                console.warn(`[Anthropic] Tool call "${block.name}" has incomplete JSON (${(block._inputJsonString || '').length} chars), cannot salvage`);
+                console.warn(
+                  `[Anthropic] Tool call "${block.name}" has incomplete JSON (${(block._inputJsonString || '').length} chars), cannot salvage`,
+                );
               }
             }
 
@@ -1588,7 +1604,9 @@ Please carefully check the tool schema and ensure all parameters match the expec
             const salvagedCount = accumulatedToolCalls.length;
             const unsalvagedCount = inProgressToolBlocks.length - salvagedCount;
             if (unsalvagedCount > 0 && attempt < this.maxRetries) {
-              console.warn(`[Anthropic] ${unsalvagedCount} tool call(s) could not be salvaged, retrying (attempt ${attempt + 1}/${this.maxRetries + 1})`);
+              console.warn(
+                `[Anthropic] ${unsalvagedCount} tool call(s) could not be salvaged, retrying (attempt ${attempt + 1}/${this.maxRetries + 1})`,
+              );
               const delay = this.calculateDelay(attempt);
               await this.sleep(delay);
               continue; // Retry the call
@@ -1600,7 +1618,9 @@ Please carefully check the tool schema and ensure all parameters match the expec
             throw streamIteratorError;
           }
 
-          console.log(`[Anthropic] Continuing with ${accumulatedContent.length} chars content and ${accumulatedToolCalls.length} tool calls after stream error`);
+          console.log(
+            `[Anthropic] Continuing with ${accumulatedContent.length} chars content and ${accumulatedToolCalls.length} tool calls after stream error`,
+          );
         }
 
         // Log successful retry if this wasn't the first attempt
@@ -1630,7 +1650,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
         return {
           responseMessage: responseMessage,
           toolCalls: accumulatedToolCalls,
-          usage: (anthropicUsage.input_tokens || anthropicUsage.output_tokens) ? anthropicUsage : undefined,
+          usage: anthropicUsage.input_tokens || anthropicUsage.output_tokens ? anthropicUsage : undefined,
         };
       } catch (error) {
         lastError = error;
@@ -1896,7 +1916,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
         // Retry WITHOUT tools so the model can still respond
         if (error.status === 422 && !skipTools && tools && tools.length > 0) {
           console.warn(
-            `[Cerebras] Model '${this.model}' returned 422 with tools. This model may not support function calling. Retrying WITHOUT tools.`
+            `[Cerebras] Model '${this.model}' returned 422 with tools. This model may not support function calling. Retrying WITHOUT tools.`,
           );
 
           // Recursively call ourselves with skipTools=true
@@ -1933,7 +1953,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
             userFriendlyError = this.getCerebrasRateLimitMessage(error);
           } else {
             userFriendlyError = `⚠️ **Cerebras API Error:** ${parseApiErrorMessage(
-              error
+              error,
             )}\n\nPlease check your API configuration or try a different model/provider.`;
           }
 
@@ -1971,7 +1991,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
               {
                 status: error.status,
                 message: error.message,
-              }
+              },
             );
           } else {
             console.warn(`Cerebras call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms:`, {
@@ -2006,7 +2026,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
     if (hasTools && !supportsStreamingTools) {
       console.warn(
         `[Cerebras] Model '${this.model}' does NOT support streaming with tool calling. ` +
-          `Falling back to non-streaming mode. Supported models for streaming + tools: gpt-oss-120b, zai-glm-4.6`
+          `Falling back to non-streaming mode. Supported models for streaming + tools: gpt-oss-120b, zai-glm-4.6`,
       );
 
       // Fall back to non-streaming call
@@ -2197,7 +2217,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
             userFriendlyError = this.getCerebrasRateLimitMessage(error);
           } else {
             userFriendlyError = `⚠️ **Cerebras API Error:** ${parseApiErrorMessage(
-              error
+              error,
             )}\n\nPlease check your API configuration or try a different model/provider.`;
           }
 
@@ -2236,7 +2256,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
               {
                 status: error.status,
                 message: error.message,
-              }
+              },
             );
           } else {
             console.warn(`Cerebras streaming call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms`);
@@ -2388,7 +2408,11 @@ class GeminiAdapter extends BaseAdapter {
         }
         for (const tc of msg.tool_calls) {
           let args = {};
-          try { args = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : (tc.function?.arguments || {}); } catch { args = {}; }
+          try {
+            args = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function?.arguments || {};
+          } catch {
+            args = {};
+          }
           parts.push({ functionCall: { name: tc.function?.name || 'unknown', args } });
         }
         return { role, parts };
@@ -2397,7 +2421,11 @@ class GeminiAdapter extends BaseAdapter {
       // Convert OpenAI-format tool result messages to Gemini functionResponse parts
       if (msg.role === 'tool' && msg.tool_call_id) {
         let response = {};
-        try { response = typeof msg.content === 'string' ? JSON.parse(msg.content) : (msg.content || {}); } catch { response = { result: msg.content }; }
+        try {
+          response = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content || {};
+        } catch {
+          response = { result: msg.content };
+        }
         parts.push({ functionResponse: { name: msg.name || 'tool', response } });
         return { role, parts };
       }
@@ -2676,11 +2704,13 @@ class GeminiAdapter extends BaseAdapter {
         };
 
         // Extract Gemini usage metadata
-        const geminiUsage = response.usageMetadata ? {
-          prompt_tokens: response.usageMetadata.promptTokenCount || 0,
-          completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
-          total_tokens: response.usageMetadata.totalTokenCount || 0,
-        } : undefined;
+        const geminiUsage = response.usageMetadata
+          ? {
+              prompt_tokens: response.usageMetadata.promptTokenCount || 0,
+              completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
+              total_tokens: response.usageMetadata.totalTokenCount || 0,
+            }
+          : undefined;
 
         return {
           responseMessage: responseMessage,
@@ -2719,10 +2749,13 @@ class GeminiAdapter extends BaseAdapter {
         const delay = this.calculateDelay(attempt, quotaResetSeconds);
 
         if (this.isRateLimitError(error)) {
-          console.warn(`[Gemini] Rate limit hit (attempt ${attempt + 1}/${this.maxRetries + 1}), waiting ${Math.round(delay / 1000)}s before retry${quotaResetSeconds ? ` (server says reset in ${quotaResetSeconds}s)` : ''}...`, {
-            status: error.status || error.response?.status,
-            message: error.message,
-          });
+          console.warn(
+            `[Gemini] Rate limit hit (attempt ${attempt + 1}/${this.maxRetries + 1}), waiting ${Math.round(delay / 1000)}s before retry${quotaResetSeconds ? ` (server says reset in ${quotaResetSeconds}s)` : ''}...`,
+            {
+              status: error.status || error.response?.status,
+              message: error.message,
+            },
+          );
         } else {
           console.warn(`Gemini call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms:`, {
             status: error.status || error.response?.status,
@@ -2935,10 +2968,13 @@ class GeminiAdapter extends BaseAdapter {
         const delay = this.calculateDelay(attempt, quotaResetSeconds);
 
         if (this.isRateLimitError(error)) {
-          console.warn(`[Gemini] Rate limit hit (attempt ${attempt + 1}/${this.maxRetries + 1}), waiting ${Math.round(delay / 1000)}s before retry${quotaResetSeconds ? ` (server says reset in ${quotaResetSeconds}s)` : ''}...`, {
-            status: error.status || error.response?.status,
-            message: error.message,
-          });
+          console.warn(
+            `[Gemini] Rate limit hit (attempt ${attempt + 1}/${this.maxRetries + 1}), waiting ${Math.round(delay / 1000)}s before retry${quotaResetSeconds ? ` (server says reset in ${quotaResetSeconds}s)` : ''}...`,
+            {
+              status: error.status || error.response?.status,
+              message: error.message,
+            },
+          );
         } else {
           console.warn(`Gemini streaming call failed (attempt ${attempt + 1}/${this.maxRetries + 1}), retrying in ${Math.round(delay)}ms:`, {
             status: error.status || error.response?.status,
@@ -3887,9 +3923,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
         console.log(`[LLM Adapter] Z.AI reasoning model: ${model}, thinking: ${useThinking ? 'enabled' : 'off (param omitted)'}`);
       }
       return new OpenAiLikeAdapter(client, model, {
-        extraBody: useThinking
-          ? { thinking: { type: 'enabled' } }
-          : null,
+        extraBody: useThinking ? { thinking: { type: 'enabled' } } : null,
       });
     }
 
