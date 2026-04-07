@@ -28,6 +28,7 @@ import mcpServers from './features/mcpServers';
 import goals from './features/goals';
 import goalTemplates from './features/goalTemplates';
 import contentOutputs from './features/contentOutputs';
+import groups from './features/groups';
 import widgetLayout from './features/widgetLayout';
 import widgetDefinitions from './features/widgetDefinitions';
 import widgetChat from './features/widgetChat';
@@ -72,6 +73,7 @@ const store = createStore({
           dispatch('workflows/fetchWorkflows'),
           dispatch('userStats/fetchStats'),
           dispatch('contentOutputs/fetchOutputs'),
+          dispatch('groups/fetchGroups'),
           dispatch('appAuth/fetchConnectedApps'),
         ]);
 
@@ -147,6 +149,7 @@ const store = createStore({
     goals,
     goalTemplates,
     contentOutputs,
+    groups,
     widgetLayout,
     widgetDefinitions,
     widgetChat,

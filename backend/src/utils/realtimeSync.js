@@ -63,6 +63,11 @@ export const RealtimeEvents = {
   CONTENT_UPDATED: 'content:updated',
   CONTENT_DELETED: 'content:deleted',
 
+  // Groups
+  GROUP_CREATED: 'group:created',
+  GROUP_UPDATED: 'group:updated',
+  GROUP_DELETED: 'group:deleted',
+
   // Tools
   TOOL_CREATED: 'tool:created',
   TOOL_UPDATED: 'tool:updated',

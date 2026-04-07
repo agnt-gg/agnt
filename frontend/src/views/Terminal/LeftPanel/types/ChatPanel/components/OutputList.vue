@@ -11,19 +11,6 @@
       </div>
     </div>
     <div class="card-inner output-list">
-      <!-- <div class="create-new" :class="{ 'zero-outputs': outputs.length < 1 }">
-        <button @click="createNewOutput" class="icon create-output-btn">
-          <svg xmlns="http://www.w3.org/2000/svg" width="33" height="32" viewBox="0 0 33 32" fill="none">
-            <rect x="0.544922" y="0.5" width="31" height="31" rx="7.5" stroke="#01052A" stroke-opacity="0.25" stroke-dasharray="5 5"></rect>
-            <path
-              d="M15.1878 16.8571H10.0449V15.1429H15.1878V10H16.9021V15.1429H22.0449V16.8571H16.9021V22H15.1878V16.8571Z"
-              fill="#01052A"
-              fill-opacity="0.5"
-            ></path>
-          </svg>
-          Create New Output
-        </button>
-      </div> -->
       <div class="list-container">
         <!-- Selection bar -->
         <div v-if="isSelectionMode" class="selection-bar">
@@ -52,10 +39,6 @@
               <span>Date</span>
               <i :class="getSortIcon('created_at')"></i>
             </button>
-            <!-- <button @click="sortBy('content')" class="sort-button" :class="{ active: sortKey === 'content' }">
-              <span>Content</span>
-              <i :class="getSortIcon('content')"></i>
-            </button> -->
             <Tooltip text="New Chat" width="auto">
               <button @click="handleNewChat" class="new-chat-btn">
                 <i class="fas fa-plus"></i>
@@ -63,74 +46,212 @@
               </button>
             </Tooltip>
           </div>
-          <div class="output-list-items">
-            <!-- Empty State -->
-            <div v-if="outputs.length === 0" class="no-outputs">
-              <p>No saved outputs yet. Start a chat to create one.</p>
-            </div>
-            <div
-              v-for="output in sortedOutputs"
-              :key="output.id"
-              class="output-item"
-              :class="{ selected: isSelected(output.id), active: isActive(output.id), streaming: isOutputStreaming(output.id) }"
-            >
-              <div class="output-content" @click="handleOutputClick(output.id, $event)">
-                <div class="output-date">
-                  <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                  {{ formatDate(output.created_at) }}
+
+          <!-- Groups Section -->
+          <div class="groups-section">
+            <!-- New Group Button -->
+            <button @click="showCreateGroup()" class="create-group-btn">
+              <i class="fas fa-folder-plus"></i>
+              <span>New Group</span>
+            </button>
+
+            <!-- Recursive Group Tree -->
+            <template v-for="node in flatGroupTree" :key="node.id">
+              <div class="group-section" :style="{ paddingLeft: node.depth * 16 + 'px' }">
+                <div
+                  class="group-header"
+                  draggable="true"
+                  @click="toggleGroup(node.id)"
+                  @contextmenu.prevent="openGroupMenu($event, node)"
+                  @dragstart.stop="onGroupDragStart($event, node)"
+                  @dragend="onDragEnd"
+                  @dragover.prevent="onDragOver($event, node.id)"
+                  @dragleave="onDragLeave($event)"
+                  @drop.prevent="onDrop($event, node.id)"
+                  :class="{ 'drag-over': dragOverGroupId === node.id, 'dragging': draggedGroup && draggedGroup.id === node.id }"
+                >
+                  <div class="group-header-left">
+                    <span class="group-color-dot"></span>
+                    <span class="group-name">{{ node.name }}</span>
+                    <i :class="expandedGroups.has(node.id) ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="group-chevron"></i>
+                  </div>
+                  <span class="group-count">{{ searchQuery ? getGroupOutputs(node.id).length : getTotalConversationCount(node.id) }}</span>
                 </div>
-                <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+                <div v-if="expandedGroups.has(node.id)" class="group-items">
+                  <div v-if="getGroupOutputs(node.id).length === 0 && !node.hasChildren" class="group-empty">
+                    <span>No conversations</span>
+                  </div>
+                  <div
+                    v-for="output in getGroupOutputs(node.id)"
+                    :key="output.id"
+                    class="output-item"
+                    :class="{ selected: isSelected(output.id), active: isActive(output.id), streaming: isOutputStreaming(output.id) }"
+                    draggable="true"
+                    @dragstart="onDragStart($event, output)"
+                    @dragend="onDragEnd"
+                  >
+                    <div class="output-content" @click="handleOutputClick(output.id, $event)">
+                      <div class="output-date">
+                        <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
+                        {{ formatDate(output.created_at) }}
+                      </div>
+                      <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+                    </div>
+                    <div class="output-actions">
+                      <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
+                        <i class="fas fa-ellipsis-v"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="output-actions">
-                <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
-                  <i class="fas fa-ellipsis-v"></i>
+            </template>
+
+            <!-- Ungrouped Section (only when groups exist) -->
+            <div class="group-section ungrouped-section" v-if="groups.length > 0">
+              <div
+                class="group-header ungrouped-header"
+                @click="toggleGroup('__ungrouped__')"
+                @dragover.prevent="onDragOver($event, null)"
+                @dragleave="onDragLeave($event)"
+                @drop.prevent="onDrop($event, null)"
+                :class="{ 'drag-over': dragOverGroupId === '__none__' }"
+              >
+                <div class="group-header-left">
+                  <i class="fas fa-inbox ungrouped-icon"></i>
+                  <span class="group-name">Ungrouped</span>
+                  <i :class="expandedGroups.has('__ungrouped__') ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="group-chevron"></i>
+                </div>
+                <span class="group-count">{{ allUngroupedOutputs.length }}</span>
+              </div>
+              <div v-if="expandedGroups.has('__ungrouped__')" class="group-items">
+                <div
+                  v-for="output in ungroupedOutputs"
+                  :key="output.id"
+                  class="output-item"
+                  :class="{ selected: isSelected(output.id), active: isActive(output.id), streaming: isOutputStreaming(output.id) }"
+                  draggable="true"
+                  @dragstart="onDragStart($event, output)"
+                  @dragend="onDragEnd"
+                >
+                  <div class="output-content" @click="handleOutputClick(output.id, $event)">
+                    <div class="output-date">
+                      <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
+                      {{ formatDate(output.created_at) }}
+                    </div>
+                    <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+                  </div>
+                  <div class="output-actions">
+                    <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
+                      <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                  </div>
+                </div>
+                <!-- Ungrouped pagination -->
+                <div v-if="hasMoreUngrouped" class="ungrouped-pagination">
+                  <span class="ungrouped-pagination-info">Showing {{ ungroupedOutputs.length }} of {{ allUngroupedOutputs.length }}</span>
+                  <div class="ungrouped-pagination-btns">
+                    <button @click="showMoreUngrouped" class="pagination-btn load-more">
+                      <i class="fas fa-arrow-down"></i>
+                      <span>More (20)</span>
+                    </button>
+                    <button @click="showAllUngrouped" class="pagination-btn load-all">
+                      <i class="fas fa-list"></i>
+                      <span>Show All</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Flat list when no groups exist -->
+            <div v-if="groups.length === 0" class="output-list-items">
+              <div v-if="outputs.length === 0" class="no-outputs">
+                <p>No saved outputs yet. Start a chat to create one.</p>
+              </div>
+              <div
+                v-for="output in sortedOutputs"
+                :key="output.id"
+                class="output-item"
+                :class="{ selected: isSelected(output.id), active: isActive(output.id), streaming: isOutputStreaming(output.id) }"
+              >
+                <div class="output-content" @click="handleOutputClick(output.id, $event)">
+                  <div class="output-date">
+                    <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
+                    {{ formatDate(output.created_at) }}
+                  </div>
+                  <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+                </div>
+                <div class="output-actions">
+                  <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
+                    <i class="fas fa-ellipsis-v"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Output context menu (shared across all sections) -->
+          <Teleport to="body">
+            <div v-if="activeMenu" class="action-menu" @click.stop :style="menuPosition">
+              <button @click="startRename(getOutputById(activeMenu))" class="menu-item">
+                <i class="fas fa-edit"></i>
+                <span>Rename</span>
+              </button>
+              <!-- Move to group submenu -->
+              <button class="menu-item" @click.stop="showMoveSubmenu = !showMoveSubmenu">
+                <i class="fas fa-folder"></i>
+                <span>Move to Group</span>
+                <i :class="showMoveSubmenu ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="submenu-arrow"></i>
+              </button>
+              <div v-if="showMoveSubmenu" class="submenu-inline">
+                <template v-for="node in moveMenuFlatGroups" :key="node.id">
+                  <button
+                    @click.stop="node.hasChildren ? toggleMoveMenuGroup(node.id) : moveOutputToGroup(activeMenu, node.id)"
+                    class="menu-item submenu-item"
+                    :class="{ active: getOutputById(activeMenu)?.group_id === node.id }"
+                    :style="{ paddingLeft: (28 + node.depth * 20) + 'px' }"
+                  >
+                    <span class="group-color-dot"></span>
+                    <span class="submenu-group-name">{{ node.name }}</span>
+                    <i v-if="node.hasChildren" :class="moveMenuExpanded.has(node.id) ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="submenu-chevron" @click.stop="toggleMoveMenuGroup(node.id)"></i>
+                    <i v-if="node.hasChildren" class="fas fa-arrow-right submenu-move-icon" @click.stop="moveOutputToGroup(activeMenu, node.id)" title="Move here"></i>
+                  </button>
+                </template>
+                <button @click="moveOutputToGroup(activeMenu, null)" class="menu-item submenu-item" :class="{ active: !getOutputById(activeMenu)?.group_id }">
+                  <i class="fas fa-inbox"></i>
+                  <span>Ungrouped</span>
                 </button>
               </div>
-              <Teleport to="body">
-                <div v-if="activeMenu === output.id" class="action-menu" @click.stop :style="menuPosition">
-                  <button @click="startRename(output)" class="menu-item">
-                    <i class="fas fa-edit"></i>
-                    <span>Rename</span>
-                  </button>
-                  <!-- <button @click="shareOutput(output)" class="menu-item">
-                    <i class="fas fa-share-alt"></i>
-                    <span>Share</span>
-                  </button> -->
-                  <!-- <button @click="openInToolForge(output)" class="menu-item">
-                    <i class="fas fa-tools"></i>
-                    <span>Open in Tool Forge</span>
-                  </button> -->
-                  <button @click="deleteOutput(output.id)" class="menu-item delete">
-                    <i class="fas fa-trash"></i>
-                    <span>Delete</span>
-                  </button>
-                </div>
-              </Teleport>
-            </div>
-          </div>
-
-          <!-- Pagination Controls -->
-          <div v-if="hasMore && !hasLoadedAll" class="pagination-controls">
-            <div class="pagination-info">Showing {{ outputs.length }} of {{ totalCount }} outputs</div>
-            <div class="pagination-buttons">
-              <button @click="loadMore" :disabled="isFetchingMore" class="pagination-btn load-more">
-                <i v-if="isFetchingMore" class="fas fa-spinner fa-spin"></i>
-                <i v-else class="fas fa-arrow-down"></i>
-                <span>{{ isFetchingMore ? 'Loading...' : 'Load More (20)' }}</span>
-              </button>
-              <button @click="loadAll" :disabled="isFetchingMore" class="pagination-btn load-all">
-                <i v-if="isFetchingMore" class="fas fa-spinner fa-spin"></i>
-                <i v-else class="fas fa-list"></i>
-                <span>{{ isFetchingMore ? 'Loading...' : 'Load All' }}</span>
+              <button @click="deleteOutput(activeMenu)" class="menu-item delete">
+                <i class="fas fa-trash"></i>
+                <span>Delete</span>
               </button>
             </div>
-          </div>
+          </Teleport>
 
-          <!-- All Loaded Message -->
-          <div v-else-if="hasLoadedAll && outputs.length > 0" class="all-loaded-message">
-            <i class="fas fa-check-circle"></i>
-            <span>All {{ totalCount }} outputs loaded</span>
-          </div>
+          <!-- Group context menu -->
+          <Teleport to="body">
+            <div v-if="groupMenu" class="action-menu" @click.stop :style="groupMenuPosition">
+              <button @click="showCreateGroup(groupMenu.id)" class="menu-item">
+                <i class="fas fa-folder-plus"></i>
+                <span>New Sub-group</span>
+              </button>
+              <button @click="editGroup(groupMenu)" class="menu-item">
+                <i class="fas fa-edit"></i>
+                <span>Edit Group</span>
+              </button>
+              <button @click="deleteGroup(groupMenu.id, 'move')" class="menu-item delete">
+                <i class="fas fa-level-up-alt"></i>
+                <span>Delete (Keep Children)</span>
+              </button>
+              <button @click="deleteGroup(groupMenu.id, 'delete')" class="menu-item delete">
+                <i class="fas fa-trash"></i>
+                <span>Delete All</span>
+              </button>
+            </div>
+          </Teleport>
+
         </div>
       </div>
     </div>
@@ -162,6 +283,16 @@ export default {
     const activeMenu = ref(null);
     const menuPosition = ref({});
     const menuButtonRefs = ref({});
+    const showMoveSubmenu = ref(false);
+    const moveMenuExpanded = ref(new Set());
+
+    // Group state
+    const expandedGroups = ref(new Set(['__ungrouped__']));
+    const groupMenu = ref(null);
+    const groupMenuPosition = ref({});
+    const draggedOutput = ref(null);
+    const draggedGroup = ref(null);
+    const dragOverGroupId = ref(null);
 
     // Multi-select state
     const selectedOutputIds = ref(new Set());
@@ -180,30 +311,396 @@ export default {
     const hasLoadedAll = computed(() => store.getters['contentOutputs/hasLoadedAll']);
     const isFetchingMore = computed(() => store.getters['contentOutputs/isFetching']);
 
+    // Groups
+    const groups = computed(() => store.getters['groups/groups']);
+    const groupTree = computed(() => store.getters['groups/groupTree']);
+
+    // Flatten tree into a visible list with depth info (only show children of expanded parents)
+    const flatGroupTree = computed(() => {
+      const result = [];
+      const walk = (nodes, depth) => {
+        for (const node of nodes) {
+          const hasChildren = node.children && node.children.length > 0;
+          result.push({ ...node, depth, hasChildren });
+          if (hasChildren && expandedGroups.value.has(node.id)) {
+            walk(node.children, depth + 1);
+          }
+        }
+      };
+      walk(groupTree.value, 0);
+      return result;
+    });
+
+    // Full flattened tree (always all nodes, for move menu)
+    const allFlatGroups = computed(() => {
+      const result = [];
+      const walk = (nodes, depth) => {
+        for (const node of nodes) {
+          result.push({ ...node, depth });
+          if (node.children && node.children.length > 0) {
+            walk(node.children, depth + 1);
+          }
+        }
+      };
+      walk(groupTree.value, 0);
+      return result;
+    });
+
+    // Flattened tree for move menu (respects moveMenuExpanded)
+    const moveMenuFlatGroups = computed(() => {
+      const result = [];
+      const walk = (nodes, depth) => {
+        for (const node of nodes) {
+          const hasChildren = node.children && node.children.length > 0;
+          result.push({ ...node, depth, hasChildren });
+          if (hasChildren && moveMenuExpanded.value.has(node.id)) {
+            walk(node.children, depth + 1);
+          }
+        }
+      };
+      walk(groupTree.value, 0);
+      return result;
+    });
+
+    function toggleMoveMenuGroup(groupId) {
+      playSound('typewriterKeyPress');
+      const next = new Set(moveMenuExpanded.value);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      moveMenuExpanded.value = next;
+    }
+
     // Multi-select computed
     const isSelectionMode = computed(() => selectedOutputIds.value.size > 0);
     const selectedCount = computed(() => selectedOutputIds.value.size);
 
-    const sortedOutputs = computed(() => {
-      return outputs.value
+    // Filter + sort helper
+    function filterAndSort(list) {
+      return list
         .filter((output) => {
           if (!searchQuery.value) return true;
-
-          const query = searchQuery.value.toLowerCase();
-
-          // Search against title only (no JSON.parse or DOM creation on every keystroke)
           const title = getPreviewText(output.content, output).toLowerCase();
-          return title.includes(query);
+          return title.includes(searchQuery.value.toLowerCase());
         })
         .sort((a, b) => {
           let aValue = sortKey.value === 'content' ? getPreviewText(a.content, a) : a[sortKey.value];
           let bValue = sortKey.value === 'content' ? getPreviewText(b.content, b) : b[sortKey.value];
-
           if (aValue < bValue) return sortOrder.value === 'asc' ? -1 : 1;
           if (aValue > bValue) return sortOrder.value === 'asc' ? 1 : -1;
           return 0;
         });
+    }
+
+    const sortedOutputs = computed(() => filterAndSort(outputs.value));
+
+    // Collect all descendant group IDs (including self)
+    function getDescendantIds(groupId) {
+      const ids = new Set([groupId]);
+      const collect = (nodes) => {
+        for (const node of nodes) {
+          if (ids.has(node.parent_id)) {
+            ids.add(node.id);
+          }
+        }
+      };
+      // Iterate until no new ids added (handles any depth)
+      let prevSize = 0;
+      while (ids.size !== prevSize) {
+        prevSize = ids.size;
+        collect(groups.value);
+      }
+      return ids;
+    }
+
+    // Total conversation count including all descendants
+    function getTotalConversationCount(groupId) {
+      const ids = getDescendantIds(groupId);
+      return outputs.value.filter((o) => ids.has(o.group_id)).length;
+    }
+
+    // Get outputs belonging to a specific group
+    // When searching, include conversations from all descendant groups
+    function getGroupOutputs(groupId) {
+      if (searchQuery.value) {
+        const ids = getDescendantIds(groupId);
+        return filterAndSort(outputs.value.filter((o) => ids.has(o.group_id)));
+      }
+      return filterAndSort(outputs.value.filter((o) => o.group_id === groupId));
+    }
+
+    // Ungrouped display limit
+    const ungroupedDisplayLimit = ref(20);
+
+    // All ungrouped outputs (full list)
+    const allUngroupedOutputs = computed(() => {
+      return filterAndSort(outputs.value.filter((o) => !o.group_id));
     });
+
+    // Displayed ungrouped outputs (capped by limit when groups exist)
+    const ungroupedOutputs = computed(() => {
+      if (groups.value.length === 0) return allUngroupedOutputs.value;
+      return allUngroupedOutputs.value.slice(0, ungroupedDisplayLimit.value);
+    });
+
+    const hasMoreUngrouped = computed(() => {
+      return groups.value.length > 0 && allUngroupedOutputs.value.length > ungroupedDisplayLimit.value;
+    });
+
+    function showMoreUngrouped() {
+      ungroupedDisplayLimit.value += 20;
+    }
+
+    function showAllUngrouped() {
+      ungroupedDisplayLimit.value = Infinity;
+    }
+
+    // Get output by id for context menu
+    function getOutputById(id) {
+      return outputs.value.find((o) => o.id === id) || null;
+    }
+
+    // Toggle group expand/collapse
+    function toggleGroup(groupId) {
+      playSound('typewriterKeyPress');
+      const next = new Set(expandedGroups.value);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      expandedGroups.value = next;
+    }
+
+    // Drag and drop
+    function onDragStart(event, output) {
+      draggedOutput.value = output;
+      draggedGroup.value = null;
+      event.dataTransfer.effectAllowed = 'move';
+
+      // If this output is part of a selection, drag all selected items
+      if (selectedOutputIds.value.has(output.id)) {
+        const ids = Array.from(selectedOutputIds.value);
+        event.dataTransfer.setData('text/plain', JSON.stringify(ids));
+      } else {
+        event.dataTransfer.setData('text/plain', output.id);
+      }
+    }
+
+    function onGroupDragStart(event, group) {
+      draggedGroup.value = group;
+      draggedOutput.value = null;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', 'group:' + group.id);
+    }
+
+    function onDragEnd() {
+      draggedOutput.value = null;
+      draggedGroup.value = null;
+      dragOverGroupId.value = null;
+    }
+
+    function onDragOver(event, groupId) {
+      // Prevent dropping a group onto itself
+      if (draggedGroup.value && draggedGroup.value.id === groupId) return;
+      event.dataTransfer.dropEffect = 'move';
+      dragOverGroupId.value = groupId === null ? '__none__' : groupId;
+    }
+
+    function onDragLeave(event) {
+      if (!event.currentTarget.contains(event.relatedTarget)) {
+        dragOverGroupId.value = null;
+      }
+    }
+
+    // Check if targetId is a descendant of groupId (prevent circular nesting)
+    function isDescendant(groupId, targetId) {
+      const check = (nodes) => {
+        for (const node of nodes) {
+          if (node.id === groupId) {
+            // Found the group — now check if targetId is in its subtree
+            const findInChildren = (children) => {
+              for (const child of children) {
+                if (child.id === targetId) return true;
+                if (child.children && findInChildren(child.children)) return true;
+              }
+              return false;
+            };
+            return node.children ? findInChildren(node.children) : false;
+          }
+          if (node.children && check(node.children)) return true;
+        }
+        return false;
+      };
+      return check(groupTree.value);
+    }
+
+    async function onDrop(event, groupId) {
+      dragOverGroupId.value = null;
+
+      // Handle group drop (reparent)
+      if (draggedGroup.value) {
+        const group = draggedGroup.value;
+        draggedGroup.value = null;
+
+        // Don't drop onto self or current parent
+        if (group.id === groupId) return;
+        if ((group.parent_id || null) === groupId) return;
+        // Prevent circular: can't drop a parent into its own descendant
+        if (groupId && isDescendant(group.id, groupId)) return;
+
+        try {
+          await store.dispatch('groups/updateGroup', { id: group.id, parent_id: groupId || null });
+          // Expand the target so the moved group is visible
+          if (groupId) {
+            const next = new Set(expandedGroups.value);
+            next.add(groupId);
+            expandedGroups.value = next;
+          }
+          store.dispatch('groups/fetchGroups', { force: true });
+        } catch (error) {
+          console.error('Error reparenting group:', error);
+        }
+        return;
+      }
+
+      // Handle output drop
+      const output = draggedOutput.value;
+      if (!output) return;
+      draggedOutput.value = null;
+
+      // Collect all IDs to move: selected items if dragging a selected item, otherwise just the one
+      const idsToMove = selectedOutputIds.value.has(output.id) && selectedOutputIds.value.size > 1
+        ? Array.from(selectedOutputIds.value)
+        : [output.id];
+
+      // Filter out items already in the target group
+      const filteredIds = idsToMove.filter((id) => {
+        const o = getOutputById(id);
+        return o && (o.group_id || null) !== groupId;
+      });
+
+      if (filteredIds.length === 0) return;
+
+      try {
+        if (filteredIds.length === 1) {
+          await store.dispatch('groups/moveToGroup', { outputId: filteredIds[0], groupId });
+          const o = getOutputById(filteredIds[0]);
+          if (o) o.group_id = groupId;
+        } else {
+          await store.dispatch('groups/bulkMoveToGroup', { outputIds: filteredIds, groupId });
+          filteredIds.forEach((id) => {
+            const o = getOutputById(id);
+            if (o) o.group_id = groupId;
+          });
+        }
+        clearSelection();
+        store.dispatch('groups/fetchGroups', { force: true });
+      } catch (error) {
+        console.error('Error moving output(s):', error);
+      }
+    }
+
+    // Move output to group (from context menu)
+    async function moveOutputToGroup(outputId, groupId) {
+      activeMenu.value = null;
+      showMoveSubmenu.value = false;
+      const output = getOutputById(outputId);
+      if (!output || (output.group_id || null) === groupId) return;
+
+      try {
+        await store.dispatch('groups/moveToGroup', { outputId, groupId });
+        output.group_id = groupId;
+        store.dispatch('groups/fetchGroups', { force: true });
+      } catch (error) {
+        console.error('Error moving output:', error);
+      }
+    }
+
+    // Group CRUD
+    async function showCreateGroup(parentId = null) {
+      groupMenu.value = null;
+      playSound('buttonClick');
+      const title = parentId ? 'New Sub-group' : 'New Group';
+      const message = parentId ? 'Enter a name for the sub-group:' : 'Enter a name for the new group:';
+      const name = await simpleModal.value.showModal({
+        title,
+        message,
+        isPrompt: true,
+        defaultValue: '',
+        placeholder: 'Group name...',
+        confirmText: 'Create',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-primary',
+      });
+      if (!name || name.trim() === '') return;
+
+      try {
+        const group = await store.dispatch('groups/createGroup', { name: name.trim(), parent_id: parentId });
+        const next = new Set(expandedGroups.value);
+        next.add(group.id);
+        // Also expand the parent so the new child is visible
+        if (parentId) next.add(parentId);
+        expandedGroups.value = next;
+      } catch (error) {
+        console.error('Error creating group:', error);
+      }
+    }
+
+    function openGroupMenu(event, group) {
+      groupMenu.value = group;
+      groupMenuPosition.value = {
+        position: 'fixed',
+        top: `${event.clientY}px`,
+        left: `${event.clientX}px`,
+      };
+    }
+
+    async function editGroup(group) {
+      groupMenu.value = null;
+      const name = await simpleModal.value.showModal({
+        title: 'Edit Group',
+        message: 'Enter a new name for the group:',
+        isPrompt: true,
+        defaultValue: group.name,
+        placeholder: 'Group name...',
+        confirmText: 'Save',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-primary',
+      });
+      if (!name || name.trim() === '' || name.trim() === group.name) return;
+
+      try {
+        await store.dispatch('groups/updateGroup', { id: group.id, name: name.trim(), color: group.color });
+      } catch (error) {
+        console.error('Error updating group:', error);
+      }
+    }
+
+    async function deleteGroup(groupId, mode = 'move') {
+      groupMenu.value = null;
+      const message = mode === 'delete'
+        ? 'Delete this group AND all sub-groups? Conversations will be moved to Ungrouped.'
+        : 'Delete this group? Sub-groups will be moved up and conversations will be ungrouped.';
+
+      const confirmed = await simpleModal.value.showModal({
+        title: 'Delete Group',
+        message,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
+
+      try {
+        await store.dispatch('groups/deleteGroup', { id: groupId, mode });
+        store.dispatch('contentOutputs/refreshOutputs');
+      } catch (error) {
+        console.error('Error deleting group:', error);
+      }
+    }
 
     function createNewOutput() {
       try {
@@ -224,9 +721,8 @@ export default {
     }
 
     async function fetchSavedOutputs() {
-      // Use store action instead of direct API call - fetch initial 20
-      // Caching is now handled in the store (pre-fetched in state.js)
-      await store.dispatch('contentOutputs/fetchOutputs', { limit: 20, offset: 0 });
+      // Load all outputs - the list endpoint only returns metadata (no content column)
+      await store.dispatch('contentOutputs/loadAll');
     }
 
     async function loadMore() {
@@ -566,8 +1062,12 @@ export default {
 
     // Close menu when clicking outside
     function handleClickOutside(event) {
-      if (activeMenu.value && !event.target.closest('.output-actions')) {
+      if (activeMenu.value && !event.target.closest('.output-actions') && !event.target.closest('.action-menu')) {
         activeMenu.value = null;
+        showMoveSubmenu.value = false;
+      }
+      if (groupMenu.value && !event.target.closest('.action-menu')) {
+        groupMenu.value = null;
       }
     }
 
@@ -640,10 +1140,9 @@ export default {
     }
 
     // Setup lifecycle hooks
-    onMounted(() => {
-      // Only fetch if store is empty (initializeStore pre-loads outputs in Phase 2)
-      if (outputs.value.length === 0) {
-        fetchSavedOutputs();
+    onMounted(async () => {
+      if (!hasLoadedAll.value) {
+        await fetchSavedOutputs();
       }
       document.addEventListener('click', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
@@ -703,6 +1202,41 @@ export default {
       isActive,
       // Streaming
       isOutputStreaming,
+      // Groups
+      groups,
+      groupTree,
+      flatGroupTree,
+      allFlatGroups,
+      expandedGroups,
+      toggleGroup,
+      getGroupOutputs,
+      ungroupedOutputs,
+      allUngroupedOutputs,
+      hasMoreUngrouped,
+      showMoreUngrouped,
+      showAllUngrouped,
+      getOutputById,
+      getTotalConversationCount,
+      showCreateGroup,
+      openGroupMenu,
+      editGroup,
+      deleteGroup,
+      groupMenu,
+      groupMenuPosition,
+      showMoveSubmenu,
+      moveMenuExpanded,
+      moveMenuFlatGroups,
+      toggleMoveMenuGroup,
+      moveOutputToGroup,
+      // Drag and drop
+      onDragStart,
+      onGroupDragStart,
+      onDragEnd,
+      onDragOver,
+      onDragLeave,
+      onDrop,
+      dragOverGroupId,
+      draggedGroup,
     };
   },
 };
@@ -1234,5 +1768,228 @@ body.dark .create-output-btn {
 
 .output-item.selected:hover {
   background: rgba(var(--primary-rgb), 0.12);
+}
+
+/* ===== Groups ===== */
+.groups-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.create-group-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+}
+
+.create-group-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
+}
+
+.create-group-btn i {
+  font-size: 13px;
+}
+
+.group-section {
+  margin-bottom: 4px;
+}
+
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s;
+}
+
+.group-header:hover {
+  background: var(--color-darker-1);
+}
+
+.group-header[draggable="true"] {
+  cursor: grab;
+}
+
+.group-header[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.group-header.dragging {
+  opacity: 0.4;
+}
+
+.group-header.drag-over {
+  background: rgba(var(--primary-rgb), 0.12);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+}
+
+.group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.group-chevron {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  width: 12px;
+  text-align: center;
+  transition: transform 0.15s;
+}
+
+.group-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-primary);
+}
+
+.group-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ungrouped-icon {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.group-count {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: var(--color-darker-1);
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.group-items {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.group-items .output-item {
+  margin-left: 0;
+  min-width: 0;
+}
+
+.ungrouped-pagination {
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.ungrouped-pagination-info {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.ungrouped-pagination-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.group-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* Inline submenu for Move to Group */
+.submenu-arrow {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.5;
+  transition: transform 0.15s;
+}
+
+.submenu-inline {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-darker-1);
+  border-top: 1px solid var(--terminal-border-color);
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+
+.submenu-item {
+  gap: 8px;
+}
+
+.submenu-item.active {
+  color: var(--color-primary);
+}
+
+.submenu-chevron {
+  font-size: 9px;
+  width: 10px;
+  color: var(--color-text-muted);
+}
+
+.submenu-group-name {
+  flex: 1;
+}
+
+.submenu-move-icon {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  opacity: 0;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.submenu-item:hover .submenu-move-icon {
+  opacity: 1;
+}
+
+.submenu-move-icon:hover {
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.submenu-inline .group-color-dot {
+  width: 8px;
+  height: 8px;
+}
+
+/* Drag state on output items */
+.output-item[draggable="true"] {
+  cursor: grab;
+}
+
+.output-item[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.6;
 }
 </style>

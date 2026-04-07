@@ -114,6 +114,15 @@ db.serialize(() => {
     console.log('WAL mode disabled via SQLITE_WAL_MODE=false');
   }
 
+  // Enable foreign key enforcement (required for ON DELETE CASCADE)
+  db.run('PRAGMA foreign_keys = ON', (err) => {
+    if (err) {
+      console.error('Failed to enable foreign keys:', err);
+    } else {
+      console.log('Foreign key enforcement enabled');
+    }
+  });
+
   // Busy timeout: retry for up to 10s when the DB is locked.
   // Covers startup race between main process migrations and workflow process queries.
   db.run('PRAGMA busy_timeout = 10000', (err) => {
@@ -245,6 +254,24 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_created_at ON workflow_versions(created_at)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_versions_checkpoint ON workflow_versions(is_checkpoint)`);
 
+      // Groups for organizing conversations
+      db.run(`CREATE TABLE IF NOT EXISTS groups (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        color TEXT DEFAULT '#6366f1',
+        sort_order INTEGER DEFAULT 0,
+        parent_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (parent_id) REFERENCES groups(id) ON DELETE CASCADE
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_groups_user_id ON groups(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_groups_parent_id ON groups(parent_id)`);
+
       db.run(`CREATE TABLE IF NOT EXISTS content_outputs (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -255,15 +282,18 @@ function createTables() {
         conversation_id TEXT,
         title TEXT,
         is_shareable INTEGER DEFAULT 0,
+        group_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (workflow_id) REFERENCES workflows(id)
+        FOREIGN KEY (workflow_id) REFERENCES workflows(id),
+        FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL
       )`);
 
       // Index for faster content_outputs queries by user_id, sorted by updated_at
       db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_id ON content_outputs(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_user_updated ON content_outputs(user_id, updated_at DESC)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_content_outputs_group_id ON content_outputs(group_id)`);
 
       db.run(
         `CREATE TABLE IF NOT EXISTS user_data (
@@ -996,6 +1026,24 @@ function runMigrations() {
             console.log(`✓ Added ${col.name} column to goal_iterations table`);
           }
         });
+      });
+
+      // Migration: Add parent_id column to groups for nested groups (2026-04-06)
+      db.run(`ALTER TABLE groups ADD COLUMN parent_id TEXT REFERENCES groups(id) ON DELETE CASCADE`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding parent_id column to groups:', err);
+        } else if (!err) {
+          console.log('✓ Added parent_id column to groups table');
+        }
+      });
+
+      // Migration: Add group_id column to content_outputs for group organization (2026-04-06)
+      db.run(`ALTER TABLE content_outputs ADD COLUMN group_id TEXT REFERENCES groups(id) ON DELETE SET NULL`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding group_id column to content_outputs:', err);
+        } else if (!err) {
+          console.log('✓ Added group_id column to content_outputs table');
+        }
       });
 
       // Migration: Add denormalized metadata columns to workflows for fast summary queries (2026-02-26)

@@ -22,13 +22,23 @@ class ContentOutputModel {
       });
     });
   }
-  static findAllByUserId(userId, limit = null, offset = null) {
+  static findAllByUserId(userId, limit = null, offset = null, groupId = undefined) {
     return new Promise((resolve, reject) => {
       // Use a single query with COUNT() window function to avoid two round-trips
       // Exclude the large 'content' column - the list view only needs metadata
-      const listColumns = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, created_at, updated_at';
-      let query = `SELECT ${listColumns}, COUNT(*) OVER() as _total_count FROM content_outputs WHERE user_id = ? ORDER BY updated_at DESC`;
+      const listColumns = 'id, user_id, workflow_id, tool_id, content_type, conversation_id, title, is_shareable, group_id, created_at, updated_at';
+      let where = 'user_id = ?';
       const params = [userId];
+
+      // Filter by group: explicit id, or 'none' for ungrouped
+      if (groupId === 'none') {
+        where += ' AND group_id IS NULL';
+      } else if (groupId) {
+        where += ' AND group_id = ?';
+        params.push(groupId);
+      }
+
+      let query = `SELECT ${listColumns}, COUNT(*) OVER() as _total_count FROM content_outputs WHERE ${where} ORDER BY updated_at DESC`;
 
       if (limit !== null) {
         query += ' LIMIT ?';
@@ -88,6 +98,33 @@ class ContentOutputModel {
       );
     });
   }
+  static moveToGroup(id, userId, groupId) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE content_outputs SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+        [groupId || null, id, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve({ changes: this.changes });
+        }
+      );
+    });
+  }
+
+  static bulkMoveToGroup(ids, userId, groupId) {
+    return new Promise((resolve, reject) => {
+      const placeholders = ids.map(() => '?').join(',');
+      db.run(
+        `UPDATE content_outputs SET group_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders}) AND user_id = ?`,
+        [groupId || null, ...ids, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve({ changes: this.changes });
+        }
+      );
+    });
+  }
+
   static findByConversationId(conversationId, userId) {
     return new Promise((resolve, reject) => {
       db.get('SELECT * FROM content_outputs WHERE conversation_id = ? AND user_id = ?', [conversationId, userId], (err, output) => {

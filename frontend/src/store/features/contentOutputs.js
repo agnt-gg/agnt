@@ -61,7 +61,7 @@ export default {
     },
   },
   actions: {
-    async fetchOutputs({ commit, getters, state }, { force = false, limit = 20, offset = 0, loadAll = false } = {}) {
+    async fetchOutputs({ commit, getters, state }, { force = false, limit = null, offset = 0, loadAll = true } = {}) {
       // If cache is valid and not forcing, return cached data
       // Skip cache when loadAll is requested or when fetching additional pages (offset > 0)
       if (!force && !loadAll && getters.isCacheValid && state.outputs.length > 0 && offset === 0) {
@@ -168,7 +168,7 @@ export default {
 
     refreshOutputs({ dispatch, commit }) {
       commit('SET_HAS_LOADED_ALL', false);
-      return dispatch('fetchOutputs', { force: true, limit: 20, offset: 0 });
+      return dispatch('fetchOutputs', { force: true, loadAll: true });
     },
   },
 };

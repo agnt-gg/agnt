@@ -19,8 +19,9 @@ class RunService {
       const userId = req.user.userId;
       const limit = req.query.limit ? parseInt(req.query.limit) : null;
       const offset = req.query.offset ? parseInt(req.query.offset) : null;
+      const groupId = req.query.group_id || undefined;
 
-      const result = await ContentOutputModel.findAllByUserId(userId, limit, offset);
+      const result = await ContentOutputModel.findAllByUserId(userId, limit, offset, groupId);
 
       // Handle both old format (array) and new format (object with outputs and totalCount)
       if (Array.isArray(result)) {

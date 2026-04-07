@@ -1452,9 +1452,16 @@ export default {
 
         const result = await response.json();
 
-        // Cache the new title so autosave doesn't re-fetch
+        // Cache the new title so autosave doesn't overwrite it
         if (state.savedOutputId === outputId) {
           commit('SET_SAVED_OUTPUT_TITLE', title);
+        }
+        // Also update the scoped per-conversation title
+        for (const [convId, conv] of Object.entries(state.conversations)) {
+          if (conv.savedOutputId === outputId) {
+            commit('SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId: convId, title });
+            break;
+          }
         }
 
         // Dispatch event to notify OutputList to refresh
