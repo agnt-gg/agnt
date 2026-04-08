@@ -222,6 +222,10 @@ export function useRealtimeSync() {
     socket.on('content:updated', (data) => {
       console.log('[Realtime] Content output updated:', data);
       debouncedContentFetch();
+      // Refresh group counts if a conversation was moved between groups
+      if (data.group_id !== undefined || data.bulk) {
+        store.dispatch('groups/fetchGroups', { force: true });
+      }
     });
 
     socket.on('content:deleted', (data) => {
@@ -242,6 +246,23 @@ export function useRealtimeSync() {
           store.commit('chat/RESET_CHAT');
         }
       }
+    });
+
+    // Group events (sync group changes across tabs/instances)
+    socket.on('group:created', (data) => {
+      console.log('[Realtime] Group created:', data);
+      store.dispatch('groups/fetchGroups', { force: true });
+    });
+
+    socket.on('group:updated', (data) => {
+      console.log('[Realtime] Group updated:', data);
+      store.dispatch('groups/fetchGroups', { force: true });
+    });
+
+    socket.on('group:deleted', (data) => {
+      console.log('[Realtime] Group deleted:', data);
+      store.dispatch('groups/fetchGroups', { force: true });
+      store.dispatch('contentOutputs/refreshOutputs');
     });
 
     // Chat events (real-time message sync across tabs)

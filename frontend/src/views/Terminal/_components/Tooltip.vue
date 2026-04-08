@@ -16,7 +16,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, onBeforeUnmount } from 'vue';
 
 export default {
   name: 'Tooltip',
@@ -50,10 +50,23 @@ export default {
       width: props.width,
     }));
 
+    // Safety check: hide tooltip if container is no longer hovered
+    let hoverCheckTimer = null;
+    const startHoverCheck = () => {
+      clearInterval(hoverCheckTimer);
+      hoverCheckTimer = setInterval(() => {
+        if (!containerRef.value || !containerRef.value.matches(':hover')) {
+          hide();
+          clearInterval(hoverCheckTimer);
+        }
+      }, 500);
+    };
+
     const show = () => {
       isVisible.value = true;
       dynamicStyle.value = {};
       arrowStyle.value = {};
+      startHoverCheck();
 
       nextTick(() => {
         if (!tooltipRef.value || !containerRef.value) return;
@@ -121,7 +134,14 @@ export default {
 
     const hide = () => {
       isVisible.value = false;
+      clearInterval(hoverCheckTimer);
     };
+
+    // Force hide on unmount (prevents tooltip persisting across screen changes)
+    onBeforeUnmount(() => {
+      isVisible.value = false;
+      clearInterval(hoverCheckTimer);
+    });
 
     return {
       isVisible,
