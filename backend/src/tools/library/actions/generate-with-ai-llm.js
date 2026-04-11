@@ -5,6 +5,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import AuthManager from '../../../services/auth/AuthManager.js';
 import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
+import { createCchFetch, buildBillingHeaderBlock } from '../../../services/ai/claudeBillingHeader.js';
 
 const PROVIDER_CONFIG = {
   deepseek: {
@@ -595,7 +596,10 @@ class GenerateWithAiLlm extends BaseAction {
     let anthropic;
 
     if (provider === 'claude-code') {
-      // Claude Code: OAuth with special headers
+      // Claude Code: OAuth with special headers + custom fetch that computes
+      // the cch billing hash and replaces the cch=00000 placeholder on the
+      // serialized request body before it's sent. Without this, Anthropic
+      // rejects OAuth-authed Claude Code requests with 400 "Invalid request data".
       anthropic = new Anthropic({
         apiKey: null,
         authToken: params.apiKey, // This is actually the OAuth token
@@ -605,6 +609,7 @@ class GenerateWithAiLlm extends BaseAction {
           'x-app': 'cli',
           'anthropic-dangerous-direct-browser-access': 'true',
         },
+        fetch: createCchFetch(),
       });
     } else {
       // Regular Anthropic: standard API key
@@ -634,10 +639,14 @@ class GenerateWithAiLlm extends BaseAction {
       });
     }
 
-    // Build system parameter: Claude Code OAuth requires identity prompt
+    // Build system parameter: Claude Code OAuth requires billing header + identity prompt.
+    // The billing header block MUST be first — the custom fetch wrapper computes the
+    // real cch hash over the serialized body and replaces cch=00000 before sending.
     let systemParam;
     if (provider === 'claude-code') {
+      const billingBlock = buildBillingHeaderBlock(params.prompt || '');
       systemParam = [
+        billingBlock,
         {
           type: 'text',
           text: "You are Claude Code, Anthropic's official CLI for Claude.",
