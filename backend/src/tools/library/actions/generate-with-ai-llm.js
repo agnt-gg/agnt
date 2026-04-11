@@ -5,7 +5,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import AuthManager from '../../../services/auth/AuthManager.js';
 import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
-import { createCchFetch, buildBillingHeaderBlock } from '../../../services/ai/claudeBillingHeader.js';
+import { buildBillingHeaderBlock } from '../../../services/ai/claudeBillingHeader.js';
+import { createLlmClient } from '../../../services/ai/LlmService.js';
 
 const PROVIDER_CONFIG = {
   deepseek: {
@@ -426,8 +427,8 @@ class GenerateWithAiLlm extends BaseAction {
         }
       }
 
-      // Add API key to params
-      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey };
+      // Add API key + userId to params (userId is needed for createLlmClient on claude-code)
+      const paramsWithAuth = { ...params, apiKey: accessTokenOrApiKey, userId };
 
       // Route based on mode
       const mode = params.mode || 'Text Generation';
@@ -591,26 +592,14 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async generateWithAnthropic(params) {
-    // Claude Code uses OAuth Bearer token, regular Anthropic uses x-api-key
+    // Claude Code uses OAuth Bearer token, regular Anthropic uses x-api-key.
+    // For claude-code, use the shared createLlmClient factory — the SAME path
+    // used by the orchestrator chat, so auth/headers/cch-fetch stay in lockstep.
     const provider = params.provider.toLowerCase();
     let anthropic;
 
     if (provider === 'claude-code') {
-      // Claude Code: OAuth with special headers + custom fetch that computes
-      // the cch billing hash and replaces the cch=00000 placeholder on the
-      // serialized request body before it's sent. Without this, Anthropic
-      // rejects OAuth-authed Claude Code requests with 400 "Invalid request data".
-      anthropic = new Anthropic({
-        apiKey: null,
-        authToken: params.apiKey, // This is actually the OAuth token
-        defaultHeaders: {
-          'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31',
-          'user-agent': 'claude-cli/2.1.2 (external, cli)',
-          'x-app': 'cli',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        fetch: createCchFetch(),
-      });
+      anthropic = await createLlmClient('claude-code', params.userId);
     } else {
       // Regular Anthropic: standard API key
       anthropic = new Anthropic({ apiKey: params.apiKey });
