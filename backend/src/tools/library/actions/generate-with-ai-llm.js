@@ -5,8 +5,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import AuthManager from '../../../services/auth/AuthManager.js';
 import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
-import { buildBillingHeaderBlock } from '../../../services/ai/claudeBillingHeader.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
+import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
 
 const PROVIDER_CONFIG = {
   deepseek: {
@@ -592,28 +592,53 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async generateWithAnthropic(params) {
-    // Claude Code uses OAuth Bearer token, regular Anthropic uses x-api-key.
-    // For claude-code, use the shared createLlmClient factory — the SAME path
-    // used by the orchestrator chat, so auth/headers/cch-fetch stay in lockstep.
     const provider = params.provider.toLowerCase();
-    let anthropic;
 
-    if (provider === 'claude-code') {
-      anthropic = await createLlmClient('claude-code', params.userId);
-    } else {
-      // Regular Anthropic: standard API key
-      anthropic = new Anthropic({ apiKey: params.apiKey });
-    }
-    const messages = [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: params.prompt,
+    // For claude-code (and regular anthropic), delegate to the SAME
+    // createLlmClient + createLlmAdapter + adapter.call() path the orchestrator
+    // chat uses. The adapter handles the billing header block, cache_control,
+    // model-specific max_tokens, and retries — no duplication.
+    if (provider === 'claude-code' || provider === 'anthropic') {
+      const client = await createLlmClient(provider, params.userId);
+      const model = params.model || (provider === 'claude-code' ? 'claude-sonnet-4-5-20250929' : 'claude-3-5-sonnet-20241022');
+      const adapter = await createLlmAdapter(provider, client, model);
+
+      // Build user message content (text + optional image) in Anthropic format.
+      const userContent = [{ type: 'text', text: params.prompt }];
+      const imageData = this.processImageData(params);
+      if (imageData) {
+        userContent.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: imageData.mimeType,
+            data: imageData.base64Data,
           },
-        ],
-      },
+        });
+      }
+
+      const result = await adapter.call([{ role: 'user', content: userContent }], []);
+
+      // Extract text from Anthropic content blocks
+      const responseContent = result?.responseMessage?.content;
+      const textBlock = Array.isArray(responseContent)
+        ? responseContent.find((b) => b.type === 'text')
+        : null;
+      const generatedText = textBlock?.text || '';
+      const usage = result?.usage || {};
+
+      return {
+        generatedText,
+        tokenCount: (usage.input_tokens || 0) + (usage.output_tokens || 0),
+        inputTokens: usage.input_tokens || 0,
+        outputTokens: usage.output_tokens || 0,
+      };
+    }
+
+    // Fallback: any other anthropic-like provider routes through a direct SDK call.
+    const anthropic = new Anthropic({ apiKey: params.apiKey });
+    const messages = [
+      { role: 'user', content: [{ type: 'text', text: params.prompt }] },
     ];
 
     const imageData = this.processImageData(params);
@@ -628,28 +653,11 @@ class GenerateWithAiLlm extends BaseAction {
       });
     }
 
-    // Build system parameter: Claude Code OAuth requires billing header + identity prompt.
-    // The billing header block MUST be first — the custom fetch wrapper computes the
-    // real cch hash over the serialized body and replaces cch=00000 before sending.
-    let systemParam;
-    if (provider === 'claude-code') {
-      const billingBlock = buildBillingHeaderBlock(params.prompt || '');
-      systemParam = [
-        billingBlock,
-        {
-          type: 'text',
-          text: "You are Claude Code, Anthropic's official CLI for Claude.",
-          cache_control: { type: 'ephemeral' },
-        },
-      ];
-    }
-
     const response = await anthropic.messages.create({
-      model: params.model || 'claude-3-5-sonnet-20240620',
+      model: params.model || 'claude-3-5-sonnet-20241022',
       max_tokens: Number(params.maxTokens) || 4096,
       temperature: Number(params.temperature) || 0,
       messages,
-      ...(systemParam && { system: systemParam }),
     });
 
     return {
