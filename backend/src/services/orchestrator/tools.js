@@ -1488,23 +1488,28 @@ export const TOOLS = {
     },
     execute: async (
       { operation, workflow_description, available_tool_ids, workflow_definition, workflow_id, trigger_data, execution_id },
-      authToken
+      authToken,
+      context
     ) => {
       console.log(`Tool call: agnt_workflows with operation: ${operation}`);
 
       if (!authToken) {
         return JSON.stringify({ success: false, error: 'User authentication token is required for AGNT workflow operations.' });
       }
-      // Ensure AGNT_API_KEY is present if other SDK functionalities (not user-specific) might depend on it,
-      // but for user-specific calls, the authToken will be used for the AGNT instance.
-      // For now, we assume AGNT SDK itself doesn't gate on AGNT_API_KEY if a user token is effectively used for AGNT instance.
-      // The original check was: if (!process.env.AGNT_API_KEY) return JSON.stringify({ success: false, error: "AGNT_API_KEY not found in environment variables." });
 
       let userApiKey = authToken;
       if (authToken.toLowerCase().startsWith('bearer ')) {
         userApiKey = authToken.substring(7);
       }
-      const agnt = new AGNT(userApiKey); // Uses user's token
+      // Pass the user's globally-selected provider/model from the conversation
+      // context so the AGNT SDK uses the same LLM the orchestrator is using,
+      // instead of hardcoding 'anthropic' / 'claude-3-5-sonnet-20240620'.
+      const agnt = new AGNT(
+        userApiKey,
+        undefined,                        // baseURL — keep default
+        context?.provider || 'anthropic',  // user's selected provider
+        context?.model,                    // user's selected model
+      );
 
       try {
         let result;
@@ -1651,9 +1656,30 @@ export const TOOLS = {
         return JSON.stringify({ success: true, operation, result });
       } catch (error) {
         console.error(`AGNT workflow tool operation '${operation}' failed:`, error);
-        // AGNT SDK methods might throw errors with response data
-        const errorMessage = error.response?.data?.message || error.message || 'An unknown error occurred';
-        return JSON.stringify({ success: false, error: `AGNT operation '${operation}' failed: ${errorMessage}`, details: error.toString() });
+        // AGNT SDK methods might throw errors with response data. Dig into the
+        // response body so the LLM sees the real cause (e.g. upstream provider
+        // billing errors, rate limits, validation failures) instead of a
+        // meaningless "Request failed with status code 500".
+        const extractErrorMessage = (err) => {
+          const data = err?.response?.data;
+          if (data) {
+            if (typeof data === 'string') return data;
+            if (typeof data.error === 'string') return data.error;
+            if (typeof data.error?.message === 'string') return data.error.message;
+            if (typeof data.message === 'string') return data.message;
+          }
+          return err?.message || 'An unknown error occurred';
+        };
+        const errorMessage = extractErrorMessage(error);
+        const upstreamType = error?.response?.data?.type;
+        const upstreamStatus = error?.response?.status;
+        return JSON.stringify({
+          success: false,
+          error: `AGNT operation '${operation}' failed: ${errorMessage}`,
+          upstream_status: upstreamStatus,
+          upstream_type: upstreamType,
+          details: error.toString(),
+        });
       }
     },
   },
@@ -1690,20 +1716,23 @@ export const TOOLS = {
         },
       },
     },
-    execute: async ({ operation, tool_description, tool_definition, tool_id }, authToken) => {
+    execute: async ({ operation, tool_description, tool_definition, tool_id }, authToken, context) => {
       console.log(`Tool call: agnt_tools with operation: ${operation}`);
 
       if (!authToken) {
         return JSON.stringify({ success: false, error: 'User authentication token is required for AGNT tool operations.' });
       }
-      // Similar to agnt_workflows, AGNT_API_KEY might not be directly needed for user-specific ops if authToken is used.
-      // Original check: if (!process.env.AGNT_API_KEY) return JSON.stringify({ success: false, error: "AGNT_API_KEY not found in environment variables." });
 
       let userApiKey = authToken;
       if (authToken.toLowerCase().startsWith('bearer ')) {
         userApiKey = authToken.substring(7);
       }
-      const agnt = new AGNT(userApiKey); // Uses user's token
+      const agnt = new AGNT(
+        userApiKey,
+        undefined,
+        context?.provider || 'anthropic',
+        context?.model,
+      );
 
       try {
         let result;

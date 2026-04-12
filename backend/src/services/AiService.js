@@ -193,11 +193,11 @@ class AiService {
       res.json(generatedTool);
     } catch (error) {
       console.error('Error generating tool:', error);
-      // Now provider is accessible in catch block
-      res.status(401).json({
+      const { status, type } = classifyGenerationError(error);
+      res.status(status).json({
         error: error.message,
         provider: provider,
-        type: 'auth_error',
+        type,
       });
     }
   };
@@ -226,11 +226,11 @@ class AiService {
       res.json(generatedWorkflow);
     } catch (error) {
       console.error('Error generating workflow:', error);
-      // Make sure we're sending a proper JSON response
-      res.status(401).json({
+      const { status, type } = classifyGenerationError(error);
+      res.status(status).json({
         error: error.message,
         provider: provider,
-        type: 'auth_error',
+        type,
       });
     }
   };
@@ -255,14 +255,41 @@ class AiService {
       res.json(generatedAgent);
     } catch (error) {
       console.error('Error generating agent:', error);
-      // Make sure we're sending a proper JSON response
-      res.status(401).json({
+      const { status, type } = classifyGenerationError(error);
+      res.status(status).json({
         error: error.message,
         provider: provider,
-        type: 'auth_error',
+        type,
       });
     }
   };
+}
+
+/**
+ * Classify errors thrown by the workflow / tool / agent generators so callers get
+ * an accurate HTTP status. Previously every error was mapped to 401 with
+ * `type: 'auth_error'`, which hid the real cause from clients and upstream tools.
+ *
+ * Auth-shaped errors → 401, everything else → 500 with the real message preserved.
+ */
+function classifyGenerationError(error) {
+  const status = error?.status || error?.response?.status;
+  const message = (error?.message || '').toLowerCase();
+
+  const isAuth =
+    status === 401 ||
+    status === 403 ||
+    message.includes('unauthorized') ||
+    message.includes('forbidden') ||
+    message.includes('api key') ||
+    message.includes('apikey') ||
+    message.includes('no valid access token') ||
+    message.includes('authenticate');
+
+  if (isAuth) {
+    return { status: 401, type: 'auth_error' };
+  }
+  return { status: 500, type: 'generation_error' };
 }
 
 console.log(`AI Service Started...`);

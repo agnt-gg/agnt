@@ -8,6 +8,7 @@ import PathManager from '../utils/PathManager.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import { createLlmClient } from '../services/ai/LlmService.js';
+import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../services/ai/providerConfigs.js';
 
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer, trimToWordLimit, generateUniqueId, computeFileHash } from './utils.js';
@@ -1107,8 +1108,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
   async generateWorkflow(workflowElements, provider, model) {
     try {
       if (!provider) {
-        provider = 'anthropic';
-        model = 'claude-3-5-sonnet-20240620';
+        provider = 'claude-code';
+        model = 'claude-sonnet-4-6';
       }
 
       const _providerConfig = getProviderConfig(provider);
@@ -1120,9 +1121,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       }
 
       const { relevantWorkflowsContent } = await this.performWorkflowRAG(workflowElements.overview);
-
-      // PAUSE HERE
-      debugger;
 
       const workflowGenSystemPrompt = `##### * ^ * WORKFLOW GENERATION MODE ENGAGED * ^ * #####
     
@@ -1164,7 +1162,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
     [AVAILABLE TOOLS]:
 
-    ${workflowElements.availableTools}
+    ${JSON.stringify(workflowElements.availableTools, null, 2)}
 
     [END AVAILABLE TOOLS]
 
@@ -1200,8 +1198,8 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     17: RETURN ONLY THE WORKFLOW JSON, NOTHING ELSE!!!! PLEASE CONSIDER THIS IN YOUR THINKING!!!!`;
 
       const defaultModel = {
-        anthropic: 'claude-3-5-sonnet-20240620',
-        'claude-code': 'claude-sonnet-4-5-20250929',
+        anthropic: 'claude-sonnet-4-6',
+        'claude-code': 'claude-sonnet-4-6',
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
@@ -1225,51 +1223,31 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       switch (lowerCaseProvider) {
         case 'claude-code':
         case 'anthropic': {
-          const wfSystemBlocks = [];
-          if (lowerCaseProvider === 'claude-code') {
-            wfSystemBlocks.push({
-              type: 'text',
-              text: "You are Claude Code, Anthropic's official CLI for Claude.",
-              cache_control: { type: 'ephemeral' },
-            });
-          }
-          wfSystemBlocks.push({ type: 'text', text: workflowGenSystemPrompt });
-          completion = await client.messages.create({
-            model: selectedModel,
-            max_tokens: selectedModel === 'claude-3-7-sonnet-20250219' ? 64000 : 8192,
-            temperature: selectedModel === 'claude-3-7-sonnet-20250219' ? 1 : 0,
-            system: wfSystemBlocks,
-            messages: [
-              {
-                role: 'user',
-                content: [{ type: 'text', text: workflowElements.overview }],
-              },
-            ],
-            thinking:
-              selectedModel === 'claude-3-7-sonnet-20250219'
-                ? {
-                    type: 'enabled',
-                    budget_tokens: 4096,
-                  }
-                : undefined,
-          });
-          console.log(completion);
+          // Delegate to the same createLlmAdapter path the orchestrator chat uses.
+          // The adapter handles the Claude Code billing header block (cch hash),
+          // cache_control breakpoints, model-specific max_tokens, and retries.
+          const adapter = await createLlmAdapter(lowerCaseProvider, client, selectedModel);
 
-          // Extract content based on response structure
+          const result = await adapter.call(
+            [
+              { role: 'system', content: workflowGenSystemPrompt },
+              { role: 'user', content: [{ type: 'text', text: workflowElements.overview }] },
+            ],
+            [], // no tools — pure text generation
+          );
+
+          // Extract content from the adapter's Anthropic content blocks.
+          const responseContent = result?.responseMessage?.content;
           let workflowText = '';
           let thinkingText = '';
-
-          if (completion.content && Array.isArray(completion.content)) {
-            for (const item of completion.content) {
+          if (Array.isArray(responseContent)) {
+            for (const item of responseContent) {
               if (item.type === 'text') {
                 workflowText = item.text;
               } else if (item.type === 'thinking_result_content_block' && item.thinking_result_content) {
-                thinkingText = item.thinking_result_content; // This is typically an XML string
+                thinkingText = item.thinking_result_content;
               }
             }
-          } else if (completion.content && completion.content[0] && completion.content[0].text) {
-            // Fallback for non-thinking mode responses or older structures
-            workflowText = completion.content[0].text;
           }
 
           return {

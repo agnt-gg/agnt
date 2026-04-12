@@ -216,14 +216,27 @@ You have ONE powerful tool for all workflow modifications:
 AVAILABLE NODE TYPES (Loaded from Tool Library):
 ${availableNodeTypes}
 
-⚠️ CRITICAL: Before creating nodes, call get_available_tool_node_types to get FULL parameter schemas!
-The tool returns detailed parameter information including:
+⚠️ CRITICAL: Node discovery is a TWO-STEP process to keep responses small:
+
+1. **get_available_tool_node_types** — returns a COMPACT list of every node type
+   (type, title, short description, icon, category). NO parameter schemas.
+   Use this to discover what's available and pick the types you need.
+
+2. **get_node_type_schema({ type })** — returns the FULL parameter and output schema
+   for ONE node type. Call this once per node type you intend to configure, right
+   before you populate that node's parameters.
+
+The schema gives you:
 - Required vs optional parameters
-- Parameter types and options
+- Parameter types, input types, and select options
 - Default values
 - Parameter descriptions
+- Output field names (for variable references)
 
-Use this information to populate node parameters correctly. Don't leave parameters empty!
+Use it to populate node parameters correctly. Don't leave parameters empty!
+
+⚠️ DO NOT try to fetch every schema up front. Only fetch schemas for the node
+types you're actually going to create or edit this turn.
 
 ⚠️ CRITICAL: VARIABLE REFERENCE FORMAT (camelCase)
 When referencing node outputs in parameters, use this EXACT format:
@@ -322,8 +335,11 @@ VERSION CONTROL TOOLS:
 WORKFLOW MODIFICATION EXAMPLES:
 
 User: "Create a workflow that triggers every 5 minutes, calls an API, and processes with AI"
-→ Step 1: Call get_available_tool_node_types to get parameter schemas
-→ Step 2: Generate complete workflow JSON with PROPERLY FILLED parameters:
+→ Step 1: Call get_available_tool_node_types to see what's available (compact list).
+→ Step 2: Identify the types you need: trigger-timer, action-http-request, action-ai-analysis (or similar).
+→ Step 3: Call get_node_type_schema for EACH chosen type to get its full parameter schema.
+         (e.g. get_node_type_schema({ type: "trigger-timer" }))
+→ Step 4: Generate complete workflow JSON with PROPERLY FILLED parameters:
   - Node 1: "Timer Trigger" at x:96, y:96
     → Variable name: timerTrigger
     → Parameters: { scheduleType: "Interval", schedule: "Every 5 Minutes", fireOnStart: "Yes" }
@@ -335,7 +351,7 @@ User: "Create a workflow that triggers every 5 minutes, calls an API, and proces
     → Parameters: { prompt: "Analyze this: {{hTTPRequest.response}}", provider: "Anthropic", model: "claude-3-5-sonnet-20241022" }
     → ✅ Uses correct camelCase: {{hTTPRequest.response}}
   - Edges connecting them
-→ Step 3: Call: update_workflow({ workflow: {...}, summary: "Created timer workflow with API and AI" })
+→ Step 5: Call: update_workflow({ workflow: {...}, summary: "Created timer workflow with API and AI" })
 
 User: "Add a database save step after the AI analysis"
 → Take current workflow (shown above in CURRENT WORKFLOW STATE)
@@ -354,7 +370,9 @@ User: "Change the timer to 10 minutes"
 → Call: update_workflow({ workflow: {...}, summary: "Changed timer to 10 minutes" })
 
 CRITICAL RULES:
-1. CALL get_available_tool_node_types FIRST to get parameter schemas
+1. DISCOVER types with get_available_tool_node_types (compact list, no schemas),
+   then FETCH schemas with get_node_type_schema({ type }) for each node type you
+   need before populating parameters.
 2. FILL ALL node parameters based on the schema (don't leave parameters empty!)
 3. Use default values from schema when user doesn't specify
 4. ⚠️ ALL X/Y COORDINATES MUST BE MULTIPLES OF 16 (e.g., 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 256, etc.)

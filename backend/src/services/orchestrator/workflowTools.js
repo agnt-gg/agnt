@@ -363,7 +363,8 @@ export const TOOLS = {
       type: 'function',
       function: {
         name: 'get_available_tool_node_types',
-        description: 'Get a list of all available node types that can be added to workflows (includes both built-in and plugin tools)',
+        description:
+          'List all available node types that can be added to workflows (built-in + plugin tools). Returns a COMPACT list — only type, title, short description, icon, category. Call get_node_type_schema(type) to fetch full parameter and output schemas for a specific node type.',
         parameters: {
           type: 'object',
           properties: {},
@@ -372,152 +373,121 @@ export const TOOLS = {
     },
     execute: async ({}, authToken, context) => {
       try {
-        // Load from toolLibrary.json
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const { fileURLToPath } = await import('url');
+        const { loadAllNodeTypes } = await import('./nodeTypeCatalog.js');
+        const { categories } = await loadAllNodeTypes();
 
-        const __filename = fileURLToPath(import.meta.url);
-        const __dirname = path.dirname(__filename);
-        const toolLibraryPath = path.join(__dirname, '../../tools/toolLibrary.json');
-
-        const rawToolLibrary = await fs.readFile(toolLibraryPath, 'utf-8');
-        const toolLibraryData = JSON.parse(rawToolLibrary);
-
-        // Transform the toolLibrary data into the expected format
-        const nodeTypes = {};
-
-        // Process triggers
-        if (toolLibraryData.triggers) {
-          nodeTypes['Triggers'] = toolLibraryData.triggers.map((tool) => ({
-            type: tool.type,
-            title: tool.title,
-            description: tool.description,
-            icon: tool.icon,
-            category: 'trigger',
-            parameters: tool.parameters || {},  // Include full parameter schema
-            outputs: tool.outputs || {},        // Include output schema
-          }));
-        }
-
-        // Process actions
-        if (toolLibraryData.actions) {
-          nodeTypes['Actions'] = toolLibraryData.actions.map((tool) => ({
-            type: tool.type,
-            title: tool.title,
-            description: tool.description,
-            icon: tool.icon,
-            category: 'action',
-            parameters: tool.parameters || {},  // Include full parameter schema
-            outputs: tool.outputs || {},        // Include output schema
-          }));
-        }
-
-        // Process utilities
-        if (toolLibraryData.utilities) {
-          nodeTypes['Utilities'] = toolLibraryData.utilities.map((tool) => ({
-            type: tool.type,
-            title: tool.title,
-            description: tool.description,
-            icon: tool.icon,
-            category: 'utility',
-            parameters: tool.parameters || {},  // Include full parameter schema
-            outputs: tool.outputs || {},        // Include output schema
-          }));
-        }
-
-        // Process widgets
-        if (toolLibraryData.widgets) {
-          nodeTypes['Widgets'] = toolLibraryData.widgets.map((tool) => ({
-            type: tool.type,
-            title: tool.title,
-            description: tool.description,
-            icon: tool.icon,
-            category: 'widgets',
-            parameters: tool.parameters || {},  // Include full parameter schema
-            outputs: tool.outputs || {},        // Include output schema
-          }));
-        }
-
-        // Process controls
-        if (toolLibraryData.controls) {
-          nodeTypes['Controls'] = toolLibraryData.controls.map((tool) => ({
-            type: tool.type,
-            title: tool.title,
-            description: tool.description,
-            icon: tool.icon,
-            category: 'control',
-            parameters: tool.parameters || {},  // Include full parameter schema
-            outputs: tool.outputs || {},        // Include output schema
-          }));
-        }
-
-        // Process custom
-        if (toolLibraryData.custom) {
-          nodeTypes['Custom'] = toolLibraryData.custom.map((tool) => ({
-            type: tool.type,
-            title: tool.title,
-            description: tool.description,
-            icon: tool.icon,
-            category: 'custom',
-            parameters: tool.parameters || {},  // Include full parameter schema
-            outputs: tool.outputs || {},        // Include output schema
-          }));
-        }
-
-        // Load plugin tools from PluginManager
-        try {
-          const PluginManager = (await import('../../plugins/PluginManager.js')).default;
-
-          // Ensure PluginManager is initialized
-          if (!PluginManager.initialized) {
-            await PluginManager.initialize();
-          }
-
-          const pluginSchemas = PluginManager.getAllPluginSchemas();
-          console.log(`[WorkflowTools] Found ${pluginSchemas.length} plugin tools`);
-
-          // Add plugin tools to appropriate categories
-          for (const schema of pluginSchemas) {
-            const category = schema.category || 'action'; // Default to action if no category
-            const categoryKey = category.charAt(0).toUpperCase() + category.slice(1) + 's'; // e.g., "action" -> "Actions"
-
-            const pluginTool = {
-              type: schema.type,
-              title: schema.title || schema.type,
-              description: schema.description || '',
-              icon: schema.icon || 'puzzle',
-              category: category,
-              parameters: schema.parameters || {},  // Include plugin parameter schema
-              outputs: schema.outputs || {},        // Include plugin output schema
-              isPlugin: true,
-              pluginName: schema._plugin,
+        // Compact projection — NO parameters, NO outputs. Keeps list well under the
+        // 100k-char context-protection cap even with dozens of plugin tools.
+        // Descriptions are truncated to keep each entry small and predictable.
+        const DESCRIPTION_MAX = 140;
+        const compact = {};
+        for (const [categoryKey, tools] of Object.entries(categories)) {
+          compact[categoryKey] = tools.map((tool) => {
+            const entry = {
+              type: tool.type,
+              title: tool.title,
+              category: tool.category,
+              icon: tool.icon,
+              description:
+                typeof tool.description === 'string' && tool.description.length > DESCRIPTION_MAX
+                  ? tool.description.slice(0, DESCRIPTION_MAX - 1) + '…'
+                  : tool.description || '',
             };
-
-            // Initialize category array if it doesn't exist
-            if (!nodeTypes[categoryKey]) {
-              nodeTypes[categoryKey] = [];
+            if (tool.isPlugin) {
+              entry.isPlugin = true;
+              if (tool.pluginName) entry.pluginName = tool.pluginName;
             }
-
-            nodeTypes[categoryKey].push(pluginTool);
-          }
-
-          console.log(`[WorkflowTools] Total node types after plugins:`, Object.keys(nodeTypes).map(k => `${k}: ${nodeTypes[k].length}`).join(', '));
-        } catch (pluginError) {
-          console.error('[WorkflowTools] Error loading plugin tools:', pluginError);
-          // Continue without plugin tools if there's an error
+            return entry;
+          });
         }
+
+        const total = Object.values(compact).reduce((sum, arr) => sum + arr.length, 0);
 
         return JSON.stringify({
           success: true,
-          nodeTypes,
-          message: `Retrieved all available node types (${Object.values(nodeTypes).flat().length} total)`,
+          nodeTypes: compact,
+          total,
+          message: `Retrieved ${total} node types (compact list). Call get_node_type_schema(type) for full parameter/output schemas.`,
+          next_step:
+            'Before creating or updating any node, call get_node_type_schema with the node type to get the full parameter schema so you can populate parameters correctly.',
         });
       } catch (error) {
         return JSON.stringify({
           success: false,
           error: error.message,
           message: 'Failed to get available node types',
+        });
+      }
+    },
+  },
+
+  get_node_type_schema: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'get_node_type_schema',
+        description:
+          'Get the full parameter schema, output schema, and metadata for a single node type by its type identifier (e.g. "trigger-timer", "action-http-request"). Call this after get_available_tool_node_types to fetch detailed schemas only for the nodes you actually need to configure.',
+        parameters: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              description: 'The node type identifier (matches the "type" field from get_available_tool_node_types)',
+            },
+          },
+          required: ['type'],
+        },
+      },
+    },
+    execute: async ({ type }, authToken, context) => {
+      try {
+        if (!type || typeof type !== 'string') {
+          return JSON.stringify({
+            success: false,
+            error: 'Missing or invalid "type" parameter',
+            message: 'Call get_node_type_schema with a node type identifier, e.g. { "type": "trigger-timer" }',
+          });
+        }
+
+        const { findNodeTypeByType, loadAllNodeTypes } = await import('./nodeTypeCatalog.js');
+        const match = await findNodeTypeByType(type);
+
+        if (!match) {
+          // Provide a short list of available types to help the LLM self-correct.
+          const { categories } = await loadAllNodeTypes();
+          const availableTypes = Object.values(categories)
+            .flat()
+            .map((t) => t.type);
+          return JSON.stringify({
+            success: false,
+            error: `Unknown node type: "${type}"`,
+            available_types: availableTypes,
+            message: 'Type identifier not found. See available_types for valid values.',
+          });
+        }
+
+        return JSON.stringify({
+          success: true,
+          nodeType: {
+            type: match.type,
+            title: match.title,
+            description: match.description || '',
+            icon: match.icon,
+            category: match.category,
+            parameters: match.parameters || {},
+            outputs: match.outputs || {},
+            ...(match.isPlugin
+              ? { isPlugin: true, pluginName: match.pluginName }
+              : {}),
+          },
+          message: `Retrieved schema for node type "${match.type}"`,
+        });
+      } catch (error) {
+        return JSON.stringify({
+          success: false,
+          error: error.message,
+          message: 'Failed to get node type schema',
         });
       }
     },

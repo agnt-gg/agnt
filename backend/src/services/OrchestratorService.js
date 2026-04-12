@@ -1320,33 +1320,49 @@ IMPORTANT: The image data is already available in the system context. You don't 
           // Skip for artifact chat — LLM needs full file content for accurate edits
           const MAX_TOOL_RESULT_CHARS = 100000; // ~28k tokens
           if (!skipOffload && functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
-            console.log(`[Context Protection] Tool ${functionName} result too large (${functionResponseContent.length} chars), truncating to ${MAX_TOOL_RESULT_CHARS}`);
+            const originalSize = functionResponseContent.length;
+            console.log(`[Context Protection] Tool ${functionName} result too large (${originalSize} chars), truncating to ${MAX_TOOL_RESULT_CHARS}`);
+
+            // Build a JSON-valid truncation envelope. NEVER raw-substring-cut the payload —
+            // that corrupts JSON whenever the cut lands inside a string literal, which then
+            // breaks JSON.parse downstream.
+            const buildTruncationEnvelope = (extra = {}) =>
+              JSON.stringify({
+                success: false,
+                _truncated: true,
+                _original_size: originalSize,
+                _max_size: MAX_TOOL_RESULT_CHARS,
+                error: `Tool ${functionName} result exceeded the ${MAX_TOOL_RESULT_CHARS}-char context-protection cap.`,
+                suggestion:
+                  'Request a narrower query, paginate, or call a more specific tool (e.g. fetch schema for a single item instead of listing all items with full detail).',
+                ...extra,
+              });
+
             try {
               const parsed = JSON.parse(functionResponseContent);
-              // Try to create a meaningful summary
-              if (parsed.success !== undefined && parsed.result) {
-                // For array results, keep count and first few items
-                if (Array.isArray(parsed.result)) {
-                  const summary = {
-                    ...parsed,
-                    result: parsed.result.slice(0, 10),
-                    _truncated: true,
-                    _total_count: parsed.result.length,
-                    _note: `Showing first 10 of ${parsed.result.length} items. Full data was sent to the frontend.`,
-                  };
-                  functionResponseContent = JSON.stringify(summary);
-                } else {
-                  // For object results, stringify and truncate
-                  functionResponseContent = functionResponseContent.substring(0, MAX_TOOL_RESULT_CHARS - 200) +
-                    '\n\n[Content truncated - full data sent to frontend. Total size: ' + functionResponseContent.length + ' chars]';
-                }
+
+              // Try to create a meaningful, JSON-valid summary for known shapes.
+              if (parsed && parsed.success !== undefined && Array.isArray(parsed.result)) {
+                const summary = {
+                  ...parsed,
+                  result: parsed.result.slice(0, 10),
+                  _truncated: true,
+                  _original_size: originalSize,
+                  _total_count: parsed.result.length,
+                  _note: `Showing first 10 of ${parsed.result.length} items. Full data was sent to the frontend.`,
+                };
+                functionResponseContent = JSON.stringify(summary);
               } else {
-                functionResponseContent = functionResponseContent.substring(0, MAX_TOOL_RESULT_CHARS - 200) +
-                  '\n\n[Content truncated - full data sent to frontend. Total size: ' + functionResponseContent.length + ' chars]';
+                // Unknown object shape — preserve top-level keys as a hint but drop the values.
+                const topLevelKeys =
+                  parsed && typeof parsed === 'object' ? Object.keys(parsed) : [];
+                functionResponseContent = buildTruncationEnvelope({
+                  _top_level_keys: topLevelKeys,
+                });
               }
             } catch {
-              functionResponseContent = functionResponseContent.substring(0, MAX_TOOL_RESULT_CHARS - 200) +
-                '\n\n[Content truncated - full data sent to frontend. Total size: ' + functionResponseContent.length + ' chars]';
+              // Payload wasn't valid JSON to begin with — still emit a valid envelope.
+              functionResponseContent = buildTruncationEnvelope();
             }
             console.log(`[Context Protection] Truncated ${functionName} result to ${functionResponseContent.length} chars`);
           }
