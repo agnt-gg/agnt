@@ -865,16 +865,56 @@ export function getModelMetadata(providerKey, modelId) {
 }
 
 /**
- * Estimate cost for a given number of input/output tokens.
- * Returns null if pricing metadata not available.
+ * Estimate cost for a given number of input/output tokens, accounting for
+ * prompt cache discounts where applicable.
+ *
+ * Cache pricing multipliers (applied to base input cost):
+ *   - Anthropic cache read  : 0.1×  (90% discount)
+ *   - Anthropic cache write : 1.25× (5-minute ephemeral — what we currently use)
+ *   - OpenAI cache read     : 0.5×  (50% discount, auto-applied by OpenAI)
+ *   - OpenAI cache write    : 1.0×  (no premium; OpenAI doesn't bill writes separately)
+ *
+ * `inputTokens` is the TRUE TOTAL input (uncached + cache_read + cache_creation).
+ * Uncached portion = inputTokens - cacheReadTokens - cacheCreationTokens.
+ *
+ * @param {string} providerKey
+ * @param {string} modelId
+ * @param {number} inputTokens - total input tokens (includes cached)
+ * @param {number} outputTokens - total output tokens
+ * @param {object} [cache] - optional cache breakdown { cacheReadTokens, cacheCreationTokens }
+ * @returns {{inputCost:number, outputCost:number, totalCost:number}|null}
  */
-export function getModelCost(providerKey, modelId, inputTokens, outputTokens) {
+export function getModelCost(providerKey, modelId, inputTokens, outputTokens, cache = {}) {
   const meta = getModelMetadata(providerKey, modelId);
   if (!meta || meta.inputCostPer1M == null || meta.outputCostPer1M == null) return null;
+
+  const cacheRead = cache.cacheReadTokens || 0;
+  const cacheWrite = cache.cacheCreationTokens || 0;
+  const uncached = Math.max(0, inputTokens - cacheRead - cacheWrite);
+
+  // Provider-specific cache multipliers
+  const key = (providerKey || '').toLowerCase();
+  let readMult, writeMult;
+  if (key === 'anthropic' || key === 'claude-code') {
+    readMult = 0.1;
+    writeMult = 1.25;
+  } else if (key === 'openai' || key === 'openai-codex') {
+    readMult = 0.5;
+    writeMult = 1.0;
+  } else {
+    // Unknown providers: treat all input at base rate (no discount)
+    readMult = 1.0;
+    writeMult = 1.0;
+  }
+
+  const baseIn = meta.inputCostPer1M / 1_000_000;
+  const inputCost = uncached * baseIn + cacheRead * baseIn * readMult + cacheWrite * baseIn * writeMult;
+  const outputCost = (outputTokens / 1_000_000) * meta.outputCostPer1M;
+
   return {
-    inputCost: (inputTokens / 1_000_000) * meta.inputCostPer1M,
-    outputCost: (outputTokens / 1_000_000) * meta.outputCostPer1M,
-    totalCost: (inputTokens / 1_000_000) * meta.inputCostPer1M + (outputTokens / 1_000_000) * meta.outputCostPer1M,
+    inputCost,
+    outputCost,
+    totalCost: inputCost + outputCost,
   };
 }
 

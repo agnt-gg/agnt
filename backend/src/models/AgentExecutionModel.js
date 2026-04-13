@@ -47,7 +47,7 @@ class AgentExecutionModel {
 
   /**
    * Update an agent execution record
-   * @param {object} [tokenUsage] - Optional token usage { inputTokens, outputTokens, totalTokens, estimatedCost }
+   * @param {object} [tokenUsage] - Optional token usage { inputTokens, outputTokens, totalTokens, estimatedCost, cacheReadTokens, cacheCreationTokens }
    */
   static update(id, status, finalResponse, creditsUsed, toolCallsCount, error = null, tokenUsage = null) {
     return new Promise((resolve, reject) => {
@@ -60,10 +60,12 @@ class AgentExecutionModel {
         db.run(
           `UPDATE agent_executions
            SET status = ?, final_response = ?, end_time = ?, credits_used = ?, tool_calls_count = ?, error = ?,
-               input_tokens = ?, output_tokens = ?, total_tokens = ?, estimated_cost = ?
+               input_tokens = ?, output_tokens = ?, total_tokens = ?, estimated_cost = ?,
+               cache_read_tokens = ?, cache_creation_tokens = ?
            WHERE id = ?`,
           [safeStatus, finalResponse, endTime, creditsUsed, toolCallsCount, error,
-           tokenUsage.inputTokens || 0, tokenUsage.outputTokens || 0, tokenUsage.totalTokens || 0, tokenUsage.estimatedCost || 0, id],
+           tokenUsage.inputTokens || 0, tokenUsage.outputTokens || 0, tokenUsage.totalTokens || 0, tokenUsage.estimatedCost || 0,
+           tokenUsage.cacheReadTokens || 0, tokenUsage.cacheCreationTokens || 0, id],
           function (err) {
             if (err) reject(err);
             else resolve(this.changes);
@@ -180,7 +182,8 @@ class AgentExecutionModel {
       db.all(
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.start_time, ae.end_time, ae.status,
                 ae.credits_used, ae.tool_calls_count, ae.provider, ae.model,
-                ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost
+                ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost,
+                ae.cache_read_tokens, ae.cache_creation_tokens
          FROM agent_executions ae
          WHERE ae.user_id = ? ${dateFilter}
          ORDER BY ae.start_time DESC
@@ -204,6 +207,8 @@ class AgentExecutionModel {
               outputTokens: row.output_tokens || 0,
               totalTokens: row.total_tokens || 0,
               estimatedCost: row.estimated_cost || 0,
+              cacheReadTokens: row.cache_read_tokens || 0,
+              cacheCreationTokens: row.cache_creation_tokens || 0,
               type: 'agent', // Mark as agent execution for frontend
             }));
             resolve(executions);
@@ -222,7 +227,8 @@ class AgentExecutionModel {
         `SELECT ae.id, ae.agent_id, ae.agent_name, ae.user_id, ae.conversation_id,
                 ae.start_time, ae.end_time, ae.status, ae.credits_used, ae.tool_calls_count,
                 ae.initial_prompt, ae.final_response, ae.error, ae.provider, ae.model,
-                ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost
+                ae.input_tokens, ae.output_tokens, ae.total_tokens, ae.estimated_cost,
+                ae.cache_read_tokens, ae.cache_creation_tokens
          FROM agent_executions ae
          WHERE ae.id = ?`,
         [executionId],
@@ -267,6 +273,8 @@ class AgentExecutionModel {
       outputTokens: execution.output_tokens || 0,
       totalTokens: execution.total_tokens || 0,
       estimatedCost: execution.estimated_cost || 0,
+      cacheReadTokens: execution.cache_read_tokens || 0,
+      cacheCreationTokens: execution.cache_creation_tokens || 0,
       type: 'agent',
       toolExecutions: toolExecutions.map((te) => ({
         id: te.id,
@@ -451,6 +459,131 @@ class AgentExecutionModel {
           else resolve(this.changes);
         }
       );
+    });
+  }
+
+  /**
+   * Return an aggregated monitoring summary for a single conversation:
+   * cumulative token usage, cumulative cost, cache hit rate, plus the
+   * most recent execution's per-turn values (what the live panel shows).
+   *
+   * Used by the chat monitoring panel to rehydrate per-conversation state
+   * after a reload or when switching back to a conversation we haven't
+   * viewed yet this session.
+   */
+  static getConversationSummary(conversationId, userId) {
+    return new Promise((resolve, reject) => {
+      const aggQuery = new Promise((res, rej) => {
+        db.get(
+          `SELECT
+             COUNT(*) AS executions_count,
+             COALESCE(SUM(tool_calls_count), 0) AS tool_calls_count,
+             COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+             COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+             COALESCE(SUM(total_tokens), 0) AS total_tokens,
+             COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read_tokens,
+             COALESCE(SUM(cache_creation_tokens), 0) AS total_cache_creation_tokens,
+             COALESCE(SUM(estimated_cost), 0) AS total_estimated_cost
+           FROM agent_executions
+           WHERE conversation_id = ? AND user_id = ?`,
+          [conversationId, userId],
+          (err, row) => err ? rej(err) : res(row || {})
+        );
+      });
+
+      const latestQuery = new Promise((res, rej) => {
+        db.get(
+          `SELECT input_tokens, output_tokens, total_tokens, estimated_cost,
+                  cache_read_tokens, cache_creation_tokens, tool_calls_count,
+                  provider, model, start_time
+           FROM agent_executions
+           WHERE conversation_id = ? AND user_id = ?
+           ORDER BY start_time DESC
+           LIMIT 1`,
+          [conversationId, userId],
+          (err, row) => err ? rej(err) : res(row || null)
+        );
+      });
+
+      Promise.all([aggQuery, latestQuery])
+        .then(([agg, latest]) => {
+          if (!agg.executions_count) {
+            resolve(null); // No executions for this conversation
+            return;
+          }
+
+          // Build latest-turn token usage / cache metrics in the same shape
+          // the live `agent_execution_completed` SSE event uses, so the
+          // frontend can populate the same fields with the same logic.
+          let lastTokenUsage = null;
+          let lastCacheMetrics = null;
+          if (latest) {
+            lastTokenUsage = {
+              inputTokens: latest.input_tokens || 0,
+              outputTokens: latest.output_tokens || 0,
+              totalTokens: latest.total_tokens || 0,
+              estimatedCost: latest.estimated_cost || 0,
+              cacheReadTokens: latest.cache_read_tokens || 0,
+              cacheCreationTokens: latest.cache_creation_tokens || 0,
+            };
+            if (latest.cache_read_tokens || latest.cache_creation_tokens) {
+              const uncached = Math.max(
+                0,
+                (latest.input_tokens || 0) - (latest.cache_read_tokens || 0) - (latest.cache_creation_tokens || 0)
+              );
+              lastCacheMetrics = {
+                cacheReadTokens: latest.cache_read_tokens || 0,
+                cacheCreationTokens: latest.cache_creation_tokens || 0,
+                uncachedTokens: uncached,
+                hitRate: latest.input_tokens > 0
+                  ? (((latest.cache_read_tokens || 0) / latest.input_tokens) * 100).toFixed(1)
+                  : '0',
+              };
+            }
+          }
+
+          // Cumulative hit rate across all turns (different from per-turn)
+          let cumulativeCacheMetrics = null;
+          if (agg.total_cache_read_tokens || agg.total_cache_creation_tokens) {
+            const uncached = Math.max(
+              0,
+              agg.total_input_tokens - agg.total_cache_read_tokens - agg.total_cache_creation_tokens
+            );
+            cumulativeCacheMetrics = {
+              cacheReadTokens: agg.total_cache_read_tokens,
+              cacheCreationTokens: agg.total_cache_creation_tokens,
+              uncachedTokens: uncached,
+              hitRate: agg.total_input_tokens > 0
+                ? ((agg.total_cache_read_tokens / agg.total_input_tokens) * 100).toFixed(1)
+                : '0',
+            };
+          }
+
+          resolve({
+            conversationId,
+            executionsCount: agg.executions_count,
+            cumulative: {
+              inputTokens: agg.total_input_tokens,
+              outputTokens: agg.total_output_tokens,
+              totalTokens: agg.total_tokens,
+              cacheReadTokens: agg.total_cache_read_tokens,
+              cacheCreationTokens: agg.total_cache_creation_tokens,
+              estimatedCost: agg.total_estimated_cost,
+              toolCallsCount: agg.tool_calls_count,
+              cacheMetrics: cumulativeCacheMetrics,
+            },
+            latest: latest ? {
+              tokenUsage: lastTokenUsage,
+              cacheMetrics: lastCacheMetrics,
+              estimatedCost: latest.estimated_cost || 0,
+              toolCallsCount: latest.tool_calls_count || 0,
+              provider: latest.provider,
+              model: latest.model,
+              startTime: latest.start_time,
+            } : null,
+          });
+        })
+        .catch(reject);
     });
   }
 

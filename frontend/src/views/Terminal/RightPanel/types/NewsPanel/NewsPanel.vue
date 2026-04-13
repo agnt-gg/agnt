@@ -133,13 +133,11 @@ export default {
     const previousReleases = computed(() => releases.value.slice(1, 4));
     const displayedFeatures = computed(() => {
       if (!latestRelease.value) return [];
-      return showAllFeatures.value
-        ? latestRelease.value.features
-        : latestRelease.value.features.slice(0, 5);
+      return showAllFeatures.value ? latestRelease.value.features : latestRelease.value.features.slice(0, 5);
     });
 
     const statusLabel = (status) => {
-      const labels = { 'new': '[New]', 'updated': '[Updated]', 'bug': '[Fix]' };
+      const labels = { new: '[New]', updated: '[Updated]', bug: '[Fix]' };
       return labels[status] || '';
     };
 
@@ -297,8 +295,8 @@ export default {
 
 /* News Items */
 .news-item {
-  background: var(--color-dull-white);
-  border: 1px solid var(--color-light-navy);
+  /* background: var(--color-dull-white); */
+  border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 12px;
@@ -307,7 +305,7 @@ export default {
 
 body.dark .news-item,
 body.dark .version-card {
-  background: rgba(0, 0, 0, 10%);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
 }
 
@@ -317,7 +315,7 @@ body.dark .version-card {
 
 .news-item.featured {
   border-color: var(--color-green);
-  background: rgba(var(--green-rgb), 0.05);
+  background: var(--color-darker-0);
 }
 
 .news-date {
@@ -417,8 +415,6 @@ body.dark .feature-item {
   margin: 0;
   line-height: 1.4;
 }
-
-
 
 /* Version Card Styles */
 .version-section {
@@ -608,7 +604,6 @@ body.dark .check-btn {
   color: var(--color-light-med-navy);
   font-size: 0.75em;
 }
-
 
 /* Loading placeholder */
 .loading-placeholder {

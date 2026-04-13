@@ -962,8 +962,12 @@ function runMigrations() {
         { table: 'agent_executions', name: 'output_tokens', type: 'INTEGER DEFAULT 0' },
         { table: 'agent_executions', name: 'total_tokens', type: 'INTEGER DEFAULT 0' },
         { table: 'agent_executions', name: 'estimated_cost', type: 'REAL DEFAULT 0' },
+        { table: 'agent_executions', name: 'cache_read_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'agent_executions', name: 'cache_creation_tokens', type: 'INTEGER DEFAULT 0' },
         { table: 'agent_tool_executions', name: 'input_tokens', type: 'INTEGER DEFAULT 0' },
         { table: 'agent_tool_executions', name: 'output_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'agent_tool_executions', name: 'cache_read_tokens', type: 'INTEGER DEFAULT 0' },
+        { table: 'agent_tool_executions', name: 'cache_creation_tokens', type: 'INTEGER DEFAULT 0' },
         { table: 'node_executions', name: 'input_tokens', type: 'INTEGER DEFAULT 0' },
         { table: 'node_executions', name: 'output_tokens', type: 'INTEGER DEFAULT 0' },
       ];

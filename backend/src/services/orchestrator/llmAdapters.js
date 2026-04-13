@@ -91,6 +91,44 @@ function parseApiErrorMessage(error) {
 }
 
 /**
+ * Returns true if a message is a user-role carrier of tool_result blocks.
+ * Such messages must stay paired with the preceding assistant tool_use message —
+ * mutating their content (e.g. to inject images) orphans the tool_use IDs and
+ * triggers provider 400 errors like "tool_use ids were found without tool_result blocks".
+ */
+function isToolResultCarrier(msg) {
+  if (!msg || msg.role !== 'user') return false;
+  // Anthropic: user message with tool_result content blocks
+  if (Array.isArray(msg.content) && msg.content.some((block) => block && block.type === 'tool_result')) {
+    return true;
+  }
+  // Gemini: user message whose parts contain functionResponse entries
+  if (Array.isArray(msg.parts) && msg.parts.some((part) => part && part.functionResponse)) {
+    return true;
+  }
+  // OpenAI-compat: a user-role stand-in for a tool result (has tool_call_id)
+  if (msg.tool_call_id) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Finds the index of the last user message that is safe to inject images into —
+ * i.e. the most recent user message whose content is not a tool_result carrier.
+ * Returns -1 if none found.
+ */
+function findLastInjectableUserIndex(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'user') continue;
+    if (isToolResultCarrier(m)) continue;
+    return i;
+  }
+  return -1;
+}
+
+/**
  * Base class for LLM provider adapters.
  * Defines the interface that all adapters must implement.
  */
@@ -358,32 +396,30 @@ Please carefully check the tool schema and ensure all parameters match the expec
         // Deep clone to avoid mutating original messages
         currentMessages = JSON.parse(JSON.stringify(messages));
 
-        // Find the LAST user message and convert it to array format with images
-        for (let i = currentMessages.length - 1; i >= 0; i--) {
-          if (currentMessages[i].role === 'user') {
-            const originalContent = currentMessages[i].content;
-
-            // Convert to array format
-            currentMessages[i].content = [
-              {
-                type: 'text',
-                text: typeof originalContent === 'string' ? originalContent : JSON.stringify(originalContent),
+        // Inject into the last user message that is NOT a tool_result carrier.
+        // OpenAI-compatible providers normally carry tool results as role:'tool',
+        // but some provider adapters / history shapes can surface tool_result blocks
+        // inside a user message — overwriting those orphans the preceding tool_calls.
+        const targetIdx = findLastInjectableUserIndex(currentMessages);
+        if (targetIdx !== -1) {
+          const originalContent = currentMessages[targetIdx].content;
+          currentMessages[targetIdx].content = [
+            {
+              type: 'text',
+              text: typeof originalContent === 'string' ? originalContent : JSON.stringify(originalContent),
+            },
+          ];
+          context.imageData.forEach((img) => {
+            currentMessages[targetIdx].content.push({
+              type: 'image_url',
+              image_url: {
+                url: `data:${img.type};base64,${img.data}`,
               },
-            ];
-
-            // Add images
-            context.imageData.forEach((img) => {
-              currentMessages[i].content.push({
-                type: 'image_url',
-                image_url: {
-                  url: `data:${img.type};base64,${img.data}`,
-                },
-              });
             });
-
-            console.log(`[OpenAI Vision] Added ${context.imageData.length} image(s) to last user message`);
-            break; // Only modify the last user message
-          }
+          });
+          console.log(`[OpenAI Vision] Added ${context.imageData.length} image(s) to user message at index ${targetIdx}`);
+        } else {
+          console.warn('[OpenAI Vision] No injectable user message found (all user messages carry tool_result blocks); skipping image injection.');
         }
       } else {
         console.warn(`[Vision Check] Model '${this.model}' does not support vision. Images will be ignored.`);
@@ -1282,35 +1318,33 @@ Please carefully check the tool schema and ensure all parameters match the expec
       if (supportsVision) {
         currentMessages = JSON.parse(JSON.stringify(messages)); // Deep clone
 
-        // Find the last user message and add images
-        for (let i = currentMessages.length - 1; i >= 0; i--) {
-          if (currentMessages[i].role === 'user') {
-            const originalContent = currentMessages[i].content;
-
-            // Convert to Anthropic's content block format
-            const contentBlocks = [
-              {
-                type: 'text',
-                text: typeof originalContent === 'string' ? originalContent : JSON.stringify(originalContent),
+        // Inject into the last user message that is NOT a tool_result carrier.
+        // Overwriting a tool_result-carrying user message orphans the preceding
+        // assistant tool_use blocks and causes Anthropic 400 errors
+        // ("tool_use ids were found without tool_result blocks immediately after").
+        const targetIdx = findLastInjectableUserIndex(currentMessages);
+        if (targetIdx !== -1) {
+          const originalContent = currentMessages[targetIdx].content;
+          const contentBlocks = [
+            {
+              type: 'text',
+              text: typeof originalContent === 'string' ? originalContent : JSON.stringify(originalContent),
+            },
+          ];
+          context.imageData.forEach((img) => {
+            contentBlocks.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: img.type,
+                data: img.data,
               },
-            ];
-
-            // Add images
-            context.imageData.forEach((img) => {
-              contentBlocks.push({
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: img.type,
-                  data: img.data,
-                },
-              });
             });
-
-            currentMessages[i].content = contentBlocks;
-            console.log(`[Anthropic Vision] Added ${context.imageData.length} image(s) to last user message`);
-            break;
-          }
+          });
+          currentMessages[targetIdx].content = contentBlocks;
+          console.log(`[Anthropic Vision] Added ${context.imageData.length} image(s) to user message at index ${targetIdx}`);
+        } else {
+          console.warn('[Anthropic Vision] No injectable user message found (all user messages carry tool_result blocks); skipping image injection to avoid orphaning tool_use IDs.');
         }
       } else {
         console.warn(`[Vision Check] Model '${this.model}' does not support vision. Images will be ignored.`);
@@ -2703,12 +2737,15 @@ class GeminiAdapter extends BaseAdapter {
           _geminiThoughtSignature: thoughtSignature, // Store for next turn
         };
 
-        // Extract Gemini usage metadata
+        // Extract Gemini usage metadata (including context-cache tokens when present)
         const geminiUsage = response.usageMetadata
           ? {
               prompt_tokens: response.usageMetadata.promptTokenCount || 0,
               completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
               total_tokens: response.usageMetadata.totalTokenCount || 0,
+              prompt_tokens_details: response.usageMetadata.cachedContentTokenCount
+                ? { cached_tokens: response.usageMetadata.cachedContentTokenCount }
+                : undefined,
             }
           : undefined;
 
@@ -2804,31 +2841,26 @@ class GeminiAdapter extends BaseAdapter {
       if (supportsVision) {
         currentMessages = JSON.parse(JSON.stringify(messages)); // Deep clone
 
-        // Find the last user message and add images
-        for (let i = currentMessages.length - 1; i >= 0; i--) {
-          if (currentMessages[i].role === 'user') {
-            const originalContent = currentMessages[i].content;
-
-            // For Gemini, we need to transform to parts format
-            // This will be handled by _transformToGemini, but we need to prepare the content
-            const contentParts = [{ type: 'text', text: originalContent }];
-
-            // Add images
-            context.imageData.forEach((img) => {
-              contentParts.push({
-                type: 'image',
-                inlineData: {
-                  mimeType: img.type,
-                  data: img.data,
-                },
-              });
+        // Inject into the last user message that is NOT a tool_result carrier.
+        // Gemini uses 'user' role for function responses too, so overwriting the
+        // last user message can break tool-call/response pairing.
+        const targetIdx = findLastInjectableUserIndex(currentMessages);
+        if (targetIdx !== -1) {
+          const originalContent = currentMessages[targetIdx].content;
+          const contentParts = [{ type: 'text', text: originalContent }];
+          context.imageData.forEach((img) => {
+            contentParts.push({
+              type: 'image',
+              inlineData: {
+                mimeType: img.type,
+                data: img.data,
+              },
             });
-
-            // Store as parts for Gemini transformation
-            currentMessages[i].parts = contentParts;
-            console.log(`[Gemini Vision] Added ${context.imageData.length} image(s) to user message`);
-            break; // Only modify the last user message
-          }
+          });
+          currentMessages[targetIdx].parts = contentParts;
+          console.log(`[Gemini Vision] Added ${context.imageData.length} image(s) to user message at index ${targetIdx}`);
+        } else {
+          console.warn('[Gemini Vision] No injectable user message found (all user messages carry tool results); skipping image injection.');
         }
       } else {
         console.warn(`[Vision Check] Model '${this.model}' does not support vision. Images will be ignored.`);
@@ -2918,6 +2950,9 @@ class GeminiAdapter extends BaseAdapter {
               prompt_tokens: chunk.usageMetadata.promptTokenCount || 0,
               completion_tokens: chunk.usageMetadata.candidatesTokenCount || 0,
               total_tokens: chunk.usageMetadata.totalTokenCount || 0,
+              prompt_tokens_details: chunk.usageMetadata.cachedContentTokenCount
+                ? { cached_tokens: chunk.usageMetadata.cachedContentTokenCount }
+                : undefined,
             };
           }
         }

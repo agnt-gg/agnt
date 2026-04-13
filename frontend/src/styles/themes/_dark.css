@@ -265,7 +265,7 @@ body.dark div.sidebar-section {
 } */
 
 body.dark .grid-overlay {
-  opacity: 0.125;
+  opacity: 0.25;
   background-image: radial-gradient(circle, var(--color-lighter-2) 1px, transparent 1px);
 }
 

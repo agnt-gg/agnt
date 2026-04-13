@@ -15,4 +15,7 @@ ExecutionRoutes.get('/agents/:id', authenticateToken, RunService.getAgentExecuti
 ExecutionRoutes.delete('/agents/:id', authenticateToken, RunService.deleteAgentExecution);
 ExecutionRoutes.post('/agents/clear-completed', authenticateToken, RunService.clearCompletedAgentExecutions);
 
+// Per-conversation monitoring summary (aggregate tokens/cache/cost across all executions)
+ExecutionRoutes.get('/conversation/:conversationId/summary', authenticateToken, RunService.getConversationSummary);
+
 export default ExecutionRoutes;

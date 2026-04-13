@@ -256,25 +256,29 @@ class AgentService {
       : '';
 
     // Build skills context using progressive disclosure (Agent Skills standard)
-    // Tier 1: Compact catalog of ALL available skills (DB assigned + filesystem discovered)
+    // Tier 1: Compact catalog of the agent's explicitly assigned skills only
     // Tier 2: Full instructions loaded on demand via activate_skill tool
     let skillsContext = '';
     try {
-      const catalogEntries = [];
+      const assignedSkills = Array.isArray(agent.assignedSkills) ? agent.assignedSkills : [];
+      if (assignedSkills.length > 0) {
+        const assignedSet = new Set(assignedSkills);
+        const catalogEntries = [];
+        const seenNames = new Set();
 
-      // Add filesystem-discovered skills to catalog first (they use canonical kebab-case names)
-      const seenNames = new Set();
-      if (SkillDiscoveryService.initialized) {
-        const discoveredCatalog = SkillDiscoveryService.getSkillCatalog();
-        for (const ds of discoveredCatalog) {
-          catalogEntries.push(ds);
-          seenNames.add(ds.name);
+        // Include filesystem-discovered skills only if explicitly assigned (match by name/slug)
+        if (SkillDiscoveryService.initialized) {
+          const discoveredCatalog = SkillDiscoveryService.getSkillCatalog();
+          for (const ds of discoveredCatalog) {
+            if (assignedSet.has(ds.name) || assignedSet.has(ds.slug)) {
+              catalogEntries.push(ds);
+              seenNames.add(ds.name);
+            }
+          }
         }
-      }
 
-      // Add agent's assigned skills to catalog (resolve from DB, deduplicate by slug)
-      if (agent.assignedSkills && agent.assignedSkills.length > 0) {
-        const skillRecords = await SkillModel.findByIds(agent.assignedSkills);
+        // Resolve DB skills by id (findByIds also tolerates slugs where supported)
+        const skillRecords = await SkillModel.findByIds(assignedSkills);
         for (const s of skillRecords) {
           const key = s.slug || s.name;
           if (!seenNames.has(key)) {
@@ -282,15 +286,12 @@ class AgentService {
             seenNames.add(key);
           }
         }
-      }
 
-      // Note: filesystem-discovered skills are already in the catalog above.
-      // DB-only skills (user-created, SkillEvolver) are added via assignedSkills.
-
-      if (catalogEntries.length > 0) {
-        const catalog = buildSkillCatalog(catalogEntries);
-        const instructions = buildSkillActivationInstructions();
-        skillsContext = '\n' + catalog + '\n\n' + instructions + '\n';
+        if (catalogEntries.length > 0) {
+          const catalog = buildSkillCatalog(catalogEntries);
+          const instructions = buildSkillActivationInstructions();
+          skillsContext = '\n' + catalog + '\n\n' + instructions + '\n';
+        }
       }
     } catch (err) {
       console.warn('Failed to build skills catalog for agent:', err.message);

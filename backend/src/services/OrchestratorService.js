@@ -649,6 +649,26 @@ async function universalChatHandler(req, res, context = {}) {
     activatedSkills: new Set(),
   };
 
+  // CRITICAL for prompt caching: restore frozen-per-conversation state from prior turns.
+  // The system prompt must be byte-identical across turns or the Anthropic prompt cache
+  // (and OpenAI/Gemini equivalents) miss on every request.
+  // We persist: _frozenSkillsCatalog, _frozenMemorySection, _loadedToolGroups, activatedSkills.
+  const priorContext = conversationManager.get(conversationId);
+  if (priorContext) {
+    if (priorContext._frozenSkillsCatalog !== undefined) {
+      conversationContext._frozenSkillsCatalog = priorContext._frozenSkillsCatalog;
+    }
+    if (priorContext._frozenMemorySection !== undefined) {
+      conversationContext._frozenMemorySection = priorContext._frozenMemorySection;
+    }
+    if (priorContext._loadedToolGroups) {
+      conversationContext._loadedToolGroups = new Set(priorContext._loadedToolGroups);
+    }
+    if (priorContext.activatedSkills) {
+      conversationContext.activatedSkills = new Set(priorContext.activatedSkills);
+    }
+  }
+
   // Token usage accumulator — tracks real LLM token consumption across all rounds
   // Declared before try/catch so it's accessible in the finally block
   const tokenAccumulator = {
@@ -735,10 +755,11 @@ async function universalChatHandler(req, res, context = {}) {
     }
 
     // Build system prompt (no dynamic date — frozen for prompt caching)
-    let systemPrompt = await config.buildSystemPrompt({
-      ...conversationContext,
-      toolSchemas,
-    });
+    // Pass conversationContext directly (NOT a spread copy) so that freeze writes
+    // (_frozenSkillsCatalog, _frozenMemorySection) mutate the real context and
+    // survive to be stored in conversationManager at end of turn.
+    conversationContext.toolSchemas = toolSchemas;
+    let systemPrompt = await config.buildSystemPrompt(conversationContext);
 
     // Prepare messages - filter out any corrupted messages first, then clone
     messages = messageInput
@@ -1763,14 +1784,28 @@ IMPORTANT: The image data is already available in the system context. You don't 
           : String(finalContentForLogging || '');
 
         // Calculate estimated cost from real token usage
+        // Cost calc accounts for cache read/write multipliers (e.g. Anthropic cache
+        // reads are 0.1× base input rate). Without this, cached traffic was being
+        // overcharged 10× in the displayed/persisted cost.
         let tokenUsageForDb = null;
         if (tokenAccumulator.totalTokens > 0) {
-          const costInfo = getModelCost(normalizedProvider, model, tokenAccumulator.inputTokens, tokenAccumulator.outputTokens);
+          const costInfo = getModelCost(
+            normalizedProvider,
+            model,
+            tokenAccumulator.inputTokens,
+            tokenAccumulator.outputTokens,
+            {
+              cacheReadTokens: tokenAccumulator.cacheReadTokens,
+              cacheCreationTokens: tokenAccumulator.cacheCreationTokens,
+            }
+          );
           tokenUsageForDb = {
             inputTokens: tokenAccumulator.inputTokens,
             outputTokens: tokenAccumulator.outputTokens,
             totalTokens: tokenAccumulator.totalTokens,
             estimatedCost: costInfo?.totalCost || 0,
+            cacheReadTokens: tokenAccumulator.cacheReadTokens,
+            cacheCreationTokens: tokenAccumulator.cacheCreationTokens,
           };
           // Enhanced logging with cache metrics
           const cacheInfo = (tokenAccumulator.cacheReadTokens > 0 || tokenAccumulator.cacheCreationTokens > 0)

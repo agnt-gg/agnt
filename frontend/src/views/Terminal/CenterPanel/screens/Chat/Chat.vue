@@ -83,7 +83,7 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, nextTick, computed, watch, inject } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch, inject } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
@@ -321,23 +321,59 @@ export default {
     // Disable input when no provider connected
     const isInputDisabled = computed(() => !hasConnectedAIProvider.value);
 
-    // Context Monitoring State
-    const contextStatus = ref({
-      currentTokens: 0,
-      tokenLimit: 0,
-      utilizationPercent: 0,
-      model: store.state.aiProvider?.selectedModel || 'N/A',
-      messagesCount: 0,
+    // Per-conversation monitoring state. Each conversation has its own
+    // health counters, cache/token stats, context status, and activity feed,
+    // so switching conversations preserves each one's exact state instead of
+    // blending metrics from every active stream into a single panel.
+    const monitoringStates = reactive({});
+
+    const defaultMonitoringState = () => ({
+      contextStatus: {
+        currentTokens: 0,
+        tokenLimit: 0,
+        utilizationPercent: 0,
+        model: store.state.aiProvider?.selectedModel || 'N/A',
+        messagesCount: 0,
+      },
+      lastContextManaged: null,
+      contextManaged: false,
+      errorsCaught: 0,
+      toolTruncations: 0,
+      toolsLoadedCount: 0,
+      lastTokenUsage: null,
+      lastCacheMetrics: null,
+      lastEstimatedCost: null,
+      systemActivities: [],
     });
-    const lastContextManaged = ref(null);
-    const contextManaged = ref(false);
-    const errorsCaught = ref(0);
-    const toolTruncations = ref(0);
-    const toolsLoadedCount = ref(0);
-    const lastTokenUsage = ref(null);
-    const lastCacheMetrics = ref(null);
-    const lastEstimatedCost = ref(null);
-    const systemActivities = ref([]);
+
+    // Lazy-initialize per-conversation monitoring state. Every event that
+    // carries a conversationId (via the 3rd callback arg) lands in its own
+    // slot — whether or not that conversation is currently in view.
+    const getMonitoringState = (convId) => {
+      if (!convId) return null;
+      if (!monitoringStates[convId]) {
+        monitoringStates[convId] = defaultMonitoringState();
+      }
+      return monitoringStates[convId];
+    };
+
+    // Computed views bound to the user's currently-viewed conversation.
+    // Template bindings and panel props go through these, so switching
+    // conversations instantly shows that conversation's saved state.
+    const activeMonitoring = computed(() => {
+      const convId = store.state.chat.activeConversationId;
+      return (convId && monitoringStates[convId]) || defaultMonitoringState();
+    });
+    const contextStatus = computed(() => activeMonitoring.value.contextStatus);
+    const lastContextManaged = computed(() => activeMonitoring.value.lastContextManaged);
+    const contextManaged = computed(() => activeMonitoring.value.contextManaged);
+    const errorsCaught = computed(() => activeMonitoring.value.errorsCaught);
+    const toolTruncations = computed(() => activeMonitoring.value.toolTruncations);
+    const toolsLoadedCount = computed(() => activeMonitoring.value.toolsLoadedCount);
+    const lastTokenUsage = computed(() => activeMonitoring.value.lastTokenUsage);
+    const lastCacheMetrics = computed(() => activeMonitoring.value.lastCacheMetrics);
+    const lastEstimatedCost = computed(() => activeMonitoring.value.lastEstimatedCost);
+    const systemActivities = computed(() => activeMonitoring.value.systemActivities);
 
     // Known context windows for common models (static data, no API call needed)
     const MODEL_CONTEXT_WINDOWS = {
@@ -375,14 +411,20 @@ export default {
       return 0;
     };
 
+    // Seed the tokenLimit/model on the ACTIVE conversation's monitoring slot
+    // when the user changes provider/model. Other conversations keep whatever
+    // tokenLimit was recorded during their last context_status event.
     const updateContextWindow = () => {
       const model = store.state.aiProvider?.selectedModel;
       if (!model) return;
+      const convId = store.state.chat.activeConversationId;
+      if (!convId) return;
+      const ms = getMonitoringState(convId);
       const contextWindow = getContextWindowForModel(model);
-      contextStatus.value = {
-        ...contextStatus.value,
+      ms.contextStatus = {
+        ...ms.contextStatus,
         model,
-        tokenLimit: contextWindow || contextStatus.value.tokenLimit,
+        tokenLimit: contextWindow || ms.contextStatus.tokenLimit,
       };
     };
 
@@ -554,13 +596,23 @@ export default {
       });
     };
 
-    // Stream event handler for component-specific logic
-    const handleStreamEvent = (eventName, data) => {
+    // Stream event handler. Monitoring state (counters, token/cache stats,
+    // activity feed, context status) is always routed to the SOURCE
+    // conversation's slot via `streamConvId` — so per-conversation history
+    // survives switching tabs/convos. View-only effects (messageStates,
+    // runningToolCalls, isProcessing, focusInput, displayMessages lookups)
+    // only run when the user is currently viewing that conversation.
+    const handleStreamEvent = (eventName, data, streamConvId) => {
+      const activeId = store.state.chat.activeConversationId;
+      const isActiveView = !streamConvId || !activeId || streamConvId === activeId;
+      const ms = streamConvId ? getMonitoringState(streamConvId) : null;
+
       switch (eventName) {
         case 'conversation_started':
-          currentConversationId.value = data.conversationId;
+          if (isActiveView) currentConversationId.value = data.conversationId;
           break;
         case 'assistant_message': {
+          if (!isActiveView) break;
           const name = data.agentName || 'Annie';
           messageStates.value[data.id] = {
             type: 'thinking',
@@ -569,7 +621,7 @@ export default {
           break;
         }
         case 'reasoning_delta': {
-          // Use the specific message's agentName, not the global activeAgentName
+          if (!isActiveView) break;
           const msg = displayMessages.value.find(m => m.id === data.assistantMessageId);
           const rName = msg?.agentName || 'Annie';
           messageStates.value[data.assistantMessageId] = {
@@ -579,144 +631,149 @@ export default {
           break;
         }
         case 'tool_start':
-          runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = true;
-          messageStates.value[data.assistantMessageId] = {
-            type: 'tool',
-            text: `Running ${data.toolCall.name}...`,
-          };
-          addActivity({
-            type: 'tool',
-            text: `Running ${data.toolCall.name}`,
-          });
-          break;
-        case 'tool_end': {
-          runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = false;
-          const message = displayMessages.value.find((m) => m.id === data.assistantMessageId);
-          if (message && !isAnyToolRunningInMessage(message)) {
-            const teName = message.agentName || 'Annie';
+          if (isActiveView) {
+            runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = true;
             messageStates.value[data.assistantMessageId] = {
-              type: 'thinking',
-              text: `${teName} is processing results...`,
+              type: 'tool',
+              text: `Running ${data.toolCall.name}...`,
             };
           }
-          if (data.toolCall.error) {
-            errorsCaught.value++;
-            addActivity({
-              type: 'error',
-              text: `Error handled in ${data.toolCall.name || 'tool'}: ${data.toolCall.error}`,
-            });
-          } else {
-            addActivity({
-              type: 'success',
-              text: `${data.toolCall.name} completed`,
-            });
+          if (ms) addActivityTo(ms, { type: 'tool', text: `Running ${data.toolCall.name}` });
+          break;
+        case 'tool_end': {
+          if (isActiveView) {
+            runningToolCalls.value[`${data.assistantMessageId}-${data.toolCall.id}`] = false;
+            const message = displayMessages.value.find((m) => m.id === data.assistantMessageId);
+            if (message && !isAnyToolRunningInMessage(message)) {
+              const teName = message.agentName || 'Annie';
+              messageStates.value[data.assistantMessageId] = {
+                type: 'thinking',
+                text: `${teName} is processing results...`,
+              };
+            }
+          }
+          if (ms) {
+            if (data.toolCall.error) {
+              ms.errorsCaught++;
+              addActivityTo(ms, {
+                type: 'error',
+                text: `Error handled in ${data.toolCall.name || 'tool'}: ${data.toolCall.error}`,
+              });
+            } else {
+              addActivityTo(ms, { type: 'success', text: `${data.toolCall.name} completed` });
+            }
           }
           break;
         }
         case 'context_status':
-          contextStatus.value = {
-            currentTokens: data.currentTokens,
-            tokenLimit: data.tokenLimit,
-            utilizationPercent: data.utilizationPercent,
-            model: data.model,
-            messagesCount: data.messagesCount,
-          };
+          if (ms) {
+            ms.contextStatus = {
+              currentTokens: data.currentTokens,
+              tokenLimit: data.tokenLimit,
+              utilizationPercent: data.utilizationPercent,
+              model: data.model,
+              messagesCount: data.messagesCount,
+            };
+          }
           break;
         case 'context_managed':
-          contextManaged.value = true;
-          lastContextManaged.value = {
-            originalTokens: data.originalTokens,
-            managedTokens: data.managedTokens,
-            reduction: data.reduction,
-            strategy: data.strategy,
-          };
-          addActivity({
-            type: 'context',
-            text: `Context reduced: ${data.originalTokens.toLocaleString()} → ${data.managedTokens.toLocaleString()} tokens`,
-          });
-          cleanup.setTimeout(() => {
-            contextManaged.value = false;
-          }, 5000);
+          if (ms) {
+            ms.contextManaged = true;
+            ms.lastContextManaged = {
+              originalTokens: data.originalTokens,
+              managedTokens: data.managedTokens,
+              reduction: data.reduction,
+              strategy: data.strategy,
+            };
+            addActivityTo(ms, {
+              type: 'context',
+              text: `Context reduced: ${data.originalTokens.toLocaleString()} → ${data.managedTokens.toLocaleString()} tokens`,
+            });
+            const convIdForTimeout = streamConvId;
+            cleanup.setTimeout(() => {
+              const s = monitoringStates[convIdForTimeout];
+              if (s) s.contextManaged = false;
+            }, 5000);
+          }
           break;
         case 'tool_output_managed':
-          toolTruncations.value++;
-          addActivity({
-            type: 'truncation',
-            text: `${data.toolName} output truncated: ${data.originalSize} → ${data.managedSize} chars`,
-          });
+          if (ms) {
+            ms.toolTruncations++;
+            addActivityTo(ms, {
+              type: 'truncation',
+              text: `${data.toolName} output truncated: ${data.originalSize} → ${data.managedSize} chars`,
+            });
+          }
           break;
         case 'image_generated':
-          // Image is now handled by the store
           console.log(`Image cached: ${data.imageId} for message ${data.assistantMessageId}`);
           break;
         case 'files_processed':
-          addActivity({
-            type: 'info',
-            text: `Processed ${data.fileCount} file(s): ${data.fileNames.join(', ')}`,
-          });
+          if (ms) addActivityTo(ms, { type: 'info', text: `Processed ${data.fileCount} file(s): ${data.fileNames.join(', ')}` });
           break;
         case 'final_content':
-          delete messageStates.value[data.assistantMessageId];
-          updateSuggestionsWithAI(displayMessages.value.slice(-2)[0]?.content, data.content);
+          if (isActiveView) {
+            delete messageStates.value[data.assistantMessageId];
+            updateSuggestionsWithAI(displayMessages.value.slice(-2)[0]?.content, data.content);
+          }
           break;
         case 'error':
-          errorsCaught.value++;
-          addActivity({
-            type: 'error',
-            text: `System error handled: ${data.error}`,
-          });
-          isProcessing.value = false;
+          if (ms) {
+            ms.errorsCaught++;
+            addActivityTo(ms, { type: 'error', text: `System error handled: ${data.error}` });
+          }
+          if (isActiveView) isProcessing.value = false;
           break;
         case 'agent_execution_completed':
-          // Store token usage and cache metrics from completed execution
-          lastTokenUsage.value = data.tokenUsage || null;
-          lastCacheMetrics.value = data.cacheMetrics || null;
-          lastEstimatedCost.value = data.estimatedCost != null ? data.estimatedCost : null;
-          if (data.toolCallsCount > 0) {
-            toolsLoadedCount.value = data.toolCallsCount;
-          }
-          // Add token usage activity
-          if (data.tokenUsage) {
-            const t = data.tokenUsage;
-            let text = `Tokens: ${t.inputTokens?.toLocaleString()} in / ${t.outputTokens?.toLocaleString()} out`;
-            if (data.cacheMetrics && parseFloat(data.cacheMetrics.hitRate) > 0) {
-              text += ` (${data.cacheMetrics.hitRate}% cached)`;
+          if (ms) {
+            ms.lastTokenUsage = data.tokenUsage || null;
+            ms.lastCacheMetrics = data.cacheMetrics || null;
+            ms.lastEstimatedCost = data.estimatedCost != null ? data.estimatedCost : null;
+            if (data.toolCallsCount > 0) ms.toolsLoadedCount = data.toolCallsCount;
+            if (data.tokenUsage) {
+              const t = data.tokenUsage;
+              let text = `Tokens: ${t.inputTokens?.toLocaleString()} in / ${t.outputTokens?.toLocaleString()} out`;
+              if (data.cacheMetrics && parseFloat(data.cacheMetrics.hitRate) > 0) {
+                text += ` (${data.cacheMetrics.hitRate}% cached)`;
+              }
+              if (data.estimatedCost > 0) {
+                text += ` · $${data.estimatedCost < 0.01 ? data.estimatedCost.toFixed(6) : data.estimatedCost.toFixed(4)}`;
+              }
+              addActivityTo(ms, { type: 'system', text });
             }
-            if (data.estimatedCost > 0) {
-              text += ` · $${data.estimatedCost < 0.01 ? data.estimatedCost.toFixed(6) : data.estimatedCost.toFixed(4)}`;
-            }
-            addActivity({ type: 'system', text });
           }
           break;
         case 'done':
-          isProcessing.value = false;
-          Object.keys(messageStates.value).forEach((msgId) => {
-            const msg = displayMessages.value.find((m) => m.id === msgId);
-            if (!msg || msg.content) {
-              delete messageStates.value[msgId];
-            }
-          });
-          focusInput();
+          if (isActiveView) {
+            isProcessing.value = false;
+            Object.keys(messageStates.value).forEach((msgId) => {
+              const msg = displayMessages.value.find((m) => m.id === msgId);
+              if (!msg || msg.content) delete messageStates.value[msgId];
+            });
+            focusInput();
+          }
           break;
       }
     };
 
-    const addActivity = (activity) => {
+    // Append an activity to a specific monitoring state slot (per-conversation).
+    const addActivityTo = (ms, activity) => {
       const newActivity = {
         id: `activity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         timestamp: Date.now(),
         ...activity,
       };
-      systemActivities.value.push(newActivity);
-
-      // Keep only the last 50 activities
-      if (systemActivities.value.length > 50) {
-        systemActivities.value = systemActivities.value.slice(-50);
+      ms.systemActivities.push(newActivity);
+      if (ms.systemActivities.length > 50) {
+        ms.systemActivities.splice(0, ms.systemActivities.length - 50);
       }
     };
 
+    // Clear the activity feed for the conversation currently in view.
     const clearActivities = () => {
-      systemActivities.value = [];
+      const convId = store.state.chat.activeConversationId;
+      const ms = convId ? monitoringStates[convId] : null;
+      if (ms) ms.systemActivities = [];
     };
 
     const getRunningToolsForMessage = (message) => {
@@ -1180,25 +1237,14 @@ export default {
       focusInput();
     };
 
-    // Reset all monitoring / health / cache / token state
-    const resetMonitoringState = () => {
+    // Reset the monitoring slot for a specific conversation (e.g. explicit
+    // "Clear chat" action). Per-conversation state is otherwise preserved
+    // across switches, so no generic reset is needed.
+    const resetMonitoringStateFor = (convId) => {
+      if (!convId) return;
+      monitoringStates[convId] = defaultMonitoringState();
       const model = store.state.aiProvider?.selectedModel;
-      contextStatus.value = {
-        currentTokens: 0,
-        tokenLimit: getContextWindowForModel(model),
-        utilizationPercent: 0,
-        model: model || 'N/A',
-        messagesCount: 0,
-      };
-      lastContextManaged.value = null;
-      contextManaged.value = false;
-      errorsCaught.value = 0;
-      toolTruncations.value = 0;
-      toolsLoadedCount.value = 0;
-      lastTokenUsage.value = null;
-      lastCacheMetrics.value = null;
-      lastEstimatedCost.value = null;
-      systemActivities.value = [];
+      monitoringStates[convId].contextStatus.tokenLimit = getContextWindowForModel(model);
     };
 
     const clearConversation = () => {
@@ -1222,7 +1268,9 @@ export default {
       focusInput();
 
       suggestions.value = [...initialSuggestions];
-      resetMonitoringState();
+      // New conversation gets its own fresh monitoring slot (lazy-created on
+      // first access). No need to touch other conversations' slots.
+      resetMonitoringStateFor(newConvId);
 
       // Remove content-id query param to allow reloading the same conversation
       if (route.query['content-id']) {
@@ -1322,12 +1370,68 @@ export default {
       }
     );
 
-    // Reset monitoring when switching conversations
+    // Fetch the conversation's aggregated monitoring summary from the backend
+    // and populate its slot. Only hits the DB once per slot per session and
+    // only for real server-assigned conversation IDs (skips `temp-*` slots
+    // that don't exist in the DB yet). Does not overwrite slots that already
+    // have live data — live events are authoritative for the current session.
+    const hydrateMonitoringFromDb = async (convId) => {
+      if (!convId || typeof convId !== 'string') return;
+      if (convId.startsWith('temp-')) return;
+      const ms = getMonitoringState(convId);
+      if (!ms || ms._hydrated) return;
+      ms._hydrated = true;
+
+      try {
+        const token = localStorage.getItem('token');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const response = await fetch(
+          `${API_CONFIG.BASE_URL}/executions/conversation/${encodeURIComponent(convId)}/summary`,
+          { headers }
+        );
+        if (!response.ok) return;
+        const summary = await response.json();
+        if (!summary || !summary.executionsCount || !summary.latest) return;
+
+        // Don't clobber slots that received live events while the fetch
+        // was in flight — live session data wins over historical.
+        if (ms.lastTokenUsage) return;
+
+        const latest = summary.latest;
+        ms.lastTokenUsage = latest.tokenUsage || null;
+        ms.lastCacheMetrics = latest.cacheMetrics || null;
+        ms.lastEstimatedCost = latest.estimatedCost != null ? latest.estimatedCost : null;
+        if (latest.toolCallsCount > 0) ms.toolsLoadedCount = latest.toolCallsCount;
+      } catch (e) {
+        // Reset the hydration flag so we can retry later if the user
+        // stays on this conversation and the network recovers.
+        ms._hydrated = false;
+        console.warn('[Chat] Failed to hydrate monitoring state:', e.message);
+      }
+    };
+
+    // Switching conversations no longer resets monitoring — each conversation
+    // owns its own persistent monitoring slot (see `monitoringStates`).
+    // Initialize the tokenLimit from the current model whenever we land on
+    // a conversation whose slot hasn't yet received a context_status event,
+    // and hydrate token/cache/cost from the DB so historical state survives
+    // page reloads and cold starts.
     watch(
       () => store.state.chat.activeConversationId,
-      () => {
-        resetMonitoringState();
-      }
+      (newId) => {
+        if (!newId) return;
+        const ms = getMonitoringState(newId);
+        if (ms && !ms.contextStatus.tokenLimit) {
+          const model = store.state.aiProvider?.selectedModel;
+          ms.contextStatus.tokenLimit = getContextWindowForModel(model);
+          if (!ms.contextStatus.model || ms.contextStatus.model === 'N/A') {
+            ms.contextStatus.model = model || 'N/A';
+          }
+        }
+        hydrateMonitoringFromDb(newId);
+      },
+      { immediate: true }
     );
 
     const handleScreenChange = (screenName) => {
@@ -1447,12 +1551,17 @@ export default {
       }
     });
 
-    // Reset context monitor when user switches provider or model
+    // Reset context monitor for the active conversation when the user
+    // switches provider or model. Other conversations keep their own
+    // recorded state (they'll update on their next stream event).
     watch(
       () => [store.state.aiProvider?.selectedProvider, store.state.aiProvider?.selectedModel],
       () => {
+        const convId = store.state.chat.activeConversationId;
+        if (!convId) return;
+        const ms = getMonitoringState(convId);
         const model = store.state.aiProvider?.selectedModel;
-        contextStatus.value = {
+        ms.contextStatus = {
           currentTokens: 0,
           tokenLimit: getContextWindowForModel(model),
           utilizationPercent: 0,

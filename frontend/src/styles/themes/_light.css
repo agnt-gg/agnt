@@ -292,8 +292,13 @@ body:not(.dark) .modal-content {
 /* ═══════════════════ WORKFLOW DESIGNER ═══════════════════ */
 
 body:not(.dark) .grid-overlay {
-  opacity: 0.2;
-  background-image: radial-gradient(circle, rgba(100, 100, 140, 0.3) 1px, transparent 1px);
+  opacity: 0.25;
+  background-image: radial-gradient(circle, var(--color-darker-2) 1px, transparent 1px);
+}
+
+body.dark .grid-overlay {
+  opacity: 0.25;
+  background-image: radial-gradient(circle, var(--color-lighter-2) 1px, transparent 1px);
 }
 
 body:not(.dark) .node {

@@ -1059,10 +1059,12 @@ export default {
                       }
                     }
 
-                    // Emit event to all registered callbacks
+                    // Emit event to all registered callbacks.
+                    // Pass activeConvId so consumers can filter events for
+                    // conversations the user isn't currently viewing.
                     state.streamEventCallbacks.forEach((callback) => {
                       try {
-                        callback(eventName, data);
+                        callback(eventName, data, activeConvId);
                       } catch (callbackError) {
                         console.error('Error in stream event callback:', callbackError);
                       }
@@ -1192,10 +1194,11 @@ export default {
         await Promise.all(stopPromises);
       }
 
-      // Emit 'done' event to all callbacks to trigger cleanup
+      // Emit 'done' event to all callbacks to trigger cleanup.
+      // Pass the stopped conversation id so scoped consumers can filter.
       state.streamEventCallbacks.forEach((callback) => {
         try {
-          callback('done', {});
+          callback('done', {}, convId);
         } catch (callbackError) {
           console.error('Error in stream event callback during stop:', callbackError);
         }
@@ -1689,7 +1692,7 @@ export default {
 
                     state.streamEventCallbacks.forEach((callback) => {
                       try {
-                        callback(eventName, data);
+                        callback(eventName, data, activeConvId);
                       } catch (callbackError) {
                         console.error('Error in stream event callback:', callbackError);
                       }

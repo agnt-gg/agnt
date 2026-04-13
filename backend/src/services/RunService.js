@@ -276,6 +276,24 @@ class RunService {
     }
   }
 
+  async getConversationSummary(req, res) {
+    try {
+      const userId = req.user.userId || req.user.id;
+      const { conversationId } = req.params;
+      if (!conversationId) {
+        return res.status(400).json({ error: 'conversationId is required' });
+      }
+      const summary = await AgentExecutionModel.getConversationSummary(conversationId, userId);
+      if (!summary) {
+        return res.json({ conversationId, executionsCount: 0, cumulative: null, latest: null });
+      }
+      res.json(summary);
+    } catch (error) {
+      console.error('Error fetching conversation summary:', error);
+      res.status(500).json({ error: 'Error fetching conversation summary' });
+    }
+  }
+
   async clearCompletedAgentExecutions(req, res) {
     try {
       const userId = req.user.userId || req.user.id;
