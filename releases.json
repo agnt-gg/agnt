@@ -1,6 +1,23 @@
 {
   "releases": [
     {
+      "version": "0.5.3",
+      "date": "April 13, 2026",
+      "title": "Hybrid Anthropic Cache, Deterministic Tools & Rich Request Panel - AGNT v0.5.3",
+      "type": "patch",
+      "features": [
+        { "name": "Hybrid 5-minute + 1-hour Anthropic Prompt Cache with TTL-Aware Cost Calc", "status": "new" },
+        { "name": "Per-Conversation Monitoring Panel with Cumulative Token, Cache & Cost Stats", "status": "new" },
+        { "name": "Segmented Request Size Bar (System / Tools / Messages / Output Buffer)", "status": "new" },
+        { "name": "Conversation Summary Endpoint for Panel Hydration Across Reloads", "status": "new" },
+        { "name": "Deterministic Tool Ordering — Fixes Cross-Turn Cache Misses on Tool Loops", "status": "bug" },
+        { "name": "Agent & Widget Chat System Prompt Memory Now Frozen Per Conversation", "status": "bug" },
+        { "name": "Vision Image Injection No Longer Orphans tool_use IDs", "status": "bug" },
+        { "name": "Agent Skills Catalog Scoped to Explicitly Assigned Skills", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.2",
       "date": "April 13, 2026",
       "title": "Soft-Delete for Agents & Workflows - AGNT v0.5.2",
