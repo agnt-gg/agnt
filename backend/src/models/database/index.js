@@ -943,6 +943,19 @@ function runMigrations() {
         }
       });
 
+      // Migration: Add deleted_at column to agents and workflows for soft-delete (2026-04-12)
+      // Preserves execution history (agent_executions, workflow_executions, tasks, etc.)
+      // which have FK references that would otherwise block hard deletes.
+      ['agents', 'workflows'].forEach((table) => {
+        db.run(`ALTER TABLE ${table} ADD COLUMN deleted_at DATETIME DEFAULT NULL`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding deleted_at column to ${table}:`, err);
+          } else if (!err) {
+            console.log(`✓ Added deleted_at column to ${table} table`);
+          }
+        });
+      });
+
       // Migration: Add token usage columns to execution tables (2026-03-11)
       const tokenColumns = [
         { table: 'agent_executions', name: 'input_tokens', type: 'INTEGER DEFAULT 0' },

@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.5.2",
+      "date": "April 13, 2026",
+      "title": "Soft-Delete for Agents & Workflows - AGNT v0.5.2",
+      "type": "patch",
+      "features": [
+        { "name": "Soft-Delete Preserves Execution History for Agents & Workflows", "status": "new" },
+        { "name": "FK Constraint Errors on Agent/Workflow Delete", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.1",
       "date": "April 12, 2026",
       "title": "Conversation Groups, Workflow Tool Fixes & Claude Code Billing - AGNT v0.5.1",
@@ -312,6 +323,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-04-12T12:00:00Z"
+    "lastUpdated": "2026-04-13T12:00:00Z"
   }
 }

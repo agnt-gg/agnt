@@ -89,11 +89,16 @@ class WorkflowModel {
     });
   }
   static delete(id, userId) {
+    // Soft-delete: preserves FK-referenced history (workflow_executions, node_executions, tasks, etc.)
     return new Promise((resolve, reject) => {
-      db.run('DELETE FROM workflows WHERE id = ? AND user_id = ?', [id, userId], function (err) {
-        if (err) reject(err);
-        else resolve(this.changes);
-      });
+      db.run(
+        'UPDATE workflows SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
+        [id, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
     });
   }
   static create(id, workflowData, userId) {
@@ -106,7 +111,7 @@ class WorkflowModel {
   }
   static findAllByUserId(userId) {
     return new Promise((resolve, reject) => {
-      db.all('SELECT * FROM workflows WHERE user_id = ?', [userId], (err, rows) => {
+      db.all('SELECT * FROM workflows WHERE user_id = ? AND deleted_at IS NULL', [userId], (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
       });
@@ -120,7 +125,7 @@ class WorkflowModel {
     return new Promise((resolve, reject) => {
       db.all(
         `SELECT id, user_id, name, description, category, node_summary, status, is_shareable, created_at, updated_at
-         FROM workflows WHERE user_id = ?`,
+         FROM workflows WHERE user_id = ? AND deleted_at IS NULL`,
         [userId],
         (err, rows) => {
           if (err) reject(err);
@@ -137,7 +142,7 @@ class WorkflowModel {
     return new Promise((resolve, reject) => {
       const placeholders = statuses.map(() => '?').join(',');
       const query = `SELECT id, user_id, name, description, category, node_summary, status, is_shareable, created_at, updated_at
-                     FROM workflows WHERE user_id = ? AND status IN (${placeholders})`;
+                     FROM workflows WHERE user_id = ? AND status IN (${placeholders}) AND deleted_at IS NULL`;
       db.all(query, [userId, ...statuses], (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
@@ -146,7 +151,7 @@ class WorkflowModel {
   }
   static findOne(id) {
     return new Promise((resolve, reject) => {
-      db.get('SELECT * FROM workflows WHERE id = ?', [id], (err, row) => {
+      db.get('SELECT * FROM workflows WHERE id = ? AND deleted_at IS NULL', [id], (err, row) => {
         if (err) reject(err);
         else resolve(row);
       });
@@ -168,7 +173,7 @@ class WorkflowModel {
   static findByStatus(statuses) {
     return new Promise((resolve, reject) => {
       const placeholders = statuses.map(() => '?').join(',');
-      db.all(`SELECT * FROM workflows WHERE status IN (${placeholders})`, statuses, (err, rows) => {
+      db.all(`SELECT * FROM workflows WHERE status IN (${placeholders}) AND deleted_at IS NULL`, statuses, (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
       });
@@ -180,7 +185,7 @@ class WorkflowModel {
       const query = `
         SELECT id, user_id, workflow_data, status
         FROM workflows
-        WHERE status IN (${placeholders})
+        WHERE status IN (${placeholders}) AND deleted_at IS NULL
         LIMIT ? OFFSET ?
       `;
       db.all(query, [...statuses, limit, offset], (err, rows) => {

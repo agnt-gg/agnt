@@ -54,7 +54,7 @@ class AgentModel {
          (SELECT COUNT(*) FROM agent_workflows WHERE agent_id = a.id) as workflow_count
          FROM agents a
          LEFT JOIN agent_resources ar ON a.id = ar.agent_id
-         WHERE a.id = ?`,
+         WHERE a.id = ? AND a.deleted_at IS NULL`,
         [id],
         (err, agent) => {
           if (err) reject(err);
@@ -78,7 +78,7 @@ class AgentModel {
          (SELECT COUNT(*) FROM agent_workflows WHERE agent_id = a.id) as workflow_count
          FROM agents a
          LEFT JOIN agent_resources ar ON a.id = ar.agent_id
-         WHERE a.created_by = ?
+         WHERE a.created_by = ? AND a.deleted_at IS NULL
          ORDER BY a.updated_at DESC`,
         [userId],
         (err, agents) => {
@@ -107,17 +107,16 @@ class AgentModel {
     });
   }
   static delete(id, userId) {
+    // Soft-delete: preserves FK-referenced history (agent_executions, tasks, etc.)
     return new Promise((resolve, reject) => {
-      db.run('DELETE FROM agents WHERE id = ? AND created_by = ?', [id, userId], function (err) {
-        if (err) reject(err);
-        else {
-          // Delete associated resources
-          db.run('DELETE FROM agent_resources WHERE agent_id = ?', [id], (err) => {
-            if (err) reject(err);
-            else resolve(this.changes);
-          });
+      db.run(
+        'UPDATE agents SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND created_by = ? AND deleted_at IS NULL',
+        [id, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
         }
-      });
+      );
     });
   }
 }
