@@ -1039,32 +1039,45 @@ class AnthropicAdapter extends BaseAdapter {
   }
 
   /**
-   * Add rolling cache breakpoints to the last N conversation messages.
-   * This creates a rolling cache window: older turns cached, only newest is full-price.
-   * Uses 2 of the 4 available breakpoints (system + tools use the other 2).
+   * Hybrid 5m + 1h rolling breakpoints.
    *
-   * IMPORTANT: Always call _stripCacheMarkers first to clear stale markers
-   * from prior tool loop rounds — otherwise markers accumulate and exceed
-   * Anthropic's 4-breakpoint limit.
+   * With `count >= 2`:
+   *   - 1-hour marker on the second-to-last non-system message (the end of the
+   *     stable prior-turn prefix). Anthropic caches everything up to and
+   *     including this block, so prior turns survive long tool pauses / reads.
+   *   - 5-minute marker on the last non-system message (the current turn). This
+   *     shorter-TTL marker doesn't invalidate the 1h prefix — the prefix cache
+   *     is still hit even when the 5m marker is new.
+   *
+   * With `count === 1` (or only one eligible message): fall back to a single
+   * 5m marker on the latest message.
+   *
+   * The caller (Anthropic adapter) must also mark system + tools with 1h,
+   * for a total of 4 breakpoints (system/tools/prefix = 1h, latest = 5m).
+   *
+   * IMPORTANT: Always strip stale markers first. When the adapter loops
+   * through multiple tool-call rounds in one turn, markers on old message
+   * positions must be cleared or the 4-breakpoint cap is exceeded.
    */
   _applyRollingCacheBreakpoints(messages, count = 2) {
     if (!messages || messages.length === 0) return;
 
-    // First, strip any existing cache_control from all messages
     this._stripCacheMarkers(messages);
 
-    // Find indices of non-system messages (user + assistant)
     const indices = [];
     for (let i = 0; i < messages.length; i++) {
-      if (messages[i].role !== 'system') {
-        indices.push(i);
-      }
+      if (messages[i].role !== 'system') indices.push(i);
     }
+    if (indices.length === 0) return;
 
-    // Mark the last N messages
-    const toMark = indices.slice(-count);
-    for (const idx of toMark) {
-      this._applyCacheMarker(messages[idx], { type: 'ephemeral' });
+    const latestIdx = indices[indices.length - 1];
+
+    if (count >= 2 && indices.length >= 2) {
+      const prefixIdx = indices[indices.length - 2];
+      this._applyCacheMarker(messages[prefixIdx], { type: 'ephemeral', ttl: '1h' });
+      this._applyCacheMarker(messages[latestIdx], { type: 'ephemeral' });
+    } else if (count >= 1) {
+      this._applyCacheMarker(messages[latestIdx], { type: 'ephemeral' });
     }
   }
 
@@ -1149,10 +1162,10 @@ class AnthropicAdapter extends BaseAdapter {
             systemBlocks.push({
               type: 'text',
               text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
-              cache_control: { type: 'ephemeral' },
+              cache_control: { type: 'ephemeral', ttl: '1h' },
             });
           } else {
-            systemBlocks[1].cache_control = { type: 'ephemeral' };
+            systemBlocks[1].cache_control = { type: 'ephemeral', ttl: '1h' };
           }
           systemParam = systemBlocks;
           usedBreakpoints = 1;
@@ -1161,20 +1174,22 @@ class AnthropicAdapter extends BaseAdapter {
             {
               type: 'text',
               text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
-              cache_control: { type: 'ephemeral' },
+              cache_control: { type: 'ephemeral', ttl: '1h' },
             },
           ];
           usedBreakpoints = 1;
         }
 
-        // Breakpoint on last tool
+        // Breakpoint on last tool — 1h because the tools array grows
+        // monotonically within a conversation (additive-only in chatConfigs).
         const anthropicTools = this._transformToolsToAnthropic(tools);
         if (anthropicTools.length > 0) {
-          anthropicTools[anthropicTools.length - 1].cache_control = { type: 'ephemeral' };
+          anthropicTools[anthropicTools.length - 1].cache_control = { type: 'ephemeral', ttl: '1h' };
           usedBreakpoints++;
         }
 
-        // Remaining breakpoints for rolling messages (max 4 total)
+        // Remaining breakpoints for rolling messages (max 4 total).
+        // _applyRollingCacheBreakpoints handles the hybrid 1h-prefix + 5m-latest split.
         const messageBreakpoints = Math.max(0, 4 - usedBreakpoints);
         this._applyRollingCacheBreakpoints(conversationMessages, messageBreakpoints);
 
@@ -1357,7 +1372,14 @@ Please carefully check the tool schema and ensure all parameters match the expec
       let accumulatedContent = '';
       let accumulatedToolCalls = [];
       let contentBlocks = [];
-      let anthropicUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+      let anthropicUsage = {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_5m_input_tokens: 0,
+        cache_creation_1h_input_tokens: 0,
+      };
 
       try {
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
@@ -1426,10 +1448,10 @@ Please carefully check the tool schema and ensure all parameters match the expec
             systemBlocks.push({
               type: 'text',
               text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
-              cache_control: { type: 'ephemeral' },
+              cache_control: { type: 'ephemeral', ttl: '1h' },
             });
           } else {
-            systemBlocks[1].cache_control = { type: 'ephemeral' };
+            systemBlocks[1].cache_control = { type: 'ephemeral', ttl: '1h' };
           }
           systemParam = systemBlocks;
           usedBreakpoints = 1;
@@ -1438,20 +1460,22 @@ Please carefully check the tool schema and ensure all parameters match the expec
             {
               type: 'text',
               text: typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt),
-              cache_control: { type: 'ephemeral' },
+              cache_control: { type: 'ephemeral', ttl: '1h' },
             },
           ];
           usedBreakpoints = 1;
         }
 
-        // Breakpoint on last tool
+        // Breakpoint on last tool — 1h because the tools array grows
+        // monotonically within a conversation (additive-only in chatConfigs).
         const anthropicTools = this._transformToolsToAnthropic(tools);
         if (anthropicTools.length > 0) {
-          anthropicTools[anthropicTools.length - 1].cache_control = { type: 'ephemeral' };
+          anthropicTools[anthropicTools.length - 1].cache_control = { type: 'ephemeral', ttl: '1h' };
           usedBreakpoints++;
         }
 
-        // Remaining breakpoints for rolling messages (max 4 total)
+        // Remaining breakpoints for rolling messages (max 4 total).
+        // _applyRollingCacheBreakpoints handles the hybrid 1h-prefix + 5m-latest split.
         const messageBreakpoints = Math.max(0, 4 - usedBreakpoints);
         this._applyRollingCacheBreakpoints(conversationMessages, messageBreakpoints);
 
@@ -1482,12 +1506,20 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
             // Capture usage from message_start event (contains input_tokens)
             if (event.type === 'message_start' && event.message?.usage) {
-              anthropicUsage.input_tokens = event.message.usage.input_tokens || 0;
-              if (event.message.usage.cache_creation_input_tokens) {
-                anthropicUsage.cache_creation_input_tokens = event.message.usage.cache_creation_input_tokens;
+              const u = event.message.usage;
+              anthropicUsage.input_tokens = u.input_tokens || 0;
+              if (u.cache_creation_input_tokens) {
+                anthropicUsage.cache_creation_input_tokens = u.cache_creation_input_tokens;
               }
-              if (event.message.usage.cache_read_input_tokens) {
-                anthropicUsage.cache_read_input_tokens = event.message.usage.cache_read_input_tokens;
+              if (u.cache_read_input_tokens) {
+                anthropicUsage.cache_read_input_tokens = u.cache_read_input_tokens;
+              }
+              // Hybrid 5m/1h breakdown — populated when extended-cache-ttl-2025-04-11
+              // beta header is active. Flatten nested shape so downstream accumulator
+              // code (OrchestratorService.accumulateUsage) can read either shape.
+              if (u.cache_creation) {
+                anthropicUsage.cache_creation_5m_input_tokens = u.cache_creation.ephemeral_5m_input_tokens || 0;
+                anthropicUsage.cache_creation_1h_input_tokens = u.cache_creation.ephemeral_1h_input_tokens || 0;
               }
             }
 

@@ -292,6 +292,15 @@ function manageContext(messages, model, tools = [], provider = null) {
     console.log(`Context managed: reduced from ${estimateMessagesTokens(messages)} to ${currentTokens} tokens`);
   }
 
+  // Per-component breakdown for UI reporting. Each request to the LLM
+  // actually contains system + tools + non-system messages (not just
+  // `managedTokens`, which is the full messages array estimate).
+  const systemMsg = managedMessages.find((m) => m.role === 'system');
+  const systemTokens = systemMsg ? estimateMessagesTokens([systemMsg]) : 0;
+  const nonSystemMessages = managedMessages.filter((m) => m.role !== 'system');
+  const messagesTokens = estimateMessagesTokens(nonSystemMessages);
+  const totalRequestTokens = systemTokens + toolTokens + messagesTokens;
+
   return {
     messages: managedMessages,
     originalTokens: estimateMessagesTokens(messages),
@@ -299,6 +308,12 @@ function manageContext(messages, model, tools = [], provider = null) {
     tokenLimit: availableTokens,
     contextWindow: tokenLimit + RESPONSE_BUFFER,
     wasManaged: currentTokens < estimateMessagesTokens(messages),
+    // Per-component breakdown for accurate "what Anthropic sees" reporting
+    systemTokens,
+    toolTokens,
+    messagesTokens,
+    outputBufferTokens: RESPONSE_BUFFER,
+    totalRequestTokens,
   };
 }
 

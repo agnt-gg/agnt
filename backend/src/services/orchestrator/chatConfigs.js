@@ -9,7 +9,7 @@ import { getAgentSystemContent } from './system-prompts/agent-chat.js';
 import { getWorkflowSystemContent } from './system-prompts/workflow-chat.js';
 import { ASYNC_EXECUTION_GUIDANCE } from './system-prompts/async-execution.js';
 import { SECTION_NAMES } from './apiReference.js';
-import { selectTools } from './toolSelector.js';
+import { selectTools, getToolsForCategories, DEFAULT_TOOLS } from './toolSelector.js';
 
 /**
  * Load relevant memories and format as a system prompt section.
@@ -51,7 +51,7 @@ export const CHAT_CONFIGS = {
       // If images are uploaded, force-add media group
       const hasImages = context.imageData && context.imageData.length > 0;
 
-      const { filteredSchemas, matchedGroups } = selectTools(allSchemas, latestUserMessage);
+      const { matchedGroups } = selectTools(allSchemas, latestUserMessage);
 
       // Force media group if images were uploaded
       if (hasImages && !matchedGroups.has('media')) {
@@ -61,35 +61,40 @@ export const CHAT_CONFIGS = {
 
       // --- Additive-only tool groups (prompt caching) ---
       // Merge newly matched groups with previously loaded groups so tools
-      // only grow, never shrink. This keeps the tools array stable for caching.
+      // only grow, never shrink.
       const previousGroups = context._loadedToolGroups || new Set();
       const allGroups = new Set([...previousGroups, ...matchedGroups]);
 
-      // If new groups were added beyond what selectTools returned, pull in their tools
-      if (allGroups.size > matchedGroups.size) {
-        const { getToolsForCategories } = await import('./toolSelector.js');
-        const extraSchemas = getToolsForCategories(allSchemas, allGroups);
-        for (const schema of extraSchemas) {
-          if (!filteredSchemas.some((s) => s.function?.name === schema.function?.name)) {
-            filteredSchemas.push(schema);
-          }
+      // Build the tool list DETERMINISTICALLY by filtering allSchemas in its
+      // native order. The previous implementation appended extras to whatever
+      // selectTools returned for THIS turn's matched groups, which made the
+      // array order depend on which subset matched — busting Anthropic's tools
+      // cache any time the matched set changed across turns.
+      const groupToolNames = new Set();
+      for (const group of allGroups) {
+        const tools = getToolsForCategories(allSchemas, [group]);
+        for (const t of tools) {
+          if (t.function?.name) groupToolNames.add(t.function.name);
         }
       }
+      let filteredSchemas = allSchemas.filter((schema) => {
+        const name = schema.function?.name;
+        if (!name) return false;
+        if (DEFAULT_TOOLS.has(name)) return true;
+        return groupToolNames.has(name);
+      });
 
       // Apply user's tool selector choices — remove any tools the user disabled
       if (context.enabledTools) {
-        for (let i = filteredSchemas.length - 1; i >= 0; i--) {
-          const name = filteredSchemas[i].function?.name;
-          if (name && !context.enabledTools.has(name)) {
-            filteredSchemas.splice(i, 1);
-          }
-        }
+        filteredSchemas = filteredSchemas.filter((s) =>
+          context.enabledTools.has(s.function?.name)
+        );
       }
 
       // Persist the union of all loaded groups on context
       context._loadedToolGroups = allGroups;
 
-      console.log(`[Cache] Tool groups: [${[...allGroups].join(', ')}] → ${filteredSchemas.length} tools (additive-only)`);
+      console.log(`[Cache] Tool groups: [${[...allGroups].join(', ')}] → ${filteredSchemas.length} tools (additive-only, deterministic order)`);
 
       return filteredSchemas;
     },
@@ -244,15 +249,23 @@ export const CHAT_CONFIGS = {
         }
       }
 
-      // Load relevant agent memories (includes global/orchestrator memories)
+      // Load relevant agent memories (includes global/orchestrator memories).
+      // Freeze per conversation so the system prompt stays byte-identical
+      // across turns — required for Anthropic prompt caching (and OpenAI/Gemini
+      // auto-caches) to hit on the system breakpoint.
       let memorySection = '';
-      try {
-        const memBase = await loadMemorySection(context.userId, context.latestUserMessage, agentId);
-        if (memBase) {
-          memorySection = memBase + '\n\nUse these memories to provide personalized responses. If you learn new facts or receive corrections, use the save_agent_memory tool to store them.';
+      if (context._frozenMemorySection !== undefined) {
+        memorySection = context._frozenMemorySection;
+      } else {
+        try {
+          const memBase = await loadMemorySection(context.userId, context.latestUserMessage, agentId);
+          if (memBase) {
+            memorySection = memBase + '\n\nUse these memories to provide personalized responses. If you learn new facts or receive corrections, use the save_agent_memory tool to store them.';
+          }
+        } catch (e) {
+          console.warn('[chatConfigs] Failed to load agent memories:', e.message);
         }
-      } catch (e) {
-        console.warn('[chatConfigs] Failed to load agent memories:', e.message);
+        context._frozenMemorySection = memorySection;
       }
 
       // If we have agent context from AgentService, use it
@@ -684,7 +697,12 @@ function apiFetch(url, options = {}) {
 \`\`\`
 Always use \`apiFetch()\` instead of raw \`fetch()\` for AGNT API requests. This is not optional — endpoints that require auth will reject requests without the Bearer token.
 
-Always be helpful and guide users through the widget creation process step by step.${await loadMemorySection(userId, latestUserMessage)}`;
+Always be helpful and guide users through the widget creation process step by step.${await (async () => {
+  if (context._frozenMemorySection !== undefined) return context._frozenMemorySection;
+  const m = await loadMemorySection(userId, latestUserMessage);
+  context._frozenMemorySection = m;
+  return m;
+})()}`;
     },
     maxToolRounds: 100,
     responseType: 'stream',

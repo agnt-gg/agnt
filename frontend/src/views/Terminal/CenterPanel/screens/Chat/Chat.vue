@@ -31,6 +31,10 @@
               :tokenUsage="lastTokenUsage"
               :cacheMetrics="lastCacheMetrics"
               :estimatedCost="lastEstimatedCost"
+              :totalTokenUsage="totalTokenUsage"
+              :totalCost="totalCost"
+              :totalCacheMetrics="totalCacheMetrics"
+              :executionsCount="executionsCount"
             />
             <SystemHealthPanel
               :contextManaged="contextManaged"
@@ -334,15 +338,29 @@ export default {
         utilizationPercent: 0,
         model: store.state.aiProvider?.selectedModel || 'N/A',
         messagesCount: 0,
+        breakdown: null,
       },
       lastContextManaged: null,
       contextManaged: false,
       errorsCaught: 0,
       toolTruncations: 0,
       toolsLoadedCount: 0,
+      // Last-call stats (most recent LLM turn only)
       lastTokenUsage: null,
       lastCacheMetrics: null,
       lastEstimatedCost: null,
+      // Conversation-wide cumulative stats. Accumulated from every
+      // agent_execution_completed event and hydrated from the DB summary
+      // when reopening a conversation.
+      totalTokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      totalCost: 0,
+      totalCacheMetrics: {
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        uncachedTokens: 0,
+        hitRate: '0',
+      },
+      executionsCount: 0,
       systemActivities: [],
     });
 
@@ -373,6 +391,10 @@ export default {
     const lastTokenUsage = computed(() => activeMonitoring.value.lastTokenUsage);
     const lastCacheMetrics = computed(() => activeMonitoring.value.lastCacheMetrics);
     const lastEstimatedCost = computed(() => activeMonitoring.value.lastEstimatedCost);
+    const totalTokenUsage = computed(() => activeMonitoring.value.totalTokenUsage);
+    const totalCost = computed(() => activeMonitoring.value.totalCost);
+    const totalCacheMetrics = computed(() => activeMonitoring.value.totalCacheMetrics);
+    const executionsCount = computed(() => activeMonitoring.value.executionsCount);
     const systemActivities = computed(() => activeMonitoring.value.systemActivities);
 
     // Known context windows for common models (static data, no API call needed)
@@ -673,6 +695,9 @@ export default {
               utilizationPercent: data.utilizationPercent,
               model: data.model,
               messagesCount: data.messagesCount,
+              // Per-component breakdown so ContextMonitor can render a
+              // segmented bar (system / tools / messages / output buffer).
+              breakdown: data.breakdown || null,
             };
           }
           break;
@@ -730,6 +755,35 @@ export default {
             ms.lastCacheMetrics = data.cacheMetrics || null;
             ms.lastEstimatedCost = data.estimatedCost != null ? data.estimatedCost : null;
             if (data.toolCallsCount > 0) ms.toolsLoadedCount = data.toolCallsCount;
+
+            // Accumulate conversation-wide totals. Each event carries the
+            // per-turn totals already summed by the backend tokenAccumulator,
+            // so we just add turn-over-turn here.
+            if (data.tokenUsage) {
+              ms.totalTokenUsage.inputTokens += data.tokenUsage.inputTokens || 0;
+              ms.totalTokenUsage.outputTokens += data.tokenUsage.outputTokens || 0;
+              ms.totalTokenUsage.totalTokens += data.tokenUsage.totalTokens || 0;
+            }
+            if (data.estimatedCost != null) {
+              ms.totalCost += Number(data.estimatedCost) || 0;
+            }
+            if (data.cacheMetrics) {
+              ms.totalCacheMetrics.cacheReadTokens += data.cacheMetrics.cacheReadTokens || 0;
+              ms.totalCacheMetrics.cacheCreationTokens += data.cacheMetrics.cacheCreationTokens || 0;
+              ms.totalCacheMetrics.uncachedTokens += data.cacheMetrics.uncachedTokens || 0;
+              const totalIn = ms.totalTokenUsage.inputTokens;
+              ms.totalCacheMetrics.hitRate = totalIn > 0
+                ? ((ms.totalCacheMetrics.cacheReadTokens / totalIn) * 100).toFixed(1)
+                : '0';
+            }
+            // Only count events that actually carried token usage. Some
+            // agent_execution_completed events fire without tokenUsage (e.g.
+            // early failures, aborts), and counting them inflates the "N calls"
+            // label past what the activity feed shows.
+            if (data.tokenUsage && (data.tokenUsage.totalTokens || 0) > 0) {
+              ms.executionsCount += 1;
+            }
+
             if (data.tokenUsage) {
               const t = data.tokenUsage;
               let text = `Tokens: ${t.inputTokens?.toLocaleString()} in / ${t.outputTokens?.toLocaleString()} out`;
@@ -1403,6 +1457,27 @@ export default {
         ms.lastCacheMetrics = latest.cacheMetrics || null;
         ms.lastEstimatedCost = latest.estimatedCost != null ? latest.estimatedCost : null;
         if (latest.toolCallsCount > 0) ms.toolsLoadedCount = latest.toolCallsCount;
+
+        // Seed conversation-wide totals from the DB rollup so the panel shows
+        // correct cumulative cost/cache stats across page reloads.
+        const cum = summary.cumulative;
+        if (cum) {
+          ms.totalTokenUsage = {
+            inputTokens: cum.inputTokens || 0,
+            outputTokens: cum.outputTokens || 0,
+            totalTokens: cum.totalTokens || 0,
+          };
+          ms.totalCost = Number(cum.estimatedCost) || 0;
+          if (cum.cacheMetrics) {
+            ms.totalCacheMetrics = {
+              cacheReadTokens: cum.cacheMetrics.cacheReadTokens || 0,
+              cacheCreationTokens: cum.cacheMetrics.cacheCreationTokens || 0,
+              uncachedTokens: cum.cacheMetrics.uncachedTokens || 0,
+              hitRate: cum.cacheMetrics.hitRate || '0',
+            };
+          }
+        }
+        ms.executionsCount = summary.executionsCount || 0;
       } catch (e) {
         // Reset the hydration flag so we can retry later if the user
         // stays on this conversation and the network recovers.
@@ -1673,6 +1748,10 @@ export default {
       lastTokenUsage,
       lastCacheMetrics,
       lastEstimatedCost,
+      totalTokenUsage,
+      totalCost,
+      totalCacheMetrics,
+      executionsCount,
       systemActivities,
       clearActivities,
       handleUserInputSubmit,

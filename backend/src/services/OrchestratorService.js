@@ -674,6 +674,10 @@ async function universalChatHandler(req, res, context = {}) {
   const tokenAccumulator = {
     inputTokens: 0, outputTokens: 0, totalTokens: 0,
     cacheReadTokens: 0, cacheCreationTokens: 0,
+    // Hybrid-TTL breakdown of cache writes (Anthropic extended-cache-ttl beta).
+    // Sum equals cacheCreationTokens. If the split is not reported, the full
+    // write total is treated as 5m (pre-beta behavior).
+    cacheCreation5mTokens: 0, cacheCreation1hTokens: 0,
   };
 
   try {
@@ -915,13 +919,24 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
 
-    // Send context status
+    // Send context status.
+    // `currentTokens` / `utilizationPercent` are retained for backwards
+    // compatibility but now reflect the TRUE per-request input size
+    // (system + tools + messages), not just the messages-array estimate.
+    // The breakdown fields drive the segmented bar in the frontend.
     sendEvent('context_status', {
-      currentTokens: contextResult.managedTokens,
+      currentTokens: contextResult.totalRequestTokens,
       tokenLimit: contextResult.contextWindow,
-      utilizationPercent: (contextResult.managedTokens / contextResult.contextWindow) * 100,
+      utilizationPercent: (contextResult.totalRequestTokens / contextResult.contextWindow) * 100,
       model: model,
       messagesCount: contextResult.messages.length,
+      breakdown: {
+        systemTokens: contextResult.systemTokens,
+        toolTokens: contextResult.toolTokens,
+        messagesTokens: contextResult.messagesTokens,
+        outputBufferTokens: contextResult.outputBufferTokens,
+        totalRequestTokens: contextResult.totalRequestTokens,
+      },
     });
 
     if (contextResult.wasManaged) {
@@ -959,6 +974,23 @@ IMPORTANT: The image data is already available in the system context. You don't 
         tokenAccumulator.inputTokens += totalInput;
         tokenAccumulator.cacheReadTokens += cacheRead;
         tokenAccumulator.cacheCreationTokens += cacheWrite;
+
+        // Hybrid-TTL split. Flat fields are populated by the streaming adapter
+        // (llmAdapters.js); nested `cache_creation.ephemeral_*` shape may arrive
+        // directly from the non-streaming SDK response. If neither is present,
+        // attribute the full write total to 5m (back-compat with pre-beta).
+        const write5m = usage.cache_creation_5m_input_tokens
+          || usage.cache_creation?.ephemeral_5m_input_tokens
+          || 0;
+        const write1h = usage.cache_creation_1h_input_tokens
+          || usage.cache_creation?.ephemeral_1h_input_tokens
+          || 0;
+        if (write5m + write1h > 0) {
+          tokenAccumulator.cacheCreation5mTokens += write5m;
+          tokenAccumulator.cacheCreation1hTokens += write1h;
+        } else {
+          tokenAccumulator.cacheCreation5mTokens += cacheWrite;
+        }
       } else {
         // OpenAI / others: prompt_tokens is already the full total
         const input = usage.prompt_tokens || usage.input_tokens || 0;
@@ -1598,6 +1630,23 @@ IMPORTANT: The image data is already available in the system context. You don't 
         });
       }
 
+      // Emit updated context status so the UI reflects the growing message
+      // history after each tool round (user sees tool_result bytes added).
+      sendEvent('context_status', {
+        currentTokens: loopContextResult.totalRequestTokens,
+        tokenLimit: loopContextResult.contextWindow,
+        utilizationPercent: (loopContextResult.totalRequestTokens / loopContextResult.contextWindow) * 100,
+        model: model,
+        messagesCount: loopContextResult.messages.length,
+        breakdown: {
+          systemTokens: loopContextResult.systemTokens,
+          toolTokens: loopContextResult.toolTokens,
+          messagesTokens: loopContextResult.messagesTokens,
+          outputBufferTokens: loopContextResult.outputBufferTokens,
+          totalRequestTokens: loopContextResult.totalRequestTokens,
+        },
+      });
+
       // Make next LLM call with streaming to get response to tool results
       console.log(`[Tool Loop] Round ${currentRound}: Calling LLM for response to tool results`);
       const nextResponse = await adapter.callStream(
@@ -1796,7 +1845,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
             tokenAccumulator.outputTokens,
             {
               cacheReadTokens: tokenAccumulator.cacheReadTokens,
-              cacheCreationTokens: tokenAccumulator.cacheCreationTokens,
+              cacheCreation5mTokens: tokenAccumulator.cacheCreation5mTokens,
+              cacheCreation1hTokens: tokenAccumulator.cacheCreation1hTokens,
             }
           );
           tokenUsageForDb = {
@@ -1807,9 +1857,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
             cacheReadTokens: tokenAccumulator.cacheReadTokens,
             cacheCreationTokens: tokenAccumulator.cacheCreationTokens,
           };
-          // Enhanced logging with cache metrics
+          const write5m = tokenAccumulator.cacheCreation5mTokens;
+          const write1h = tokenAccumulator.cacheCreation1hTokens;
+          const uncached = tokenAccumulator.inputTokens - tokenAccumulator.cacheReadTokens - tokenAccumulator.cacheCreationTokens;
           const cacheInfo = (tokenAccumulator.cacheReadTokens > 0 || tokenAccumulator.cacheCreationTokens > 0)
-            ? ` (cache: ${tokenAccumulator.cacheReadTokens} read, ${tokenAccumulator.cacheCreationTokens} write, ${tokenAccumulator.inputTokens - tokenAccumulator.cacheReadTokens - tokenAccumulator.cacheCreationTokens} uncached)`
+            ? ` (cache: ${tokenAccumulator.cacheReadTokens} read, ${write5m} write-5m, ${write1h} write-1h, ${uncached} uncached)`
             : '';
           console.log(`[Token Usage] ${tokenAccumulator.inputTokens} in${cacheInfo} / ${tokenAccumulator.outputTokens} out = ${tokenAccumulator.totalTokens} total, est. cost: $${(tokenUsageForDb.estimatedCost || 0).toFixed(6)}`);
         }
@@ -1834,6 +1886,8 @@ IMPORTANT: The image data is already available in the system context. You don't 
           cacheMetrics: (tokenAccumulator.cacheReadTokens > 0 || tokenAccumulator.cacheCreationTokens > 0) ? {
             cacheReadTokens: tokenAccumulator.cacheReadTokens,
             cacheCreationTokens: tokenAccumulator.cacheCreationTokens,
+            cacheCreation5mTokens: tokenAccumulator.cacheCreation5mTokens,
+            cacheCreation1hTokens: tokenAccumulator.cacheCreation1hTokens,
             uncachedTokens: tokenAccumulator.inputTokens - tokenAccumulator.cacheReadTokens - tokenAccumulator.cacheCreationTokens,
             hitRate: tokenAccumulator.inputTokens > 0
               ? ((tokenAccumulator.cacheReadTokens / tokenAccumulator.inputTokens) * 100).toFixed(1)

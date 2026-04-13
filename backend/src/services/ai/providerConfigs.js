@@ -79,7 +79,15 @@ const PROVIDER_CONFIGS = [
     baseURL: 'https://api.anthropic.com/v1',
     sdkType: 'anthropic',
     authScheme: 'api-key',
-    fetchHeaders: { 'anthropic-version': '2023-06-01' },
+    fetchHeaders: {
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31,extended-cache-ttl-2025-04-11',
+    },
+    sdkOptions: {
+      defaultHeaders: {
+        'anthropic-beta': 'prompt-caching-2024-07-31,extended-cache-ttl-2025-04-11',
+      },
+    },
     pagination: {
       enabled: true,
       pageSize: 100,
@@ -119,7 +127,6 @@ const PROVIDER_CONFIGS = [
     }),
     modelFilter: (m) => m.id && m.display_name,
     compat: {},
-    sdkOptions: {},
   },
 
   // ─────────────────────────── CLAUDE CODE ───────────────────────────
@@ -139,7 +146,7 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {
       defaultHeaders: {
         'anthropic-beta':
-          'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31',
+          'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31,extended-cache-ttl-2025-04-11',
         'user-agent': 'claude-cli/2.1.2 (external, cli)',
         'x-app': 'cli',
         'anthropic-dangerous-direct-browser-access': 'true',
@@ -869,19 +876,22 @@ export function getModelMetadata(providerKey, modelId) {
  * prompt cache discounts where applicable.
  *
  * Cache pricing multipliers (applied to base input cost):
- *   - Anthropic cache read  : 0.1×  (90% discount)
- *   - Anthropic cache write : 1.25× (5-minute ephemeral — what we currently use)
- *   - OpenAI cache read     : 0.5×  (50% discount, auto-applied by OpenAI)
- *   - OpenAI cache write    : 1.0×  (no premium; OpenAI doesn't bill writes separately)
+ *   - Anthropic cache read       : 0.1×  (90% discount, same for 5m & 1h)
+ *   - Anthropic 5-min cache write: 1.25×
+ *   - Anthropic 1-hour cache write: 2.0×  (extended-cache-ttl-2025-04-11)
+ *   - OpenAI cache read          : 0.5×  (auto-applied, 50% discount)
+ *   - OpenAI cache write         : 1.0×  (no write premium)
  *
- * `inputTokens` is the TRUE TOTAL input (uncached + cache_read + cache_creation).
- * Uncached portion = inputTokens - cacheReadTokens - cacheCreationTokens.
+ * `inputTokens` is the TRUE TOTAL input (uncached + cache_read + cache_creation_5m + cache_creation_1h).
+ *
+ * Back-compat: if only `cacheCreationTokens` is passed (no 5m/1h split), it is
+ * treated as 5-minute creation (the historical default).
  *
  * @param {string} providerKey
  * @param {string} modelId
  * @param {number} inputTokens - total input tokens (includes cached)
  * @param {number} outputTokens - total output tokens
- * @param {object} [cache] - optional cache breakdown { cacheReadTokens, cacheCreationTokens }
+ * @param {object} [cache] - { cacheReadTokens, cacheCreation5mTokens, cacheCreation1hTokens, cacheCreationTokens }
  * @returns {{inputCost:number, outputCost:number, totalCost:number}|null}
  */
 export function getModelCost(providerKey, modelId, inputTokens, outputTokens, cache = {}) {
@@ -889,26 +899,35 @@ export function getModelCost(providerKey, modelId, inputTokens, outputTokens, ca
   if (!meta || meta.inputCostPer1M == null || meta.outputCostPer1M == null) return null;
 
   const cacheRead = cache.cacheReadTokens || 0;
-  const cacheWrite = cache.cacheCreationTokens || 0;
-  const uncached = Math.max(0, inputTokens - cacheRead - cacheWrite);
+  const cacheWrite5m = cache.cacheCreation5mTokens != null
+    ? cache.cacheCreation5mTokens
+    : (cache.cacheCreationTokens || 0); // back-compat: legacy field treated as 5m
+  const cacheWrite1h = cache.cacheCreation1hTokens || 0;
+  const cacheWriteTotal = cacheWrite5m + cacheWrite1h;
+  const uncached = Math.max(0, inputTokens - cacheRead - cacheWriteTotal);
 
-  // Provider-specific cache multipliers
   const key = (providerKey || '').toLowerCase();
-  let readMult, writeMult;
+  let readMult, write5mMult, write1hMult;
   if (key === 'anthropic' || key === 'claude-code') {
     readMult = 0.1;
-    writeMult = 1.25;
+    write5mMult = 1.25;
+    write1hMult = 2.0;
   } else if (key === 'openai' || key === 'openai-codex') {
     readMult = 0.5;
-    writeMult = 1.0;
+    write5mMult = 1.0;
+    write1hMult = 1.0;
   } else {
-    // Unknown providers: treat all input at base rate (no discount)
     readMult = 1.0;
-    writeMult = 1.0;
+    write5mMult = 1.0;
+    write1hMult = 1.0;
   }
 
   const baseIn = meta.inputCostPer1M / 1_000_000;
-  const inputCost = uncached * baseIn + cacheRead * baseIn * readMult + cacheWrite * baseIn * writeMult;
+  const inputCost =
+    uncached * baseIn +
+    cacheRead * baseIn * readMult +
+    cacheWrite5m * baseIn * write5mMult +
+    cacheWrite1h * baseIn * write1hMult;
   const outputCost = (outputTokens / 1_000_000) * meta.outputCostPer1M;
 
   return {

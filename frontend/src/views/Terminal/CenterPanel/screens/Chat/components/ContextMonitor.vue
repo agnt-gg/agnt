@@ -1,23 +1,90 @@
 <template>
   <div class="context-monitor">
     <div class="context-header">
-      <span class="monitor-title">Context Usage</span>
+      <span class="monitor-title">Request Size</span>
       <span class="model-badge">{{ contextStatus?.model || 'N/A' }}</span>
     </div>
 
     <div class="context-bar">
-      <div class="usage-bar">
-        <div class="usage-fill" :class="getUsageClass()" :style="{ width: utilizationPercent + '%' }"></div>
+      <!-- Segmented bar: system / tools / messages / output buffer.
+           Falls back to a single-color fill when breakdown isn't available. -->
+      <div class="usage-bar segmented">
+        <template v-if="hasBreakdown">
+          <div class="seg seg-system" :style="{ width: systemPct + '%' }" :title="`System: ${formatNumber(breakdown.systemTokens)}`"></div>
+          <div class="seg seg-tools" :style="{ width: toolsPct + '%' }" :title="`Tools: ${formatNumber(breakdown.toolTokens)}`"></div>
+          <div class="seg seg-messages" :style="{ width: messagesPct + '%' }" :title="`Messages: ${formatNumber(breakdown.messagesTokens)}`"></div>
+          <div class="seg seg-output" :style="{ width: outputPct + '%' }" :title="`Output buffer: ${formatNumber(breakdown.outputBufferTokens)}`"></div>
+        </template>
+        <div v-else class="seg usage-fill" :class="getUsageClass()" :style="{ width: utilizationPercent + '%' }"></div>
       </div>
       <div class="context-info">
-        <span class="token-count"> {{ formatNumber(contextStatus?.currentTokens || 0) }} / {{ formatNumber(contextStatus?.tokenLimit || 0) }} </span>
+        <span class="token-count">{{ formatNumber(contextStatus?.currentTokens || 0) }} / {{ formatNumber(contextStatus?.tokenLimit || 0) }}</span>
         <span class="percentage">{{ utilizationPercent.toFixed(1) }}%</span>
       </div>
     </div>
 
-    <!-- Token Usage from last call -->
-    <div v-if="tokenUsage" class="token-usage-row">
-      <span class="usage-label">Last Call</span>
+    <!-- Legend with per-component numbers -->
+    <div v-if="hasBreakdown" class="context-legend">
+      <div class="legend-row">
+        <span class="legend-dot dot-system"></span>
+        <span class="legend-label">System</span>
+        <span class="legend-value">{{ formatNumber(breakdown.systemTokens) }}</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-dot dot-tools"></span>
+        <span class="legend-label">Tools</span>
+        <span class="legend-value">{{ formatNumber(breakdown.toolTokens) }}</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-dot dot-messages"></span>
+        <span class="legend-label">Messages</span>
+        <span class="legend-value">{{ formatNumber(breakdown.messagesTokens) }}</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-dot dot-output"></span>
+        <span class="legend-label">Output buffer</span>
+        <span class="legend-value">{{ formatNumber(breakdown.outputBufferTokens) }}</span>
+      </div>
+    </div>
+
+    <!-- Conversation Totals (cumulative across all turns) -->
+    <div v-if="hasTotals" class="section-divider">Conversation{{ executionsCount > 0 ? ` · ${executionsCount} call${executionsCount === 1 ? '' : 's'}` : '' }}</div>
+
+    <div v-if="hasTotals" class="token-usage-row">
+      <span class="usage-label">Tokens</span>
+      <div class="usage-values">
+        <span class="in-tokens">{{ formatNumber(totalTokenUsage.inputTokens || 0) }} in</span>
+        <span class="token-sep">&middot;</span>
+        <span class="out-tokens">{{ formatNumber(totalTokenUsage.outputTokens || 0) }} out</span>
+        <span class="token-sep">&middot;</span>
+        <span class="total-tokens">{{ formatNumber(totalTokenUsage.totalTokens || 0) }} total</span>
+      </div>
+    </div>
+
+    <div v-if="hasTotalCache" class="cache-row">
+      <div class="cache-label-group">
+        <span class="cache-label">Cache</span>
+        <span class="cache-hit-badge" :class="totalCacheHitClass" v-if="parseFloat(totalCacheMetrics.hitRate) > 0">{{ totalCacheMetrics.hitRate }}%</span>
+      </div>
+      <div class="cache-values">
+        <span class="cache-read">{{ formatNumber(totalCacheMetrics.cacheReadTokens || 0) }} hit</span>
+        <span class="cache-sep">&middot;</span>
+        <span class="cache-write">{{ formatNumber(totalCacheMetrics.cacheCreationTokens || 0) }} new</span>
+        <span class="cache-sep">&middot;</span>
+        <span class="cache-miss">{{ formatNumber(totalCacheMetrics.uncachedTokens || 0) }} miss</span>
+      </div>
+    </div>
+
+    <div v-if="hasTotals && totalCost > 0" class="cost-row cost-row-total">
+      <span class="cost-label">Cost</span>
+      <span class="cost-value">${{ totalCost < 0.01 ? totalCost.toFixed(6) : totalCost.toFixed(4) }}</span>
+    </div>
+
+    <!-- Last Call (per-turn debug row) -->
+    <div v-if="tokenUsage || cacheMetrics || (estimatedCost != null && estimatedCost > 0)" class="section-divider last-call-divider">Last Call</div>
+
+    <div v-if="tokenUsage" class="token-usage-row subtle">
+      <span class="usage-label">Tokens</span>
       <div class="usage-values">
         <span class="in-tokens">{{ formatNumber(tokenUsage.inputTokens || 0) }} in</span>
         <span class="token-sep">&middot;</span>
@@ -27,11 +94,10 @@
       </div>
     </div>
 
-    <!-- Cache Metrics -->
-    <div v-if="cacheMetrics" class="cache-row">
+    <div v-if="cacheMetrics" class="cache-row subtle">
       <div class="cache-label-group">
         <span class="cache-label">Cache</span>
-        <span class="cache-hit-badge" :class="cacheHitClass" v-if="cacheMetrics.hitRate > 0">{{ cacheMetrics.hitRate }}%</span>
+        <span class="cache-hit-badge" :class="cacheHitClass" v-if="parseFloat(cacheMetrics.hitRate) > 0">{{ cacheMetrics.hitRate }}%</span>
       </div>
       <div class="cache-values">
         <span class="cache-read">{{ formatNumber(cacheMetrics.cacheReadTokens || 0) }} hit</span>
@@ -42,8 +108,7 @@
       </div>
     </div>
 
-    <!-- Estimated Cost -->
-    <div v-if="estimatedCost != null && estimatedCost > 0" class="cost-row">
+    <div v-if="estimatedCost != null && estimatedCost > 0" class="cost-row subtle">
       <span class="cost-label">Cost</span>
       <span class="cost-value">${{ estimatedCost < 0.01 ? estimatedCost.toFixed(6) : estimatedCost.toFixed(4) }}</span>
     </div>
@@ -87,6 +152,22 @@ export default {
       type: Number,
       default: null,
     },
+    totalTokenUsage: {
+      type: Object,
+      default: () => ({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }),
+    },
+    totalCost: {
+      type: Number,
+      default: 0,
+    },
+    totalCacheMetrics: {
+      type: Object,
+      default: () => ({ cacheReadTokens: 0, cacheCreationTokens: 0, uncachedTokens: 0, hitRate: '0' }),
+    },
+    executionsCount: {
+      type: Number,
+      default: 0,
+    },
   },
   setup(props) {
     const utilizationPercent = computed(() => {
@@ -102,12 +183,35 @@ export default {
       return 'low';
     };
 
-    const cacheHitClass = computed(() => {
-      if (!props.cacheMetrics) return '';
-      const rate = parseFloat(props.cacheMetrics.hitRate || 0);
+    const breakdown = computed(() => props.contextStatus?.breakdown || null);
+    const hasBreakdown = computed(() => !!breakdown.value);
+
+    // Each segment's width is scaled against the FULL context window so the bar
+    // visually represents how much of the window each component occupies.
+    const limitForScale = computed(() => props.contextStatus?.tokenLimit || 0);
+    const segmentPct = (tokens) => {
+      if (!limitForScale.value) return 0;
+      return Math.min((tokens / limitForScale.value) * 100, 100);
+    };
+    const systemPct = computed(() => segmentPct(breakdown.value?.systemTokens || 0));
+    const toolsPct = computed(() => segmentPct(breakdown.value?.toolTokens || 0));
+    const messagesPct = computed(() => segmentPct(breakdown.value?.messagesTokens || 0));
+    const outputPct = computed(() => segmentPct(breakdown.value?.outputBufferTokens || 0));
+
+    const hitClass = (rateStr) => {
+      const rate = parseFloat(rateStr || 0);
       if (rate >= 80) return 'hit-high';
       if (rate >= 40) return 'hit-medium';
       return 'hit-low';
+    };
+
+    const cacheHitClass = computed(() => hitClass(props.cacheMetrics?.hitRate));
+    const totalCacheHitClass = computed(() => hitClass(props.totalCacheMetrics?.hitRate));
+
+    const hasTotals = computed(() => (props.totalTokenUsage?.totalTokens || 0) > 0);
+    const hasTotalCache = computed(() => {
+      const c = props.totalCacheMetrics;
+      return c && ((c.cacheReadTokens || 0) > 0 || (c.cacheCreationTokens || 0) > 0);
     });
 
     const formatNumber = (num) => {
@@ -121,7 +225,17 @@ export default {
       utilizationPercent,
       getUsageClass,
       cacheHitClass,
+      totalCacheHitClass,
+      hasTotals,
+      hasTotalCache,
+      breakdown,
+      hasBreakdown,
+      systemPct,
+      toolsPct,
+      messagesPct,
+      outputPct,
       formatNumber,
+      parseFloat,
     };
   },
 };
@@ -171,6 +285,83 @@ export default {
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 6px;
+}
+
+.usage-bar.segmented {
+  display: flex;
+  gap: 1px;
+}
+
+.seg {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.seg-system {
+  background: var(--color-blue);
+}
+
+.seg-tools {
+  background: var(--color-indigo);
+}
+
+.seg-messages {
+  background: var(--color-green);
+}
+
+.seg-output {
+  background: var(--color-text-muted);
+  opacity: 0.3;
+}
+
+.context-legend {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7em;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-muted);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legend-dot.dot-system {
+  background: var(--color-blue);
+}
+
+.legend-dot.dot-tools {
+  background: var(--color-indigo);
+}
+
+.legend-dot.dot-messages {
+  background: var(--color-green);
+}
+
+.legend-dot.dot-output {
+  background: var(--color-text-muted);
+  opacity: 0.4;
+}
+
+.legend-label {
+  flex: 1;
+}
+
+.legend-value {
+  font-weight: 600;
+  color: var(--color-text);
 }
 
 .usage-fill {
@@ -246,7 +437,7 @@ export default {
 }
 
 .out-tokens {
-  color: var(--color-purple);
+  color: var(--color-indigo);
 }
 
 .total-tokens {
@@ -334,6 +525,39 @@ export default {
   font-size: 0.7em;
   font-family: var(--font-family-mono);
   color: var(--color-text-muted);
+}
+
+/* Emphasized total cost */
+.cost-row-total .cost-value {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Section divider labels */
+.section-divider {
+  font-size: 0.65em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+
+.section-divider.last-call-divider {
+  opacity: 0.5;
+}
+
+/* Subtle rows (last-call stats appear muted vs conversation totals) */
+.token-usage-row.subtle,
+.cache-row.subtle,
+.cost-row.subtle {
+  opacity: 0.7;
+  border-top: none;
+  padding: 2px 0;
 }
 
 /* Last Managed */
