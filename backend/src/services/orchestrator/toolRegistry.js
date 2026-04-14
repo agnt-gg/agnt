@@ -126,8 +126,8 @@ class ToolRegistry {
           properties[paramName].items = paramDef.items;
         }
 
-        // Add to required if no default and not explicitly optional
-        if (paramDef.default === undefined && paramDef.required !== false) {
+        // Add to required if no default, not conditional, and not explicitly optional
+        if (paramDef.default === undefined && !paramDef.conditional && paramDef.required !== false) {
           required.push(paramName);
         }
       }

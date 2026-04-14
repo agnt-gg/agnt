@@ -6,12 +6,12 @@
   "icon": "bankr",
   "tools": [
     {
-      "type": "bankr_api",
+      "type": "bankr-api",
       "entryPoint": "./bankr-api.js",
       "schema": {
         "title": "Bankr API",
         "category": "action",
-        "type": "bankr_api",
+        "type": "bankr-api",
         "icon": "bankr",
         "description": "Interact with Bankr.bot to trade tokens, check prices, launch tokens, sign transactions, manage wallets, and more across Base, Ethereum, Polygon, Unichain, and Solana.",
         "authRequired": "apiKey",
@@ -257,12 +257,12 @@
       }
     },
     {
-      "type": "bankr_fee_monitor",
+      "type": "bankr-fee-monitor",
       "entryPoint": "./bankr-fee-monitor.js",
       "schema": {
         "title": "Bankr Fee Monitor",
         "category": "trigger",
-        "type": "bankr_fee_monitor",
+        "type": "bankr-fee-monitor",
         "icon": "bankr",
         "description": "Monitor your token's accumulated trading fees and trigger workflows when fees exceed a threshold. Use for auto-claiming, reinvesting, or alerting on fee revenue.",
         "authRequired": "apiKey",
