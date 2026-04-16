@@ -439,8 +439,8 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
-    recommendedModels: ['gpt-oss-120b', 'qwen-3-235b-a22b-instruct-2507'],
-    fallbackModels: ['gpt-oss-120b', 'llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507', 'zai-glm-4.7'],
+    recommendedModels: ['llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507'],
+    fallbackModels: ['llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507', 'gpt-oss-120b', 'zai-glm-4.7'],
     modelMetadata: {
       'gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.35, outputCostPer1M: 0.75, supportsVision: false, supportsTools: true, reasoning: false },
       'llama3.1-8b': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.1, outputCostPer1M: 0.1, supportsVision: false, supportsTools: true, reasoning: false },
@@ -487,9 +487,11 @@ const PROVIDER_CONFIGS = [
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
-    recommendedModels: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
-    fallbackModels: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed', 'MiniMax-M2.1', 'MiniMax-M2.1-highspeed'],
+    recommendedModels: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
+    fallbackModels: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed', 'MiniMax-M2.1', 'MiniMax-M2.1-highspeed'],
     modelMetadata: {
+      'MiniMax-M2.7': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: true },
+      'MiniMax-M2.7-highspeed': { contextWindow: 200000, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 2.4, supportsVision: false, supportsTools: true, reasoning: true },
       'MiniMax-M2.5': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: true },
       'MiniMax-M2.5-highspeed': { contextWindow: 200000, maxOutputTokens: 131072, inputCostPer1M: 0.3, outputCostPer1M: 2.4, supportsVision: false, supportsTools: true, reasoning: true },
       'MiniMax-M2.1': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 0.3, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: false },
@@ -511,10 +513,13 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['glm-5', 'glm-4.7'],
-    fallbackModels: ['glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.6v', 'glm-4.6v-flash', 'glm-4.5-flash'],
-    fallbackVisionModels: ['glm-4.6v', 'glm-4.6v-flash'],
+    recommendedModels: ['glm-5.1', 'glm-5'],
+    fallbackModels: ['glm-5.1', 'glm-5-turbo', 'glm-5v-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.6v', 'glm-4.6v-flash', 'glm-4.5-flash'],
+    fallbackVisionModels: ['glm-5v-turbo', 'glm-4.6v', 'glm-4.6v-flash'],
     modelMetadata: {
+      'glm-5.1': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 1.4, outputCostPer1M: 4.0, supportsVision: false, supportsTools: true, reasoning: true },
+      'glm-5-turbo': { contextWindow: 128000, maxOutputTokens: 128000, inputCostPer1M: 0.5, outputCostPer1M: 1.5, supportsVision: false, supportsTools: true, reasoning: false },
+      'glm-5v-turbo': { contextWindow: 128000, maxOutputTokens: 128000, inputCostPer1M: 0.6, outputCostPer1M: 1.8, supportsVision: true, supportsTools: true, reasoning: false },
       'glm-5': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 1.0, outputCostPer1M: 3.2, supportsVision: false, supportsTools: true, reasoning: true },
       'glm-4.7': { contextWindow: 128000, maxOutputTokens: 128000, inputCostPer1M: 0.6, outputCostPer1M: 2.2, supportsVision: false, supportsTools: true, reasoning: false },
       'glm-4.7-flash': { contextWindow: 128000, maxOutputTokens: 128000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: false, supportsTools: true, reasoning: false },

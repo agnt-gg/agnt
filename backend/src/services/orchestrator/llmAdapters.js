@@ -1831,9 +1831,9 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
     super(client, model);
 
     // Models that support streaming + tool calling
-    // Per Cerebras docs: "Streaming is supported for gpt-oss-120b, zai-glm-4.6, and non-reasoning models with these features"
+    // Per Cerebras docs: "Streaming is supported for gpt-oss-120b, zai-glm-4.7, and non-reasoning models with these features"
     // However, llama models do NOT support streaming + tools
-    this.streamingToolModels = new Set(['gpt-oss-120b', 'zai-glm-4.6']);
+    this.streamingToolModels = new Set(['gpt-oss-120b', 'zai-glm-4.7']);
 
     // Add 422 to retryable status codes for Cerebras (tool schema issues)
     this.retryableStatusCodes.add(422);
