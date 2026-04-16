@@ -76,7 +76,7 @@
     </div>
 
     <div v-if="hasTotals && totalCost > 0" class="cost-row cost-row-total">
-      <span class="cost-label">Cost</span>
+      <span class="cost-label">Total Cost</span>
       <span class="cost-value">${{ totalCost < 0.01 ? totalCost.toFixed(6) : totalCost.toFixed(4) }}</span>
     </div>
 
