@@ -110,6 +110,7 @@ const PROVIDER_CONFIGS = [
     ],
     fallbackVisionModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
     modelMetadata: {
+      'claude-opus-4-7': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-6': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-sonnet-4-6': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-5-20251101': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
