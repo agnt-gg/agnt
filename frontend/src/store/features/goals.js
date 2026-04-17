@@ -272,7 +272,7 @@ const actions = {
     }
   },
 
-  async createGoal({ commit, dispatch, rootState }, { text, priority = 'medium' }) {
+  async createGoal({ commit, rootState }, { text, priority = 'medium', maxIterations }) {
     commit('SET_CREATING_GOAL', true);
     commit('SET_ERROR', null);
 
@@ -298,6 +298,7 @@ const actions = {
           priority,
           provider,
           model,
+          ...(maxIterations ? { maxIterations } : {}),
         }),
       });
 
@@ -312,6 +313,7 @@ const actions = {
         description: data.goal.description,
         status: 'planning',
         priority,
+        max_iterations: maxIterations,
         created_at: new Date().toISOString(),
         tasks: data.goal.tasks || [],
         task_count: data.goal.tasks?.length || 0,
@@ -321,9 +323,6 @@ const actions = {
       };
 
       commit('ADD_GOAL', newGoal);
-
-      // Automatically execute the goal (it's already started by the backend, but this ensures monitoring)
-      await dispatch('executeGoal', data.goal.goalId);
 
       return newGoal;
     } catch (error) {
