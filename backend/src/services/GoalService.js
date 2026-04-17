@@ -417,8 +417,10 @@ class GoalService {
         await GoalModel.updateStatus(id, 'validated');
         res.json({ message: 'Goal approved', status: 'validated' });
       } else if (action === 'reject') {
-        // Set back to queued so user can re-run with feedback
-        await GoalModel.updateStatus(id, 'queued');
+        // Park in planning until the caller re-runs; frontend's "Send & Retry"
+        // immediately dispatches executeGoalAutonomous so this is only a
+        // transient state between feedback capture and the next run.
+        await GoalModel.updateStatus(id, 'planning');
         // Store feedback in world state so the next iteration can use it
         if (feedback) {
           const currentWorldState = await GoalModel.getWorldState(id);
@@ -427,7 +429,7 @@ class GoalService {
           worldState.user_feedback_at = new Date().toISOString();
           await GoalModel.updateWorldState(id, worldState);
         }
-        res.json({ message: 'Goal sent back for revision', status: 'queued', feedback });
+        res.json({ message: 'Goal sent back for revision', status: 'planning', feedback });
       } else {
         return res.status(400).json({ error: "Invalid action. Use 'approve' or 'reject'" });
       }
