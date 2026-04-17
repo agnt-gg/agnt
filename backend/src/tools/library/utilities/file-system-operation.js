@@ -96,7 +96,17 @@ class FileSystemOperation extends BaseAction {
               console.log(`File read successfully. Size: ${result.length} bytes`);
 
               // Define text-based file extensions
-              const textExtensions = ['.md', '.txt', '.csv', '.json', '.xml', '.yml', '.yaml'];
+              const textExtensions = [
+                '.md', '.txt', '.csv', '.tsv', '.json', '.xml', '.yml', '.yaml',
+                '.html', '.htm', '.css', '.scss', '.sass', '.less',
+                '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.vue', '.svelte',
+                '.py', '.rb', '.php', '.java', '.kt', '.go', '.rs', '.c', '.h',
+                '.cpp', '.hpp', '.cc', '.cs', '.swift', '.m', '.mm',
+                '.sh', '.bash', '.zsh', '.ps1', '.bat', '.cmd',
+                '.sql', '.graphql', '.gql', '.proto',
+                '.svg', '.log', '.ini', '.cfg', '.conf', '.toml', '.env',
+                '.gitignore', '.dockerignore', '.editorconfig',
+              ];
               const fileExtension = path.extname(fullPath).toLowerCase();
 
               if (textExtensions.includes(fileExtension)) {
