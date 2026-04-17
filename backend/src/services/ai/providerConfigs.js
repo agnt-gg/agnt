@@ -98,8 +98,9 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
+    recommendedModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     fallbackModels: [
+      'claude-opus-4-7',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
       'claude-opus-4-5-20251101',
@@ -108,7 +109,7 @@ const PROVIDER_CONFIGS = [
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
+    fallbackVisionModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelMetadata: {
       'claude-opus-4-7': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-6': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
@@ -163,8 +164,9 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
+    recommendedModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     fallbackModels: [
+      'claude-opus-4-7',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
       'claude-opus-4-5-20251101',
@@ -173,7 +175,7 @@ const PROVIDER_CONFIGS = [
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-opus-4-6', 'claude-sonnet-4-6'],
+    fallbackVisionModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelTransform: (raw) => ({
       id: raw.id,
       name: raw.display_name || raw.id,
