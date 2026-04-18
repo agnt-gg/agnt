@@ -7,9 +7,28 @@ import generateUUID from '../utils/generateUUID.js';
  */
 class AgentMemoryModel {
   /**
+   * Ensure the sentinel 'orchestrator' agent row exists before any FK-dependent insert.
+   * Why: agent_memory.agent_id has a FK to agents(id), but 'orchestrator' is a virtual
+   * ID for global memories, not a user-created agent. We lazy-seed the row here using
+   * the current userId as created_by so the FK is always satisfied on first use.
+   */
+  static _ensureOrchestratorAgent(userId) {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `INSERT OR IGNORE INTO agents (id, name, status, created_by) VALUES ('orchestrator', 'Orchestrator', 'system', ?)`,
+        [userId],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+  }
+
+  /**
    * Create a new memory entry.
    */
-  static create({ agentId, userId, memoryType, content, sourceConversationId }) {
+  static async create({ agentId, userId, memoryType, content, sourceConversationId }) {
+    if (agentId === 'orchestrator') {
+      await this._ensureOrchestratorAgent(userId);
+    }
     const id = generateUUID();
     return new Promise((resolve, reject) => {
       db.run(

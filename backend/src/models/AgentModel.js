@@ -78,7 +78,7 @@ class AgentModel {
          (SELECT COUNT(*) FROM agent_workflows WHERE agent_id = a.id) as workflow_count
          FROM agents a
          LEFT JOIN agent_resources ar ON a.id = ar.agent_id
-         WHERE a.created_by = ? AND a.deleted_at IS NULL
+         WHERE a.created_by = ? AND a.deleted_at IS NULL AND a.id != 'orchestrator'
          ORDER BY a.updated_at DESC`,
         [userId],
         (err, agents) => {

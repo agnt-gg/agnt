@@ -18,7 +18,7 @@ class UserModel {
         FROM
           (SELECT COUNT(*) as totalWorkflows FROM workflows WHERE user_id = ?) w,
           (SELECT COUNT(*) as totalCustomTools FROM tools WHERE created_by = ?) t,
-          (SELECT COUNT(*) as totalAgents FROM agents WHERE created_by = ?) a,
+          (SELECT COUNT(*) as totalAgents FROM agents WHERE created_by = ? AND id != 'orchestrator') a,
           (SELECT
             COUNT(*) as totalExecutions,
             SUM(status = 'completed') as successfulExecutions,
