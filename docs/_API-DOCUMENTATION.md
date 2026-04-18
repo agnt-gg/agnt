@@ -19,6 +19,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Experiment Routes](#experiment-routes)
 - [FileSystem Routes](#filesystem-routes)
 - [Goal Routes](#goal-routes)
+- [Group Routes](#group-routes)
 - [Layout Routes](#layout-routes)
 - [MCP Routes](#mcp-routes)
 - [Model Routes](#model-routes)
@@ -26,6 +27,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Orchestrator Routes](#orchestrator-routes)
 - [Plugin Routes](#plugin-routes)
 - [Skill Routes](#skill-routes)
+- [Skill Discovery Routes](#skill-discovery-routes)
 - [SkillForge Routes](#skillforge-routes)
 - [Speech Routes](#speech-routes)
 - [Stream Routes](#stream-routes)
@@ -35,6 +37,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Webhook Routes](#webhook-routes)
 - [Widget Definition Routes](#widget-definition-routes)
 - [Workflow Routes](#workflow-routes)
+- [Artifacts](#artifacts)
 
 ---
 
@@ -3573,6 +3576,27 @@ Base path: `/api/orchestrator`
 }
 ```
 
+### Get Available Tools
+
+**GET** `/tools`
+
+- **Authentication**: Required
+- **Description**: Get the list of tools available to the orchestrator (native tools, registry tools, and installed plugin tools). Used by the frontend tool selector to render available actions.
+- **Response**:
+
+```json
+{
+  "tools": [
+    {
+      "name": "tool_name",
+      "description": "What the tool does",
+      "parameters": { "type": "object", "properties": {} },
+      "category": "native|plugin|registry"
+    }
+  ]
+}
+```
+
 ### Universal Chat
 
 **POST** `/chat`
@@ -3637,16 +3661,17 @@ Base path: `/api/orchestrator`
 - **Description**: Chat with a specific goal
 - **Response**: Server-sent events stream
 
-### Code Chat
+### Artifact Chat
 
-**POST** `/code-chat`
+**POST** `/artifact-chat`
 
 - **Authentication**: Required
 - **Content-Type**: `multipart/form-data`
 - **Body**:
   - `message` (string): Chat message
+  - `codeContext` (object, optional): Context from the artifacts workspace (active file, selection, open files)
   - `files` (file[]): Optional file attachments (max 20MB each)
-- **Description**: Code-focused chat with streaming. Uses code-specialized system prompts and tools.
+- **Description**: Chat handler for the Artifacts workspace ("Annie" assistant). Streams responses and calls the workspace file-operation tools (`read_file`, `write_file`, `edit_file`, `list_files`) against the user's workspace root. See the [Artifacts](#artifacts) section for full details on storage, tools, and events.
 - **Response**: Server-sent events stream
 
 ### Widget Chat
@@ -5923,6 +5948,384 @@ Base path: `/api/workflows`
   }
 }
 ```
+
+---
+
+## Group Routes
+
+Base path: `/api/groups`
+
+Groups organize content outputs (artifacts, generated assets) into a hierarchical tree. They support nesting via `parent_id`, custom sort order, and color-coding. All mutations broadcast realtime events (`GROUP_CREATED`, `GROUP_UPDATED`, `GROUP_DELETED`, `CONTENT_UPDATED`) to connected clients of the same user.
+
+### List Groups
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Retrieve all groups belonging to the authenticated user
+- **Response**:
+
+```json
+{
+  "groups": [
+    {
+      "id": "group-id",
+      "user_id": "user-id",
+      "name": "Group Name",
+      "description": "Optional description",
+      "color": "#6366f1",
+      "sort_order": 0,
+      "parent_id": null,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "updatedAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Create Group
+
+**POST** `/`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "name": "Group Name",
+  "description": "Optional description",
+  "color": "#6366f1",
+  "sort_order": 0,
+  "parent_id": "optional-parent-group-id"
+}
+```
+
+- **Description**: Create a new group. `name` is required; all other fields are optional. `color` defaults to `#6366f1`, `sort_order` to `0`, `parent_id` to `null` (top-level).
+- **Response**: `201 Created` with the full group object
+
+### Update Group
+
+**PUT** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Group ID
+- **Body**: Any subset of `name`, `description`, `color`, `sort_order`, `parent_id`
+- **Description**: Update fields on a group
+- **Response**: Updated group object, or `404` if not found
+
+### Delete Group
+
+**DELETE** `/:id`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `id` (path): Group ID
+- **Query Parameters**:
+  - `mode` (string, optional): `move` (default) reparents direct children to this group's parent (or root); `delete` lets the `ON DELETE CASCADE` remove child groups along with this one.
+- **Description**: Delete a group. Use `mode=move` to preserve children, `mode=delete` to remove the entire subtree.
+- **Response**:
+
+```json
+{
+  "message": "Group deleted"
+}
+```
+
+### Reorder Groups
+
+**PATCH** `/reorder`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "orders": [
+    { "id": "group-id-1", "sort_order": 0 },
+    { "id": "group-id-2", "sort_order": 1 }
+  ]
+}
+```
+
+- **Description**: Update `sort_order` for multiple groups in a single call
+- **Response**:
+
+```json
+{ "success": true }
+```
+
+### Move Content Output to Group
+
+**PATCH** `/move/:outputId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `outputId` (path): Content output ID
+- **Body**:
+
+```json
+{
+  "group_id": "target-group-id-or-null"
+}
+```
+
+- **Description**: Move a single content output into a group. Pass `group_id: null` to ungroup (move to root).
+- **Response**:
+
+```json
+{ "success": true }
+```
+
+### Bulk Move Content Outputs
+
+**PATCH** `/bulk-move`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "output_ids": ["output-id-1", "output-id-2"],
+  "group_id": "target-group-id-or-null"
+}
+```
+
+- **Description**: Move multiple content outputs into a group in a single call
+- **Response**:
+
+```json
+{ "success": true }
+```
+
+---
+
+## Skill Discovery Routes
+
+Base path: `/api/skills/discovered`
+
+Skill Discovery scans the filesystem for skill definitions (e.g., a user's `~/.claude/skills/` directory or a project-local skills folder) and exposes them as a read-only catalog. Discovered skills are separate from database-backed skills until imported. Use these endpoints to browse filesystem skills and promote them into the user's skill library.
+
+### List Discovered Skills
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Description**: Get the catalog of all filesystem-discovered skills (metadata only — no full content)
+- **Response**:
+
+```json
+{
+  "skills": [
+    {
+      "name": "skill-name",
+      "description": "Skill description",
+      "dirPath": "/path/to/skill/dir",
+      "source": "user|project",
+      "frontmatter": {}
+    }
+  ],
+  "lastScan": "2024-01-01T00:00:00Z",
+  "scanLocations": ["/path/to/scan/location"],
+  "total": 42
+}
+```
+
+### Rescan Skill Locations
+
+**POST** `/rescan`
+
+- **Authentication**: Required
+- **Body** (optional):
+
+```json
+{
+  "projectRoot": "/optional/project/root/path"
+}
+```
+
+- **Description**: Trigger a fresh scan of the filesystem skill locations. If `projectRoot` is provided, also scan that project for local skills.
+- **Response**:
+
+```json
+{
+  "skills": [],
+  "lastScan": "2024-01-01T00:00:00Z",
+  "total": 42
+}
+```
+
+### Get Discovered Skill
+
+**GET** `/:name`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `name` (path): Skill name (kebab-case, matches directory name)
+- **Description**: Get the full content (metadata + instructions + frontmatter) of a discovered skill
+- **Response**:
+
+```json
+{
+  "skill": {
+    "name": "skill-name",
+    "description": "Skill description",
+    "instructions": "Full skill instructions markdown...",
+    "frontmatter": {
+      "license": "MIT",
+      "compatibility": "...",
+      "metadata": {},
+      "allowed-tools": []
+    },
+    "dirPath": "/path/to/skill/dir"
+  }
+}
+```
+
+### List Skill Resources
+
+**GET** `/:name/resources`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `name` (path): Skill name
+- **Description**: List bundled resource files (non-instruction files) shipped with a skill, e.g. templates, scripts, example data
+- **Response**:
+
+```json
+{
+  "resources": [
+    { "path": "templates/prompt.md", "size": 1234, "type": "file" }
+  ]
+}
+```
+
+### Read Skill Resource
+
+**GET** `/:name/resources/*`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `name` (path): Skill name
+  - `*` (wildcard path): Relative path to the resource file within the skill directory
+- **Description**: Read the raw content of a bundled resource file. Paths are validated to prevent escaping the skill directory.
+- **Response**: `text/plain; charset=utf-8` with the file contents
+- **Errors**:
+  - `400` if the resource path is missing
+  - `403` if the path escapes the skill directory
+  - `404` if the resource is not found
+
+### Import Discovered Skill
+
+**POST** `/:name/import`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `name` (path): Skill name (kebab-case)
+- **Description**: Import a filesystem-discovered skill into the user's database-backed skill library. The kebab-case name is converted to Title Case for display; the original slug is preserved for lookups. Frontmatter fields (license, compatibility, metadata, allowed-tools) are copied into the skill record.
+- **Response**: `201 Created`
+
+```json
+{
+  "skill": {
+    "id": "new-skill-id",
+    "name": "Skill Name",
+    "slug": "skill-name",
+    "description": "...",
+    "instructions": "..."
+  },
+  "skillId": "new-skill-id",
+  "importedFrom": "/path/to/source/skill/dir"
+}
+```
+
+---
+
+## Artifacts
+
+The **Artifacts** system is the in-app workspace for creating and editing files with an AI assistant named **Annie**. It is not a CRUD resource API — instead, all file operations happen through a single streaming chat endpoint that routes tool calls to filesystem operations against the user's configured workspace root.
+
+### Storage
+
+- **Default workspace root**: `~/.agnt/projects/`
+- **Configurable via**: `~/.agnt/code-settings.json` → `workspaceRoot` field
+- **Enforced path validation**: All tool calls resolve paths against the workspace root and reject any path traversal outside it.
+- **Settings API**: Workspace root can also be read/updated via the [FileSystem Routes](#filesystem-routes) (`GET /api/filesystem/settings`, `PUT /api/filesystem/settings`).
+
+### Chat Endpoint
+
+**POST** `/api/orchestrator/artifact-chat`
+
+- **Authentication**: Required
+- **Content-Type**: `multipart/form-data`
+- **Body**:
+  - `message` (string): User message to Annie
+  - `codeContext` (object, optional): Current editor context (active file path, selection, open files). Used by the system prompt to tailor responses.
+  - `files` (file[]): Optional file attachments (max 20MB each)
+- **Description**: Streaming chat handler that drives the Artifacts workspace. The handler uses the `artifact` chat configuration (`maxToolRounds: 25`, `responseType: stream`) and exposes the four workspace file tools below to the LLM.
+- **Response**: Server-sent events stream (tokens, tool-call events, file events)
+
+### Workspace Tools (called by the LLM)
+
+These tools are not called directly over HTTP — they are invoked by the LLM during an `/artifact-chat` turn. They are listed here so integrators understand what Annie can do and what events fire.
+
+#### `read_file`
+
+Read the contents of a file from the workspace.
+
+- **Parameters**:
+  - `path` (string): Relative path within the workspace root
+- **Returns**: File content as UTF-8 text, or an error message if the file does not exist
+
+#### `write_file`
+
+Create or overwrite a file in the workspace. Automatically creates any missing parent directories.
+
+- **Parameters**:
+  - `path` (string): Relative path within the workspace root
+  - `content` (string): Full file content
+- **Returns**: Success confirmation
+- **Side effects**: Emits a `file_written` event to the frontend so the file tree and open editor tabs can refresh
+
+#### `edit_file`
+
+Surgical search-and-replace edits on an existing file. Preferred over `write_file` for modifications because it preserves surrounding content and uses fuzzy whitespace matching to tolerate indentation drift.
+
+- **Parameters**:
+  - `path` (string): Relative path within the workspace root
+  - `edits` (array): List of `{ search, replace }` pairs applied in order
+  - `description` (string, optional): Human-readable summary of the change
+- **Returns**: Per-edit applied/failed summary
+- **Side effects**: Emits `file_written` on success
+
+#### `list_files`
+
+List the contents of a workspace directory. Hidden entries (starting with `.`) are filtered out.
+
+- **Parameters**:
+  - `path` (string, optional): Relative directory path, defaults to workspace root
+- **Returns**:
+
+```json
+[
+  { "name": "README.md", "type": "file", "path": "README.md" },
+  { "name": "src", "type": "dir", "path": "src" }
+]
+```
+
+### Configuration Reference
+
+| Location | Setting | Purpose |
+| -------- | ------- | ------- |
+| `backend/src/services/orchestrator/chatConfigs.js` | `artifact` entry | Tool schemas, system prompt, `maxToolRounds: 25`, `contextKey: 'codeContext'` |
+| `backend/src/services/orchestrator/system-prompts/artifact-chat.js` | System prompt | Annie persona, preview capabilities, design guidance |
+| `backend/src/services/orchestrator/codeTools.js` | Tool implementations | `read_file`, `write_file`, `edit_file`, `list_files` with path validation |
+| `~/.agnt/code-settings.json` | `workspaceRoot` | Per-user workspace root override |
+
+### Related Endpoints
+
+- **Files outside chat**: Use [FileSystem Routes](#filesystem-routes) (`/api/filesystem/*`) to read, write, rename, and delete workspace files directly over HTTP (e.g., for the editor panel or external tooling).
+- **Persisted artifacts**: Generated content that the user saves is stored via [Content Output Routes](#content-output-routes) (`/api/content-outputs`) and can be organized with [Group Routes](#group-routes).
 
 ---
 
