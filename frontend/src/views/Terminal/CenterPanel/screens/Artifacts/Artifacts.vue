@@ -12,20 +12,28 @@
       <div class="ce-root">
         <!-- Tab bar (full width) -->
         <div class="ce-tabs" v-if="openTabs.length > 0">
-          <div
-            v-for="tab in openTabs"
-            :key="tab.path"
-            class="ce-tab"
-            :class="{ active: activeTabPath === tab.path }"
-            @click="switchTab(tab.path)"
-          >
-            <span class="ce-tab-name">{{ tab.name }}{{ tab.isDirty ? ' *' : '' }}</span>
-            <Tooltip text="Close">
-              <button class="ce-tab-close" @click.stop="closeTab(tab.path)">
-                <i class="fas fa-times"></i>
-              </button>
-            </Tooltip>
+          <div class="ce-tabs-scroll">
+            <div
+              v-for="tab in openTabs"
+              :key="tab.path"
+              class="ce-tab"
+              :class="{ active: activeTabPath === tab.path }"
+              @click="switchTab(tab.path)"
+            >
+              <span class="ce-tab-name">{{ tab.name }}{{ tab.isDirty ? ' *' : '' }}</span>
+              <Tooltip text="Close">
+                <button class="ce-tab-close" @click.stop="closeTab(tab.path)">
+                  <i class="fas fa-times"></i>
+                </button>
+              </Tooltip>
+            </div>
           </div>
+          <Tooltip text="Close all tabs">
+            <button class="ce-tabs-close-all" @click="closeAllTabs">
+              <i class="fas fa-times-circle"></i>
+              <span>Close all</span>
+            </button>
+          </Tooltip>
         </div>
 
         <!-- Body: editor + divider + preview -->
@@ -144,7 +152,9 @@
                   </tbody>
                 </table>
               </div>
+              <div v-else-if="isJsonFile && activeTab" class="ce-text-preview">{{ prettyJson }}</div>
               <div v-else-if="isTextFile && activeTab" class="ce-text-preview">{{ activeTab.content }}</div>
+              <div v-else-if="isCodeFile && activeTab" class="ce-text-preview">{{ activeTab.content }}</div>
               <div v-else-if="activeTab" class="ce-preview-empty">
                 <i class="fas fa-eye-slash"></i>
                 <p>No preview for .{{ activeTab.path.split('.').pop() }} files</p>
@@ -692,6 +702,32 @@ export default {
     const is3DFile = computed(() => MODEL3D_EXTS.has(fileExt.value));
     const isSpreadsheetFile = computed(() => SPREADSHEET_EXTS.has(fileExt.value));
     const isTextFile = computed(() => TEXT_EXTS.has(fileExt.value));
+    const isJsonFile = computed(() => fileExt.value === 'json' || fileExt.value === 'jsonl' || fileExt.value === 'geojson');
+
+    // Fallback: any file that isn't binary and isn't already handled by a specific preview.
+    // Covers .js, .ts, .py, .go, .rs, .sh, .java, .css, etc.
+    const isCodeFile = computed(() => {
+      if (!activeTab.value) return false;
+      const ext = fileExt.value;
+      if (IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext) || AUDIO_EXTS.has(ext) || PDF_EXTS.has(ext) || EPUB_EXTS.has(ext) || MODEL3D_EXTS.has(ext)) return false;
+      if (isHtmlFile.value || isMarkdownFile.value || isSpreadsheetFile.value || isTextFile.value || isJsonFile.value) return false;
+      return true;
+    });
+
+    const prettyJson = computed(() => {
+      if (!activeTab.value || !isJsonFile.value) return '';
+      const content = activeTab.value.content || '';
+      if (fileExt.value === 'jsonl') {
+        return content.split(/\r?\n/).map((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) return line;
+          try { return JSON.stringify(JSON.parse(trimmed), null, 2); }
+          catch { return line; }
+        }).join('\n');
+      }
+      try { return JSON.stringify(JSON.parse(content), null, 2); }
+      catch { return content; }
+    });
 
     const spreadsheetData = computed(() => {
       if (!activeTab.value || !isSpreadsheetFile.value) return { headers: [], rows: [] };
@@ -1359,6 +1395,13 @@ export default {
       }
     };
 
+    const closeAllTabs = () => {
+      if (openTabs.value.length === 0) return;
+      openTabs.value = [];
+      activeTabPath.value = null;
+      broadcastOpenFile({ path: null, content: null });
+    };
+
     const handleEditorChange = (value) => {
       if (activeTab.value) {
         activeTab.value.content = value;
@@ -1479,6 +1522,9 @@ export default {
       isSpreadsheetFile,
       spreadsheetData,
       isTextFile,
+      isJsonFile,
+      isCodeFile,
+      prettyJson,
       rawFileUrl,
       audioPlayerRef,
       audioCanvasRef,
@@ -1488,6 +1534,7 @@ export default {
       editorExtensions,
       switchTab,
       closeTab,
+      closeAllTabs,
       handleEditorChange,
       saveActiveFile,
       handlePanelAction,
@@ -1531,16 +1578,50 @@ export default {
 /* ── Tab bar ── */
 .ce-tabs {
   display: flex;
+  align-items: stretch;
   gap: 0;
   background: var(--color-darker-0);
   border-bottom: 1px solid var(--terminal-border-color);
-  overflow-x: auto;
-  scrollbar-width: none;
   flex-shrink: 0;
+  min-width: 0;
 }
 
-.ce-tabs::-webkit-scrollbar {
+.ce-tabs-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ce-tabs-scroll::-webkit-scrollbar {
   display: none;
+}
+
+.ce-tabs-close-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-left: 1px solid var(--terminal-border-color);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.ce-tabs-close-all:hover {
+  background: rgba(var(--primary-rgb), 0.04);
+  color: var(--color-red);
+}
+
+.ce-tabs-close-all i {
+  font-size: 12px;
 }
 
 .ce-tab {
