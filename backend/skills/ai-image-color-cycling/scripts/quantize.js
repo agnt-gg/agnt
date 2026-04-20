@@ -5,7 +5,11 @@
  * deflate-compress the indexed buffer, and emit JSON.
  *
  * Usage:
- *   node quantize.js --image-id <ID> --width 200 --height 150 --out /tmp/data.json
+ *   node quantize.js --image-id <ID> [--width 264 --height 144] --out /tmp/data.json
+ *
+ * If --width/--height are omitted, the script auto-picks a target that
+ * preserves the source image's exact aspect ratio (with a target pixel
+ * count ~38000 for clean indexed data).
  *
  * Requires: sharp (already available in the AGNT runtime).
  */
@@ -14,14 +18,14 @@ const sharp = require('sharp');
 const zlib = require('zlib');
 const fs = require('fs');
 
-// ---- arg parsing -----------------------------------------------------------
 const args = {};
 for (let i = 2; i < process.argv.length; i += 2) {
   args[process.argv[i].replace(/^--/, '')] = process.argv[i + 1];
 }
 const IMAGE_ID = args['image-id'];
-const W = parseInt(args.width || '200', 10);
-const H = parseInt(args.height || '150', 10);
+const REQ_W = args.width ? parseInt(args.width, 10) : null;
+const REQ_H = args.height ? parseInt(args.height, 10) : null;
+const TARGET_PIXELS = parseInt(args['target-pixels'] || '38000', 10);
 const OUT = args.out || '/tmp/cycle-data.json';
 const TOKEN = process.env.AGNT_AUTH_TOKEN;
 const API = process.env.AGNT_API || 'http://localhost:3333/api';
@@ -47,9 +51,32 @@ if (!TOKEN) {
   const imgBuf = Buffer.from(await r.arrayBuffer());
   console.log(`✓ Fetched image: ${imgBuf.length} bytes`);
 
+  // ---- 1b. probe source dims to preserve aspect ratio ---------------------
+  const srcMeta = await sharp(imgBuf).metadata();
+  const srcRatio = srcMeta.width / srcMeta.height;
+  console.log(`✓ Source dims: ${srcMeta.width}×${srcMeta.height} (ratio ${srcRatio.toFixed(4)})`);
+
+  let W, H;
+  if (REQ_W && REQ_H) {
+    W = REQ_W; H = REQ_H;
+    const reqRatio = W / H;
+    if (Math.abs(reqRatio - srcRatio) > 0.05) {
+      console.warn(`⚠️  Requested ratio ${reqRatio.toFixed(4)} differs from source ${srcRatio.toFixed(4)} — IMAGE WILL BE SQUASHED!`);
+      console.warn(`    For clean output, omit --width/--height and let the script pick automatically.`);
+    }
+  } else {
+    // Auto-pick: preserve ratio, target ~TARGET_PIXELS pixels
+    H = Math.round(Math.sqrt(TARGET_PIXELS / srcRatio));
+    W = Math.round(H * srcRatio);
+    // Round to even numbers (helps GIF encoders + scaling)
+    W = Math.max(2, W - (W % 2));
+    H = Math.max(2, H - (H % 2));
+    console.log(`✓ Auto-picked target: ${W}×${H} (ratio ${(W/H).toFixed(4)}, ${W*H} px)`);
+  }
+
   // ---- 2. sharp downscale to raw RGBA -------------------------------------
   const { data: rgba } = await sharp(imgBuf)
-    .resize(W, H, { kernel: 'lanczos3' })
+    .resize(W, H, { kernel: 'lanczos3', fit: 'fill' })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -92,7 +119,6 @@ if (!TOKEN) {
     const n = b.length || 1;
     return [Math.round(r / n), Math.round(g / n), Math.round(bb / n)];
   });
-  // pad to exactly 256 if median-cut produced fewer (rare)
   while (palette.length < 256) palette.push([0, 0, 0]);
   console.log(`✓ Quantized to ${palette.length} colors in ${Date.now() - t0} ms`);
 
@@ -138,7 +164,6 @@ if (!TOKEN) {
     return { c, i, h, s, l };
   });
 
-  // Sort: dark/desaturated first (in luminance order), then chromatic by hue+luminance
   meta.sort((a, b) => {
     const aLow = a.s < 0.15 || a.l < 0.08;
     const bLow = b.s < 0.15 || b.l < 0.08;
@@ -202,7 +227,6 @@ if (!TOKEN) {
   console.log(`✓ Palette: ${palB64.length} b64`);
 
   // ---- 8. write output ----------------------------------------------------
-  // Histogram for picking ranges manually if auto-detect fails
   const hist = new Uint32Array(256);
   for (let i = 0; i < N; i++) hist[newIdx[i]]++;
   const top10 = Array.from(hist)
@@ -213,6 +237,9 @@ if (!TOKEN) {
   fs.writeFileSync(OUT, JSON.stringify({
     width: W,
     height: H,
+    sourceWidth: srcMeta.width,
+    sourceHeight: srcMeta.height,
+    sourceRatio: srcRatio,
     indexedB64,
     paletteB64: palB64,
     ranges,
