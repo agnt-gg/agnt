@@ -929,9 +929,70 @@ export default {
     });
 
     // ── Preview ──────────────────────────────────────────────
+    // srcdoc iframes have no base URL, so relative asset paths (./img.png, assets/x.mp4)
+    // can't resolve. Rewrite them to absolute /filesystem/raw URLs based on the HTML file's dir.
+    const resolveAssetUrl = (ref, dir) => {
+      if (!ref) return ref;
+      const trimmed = ref.trim();
+      if (!trimmed) return ref;
+      if (/^(https?:|\/\/|data:|blob:|javascript:|mailto:|tel:|about:|#)/i.test(trimmed)) return ref;
+      const rel = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+      const parts = `${dir}/${rel}`.split('/');
+      const out = [];
+      for (const p of parts) {
+        if (p === '' || p === '.') continue;
+        if (p === '..') out.pop();
+        else out.push(p);
+      }
+      return `${API_CONFIG.BASE_URL}/filesystem/raw?path=${encodeURIComponent(out.join('/'))}`;
+    };
+
+    const rewriteHtmlAssets = (html, htmlPath) => {
+      if (!html || !htmlPath) return html;
+      const dir = htmlPath.replace(/\\/g, '/').replace(/[^/]+$/, '').replace(/\/$/, '');
+      try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+
+        const rewriteSrcset = (value) => value.split(',').map((part) => {
+          const trimmed = part.trim();
+          if (!trimmed) return '';
+          const [url, ...descriptor] = trimmed.split(/\s+/);
+          return [resolveAssetUrl(url, dir), ...descriptor].join(' ');
+        }).filter(Boolean).join(', ');
+
+        const setAttr = (el, attr) => {
+          const v = el.getAttribute(attr);
+          if (!v) return;
+          el.setAttribute(attr, attr === 'srcset' ? rewriteSrcset(v) : resolveAssetUrl(v, dir));
+        };
+
+        doc.querySelectorAll(
+          'img[src], source[src], video[src], audio[src], track[src], iframe[src], embed[src], script[src]'
+        ).forEach((el) => setAttr(el, 'src'));
+        doc.querySelectorAll('img[srcset], source[srcset]').forEach((el) => setAttr(el, 'srcset'));
+        doc.querySelectorAll('video[poster]').forEach((el) => setAttr(el, 'poster'));
+        doc.querySelectorAll('object[data]').forEach((el) => setAttr(el, 'data'));
+        doc.querySelectorAll('link[href]').forEach((el) => setAttr(el, 'href'));
+
+        const rewriteCss = (css) =>
+          css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (_m, q, url) =>
+            `url(${q}${resolveAssetUrl(url, dir)}${q})`
+          );
+        doc.querySelectorAll('style').forEach((el) => { el.textContent = rewriteCss(el.textContent); });
+        doc.querySelectorAll('[style]').forEach((el) => {
+          el.setAttribute('style', rewriteCss(el.getAttribute('style')));
+        });
+
+        return '<!DOCTYPE html>' + doc.documentElement.outerHTML;
+      } catch (e) {
+        console.warn('[Artifacts] HTML asset rewrite failed, using original content:', e);
+        return html;
+      }
+    };
+
     const updatePreview = () => {
       if (!previewFrame.value || !activeTab.value || !isHtmlFile.value) return;
-      previewFrame.value.srcdoc = activeTab.value.content;
+      previewFrame.value.srcdoc = rewriteHtmlAssets(activeTab.value.content, activeTab.value.path);
     };
 
     const refreshPreview = () => {
