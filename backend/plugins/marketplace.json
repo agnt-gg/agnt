@@ -4,20 +4,25 @@
       "name": "discord-plugin",
       "displayName": "Discord",
       "icon": "discord",
-      "version": "1.0.0",
-      "description": "Discord integration for AGNT - send messages, manage roles, upload files, and receive messages from Discord channels.",
+      "version": "1.4.0",
+      "description": "Discord integration for AGNT - send messages, manage roles, upload files with inline video/image previews, and receive messages from Discord channels.",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/discord-plugin.agnt",
-      "size": 2500000,
-      "tags": ["discord", "messaging", "social", "bot"],
+      "size": 3236948,
+      "tags": [
+        "discord",
+        "messaging",
+        "social",
+        "bot"
+      ],
       "category": "social",
       "tools": [
         {
           "type": "discord-api",
           "schema": {
             "title": "Discord API",
-            "description": "Interact with Discord to perform various operations such as sending messages, managing roles, and uploading files."
+            "description": "Interact with Discord to perform various operations such as sending messages, managing roles, and uploading files (with inline previews for videos and images)."
           }
         },
         {
@@ -39,7 +44,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/firecrawl-plugin.agnt",
       "size": 500000,
-      "tags": ["firecrawl", "web-scraping", "markdown", "html", "scraper"],
+      "tags": [
+        "firecrawl",
+        "web-scraping",
+        "markdown",
+        "html",
+        "scraper"
+      ],
       "category": "utility",
       "tools": [
         {
@@ -61,7 +72,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/slack-plugin.agnt",
       "size": 2500000,
-      "tags": ["slack", "messaging", "social", "bot", "workspace"],
+      "tags": [
+        "slack",
+        "messaging",
+        "social",
+        "bot",
+        "workspace"
+      ],
       "category": "social",
       "tools": [
         {
@@ -90,7 +107,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/notion-plugin.agnt",
       "size": 1500000,
-      "tags": ["notion", "productivity", "database", "notes", "workspace"],
+      "tags": [
+        "notion",
+        "productivity",
+        "database",
+        "notes",
+        "workspace"
+      ],
       "category": "productivity",
       "tools": [
         {
@@ -112,7 +135,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-sheets-plugin.agnt",
       "size": 1800000,
-      "tags": ["google", "sheets", "spreadsheet", "data", "automation"],
+      "tags": [
+        "google",
+        "sheets",
+        "spreadsheet",
+        "data",
+        "automation"
+      ],
       "category": "productivity",
       "tools": [
         {
@@ -141,7 +170,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/claude-agent-plugin.agnt",
       "size": 1500000,
-      "tags": ["ai", "claude", "agent", "autonomous", "sdk"],
+      "tags": [
+        "ai",
+        "claude",
+        "agent",
+        "autonomous",
+        "sdk"
+      ],
       "category": "ai",
       "tools": [
         {
@@ -163,7 +198,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/zapier-plugin.agnt",
       "size": 10000,
-      "tags": ["zapier", "automation", "webhook", "integration"],
+      "tags": [
+        "zapier",
+        "automation",
+        "webhook",
+        "integration"
+      ],
       "category": "automation",
       "tools": [
         {
@@ -192,7 +232,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/bitcoin-price-checker.agnt",
       "size": 100000,
-      "tags": ["bitcoin", "crypto", "price", "coingecko"],
+      "tags": [
+        "bitcoin",
+        "crypto",
+        "price",
+        "coingecko"
+      ],
       "category": "finance",
       "tools": [
         {
@@ -214,7 +259,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/chucknorris-joke-plugin.agnt",
       "size": 100000,
-      "tags": ["jokes", "fun", "chuck-norris", "entertainment"],
+      "tags": [
+        "jokes",
+        "fun",
+        "chuck-norris",
+        "entertainment"
+      ],
       "category": "entertainment",
       "tools": [
         {
@@ -236,7 +286,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/dice-roller-plugin.agnt",
       "size": 100000,
-      "tags": ["dice", "games", "random", "tabletop"],
+      "tags": [
+        "dice",
+        "games",
+        "random",
+        "tabletop"
+      ],
       "category": "entertainment",
       "tools": [
         {
@@ -258,7 +313,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/dropbox-plugin.agnt",
       "size": 500000,
-      "tags": ["dropbox", "cloud", "storage", "files"],
+      "tags": [
+        "dropbox",
+        "cloud",
+        "storage",
+        "files"
+      ],
       "category": "productivity",
       "tools": [
         {
@@ -280,7 +340,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/ethereum-price-checker.agnt",
       "size": 100000,
-      "tags": ["ethereum", "crypto", "price", "coingecko"],
+      "tags": [
+        "ethereum",
+        "crypto",
+        "price",
+        "coingecko"
+      ],
       "category": "finance",
       "tools": [
         {
@@ -302,7 +367,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/github-plugin.agnt",
       "size": 800000,
-      "tags": ["github", "git", "repository", "code", "developer"],
+      "tags": [
+        "github",
+        "git",
+        "repository",
+        "code",
+        "developer"
+      ],
       "category": "developer",
       "tools": [
         {
@@ -324,7 +395,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/gmail-plugin.agnt",
       "size": 600000,
-      "tags": ["gmail", "email", "google", "communication"],
+      "tags": [
+        "gmail",
+        "email",
+        "google",
+        "communication"
+      ],
       "category": "communication",
       "tools": [
         {
@@ -346,7 +422,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-drive-plugin.agnt",
       "size": 600000,
-      "tags": ["google", "drive", "cloud", "storage", "files"],
+      "tags": [
+        "google",
+        "drive",
+        "cloud",
+        "storage",
+        "files"
+      ],
       "category": "productivity",
       "tools": [
         {
@@ -368,7 +450,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-slides-plugin.agnt",
       "size": 600000,
-      "tags": ["google", "slides", "presentations", "productivity"],
+      "tags": [
+        "google",
+        "slides",
+        "presentations",
+        "productivity"
+      ],
       "category": "productivity",
       "tools": [
         {
@@ -390,7 +477,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/openweathermap-api-plugin.agnt",
       "size": 300000,
-      "tags": ["weather", "forecast", "air-quality", "geocoding"],
+      "tags": [
+        "weather",
+        "forecast",
+        "air-quality",
+        "geocoding"
+      ],
       "category": "utility",
       "tools": [
         {
@@ -433,7 +525,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/stripe-plugin.agnt",
       "size": 400000,
-      "tags": ["stripe", "payments", "invoices", "billing"],
+      "tags": [
+        "stripe",
+        "payments",
+        "invoices",
+        "billing"
+      ],
       "category": "finance",
       "tools": [
         {
@@ -455,7 +552,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/twitter-plugin.agnt",
       "size": 600000,
-      "tags": ["twitter", "x", "social", "tweets", "messaging"],
+      "tags": [
+        "twitter",
+        "x",
+        "social",
+        "tweets",
+        "messaging"
+      ],
       "category": "social",
       "tools": [
         {
@@ -477,7 +580,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/unsplash-plugin.agnt",
       "size": 400000,
-      "tags": ["unsplash", "photos", "images", "stock", "media"],
+      "tags": [
+        "unsplash",
+        "photos",
+        "images",
+        "stock",
+        "media"
+      ],
       "category": "media",
       "tools": [
         {
@@ -499,7 +608,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/unturf-ai-plugin.agnt",
       "size": 300000,
-      "tags": ["ai", "llm", "tts", "text-to-speech", "free"],
+      "tags": [
+        "ai",
+        "llm",
+        "tts",
+        "text-to-speech",
+        "free"
+      ],
       "category": "ai",
       "tools": [
         {
@@ -521,7 +636,13 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/youtube-plugin.agnt",
       "size": 800000,
-      "tags": ["youtube", "video", "google", "media", "transcription"],
+      "tags": [
+        "youtube",
+        "video",
+        "google",
+        "media",
+        "transcription"
+      ],
       "category": "media",
       "tools": [
         {
@@ -543,7 +664,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/calculator-plugin.agnt",
       "size": 100000,
-      "tags": ["calculator", "math", "expression", "utility"],
+      "tags": [
+        "calculator",
+        "math",
+        "expression",
+        "utility"
+      ],
       "category": "utility",
       "tools": [
         {
@@ -565,7 +691,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/facebook-api-plugin.agnt",
       "size": 500000,
-      "tags": ["facebook", "social", "api", "posts"],
+      "tags": [
+        "facebook",
+        "social",
+        "api",
+        "posts"
+      ],
       "category": "social",
       "tools": [
         {
@@ -601,7 +732,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/fetch-tool-plugin.agnt",
       "size": 100000,
-      "tags": ["fetch", "http", "api", "request"],
+      "tags": [
+        "fetch",
+        "http",
+        "api",
+        "request"
+      ],
       "category": "utility",
       "tools": [
         {
@@ -623,7 +759,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/fibonacci-sequence-plugin.agnt",
       "size": 100000,
-      "tags": ["fibonacci", "math", "sequence", "numbers"],
+      "tags": [
+        "fibonacci",
+        "math",
+        "sequence",
+        "numbers"
+      ],
       "category": "utility",
       "tools": [
         {
@@ -652,7 +793,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/list-files-plugin.agnt",
       "size": 100000,
-      "tags": ["files", "directory", "filesystem", "utility"],
+      "tags": [
+        "files",
+        "directory",
+        "filesystem",
+        "utility"
+      ],
       "category": "utility",
       "tools": [
         {
@@ -674,7 +820,12 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/random-dice-roller.agnt",
       "size": 100000,
-      "tags": ["dice", "coin", "random", "games"],
+      "tags": [
+        "dice",
+        "coin",
+        "random",
+        "games"
+      ],
       "category": "entertainment",
       "tools": [
         {
@@ -703,7 +854,16 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/seedance-plugin.agnt",
       "size": 803786,
-      "tags": ["ai", "video", "seedance", "bytedance", "openrouter", "generative", "text-to-video", "image-to-video"],
+      "tags": [
+        "ai",
+        "video",
+        "seedance",
+        "bytedance",
+        "openrouter",
+        "generative",
+        "text-to-video",
+        "image-to-video"
+      ],
       "category": "ai",
       "tools": [
         {
@@ -725,7 +885,17 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/elevenlabs-plugin.agnt",
       "size": 804475,
-      "tags": ["ai", "audio", "elevenlabs", "tts", "text-to-speech", "stt", "speech-to-text", "voice", "transcription"],
+      "tags": [
+        "ai",
+        "audio",
+        "elevenlabs",
+        "tts",
+        "text-to-speech",
+        "stt",
+        "speech-to-text",
+        "voice",
+        "transcription"
+      ],
       "category": "ai",
       "tools": [
         {
@@ -747,7 +917,15 @@
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/remotion-plugin.agnt",
       "size": 7290,
-      "tags": ["video", "remotion", "composition", "branding", "motion-graphics", "react", "creative"],
+      "tags": [
+        "video",
+        "remotion",
+        "composition",
+        "branding",
+        "motion-graphics",
+        "react",
+        "creative"
+      ],
       "category": "media",
       "tools": [
         {

@@ -1,5 +1,7 @@
-import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, AttachmentBuilder } from 'discord.js';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Discord API Plugin Tool
@@ -182,25 +184,85 @@ class DiscordAPI {
   }
 
   async uploadFile(client, params) {
-    const { channelId, fileName, fileData, message } = params;
+    const { channelId, fileName, filePath, fileData, message, description, spoiler } = params;
 
     const channel = await client.channels.fetch(channelId);
 
-    // Convert base64 to buffer
-    const buffer = Buffer.from(fileData, 'base64');
+    // Resolve the attachment source. Prefer filePath (no base64 bloat, streams from disk)
+    // and fall back to fileData (base64) for backward compatibility.
+    let source;
+    let resolvedName = fileName;
+    let sourceSize = null;
 
-    const attachment = { attachment: buffer, name: fileName };
+    if (filePath && typeof filePath === 'string' && filePath.trim().length > 0) {
+      const absPath = path.resolve(filePath);
+      if (!fs.existsSync(absPath)) {
+        throw new Error(`filePath does not exist: ${absPath}`);
+      }
+      const stats = fs.statSync(absPath);
+      if (!stats.isFile()) {
+        throw new Error(`filePath is not a regular file: ${absPath}`);
+      }
+      sourceSize = stats.size;
+      // Read the whole file into a Buffer. Buffers give discord.js a deterministic
+      // Content-Length on the multipart part, which is what Discord's CDN uses to
+      // tag the attachment with a proper content_type (needed for inline video/image previews).
+      // Streams would skip that, and some attachments lose the content_type field
+      // — which is the exact cause of "click to download" tiles for valid MP4s.
+      source = fs.readFileSync(absPath);
+      if (!resolvedName) {
+        resolvedName = path.basename(absPath);
+      }
+    } else if (fileData && typeof fileData === 'string' && fileData.length > 0) {
+      source = Buffer.from(fileData, 'base64');
+      sourceSize = source.length;
+      if (!resolvedName) {
+        throw new Error('fileName is required when uploading via fileData (base64).');
+      }
+    } else {
+      throw new Error('UPLOAD_FILE requires either filePath or fileData.');
+    }
+
+    // Use AttachmentBuilder so discord.js infers and sets the correct Content-Type
+    // on the multipart part. Without this, raw { attachment, name } can land on
+    // Discord's CDN without a content_type field, and the client falls back to a
+    // download tile instead of the inline video/image player.
+    const attachment = new AttachmentBuilder(source, { name: resolvedName });
+
+    if (description && typeof description === 'string') {
+      attachment.setDescription(description);
+    }
+    if (spoiler === true || spoiler === 'true') {
+      attachment.setSpoiler(true);
+    }
 
     const sentMessage = await channel.send({
       content: message || '',
       files: [attachment],
     });
 
+    const sentAttachment = sentMessage.attachments?.first?.();
+
     return {
       success: true,
       result: {
         messageId: sentMessage.id,
         timestamp: sentMessage.createdTimestamp,
+        fileName: resolvedName,
+        fileSize: sourceSize,
+        source: filePath ? 'filePath' : 'fileData',
+        attachment: sentAttachment
+          ? {
+              id: sentAttachment.id,
+              url: sentAttachment.url,
+              proxyUrl: sentAttachment.proxyURL,
+              contentType: sentAttachment.contentType || null,
+              size: sentAttachment.size,
+              width: sentAttachment.width || null,
+              height: sentAttachment.height || null,
+              name: sentAttachment.name,
+            }
+          : null,
       },
     };
   }

@@ -1,6 +1,6 @@
 {
   "name": "discord-plugin",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Discord integration plugin for AGNT - Send messages, manage roles, receive messages, and interact with Discord servers",
   "author": "AGNT",
   "icon": "discord",
@@ -68,10 +68,19 @@
               "value": "ASSIGN_ROLE"
             }
           },
+          "filePath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Absolute path to a file on disk to upload (preferred — avoids base64 bloat and ensures proper video/image previews). Either filePath OR fileData is required.",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
           "fileName": {
             "type": "string",
             "inputType": "text",
-            "description": "The name of the file to upload (for UPLOAD_FILE action)",
+            "description": "The name of the file as it should appear in Discord (for UPLOAD_FILE action). Optional when using filePath — defaults to the basename of filePath. Required when using fileData.",
             "conditional": {
               "field": "action",
               "value": "UPLOAD_FILE"
@@ -80,7 +89,25 @@
           "fileData": {
             "type": "string",
             "inputType": "textarea",
-            "description": "The base64-encoded file data to upload (for UPLOAD_FILE action)",
+            "description": "Base64-encoded file data (for UPLOAD_FILE action). Prefer filePath when possible — base64 uploads are slower and heavier. Either filePath OR fileData is required.",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "description": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Optional alt text / description for the attachment (accessibility). For UPLOAD_FILE action.",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "spoiler": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "If true, mark the uploaded file as a spoiler (blurred until clicked). For UPLOAD_FILE action.",
             "conditional": {
               "field": "action",
               "value": "UPLOAD_FILE"
