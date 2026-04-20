@@ -25,6 +25,7 @@ import autonomousMessageService from './AutonomousMessageService.js';
 import UserModel from '../models/UserModel.js';
 import AgentModel from '../models/AgentModel.js';
 import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled } from './unfirehose/UnfirehoseLogger.js';
+import { saveBase64Image } from './ImageStorage.js';
 
 /**
  * Inject the current date/time into the latest user message.
@@ -51,11 +52,15 @@ function extractAndReplaceImages(toolResult, toolCallId) {
   try {
     const result = typeof toolResult === 'string' ? JSON.parse(toolResult) : toolResult;
 
+    const preSavedIds = Array.isArray(result.savedImageIds) ? result.savedImageIds : [];
+    const preSavedFirstId = typeof result.firstImageId === 'string' ? result.firstImageId : null;
+
     // Check for image generation results
     if (result.generatedImages && Array.isArray(result.generatedImages)) {
       result.generatedImages.forEach((img, index) => {
         if (img && typeof img === 'string' && img.startsWith('data:image/')) {
-          const imageId = `img-${toolCallId}-${index}`;
+          const imageId = preSavedIds[index] || `img-${toolCallId}-${index}`;
+          if (!preSavedIds[index]) saveBase64Image(imageId, img);
           images.push({
             id: imageId,
             data: img,
@@ -70,7 +75,8 @@ function extractAndReplaceImages(toolResult, toolCallId) {
 
     // Check for firstImage
     if (result.firstImage && typeof result.firstImage === 'string' && result.firstImage.startsWith('data:image/')) {
-      const imageId = `img-${toolCallId}-first`;
+      const imageId = preSavedFirstId || `img-${toolCallId}-first`;
+      if (!preSavedFirstId) saveBase64Image(imageId, result.firstImage);
       images.push({
         id: imageId,
         data: result.firstImage,
@@ -118,6 +124,7 @@ function sanitizeMessageHistory(messages) {
     // Replace each match with a reference
     matches.forEach((imageData, imageIndex) => {
       const imageId = `img-history-${msgIndex}-${imageIndex}-${Date.now()}`;
+      saveBase64Image(imageId, imageData);
 
       extractedImages.push({
         id: imageId,

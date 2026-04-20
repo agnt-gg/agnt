@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,6 +14,7 @@ import CodexCliService from '../ai/CodexCliService.js';
 import CodexCliSessionManager from '../ai/CodexCliSessionManager.js';
 import jwt from 'jsonwebtoken';
 import ParameterResolver from '../../workflow/ParameterResolver.js';
+import { saveBase64Image } from '../ImageStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -3500,16 +3502,59 @@ export const TOOLS = {
           });
         }
 
-        // Return successful result
+        // Persist generated images to disk so we can return stable URLs/paths
+        // to the LLM (instead of round-tripping full base64 through context).
+        const generatedImages = Array.isArray(result.generatedImages) ? result.generatedImages : [];
+        const savedImageIds = [];
+        const savedImagePaths = [];
+        const imageUrls = [];
+        generatedImages.forEach((img, index) => {
+          if (img && typeof img === 'string' && img.startsWith('data:image/')) {
+            const id = `img-gen-${randomUUID()}`;
+            const savedPath = saveBase64Image(id, img);
+            if (savedPath) {
+              savedImageIds[index] = id;
+              savedImagePaths[index] = savedPath;
+              imageUrls[index] = `/api/images/${id}`;
+            }
+          }
+        });
+
+        let firstImageId = null;
+        let firstImagePath = null;
+        let firstImageUrl = null;
+        if (result.firstImage && typeof result.firstImage === 'string' && result.firstImage.startsWith('data:image/')) {
+          // Reuse the first generated image's ID if it matches, otherwise save separately
+          if (savedImageIds[0] && generatedImages[0] === result.firstImage) {
+            firstImageId = savedImageIds[0];
+            firstImagePath = savedImagePaths[0];
+            firstImageUrl = imageUrls[0];
+          } else {
+            firstImageId = `img-gen-${randomUUID()}`;
+            firstImagePath = saveBase64Image(firstImageId, result.firstImage);
+            if (firstImagePath) {
+              firstImageUrl = `/api/images/${firstImageId}`;
+            } else {
+              firstImageId = null;
+            }
+          }
+        }
+
         return JSON.stringify({
           success: true,
           provider: provider,
           model: selectedModel,
-          generatedImages: result.generatedImages || [],
+          generatedImages,
           firstImage: result.firstImage || null,
+          savedImageIds,
+          savedImagePaths,
+          imageUrls,
+          firstImageId,
+          firstImagePath,
+          firstImageUrl,
           revisedPrompt: result.revisedPrompt || null,
           imageMetadata: result.imageMetadata || null,
-          message: `Successfully generated ${(result.generatedImages || []).length} image(s) using ${provider} ${selectedModel}`,
+          message: `Successfully generated ${generatedImages.length} image(s) using ${provider} ${selectedModel}. Saved to: ${imageUrls.filter(Boolean).join(', ') || firstImageUrl || '(none)'}`,
         });
       } catch (error) {
         console.error('Error in generate_image tool:', error);
