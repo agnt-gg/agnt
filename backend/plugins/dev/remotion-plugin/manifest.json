@@ -1,0 +1,134 @@
+{
+  "name": "remotion-plugin",
+  "version": "1.0.0",
+  "description": "Compose branded videos from AI clips using Remotion. Takes a shot-list of MP4s + brand config and renders a final MP4 with logos, text overlays, transitions, captions, and voiceover.",
+  "author": "AGNT",
+  "icon": "video",
+  "homepage": "https://remotion.dev",
+  "license": "MIT",
+  "tools": [
+    {
+      "type": "remotion-compose",
+      "entryPoint": "./remotion-compose.js",
+      "schema": {
+        "title": "Remotion Compose",
+        "category": "action",
+        "type": "remotion-compose",
+        "icon": "video",
+        "description": "Render a branded video from a shot-list of AI video clips. Typically fed by seedance-api and elevenlabs-api outputs. Produces a final MP4 with brand typography, logos, and captions.",
+        "documentation": "https://www.remotion.dev/docs",
+        "authRequired": "none",
+        "parameters": {
+          "shots": {
+            "type": "array",
+            "inputType": "json",
+            "required": true,
+            "description": "Array of shot objects: [{filePath, durationFrames, overlayText?}, ...]. filePath is the MP4 from seedance-api. durationFrames is clip length in frames."
+          },
+          "width": {
+            "type": "number",
+            "inputType": "number",
+            "default": 1080,
+            "description": "Output video width in pixels"
+          },
+          "height": {
+            "type": "number",
+            "inputType": "number",
+            "default": 1920,
+            "description": "Output video height in pixels (1920 for 9:16 vertical, 1080 for 16:9 horizontal)"
+          },
+          "fps": {
+            "type": "number",
+            "inputType": "number",
+            "default": 30,
+            "description": "Frames per second"
+          },
+          "brandPrimary": {
+            "type": "string",
+            "inputType": "text",
+            "default": "#e53d8f",
+            "description": "Primary brand color (hex). Used for titles and highlights."
+          },
+          "brandAccent": {
+            "type": "string",
+            "inputType": "text",
+            "default": "#12e0ff",
+            "description": "Accent brand color (hex). Used for CTA buttons and glow effects."
+          },
+          "backgroundColor": {
+            "type": "string",
+            "inputType": "text",
+            "default": "#0b0b14",
+            "description": "Background color for letterboxing and non-video moments"
+          },
+          "titleText": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: Big title text displayed in the first shot"
+          },
+          "ctaText": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: Call-to-action text displayed in the last shot"
+          },
+          "voiceoverPath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: Local path to voiceover MP3 (from elevenlabs-api TEXT_TO_SPEECH output)"
+          },
+          "musicUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: URL or path to background music track"
+          },
+          "projectId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: Reuse an existing Remotion project directory (speeds up re-renders, skips npm install)"
+          },
+          "skipInstall": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["No", "Yes"],
+            "default": "No",
+            "description": "Skip `npm install` step (use if project already installed)"
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether render succeeded"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Absolute path to the final rendered MP4"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "description": "Output file size in bytes"
+          },
+          "durationSeconds": {
+            "type": "number",
+            "description": "Total video duration in seconds"
+          },
+          "totalFrames": {
+            "type": "number",
+            "description": "Total frames rendered"
+          },
+          "projectDir": {
+            "type": "string",
+            "description": "Persisted Remotion project directory (reusable for re-renders)"
+          },
+          "renderDurationMs": {
+            "type": "number",
+            "description": "How long the render took in milliseconds"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if render failed"
+          }
+        }
+      }
+    }
+  ]
+}

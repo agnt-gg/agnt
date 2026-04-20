@@ -692,6 +692,72 @@
           }
         }
       ]
+    },
+    {
+      "name": "seedance-plugin",
+      "displayName": "Seedance 2.0",
+      "icon": "bytedance",
+      "version": "1.0.0",
+      "description": "Generate cinematic AI video clips (5-20s) using ByteDance Seedance 2.0 via OpenRouter. Supports text-to-video, first/last-frame image conditioning, and native audio-video joint generation.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/seedance-plugin.agnt",
+      "size": 803786,
+      "tags": ["ai", "video", "seedance", "bytedance", "openrouter", "generative", "text-to-video", "image-to-video"],
+      "category": "ai",
+      "tools": [
+        {
+          "type": "seedance-api",
+          "schema": {
+            "title": "Seedance 2.0 Video",
+            "description": "Generate 5-20s cinematic AI video clips using ByteDance Seedance 2.0 via OpenRouter. Pair with the Remotion plugin to add branded motion graphics, logos, and captions."
+          }
+        }
+      ]
+    },
+    {
+      "name": "elevenlabs-plugin",
+      "displayName": "ElevenLabs",
+      "icon": "elevenlabs",
+      "version": "1.0.0",
+      "description": "ElevenLabs voice AI for AGNT - text-to-speech (32+ languages), speech-to-text transcription with word-level timings, and voice library browsing. Industry-leading AI voice quality for videos, podcasts, and voiceovers.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/elevenlabs-plugin.agnt",
+      "size": 804475,
+      "tags": ["ai", "audio", "elevenlabs", "tts", "text-to-speech", "stt", "speech-to-text", "voice", "transcription"],
+      "category": "ai",
+      "tools": [
+        {
+          "type": "elevenlabs-api",
+          "schema": {
+            "title": "ElevenLabs API",
+            "description": "Generate speech, transcribe audio with word-level timings and speaker diarization, and browse voices using ElevenLabs AI."
+          }
+        }
+      ]
+    },
+    {
+      "name": "remotion-plugin",
+      "displayName": "Remotion",
+      "icon": "video",
+      "version": "1.0.0",
+      "description": "Compose branded videos programmatically using Remotion. Takes a shot-list of MP4s + brand config and renders a final MP4 with animated titles, CTA pills, color grading, overlay text, and voiceover. Pairs perfectly with seedance-plugin and elevenlabs-plugin.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/remotion-plugin.agnt",
+      "size": 7290,
+      "tags": ["video", "remotion", "composition", "branding", "motion-graphics", "react", "creative"],
+      "category": "media",
+      "tools": [
+        {
+          "type": "remotion-compose",
+          "schema": {
+            "title": "Remotion Compose",
+            "description": "Render a branded video from a shot-list of AI video clips. Combines MP4 clips with typography overlays, color grading, and optional voiceover into a final production-ready MP4."
+          }
+        }
+      ]
     }
   ]
 }

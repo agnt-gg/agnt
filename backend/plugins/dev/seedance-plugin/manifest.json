@@ -1,0 +1,133 @@
+{
+  "name": "seedance-plugin",
+  "version": "1.0.0",
+  "description": "Generate cinematic AI video clips (5-20s) using ByteDance Seedance 2.0 via OpenRouter. Supports text-to-video, first/last-frame image conditioning, and native audio-video joint generation.",
+  "author": "AGNT",
+  "icon": "film",
+  "homepage": "https://openrouter.ai/bytedance/seedance-2.0",
+  "license": "MIT",
+  "tools": [
+    {
+      "type": "seedance-api",
+      "entryPoint": "./seedance-api.js",
+      "schema": {
+        "title": "Seedance 2.0 Video",
+        "category": "action",
+        "type": "seedance-api",
+        "icon": "film",
+        "description": "Generate 5-20s cinematic AI video clips using ByteDance Seedance 2.0 via OpenRouter. Pair with the Remotion plugin to add branded motion graphics, logos, and captions.",
+        "documentation": "https://openrouter.ai/bytedance/seedance-2.0",
+        "authRequired": "apiKey",
+        "authProvider": "openrouter",
+        "parameters": {
+          "prompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": true,
+            "description": "Cinematic shot description. Formula: [camera] [subject] [action] [environment] [lighting] [style]. Example: 'Slow dolly-in on a chrome robot hand assembling a glowing cube, volumetric fog, cinematic teal-orange lighting, anamorphic lens flare, 35mm film grain'"
+          },
+          "duration": {
+            "type": "number",
+            "inputType": "select",
+            "options": [5, 10, 15, 20],
+            "default": 5,
+            "description": "Clip length in seconds"
+          },
+          "resolution": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["480p", "720p", "1080p"],
+            "default": "1080p",
+            "description": "Output resolution. Cost per second: 480p=$0.067, 720p=$0.151, 1080p=$0.340"
+          },
+          "aspectRatio": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["9:16", "16:9", "1:1", "4:3", "3:4"],
+            "default": "9:16",
+            "description": "9:16 for Reels/Shorts, 16:9 for YouTube, 1:1 for feed posts"
+          },
+          "useFastTier": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["No", "Yes"],
+            "default": "No",
+            "description": "Use Seedance 2.0 Fast model (cheaper, lower fidelity)"
+          },
+          "generateAudio": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["No", "Yes"],
+            "default": "No",
+            "description": "Enable Seedance 2.0 native audio-video joint generation (ambient sound and effects)"
+          },
+          "firstFrameUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: URL of first-frame reference image (image-to-video mode)"
+          },
+          "lastFrameUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: URL of last-frame reference image",
+            "conditional": {
+              "field": "firstFrameUrl",
+              "operator": "notEmpty"
+            }
+          },
+          "filename": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: Override output filename (auto-generated UUID if omitted)"
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether video generation succeeded"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Absolute path to the downloaded MP4 file (feeds into remotion-compose)"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Just the filename portion"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "description": "File size in bytes"
+          },
+          "duration": {
+            "type": "number",
+            "description": "Actual clip duration in seconds"
+          },
+          "resolution": {
+            "type": "string",
+            "description": "Output resolution used"
+          },
+          "aspectRatio": {
+            "type": "string",
+            "description": "Aspect ratio used"
+          },
+          "jobId": {
+            "type": "string",
+            "description": "OpenRouter job ID for debugging"
+          },
+          "cost": {
+            "type": "number",
+            "description": "Generation cost in USD if reported by provider"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model used (bytedance/seedance-2.0 or bytedance/seedance-2.0-fast)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if generation failed"
+          }
+        }
+      }
+    }
+  ]
+}

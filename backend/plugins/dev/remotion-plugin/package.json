@@ -1,0 +1,8 @@
+{
+  "name": "agnt-remotion-plugin",
+  "version": "1.0.0",
+  "description": "Programmatic video composition plugin for AGNT using Remotion",
+  "type": "module",
+  "main": "remotion-compose.js",
+  "dependencies": {}
+}

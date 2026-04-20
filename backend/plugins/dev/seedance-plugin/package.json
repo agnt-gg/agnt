@@ -1,0 +1,10 @@
+{
+  "name": "agnt-seedance-plugin",
+  "version": "1.0.0",
+  "description": "ByteDance Seedance 2.0 video generation plugin for AGNT",
+  "type": "module",
+  "main": "seedance-api.js",
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}

@@ -1,0 +1,19 @@
+import React from 'react';
+import { Composition } from 'remotion';
+import { BrandFilm } from './BrandFilm';
+
+export const RemotionRoot: React.FC = () => {
+  return (
+    <>
+      <Composition
+        id="BrandFilm"
+        component={BrandFilm}
+        durationInFrames={__DURATION_FRAMES__}
+        fps={__FPS__}
+        width={__WIDTH__}
+        height={__HEIGHT__}
+        defaultProps={{}}
+      />
+    </>
+  );
+};

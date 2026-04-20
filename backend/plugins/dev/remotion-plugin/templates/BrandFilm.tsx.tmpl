@@ -1,0 +1,174 @@
+import React from 'react';
+import {
+  AbsoluteFill,
+  Sequence,
+  OffthreadVideo,
+  Audio,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+  interpolate,
+  spring,
+} from 'remotion';
+
+type Shot = {
+  filePath: string;
+  durationFrames: number;
+  overlayText: string | null;
+};
+
+const SHOTS: Shot[] = __SHOTS_JSON__;
+const BRAND_PRIMARY = '__BRAND_PRIMARY__';
+const BRAND_ACCENT = '__BRAND_ACCENT__';
+const BACKGROUND_COLOR = '__BACKGROUND_COLOR__';
+const TITLE_TEXT = "__TITLE_TEXT__";
+const CTA_TEXT = "__CTA_TEXT__";
+const HAS_VOICEOVER = __HAS_VOICEOVER__;
+const VOICEOVER_FILE = '__VOICEOVER_FILE__';
+
+export const BrandFilm: React.FC = () => {
+  const { fps, durationInFrames } = useVideoConfig();
+
+  // Build cumulative frame offsets for each shot
+  let cursor = 0;
+  const shotTimings = SHOTS.map((shot) => {
+    const startFrame = cursor;
+    cursor += shot.durationFrames;
+    return { ...shot, startFrame };
+  });
+
+  const lastShot = shotTimings[shotTimings.length - 1];
+  const ctaStart = lastShot ? lastShot.startFrame + Math.floor(lastShot.durationFrames * 0.4) : 0;
+  const ctaDuration = lastShot ? lastShot.durationFrames - Math.floor(lastShot.durationFrames * 0.4) : 60;
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: BACKGROUND_COLOR }}>
+      {/* Seedance B-roll clips */}
+      {shotTimings.map((shot, i) => (
+        <Sequence key={i} from={shot.startFrame} durationInFrames={shot.durationFrames}>
+          <AbsoluteFill>
+            <OffthreadVideo
+              src={staticFile(shot.filePath)}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              muted
+            />
+            <ColorGrade />
+            {shot.overlayText ? <OverlayText text={shot.overlayText} /> : null}
+          </AbsoluteFill>
+        </Sequence>
+      ))}
+
+      {/* Big title card — shows over first shot */}
+      {TITLE_TEXT ? (
+        <Sequence from={Math.floor(fps * 0.3)} durationInFrames={Math.floor(fps * 2.5)}>
+          <BigTitle text={TITLE_TEXT} />
+        </Sequence>
+      ) : null}
+
+      {/* CTA — fades in near the end */}
+      {CTA_TEXT ? (
+        <Sequence from={ctaStart} durationInFrames={ctaDuration}>
+          <CTA text={CTA_TEXT} />
+        </Sequence>
+      ) : null}
+
+      {/* Voiceover */}
+      {HAS_VOICEOVER ? <Audio src={staticFile(VOICEOVER_FILE)} /> : null}
+    </AbsoluteFill>
+  );
+};
+
+const ColorGrade: React.FC = () => (
+  <AbsoluteFill
+    style={{
+      background: `linear-gradient(180deg, ${BRAND_PRIMARY}26, ${BRAND_ACCENT}26)`,
+      mixBlendMode: 'soft-light',
+      pointerEvents: 'none',
+    }}
+  />
+);
+
+const BigTitle: React.FC<{ text: string }> = ({ text }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const scale = spring({ frame, fps, config: { damping: 14 } });
+  const opacity = interpolate(frame, [0, 15], [0, 1], { extrapolateRight: 'clamp' });
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <h1
+        style={{
+          fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          fontWeight: 900,
+          fontSize: 220,
+          letterSpacing: '-0.05em',
+          color: BRAND_PRIMARY,
+          textShadow: `0 0 80px ${BRAND_ACCENT}66`,
+          transform: `scale(${scale})`,
+          opacity,
+          margin: 0,
+          textAlign: 'center',
+        }}
+      >
+        {text}
+      </h1>
+    </AbsoluteFill>
+  );
+};
+
+const CTA: React.FC<{ text: string }> = ({ text }) => {
+  const frame = useCurrentFrame();
+  const y = interpolate(frame, [0, 20], [120, 0], { extrapolateRight: 'clamp' });
+  const opacity = interpolate(frame, [0, 15], [0, 1], { extrapolateRight: 'clamp' });
+
+  return (
+    <AbsoluteFill
+      style={{
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        paddingBottom: 160,
+      }}
+    >
+      <div
+        style={{
+          padding: '24px 56px',
+          borderRadius: 999,
+          background: BRAND_ACCENT,
+          color: '#0b0b14',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          fontWeight: 800,
+          fontSize: 56,
+          letterSpacing: '-0.02em',
+          transform: `translateY(${y}px)`,
+          opacity,
+          boxShadow: `0 20px 60px ${BRAND_ACCENT}80`,
+        }}
+      >
+        {text}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const OverlayText: React.FC<{ text: string }> = ({ text }) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 10, 80, 100], [0, 1, 1, 0], { extrapolateRight: 'clamp' });
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'flex-end', padding: 80, pointerEvents: 'none' }}>
+      <div
+        style={{
+          color: '#fff',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          fontWeight: 700,
+          fontSize: 42,
+          letterSpacing: '-0.02em',
+          opacity,
+          textShadow: '0 4px 16px rgba(0,0,0,0.8)',
+        }}
+      >
+        {text}
+      </div>
+    </AbsoluteFill>
+  );
+};

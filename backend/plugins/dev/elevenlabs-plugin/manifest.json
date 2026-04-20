@@ -1,0 +1,239 @@
+{
+  "name": "elevenlabs-plugin",
+  "version": "1.0.0",
+  "description": "ElevenLabs voice AI for AGNT - text-to-speech (32+ languages), speech-to-text transcription, and voice library browsing. Industry-leading AI voice quality for videos, podcasts, and voiceovers.",
+  "author": "AGNT",
+  "icon": "mic",
+  "homepage": "https://elevenlabs.io",
+  "license": "MIT",
+  "tools": [
+    {
+      "type": "elevenlabs-api",
+      "entryPoint": "./elevenlabs-api.js",
+      "schema": {
+        "title": "ElevenLabs API",
+        "category": "action",
+        "type": "elevenlabs-api",
+        "icon": "mic",
+        "description": "Generate speech, transcribe audio, and browse voices using ElevenLabs AI. Paired with the Seedance and Remotion plugins for a complete video production pipeline.",
+        "documentation": "https://elevenlabs.io/docs/api-reference",
+        "authRequired": "apiKey",
+        "authProvider": "elevenlabs",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["TEXT_TO_SPEECH", "SPEECH_TO_TEXT", "LIST_VOICES", "GET_VOICE"],
+            "default": "TEXT_TO_SPEECH",
+            "description": "The ElevenLabs operation to perform"
+          },
+          "text": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Text to synthesize into speech (for TEXT_TO_SPEECH action)",
+            "conditional": {
+              "field": "action",
+              "value": "TEXT_TO_SPEECH"
+            }
+          },
+          "voiceId": {
+            "type": "string",
+            "inputType": "text",
+            "default": "EXAVITQu4vr4xnSDxMaL",
+            "description": "Voice ID (default: 'Bella' - warm female). Browse available voices with LIST_VOICES.",
+            "conditional": {
+              "field": "action",
+              "value": ["TEXT_TO_SPEECH", "GET_VOICE"]
+            }
+          },
+          "modelId": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "eleven_multilingual_v2",
+              "eleven_turbo_v2_5",
+              "eleven_flash_v2_5",
+              "eleven_v3"
+            ],
+            "default": "eleven_multilingual_v2",
+            "description": "Model: v2=best quality, turbo=fast, flash=fastest, v3=most expressive (70+ languages)",
+            "conditional": {
+              "field": "action",
+              "value": "TEXT_TO_SPEECH"
+            }
+          },
+          "stability": {
+            "type": "number",
+            "inputType": "number",
+            "default": 0.5,
+            "description": "Voice stability 0-1 (0=expressive/variable, 1=flat/consistent)",
+            "conditional": {
+              "field": "action",
+              "value": "TEXT_TO_SPEECH"
+            }
+          },
+          "similarityBoost": {
+            "type": "number",
+            "inputType": "number",
+            "default": 0.75,
+            "description": "Similarity boost 0-1 (how closely to match the original voice sample)",
+            "conditional": {
+              "field": "action",
+              "value": "TEXT_TO_SPEECH"
+            }
+          },
+          "style": {
+            "type": "number",
+            "inputType": "number",
+            "default": 0,
+            "description": "Style exaggeration 0-1 (v2 models only, adds character but may reduce stability)",
+            "conditional": {
+              "field": "action",
+              "value": "TEXT_TO_SPEECH"
+            }
+          },
+          "outputFormat": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "mp3_44100_128",
+              "mp3_44100_192",
+              "pcm_44100",
+              "pcm_16000",
+              "opus_48000_128"
+            ],
+            "default": "mp3_44100_128",
+            "description": "Audio format: format_sampleRate_bitrate",
+            "conditional": {
+              "field": "action",
+              "value": "TEXT_TO_SPEECH"
+            }
+          },
+          "filename": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional: Override output filename (auto-generated UUID if omitted)",
+            "conditional": {
+              "field": "action",
+              "value": "TEXT_TO_SPEECH"
+            }
+          },
+          "audioUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "URL of audio file to transcribe",
+            "conditional": {
+              "field": "action",
+              "value": "SPEECH_TO_TEXT"
+            }
+          },
+          "audioFilePath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Local path to audio file (alternative to audioUrl)",
+            "conditional": {
+              "field": "action",
+              "value": "SPEECH_TO_TEXT"
+            }
+          },
+          "transcriptModel": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["scribe_v1", "scribe_v1_experimental"],
+            "default": "scribe_v1",
+            "description": "Transcription model",
+            "conditional": {
+              "field": "action",
+              "value": "SPEECH_TO_TEXT"
+            }
+          },
+          "diarize": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["No", "Yes"],
+            "default": "No",
+            "description": "Identify different speakers in the audio",
+            "conditional": {
+              "field": "action",
+              "value": "SPEECH_TO_TEXT"
+            }
+          },
+          "languageCode": {
+            "type": "string",
+            "inputType": "text",
+            "description": "ISO 639-1 language code (e.g. 'en', 'es', 'fr'). Auto-detected if blank.",
+            "conditional": {
+              "field": "action",
+              "value": "SPEECH_TO_TEXT"
+            }
+          },
+          "voiceCategory": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["all", "premade", "cloned", "generated", "professional"],
+            "default": "all",
+            "description": "Filter voices by category",
+            "conditional": {
+              "field": "action",
+              "value": "LIST_VOICES"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation succeeded"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Path to saved audio file (TEXT_TO_SPEECH action)"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Just the filename portion"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "description": "File size in bytes"
+          },
+          "transcript": {
+            "type": "string",
+            "description": "Full transcript text (SPEECH_TO_TEXT action)"
+          },
+          "words": {
+            "type": "array",
+            "description": "Word-level timings [{text, start, end, speaker_id}]"
+          },
+          "language": {
+            "type": "string",
+            "description": "Detected language code"
+          },
+          "voices": {
+            "type": "array",
+            "description": "Array of available voices (LIST_VOICES action)"
+          },
+          "voice": {
+            "type": "object",
+            "description": "Voice details (GET_VOICE action)"
+          },
+          "modelUsed": {
+            "type": "string",
+            "description": "Model that was invoked"
+          },
+          "voiceId": {
+            "type": "string",
+            "description": "Voice ID used"
+          },
+          "charactersUsed": {
+            "type": "number",
+            "description": "Character count billed"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the operation failed"
+          }
+        }
+      }
+    }
+  ]
+}

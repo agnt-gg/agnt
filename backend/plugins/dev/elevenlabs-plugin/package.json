@@ -1,0 +1,11 @@
+{
+  "name": "agnt-elevenlabs-plugin",
+  "version": "1.0.0",
+  "description": "ElevenLabs voice AI plugin for AGNT",
+  "type": "module",
+  "main": "elevenlabs-api.js",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0"
+  }
+}
