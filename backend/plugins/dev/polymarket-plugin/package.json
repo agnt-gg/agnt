@@ -1,0 +1,10 @@
+{
+  "name": "polymarket-plugin",
+  "version": "1.0.0",
+  "description": "Polymarket integration for AGNT — discover markets, read orderbooks, monitor positions, and place signed orders on the world's largest prediction market.",
+  "type": "module",
+  "main": "polymarket-api.js",
+  "dependencies": {
+    "ethers": "5.8.0"
+  }
+}

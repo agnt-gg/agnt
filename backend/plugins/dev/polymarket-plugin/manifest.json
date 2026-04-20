@@ -1,0 +1,368 @@
+{
+  "name": "polymarket-plugin",
+  "version": "1.0.0",
+  "description": "Polymarket integration for AGNT — discover markets, read orderbooks, monitor user positions, and place signed orders on the world's largest prediction market.",
+  "author": "AGNT",
+  "icon": "polymarket",
+  "tools": [
+    {
+      "type": "polymarket-api",
+      "entryPoint": "./polymarket-api.js",
+      "schema": {
+        "title": "Polymarket API",
+        "category": "action",
+        "type": "polymarket-api",
+        "icon": "polymarket",
+        "description": "Unified Polymarket node — discover markets via Gamma, read orderbook/prices via CLOB, fetch user positions/PnL via Data, and place EIP-712 signed orders. Public reads need no auth; trading requires a connected wallet.",
+        "documentation": "https://docs.polymarket.com/api-reference/introduction",
+        "authRequired": "apiKey",
+        "authProvider": "polymarket",
+        "parameters": {
+          "operation": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "SEARCH_MARKETS",
+              "GET_MARKET",
+              "GET_EVENT",
+              "LIST_TRENDING",
+              "GET_ORDERBOOK",
+              "GET_PRICE",
+              "GET_PRICE_HISTORY",
+              "GET_MIDPOINT",
+              "GET_SPREAD",
+              "GET_USER_POSITIONS",
+              "GET_USER_PNL",
+              "GET_USER_ACTIVITY",
+              "GET_LEADERBOARD",
+              "DERIVE_API_KEY",
+              "PLACE_LIMIT_ORDER",
+              "PLACE_MARKET_ORDER",
+              "GET_OPEN_ORDERS",
+              "CANCEL_ORDER",
+              "CANCEL_ALL_ORDERS",
+              "GET_USER_TRADES"
+            ],
+            "default": "SEARCH_MARKETS",
+            "required": true,
+            "description": "The Polymarket operation to perform. Public ops (SEARCH/GET/LIST) need no auth; trading ops require a connected wallet."
+          },
+
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Search term (e.g. 'NYC weather April', 'fed rate cut')",
+            "conditional": { "field": "operation", "value": "SEARCH_MARKETS" }
+          },
+          "tagSlug": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional tag slug filter (e.g. 'weather', 'politics', 'crypto')",
+            "conditional": { "field": "operation", "value": ["SEARCH_MARKETS", "LIST_TRENDING"] }
+          },
+          "active": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["true", "false", "any"],
+            "default": "true",
+            "required": false,
+            "description": "Filter to active markets only",
+            "conditional": { "field": "operation", "value": ["SEARCH_MARKETS", "LIST_TRENDING"] }
+          },
+          "closed": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["false", "true", "any"],
+            "default": "false",
+            "required": false,
+            "description": "Whether to include closed/resolved markets",
+            "conditional": { "field": "operation", "value": ["SEARCH_MARKETS", "LIST_TRENDING"] }
+          },
+          "orderBy": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["volume24hr", "volume", "liquidity", "endDate", "startDate"],
+            "default": "volume24hr",
+            "required": false,
+            "description": "Sort field for trending/list results",
+            "conditional": { "field": "operation", "value": "LIST_TRENDING" }
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "text",
+            "default": 20,
+            "required": false,
+            "description": "Maximum results to return (1-500)",
+            "conditional": {
+              "field": "operation",
+              "value": ["SEARCH_MARKETS", "LIST_TRENDING", "GET_USER_POSITIONS", "GET_USER_ACTIVITY", "GET_LEADERBOARD", "GET_OPEN_ORDERS", "GET_USER_TRADES"]
+            }
+          },
+          "offset": {
+            "type": "number",
+            "inputType": "text",
+            "default": 0,
+            "required": false,
+            "description": "Pagination offset",
+            "conditional": {
+              "field": "operation",
+              "value": ["SEARCH_MARKETS", "LIST_TRENDING", "GET_USER_POSITIONS", "GET_USER_ACTIVITY"]
+            }
+          },
+
+          "marketId": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Market identifier — accepts numeric Gamma ID, slug, or a token ID. Auto-detected.",
+            "conditional": { "field": "operation", "value": "GET_MARKET" }
+          },
+          "eventId": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Event identifier — accepts numeric ID or slug. Auto-detected.",
+            "conditional": { "field": "operation", "value": "GET_EVENT" }
+          },
+
+          "tokenId": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "ERC-1155 CLOB token ID for a YES or NO outcome (decimal string). Required for orderbook, price, midpoint, spread, history, and order operations.",
+            "conditional": {
+              "field": "operation",
+              "value": ["GET_ORDERBOOK", "GET_PRICE", "GET_PRICE_HISTORY", "GET_MIDPOINT", "GET_SPREAD", "PLACE_LIMIT_ORDER", "PLACE_MARKET_ORDER", "CANCEL_ALL_ORDERS"]
+            }
+          },
+          "side": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["BUY", "SELL"],
+            "default": "BUY",
+            "required": false,
+            "description": "Order side",
+            "conditional": { "field": "operation", "value": ["GET_PRICE", "PLACE_LIMIT_ORDER", "PLACE_MARKET_ORDER"] }
+          },
+          "interval": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["1h", "6h", "1d", "1w", "1m", "max"],
+            "default": "1d",
+            "required": false,
+            "description": "Price-history bucket interval",
+            "conditional": { "field": "operation", "value": "GET_PRICE_HISTORY" }
+          },
+          "fidelity": {
+            "type": "number",
+            "inputType": "text",
+            "default": 60,
+            "required": false,
+            "description": "Resolution in minutes between price-history points",
+            "conditional": { "field": "operation", "value": "GET_PRICE_HISTORY" }
+          },
+
+          "userAddress": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Wallet address to query (0x...). Optional — defaults to your connected funderAddress.",
+            "conditional": {
+              "field": "operation",
+              "value": ["GET_USER_POSITIONS", "GET_USER_PNL", "GET_USER_ACTIVITY", "GET_USER_TRADES"]
+            }
+          },
+          "leaderboardWindow": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["day", "week", "month", "all"],
+            "default": "week",
+            "required": false,
+            "description": "Leaderboard time window",
+            "conditional": { "field": "operation", "value": "GET_LEADERBOARD" }
+          },
+
+          "price": {
+            "type": "number",
+            "inputType": "text",
+            "required": false,
+            "description": "Limit price (0.001 - 0.999). For market orders, this is the worst-price slippage cap.",
+            "conditional": { "field": "operation", "value": ["PLACE_LIMIT_ORDER", "PLACE_MARKET_ORDER"] }
+          },
+          "size": {
+            "type": "number",
+            "inputType": "text",
+            "required": false,
+            "description": "LIMIT: number of shares. MARKET BUY: USDC amount to spend. MARKET SELL: shares to sell.",
+            "conditional": { "field": "operation", "value": ["PLACE_LIMIT_ORDER", "PLACE_MARKET_ORDER"] }
+          },
+          "orderType": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["GTC", "GTD", "FOK", "FAK"],
+            "default": "GTC",
+            "required": false,
+            "description": "GTC=rest on book, GTD=expires, FOK=all-or-nothing market, FAK=partial-fill market",
+            "conditional": { "field": "operation", "value": ["PLACE_LIMIT_ORDER", "PLACE_MARKET_ORDER"] }
+          },
+          "expiration": {
+            "type": "number",
+            "inputType": "text",
+            "required": false,
+            "description": "GTD expiry (Unix seconds). Must be at least now+60. Ignored for non-GTD.",
+            "conditional": { "field": "operation", "value": "PLACE_LIMIT_ORDER" }
+          },
+          "negRisk": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["auto", "true", "false"],
+            "default": "auto",
+            "required": false,
+            "description": "Multi-outcome (3+) markets use the Neg Risk Exchange. 'auto' fetches from CLOB.",
+            "conditional": { "field": "operation", "value": ["PLACE_LIMIT_ORDER", "PLACE_MARKET_ORDER"] }
+          },
+          "tickSize": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["auto", "0.1", "0.01", "0.001", "0.0001"],
+            "default": "auto",
+            "required": false,
+            "description": "Price tick size. 'auto' fetches the market's required tick size.",
+            "conditional": { "field": "operation", "value": ["PLACE_LIMIT_ORDER", "PLACE_MARKET_ORDER"] }
+          },
+          "maxNotional": {
+            "type": "number",
+            "inputType": "text",
+            "default": 5,
+            "required": false,
+            "description": "SAFETY CAP — reject the order if price*size (USDC notional) exceeds this. Set high to disable.",
+            "conditional": { "field": "operation", "value": ["PLACE_LIMIT_ORDER", "PLACE_MARKET_ORDER"] }
+          },
+
+          "orderId": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Order ID to cancel (returned from PLACE_*_ORDER)",
+            "conditional": { "field": "operation", "value": "CANCEL_ORDER" }
+          },
+          "openOrdersMarket": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional condition ID to filter open orders by market",
+            "conditional": { "field": "operation", "value": "GET_OPEN_ORDERS" }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation completed successfully"
+          },
+          "operation": {
+            "type": "string",
+            "description": "The operation that was performed"
+          },
+          "data": {
+            "type": "object",
+            "description": "Operation-specific result payload (markets, orderbook, positions, order receipt, etc.)"
+          },
+          "markets": {
+            "type": "array",
+            "description": "Array of markets (SEARCH_MARKETS, LIST_TRENDING)"
+          },
+          "events": {
+            "type": "array",
+            "description": "Array of events (SEARCH_MARKETS)"
+          },
+          "market": {
+            "type": "object",
+            "description": "Single market detail (GET_MARKET)"
+          },
+          "event": {
+            "type": "object",
+            "description": "Single event detail (GET_EVENT)"
+          },
+          "orderbook": {
+            "type": "object",
+            "description": "Orderbook with bids/asks/spread/midpoint (GET_ORDERBOOK)"
+          },
+          "price": {
+            "type": "number",
+            "description": "Token price (GET_PRICE, GET_MIDPOINT)"
+          },
+          "spread": {
+            "type": "number",
+            "description": "Bid-ask spread (GET_SPREAD)"
+          },
+          "history": {
+            "type": "array",
+            "description": "Price history points (GET_PRICE_HISTORY)"
+          },
+          "positions": {
+            "type": "array",
+            "description": "User open positions (GET_USER_POSITIONS)"
+          },
+          "totalValue": {
+            "type": "number",
+            "description": "Total USD value of user positions (GET_USER_PNL)"
+          },
+          "realizedPnl": {
+            "type": "number",
+            "description": "Realized P&L in USD (GET_USER_PNL)"
+          },
+          "unrealizedPnl": {
+            "type": "number",
+            "description": "Unrealized P&L in USD (GET_USER_PNL)"
+          },
+          "trades": {
+            "type": "array",
+            "description": "User trades (GET_USER_TRADES)"
+          },
+          "activity": {
+            "type": "array",
+            "description": "User activity log (GET_USER_ACTIVITY)"
+          },
+          "leaderboard": {
+            "type": "array",
+            "description": "Top traders (GET_LEADERBOARD)"
+          },
+          "credentials": {
+            "type": "object",
+            "description": "Derived L2 API credentials — paste into Settings (DERIVE_API_KEY)"
+          },
+          "orderId": {
+            "type": "string",
+            "description": "On-chain order ID (PLACE_*_ORDER)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Order status: live, matched, delayed, unmatched, cancelled (PLACE/CANCEL ops)"
+          },
+          "filled": {
+            "type": "number",
+            "description": "Amount filled (PLACE_*_ORDER)"
+          },
+          "openOrders": {
+            "type": "array",
+            "description": "User open orders (GET_OPEN_ORDERS)"
+          },
+          "cancelled": {
+            "type": "array",
+            "description": "Cancelled order IDs (CANCEL_*)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of items returned"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the operation failed"
+          }
+        }
+      }
+    }
+  ]
+}
