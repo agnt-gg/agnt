@@ -419,6 +419,8 @@ async function universalChatHandler(req, res, context = {}) {
     widgetState,
     goalId,
     goalContext,
+    codeId,
+    codeContext,
     reasoningEnabled: rawReasoningEnabled,
     enabledTools: rawEnabledTools,
   } = req.body;
@@ -634,6 +636,8 @@ async function universalChatHandler(req, res, context = {}) {
     widgetState,
     goalId,
     goalContext,
+    codeId,
+    codeContext,
     userId,
     conversationId,
     // Latest user message text (for dynamic tool selection)
