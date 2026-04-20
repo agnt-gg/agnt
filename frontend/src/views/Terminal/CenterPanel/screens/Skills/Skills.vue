@@ -77,7 +77,7 @@
               <p class="card-description">{{ skill.description }}</p>
               <div v-if="skill.instructions" class="card-instructions">
                 <span class="instructions-label">Instructions</span>
-                <p class="instructions-preview">{{ truncate(skill.instructions, 150) }}</p>
+                <p class="instructions-preview">{{ skill.instructions }}</p>
               </div>
             </div>
           </div>
@@ -664,7 +664,6 @@ const runEvolution = async () => {
 
 // Helpers
 const toTitleCase = (name) => (!name ? '' : name.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
-const truncate = (text, max) => (!text ? '' : text.length > max ? text.slice(0, max) + '...' : text);
 const formatDelta = (d) => (d == null ? '\u2014' : (d >= 0 ? '+' : '') + d.toFixed(1));
 const formatPercent = (v) => (v == null ? '\u2014' : (v * 100).toFixed(0) + '%');
 const deltaClass = (d) => (d == null ? '' : d > 2 ? 'positive' : d < 0 ? 'negative' : 'neutral');
@@ -746,22 +745,57 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
 
 /* Card */
 .skill-card {
-  background: rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.18));
   border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 14px;
   cursor: pointer;
   overflow: hidden;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s, box-shadow 0.2s;
 }
-.skill-card:hover { border-color: rgba(var(--green-rgb), 0.4); background: rgba(0,0,0,0.25); }
-.skill-card.selected { border-color: var(--color-green); background: rgba(var(--green-rgb), 0.05); }
-.card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.card-icon { font-size: 1.5em; }
-.card-title-block { flex: 1; display: flex; flex-direction: column; }
-.card-name { font-weight: 600; color: var(--color-text); font-size: 0.95em; }
-.card-category { font-size: 0.7em; color: var(--color-grey); text-transform: uppercase; letter-spacing: 0.5px; }
-.card-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
+.skill-card:hover {
+  border-color: rgba(var(--green-rgb), 0.4);
+  background: linear-gradient(180deg, rgba(var(--green-rgb), 0.04), rgba(0,0,0,0.25));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+}
+.skill-card.selected {
+  border-color: var(--color-green);
+  background: linear-gradient(180deg, rgba(var(--green-rgb), 0.08), rgba(var(--green-rgb), 0.02));
+  box-shadow: 0 0 0 1px rgba(var(--green-rgb), 0.3) inset;
+}
+.card-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; min-width: 0; }
+.card-icon {
+  font-size: 1.1em;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: rgba(var(--green-rgb), 0.08);
+  color: var(--color-green);
+  flex-shrink: 0;
+}
+.card-title-block { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.card-name {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.95em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-category {
+  font-size: 0.7em;
+  color: var(--color-grey);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.card-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
 .skill-card:hover .card-actions { opacity: 1; }
 .card-btn {
   background: rgba(var(--green-rgb), 0.1);
@@ -773,10 +807,37 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
 }
 .card-btn:hover { color: var(--color-text); background: rgba(var(--green-rgb), 0.2); }
 .card-btn.delete:hover { color: var(--color-red); border-color: rgba(255,77,79,0.3); background: rgba(255,77,79,0.1); }
-.card-description { font-size: 0.85em; color: var(--color-grey); margin: 0 0 8px; line-height: 1.4; }
-.card-instructions { border-top: 1px dashed rgba(var(--green-rgb), 0.15); padding-top: 8px; }
+.card-description {
+  font-size: 0.85em;
+  color: var(--color-grey);
+  margin: 0 0 8px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.card-instructions {
+  border-top: 1px dashed rgba(var(--green-rgb), 0.15);
+  padding-top: 8px;
+  margin-top: auto;
+}
 .instructions-label { font-size: 0.7em; color: var(--color-green); text-transform: uppercase; letter-spacing: 0.5px; }
-.instructions-preview { font-size: 0.8em; color: var(--color-grey); margin: 4px 0 0; font-family: 'Courier New', monospace; line-height: 1.35; white-space: pre-wrap; word-break: break-word; }
+.instructions-preview {
+  font-size: 0.78em;
+  color: var(--color-grey);
+  margin: 4px 0 0;
+  font-family: 'Courier New', monospace;
+  line-height: 1.35;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 /* Discovered Skills */
 .discovered-header {
