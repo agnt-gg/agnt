@@ -13,13 +13,7 @@
         <!-- Tab bar (full width) -->
         <div class="ce-tabs" v-if="openTabs.length > 0">
           <div class="ce-tabs-scroll">
-            <div
-              v-for="tab in openTabs"
-              :key="tab.path"
-              class="ce-tab"
-              :class="{ active: activeTabPath === tab.path }"
-              @click="switchTab(tab.path)"
-            >
+            <div v-for="tab in openTabs" :key="tab.path" class="ce-tab" :class="{ active: activeTabPath === tab.path }" @click="switchTab(tab.path)">
               <span class="ce-tab-name">{{ tab.name }}{{ tab.isDirty ? ' *' : '' }}</span>
               <Tooltip text="Close">
                 <button class="ce-tab-close" @click.stop="closeTab(tab.path)">
@@ -28,12 +22,10 @@
               </Tooltip>
             </div>
           </div>
-          <Tooltip text="Close all tabs">
-            <button class="ce-tabs-close-all" @click="closeAllTabs">
-              <i class="fas fa-times-circle"></i>
-              <span>Close all</span>
-            </button>
-          </Tooltip>
+          <button class="ce-tabs-close-all" @click="closeAllTabs">
+            <i class="fas fa-times-circle"></i>
+            <span>Close all</span>
+          </button>
         </div>
 
         <!-- Body: editor + divider + preview -->
@@ -72,11 +64,7 @@
             </div>
 
             <!-- Draggable divider -->
-            <div
-              class="ce-divider"
-              :class="{ active: isResizing }"
-              @mousedown="startResize"
-            ></div>
+            <div class="ce-divider" :class="{ active: isResizing }" @mousedown="startResize"></div>
           </template>
 
           <!-- Preview half -->
@@ -105,12 +93,7 @@
               </div>
             </div>
             <div class="ce-preview-content">
-              <iframe
-                v-if="isHtmlFile && activeTab"
-                ref="previewFrame"
-                class="ce-preview-iframe"
-                sandbox="allow-scripts allow-same-origin"
-              ></iframe>
+              <iframe v-if="isHtmlFile && activeTab" ref="previewFrame" class="ce-preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
               <div v-else-if="isMarkdownFile && activeTab" ref="markdownPreviewRef" class="ce-markdown-preview" v-html="renderedMarkdown"></div>
               <div v-else-if="isImageFile && activeTab" class="ce-media-preview">
                 <img :src="rawFileUrl" :alt="activeTab.name" />
@@ -121,13 +104,17 @@
               <div v-else-if="isAudioFile && activeTab" class="ce-media-preview ce-audio-preview">
                 <canvas ref="audioCanvasRef" class="ce-audio-canvas"></canvas>
                 <p class="ce-audio-name">{{ activeTab.name }}</p>
-                <audio ref="audioPlayerRef" :src="rawFileUrl" crossorigin="anonymous" controls @play="startVisualizer" @pause="stopVisualizer" @ended="stopVisualizer" />
+                <audio
+                  ref="audioPlayerRef"
+                  :src="rawFileUrl"
+                  crossorigin="anonymous"
+                  controls
+                  @play="startVisualizer"
+                  @pause="stopVisualizer"
+                  @ended="stopVisualizer"
+                />
               </div>
-              <iframe
-                v-else-if="isPdfFile && activeTab"
-                :src="rawFileUrl"
-                class="ce-pdf-preview"
-              ></iframe>
+              <iframe v-else-if="isPdfFile && activeTab" :src="rawFileUrl" class="ce-pdf-preview"></iframe>
               <div v-else-if="isEpubFile && activeTab" class="ce-epub-wrapper">
                 <div ref="epubContainerRef" class="ce-epub-container"></div>
                 <div class="ce-epub-nav">
@@ -270,7 +257,9 @@ const loadChartJs = async () => {
 };
 
 const loadD3 = async () => {
-  if (!_d3) { _d3 = await import('d3'); }
+  if (!_d3) {
+    _d3 = await import('d3');
+  }
   return _d3;
 };
 
@@ -324,12 +313,26 @@ const loadThreeJs = async () => {
     _THREE = threeModule;
     _OrbitControls = OrbitControls;
     _THREE_ADDONS = {
-      OrbitControls, GLTFLoader, FontLoader, TextGeometry,
-      EffectComposer, RenderPass, UnrealBloomPass,
-      DragControls, TransformControls,
-      FBXLoader, OBJLoader, MTLLoader, SVGLoader,
-      STLLoader, PLYLoader, ColladaLoader, ThreeMFLoader,
-      RoundedBoxGeometry, ConvexGeometry, ParametricGeometry,
+      OrbitControls,
+      GLTFLoader,
+      FontLoader,
+      TextGeometry,
+      EffectComposer,
+      RenderPass,
+      UnrealBloomPass,
+      DragControls,
+      TransformControls,
+      FBXLoader,
+      OBJLoader,
+      MTLLoader,
+      SVGLoader,
+      STLLoader,
+      PLYLoader,
+      ColladaLoader,
+      ThreeMFLoader,
+      RoundedBoxGeometry,
+      ConvexGeometry,
+      ParametricGeometry,
       // Legacy aliases — LLMs often generate old Three.js class names
       ParametricBufferGeometry: ParametricGeometry,
       ConvexBufferGeometry: ConvexGeometry,
@@ -341,7 +344,9 @@ const loadThreeJs = async () => {
 // Simple hash for deterministic IDs
 const hashCode = (s) => {
   let h = 0;
-  for (let i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
   return Math.abs(h).toString(36);
 };
 
@@ -351,8 +356,14 @@ const mathStore = [];
 const protectMath = (text) => {
   mathStore.length = 0;
   const codeBlocks = [];
-  text = text.replace(/```[\s\S]*?```/g, (m) => { codeBlocks.push(m); return `\n<!--CB${codeBlocks.length - 1}-->\n`; });
-  const save = (match) => { mathStore.push(match); return `<!--M${mathStore.length - 1}-->`; };
+  text = text.replace(/```[\s\S]*?```/g, (m) => {
+    codeBlocks.push(m);
+    return `\n<!--CB${codeBlocks.length - 1}-->\n`;
+  });
+  const save = (match) => {
+    mathStore.push(match);
+    return `<!--M${mathStore.length - 1}-->`;
+  };
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, save);
   text = text.replace(/\\\[([\s\S]+?)\\\]/g, save);
   text = text.replace(/\\\([\s\S]+?\\\)/g, save);
@@ -380,28 +391,30 @@ const mdConverter = new showdown.Converter({
   openLinksInNewWindow: true,
   extensions: [
     function () {
-      return [{
-        type: 'output',
-        filter: function (text) {
-          let blockIndex = 0;
-          // chartjs
-          let result = text.replace(/<pre><code class="[^"]*language-chartjs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, config) => {
-            const id = 'achart-' + hashCode(config) + '-' + blockIndex++;
-            return `<div class="chartjs-container" data-chart-id="${id}"><canvas id="${id}"></canvas><code class="chartjs-config" style="display:none">${config}</code></div>`;
-          });
-          // d3
-          result = result.replace(/<pre><code class="[^"]*language-d3[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
-            const id = 'ad3-' + hashCode(code) + '-' + blockIndex++;
-            return `<div class="d3-container" data-d3-id="${id}"><code class="d3-code" style="display:none">${code}</code></div>`;
-          });
-          // threejs
-          result = result.replace(/<pre><code class="[^"]*language-threejs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
-            const id = 'athree-' + hashCode(code) + '-' + blockIndex++;
-            return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${code}</code></div>`;
-          });
-          return result;
+      return [
+        {
+          type: 'output',
+          filter: function (text) {
+            let blockIndex = 0;
+            // chartjs
+            let result = text.replace(/<pre><code class="[^"]*language-chartjs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, config) => {
+              const id = 'achart-' + hashCode(config) + '-' + blockIndex++;
+              return `<div class="chartjs-container" data-chart-id="${id}"><canvas id="${id}"></canvas><code class="chartjs-config" style="display:none">${config}</code></div>`;
+            });
+            // d3
+            result = result.replace(/<pre><code class="[^"]*language-d3[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
+              const id = 'ad3-' + hashCode(code) + '-' + blockIndex++;
+              return `<div class="d3-container" data-d3-id="${id}"><code class="d3-code" style="display:none">${code}</code></div>`;
+            });
+            // threejs
+            result = result.replace(/<pre><code class="[^"]*language-threejs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
+              const id = 'athree-' + hashCode(code) + '-' + blockIndex++;
+              return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${code}</code></div>`;
+            });
+            return result;
+          },
         },
-      }];
+      ];
     },
   ],
 });
@@ -446,18 +459,22 @@ function parseDelimited(content, delimiter) {
     const ch = content[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (content[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
+        if (content[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
       } else {
         field += ch;
       }
     } else if (ch === '"') {
       inQuotes = true;
     } else if (ch === delimiter) {
-      row.push(field); field = '';
+      row.push(field);
+      field = '';
     } else if (ch === '\n' || (ch === '\r' && content[i + 1] === '\n')) {
       if (ch === '\r') i++;
-      row.push(field); field = '';
+      row.push(field);
+      field = '';
       if (row.length > 1 || row[0] !== '') rows.push(row);
       row = [];
     } else {
@@ -552,15 +569,22 @@ export default {
       }
     };
 
-    const retryShare = () => { shareError.value = null; submitShare(); };
+    const retryShare = () => {
+      shareError.value = null;
+      submitShare();
+    };
 
     const copyShareLink = async () => {
       if (!shareResult.value?.url) return;
       try {
         await navigator.clipboard.writeText(shareResult.value.url);
         copiedLink.value = true;
-        setTimeout(() => { copiedLink.value = false; }, 2000);
-      } catch (e) { /* */ }
+        setTimeout(() => {
+          copiedLink.value = false;
+        }, 2000);
+      } catch (e) {
+        /* */
+      }
     };
 
     const copyEmbedCode = async () => {
@@ -568,11 +592,17 @@ export default {
       try {
         await navigator.clipboard.writeText(shareEmbedCode.value);
         copiedEmbed.value = true;
-        setTimeout(() => { copiedEmbed.value = false; }, 2000);
-      } catch (e) { /* */ }
+        setTimeout(() => {
+          copiedEmbed.value = false;
+        }, 2000);
+      } catch (e) {
+        /* */
+      }
     };
 
-    const openInBrowser = (url) => { if (url) window.open(url, '_blank'); };
+    const openInBrowser = (url) => {
+      if (url) window.open(url, '_blank');
+    };
 
     // ── Audio visualizer ────────────────────────────────────
     const audioPlayerRef = ref(null);
@@ -709,7 +739,8 @@ export default {
     const isCodeFile = computed(() => {
       if (!activeTab.value) return false;
       const ext = fileExt.value;
-      if (IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext) || AUDIO_EXTS.has(ext) || PDF_EXTS.has(ext) || EPUB_EXTS.has(ext) || MODEL3D_EXTS.has(ext)) return false;
+      if (IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext) || AUDIO_EXTS.has(ext) || PDF_EXTS.has(ext) || EPUB_EXTS.has(ext) || MODEL3D_EXTS.has(ext))
+        return false;
       if (isHtmlFile.value || isMarkdownFile.value || isSpreadsheetFile.value || isTextFile.value || isJsonFile.value) return false;
       return true;
     });
@@ -718,15 +749,24 @@ export default {
       if (!activeTab.value || !isJsonFile.value) return '';
       const content = activeTab.value.content || '';
       if (fileExt.value === 'jsonl') {
-        return content.split(/\r?\n/).map((line) => {
-          const trimmed = line.trim();
-          if (!trimmed) return line;
-          try { return JSON.stringify(JSON.parse(trimmed), null, 2); }
-          catch { return line; }
-        }).join('\n');
+        return content
+          .split(/\r?\n/)
+          .map((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return line;
+            try {
+              return JSON.stringify(JSON.parse(trimmed), null, 2);
+            } catch {
+              return line;
+            }
+          })
+          .join('\n');
       }
-      try { return JSON.stringify(JSON.parse(content), null, 2); }
-      catch { return content; }
+      try {
+        return JSON.stringify(JSON.parse(content), null, 2);
+      } catch {
+        return content;
+      }
     });
 
     const spreadsheetData = computed(() => {
@@ -769,11 +809,17 @@ export default {
         await epubRendition.display();
 
         epubRendition.themes.default({
-          'body': { color: 'var(--color-text, #ccc) !important', background: 'transparent !important', 'font-family': 'system-ui, sans-serif', 'line-height': '1.7', padding: '0 8px !important' },
-          'p': { color: 'var(--color-text, #ccc) !important' },
+          body: {
+            color: 'var(--color-text, #ccc) !important',
+            background: 'transparent !important',
+            'font-family': 'system-ui, sans-serif',
+            'line-height': '1.7',
+            padding: '0 8px !important',
+          },
+          p: { color: 'var(--color-text, #ccc) !important' },
           'h1, h2, h3, h4, h5, h6': { color: 'var(--color-white, #fff) !important' },
-          'a': { color: 'var(--color-primary, #19ef83) !important' },
-          'img': { 'max-width': '100% !important' },
+          a: { color: 'var(--color-primary, #19ef83) !important' },
+          img: { 'max-width': '100% !important' },
         });
       } catch (e) {
         console.error('[EPUB] Failed to load:', e);
@@ -781,12 +827,22 @@ export default {
     };
 
     const destroyEpub = () => {
-      if (epubRendition) { epubRendition.destroy(); epubRendition = null; }
-      if (epubBook) { epubBook.destroy(); epubBook = null; }
+      if (epubRendition) {
+        epubRendition.destroy();
+        epubRendition = null;
+      }
+      if (epubBook) {
+        epubBook.destroy();
+        epubBook = null;
+      }
     };
 
-    const epubPrev = () => { if (epubRendition) epubRendition.prev(); };
-    const epubNext = () => { if (epubRendition) epubRendition.next(); };
+    const epubPrev = () => {
+      if (epubRendition) epubRendition.prev();
+    };
+    const epubNext = () => {
+      if (epubRendition) epubRendition.next();
+    };
 
     watch([activeTabPath, isEpubFile], () => {
       nextTick(() => loadEpub());
@@ -821,7 +877,6 @@ export default {
         // Scene
         modelScene = new THREE.Scene();
         modelScene.background = null;
-
 
         // Lights
         const ambient = new THREE.AmbientLight(0xffffff, 0.6);
@@ -934,8 +989,14 @@ export default {
     };
 
     const destroy3DModel = () => {
-      if (modelAnimId) { cancelAnimationFrame(modelAnimId); modelAnimId = null; }
-      if (modelControls) { modelControls.dispose(); modelControls = null; }
+      if (modelAnimId) {
+        cancelAnimationFrame(modelAnimId);
+        modelAnimId = null;
+      }
+      if (modelControls) {
+        modelControls.dispose();
+        modelControls = null;
+      }
       if (modelRenderer) {
         modelRenderer.dispose();
         if (modelRenderer.domElement?.parentNode) modelRenderer.domElement.parentNode.removeChild(modelRenderer.domElement);
@@ -985,16 +1046,24 @@ export default {
 
     const rewriteHtmlAssets = (html, htmlPath) => {
       if (!html || !htmlPath) return html;
-      const dir = htmlPath.replace(/\\/g, '/').replace(/[^/]+$/, '').replace(/\/$/, '');
+      const dir = htmlPath
+        .replace(/\\/g, '/')
+        .replace(/[^/]+$/, '')
+        .replace(/\/$/, '');
       try {
         const doc = new DOMParser().parseFromString(html, 'text/html');
 
-        const rewriteSrcset = (value) => value.split(',').map((part) => {
-          const trimmed = part.trim();
-          if (!trimmed) return '';
-          const [url, ...descriptor] = trimmed.split(/\s+/);
-          return [resolveAssetUrl(url, dir), ...descriptor].join(' ');
-        }).filter(Boolean).join(', ');
+        const rewriteSrcset = (value) =>
+          value
+            .split(',')
+            .map((part) => {
+              const trimmed = part.trim();
+              if (!trimmed) return '';
+              const [url, ...descriptor] = trimmed.split(/\s+/);
+              return [resolveAssetUrl(url, dir), ...descriptor].join(' ');
+            })
+            .filter(Boolean)
+            .join(', ');
 
         const setAttr = (el, attr) => {
           const v = el.getAttribute(attr);
@@ -1002,19 +1071,18 @@ export default {
           el.setAttribute(attr, attr === 'srcset' ? rewriteSrcset(v) : resolveAssetUrl(v, dir));
         };
 
-        doc.querySelectorAll(
-          'img[src], source[src], video[src], audio[src], track[src], iframe[src], embed[src], script[src]'
-        ).forEach((el) => setAttr(el, 'src'));
+        doc
+          .querySelectorAll('img[src], source[src], video[src], audio[src], track[src], iframe[src], embed[src], script[src]')
+          .forEach((el) => setAttr(el, 'src'));
         doc.querySelectorAll('img[srcset], source[srcset]').forEach((el) => setAttr(el, 'srcset'));
         doc.querySelectorAll('video[poster]').forEach((el) => setAttr(el, 'poster'));
         doc.querySelectorAll('object[data]').forEach((el) => setAttr(el, 'data'));
         doc.querySelectorAll('link[href]').forEach((el) => setAttr(el, 'href'));
 
-        const rewriteCss = (css) =>
-          css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (_m, q, url) =>
-            `url(${q}${resolveAssetUrl(url, dir)}${q})`
-          );
-        doc.querySelectorAll('style').forEach((el) => { el.textContent = rewriteCss(el.textContent); });
+        const rewriteCss = (css) => css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (_m, q, url) => `url(${q}${resolveAssetUrl(url, dir)}${q})`);
+        doc.querySelectorAll('style').forEach((el) => {
+          el.textContent = rewriteCss(el.textContent);
+        });
         doc.querySelectorAll('[style]').forEach((el) => {
           el.setAttribute('style', rewriteCss(el.getAttribute('style')));
         });
@@ -1054,17 +1122,31 @@ export default {
       }, 400);
     };
 
-    watch(activeTabPath, () => nextTick(() => {
-      updatePreview();
-      // Markdown viz/math handled by watch(renderedMarkdown) — don't duplicate
-    }));
+    watch(activeTabPath, () =>
+      nextTick(() => {
+        updatePreview();
+        // Markdown viz/math handled by watch(renderedMarkdown) — don't duplicate
+      }),
+    );
 
     // ── Chart/Viz rendering for markdown preview ─────────────
     const destroyVizInstances = () => {
-      chartInstances.value.forEach((inst) => { try { inst.destroy(); } catch (e) { /* */ } });
+      chartInstances.value.forEach((inst) => {
+        try {
+          inst.destroy();
+        } catch (e) {
+          /* */
+        }
+      });
       chartInstances.value = [];
       threeInstances.value.forEach(({ renderer, animationId, controls }) => {
-        try { cancelAnimationFrame(animationId); controls.dispose(); renderer.dispose(); } catch (e) { /* */ }
+        try {
+          cancelAnimationFrame(animationId);
+          controls.dispose();
+          renderer.dispose();
+        } catch (e) {
+          /* */
+        }
       });
       threeInstances.value = [];
       renderedChartIds.clear();
@@ -1237,7 +1319,20 @@ export default {
             const guardedTHREE = new Proxy(THREE, {
               get(target, prop) {
                 const val = target[prop] ?? THREE_ADDONS[prop];
-                if (['BufferAttribute','Float32BufferAttribute','Uint16BufferAttribute','Uint32BufferAttribute','Int8BufferAttribute','Int16BufferAttribute','Int32BufferAttribute','Float64BufferAttribute','Uint8BufferAttribute','Uint8ClampedBufferAttribute'].includes(prop)) {
+                if (
+                  [
+                    'BufferAttribute',
+                    'Float32BufferAttribute',
+                    'Uint16BufferAttribute',
+                    'Uint32BufferAttribute',
+                    'Int8BufferAttribute',
+                    'Int16BufferAttribute',
+                    'Int32BufferAttribute',
+                    'Float64BufferAttribute',
+                    'Uint8BufferAttribute',
+                    'Uint8ClampedBufferAttribute',
+                  ].includes(prop)
+                ) {
                   return new Proxy(val, {
                     construct(Target, args) {
                       const arr = args[0];
@@ -1261,7 +1356,11 @@ export default {
             await fn(guardedTHREE, THREE_ADDONS, scene, camera, renderer, controls, canvas, safeAtob);
 
             let animationId;
-            const animate = () => { animationId = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); };
+            const animate = () => {
+              animationId = requestAnimationFrame(animate);
+              controls.update();
+              renderer.render(scene, camera);
+            };
             animate();
             threeInstances.value.push({ renderer, animationId, controls });
           } catch (err) {
@@ -1280,10 +1379,9 @@ export default {
         if (!el || typeof MathJax === 'undefined' || !MathJax.typesetPromise) return;
         // Clear previous state and re-typeset scoped to this element only
         MathJax.typesetClear([el]);
-        MathJax.typesetPromise([el])
-          .catch((err) => {
-            console.error('MathJax rendering error:', err);
-          });
+        MathJax.typesetPromise([el]).catch((err) => {
+          console.error('MathJax rendering error:', err);
+        });
       }, 50);
     };
 
@@ -1337,11 +1435,12 @@ export default {
       window.dispatchEvent(
         new CustomEvent('artifacts-open-file', {
           detail: { path: tab.path, content: tab.content },
-        })
+        }),
       );
     };
 
-    const isBinaryExt = (ext) => IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext) || AUDIO_EXTS.has(ext) || PDF_EXTS.has(ext) || EPUB_EXTS.has(ext) || MODEL3D_EXTS.has(ext);
+    const isBinaryExt = (ext) =>
+      IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext) || AUDIO_EXTS.has(ext) || PDF_EXTS.has(ext) || EPUB_EXTS.has(ext) || MODEL3D_EXTS.has(ext);
 
     const openFile = async (filePath) => {
       const existing = openTabs.value.find((t) => t.path === filePath);
@@ -1492,7 +1591,11 @@ export default {
       destroyEpub();
       destroy3DModel();
       stopVisualizer();
-      if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; audioAnalyser = null; }
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+        audioCtx = null;
+        audioAnalyser = null;
+      }
     });
 
     return {
@@ -2304,7 +2407,10 @@ export default {
 /* Share Modal Styles */
 .share-modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
@@ -2344,7 +2450,9 @@ export default {
   line-height: 1;
   transition: color 0.2s ease;
 }
-.share-modal-close:hover { color: var(--color-red); }
+.share-modal-close:hover {
+  color: var(--color-red);
+}
 .share-modal-loading {
   display: flex;
   flex-direction: column;
@@ -2354,13 +2462,18 @@ export default {
   gap: 16px;
 }
 .share-spinner {
-  width: 40px; height: 40px;
+  width: 40px;
+  height: 40px;
   border: 3px solid var(--terminal-border-color);
   border-top-color: var(--color-green);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
-.share-modal-loading p { color: var(--color-light-med-navy); font-size: 0.95em; margin: 0; }
+.share-modal-loading p {
+  color: var(--color-light-med-navy);
+  font-size: 0.95em;
+  margin: 0;
+}
 .share-modal-error {
   display: flex;
   flex-direction: column;
@@ -2369,8 +2482,16 @@ export default {
   gap: 16px;
   text-align: center;
 }
-.share-modal-error .error-icon { font-size: 1.2em; color: var(--color-red); font-weight: 600; }
-.share-modal-error p { color: var(--color-red); font-size: 0.95em; margin: 0; }
+.share-modal-error .error-icon {
+  font-size: 1.2em;
+  color: var(--color-red);
+  font-weight: 600;
+}
+.share-modal-error p {
+  color: var(--color-red);
+  font-size: 0.95em;
+  margin: 0;
+}
 .share-retry-btn {
   padding: 10px 24px;
   background: rgba(255, 107, 107, 0.1);
@@ -2382,7 +2503,10 @@ export default {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.share-retry-btn:hover { background: rgba(255, 107, 107, 0.2); border-color: var(--color-red); }
+.share-retry-btn:hover {
+  background: rgba(255, 107, 107, 0.2);
+  border-color: var(--color-red);
+}
 .share-modal-success {
   display: flex;
   flex-direction: column;
@@ -2390,11 +2514,34 @@ export default {
   padding: 24px;
   gap: 20px;
 }
-.share-modal-success .success-message { color: var(--color-green); font-size: 1em; font-weight: 500; margin: 0; }
-.share-options { width: 100%; display: flex; flex-direction: column; gap: 16px; }
-.share-option { display: flex; flex-direction: column; gap: 8px; }
-.share-option label { font-size: 0.8em; font-weight: 500; color: var(--color-light-med-navy); text-transform: uppercase; letter-spacing: 0.05em; }
-.share-input { display: flex; gap: 8px; }
+.share-modal-success .success-message {
+  color: var(--color-green);
+  font-size: 1em;
+  font-weight: 500;
+  margin: 0;
+}
+.share-options {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.share-option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.share-option label {
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--color-light-med-navy);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.share-input {
+  display: flex;
+  gap: 8px;
+}
 .share-input input {
   flex: 1;
   background: var(--color-darkest);
@@ -2405,7 +2552,10 @@ export default {
   font-family: var(--font-family-mono);
   font-size: 0.85em;
 }
-.share-input input:focus { outline: none; border-color: var(--color-green); }
+.share-input input:focus {
+  outline: none;
+  border-color: var(--color-green);
+}
 .share-copy-btn {
   padding: 10px 16px;
   background: rgba(var(--green-rgb), 0.1);
@@ -2418,8 +2568,16 @@ export default {
   transition: all 0.2s ease;
   white-space: nowrap;
 }
-.share-copy-btn:hover { background: rgba(var(--green-rgb), 0.2); border-color: var(--color-green); }
-.share-actions { display: flex; gap: 12px; width: 100%; margin-top: 8px; }
+.share-copy-btn:hover {
+  background: rgba(var(--green-rgb), 0.2);
+  border-color: var(--color-green);
+}
+.share-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+}
 .share-action-btn {
   flex: 1;
   display: flex;
@@ -2433,13 +2591,40 @@ export default {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.share-action-btn.view-btn { background: rgba(18, 224, 255, 0.1); border: 1px solid rgba(18, 224, 255, 0.3); color: var(--color-blue); }
-.share-action-btn.view-btn:hover { background: rgba(18, 224, 255, 0.2); border-color: var(--color-blue); }
-.share-action-btn.edit-btn { background: rgba(127, 129, 147, 0.1); border: 1px solid rgba(127, 129, 147, 0.3); color: var(--color-light-med-navy); }
-.share-action-btn.edit-btn:hover { background: rgba(127, 129, 147, 0.2); border-color: var(--color-light-med-navy); }
-.share-modal-form { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
-.share-form-field { display: flex; flex-direction: column; gap: 8px; }
-.share-form-field label { font-size: 0.85em; font-weight: 500; color: var(--color-light-med-navy); }
+.share-action-btn.view-btn {
+  background: rgba(18, 224, 255, 0.1);
+  border: 1px solid rgba(18, 224, 255, 0.3);
+  color: var(--color-blue);
+}
+.share-action-btn.view-btn:hover {
+  background: rgba(18, 224, 255, 0.2);
+  border-color: var(--color-blue);
+}
+.share-action-btn.edit-btn {
+  background: rgba(127, 129, 147, 0.1);
+  border: 1px solid rgba(127, 129, 147, 0.3);
+  color: var(--color-light-med-navy);
+}
+.share-action-btn.edit-btn:hover {
+  background: rgba(127, 129, 147, 0.2);
+  border-color: var(--color-light-med-navy);
+}
+.share-modal-form {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.share-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.share-form-field label {
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--color-light-med-navy);
+}
 .share-form-field input {
   background: var(--color-darkest);
   border: 1px solid var(--terminal-border-color);
@@ -2448,9 +2633,18 @@ export default {
   color: var(--color-white);
   font-size: 0.95em;
 }
-.share-form-field input:focus { outline: none; border-color: var(--color-green); }
-.share-form-field input::placeholder { color: var(--color-duller-navy); }
-.share-form-actions { display: flex; gap: 12px; justify-content: flex-end; }
+.share-form-field input:focus {
+  outline: none;
+  border-color: var(--color-green);
+}
+.share-form-field input::placeholder {
+  color: var(--color-duller-navy);
+}
+.share-form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
 .share-cancel-btn {
   padding: 10px 20px;
   background: transparent;
@@ -2462,7 +2656,10 @@ export default {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.share-cancel-btn:hover { background: rgba(127, 129, 147, 0.1); border-color: var(--color-light-med-navy); }
+.share-cancel-btn:hover {
+  background: rgba(127, 129, 147, 0.1);
+  border-color: var(--color-light-med-navy);
+}
 .share-submit-btn {
   display: flex;
   align-items: center;
@@ -2477,10 +2674,37 @@ export default {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.share-submit-btn:hover:not(:disabled) { background: #15d975; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3); }
-.share-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.share-submit-btn:hover:not(:disabled) {
+  background: #15d975;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.3);
+}
+.share-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-@keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes modal-slide-up { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modal-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 </style>
