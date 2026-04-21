@@ -74,12 +74,34 @@ export default {
     };
 
     const copyApiKey = async () => {
+      const text = apiKey.value;
       try {
-        await navigator.clipboard.writeText(apiKey.value);
+        // navigator.clipboard is undefined outside secure contexts (plain HTTP on a
+        // LAN IP for self-hosted Docker), so fall back to the legacy execCommand path.
+        if (navigator.clipboard?.writeText && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.top = '0';
+          textarea.style.left = '0';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          if (!ok) throw new Error('execCommand copy returned false');
+        }
         await showAlert('Success', 'API Key copied to clipboard!');
       } catch (err) {
         console.error('Failed to copy API Key:', err);
-        await showAlert('Error', 'Failed to copy API Key. Please try again.');
+        await showAlert(
+          'Error',
+          'Failed to copy automatically. Select the key above and copy it manually (Ctrl/Cmd+C).',
+        );
       }
     };
 
