@@ -27,6 +27,83 @@ import AgentModel from '../models/AgentModel.js';
 import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled } from './unfirehose/UnfirehoseLogger.js';
 import { saveBase64Image } from './ImageStorage.js';
 
+// Synthetic tool_result injected when the stream is aborted mid tool-run.
+// Without this, the next turn replays a message list with tool_use blocks that
+// have no corresponding tool_result and Anthropic returns:
+//   "tool_use ids were found without tool_result blocks immediately after"
+const CANCELLED_TOOL_RESULT = JSON.stringify({
+  success: false,
+  error: 'Tool execution cancelled: stream aborted before completion.',
+});
+
+/**
+ * Ensure every tool_use (Anthropic) / tool_calls[] (OpenAI-style) has a matching
+ * tool_result / role:'tool' reply in the next message. If not, inject a synthetic
+ * "cancelled" result so the conversation can be safely replayed to the provider.
+ */
+function sanitizeOrphanToolCalls(msgs) {
+  if (!Array.isArray(msgs) || msgs.length === 0) return msgs;
+  const out = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
+    const next = msgs[i + 1];
+    out.push(msg);
+
+    if (!msg || msg.role !== 'assistant') continue;
+
+    // Anthropic-style: content array with tool_use blocks; tool_results live in the next user message.
+    if (Array.isArray(msg.content)) {
+      const toolUseBlocks = msg.content.filter((b) => b && b.type === 'tool_use');
+      if (toolUseBlocks.length > 0) {
+        const nextIsToolResultMsg =
+          next && next.role === 'user' && Array.isArray(next.content) &&
+          next.content.some((b) => b && b.type === 'tool_result');
+        const presentIds = nextIsToolResultMsg
+          ? new Set(next.content.filter((b) => b && b.type === 'tool_result').map((b) => b.tool_use_id))
+          : new Set();
+        const orphans = toolUseBlocks.filter((b) => !presentIds.has(b.id));
+        if (orphans.length > 0) {
+          const syntheticBlocks = orphans.map((b) => ({
+            type: 'tool_result',
+            tool_use_id: b.id,
+            content: CANCELLED_TOOL_RESULT,
+            is_error: true,
+          }));
+          if (nextIsToolResultMsg) {
+            next.content = [...next.content, ...syntheticBlocks];
+          } else {
+            out.push({ role: 'user', content: syntheticBlocks });
+          }
+          console.warn(`[sanitizeOrphanToolCalls] Injected ${orphans.length} synthetic tool_result(s) for orphan tool_use blocks: ${orphans.map((b) => b.id).join(', ')}`);
+        }
+      }
+    }
+
+    // OpenAI-style: tool_calls[] on assistant; each needs a role:'tool' follow-up with matching tool_call_id.
+    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      const presentIds = new Set();
+      let j = i + 1;
+      while (j < msgs.length && msgs[j] && msgs[j].role === 'tool') {
+        if (msgs[j].tool_call_id) presentIds.add(msgs[j].tool_call_id);
+        j++;
+      }
+      const orphans = msg.tool_calls.filter((tc) => tc && tc.id && !presentIds.has(tc.id));
+      if (orphans.length > 0) {
+        for (const tc of orphans) {
+          out.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            name: tc.function?.name || 'unknown',
+            content: CANCELLED_TOOL_RESULT,
+          });
+        }
+        console.warn(`[sanitizeOrphanToolCalls] Injected ${orphans.length} synthetic tool message(s) for orphan tool_calls: ${orphans.map((tc) => tc.id).join(', ')}`);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Inject the current date/time into the latest user message.
  * This keeps the system prompt 100% stable for prompt caching while
@@ -1821,6 +1898,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
       recovered_from_error: true,
     });
   } finally {
+    // Ensure every tool_use / tool_call has a matching tool_result. When the client
+    // disconnects mid-run (Stop button), the tool loop is skipped and the assistant's
+    // tool_use block is saved without a result — the next turn then fails with
+    // "tool_use ids were found without tool_result blocks immediately after".
+    messages = sanitizeOrphanToolCalls(messages);
+
     // Log conversation
     const logData = {
       conversationId,
