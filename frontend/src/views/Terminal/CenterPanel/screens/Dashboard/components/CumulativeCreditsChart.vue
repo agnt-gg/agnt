@@ -208,7 +208,7 @@ export default {
         datasets.push({
           label: `${prefix} Est. Cost ($)`,
           data: data.costData,
-          yAxisID: 'y',
+          yAxisID: 'y2',
           fill: true,
           backgroundColor: (context) => {
             const chart = context.chart;
@@ -237,7 +237,7 @@ export default {
           position: 'left',
           title: {
             display: true,
-            text: 'Compute (s) / Cost ($)',
+            text: 'Compute (s)',
             color: mutedColor,
             font: { size: 10 },
           },
@@ -264,6 +264,16 @@ export default {
           },
         },
       };
+
+      if (hasCostData) {
+        scales.y2 = {
+          beginAtZero: true,
+          min: 0,
+          position: 'right',
+          display: false,
+          grid: { drawOnChartArea: false },
+        };
+      }
 
       if (hasTokenData) {
         scales.y1 = {
