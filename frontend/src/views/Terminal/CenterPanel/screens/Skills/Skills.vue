@@ -30,7 +30,9 @@
           @create="openCreateModal"
         >
           <template v-if="activeView === 'skills'" #extra-buttons>
-            <Tooltip text="Import SKILL.md"><button class="import-btn" @click="triggerImport"><i class="fas fa-file-import"></i> Import</button></Tooltip>
+            <Tooltip text="Import SKILL.md"
+              ><button class="import-btn" @click="triggerImport"><i class="fas fa-file-import"></i> Import</button></Tooltip
+            >
           </template>
         </ScreenToolbar>
         <input ref="importFileInput" type="file" accept=".md" style="display: none" @change="handleImportFile" />
@@ -70,8 +72,12 @@
                   <span class="card-category">{{ skill.category || 'general' }}</span>
                 </div>
                 <div class="card-actions">
-                  <Tooltip text="Edit"><button class="card-btn edit" @click.stop="openEditModal(skill)"><i class="fas fa-pen"></i></button></Tooltip>
-                  <Tooltip text="Delete"><button class="card-btn delete" @click.stop="confirmDelete(skill)"><i class="fas fa-trash"></i></button></Tooltip>
+                  <Tooltip text="Edit"
+                    ><button class="card-btn edit" @click.stop="openEditModal(skill)"><i class="fas fa-pen"></i></button
+                  ></Tooltip>
+                  <Tooltip text="Delete"
+                    ><button class="card-btn delete" @click.stop="confirmDelete(skill)"><i class="fas fa-trash"></i></button
+                  ></Tooltip>
                 </div>
               </div>
               <p class="card-description">{{ skill.description }}</p>
@@ -97,7 +103,10 @@
         <template v-if="activeView === 'discovered'">
           <div class="discovered-header">
             <div class="discovered-info">
-              <span class="discovered-label"><i class="fas fa-info-circle"></i> Skills discovered from your filesystem following the <strong>agentskills.io</strong> standard. These are also visible to Claude Code, Cursor, VS Code, and other compatible tools.</span>
+              <span class="discovered-label"
+                ><i class="fas fa-info-circle"></i> Skills discovered from your filesystem following the <strong>agentskills.io</strong> standard.
+                These are also visible to Claude Code, Cursor, VS Code, and other compatible tools.</span
+              >
             </div>
             <div class="discovered-actions">
               <button class="filter-btn" @click="rescanSkills" :disabled="isDiscoveryLoading">
@@ -131,10 +140,17 @@
                   </span>
                 </div>
                 <div class="card-actions">
-                  <Tooltip text="Import to AGNT"><button class="card-btn import" :disabled="importingSkill === skill.name" @click.stop="importDiscoveredSkill(skill)"><i :class="importingSkill === skill.name ? 'fas fa-spinner fa-spin' : 'fas fa-download'"></i></button></Tooltip>
+                  <Tooltip text="Import to AGNT"
+                    ><button class="card-btn import" :disabled="importingSkill === skill.name" @click.stop="importDiscoveredSkill(skill)">
+                      <i :class="importingSkill === skill.name ? 'fas fa-spinner fa-spin' : 'fas fa-download'"></i></button
+                  ></Tooltip>
                 </div>
               </div>
               <p class="card-description">{{ skill.description }}</p>
+              <div v-if="skill.instructions" class="card-instructions">
+                <span class="instructions-label">Instructions</span>
+                <p class="instructions-preview">{{ skill.instructions }}</p>
+              </div>
             </div>
           </div>
 
@@ -142,10 +158,8 @@
             <div class="empty-state">
               <i class="fas fa-folder-open"></i>
               <p>No skills discovered</p>
-              <span class="empty-hint">
-                Place skill directories in <code>~/.agents/skills/</code> or <code>~/.agnt/skills/</code>
-              </span>
-              <div class="empty-state-buttons" style="margin-top: 12px;">
+              <span class="empty-hint"> Place skill directories in <code>~/.agents/skills/</code> or <code>~/.agnt/skills/</code> </span>
+              <div class="empty-state-buttons" style="margin-top: 12px">
                 <button class="create-button" @click="rescanSkills"><i class="fas fa-sync-alt"></i> Rescan</button>
               </div>
             </div>
@@ -155,15 +169,19 @@
           <div v-if="selectedDiscoveredSkill" class="discovered-detail">
             <div class="detail-header">
               <h4><i class="fas fa-file-alt"></i> {{ toTitleCase(selectedDiscoveredSkill.name) }}</h4>
-              <button class="forge-btn primary" :disabled="importingSkill === selectedDiscoveredSkill.name" @click="importDiscoveredSkill(selectedDiscoveredSkill)">
+              <button
+                class="forge-btn primary"
+                :disabled="importingSkill === selectedDiscoveredSkill.name"
+                @click="importDiscoveredSkill(selectedDiscoveredSkill)"
+              >
                 <i :class="importingSkill === selectedDiscoveredSkill.name ? 'fas fa-spinner fa-spin' : 'fas fa-download'"></i>
                 {{ importingSkill === selectedDiscoveredSkill.name ? 'Importing...' : 'Import to AGNT' }}
               </button>
             </div>
             <div class="detail-meta">
               <span><strong>Source:</strong> {{ selectedDiscoveredSkill.scope }} / {{ selectedDiscoveredSkill.client }}</span>
-              <span v-if="selectedDiscoveredSkill.trusted"><i class="fas fa-check-circle" style="color: var(--color-green);"></i> Trusted</span>
-              <span v-else><i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i> Untrusted (project-level)</span>
+              <span v-if="selectedDiscoveredSkill.trusted"><i class="fas fa-check-circle" style="color: var(--color-green)"></i> Trusted</span>
+              <span v-else><i class="fas fa-exclamation-triangle" style="color: #f59e0b"></i> Untrusted (project-level)</span>
             </div>
           </div>
         </template>
@@ -206,7 +224,9 @@
               </div>
             </div>
 
-            <div class="section-header"><h3><i class="fas fa-trophy"></i> Leaderboard</h3></div>
+            <div class="section-header">
+              <h3><i class="fas fa-trophy"></i> Leaderboard</h3>
+            </div>
             <div v-if="filteredLeaderboard.length > 0" class="leaderboard-list">
               <div v-for="(skill, idx) in filteredLeaderboard" :key="skill.skill_id" class="leaderboard-item" @click="viewSkillDetail(skill)">
                 <span class="lb-rank">#{{ idx + 1 }}</span>
@@ -232,21 +252,37 @@
           <!-- A/B Tests -->
           <div v-if="forgeTab === 'evaluations'" class="sf-content">
             <div v-if="evaluations.length > 0" class="evals-list">
-              <div v-for="ev in evaluations" :key="ev.id" class="eval-card" :class="{ kept: ev.decision === 'kept' || ev.decision === 'promoted', discarded: ev.decision === 'discarded' }">
+              <div
+                v-for="ev in evaluations"
+                :key="ev.id"
+                class="eval-card"
+                :class="{ kept: ev.decision === 'kept' || ev.decision === 'promoted', discarded: ev.decision === 'discarded' }"
+              >
                 <div class="eval-header">
                   <span class="eval-decision" :class="ev.decision"><i :class="decisionIcon(ev.decision)"></i> {{ ev.decision?.toUpperCase() }}</span>
                   <span class="eval-date">{{ formatFullDate(ev.created_at) }}</span>
                 </div>
                 <div class="eval-metrics">
-                  <div class="eval-metric"><span class="metric-label">Baseline</span><span class="metric-value">{{ ev.baseline_ses != null ? ev.baseline_ses.toFixed(1) : 'N/A' }}</span></div>
-                  <div class="eval-metric"><span class="metric-label">Treatment</span><span class="metric-value">{{ ev.treatment_ses != null ? ev.treatment_ses.toFixed(1) : 'N/A' }}</span></div>
-                  <div class="eval-metric"><span class="metric-label">Delta</span><span class="metric-value" :class="deltaClass(ev.delta)">{{ formatDelta(ev.delta) }}</span></div>
+                  <div class="eval-metric">
+                    <span class="metric-label">Baseline</span
+                    ><span class="metric-value">{{ ev.baseline_ses != null ? ev.baseline_ses.toFixed(1) : 'N/A' }}</span>
+                  </div>
+                  <div class="eval-metric">
+                    <span class="metric-label">Treatment</span
+                    ><span class="metric-value">{{ ev.treatment_ses != null ? ev.treatment_ses.toFixed(1) : 'N/A' }}</span>
+                  </div>
+                  <div class="eval-metric">
+                    <span class="metric-label">Delta</span><span class="metric-value" :class="deltaClass(ev.delta)">{{ formatDelta(ev.delta) }}</span>
+                  </div>
                 </div>
                 <p v-if="ev.judge_reasoning" class="eval-reasoning">{{ ev.judge_reasoning }}</p>
               </div>
             </div>
             <div v-else class="empty-state-container">
-              <div class="empty-state"><i class="fas fa-vial"></i><p>No A/B tests recorded yet</p></div>
+              <div class="empty-state">
+                <i class="fas fa-vial"></i>
+                <p>No A/B tests recorded yet</p>
+              </div>
             </div>
           </div>
 
@@ -266,20 +302,33 @@
               </div>
               <div v-if="isLoadingGoals" class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading goals...</div>
               <div v-else-if="filteredGoals.length > 0" class="goals-list">
-                <div v-for="goal in filteredGoals" :key="goal.id" class="goal-card" :class="{ selected: selectedGoal?.id === goal.id, eligible: goal.eligible, ineligible: !goal.eligible }" @click="selectGoal(goal)">
+                <div
+                  v-for="goal in filteredGoals"
+                  :key="goal.id"
+                  class="goal-card"
+                  :class="{ selected: selectedGoal?.id === goal.id, eligible: goal.eligible, ineligible: !goal.eligible }"
+                  @click="selectGoal(goal)"
+                >
                   <div class="goal-header">
                     <span class="goal-title">{{ goal.title }}</span>
                     <span v-if="goal.eligible" class="badge eligible"><i class="fas fa-check"></i></span>
                     <span v-else class="badge ineligible"><i class="fas fa-times"></i></span>
                   </div>
                   <div class="goal-metrics">
-                    <span class="goal-metric"><i class="fas fa-star"></i> {{ goal.eval_score != null ? Math.round(goal.eval_score) + '%' : 'N/A' }}</span>
+                    <span class="goal-metric"
+                      ><i class="fas fa-star"></i> {{ goal.eval_score != null ? Math.round(goal.eval_score) + '%' : 'N/A' }}</span
+                    >
                     <span class="goal-metric"><i class="fas fa-tasks"></i> {{ goal.completed_tasks }}/{{ goal.task_count }}</span>
                     <span class="goal-metric"><i class="fas fa-redo"></i> {{ goal.iteration_count }} iters</span>
                   </div>
                 </div>
               </div>
-              <div v-else class="empty-state-container"><div class="empty-state"><i class="fas fa-flag-checkered"></i><p>No completed goals found</p></div></div>
+              <div v-else class="empty-state-container">
+                <div class="empty-state">
+                  <i class="fas fa-flag-checkered"></i>
+                  <p>No completed goals found</p>
+                </div>
+              </div>
 
               <div v-if="selectedGoal" class="selected-goal-actions">
                 <div class="selected-goal-bar">
@@ -330,13 +379,25 @@
               </div>
               <div class="form-group">
                 <label>Instructions</label>
-                <textarea v-model="form.instructions" class="form-input mono" rows="8" placeholder="The prompt instructions injected into the agent's system prompt..."></textarea>
+                <textarea
+                  v-model="form.instructions"
+                  class="form-input mono"
+                  rows="8"
+                  placeholder="The prompt instructions injected into the agent's system prompt..."
+                ></textarea>
               </div>
               <div class="form-row">
                 <div class="form-group">
                   <label>Icon</label>
                   <div class="icon-grid">
-                    <button v-for="ico in SKILL_ICONS" :key="ico" type="button" class="icon-btn" :class="{ active: form.icon === ico }" @click="form.icon = ico">
+                    <button
+                      v-for="ico in SKILL_ICONS"
+                      :key="ico"
+                      type="button"
+                      class="icon-btn"
+                      :class="{ active: form.icon === ico }"
+                      @click="form.icon = ico"
+                    >
                       <i :class="ico"></i>
                     </button>
                   </div>
@@ -374,16 +435,46 @@ import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 
 const SKILL_ICONS = [
-  'fas fa-puzzle-piece', 'fas fa-chart-bar', 'fas fa-chart-line', 'fas fa-chart-pie',
-  'fas fa-table', 'fas fa-hashtag', 'fas fa-clock', 'fas fa-rss',
-  'fas fa-sticky-note', 'fas fa-code', 'fas fa-globe', 'fas fa-database',
-  'fas fa-server', 'fas fa-bolt', 'fas fa-fire', 'fas fa-star',
-  'fas fa-heart', 'fas fa-shield-alt', 'fas fa-rocket', 'fas fa-brain',
-  'fas fa-cube', 'fas fa-cubes', 'fas fa-cog', 'fas fa-wrench',
-  'fas fa-terminal', 'fas fa-palette', 'fas fa-image', 'fas fa-video',
-  'fas fa-music', 'fas fa-bell', 'fas fa-envelope', 'fas fa-comments',
-  'fas fa-users', 'fas fa-robot', 'fas fa-atom', 'fas fa-flask',
-  'fas fa-gem', 'fas fa-crown', 'fas fa-leaf', 'fas fa-cloud',
+  'fas fa-puzzle-piece',
+  'fas fa-chart-bar',
+  'fas fa-chart-line',
+  'fas fa-chart-pie',
+  'fas fa-table',
+  'fas fa-hashtag',
+  'fas fa-clock',
+  'fas fa-rss',
+  'fas fa-sticky-note',
+  'fas fa-code',
+  'fas fa-globe',
+  'fas fa-database',
+  'fas fa-server',
+  'fas fa-bolt',
+  'fas fa-fire',
+  'fas fa-star',
+  'fas fa-heart',
+  'fas fa-shield-alt',
+  'fas fa-rocket',
+  'fas fa-brain',
+  'fas fa-cube',
+  'fas fa-cubes',
+  'fas fa-cog',
+  'fas fa-wrench',
+  'fas fa-terminal',
+  'fas fa-palette',
+  'fas fa-image',
+  'fas fa-video',
+  'fas fa-music',
+  'fas fa-bell',
+  'fas fa-envelope',
+  'fas fa-comments',
+  'fas fa-users',
+  'fas fa-robot',
+  'fas fa-atom',
+  'fas fa-flask',
+  'fas fa-gem',
+  'fas fa-crown',
+  'fas fa-leaf',
+  'fas fa-cloud',
 ];
 
 const store = useStore();
@@ -460,7 +551,10 @@ const filteredSkills = computed(() => {
   let result = allSkills.value;
   if (selectedCategory.value) result = result.filter((s) => (s.category || 'general') === selectedCategory.value);
   const q = searchQuery.value.toLowerCase();
-  if (q) result = result.filter((s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q));
+  if (q)
+    result = result.filter(
+      (s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q),
+    );
   return result;
 });
 
@@ -520,34 +614,53 @@ const initializeScreen = () => {
 
 const handlePanelAction = (action, payload) => {
   if (action === 'navigate') emit('screen-change', payload);
-  else if (action === 'category-filter-changed') { selectedCategory.value = payload?.selectedCategory || null; selectedSkill.value = null; }
-  else if (action === 'open-create-modal') openCreateModal();
+  else if (action === 'category-filter-changed') {
+    selectedCategory.value = payload?.selectedCategory || null;
+    selectedSkill.value = null;
+  } else if (action === 'open-create-modal') openCreateModal();
   else if (action === 'open-edit-modal') openEditModal(payload);
   else if (action === 'export-skill') exportSkill(payload);
   else if (action === 'delete-skill') confirmDelete(payload);
   else if (action === 'import-discovered-skill') importDiscoveredSkill(payload);
 };
 
-const selectSkill = (skill) => { selectedSkill.value = selectedSkill.value?.id === skill.id ? null : skill; };
+const selectSkill = (skill) => {
+  selectedSkill.value = selectedSkill.value?.id === skill.id ? null : skill;
+};
 
 // CRUD
 const openCreateModal = () => {
-  isEditing.value = false; editingId.value = null; modalError.value = '';
+  isEditing.value = false;
+  editingId.value = null;
+  modalError.value = '';
   form.value = { name: '', description: '', instructions: '', icon: 'fas fa-puzzle-piece', category: 'general' };
   showModal.value = true;
 };
 
 const openEditModal = (skill) => {
-  isEditing.value = true; editingId.value = skill.id; modalError.value = '';
-  form.value = { name: skill.name || '', description: skill.description || '', instructions: skill.instructions || '', icon: skill.icon || 'fas fa-puzzle-piece', category: skill.category || 'general' };
+  isEditing.value = true;
+  editingId.value = skill.id;
+  modalError.value = '';
+  form.value = {
+    name: skill.name || '',
+    description: skill.description || '',
+    instructions: skill.instructions || '',
+    icon: skill.icon || 'fas fa-puzzle-piece',
+    category: skill.category || 'general',
+  };
   showModal.value = true;
 };
 
-const closeModal = () => { showModal.value = false; };
+const closeModal = () => {
+  showModal.value = false;
+};
 
 const saveSkill = async () => {
   modalError.value = '';
-  if (!form.value.name?.trim() || !form.value.description?.trim()) { modalError.value = 'Name and description are required.'; return; }
+  if (!form.value.name?.trim() || !form.value.description?.trim()) {
+    modalError.value = 'Name and description are required.';
+    return;
+  }
   saving.value = true;
   try {
     if (isEditing.value) {
@@ -564,19 +677,27 @@ const saveSkill = async () => {
     }
   } catch (err) {
     modalError.value = err.message || 'Failed to save skill.';
-  } finally { saving.value = false; }
+  } finally {
+    saving.value = false;
+  }
 };
 
 const confirmDelete = async (skill) => {
   const confirmed = await simpleModal.value?.showModal({
-    title: 'Delete Skill?', message: `Delete "${skill.name}"? This cannot be undone.`,
-    confirmText: 'Delete', cancelText: 'Cancel', showCancel: true, confirmClass: 'btn-danger',
+    title: 'Delete Skill?',
+    message: `Delete "${skill.name}"? This cannot be undone.`,
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    showCancel: true,
+    confirmClass: 'btn-danger',
   });
   if (confirmed) {
     try {
       await store.dispatch('skills/deleteSkill', skill.id);
       if (selectedSkill.value?.id === skill.id) selectedSkill.value = null;
-    } catch (err) { console.error('Delete error:', err); }
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
   }
 };
 
@@ -585,12 +706,21 @@ const exportSkill = async (skill) => {
     const content = await store.dispatch('skills/exportSkillMd', skill.id);
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `${skill.name}.SKILL.md`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-  } catch (err) { console.error('Export error:', err); }
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${skill.name}.SKILL.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Export error:', err);
+  }
 };
 
-const triggerImport = () => { importFileInput.value?.click(); };
+const triggerImport = () => {
+  importFileInput.value?.click();
+};
 
 const handleImportFile = async (event) => {
   const file = event.target.files?.[0];
@@ -663,7 +793,10 @@ const importDiscoveredSkill = async (skill) => {
 const viewSkillDetail = (skill) => {
   // Select in the skills view for the right panel
   const found = allSkills.value.find((s) => s.id === skill.skill_id);
-  if (found) { selectedSkill.value = found; activeView.value = 'skills'; }
+  if (found) {
+    selectedSkill.value = found;
+    activeView.value = 'skills';
+  }
 };
 
 const selectGoal = (goal) => {
@@ -672,29 +805,49 @@ const selectGoal = (goal) => {
   store.commit('skillforge/SET_LAST_EVOLUTION', null);
 };
 
-const refreshGoals = () => { store.dispatch('skillforge/fetchEligibleGoals'); };
+const refreshGoals = () => {
+  store.dispatch('skillforge/fetchEligibleGoals');
+};
 
 const runAnalysis = async () => {
   if (!selectedGoal.value) return;
-  try { await store.dispatch('skillforge/analyzeGoal', selectedGoal.value.id); }
-  catch (err) { console.error('Analysis error:', err); }
+  try {
+    await store.dispatch('skillforge/analyzeGoal', selectedGoal.value.id);
+  } catch (err) {
+    console.error('Analysis error:', err);
+  }
 };
 
 const runEvolution = async () => {
   if (!selectedGoal.value) return;
-  try { await store.dispatch('skillforge/evolveFromGoal', selectedGoal.value.id); }
-  catch (err) { console.error('Forge error:', err); }
+  try {
+    await store.dispatch('skillforge/evolveFromGoal', selectedGoal.value.id);
+  } catch (err) {
+    console.error('Forge error:', err);
+  }
 };
 
 // Helpers
-const toTitleCase = (name) => (!name ? '' : name.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+const toTitleCase = (name) =>
+  !name
+    ? ''
+    : name
+        .split('-')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
 const formatDelta = (d) => (d == null ? '\u2014' : (d >= 0 ? '+' : '') + d.toFixed(1));
 const formatPercent = (v) => (v == null ? '\u2014' : (v * 100).toFixed(0) + '%');
 const deltaClass = (d) => (d == null ? '' : d > 2 ? 'positive' : d < 0 ? 'negative' : 'neutral');
-const decisionIcon = (d) => (d === 'kept' ? 'fas fa-check-circle' : d === 'promoted' ? 'fas fa-crown' : d === 'discarded' ? 'fas fa-times-circle' : 'fas fa-question-circle');
-const formatFullDate = (dateStr) => (!dateStr ? '' : new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+const decisionIcon = (d) =>
+  d === 'kept' ? 'fas fa-check-circle' : d === 'promoted' ? 'fas fa-crown' : d === 'discarded' ? 'fas fa-times-circle' : 'fas fa-question-circle';
+const formatFullDate = (dateStr) =>
+  !dateStr
+    ? ''
+    : new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-onMounted(() => { store.dispatch('skills/fetchSkills'); });
+onMounted(() => {
+  store.dispatch('skills/fetchSkills');
+});
 </script>
 
 <style scoped>
@@ -736,9 +889,21 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
   transition: all 0.2s;
   white-space: nowrap;
 }
-.view-tab:hover { background: rgba(var(--green-rgb), 0.05); border-color: rgba(var(--green-rgb), 0.3); }
-.view-tab.active { background: rgba(var(--green-rgb), 0.1); border-color: rgba(var(--green-rgb), 0.5); color: var(--color-green); }
-.tab-count { background: var(--color-darker-0); padding: 1px 6px; border-radius: 10px; font-size: 0.85em; }
+.view-tab:hover {
+  background: rgba(var(--green-rgb), 0.05);
+  border-color: rgba(var(--green-rgb), 0.3);
+}
+.view-tab.active {
+  background: rgba(var(--green-rgb), 0.1);
+  border-color: rgba(var(--green-rgb), 0.5);
+  color: var(--color-green);
+}
+.tab-count {
+  background: var(--color-darker-0);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.85em;
+}
 
 /* Import */
 .import-btn {
@@ -754,7 +919,10 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
   gap: 6px;
   transition: all 0.15s;
 }
-.import-btn:hover { background: rgba(var(--primary-rgb), 0.2); border-color: var(--color-primary); }
+.import-btn:hover {
+  background: rgba(var(--primary-rgb), 0.2);
+  border-color: var(--color-primary);
+}
 
 /* Skills Grid */
 .skills-grid {
@@ -771,7 +939,7 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
 .skill-card {
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.18));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.18));
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   padding: 14px;
@@ -780,7 +948,11 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  transition: border-color 0.2s, background 0.2s, transform 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
 }
 .skill-card::-webkit-scrollbar {
   display: none;
@@ -789,26 +961,41 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
 }
 .skill-card:hover {
   border-color: rgba(var(--green-rgb), 0.4);
-  background: linear-gradient(180deg, rgba(var(--green-rgb), 0.04), rgba(0,0,0,0.25));
+  background: linear-gradient(180deg, rgba(var(--green-rgb), 0.04), rgba(0, 0, 0, 0.25));
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
 .skill-card.selected {
   border-color: var(--color-green);
   background: linear-gradient(180deg, rgba(var(--green-rgb), 0.08), rgba(var(--green-rgb), 0.02));
   box-shadow: 0 0 0 1px rgba(var(--green-rgb), 0.3) inset;
 }
-.card-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; min-width: 0; }
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
 .card-icon {
   font-size: 1.1em;
-  width: 32px; height: 32px;
-  display: flex; align-items: center; justify-content: center;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 6px;
   background: rgba(var(--green-rgb), 0.08);
   color: var(--color-green);
   flex-shrink: 0;
 }
-.card-title-block { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.card-title-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .card-name {
   font-weight: 600;
   color: var(--color-text);
@@ -826,31 +1013,62 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
   gap: 4px;
   flex-wrap: wrap;
 }
-.card-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
-.skill-card:hover .card-actions { opacity: 1; }
+.card-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.skill-card:hover .card-actions {
+  opacity: 1;
+}
 .card-btn {
   background: rgba(var(--green-rgb), 0.1);
   border: 1px solid rgba(var(--green-rgb), 0.2);
   color: var(--color-grey);
-  width: 28px; height: 28px; border-radius: 4px;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; font-size: 0.75em; transition: all 0.15s;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.75em;
+  transition: all 0.15s;
 }
-.card-btn:hover { color: var(--color-text); background: rgba(var(--green-rgb), 0.2); }
-.card-btn.delete:hover { color: var(--color-red); border-color: rgba(255,77,79,0.3); background: rgba(255,77,79,0.1); }
+.card-btn:hover {
+  color: var(--color-text);
+  background: rgba(var(--green-rgb), 0.2);
+}
+.card-btn.delete:hover {
+  color: var(--color-red);
+  border-color: rgba(255, 77, 79, 0.3);
+  background: rgba(255, 77, 79, 0.1);
+}
 .card-description {
   font-size: 0.85em;
   color: var(--color-grey);
   margin: 0 0 8px;
   line-height: 1.4;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .card-instructions {
   border-top: 1px dashed rgba(var(--green-rgb), 0.15);
   padding-top: 8px;
   margin-top: auto;
 }
-.instructions-label { font-size: 0.7em; color: var(--color-green); text-transform: uppercase; letter-spacing: 0.5px; }
+.instructions-label {
+  font-size: 0.7em;
+  color: var(--color-green);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 .instructions-preview {
   font-size: 0.78em;
   color: var(--color-grey);
@@ -895,6 +1113,7 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
 }
 .discovered-card {
   border-left: 3px solid rgba(var(--green-rgb), 0.3);
+  height: 100px;
 }
 .source-badge {
   font-size: 0.7em;
@@ -961,168 +1180,620 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
 }
 
 /* SkillForge tabs */
-.sf-tabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--terminal-border-color); flex-shrink: 0; }
-.sf-tab {
-  padding: 10px 16px; background: none; border: none; border-bottom: 2px solid transparent;
-  color: var(--color-grey); font-size: 0.85em; cursor: pointer;
-  display: flex; align-items: center; gap: 6px; transition: all 0.15s;
+.sf-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--terminal-border-color);
+  flex-shrink: 0;
 }
-.sf-tab:hover { color: var(--color-text); }
-.sf-tab.active { color: var(--color-green); border-bottom-color: var(--color-green); }
-.sf-content { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; scrollbar-width: thin; }
+.sf-tab {
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-grey);
+  font-size: 0.85em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+.sf-tab:hover {
+  color: var(--color-text);
+}
+.sf-tab.active {
+  color: var(--color-green);
+  border-bottom-color: var(--color-green);
+}
+.sf-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scrollbar-width: thin;
+}
 
 /* Stats */
-.stats-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.stat-card { background: rgba(0,0,0,0.15); border: 1px solid var(--terminal-border-color); border-radius: 8px; padding: 12px; text-align: center; }
-.stat-card.accent { border-color: rgba(var(--green-rgb), 0.3); }
-.stat-value { font-size: 1.2em; font-weight: 700; color: var(--color-text); }
-.stat-label { font-size: 0.7em; color: var(--color-grey); text-transform: uppercase; margin-top: 4px; }
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+.stat-card {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+.stat-card.accent {
+  border-color: rgba(var(--green-rgb), 0.3);
+}
+.stat-value {
+  font-size: 1.2em;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.stat-label {
+  font-size: 0.7em;
+  color: var(--color-grey);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
 
 /* Leaderboard */
-.section-header h3 { font-size: 0.9em; color: var(--color-text); display: flex; align-items: center; gap: 8px; margin: 0; }
-.section-header h3 i { color: var(--color-green); }
-.leaderboard-list { display: flex; flex-direction: column; gap: 4px; }
-.leaderboard-item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px; border: 1px solid var(--terminal-border-color);
-  border-radius: 6px; cursor: pointer; transition: all 0.15s;
+.section-header h3 {
+  font-size: 0.9em;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
 }
-.leaderboard-item:hover { border-color: rgba(var(--green-rgb), 0.3); background: rgba(var(--green-rgb), 0.03); }
-.lb-rank { font-weight: 700; color: var(--color-grey); font-size: 0.85em; min-width: 30px; }
-.lb-info { flex: 1; }
-.lb-name { font-weight: 500; color: var(--color-text); font-size: 0.9em; }
-.lb-category { font-size: 0.7em; color: var(--color-grey); text-transform: uppercase; margin-left: 8px; }
-.lb-stats { text-align: right; }
-.lb-metric { font-weight: 600; font-size: 0.9em; }
-.lb-metric.positive { color: var(--color-green); }
-.lb-metric.negative { color: #ef4444; }
-.lb-metric.neutral { color: var(--color-grey); }
-.lb-metric-sub { font-size: 0.7em; color: var(--color-grey); display: block; }
+.section-header h3 i {
+  color: var(--color-green);
+}
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.leaderboard-item:hover {
+  border-color: rgba(var(--green-rgb), 0.3);
+  background: rgba(var(--green-rgb), 0.03);
+}
+.lb-rank {
+  font-weight: 700;
+  color: var(--color-grey);
+  font-size: 0.85em;
+  min-width: 30px;
+}
+.lb-info {
+  flex: 1;
+}
+.lb-name {
+  font-weight: 500;
+  color: var(--color-text);
+  font-size: 0.9em;
+}
+.lb-category {
+  font-size: 0.7em;
+  color: var(--color-grey);
+  text-transform: uppercase;
+  margin-left: 8px;
+}
+.lb-stats {
+  text-align: right;
+}
+.lb-metric {
+  font-weight: 600;
+  font-size: 0.9em;
+}
+.lb-metric.positive {
+  color: var(--color-green);
+}
+.lb-metric.negative {
+  color: #ef4444;
+}
+.lb-metric.neutral {
+  color: var(--color-grey);
+}
+.lb-metric-sub {
+  font-size: 0.7em;
+  color: var(--color-grey);
+  display: block;
+}
 
 /* Evaluations */
-.evals-list { display: flex; flex-direction: column; gap: 8px; }
-.eval-card { border: 1px solid var(--terminal-border-color); border-radius: 8px; padding: 12px; }
-.eval-card.kept { border-left: 3px solid var(--color-green); }
-.eval-card.discarded { border-left: 3px solid #ef4444; }
-.eval-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.eval-decision { font-weight: 600; font-size: 0.8em; display: flex; align-items: center; gap: 4px; }
-.eval-decision.kept, .eval-decision.promoted { color: var(--color-green); }
-.eval-decision.discarded { color: #ef4444; }
-.eval-date { font-size: 0.75em; color: var(--color-grey); }
-.eval-metrics { display: flex; gap: 16px; }
-.eval-metric { display: flex; flex-direction: column; gap: 2px; }
-.metric-label { font-size: 0.7em; color: var(--color-grey); text-transform: uppercase; }
-.metric-value { font-weight: 600; font-size: 0.9em; color: var(--color-text); }
-.metric-value.positive { color: var(--color-green); }
-.metric-value.negative { color: #ef4444; }
-.eval-reasoning { font-size: 0.8em; color: var(--color-grey); margin: 8px 0 0; font-style: italic; }
+.evals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eval-card {
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  padding: 12px;
+}
+.eval-card.kept {
+  border-left: 3px solid var(--color-green);
+}
+.eval-card.discarded {
+  border-left: 3px solid #ef4444;
+}
+.eval-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.eval-decision {
+  font-weight: 600;
+  font-size: 0.8em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.eval-decision.kept,
+.eval-decision.promoted {
+  color: var(--color-green);
+}
+.eval-decision.discarded {
+  color: #ef4444;
+}
+.eval-date {
+  font-size: 0.75em;
+  color: var(--color-grey);
+}
+.eval-metrics {
+  display: flex;
+  gap: 16px;
+}
+.eval-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metric-label {
+  font-size: 0.7em;
+  color: var(--color-grey);
+  text-transform: uppercase;
+}
+.metric-value {
+  font-weight: 600;
+  font-size: 0.9em;
+  color: var(--color-text);
+}
+.metric-value.positive {
+  color: var(--color-green);
+}
+.metric-value.negative {
+  color: #ef4444;
+}
+.eval-reasoning {
+  font-size: 0.8em;
+  color: var(--color-grey);
+  margin: 8px 0 0;
+  font-style: italic;
+}
 
 /* Forge */
-.forge-section h3 { font-size: 0.95em; color: var(--color-text); display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
-.forge-section h3 i { color: var(--color-green); }
-.forge-desc { font-size: 0.8em; color: var(--color-grey); margin: 0 0 12px; }
-.forge-filters { display: flex; gap: 8px; margin-bottom: 12px; }
-.forge-filters .form-input { flex: 1; }
+.forge-section h3 {
+  font-size: 0.95em;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+.forge-section h3 i {
+  color: var(--color-green);
+}
+.forge-desc {
+  font-size: 0.8em;
+  color: var(--color-grey);
+  margin: 0 0 12px;
+}
+.forge-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.forge-filters .form-input {
+  flex: 1;
+}
 .filter-btn {
-  padding: 6px 12px; background: none; border: 1px solid var(--terminal-border-color);
-  border-radius: 4px; color: var(--color-grey); cursor: pointer;
-  font-size: 0.85em; display: flex; align-items: center; gap: 6px; transition: all 0.15s;
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  color: var(--color-grey);
+  cursor: pointer;
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
 }
-.filter-btn.active { color: var(--color-green); border-color: rgba(var(--green-rgb), 0.4); }
-.loading-state { color: var(--color-grey); font-size: 0.9em; padding: 20px; text-align: center; }
-.goals-list { display: flex; flex-direction: column; gap: 6px; }
+.filter-btn.active {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.4);
+}
+.loading-state {
+  color: var(--color-grey);
+  font-size: 0.9em;
+  padding: 20px;
+  text-align: center;
+}
+.goals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .goal-card {
-  padding: 10px 12px; border: 1px solid var(--terminal-border-color);
-  border-radius: 6px; cursor: pointer; transition: all 0.15s;
+  padding: 10px 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
 }
-.goal-card:hover { border-color: rgba(var(--green-rgb), 0.3); }
-.goal-card.selected { border-color: var(--color-green); background: rgba(var(--green-rgb), 0.05); }
-.goal-card.ineligible { opacity: 0.6; }
-.goal-header { display: flex; align-items: center; gap: 8px; }
-.goal-title { flex: 1; font-weight: 500; font-size: 0.9em; color: var(--color-text); }
-.badge { font-size: 0.75em; padding: 2px 6px; border-radius: 4px; }
-.badge.eligible { color: var(--color-green); background: rgba(var(--green-rgb), 0.1); }
-.badge.ineligible { color: var(--color-grey); background: rgba(150,150,150,0.1); }
-.goal-metrics { display: flex; gap: 12px; margin-top: 6px; }
-.goal-metric { font-size: 0.75em; color: var(--color-grey); display: flex; align-items: center; gap: 4px; }
-.selected-goal-actions { margin-top: 12px; }
-.selected-goal-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid rgba(var(--green-rgb), 0.3); border-radius: 6px; background: rgba(var(--green-rgb), 0.03); }
-.selected-name { font-weight: 500; font-size: 0.9em; color: var(--color-text); }
-.action-buttons { display: flex; gap: 8px; }
+.goal-card:hover {
+  border-color: rgba(var(--green-rgb), 0.3);
+}
+.goal-card.selected {
+  border-color: var(--color-green);
+  background: rgba(var(--green-rgb), 0.05);
+}
+.goal-card.ineligible {
+  opacity: 0.6;
+}
+.goal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.goal-title {
+  flex: 1;
+  font-weight: 500;
+  font-size: 0.9em;
+  color: var(--color-text);
+}
+.badge {
+  font-size: 0.75em;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.badge.eligible {
+  color: var(--color-green);
+  background: rgba(var(--green-rgb), 0.1);
+}
+.badge.ineligible {
+  color: var(--color-grey);
+  background: rgba(150, 150, 150, 0.1);
+}
+.goal-metrics {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+.goal-metric {
+  font-size: 0.75em;
+  color: var(--color-grey);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.selected-goal-actions {
+  margin-top: 12px;
+}
+.selected-goal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  border-radius: 6px;
+  background: rgba(var(--green-rgb), 0.03);
+}
+.selected-name {
+  font-weight: 500;
+  font-size: 0.9em;
+  color: var(--color-text);
+}
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
 .forge-btn {
-  padding: 8px 16px; border-radius: 4px; font-size: 0.85em; cursor: pointer;
-  display: flex; align-items: center; gap: 6px; transition: all 0.15s;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
 }
-.forge-btn.analyze { background: rgba(var(--green-rgb), 0.1); border: 1px solid rgba(var(--green-rgb), 0.2); color: var(--color-text); }
-.forge-btn.primary { background: var(--color-green); color: var(--color-dark-navy); border: none; font-weight: 600; }
-.forge-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.result-panel { border: 1px solid var(--terminal-border-color); border-radius: 8px; padding: 14px; margin-top: 12px; }
-.result-panel h4 { margin: 0 0 10px; font-size: 0.9em; color: var(--color-text); display: flex; align-items: center; gap: 8px; }
-.result-panel h4 i { color: var(--color-green); }
-.analysis-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-.meta-badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 500; background: rgba(var(--green-rgb), 0.1); color: var(--color-green); }
-.meta-info { font-size: 0.8em; color: var(--color-grey); }
-.analysis-summary { font-size: 0.85em; color: var(--color-grey); margin: 0; line-height: 1.4; }
-.result-message { font-size: 0.85em; color: var(--color-grey); margin: 0; }
+.forge-btn.analyze {
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
+  color: var(--color-text);
+}
+.forge-btn.primary {
+  background: var(--color-green);
+  color: var(--color-dark-navy);
+  border: none;
+  font-weight: 600;
+}
+.forge-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.result-panel {
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  padding: 14px;
+  margin-top: 12px;
+}
+.result-panel h4 {
+  margin: 0 0 10px;
+  font-size: 0.9em;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.result-panel h4 i {
+  color: var(--color-green);
+}
+.analysis-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.meta-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75em;
+  font-weight: 500;
+  background: rgba(var(--green-rgb), 0.1);
+  color: var(--color-green);
+}
+.meta-info {
+  font-size: 0.8em;
+  color: var(--color-grey);
+}
+.analysis-summary {
+  font-size: 0.85em;
+  color: var(--color-grey);
+  margin: 0;
+  line-height: 1.4;
+}
+.result-message {
+  font-size: 0.85em;
+  color: var(--color-grey);
+  margin: 0;
+}
 
 /* Empty State */
-.empty-state-container { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
-.empty-state { text-align: center; color: var(--color-text-muted); }
-.empty-state i { font-size: 3em; display: block; opacity: 0.5; }
-.empty-state p { margin: 16px 0; font-size: 1.1em; }
-.empty-state-buttons { display: flex; gap: 12px; justify-content: center; }
-.empty-hint { font-size: 0.8em; color: var(--color-grey); }
-.create-button {
-  display: flex; align-items: center; gap: 8px;
-  background: transparent; border: 1px dashed var(--color-duller-navy);
-  padding: 10px 20px; border-radius: 6px; color: var(--color-text-muted);
-  cursor: pointer; font-size: 0.95em; transition: all 0.2s ease;
+.empty-state-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
 }
-.create-button:hover { border-color: var(--color-primary); color: var(--color-primary); background: rgba(var(--primary-rgb), 0.05); }
+.empty-state {
+  text-align: center;
+  color: var(--color-text-muted);
+}
+.empty-state i {
+  font-size: 3em;
+  display: block;
+  opacity: 0.5;
+}
+.empty-state p {
+  margin: 16px 0;
+  font-size: 1.1em;
+}
+.empty-state-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.empty-hint {
+  font-size: 0.8em;
+  color: var(--color-grey);
+}
+.create-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px dashed var(--color-duller-navy);
+  padding: 10px 20px;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.95em;
+  transition: all 0.2s ease;
+}
+.create-button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.05);
+}
 
 /* Modal */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
 .modal-content {
-  background: var(--terminal-bg); border: 1px solid var(--terminal-border-color);
-  border-radius: 8px; width: 540px; max-height: 80vh;
-  display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  background: var(--terminal-bg);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  width: 540px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
-.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--terminal-border-color); }
-.modal-header h3 { margin: 0; font-size: 1em; color: var(--color-text); }
-.modal-close { background: none; border: none; color: var(--color-grey); cursor: pointer; font-size: 1em; }
-.modal-close:hover { color: var(--color-text); }
-.modal-body { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
-.form-group { display: flex; flex-direction: column; gap: 4px; }
-.form-group label { font-size: 0.85em; color: var(--color-grey); }
-.required { color: var(--color-red); }
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--terminal-border-color);
+}
+.modal-header h3 {
+  margin: 0;
+  font-size: 1em;
+  color: var(--color-text);
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--color-grey);
+  cursor: pointer;
+  font-size: 1em;
+}
+.modal-close:hover {
+  color: var(--color-text);
+}
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.form-group label {
+  font-size: 0.85em;
+  color: var(--color-grey);
+}
+.required {
+  color: var(--color-red);
+}
 .form-input {
-  padding: 8px 10px; background: var(--color-darker-0);
+  padding: 8px 10px;
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color) !important;
-  border-radius: 4px !important; color: var(--color-text);
-  font-size: 0.9em; font-family: inherit; height: auto !important;
+  border-radius: 4px !important;
+  color: var(--color-text);
+  font-size: 0.9em;
+  font-family: inherit;
+  height: auto !important;
 }
-.form-input.mono { font-family: 'Courier New', monospace; font-size: 0.85em; }
-.form-input:focus { outline: none; border-color: var(--color-primary) !important; }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.icon-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px; }
+.form-input.mono {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85em;
+}
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-primary) !important;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 1px;
+}
 .icon-btn {
-  aspect-ratio: 1; background: none; border: 1px solid var(--terminal-border-color);
-  border-radius: 3px; color: var(--color-text-muted); cursor: pointer;
-  font-size: 11px; display: flex; align-items: center; justify-content: center;
-  transition: all 0.12s; padding: 0;
+  aspect-ratio: 1;
+  background: none;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+  padding: 0;
 }
-.icon-btn:hover { color: var(--color-text); }
-.icon-btn.active { color: var(--color-green); border-color: rgba(var(--green-rgb), 0.4); background: rgba(var(--green-rgb), 0.08); }
-.modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--terminal-border-color); }
-.modal-btn { padding: 8px 18px; border-radius: 4px; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 6px; }
-.modal-btn.cancel { background: rgba(var(--green-rgb), 0.1); border: 1px solid rgba(var(--green-rgb), 0.2); color: var(--color-text); }
-.modal-btn.save { background: var(--color-green); color: var(--color-dark-navy); border: none; font-weight: 600; }
-.modal-btn.save:disabled { opacity: 0.5; cursor: not-allowed; }
-.modal-btn.save:not(:disabled):hover { opacity: 0.85; }
+.icon-btn:hover {
+  color: var(--color-text);
+}
+.icon-btn.active {
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.4);
+  background: rgba(var(--green-rgb), 0.08);
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--terminal-border-color);
+}
+.modal-btn {
+  padding: 8px 18px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.modal-btn.cancel {
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.2);
+  color: var(--color-text);
+}
+.modal-btn.save {
+  background: var(--color-green);
+  color: var(--color-dark-navy);
+  border: none;
+  font-weight: 600;
+}
+.modal-btn.save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.modal-btn.save:not(:disabled):hover {
+  opacity: 0.85;
+}
 .modal-error {
-  padding: 8px 12px; margin: 0 20px;
-  background: rgba(255,77,79,0.1); border: 1px solid rgba(255,77,79,0.3);
-  border-radius: 4px; color: var(--color-red); font-size: 0.85em;
-  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  margin: 0 20px;
+  background: rgba(255, 77, 79, 0.1);
+  border: 1px solid rgba(255, 77, 79, 0.3);
+  border-radius: 4px;
+  color: var(--color-red);
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>
