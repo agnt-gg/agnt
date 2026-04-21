@@ -581,11 +581,13 @@ async function universalChatHandler(req, res, context = {}) {
   });
 
   // Validate message input (different formats for different handlers)
-  const messageInput = originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
+  let messageInput = originalMessages || (message ? [...history, { role: 'user', content: message }] : null);
   if (!messageInput) {
     res.setHeader('Content-Type', 'application/json');
     return res.status(400).json({ error: 'Messages or message with history are required in the request body.' });
   }
+
+  messageInput = sanitizeOrphanToolCalls(messageInput);
 
   // Set up streaming response
   res.setHeader('Content-Type', 'text/event-stream');
