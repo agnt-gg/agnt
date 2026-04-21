@@ -509,8 +509,10 @@ You: [NO TEXT RESPONSE] ❌ WRONG - WILL CAUSE INFINITE LOOP!`;
  * Build the orchestrator system prompt.
  * @param {string} skillsCatalogSection
  * @param {string} memorySection
+ * @param {string} customInstructionsSection User-provided instructions appended at the end so the
+ *   cacheable prefix (base persona + tool rules + skills + memory) stays byte-identical.
  */
-export function getOrchestratorSystemContent(skillsCatalogSection = '', memorySection = '') {
+export function getOrchestratorSystemContent(skillsCatalogSection = '', memorySection = '', customInstructionsSection = '') {
   const parts = [];
 
   parts.push(`You are Annie, a helpful assistant with access to multiple tools. ALWAYS use tools to accomplish the user's request unless it is a very trivial task that can be done by yourself without them.
@@ -581,6 +583,11 @@ IMPORTANT: When the user asks to "list tools", "what tools do you have", "show m
   parts.push(CHART_CHEATSHEET);
   parts.push(MCP_TOOL_USE_RULES);
   parts.push(CRITICAL_TOOL_RESPONSE_RULES);
+
+  // Append user-defined custom instructions last so the cacheable prefix above stays stable.
+  if (customInstructionsSection) {
+    parts.push(customInstructionsSection);
+  }
 
   // Filter out empty sections and join
   return parts.filter(Boolean).join('\n\n');

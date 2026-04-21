@@ -146,7 +146,8 @@ function createTables() {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         credits INTEGER DEFAULT 0,
         default_provider TEXT DEFAULT 'Anthropic',
-        default_model TEXT DEFAULT 'claude-3-5-sonnet-20240620'
+        default_model TEXT DEFAULT 'claude-3-5-sonnet-20240620',
+        custom_instructions TEXT
       )`);
 
       db.run(`CREATE TABLE IF NOT EXISTS transactions (
@@ -1060,6 +1061,15 @@ function runMigrations() {
           console.error('Error adding group_id column to content_outputs:', err);
         } else if (!err) {
           console.log('✓ Added group_id column to content_outputs table');
+        }
+      });
+
+      // Migration: Add custom_instructions column to users for orchestrator system prompt additions (2026-04-20)
+      db.run(`ALTER TABLE users ADD COLUMN custom_instructions TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding custom_instructions column to users:', err);
+        } else if (!err) {
+          console.log('✓ Added custom_instructions column to users table');
         }
       });
 

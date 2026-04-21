@@ -52,7 +52,7 @@ class UserModel {
   static getUserSettings(userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT default_provider as selectedProvider, default_model as selectedModel 
+        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions
          FROM users WHERE id = ?`,
         [userId],
         (err, row) => {
@@ -62,12 +62,14 @@ class UserModel {
             resolve({
               selectedProvider: row.selectedProvider || 'Anthropic',
               selectedModel: row.selectedModel || 'claude-3-5-sonnet-20240620',
+              customInstructions: row.customInstructions || '',
             });
           } else {
             // User not found, return defaults
             resolve({
               selectedProvider: 'Anthropic',
               selectedModel: 'claude-3-5-sonnet-20240620',
+              customInstructions: '',
             });
           }
         }
@@ -77,25 +79,36 @@ class UserModel {
 
   static updateUserSettings(userId, settings) {
     return new Promise((resolve, reject) => {
-      const { selectedProvider, selectedModel } = settings;
+      const { selectedProvider, selectedModel, customInstructions } = settings;
 
-      // If provider is being changed, always update model too (even to null)
-      // to prevent stale model from a different provider lingering in the DB.
-      // Only use COALESCE for model when provider is NOT being changed.
-      const query = selectedProvider
-        ? `UPDATE users SET
-           default_provider = ?,
-           default_model = ?,
-           updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?`
-        : `UPDATE users SET
-           default_model = COALESCE(?, default_model),
-           updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?`;
+      const fields = [];
+      const params = [];
 
-      const params = selectedProvider
-        ? [selectedProvider, selectedModel, userId]
-        : [selectedModel, userId];
+      if (selectedProvider !== undefined) {
+        // If provider is being changed, always update model too (even to null)
+        // to prevent stale model from a different provider lingering in the DB.
+        fields.push('default_provider = ?');
+        params.push(selectedProvider);
+        fields.push('default_model = ?');
+        params.push(selectedModel ?? null);
+      } else if (selectedModel !== undefined) {
+        fields.push('default_model = COALESCE(?, default_model)');
+        params.push(selectedModel);
+      }
+
+      if (customInstructions !== undefined) {
+        fields.push('custom_instructions = ?');
+        params.push(customInstructions ? String(customInstructions).trim() : null);
+      }
+
+      if (fields.length === 0) {
+        return resolve({ changes: 0 });
+      }
+
+      fields.push('updated_at = CURRENT_TIMESTAMP');
+      params.push(userId);
+
+      const query = `UPDATE users SET ${fields.join(', ')} WHERE id = ?`;
 
       db.run(query, params,
         function (err) {
@@ -104,9 +117,14 @@ class UserModel {
           } else if (this.changes === 0) {
             // User doesn't exist, create with settings
             db.run(
-              `INSERT INTO users (id, default_provider, default_model, created_at) 
-               VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
-              [userId, selectedProvider || 'Anthropic', selectedModel || 'claude-3-5-sonnet-20240620'],
+              `INSERT INTO users (id, default_provider, default_model, custom_instructions, created_at)
+               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+              [
+                userId,
+                selectedProvider || 'Anthropic',
+                selectedModel || 'claude-3-5-sonnet-20240620',
+                customInstructions ? String(customInstructions).trim() : null,
+              ],
               function (insertErr) {
                 if (insertErr) {
                   reject(insertErr);

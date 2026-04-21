@@ -49,6 +49,39 @@
       <span class="warning-text">{{ toolSupportWarning }}</span>
     </div>
 
+    <!-- Custom System Instructions -->
+    <div class="custom-instructions-section">
+      <div class="custom-instructions-header">
+        <label for="custom-instructions-textarea">Custom System Instructions</label>
+        <Tooltip
+          title="Applies system-wide"
+          text="These instructions are appended to Annie's system prompt in every orchestrator chat. Use this for persistent tone/style preferences, default context about you, or rules you want followed everywhere. Takes effect on new chats."
+          position="top"
+          width="320px"
+        >
+          <i class="fas fa-info-circle info-icon"></i>
+        </Tooltip>
+      </div>
+      <textarea
+        id="custom-instructions-textarea"
+        v-model="customInstructionsDraft"
+        class="custom-instructions-textarea"
+        rows="4"
+        maxlength="4000"
+        placeholder="e.g. Always respond concisely. I'm a senior engineer — skip the hand-holding. Prefer bullet points over prose."
+        @blur="saveCustomInstructions"
+      ></textarea>
+      <div class="custom-instructions-footer">
+        <span class="char-count" :class="{ 'char-count-warn': customInstructionsDraft.length > 3600 }">
+          {{ customInstructionsDraft.length }} / 4000
+        </span>
+        <span v-if="customInstructionsStatus === 'saving'" class="status-indicator saving">Saving…</span>
+        <span v-else-if="customInstructionsStatus === 'saved'" class="status-indicator saved">
+          <i class="fas fa-check"></i> Saved
+        </span>
+      </div>
+    </div>
+
     <!-- Custom Provider Dialog -->
     <CustomProviderDialog :is-open="isDialogOpen" :edit-provider="editingProvider" @close="closeDialog" @saved="handleProviderSaved" />
   </div>
@@ -122,6 +155,44 @@ export default {
       set: (newModel) => {
         store.dispatch('aiProvider/setModel', newModel);
       },
+    });
+
+    // Custom system instructions — edited locally, persisted on blur
+    const customInstructionsDraft = ref(store.state.aiProvider.customInstructions || '');
+    const customInstructionsStatus = ref(''); // '' | 'saving' | 'saved'
+    let savedResetTimer = null;
+
+    // Keep local draft in sync if the store value changes (e.g. after loadUserSettings)
+    watch(
+      () => store.state.aiProvider.customInstructions,
+      (val) => {
+        if (document.activeElement?.id !== 'custom-instructions-textarea') {
+          customInstructionsDraft.value = val || '';
+        }
+      },
+    );
+
+    const saveCustomInstructions = async () => {
+      const next = (customInstructionsDraft.value || '').trim();
+      const current = (store.state.aiProvider.customInstructions || '').trim();
+      if (next === current) return;
+
+      customInstructionsStatus.value = 'saving';
+      try {
+        await store.dispatch('aiProvider/setCustomInstructions', next);
+        customInstructionsStatus.value = 'saved';
+        clearTimeout(savedResetTimer);
+        savedResetTimer = setTimeout(() => {
+          if (customInstructionsStatus.value === 'saved') customInstructionsStatus.value = '';
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to save custom instructions:', error);
+        customInstructionsStatus.value = '';
+      }
+    };
+
+    onUnmounted(() => {
+      clearTimeout(savedResetTimer);
     });
 
     const filteredModels = computed(() => store.getters['aiProvider/filteredModels']);
@@ -444,6 +515,9 @@ export default {
       deleteCurrentProvider,
       toolSupportWarning,
       PROVIDER_DISPLAY_NAMES,
+      customInstructionsDraft,
+      customInstructionsStatus,
+      saveCustomInstructions,
     };
   },
 };
@@ -576,5 +650,90 @@ label {
 .tool-support-warning .warning-text {
   color: rgba(255, 193, 7, 0.9);
   line-height: 1.4;
+}
+
+/* Custom System Instructions */
+.custom-instructions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.custom-instructions-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom-instructions-header label {
+  font-weight: 500;
+  width: auto;
+}
+
+.custom-instructions-header .info-icon {
+  color: var(--color-med-navy);
+  font-size: 0.95em;
+  cursor: help;
+  transition: color 0.15s ease;
+}
+
+.custom-instructions-header .info-icon:hover {
+  color: var(--color-primary);
+}
+
+.custom-instructions-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: var(--terminal-background-color, transparent);
+  color: var(--color-text, inherit);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 0.9em;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 96px;
+  transition: border-color 0.15s ease;
+}
+
+.custom-instructions-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.custom-instructions-textarea::placeholder {
+  color: var(--color-med-navy);
+  opacity: 0.7;
+}
+
+.custom-instructions-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75em;
+  color: var(--color-med-navy);
+  min-height: 16px;
+}
+
+.char-count-warn {
+  color: var(--color-yellow);
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-indicator.saving {
+  color: var(--color-med-navy);
+  opacity: 0.7;
+}
+
+.status-indicator.saved {
+  color: var(--color-green);
 }
 </style>

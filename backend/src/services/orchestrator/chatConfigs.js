@@ -158,7 +158,27 @@ export const CHAT_CONFIGS = {
         context._frozenMemorySection = memorySection;
       }
 
-      return getOrchestratorSystemContent(skillsCatalogSection, memorySection);
+      // Freeze user's custom system instructions per conversation
+      let customInstructionsSection = '';
+      if (context._frozenCustomInstructions !== undefined) {
+        customInstructionsSection = context._frozenCustomInstructions;
+      } else {
+        try {
+          if (context.userId) {
+            const UserModel = (await import('../../models/UserModel.js')).default;
+            const settings = await UserModel.getUserSettings(context.userId);
+            const raw = (settings.customInstructions || '').trim();
+            if (raw) {
+              customInstructionsSection = `## User's Custom System Instructions\nThe user has provided these persistent instructions that apply to every Annie orchestrator chat. Follow them unless they conflict with safety, tool-usage, or image-handling requirements above.\n\n${raw}`;
+            }
+          }
+        } catch (e) {
+          console.warn('[chatConfigs] Failed to load custom instructions:', e.message);
+        }
+        context._frozenCustomInstructions = customInstructionsSection;
+      }
+
+      return getOrchestratorSystemContent(skillsCatalogSection, memorySection, customInstructionsSection);
     },
     maxToolRounds: 100,
     responseType: 'stream',

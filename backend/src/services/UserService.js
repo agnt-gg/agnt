@@ -49,23 +49,29 @@ class UserService {
   }
   async updateUserSettings(req, res) {
     try {
-      const { selectedProvider, selectedModel } = req.body;
+      const { selectedProvider, selectedModel, customInstructions } = req.body;
 
-      if (!selectedProvider && !selectedModel) {
-        return res.status(400).json({ error: 'At least one setting (selectedProvider or selectedModel) is required' });
+      if (selectedProvider === undefined && selectedModel === undefined && customInstructions === undefined) {
+        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, or customInstructions) is required' });
+      }
+
+      if (customInstructions !== undefined && typeof customInstructions === 'string' && customInstructions.length > 4000) {
+        return res.status(400).json({ error: 'customInstructions must be 4000 characters or fewer' });
       }
 
       const result = await UserModel.updateUserSettings(req.user.id, {
         selectedProvider,
         selectedModel,
+        customInstructions,
       });
 
       res.json({
         success: true,
         message: result.created ? 'User settings created successfully' : 'User settings updated successfully',
         settings: {
-          selectedProvider: selectedProvider,
-          selectedModel: selectedModel,
+          selectedProvider,
+          selectedModel,
+          customInstructions,
         },
       });
     } catch (error) {

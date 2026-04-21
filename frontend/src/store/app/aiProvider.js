@@ -102,6 +102,7 @@ export default {
     selectedProvider: localStorage.getItem('selectedProvider') || null,
     selectedModel: localStorage.getItem('selectedModel') || null,
     reasoningEnabled: localStorage.getItem('reasoningEnabled') === 'true',
+    customInstructions: localStorage.getItem('customInstructions') || '',
     loadingModels: {},
     modelCache: {},
   },
@@ -143,6 +144,15 @@ export default {
         localStorage.setItem('reasoningEnabled', 'true');
       } else {
         localStorage.removeItem('reasoningEnabled');
+      }
+    },
+    SET_CUSTOM_INSTRUCTIONS(state, instructions) {
+      const value = typeof instructions === 'string' ? instructions : '';
+      state.customInstructions = value;
+      if (value) {
+        localStorage.setItem('customInstructions', value);
+      } else {
+        localStorage.removeItem('customInstructions');
       }
     },
     ENSURE_VALID_MODEL(state) {
@@ -251,6 +261,34 @@ export default {
       }
     },
 
+    async setCustomInstructions({ commit }, newInstructions) {
+      const value = typeof newInstructions === 'string' ? newInstructions : '';
+      commit('SET_CUSTOM_INSTRUCTIONS', value);
+
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              customInstructions: value,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Backend sync failed:', response.status, errorText);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to sync custom instructions with backend:', error);
+      }
+    },
+
     async setModel({ commit, state }, newModel) {
       commit('SET_SELECTED_MODEL', newModel);
 
@@ -293,6 +331,10 @@ export default {
             const settings = await response.json();
             const provider = settings.selectedProvider;
             const model = settings.selectedModel;
+
+            if (settings.customInstructions !== undefined) {
+              commit('SET_CUSTOM_INSTRUCTIONS', settings.customInstructions || '');
+            }
 
             if (provider) {
               const isCustomProvider = state.customProviders.some((cp) => cp.id === provider);
