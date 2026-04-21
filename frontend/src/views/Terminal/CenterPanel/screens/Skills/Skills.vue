@@ -776,8 +776,16 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
   border-radius: 10px;
   padding: 14px;
   cursor: pointer;
-  overflow: hidden;
+  height: 220px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   transition: border-color 0.2s, background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.skill-card::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 .skill-card:hover {
   border-color: rgba(var(--green-rgb), 0.4);
