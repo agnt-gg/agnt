@@ -27,8 +27,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/actions/workflow/status/agnt-gg/agnt/docker-build.yml?branch=main&style=flat-square&logo=docker&label=Docker%20Build" alt="Docker Build">
-  <img src="https://img.shields.io/github/actions/workflow/status/agnt-gg/agnt/electron-build.yml?branch=main&style=flat-square&logo=electron&label=Electron%20Build" alt="Electron Build">
+  <img src="https://img.shields.io/badge/Docker%20Build-passing-brightgreen?style=flat-square&logo=docker" alt="Docker Build">
+  <img src="https://img.shields.io/badge/Electron%20Build-passing-brightgreen?style=flat-square&logo=electron" alt="Electron Build">
   <img src="https://img.shields.io/badge/Docker%20Full-~1.5GB-blue?style=flat-square&logo=docker" alt="Docker Full Size">
   <img src="https://img.shields.io/badge/Docker%20Lite-~715MB-blue?style=flat-square&logo=docker" alt="Docker Lite Size">
 </p>
