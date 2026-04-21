@@ -425,7 +425,30 @@ const discoveryScanLocations = computed(() => store.getters['skills/discoverySca
 const discoveryLastScan = computed(() => store.getters['skills/discoveryLastScan']);
 const isDiscoveryLoading = computed(() => store.getters['skills/isDiscoveryLoading']);
 const selectedDiscoveredSkill = ref(null);
-const panelProps = computed(() => ({ selectedSkill: selectedSkill.value }));
+
+// Normalize a filesystem-discovered skill into the shape SkillsPanel expects
+const discoveredSkillForPanel = computed(() => {
+  const ds = selectedDiscoveredSkill.value;
+  if (!ds) return null;
+  const scopeLabel = ds.scope ? `${ds.scope}${ds.client ? ' · ' + ds.client : ''}` : 'discovered';
+  return {
+    id: `discovered:${ds.name}`,
+    name: toTitleCase(ds.name),
+    description: ds.description || '',
+    category: scopeLabel,
+    instructions: ds.instructions || '',
+    icon: 'fas fa-file-alt',
+    created_at: ds.discoveredAt || null,
+    _raw: ds,
+  };
+});
+
+const panelProps = computed(() => {
+  if (activeView.value === 'discovered') {
+    return { selectedSkill: discoveredSkillForPanel.value, isDiscovered: true };
+  }
+  return { selectedSkill: selectedSkill.value, isDiscovered: false };
+});
 const leftPanelProps = computed(() => ({ allSkills: allSkills.value, selectedSkill: selectedSkill.value }));
 
 const categoryOptions = computed(() => {
@@ -502,6 +525,7 @@ const handlePanelAction = (action, payload) => {
   else if (action === 'open-edit-modal') openEditModal(payload);
   else if (action === 'export-skill') exportSkill(payload);
   else if (action === 'delete-skill') confirmDelete(payload);
+  else if (action === 'import-discovered-skill') importDiscoveredSkill(payload);
 };
 
 const selectSkill = (skill) => { selectedSkill.value = selectedSkill.value?.id === skill.id ? null : skill; };
@@ -781,9 +805,8 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
   font-weight: 600;
   color: var(--color-text);
   font-size: 0.95em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
+  line-height: 1.3;
 }
 .card-category {
   font-size: 0.7em;
@@ -812,11 +835,6 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
   color: var(--color-grey);
   margin: 0 0 8px;
   line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   word-break: break-word;
 }
 .card-instructions {
@@ -832,11 +850,7 @@ onMounted(() => { store.dispatch('skills/fetchSkills'); });
   font-family: 'Courier New', monospace;
   line-height: 1.35;
   word-break: break-word;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  white-space: pre-wrap;
 }
 
 /* Discovered Skills */

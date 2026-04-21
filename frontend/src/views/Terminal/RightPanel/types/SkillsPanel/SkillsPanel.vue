@@ -3,8 +3,8 @@
     <!-- Selected Skill Details -->
     <div v-if="selectedSkill" class="panel-section selected-skill-section">
       <div class="selected-skill-header">
-        <h2>Selected Skill Details</h2>
-        <Tooltip text="Edit Skill" width="auto">
+        <h2>{{ isDiscovered ? 'Discovered Skill' : 'Selected Skill Details' }}</h2>
+        <Tooltip v-if="!isDiscovered" text="Edit Skill" width="auto">
           <span class="edit-button-panel" @click="handleEdit">
             <i class="fas fa-edit"></i>
           </span>
@@ -29,8 +29,8 @@
             <span class="label"><i class="fas fa-tools"></i> Tools:</span>
             <span class="value">{{ formatAllowedTools(selectedSkill.allowed_tools) }}</span>
           </div>
-          <div class="detail-row">
-            <span class="label"><i class="fas fa-clock"></i> Created:</span>
+          <div v-if="selectedSkill.created_at" class="detail-row">
+            <span class="label"><i class="fas fa-clock"></i> {{ isDiscovered ? 'Discovered:' : 'Created:' }}</span>
             <span class="value">{{ formatDate(selectedSkill.created_at) }}</span>
           </div>
           <div v-if="selectedSkill.updated_at" class="detail-row">
@@ -45,14 +45,22 @@
         </div>
 
         <div class="skill-actions">
-          <BaseButton @click="handleExport" variant="primary" full-width>
-            <i class="fas fa-file-export"></i>
-            Export SKILL.md
-          </BaseButton>
-          <BaseButton @click="handleDelete" variant="danger" full-width>
-            <i class="fas fa-trash"></i>
-            Delete Skill
-          </BaseButton>
+          <template v-if="isDiscovered">
+            <BaseButton @click="handleImport" variant="primary" full-width>
+              <i class="fas fa-download"></i>
+              Import to AGNT
+            </BaseButton>
+          </template>
+          <template v-else>
+            <BaseButton @click="handleExport" variant="primary" full-width>
+              <i class="fas fa-file-export"></i>
+              Export SKILL.md
+            </BaseButton>
+            <BaseButton @click="handleDelete" variant="danger" full-width>
+              <i class="fas fa-trash"></i>
+              Delete Skill
+            </BaseButton>
+          </template>
         </div>
       </div>
     </div>
@@ -83,6 +91,10 @@ export default {
     selectedSkill: {
       type: Object,
       default: null,
+    },
+    isDiscovered: {
+      type: Boolean,
+      default: false,
     },
   },
   emits: ['panel-action'],
@@ -125,12 +137,20 @@ export default {
       }
     };
 
+    const handleImport = () => {
+      if (props.selectedSkill) {
+        // Forward the original discovered-skill shape expected by the store action
+        emit('panel-action', 'import-discovered-skill', props.selectedSkill._raw || props.selectedSkill);
+      }
+    };
+
     return {
       formatDate,
       formatAllowedTools,
       handleEdit,
       handleExport,
       handleDelete,
+      handleImport,
     };
   },
 };
@@ -245,6 +265,15 @@ export default {
   flex-basis: 70%;
   line-height: 1.4;
   text-wrap: auto;
+  max-height: 160px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.detail-row.description-display .value.description::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .detail-row.description-display .label {
