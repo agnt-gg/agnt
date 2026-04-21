@@ -767,7 +767,7 @@ const openSettings = async () => {
   const settings = await store.dispatch('insights/fetchEvolutionSettings');
   if (settings) {
     settingsForm.value = {
-      insightsEnabled: settings.insightsEnabled ?? true,
+      insightsEnabled: settings.insightsEnabled ?? false,
       insightSources: { ...settings.insightSources },
       autoApplyMemory: settings.autoApplyMemory ?? true,
     };
