@@ -183,7 +183,9 @@ export default {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   position: relative;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
   max-width: 400px;
 }
 
