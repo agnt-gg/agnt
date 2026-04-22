@@ -43,6 +43,7 @@ import FileSystemRoutes from './src/routes/FileSystemRoutes.js';
 import InsightRoutes from './src/routes/InsightRoutes.js';
 import GroupRoutes from './src/routes/GroupRoutes.js';
 import ImageRoutes from './src/routes/ImageRoutes.js';
+import LocalFileRoutes from './src/routes/LocalFileRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
@@ -142,6 +143,7 @@ app.use('/api/insights', InsightRoutes);
 app.use('/api/groups', GroupRoutes);
 app.use('/api/filesystem', FileSystemRoutes);
 app.use('/api/images', ImageRoutes);
+app.use('/api/local-file', LocalFileRoutes);
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
 // Version endpoint - reads dynamically from package.json
