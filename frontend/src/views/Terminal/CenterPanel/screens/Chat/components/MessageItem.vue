@@ -168,9 +168,9 @@
       <div v-if="showPreviewModal" class="html-preview-modal" @click="closePreviewModal">
         <div class="html-preview-content" @click.stop>
           <div class="html-preview-header">
-            <h3>HTML Preview</h3>
+            <h3>{{ previewIframeSrc ? 'Preview' : 'HTML Preview' }}</h3>
             <div class="html-preview-header-actions">
-              <button class="share-preview-btn" @click="openShareModal(previewHTML)" :disabled="isSharing">
+              <button v-if="!previewIframeSrc" class="share-preview-btn" @click="openShareModal(previewHTML)" :disabled="isSharing">
                 <span class="btn-icon">{{ isSharing ? '⏳' : '🚀' }}</span>
                 <span class="btn-text">{{ isSharing ? 'Sharing...' : 'Share' }}</span>
               </button>
@@ -178,7 +178,8 @@
             </div>
           </div>
           <div class="html-preview-body">
-            <iframe :srcdoc="previewHTML" class="html-preview-iframe" frameborder="0"></iframe>
+            <iframe v-if="previewIframeSrc" :src="previewIframeSrc" class="html-preview-iframe" frameborder="0"></iframe>
+            <iframe v-else :srcdoc="previewHTML" class="html-preview-iframe" frameborder="0"></iframe>
           </div>
         </div>
       </div>
@@ -652,6 +653,7 @@ export default {
 
     const showPreviewModal = ref(false);
     const previewHTML = ref('');
+    const previewIframeSrc = ref('');
     const previewIframe = ref(null);
     const chartInstances = ref([]);
     const renderedChartIds = new Set();
@@ -725,9 +727,20 @@ export default {
     const openPreviewModal = (html) => {
       // Store the raw HTML - srcdoc attribute will handle rendering
       previewHTML.value = injectTheme(html);
+      previewIframeSrc.value = '';
       showPreviewModal.value = true;
 
       // Prevent body scroll when modal is open
+      document.body.style.overflow = 'hidden';
+    };
+
+    // Open preview modal pointing at a URL (e.g. an LLM-generated <iframe src="...">
+    // for a local HTML file). Uses the same modal chrome as the HTML code preview
+    // but without the Share button (there's no HTML string to publish).
+    const openIframeFullscreen = (src) => {
+      previewIframeSrc.value = src;
+      previewHTML.value = '';
+      showPreviewModal.value = true;
       document.body.style.overflow = 'hidden';
     };
 
@@ -735,6 +748,7 @@ export default {
     const closePreviewModal = () => {
       showPreviewModal.value = false;
       previewHTML.value = '';
+      previewIframeSrc.value = '';
       // Restore body scroll
       document.body.style.overflow = '';
     };
@@ -889,9 +903,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               const cached = props.imageCache.get(imageId);
               if (cached && cached.data) {
                 images.push(cached.data);
-                console.log(`Resolved image reference: ${imageId}`);
               } else {
-                console.warn(`Image reference not found in cache: ${imageId}`);
+                // Cache miss (e.g. after page reload): fall back to the
+                // backend-served copy. The image was persisted to disk at
+                // generation time and is available at /api/images/:id.
+                images.push(`${API_CONFIG.BASE_URL}/images/${imageId}`);
               }
             }
           } else if (isDataURL(img)) {
@@ -1126,6 +1142,58 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       });
     };
 
+    // Wrap plain LLM-rendered iframes (pointing at URLs, e.g. local HTML files
+    // served via /api/local-file) with a Fullscreen button. Reuses the styling
+    // from the HTML code-block preview chrome, but without copy/code/share.
+    const addIframeFullscreenButtons = () => {
+      nextTick(() => {
+        if (!messageRef.value) return;
+
+        const iframes = messageRef.value.querySelectorAll(
+          'iframe:not(.html-inline-iframe):not([data-fs-added])',
+        );
+        iframes.forEach((iframe) => {
+          // Skip if this iframe is already inside a wrapper we created.
+          if (iframe.closest('.iframe-inline-preview-wrapper')) {
+            iframe.setAttribute('data-fs-added', 'true');
+            return;
+          }
+          const src = iframe.getAttribute('src') || '';
+          if (!src) return;
+
+          iframe.setAttribute('data-fs-added', 'true');
+
+          const wrapper = document.createElement('div');
+          wrapper.className = 'html-inline-preview-wrapper iframe-inline-preview-wrapper';
+
+          const actions = document.createElement('div');
+          actions.className = 'html-code-actions';
+
+          const rightGroup = document.createElement('div');
+          rightGroup.className = 'html-actions-group';
+          rightGroup.style.marginLeft = 'auto';
+
+          const fsBtn = document.createElement('button');
+          fsBtn.className = 'html-action-btn preview-btn';
+          fsBtn.innerHTML = '<span class="btn-icon">⛶</span><span class="btn-text">Fullscreen</span>';
+          fsBtn.onclick = (e) => {
+            e.stopPropagation();
+            openIframeFullscreen(src);
+          };
+
+          rightGroup.appendChild(fsBtn);
+          actions.appendChild(rightGroup);
+
+          // Insert the wrapper at the iframe's current position, then move the
+          // iframe inside. This reloads the iframe once — acceptable since it
+          // happens when the message finishes streaming, before user interaction.
+          iframe.parentNode.insertBefore(wrapper, iframe);
+          wrapper.appendChild(actions);
+          wrapper.appendChild(iframe);
+        });
+      });
+    };
+
     // Add Copy/Fullscreen buttons to rendered Chart.js, D3, and Three.js containers
     const addVizActionButtons = () => {
       nextTick(() => {
@@ -1251,6 +1319,24 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           node.setAttribute('target', '_blank');
           node.setAttribute('rel', 'noopener noreferrer');
         }
+        // Rewrite file:// URLs to a backend path-based route that streams the
+        // file over HTTP. Path-based (not query-string) is critical for iframes:
+        // relative URLs inside the served HTML resolve against the iframe's base
+        // URL, so ../videos/foo.mp4 inside a slide's HTML needs to resolve to a
+        // real filesystem path, not a dropped query string.
+        for (const attr of ['src', 'href', 'poster']) {
+          const val = node.getAttribute && node.getAttribute(attr);
+          if (val && /^file:\/\//i.test(val)) {
+            // file:///C:/foo/bar.mp4 → /C:/foo/bar.mp4 → C:/foo/bar.mp4 (Windows)
+            // file:///home/x/bar.mp4 → /home/x/bar.mp4 → home/x/bar.mp4 (unix)
+            let rawPath = val.replace(/^file:\/\//i, '').replace(/^\//, '');
+            // Normalize any existing %-encoding, then re-encode for a URL path
+            // (encodeURI preserves / : so Windows paths and path separators work).
+            let normalized;
+            try { normalized = decodeURI(rawPath); } catch { normalized = rawPath; }
+            node.setAttribute(attr, `${API_CONFIG.BASE_URL}/local-file/${encodeURI(normalized)}`);
+          }
+        }
       });
 
       const sanitized = DOMPurify.sanitize(html, {
@@ -1358,7 +1444,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           'points',
         ],
         ALLOW_DATA_ATTR: true,
-        ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data|blob):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+        ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|file|agnt-file|mailto|tel|callto|cid|xmpp|data|blob):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
         ADD_ATTR: ['target'],
         FORCE_BODY: false,
         RETURN_DOM: false,
@@ -1914,6 +2000,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             addVizActionButtons();
             addHTMLCodeButtons();
             addImageActionButtons();
+            addIframeFullscreenButtons();
           }
         }
       });
@@ -2009,14 +2096,17 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       let processedContent = content.replace(/([.!?:])([A-Z])/g, '$1 $2').replace(/([.!?:])(\n)([A-Z])/g, '$1$2$3');
       let renderedHtml = safeMarkdownToHtml(processedContent);
 
-      // Resolve image references AFTER markdown conversion
+      // Resolve image references AFTER markdown conversion.
+      // In-memory cache is fastest, but it's empty after a page reload;
+      // in that case we fall back to the backend URL for the image,
+      // which is persisted to disk at generation time.
       const imageRefPattern = /\{\{IMAGE_REF:([^}]+)\}\}/g;
       renderedHtml = renderedHtml.replace(imageRefPattern, (match, imageId) => {
         const cached = props.imageCache.get(imageId);
         if (cached && cached.data) {
           return cached.data;
         }
-        return '';
+        return `${API_CONFIG.BASE_URL}/images/${imageId}`;
       });
 
       // Wrap tables in a scrollable container
@@ -2452,6 +2542,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       assistantAvatar,
       showPreviewModal,
       previewHTML,
+      previewIframeSrc,
       previewIframe,
       closePreviewModal,
       showVizModal,
@@ -2568,6 +2659,13 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   min-width: 0;
   overflow: hidden;
   box-sizing: border-box;
+}
+
+/* When a message embeds an iframe or video, stop shrink-wrapping the card —
+   width: 100% on the embed needs a real outer width to resolve against. */
+.message-card:has(iframe),
+.message-card:has(video) {
+  width: 100%;
 }
 
 .message-wrapper.assistant .message-card {
@@ -3164,6 +3262,25 @@ span.nodeLabel p {
 .message-text :deep(.html-inline-code) {
   margin: 0 !important;
   border-radius: 0 !important;
+}
+
+/* Plain iframe (LLM-embedded URL) wrapper — the wrapper owns the border and
+   rounded corners, so reset any inline styling on the iframe itself so corners
+   and edges clip cleanly. */
+.message-text :deep(.iframe-inline-preview-wrapper) {
+  padding: 0;
+  border-radius: 12px;
+}
+.message-text :deep(.iframe-inline-preview-wrapper iframe) {
+  width: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  display: block;
+  min-height: 0;
+}
+.message-text :deep(.iframe-inline-preview-wrapper .html-code-actions) {
+  padding: 6px 12px;
 }
 
 /* HTML Code Action Buttons */
