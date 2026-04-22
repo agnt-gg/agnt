@@ -1,8 +1,9 @@
 import fs from 'fs';
-import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess } from 'electron';
+import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net } from 'electron';
 import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Readable } from 'stream';
 
 // DEBUG: Show which main.js is being loaded
 console.log('=== LOADING MAIN.JS FROM:', import.meta.url, '===');
@@ -72,6 +73,22 @@ if (isLiteBuild) {
 if (process.platform === 'darwin') {
   app.disableHardwareAcceleration();
 }
+
+// Register custom protocol for serving local files into the renderer.
+// Rendered HTML (e.g. LLM-generated chat messages) uses agnt-file:// URLs
+// instead of file:// so Chromium's webSecurity doesn't block them.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'agnt-file',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: true,
+    },
+  },
+]);
 
 let mainWindow;
 let backendProcess;
@@ -628,6 +645,90 @@ function waitForBackend(callback) {
 }
 
 app.on('ready', () => {
+  // Serve agnt-file:///<absolute-path> by streaming the file from disk with
+  // proper Range-request support so <video> seeking works.
+  protocol.handle('agnt-file', async (request) => {
+    try {
+      const url = new URL(request.url);
+      // Windows: "/C:/Users/..." → "C:/Users/...". *nix: "/home/..." stays as is.
+      let filePath = decodeURIComponent(url.pathname).replace(/^\/([a-zA-Z]:)/, '$1');
+      if (process.platform === 'win32') filePath = filePath.replace(/\//g, '\\');
+
+      const stat = await fs.promises.stat(filePath);
+      const fileSize = stat.size;
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = {
+        // video
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.ogg': 'video/ogg',
+        '.mov': 'video/quicktime',
+        '.m4v': 'video/x-m4v',
+        // audio
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.m4a': 'audio/mp4',
+        '.flac': 'audio/flac',
+        // image
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
+        '.avif': 'image/avif',
+        '.ico': 'image/x-icon',
+        // documents
+        '.pdf': 'application/pdf',
+        // web — required for iframe rendering of local HTML
+        '.html': 'text/html; charset=utf-8',
+        '.htm': 'text/html; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.js': 'text/javascript; charset=utf-8',
+        '.mjs': 'text/javascript; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.txt': 'text/plain; charset=utf-8',
+        '.md': 'text/markdown; charset=utf-8',
+        '.xml': 'application/xml; charset=utf-8',
+        // fonts
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.ttf': 'font/ttf',
+        '.otf': 'font/otf',
+      }[ext] || 'application/octet-stream';
+
+      const rangeHeader = request.headers.get('range');
+      if (rangeHeader) {
+        const m = /bytes=(\d+)-(\d+)?/.exec(rangeHeader);
+        const start = m ? parseInt(m[1], 10) : 0;
+        const end = m && m[2] ? parseInt(m[2], 10) : fileSize - 1;
+        const nodeStream = fs.createReadStream(filePath, { start, end });
+        return new Response(Readable.toWeb(nodeStream), {
+          status: 206,
+          headers: {
+            'Content-Type': mime,
+            'Content-Length': String(end - start + 1),
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+          },
+        });
+      }
+
+      const nodeStream = fs.createReadStream(filePath);
+      return new Response(Readable.toWeb(nodeStream), {
+        status: 200,
+        headers: {
+          'Content-Type': mime,
+          'Content-Length': String(fileSize),
+          'Accept-Ranges': 'bytes',
+        },
+      });
+    } catch (err) {
+      console.error('[agnt-file] failed to serve', request.url, err);
+      return new Response('Not found', { status: 404 });
+    }
+  });
+
   // Start the backend process from within Electron.
   startBackend();
 
