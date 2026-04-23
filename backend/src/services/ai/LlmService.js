@@ -189,16 +189,20 @@ export async function createLlmClient(provider, userId, options = {}) {
  */
 function _createClientFromConfig(config, accessToken) {
   const sdkOpts = config.sdkOptions || {};
+  let client;
 
   switch (config.sdkType) {
     case 'anthropic':
-      return new Anthropic({ apiKey: accessToken, ...sdkOpts });
+      client = new Anthropic({ apiKey: accessToken, ...sdkOpts });
+      break;
 
     case 'gemini':
-      return new GoogleGenAI({ apiKey: accessToken, ...sdkOpts });
+      client = new GoogleGenAI({ apiKey: accessToken, ...sdkOpts });
+      break;
 
     case 'cerebras':
-      return new Cerebras({ apiKey: accessToken, ...sdkOpts });
+      client = new Cerebras({ apiKey: accessToken, ...sdkOpts });
+      break;
 
     case 'openai':
     default: {
@@ -210,9 +214,17 @@ function _createClientFromConfig(config, accessToken) {
       if (config.baseURL && config.baseURL !== 'https://api.openai.com/v1') {
         clientOpts.baseURL = config.baseURL;
       }
-      return new OpenAI(clientOpts);
+      client = new OpenAI(clientOpts);
     }
   }
+
+  // Propagate declarative compat flags (e.g. mapDeveloperRole) to the adapter,
+  // matching the convention used by _createCustomProviderClient.
+  if (config.compat && Object.keys(config.compat).length > 0) {
+    client.__agntCompat = { ...config.compat };
+  }
+
+  return client;
 }
 
 /**
@@ -339,7 +351,10 @@ async function _createCustomProviderClient(provider, userId) {
   const compat = {};
 
   if (typeof baseUrl === 'string' && baseUrl.includes('api.kimi.com/coding')) {
-    defaultHeaders['User-Agent'] = 'KimiCLI/0.77';
+    // Legacy fallback for users who added Kimi Code via "Add Custom Provider"
+    // before the native provider existed. Native users go through providerConfigs.js.
+    // Keep this UA in sync with the native entry.
+    defaultHeaders['User-Agent'] = 'KimiCLI/1.38.0';
     compat.mapDeveloperRole = true;
   }
 

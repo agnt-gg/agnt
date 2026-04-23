@@ -485,6 +485,7 @@ class GenerateWithAiLlm extends BaseAction {
       case 'grokai':
       case 'groq':
       case 'kimi':
+      case 'kimi-code':
       case 'local':
       case 'minimax':
       case 'openai':
@@ -531,6 +532,7 @@ class GenerateWithAiLlm extends BaseAction {
       case 'grokai':
       case 'groq':
       case 'kimi':
+      case 'kimi-code':
       case 'local':
       case 'minimax':
       case 'openai':

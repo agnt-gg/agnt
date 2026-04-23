@@ -178,6 +178,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'grokai':
         case 'groq':
         case 'kimi':
+        case 'kimi-code':
         case 'local':
         case 'minimax':
         case 'openai':
@@ -801,6 +802,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'deepseek':
         case 'kimi':
+        case 'kimi-code':
         case 'minimax':
         case 'zai':
           response = await client.chat.completions.create({
@@ -1269,6 +1271,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'deepseek':
         case 'kimi':
+        case 'kimi-code':
         case 'minimax':
         case 'zai':
           completion = await client.chat.completions.create({
@@ -1539,6 +1542,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'deepseek':
         case 'kimi':
+        case 'kimi-code':
         case 'minimax':
         case 'zai':
           response = await client.chat.completions.create({
@@ -1794,6 +1798,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'deepseek':
         case 'kimi':
+        case 'kimi-code':
         case 'minimax':
         case 'zai':
           completion = await client.chat.completions.create({

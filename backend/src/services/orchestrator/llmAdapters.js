@@ -4108,6 +4108,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'grokai':
     case 'groq':
     case 'kimi':
+    case 'kimi-code':
     case 'local':
     case 'minimax':
     case 'openrouter':

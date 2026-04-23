@@ -18,13 +18,17 @@ export default {
   provider: 'kimi-code', // will match by custom provider name
 
   async run(harness, result) {
-    // This suite runs for custom providers whose base URL contains api.kimi.com/coding
+    // Matches both the legacy custom-provider path (URL-sniffed) and the native
+    // `kimi-code` provider promoted in PRD-037. Both configure the same compat
+    // flag and User-Agent header, so the downstream assertions apply to either.
     const isKimiCode =
-      harness.isCustomProvider &&
-      harness.client?.__agntCompat?.mapDeveloperRole === true;
+      (harness.isCustomProvider &&
+        harness.client?.__agntCompat?.mapDeveloperRole === true) ||
+      (typeof harness.provider === 'string' &&
+        harness.provider.toLowerCase() === 'kimi-code');
 
     if (!isKimiCode) {
-      harness.skipTest(result, 'kimi-code-specific', 'not a Kimi Code custom provider');
+      harness.skipTest(result, 'kimi-code-specific', 'not a Kimi Code provider');
       return;
     }
 

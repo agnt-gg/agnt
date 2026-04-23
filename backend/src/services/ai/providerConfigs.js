@@ -480,6 +480,39 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 
+  // ─────────────────────────── KIMI CODE (subscription CLI) ───────────────────────────
+  {
+    key: 'kimi-code',
+    name: 'Kimi Code',
+    baseURL: 'https://api.kimi.com/coding/v1',
+    sdkType: 'openai',
+    authScheme: 'bearer',
+    staticModels: true, // kimi-for-coding is a stable alias; no /models endpoint needed
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true, supportsReasoning: true },
+    },
+    recommendedModels: ['kimi-for-coding'],
+    fallbackModels: ['kimi-for-coding'],
+    modelMetadata: {
+      'kimi-for-coding': {
+        contextWindow: 256000,
+        maxOutputTokens: 16384,
+        inputCostPer1M: null, // subscription-based, not per-token
+        outputCostPer1M: null,
+        supportsVision: false,
+        supportsTools: true,
+        reasoning: true,
+      },
+    },
+    compat: { mapDeveloperRole: true },
+    sdkOptions: {
+      // Matches the current kimi-cli release so the endpoint recognizes us as
+      // an approved coding agent. Bump when kimi-cli publishes a new version
+      // (https://github.com/MoonshotAI/kimi-cli/releases).
+      defaultHeaders: { 'User-Agent': 'KimiCLI/1.38.0' },
+    },
+  },
+
   // ─────────────────────────── MINIMAX ───────────────────────────
   {
     key: 'minimax',

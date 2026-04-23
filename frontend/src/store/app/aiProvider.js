@@ -30,6 +30,7 @@ const BUILT_IN_PROVIDERS = [
   { key: 'grokai', displayName: 'GrokAI' },
   { key: 'groq', displayName: 'Groq' },
   { key: 'kimi', displayName: 'Kimi' },
+  { key: 'kimi-code', displayName: 'Kimi-Code' },
   { key: 'local', displayName: 'Local' },
   { key: 'minimax', displayName: 'MiniMax' },
   { key: 'openai', displayName: 'OpenAI' },
@@ -526,6 +527,9 @@ export default {
     },
     async fetchKimiModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Kimi', forceRefresh });
+    },
+    async fetchKimiCodeModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Kimi-Code', forceRefresh });
     },
     async fetchMiniMaxModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'MiniMax', forceRefresh });
