@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.5.4",
+      "date": "April 23, 2026",
+      "title": "Kimi Code Provider, Local File Previews & Artifacts Polish - AGNT v0.5.4",
+      "type": "patch",
+      "features": [
+        { "name": "Kimi Code as Native Subscription Provider (One-Click Tile, Preloaded kimi-for-coding Model)", "status": "new" },
+        { "name": "Local File Embeds with Iframe Fullscreen Preview via agnt-file:// Protocol", "status": "new" },
+        { "name": "New Skills: Annie Universal API Orchestrator & AGNT Plugin Builder", "status": "new" },
+        { "name": "Artifacts Code Preview with highlight.js Syntax Highlighting", "status": "updated" },
+        { "name": "Custom Provider Friendly Name in Global Header & Chat Welcome Detection", "status": "bug" },
+        { "name": "Empty Assistant Messages & Orphan Tool Calls on Stream Abort", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.3",
       "date": "April 20, 2026",
       "title": "Hybrid Cache, Kanban Goals, Artifacts Polish & Multimedia Skills - AGNT v0.5.3",
@@ -345,6 +360,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-04-20T12:00:00Z"
+    "lastUpdated": "2026-04-23T12:00:00Z"
   }
 }
