@@ -139,9 +139,9 @@
                   </tbody>
                 </table>
               </div>
-              <div v-else-if="isJsonFile && activeTab" class="ce-text-preview">{{ prettyJson }}</div>
+              <pre v-else-if="isJsonFile && activeTab" class="ce-code-preview"><code class="hljs" :class="highlightedLang ? 'language-' + highlightedLang : ''" v-html="highlightedCode"></code></pre>
               <div v-else-if="isTextFile && activeTab" class="ce-text-preview">{{ activeTab.content }}</div>
-              <div v-else-if="isCodeFile && activeTab" class="ce-text-preview">{{ activeTab.content }}</div>
+              <pre v-else-if="isCodeFile && activeTab" class="ce-code-preview"><code class="hljs" :class="highlightedLang ? 'language-' + highlightedLang : ''" v-html="highlightedCode"></code></pre>
               <div v-else-if="activeTab" class="ce-preview-empty">
                 <i class="fas fa-eye-slash"></i>
                 <p>No preview for .{{ activeTab.path.split('.').pop() }} files</p>
@@ -235,6 +235,7 @@ import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
 import showdown from 'showdown';
+import 'highlight.js/styles/atom-one-dark.css';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, saveFile } from '@/services/fileSystemService.js';
@@ -246,6 +247,49 @@ let _d3 = null;
 let _THREE = null;
 let _THREE_ADDONS = null;
 let _OrbitControls = null;
+let _hljs = null;
+
+const loadHljs = async () => {
+  if (!_hljs) {
+    const mod = await import('highlight.js');
+    _hljs = mod.default;
+  }
+  return _hljs;
+};
+
+// Map file extensions to highlight.js language identifiers
+const EXT_TO_HLJS_LANG = {
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
+  ts: 'typescript', tsx: 'typescript',
+  py: 'python', pyw: 'python',
+  rb: 'ruby',
+  go: 'go',
+  rs: 'rust',
+  java: 'java',
+  kt: 'kotlin', kts: 'kotlin',
+  swift: 'swift',
+  c: 'c', h: 'c',
+  cpp: 'cpp', cxx: 'cpp', cc: 'cpp', hpp: 'cpp', hh: 'cpp',
+  cs: 'csharp',
+  php: 'php',
+  sh: 'bash', bash: 'bash', zsh: 'bash',
+  ps1: 'powershell',
+  sql: 'sql',
+  css: 'css', scss: 'scss', sass: 'scss', less: 'less',
+  yaml: 'yaml', yml: 'yaml',
+  toml: 'ini',
+  xml: 'xml', svg: 'xml',
+  lua: 'lua',
+  r: 'r',
+  dart: 'dart',
+  scala: 'scala',
+  pl: 'perl', pm: 'perl',
+  ex: 'elixir', exs: 'elixir',
+  erl: 'erlang',
+  vue: 'xml',
+  dockerfile: 'dockerfile',
+  makefile: 'makefile',
+};
 
 const loadChartJs = async () => {
   if (!_Chart) {
@@ -768,6 +812,57 @@ export default {
         return content;
       }
     });
+
+    // Syntax-highlighted HTML for the code preview pane.
+    const highlightedCode = ref('');
+    const highlightedLang = ref('');
+
+    const getHljsLang = () => {
+      if (!activeTab.value) return '';
+      const ext = fileExt.value;
+      if (isJsonFile.value) return ext === 'geojson' ? 'json' : 'json';
+      if (EXT_TO_HLJS_LANG[ext]) return EXT_TO_HLJS_LANG[ext];
+      const base = (activeTab.value.path.split(/[\\/]/).pop() || '').toLowerCase();
+      if (base === 'dockerfile') return 'dockerfile';
+      if (base === 'makefile') return 'makefile';
+      return '';
+    };
+
+    const escapeHtml = (s) =>
+      String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const updateHighlightedCode = async () => {
+      if (!activeTab.value || (!isCodeFile.value && !isJsonFile.value)) {
+        highlightedCode.value = '';
+        highlightedLang.value = '';
+        return;
+      }
+      const raw = isJsonFile.value ? prettyJson.value : activeTab.value.content || '';
+      const lang = getHljsLang();
+      try {
+        const hljs = await loadHljs();
+        if (lang && hljs.getLanguage(lang)) {
+          const result = hljs.highlight(raw, { language: lang, ignoreIllegals: true });
+          highlightedCode.value = result.value;
+          highlightedLang.value = result.language || lang;
+        } else {
+          const result = hljs.highlightAuto(raw);
+          highlightedCode.value = result.value;
+          highlightedLang.value = result.language || '';
+        }
+      } catch {
+        highlightedCode.value = escapeHtml(raw);
+        highlightedLang.value = '';
+      }
+    };
+
+    watch(
+      () => [activeTab.value?.path, activeTab.value?.content, isCodeFile.value, isJsonFile.value],
+      () => {
+        updateHighlightedCode();
+      },
+      { immediate: true }
+    );
 
     const spreadsheetData = computed(() => {
       if (!activeTab.value || !isSpreadsheetFile.value) return { headers: [], rows: [] };
@@ -1628,6 +1723,8 @@ export default {
       isJsonFile,
       isCodeFile,
       prettyJson,
+      highlightedCode,
+      highlightedLang,
       rawFileUrl,
       audioPlayerRef,
       audioCanvasRef,
@@ -1991,6 +2088,27 @@ export default {
   white-space: pre-wrap;
   word-break: break-word;
   scrollbar-width: thin;
+}
+
+/* Syntax-highlighted code preview (powered by highlight.js) */
+.ce-code-preview {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  background: var(--color-darker-1);
+  scrollbar-width: thin;
+}
+
+.ce-code-preview code.hljs {
+  display: block;
+  padding: 16px 20px;
+  background: transparent;
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  tab-size: 2;
+  -moz-tab-size: 2;
 }
 
 .ce-media-preview {
