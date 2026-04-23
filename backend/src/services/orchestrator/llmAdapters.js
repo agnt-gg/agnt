@@ -159,6 +159,65 @@ class BaseAdapter {
   formatToolResults(toolExecutionResults) {
     throw new Error("Method 'formatToolResults()' must be implemented.");
   }
+
+  /**
+   * Ensure an assistant response has non-empty content or tool calls.
+   * Empty assistant messages cause strict providers (Anthropic, Kimi, OpenAI)
+   * to reject the next turn with "must not be empty" errors. This helper
+   * normalizes any response shape (string/null content or array content
+   * blocks) and pads truly empty responses with a placeholder so they can
+   * be safely stored in conversation history.
+   *
+   * @param {Object} responseMessage The raw response from the provider adapter.
+   * @returns {{message: Object, wasEmpty: boolean}} Normalized message + flag.
+   */
+  static _normalizeAssistantResponse(responseMessage) {
+    const EMPTY_PLACEHOLDER = '[The model returned an empty response.]';
+
+    if (!responseMessage || typeof responseMessage !== 'object') {
+      return {
+        message: { role: 'assistant', content: EMPTY_PLACEHOLDER },
+        wasEmpty: true,
+      };
+    }
+
+    const msg = { ...responseMessage };
+    const hasTools = Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
+
+    // String/null content shape (OpenAI, Gemini, Responses API, Cerebras, etc.)
+    if (typeof msg.content === 'string' || msg.content == null) {
+      const hasText = typeof msg.content === 'string' && msg.content.trim() !== '';
+      if (!hasText && !hasTools) {
+        return {
+          message: { ...msg, content: EMPTY_PLACEHOLDER },
+          wasEmpty: true,
+        };
+      }
+      return { message: msg, wasEmpty: false };
+    }
+
+    // Array content shape (Anthropic native tool_use/text blocks)
+    if (Array.isArray(msg.content)) {
+      const cleanedBlocks = msg.content.filter((b) => {
+        if (!b || typeof b !== 'object') return false;
+        if (b.type === 'text') return typeof b.text === 'string' && b.text.trim() !== '';
+        return true; // tool_use, tool_result, image, etc. — keep structural blocks
+      });
+
+      if (cleanedBlocks.length === 0 && !hasTools) {
+        return {
+          message: { ...msg, content: [{ type: 'text', text: EMPTY_PLACEHOLDER }] },
+          wasEmpty: true,
+        };
+      }
+      return {
+        message: { ...msg, content: cleanedBlocks },
+        wasEmpty: false,
+      };
+    }
+
+    return { message: msg, wasEmpty: false };
+  }
 }
 
 /**
@@ -271,10 +330,16 @@ class OpenAiLikeAdapter extends BaseAdapter {
           console.log(`LLM call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
         }
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(message);
+        if (wasEmpty) {
+          console.warn('[OpenAiLike] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: message,
-          toolCalls: message.tool_calls || [],
+          responseMessage: normalizedMessage,
+          toolCalls: normalizedMessage.tool_calls || [],
           usage: response.usage || undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -770,11 +835,17 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
           reasoning_content: accumulatedReasoningContent || undefined,
         };
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
+        if (wasEmpty) {
+          console.warn('[OpenAiLike Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: responseMessage,
+          responseMessage: normalizedMessage,
           toolCalls: validToolCalls || [],
           invalidToolCalls: invalidToolCalls.length > 0 ? invalidToolCalls : undefined,
           usage: streamUsage || undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -1223,10 +1294,18 @@ class AnthropicAdapter extends BaseAdapter {
           console.log(`Anthropic call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
         }
 
+        // Anthropic tool_use blocks live inside the content array, so the normalizer's
+        // array-shape path will treat them as non-empty structural blocks automatically.
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(historyMessage);
+        if (wasEmpty) {
+          console.warn('[Anthropic] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: historyMessage,
+          responseMessage: normalizedMessage,
           toolCalls: standardizedToolCalls,
           usage: response.usage || undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -1713,10 +1792,16 @@ Please carefully check the tool schema and ensure all parameters match the expec
           content: cleanedContentBlocks.length > 0 ? cleanedContentBlocks : [{ type: 'text', text: accumulatedContent }],
         };
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
+        if (wasEmpty) {
+          console.warn('[Anthropic Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: responseMessage,
+          responseMessage: normalizedMessage,
           toolCalls: accumulatedToolCalls,
           usage: anthropicUsage.input_tokens || anthropicUsage.output_tokens ? anthropicUsage : undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -1970,10 +2055,16 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
           console.log(`Cerebras call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
         }
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(message);
+        if (wasEmpty) {
+          console.warn('[Cerebras] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: message,
-          toolCalls: message.tool_calls || [],
+          responseMessage: normalizedMessage,
+          toolCalls: normalizedMessage.tool_calls || [],
           usage: response.usage || undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -2251,10 +2342,16 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
         };
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
+        if (wasEmpty) {
+          console.warn('[Cerebras Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: responseMessage,
+          responseMessage: normalizedMessage,
           toolCalls: accumulatedToolCalls,
           usage: streamUsage || undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -2769,6 +2866,11 @@ class GeminiAdapter extends BaseAdapter {
           _geminiThoughtSignature: thoughtSignature, // Store for next turn
         };
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
+        if (wasEmpty) {
+          console.warn('[Gemini] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         // Extract Gemini usage metadata (including context-cache tokens when present)
         const geminiUsage = response.usageMetadata
           ? {
@@ -2782,9 +2884,10 @@ class GeminiAdapter extends BaseAdapter {
           : undefined;
 
         return {
-          responseMessage: responseMessage,
+          responseMessage: normalizedMessage,
           toolCalls: toolCalls,
           usage: geminiUsage,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -3000,10 +3103,16 @@ class GeminiAdapter extends BaseAdapter {
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
         };
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
+        if (wasEmpty) {
+          console.warn('[Gemini Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: responseMessage,
+          responseMessage: normalizedMessage,
           toolCalls: accumulatedToolCalls,
           usage: geminiUsage || undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -3390,11 +3499,17 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
         };
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
+        if (wasEmpty) {
+          console.warn('[OpenAI Responses] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: responseMessage,
+          responseMessage: normalizedMessage,
           toolCalls: toolCalls,
           _responsesApiId: response.id, // Store for potential conversation continuation
           usage: response.usage || undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -3564,10 +3679,16 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
         };
 
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
+        if (wasEmpty) {
+          console.warn('[OpenAI Responses Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: responseMessage,
+          responseMessage: normalizedMessage,
           toolCalls: accumulatedToolCalls,
           usage: streamUsage || undefined,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -3778,15 +3899,22 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           console.log(`Codex Responses call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
         }
 
+        const codexResponseMessage = {
+          role: 'assistant',
+          content: accumulatedContent ?? null,
+          tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+        };
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(codexResponseMessage);
+        if (wasEmpty) {
+          console.warn('[Codex Responses] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: {
-            role: 'assistant',
-            content: accumulatedContent ?? null,
-            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
-          },
+          responseMessage: normalizedMessage,
           toolCalls: accumulatedToolCalls,
           _responsesApiId: responseId,
           usage,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;
@@ -3852,14 +3980,21 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           console.log(`Codex Responses streaming call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
         }
 
+        const codexStreamResponseMessage = {
+          role: 'assistant',
+          content: accumulatedContent ?? null,
+          tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+        };
+        const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(codexStreamResponseMessage);
+        if (wasEmpty) {
+          console.warn('[Codex Responses Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+        }
+
         return {
-          responseMessage: {
-            role: 'assistant',
-            content: accumulatedContent ?? null,
-            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
-          },
+          responseMessage: normalizedMessage,
           toolCalls: accumulatedToolCalls,
           usage,
+          ...(wasEmpty ? { recoveredFromError: true, recoveredError: 'Provider returned empty response' } : {}),
         };
       } catch (error) {
         lastError = error;

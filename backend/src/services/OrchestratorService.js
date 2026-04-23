@@ -105,6 +105,107 @@ function sanitizeOrphanToolCalls(msgs) {
 }
 
 /**
+ * Check whether an assistant message is effectively empty — no text, no tool
+ * calls, no tool_use blocks. Strict providers (Anthropic, Kimi, OpenAI) reject
+ * these on replay with "must not be empty" 400 errors.
+ */
+function isEmptyAssistantMessage(msg) {
+  if (!msg || msg.role !== 'assistant') return false;
+
+  const hasToolCalls = Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
+  if (hasToolCalls) return false;
+
+  const content = msg.content;
+  if (typeof content === 'string') {
+    return content.trim() === '';
+  }
+  if (Array.isArray(content)) {
+    const hasStructuralBlock = content.some((b) => {
+      if (!b || typeof b !== 'object') return false;
+      if (b.type === 'text') return typeof b.text === 'string' && b.text.trim() !== '';
+      if (b.type === 'tool_use') return true;
+      if (b.type === 'image') return true;
+      return false;
+    });
+    return !hasStructuralBlock;
+  }
+  // null/undefined content with no tool_calls
+  return content == null;
+}
+
+/**
+ * Rescue already-contaminated conversation histories. Walks the inbound
+ * message list and drops empty assistant messages whose removal would not
+ * orphan a tool_result pair; otherwise pads them with a placeholder so the
+ * next provider call doesn't 400 with "message ... must not be empty".
+ */
+function sanitizeEmptyAssistantMessages(msgs) {
+  if (!Array.isArray(msgs) || msgs.length === 0) return msgs;
+
+  const EMPTY_PLACEHOLDER = '[The model returned an empty response.]';
+  const out = [];
+  let dropped = 0;
+  let padded = 0;
+
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
+    if (!isEmptyAssistantMessage(msg)) {
+      out.push(msg);
+      continue;
+    }
+
+    // Empty assistant. Dropping is safe only if the surrounding messages don't
+    // depend on it (i.e., no following tool_result user message expecting a
+    // tool_use from this assistant). If it has no tool_calls/tool_use, it
+    // can't be referenced — safe to drop entirely.
+    const hasStructuralRef = Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
+    if (!hasStructuralRef) {
+      dropped++;
+      continue;
+    }
+
+    // Keep structurally but pad content so provider accepts it.
+    const patched = { ...msg };
+    if (typeof msg.content === 'string' || msg.content == null) {
+      patched.content = EMPTY_PLACEHOLDER;
+    } else if (Array.isArray(msg.content)) {
+      patched.content = [{ type: 'text', text: EMPTY_PLACEHOLDER }, ...msg.content.filter((b) => b && b.type !== 'text')];
+    }
+    out.push(patched);
+    padded++;
+  }
+
+  if (dropped > 0 || padded > 0) {
+    console.warn(`[sanitizeEmptyAssistantMessages] Rescued history: dropped ${dropped} empty assistant message(s), padded ${padded}`);
+  }
+  return out;
+}
+
+/**
+ * Final defense before pushing an assistant message into conversation history.
+ * If the adapter-level normalizer missed an empty response, pad it here so
+ * it never reaches the next provider call as an empty message.
+ */
+function safePushAssistantMessage(messages, responseMessage) {
+  if (!responseMessage || typeof responseMessage !== 'object') {
+    console.warn('[safePushAssistantMessage] Refusing to push non-object assistant message');
+    return;
+  }
+  if (isEmptyAssistantMessage(responseMessage)) {
+    console.warn('[safePushAssistantMessage] Adapter returned empty assistant message; padding before history push');
+    const padded = { ...responseMessage };
+    if (Array.isArray(padded.content)) {
+      padded.content = [{ type: 'text', text: '[The model returned an empty response.]' }];
+    } else {
+      padded.content = '[The model returned an empty response.]';
+    }
+    messages.push(padded);
+    return;
+  }
+  messages.push(responseMessage);
+}
+
+/**
  * Inject the current date/time into the latest user message.
  * This keeps the system prompt 100% stable for prompt caching while
  * ensuring the LLM always knows the current date.
@@ -588,6 +689,7 @@ async function universalChatHandler(req, res, context = {}) {
   }
 
   messageInput = sanitizeOrphanToolCalls(messageInput);
+  messageInput = sanitizeEmptyAssistantMessages(messageInput);
 
   // Set up streaming response
   res.setHeader('Content-Type', 'text/event-stream');
@@ -1191,7 +1293,97 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     }
 
-    messages.push(responseMessage);
+    // Tool-calls-filtered recovery:
+    // When the adapter's validation (AJV or JSON-salvage) dropped every tool
+    // call the model attempted, and the surviving text is trivially short
+    // ("I'll work on it now..."), the tool loop would otherwise exit silently
+    // and the user sees Annie stop mid-task. Do one orchestrator-level retry
+    // with explicit validation feedback, then surface clearly if still empty.
+    const allToolCallsWereInvalid =
+      invalidToolCalls && invalidToolCalls.length > 0 && (!toolCalls || toolCalls.length === 0);
+    const rawContentStr = typeof responseMessage?.content === 'string'
+      ? responseMessage.content
+      : Array.isArray(responseMessage?.content)
+        ? responseMessage.content.filter((b) => b?.type === 'text').map((b) => b.text || '').join(' ')
+        : '';
+    const contentIsWeak = rawContentStr.trim().length < 200;
+
+    if (allToolCallsWereInvalid && contentIsWeak && !recoveredFromError) {
+      console.warn('[Tool Retry] All tool calls were filtered out and content is minimal — retrying with explicit validation feedback');
+
+      const validationSummary = invalidToolCalls
+        .map(({ toolCall, issues }) => {
+          const name = toolCall?.function?.name || 'unknown';
+          const args = toolCall?.function?.arguments || '(empty)';
+          const issueList = Array.isArray(issues) ? issues.join('; ') : String(issues);
+          return `- Tool "${name}" failed validation: ${issueList}\n  Attempted args: ${args.substring(0, 300)}${args.length > 300 ? '...' : ''}`;
+        })
+        .join('\n');
+
+      sendEvent('tool_error', {
+        error: 'All tool calls were filtered out by schema validation; retrying with correction guidance.',
+        details: { invalidCount: invalidToolCalls.length },
+        continuing: true,
+        retrying: true,
+      });
+
+      // Build retry messages: include the failed assistant turn + a correction nudge
+      const retryMessages = [
+        ...contextResult.messages,
+        responseMessage,
+        {
+          role: 'user',
+          content: `[System: Your previous response generated ${invalidToolCalls.length} tool call(s) that failed schema validation. Specific failures:\n${validationSummary}\n\nPlease retry. Either (a) call the correct tool with parameters that match its schema exactly, or (b) respond with a plain-text answer if no tool is needed. Do not repeat the malformed call.]`,
+        },
+      ];
+
+      try {
+        const retryResponse = await adapter.callStream(
+          retryMessages,
+          finalToolSchemas,
+          (chunk) => {
+            if (chunk.type === 'content') {
+              sendEvent('content_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
+            } else if (chunk.type === 'reasoning') {
+              sendEvent('reasoning_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
+            }
+          },
+          conversationContext
+        );
+        accumulateUsage(retryResponse.usage);
+
+        if (retryResponse.toolCalls && retryResponse.toolCalls.length > 0) {
+          console.log(`[Tool Retry] Recovered ${retryResponse.toolCalls.length} valid tool call(s) after validation-feedback retry`);
+          responseMessage = retryResponse.responseMessage;
+          toolCalls = retryResponse.toolCalls;
+          invalidToolCalls = retryResponse.invalidToolCalls;
+        } else {
+          // Still no valid tool calls — accept the retry's text response if it's
+          // more substantial, and surface the failure clearly to the user.
+          const retryContentStr = typeof retryResponse.responseMessage?.content === 'string'
+            ? retryResponse.responseMessage.content
+            : '';
+          if (retryContentStr.trim().length > rawContentStr.trim().length) {
+            responseMessage = retryResponse.responseMessage;
+          }
+          sendEvent('tool_error', {
+            error: `The model was unable to produce valid tool calls after a correction retry. ${invalidToolCalls.length} attempt(s) failed schema validation. Try rephrasing your request or switching providers.`,
+            details: { invalidCount: invalidToolCalls.length },
+            continuing: false,
+            retrying: false,
+          });
+        }
+      } catch (retryErr) {
+        console.error('[Tool Retry] Validation-feedback retry failed:', retryErr.message);
+        sendEvent('tool_error', {
+          error: `Tool-call retry failed: ${retryErr.message}`,
+          continuing: true,
+          retrying: false,
+        });
+      }
+    }
+
+    safePushAssistantMessage(messages, responseMessage);
 
     // Ensure agent execution record is ready before tool loop needs it
     await agentExecutionPromise;
@@ -1779,7 +1971,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
         });
       }
 
-      messages.push(responseMessage);
+      safePushAssistantMessage(messages, responseMessage);
 
       // Log what happened in this round
       if (toolCalls && toolCalls.length > 0) {
@@ -1850,7 +2042,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           finalContentForLogging = typeof followUpResponse.responseMessage.content === 'string'
             ? followUpResponse.responseMessage.content
             : followUpResponse.responseMessage.content?.find?.((c) => c.type === 'text')?.text || '';
-          messages.push(followUpResponse.responseMessage);
+          safePushAssistantMessage(messages, followUpResponse.responseMessage);
         }
       } catch (followUpError) {
         console.error('[Tool Loop] Follow-up LLM call failed:', followUpError.message);
@@ -1905,6 +2097,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // tool_use block is saved without a result — the next turn then fails with
     // "tool_use ids were found without tool_result blocks immediately after".
     messages = sanitizeOrphanToolCalls(messages);
+    messages = sanitizeEmptyAssistantMessages(messages);
 
     // Log conversation
     const logData = {
