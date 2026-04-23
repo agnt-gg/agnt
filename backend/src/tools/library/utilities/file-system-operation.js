@@ -168,6 +168,8 @@ class FileSystemOperation extends BaseAction {
       return this.formatOutput({
         success: true,
         result,
+        absolutePath: path.resolve(fullPath),
+        path: fullPath,
         error: null,
       });
     } catch (error) {

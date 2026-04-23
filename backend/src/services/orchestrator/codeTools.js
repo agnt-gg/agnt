@@ -149,7 +149,7 @@ export async function executeCodeFunction(name, args) {
       const absPath = validatePath(args.path, WORKSPACE_ROOT);
       try {
         const content = await fs.readFile(absPath, 'utf-8');
-        result = { success: true, content, path: args.path };
+        result = { success: true, content, path: args.path, absolutePath: absPath };
       } catch (err) {
         if (err.code === 'ENOENT') {
           result = { success: false, error: `File not found: ${args.path}` };

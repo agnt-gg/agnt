@@ -723,10 +723,203 @@ export default {
       return inject + html;
     };
 
+    // Rewrite file:// URLs inside an HTML string (for srcdoc content). The
+    // DOMPurify hook on `v-html` handles the direct-iframe-in-chat case, but
+    // when we stuff an entire HTML code block into iframe.srcdoc or the
+    // preview modal, that hook never runs. An iframe whose src is file:// is
+    // blocked by Chromium when the outer origin is http://localhost, so nested
+    // iframes (and videos/images) inside the srcdoc break unless we rewrite
+    // here too. When an absolute file:// URL is present, we also inject
+    // <base href="/api/local-file/<dir>/"> so sibling relative paths inside
+    // the HTML (e.g. href="../index.html") resolve against a real location
+    // instead of about:srcdoc.
+    const fileUrlToLocalFileUrl = (val) => {
+      let rawPath = val.replace(/^file:\/\//i, '').replace(/^\//, '');
+      let normalized;
+      try { normalized = decodeURI(rawPath); } catch { normalized = rawPath; }
+      return `${API_CONFIG.BASE_URL}/local-file/${encodeURI(normalized)}`;
+    };
+
+    const rewriteLocalFileURLsInHTML = (html, { baseDir } = {}) => {
+      const hasFileURL = /file:\/\//i.test(html);
+      if (!html || (!hasFileURL && !baseDir)) return html;
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        let firstFileDir = '';
+        const tryCaptureDir = (val) => {
+          if (firstFileDir) return;
+          const m = /^file:\/\/(\/?[^?#]*)/i.exec(val);
+          if (!m) return;
+          let p = m[1].replace(/^\//, '');
+          try { p = decodeURI(p); } catch { /* keep encoded */ }
+          const slash = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+          if (slash > 0) firstFileDir = p.slice(0, slash);
+        };
+
+        const rewriteAttr = (el, attr) => {
+          const val = el.getAttribute(attr);
+          if (val && /^file:\/\//i.test(val)) {
+            tryCaptureDir(val);
+            el.setAttribute(attr, fileUrlToLocalFileUrl(val));
+          }
+        };
+
+        for (const attr of ['src', 'href', 'poster']) {
+          doc.querySelectorAll(`[${attr}]`).forEach((el) => rewriteAttr(el, attr));
+        }
+
+        // Pick base dir: explicit override (from a file-write tool call in the
+        // same message) takes priority, then the first absolute file:// we saw.
+        const chosenDir = baseDir || firstFileDir;
+        if (chosenDir && !doc.querySelector('base[href]')) {
+          // Normalize Windows backslashes to forward slashes for URL use.
+          const normalized = chosenDir.replace(/\\/g, '/').replace(/\/+$/, '');
+          const base = doc.createElement('base');
+          base.setAttribute('href', `${API_CONFIG.BASE_URL}/local-file/${encodeURI(normalized)}/`);
+          const head = doc.head || doc.documentElement;
+          head.insertBefore(base, head.firstChild);
+        }
+
+        if (/<html[^>]*>/i.test(html)) {
+          const doctype = /<!DOCTYPE[^>]*>/i.test(html) ? '<!DOCTYPE html>\n' : '';
+          return doctype + doc.documentElement.outerHTML;
+        }
+        // Fragment: merge any injected <base> back into the body output.
+        const headHTML = doc.head ? doc.head.innerHTML : '';
+        return headHTML + (doc.body ? doc.body.innerHTML : '');
+      } catch (e) {
+        console.warn('[Chat] Failed to rewrite file:// URLs for srcdoc:', e);
+        return html;
+      }
+    };
+
+    // Pair a ```html code block with a file the LLM just READ from disk, so we
+    // can render the block via iframe.src pointing at the real file. The
+    // browser then uses the file's URL as the iframe's base, and every asset
+    // reference inside the HTML — relative (../videos/x.mp4), absolute
+    // (/images/y.png), protocol-relative, or file:// — resolves exactly as it
+    // would if you opened the file directly.
+    //
+    // Read tools recognized:
+    //  - artifact-chat: read_file
+    //  - main-chat:     file_operations(operation: 'read')
+    //
+    // Match strategy: exact trimmed content, or a ≥200-char prefix match to
+    // cover streaming partials / truncated echoes.
+    const normalizeForMatch = (s) => (s || '').replace(/\r\n/g, '\n').trim();
+
+    const getReadFileCandidate = (tc) => {
+      if (!tc) return null;
+      let args = tc.args;
+      if (typeof args === 'string') {
+        try { args = JSON.parse(args); } catch { args = null; }
+      }
+      let res = tc.result;
+      if (typeof res === 'string') {
+        try { res = JSON.parse(res); } catch { res = null; }
+      }
+      if (!res) return null;
+
+      // Each read tool stores its content under a different key:
+      //   read_file / file_operations(read) → res.content
+      //   file_system_operation(readFile)   → res.result  (the tool's own shape)
+      const isReadFile = tc.name === 'read_file';
+      const isFileOpsRead = tc.name === 'file_operations' && args?.operation === 'read';
+      const isFileSystemOpsRead = tc.name === 'file_system_operation' && args?.operation === 'readFile';
+      if (!isReadFile && !isFileOpsRead && !isFileSystemOpsRead) return null;
+
+      const content = isFileSystemOpsRead ? res.result : res.content;
+      if (typeof content !== 'string') return null;
+
+      // Prefer absolutePath. Fall back to res.path when absolute.
+      // Final fallback for file_system_operation: rebuild from args so
+      // messages saved before the backend started emitting absolutePath
+      // still pair correctly.
+      const joinPath = (a, b) => {
+        if (!a) return b || '';
+        if (!b) return a;
+        const trimmed = a.replace(/[\\/]+$/, '');
+        const suffix = b.replace(/^[\\/]+/, '');
+        return `${trimmed}/${suffix}`;
+      };
+      let abs = null;
+      if (typeof res.absolutePath === 'string') {
+        abs = res.absolutePath;
+      } else if (typeof res.path === 'string' && (/^[a-zA-Z]:[\\/]/.test(res.path) || res.path.startsWith('/'))) {
+        abs = res.path;
+      } else if (isFileSystemOpsRead && args && typeof args.path === 'string') {
+        const joined = joinPath(args.rootDirectory, args.path);
+        if (/^[a-zA-Z]:[\\/]/.test(joined) || joined.startsWith('/')) abs = joined;
+      }
+      if (!abs) return null;
+
+      return { absPath: abs, content };
+    };
+
+    const getBaseDirFromToolCalls = () => {
+      const calls = props.message?.toolCalls;
+      if (!Array.isArray(calls) || calls.length === 0) return '';
+      let lastHtml = null;
+      let lastAny = null;
+      for (const tc of calls) {
+        const cand = getReadFileCandidate(tc);
+        if (!cand) continue;
+        lastAny = cand.absPath;
+        if (/\.html?$/i.test(cand.absPath)) lastHtml = cand.absPath;
+      }
+      const pick = lastHtml || lastAny;
+      if (!pick) return '';
+      const slash = Math.max(pick.lastIndexOf('/'), pick.lastIndexOf('\\'));
+      return slash > 0 ? pick.slice(0, slash) : '';
+    };
+
+    const findMatchingFileOnDisk = (htmlCode) => {
+      const calls = props.message?.toolCalls;
+      if (!Array.isArray(calls) || calls.length === 0) return null;
+      const block = normalizeForMatch(htmlCode);
+      if (!block) return null;
+
+      let bestPath = null;
+      let bestScore = 0;
+
+      for (const tc of calls) {
+        const cand = getReadFileCandidate(tc);
+        if (!cand) continue;
+        const fileContent = normalizeForMatch(cand.content);
+        if (!fileContent) continue;
+
+        let score = 0;
+        if (fileContent === block) {
+          score = block.length + 1000;
+        } else {
+          const shorter = fileContent.length < block.length ? fileContent : block;
+          const longer = fileContent.length < block.length ? block : fileContent;
+          if (shorter.length >= 200 && longer.startsWith(shorter)) {
+            score = shorter.length;
+          }
+        }
+        if (score <= bestScore) continue;
+        bestPath = cand.absPath;
+        bestScore = score;
+      }
+      return bestPath;
+    };
+
+    // Build a /api/local-file URL for a filesystem absolute path. Cache-busted
+    // with the message id so edits in a later turn pick up fresh content.
+    const buildLocalFileUrl = (absPath) => {
+      const normalized = absPath.replace(/\\/g, '/');
+      const cacheBust = props.message?.id ? `?_=${encodeURIComponent(props.message.id)}` : '';
+      return `${API_CONFIG.BASE_URL}/local-file/${encodeURI(normalized)}${cacheBust}`;
+    };
+
     // Open preview modal with HTML in iframe
     const openPreviewModal = (html) => {
       // Store the raw HTML - srcdoc attribute will handle rendering
-      previewHTML.value = injectTheme(html);
+      const baseDir = getBaseDirFromToolCalls();
+      previewHTML.value = injectTheme(rewriteLocalFileURLsInHTML(html, { baseDir }));
       previewIframeSrc.value = '';
       showPreviewModal.value = true;
 
@@ -1043,7 +1236,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             iframe.className = 'html-inline-iframe';
             iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
             iframe.setAttribute('frameborder', '0');
-            iframe.srcdoc = injectTheme(htmlCode);
+
+            // If the block pairs with an HTML file the LLM read or wrote, load
+            // the real file so relative asset paths resolve against it.
+            // Otherwise fall back to srcdoc with synthesized <base href=…>.
+            const matchedFilePath = findMatchingFileOnDisk(htmlCode);
+            if (matchedFilePath) {
+              iframe.src = buildLocalFileUrl(matchedFilePath);
+              iframe.setAttribute('data-local-file', matchedFilePath);
+            } else {
+              const codeBlockBaseDir = getBaseDirFromToolCalls();
+              iframe.srcdoc = injectTheme(rewriteLocalFileURLsInHTML(htmlCode, { baseDir: codeBlockBaseDir }));
+            }
             // Auto-size iframe to fit its content (no cap — scroller handles overflow)
             iframe.onload = () => {
               try {
@@ -1099,13 +1303,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
                 : '<span class="btn-icon">👁</span><span class="btn-text">Preview</span>';
             };
 
-            // Fullscreen button
+            // Fullscreen button — if we have a paired file, open it by URL so
+            // the modal iframe uses the same base URL as the inline preview.
             const fsBtn = document.createElement('button');
             fsBtn.className = 'html-action-btn preview-btn';
             fsBtn.innerHTML = '<span class="btn-icon">⛶</span><span class="btn-text">Fullscreen</span>';
             fsBtn.onclick = (e) => {
               e.stopPropagation();
-              openPreviewModal(htmlCode);
+              if (matchedFilePath) {
+                openIframeFullscreen(buildLocalFileUrl(matchedFilePath));
+              } else {
+                openPreviewModal(htmlCode);
+              }
             };
 
             // Left group: Copy + Code
@@ -1327,14 +1536,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         for (const attr of ['src', 'href', 'poster']) {
           const val = node.getAttribute && node.getAttribute(attr);
           if (val && /^file:\/\//i.test(val)) {
-            // file:///C:/foo/bar.mp4 → /C:/foo/bar.mp4 → C:/foo/bar.mp4 (Windows)
-            // file:///home/x/bar.mp4 → /home/x/bar.mp4 → home/x/bar.mp4 (unix)
-            let rawPath = val.replace(/^file:\/\//i, '').replace(/^\//, '');
-            // Normalize any existing %-encoding, then re-encode for a URL path
-            // (encodeURI preserves / : so Windows paths and path separators work).
-            let normalized;
-            try { normalized = decodeURI(rawPath); } catch { normalized = rawPath; }
-            node.setAttribute(attr, `${API_CONFIG.BASE_URL}/local-file/${encodeURI(normalized)}`);
+            node.setAttribute(attr, fileUrlToLocalFileUrl(val));
           }
         }
       });

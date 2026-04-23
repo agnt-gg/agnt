@@ -1208,7 +1208,7 @@ export const TOOLS = {
                 });
               }
               const data = await fs.readFile(filePath, encoding);
-              result = { operation, path: filePath, content: data, size: data.length };
+              result = { operation, path: filePath, absolutePath: path.resolve(filePath), content: data, size: data.length };
               break;
             case 'write':
               if (content === undefined || content === null) {
