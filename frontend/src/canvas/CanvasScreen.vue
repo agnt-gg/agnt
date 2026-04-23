@@ -321,8 +321,12 @@ export default {
 
     const globalProviderLabel = computed(() => {
       const provider = store.state.aiProvider?.selectedProvider;
-      const providerClean = provider.replace(/\./g, '-').toLowerCase(); // fixes BS for z-ai
-      return providerClean || '';
+      if (!provider) return '';
+      // Custom providers store a UUID in selectedProvider — resolve to the friendly name.
+      const customProviders = store.state.aiProvider?.customProviders || [];
+      const custom = customProviders.find((cp) => cp.id === provider);
+      if (custom) return custom.provider_name || provider;
+      return provider.replace(/\./g, '-').toLowerCase(); // fixes BS for z-ai
     });
 
     // Global provider selector dropdown
