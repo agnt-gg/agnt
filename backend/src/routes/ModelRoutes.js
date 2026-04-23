@@ -6,6 +6,7 @@ import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../services/auth/GeminiCliAuthManager.js';
+import { getClientVersion } from '../services/ai/clientVersions.js';
 import jwt from 'jsonwebtoken';
 
 const router = express.Router();
@@ -40,7 +41,8 @@ async function fetchCodexModels(token) {
     };
     if (accountId) headers['ChatGPT-Account-ID'] = accountId;
 
-    const url = 'https://chatgpt.com/backend-api/codex/models?client_version=0.112.0';
+    const clientVersion = await getClientVersion('openai-codex');
+    const url = `https://chatgpt.com/backend-api/codex/models?client_version=${clientVersion}`;
     console.log(`[ModelRoutes] Fetching Codex models from ${url} (account: ${accountId || 'none'})`);
 
     const res = await fetch(url, { headers });

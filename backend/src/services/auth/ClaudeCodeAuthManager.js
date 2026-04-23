@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import axios from 'axios';
 import generateUUID from '../../utils/generateUUID.js';
+import { getClientIdentity } from '../ai/clientVersions.js';
 
 const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -184,7 +185,7 @@ class ClaudeCodeAuthManager {
       if (isOAuth) {
         headers['Authorization'] = `Bearer ${token}`;
         headers['anthropic-beta'] = 'claude-code-20250219,oauth-2025-04-20';
-        headers['user-agent'] = 'claude-cli/2.1.2 (external, cli)';
+        headers['user-agent'] = await getClientIdentity('claude-code');
         headers['x-app'] = 'cli';
       } else {
         headers['x-api-key'] = token;
@@ -478,7 +479,7 @@ class ClaudeCodeAuthManager {
       if (isOAuth) {
         headers['Authorization'] = `Bearer ${trimmed}`;
         headers['anthropic-beta'] = 'claude-code-20250219,oauth-2025-04-20';
-        headers['user-agent'] = 'claude-cli/2.1.2 (external, cli)';
+        headers['user-agent'] = await getClientIdentity('claude-code');
         headers['x-app'] = 'cli';
       } else {
         headers['x-api-key'] = trimmed;

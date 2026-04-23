@@ -9,6 +9,7 @@ import GeminiCliAuthManager from '../auth/GeminiCliAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { getProviderConfig } from './providerConfigs.js';
 import { createCchFetch } from './claudeBillingHeader.js';
+import { getClientIdentity, getClientVersion } from './clientVersions.js';
 
 // ── Gemini OAuth Proxy ──────────────────────────────────────────────
 // Lightweight wrapper that mimics the GoogleGenAI SDK's client interface
@@ -184,11 +185,43 @@ export async function createLlmClient(provider, userId, options = {}) {
 }
 
 /**
+ * Overrides the User-Agent in a provider's sdkOptions.defaultHeaders with a
+ * dynamically-resolved version from clientVersions.js. Falls through to the
+ * config's hardcoded value if the resolver can't produce one. Only providers
+ * that spoof an upstream CLI (currently claude-code and kimi-code) need this.
+ */
+async function _resolveDynamicSdkOptions(providerKey, baseSdkOptions) {
+  const base = baseSdkOptions || {};
+  // Map provider key → the header name that needs its UA rewritten.
+  // Claude Code uses lowercase `user-agent` to exactly mimic the real CLI;
+  // Kimi Code uses `User-Agent`. Keep these casings in sync with providerConfigs.
+  const headerByProvider = {
+    'claude-code': 'user-agent',
+    'kimi-code': 'User-Agent',
+  };
+  const headerName = headerByProvider[providerKey];
+  if (!headerName) return base;
+  try {
+    const identity = await getClientIdentity(providerKey);
+    return {
+      ...base,
+      defaultHeaders: {
+        ...(base.defaultHeaders || {}),
+        [headerName]: identity,
+      },
+    };
+  } catch (err) {
+    console.warn(`[LlmService] dynamic UA resolution failed for ${providerKey}: ${err.message}`);
+    return base;
+  }
+}
+
+/**
  * Creates an SDK client from a declarative provider config.
  * Handles the 4 SDK types: openai, anthropic, gemini, cerebras.
  */
-function _createClientFromConfig(config, accessToken) {
-  const sdkOpts = config.sdkOptions || {};
+async function _createClientFromConfig(config, accessToken) {
+  const sdkOpts = await _resolveDynamicSdkOptions(config.key, config.sdkOptions);
   let client;
 
   switch (config.sdkType) {
@@ -252,10 +285,11 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
       throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
     }
     const config = getProviderConfig('claude-code');
+    const sdkOptions = await _resolveDynamicSdkOptions('claude-code', config?.sdkOptions);
     return new Anthropic({
       apiKey: null,
       authToken: oauthToken,
-      ...(config?.sdkOptions || {}),
+      ...sdkOptions,
       fetch: createCchFetch(),
     });
   }
@@ -275,16 +309,28 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
     }
     const effectiveToken = CodexAuthManager.getOAuthToken() || oauthToken;
     const accountId = CodexAuthManager.getChatGptAccountId();
+    const codexVersion = await getClientVersion('openai-codex');
     const headers = {
       'OpenAI-Beta': 'responses=experimental',
+      'originator': 'codex_cli_rs',
     };
     if (accountId) {
       headers['chatgpt-account-id'] = accountId;
     }
+    // Append ?client_version=X to every outgoing request so the ChatGPT backend
+    // returns the newer-model list on chat calls too, not just /models.
+    const codexFetch = (url, init) => {
+      const u = new URL(url);
+      if (!u.searchParams.has('client_version')) {
+        u.searchParams.set('client_version', codexVersion);
+      }
+      return fetch(u.toString(), init);
+    };
     return new OpenAI({
       apiKey: effectiveToken,
       baseURL: 'https://chatgpt.com/backend-api/codex',
       defaultHeaders: headers,
+      fetch: codexFetch,
     });
   }
 
@@ -353,8 +399,8 @@ async function _createCustomProviderClient(provider, userId) {
   if (typeof baseUrl === 'string' && baseUrl.includes('api.kimi.com/coding')) {
     // Legacy fallback for users who added Kimi Code via "Add Custom Provider"
     // before the native provider existed. Native users go through providerConfigs.js.
-    // Keep this UA in sync with the native entry.
-    defaultHeaders['User-Agent'] = 'KimiCLI/1.38.0';
+    // UA resolved dynamically via clientVersions — falls back to hardcoded on failure.
+    defaultHeaders['User-Agent'] = await getClientIdentity('kimi-code');
     compat.mapDeveloperRole = true;
   }
 

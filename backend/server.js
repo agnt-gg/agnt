@@ -44,6 +44,8 @@ import InsightRoutes from './src/routes/InsightRoutes.js';
 import GroupRoutes from './src/routes/GroupRoutes.js';
 import ImageRoutes from './src/routes/ImageRoutes.js';
 import LocalFileRoutes from './src/routes/LocalFileRoutes.js';
+import AdminClientVersionRoutes from './src/routes/AdminClientVersionRoutes.js';
+import { warmupClientVersions } from './src/services/ai/clientVersions.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
@@ -144,6 +146,7 @@ app.use('/api/groups', GroupRoutes);
 app.use('/api/filesystem', FileSystemRoutes);
 app.use('/api/images', ImageRoutes);
 app.use('/api/local-file', LocalFileRoutes);
+app.use('/api/admin', AdminClientVersionRoutes);
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
 // Version endpoint - reads dynamically from package.json
@@ -404,6 +407,9 @@ function startServer() {
       console.log(`Master server listening on port ${config.port}`);
       console.log(`[Socket.IO] Real-time sync enabled`);
       retries = 0; // Reset retries on successful start
+      // Warm the upstream CLI version cache so the first Claude Code / Codex /
+      // Kimi Code call uses current values instead of stale fallbacks.
+      warmupClientVersions();
 
       // Defer all heavy initialization to next tick so the listen callback
       // returns immediately and the server can respond to health checks
