@@ -1184,12 +1184,16 @@ export default {
         // Determine which message to show based on provider selection AND connection status
         const selectedProvider = store.state.aiProvider?.selectedProvider;
         const connectedApps = store.state.appAuth?.connectedApps || [];
+        const customProviders = store.state.aiProvider?.customProviders || [];
 
         // Check if the selected provider is actually connected (or if it's Local and server is running)
         let isProviderActuallyConnected = false;
         if (selectedProvider) {
           if (selectedProvider.toLowerCase() === 'local') {
             isProviderActuallyConnected = isLocalServerRunning.value;
+          } else if (customProviders.some((cp) => cp.id === selectedProvider)) {
+            // Custom providers are connected by virtue of existing in the list.
+            isProviderActuallyConnected = true;
           } else {
             const providerKey = resolveProviderKey(selectedProvider);
             isProviderActuallyConnected = connectedApps.some((app) => app.toLowerCase() === providerKey);
