@@ -5,7 +5,7 @@ import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
 
 // Cache version — bump this to invalidate all provider model caches
-const MODEL_CACHE_VERSION = 7;
+const MODEL_CACHE_VERSION = 8;
 (() => {
   const storedVersion = localStorage.getItem('model_cache_version');
   if (storedVersion !== String(MODEL_CACHE_VERSION)) {
@@ -100,6 +100,276 @@ function normalizeReasoningValue(value) {
 function isReasoningEnabledValue(value) {
   const normalized = normalizeReasoningValue(value);
   return normalized !== 'default' && normalized !== 'off' && normalized !== 'none';
+}
+
+function buildReasoningControl(kind, options, defaultValue = 'default') {
+  return { kind, options, defaultValue };
+}
+
+function isOpenAIReasoningModel(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('gpt-5') || /^o\d/.test(lower);
+}
+
+function isAnthropicReasoningModel(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('claude-opus-4-7') || lower.startsWith('claude-opus-4-6') || lower.startsWith('claude-sonnet-4-6');
+}
+
+function isGemini3ReasoningModel(modelId) {
+  return String(modelId || '').toLowerCase().startsWith('gemini-3');
+}
+
+function isGemini25ReasoningModel(modelId) {
+  return String(modelId || '').toLowerCase().startsWith('gemini-2.5');
+}
+
+function supportsDeepSeekThinking(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower === 'deepseek-chat' || lower === 'deepseek-reasoner' || lower.startsWith('deepseek-v4-');
+}
+
+function isGroqGptOssReasoningModel(modelId) {
+  return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
+}
+
+function isGroqQwenReasoningModel(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower === 'qwen/qwen3-32b' || lower.startsWith('qwen/qwen3-');
+}
+
+function isCerebrasGlmReasoningModel(modelId) {
+  return String(modelId || '').toLowerCase() === 'zai-glm-4.7';
+}
+
+function supportsZaiThinking(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('glm-5') || lower.startsWith('glm-4.7') || lower.startsWith('glm-4.6') || lower.startsWith('glm-4.5');
+}
+
+function supportsKimiToggle(providerKey, modelId) {
+  const lowerProvider = String(providerKey || '').toLowerCase();
+  const lowerModel = String(modelId || '').toLowerCase();
+  if (lowerProvider === 'kimi-code') return lowerModel === 'kimi-for-coding';
+  return lowerModel.startsWith('kimi-k2') && !lowerModel.includes('thinking');
+}
+
+function isOpenRouterOpenAIReasoningModel(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('openai/gpt-5') || /^openai\/o\d/.test(lower);
+}
+
+function isOpenRouterAnthropicReasoningModel(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('anthropic/claude-opus-4-7') || lower.startsWith('anthropic/claude-opus-4-6') || lower.startsWith('anthropic/claude-sonnet-4-6');
+}
+
+function isOpenRouterGeminiReasoningModel(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('google/gemini-3') || lower.startsWith('google/gemini-2.5');
+}
+
+function isOpenRouterXaiReasoningModel(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('x-ai/') || lower.startsWith('xai/');
+}
+
+function isTogetherGptOssReasoningModel(modelId) {
+  return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
+}
+
+function inferReasoningControl(providerKey, modelId) {
+  const lowerProvider = String(providerKey || '').toLowerCase();
+  const lowerModel = String(modelId || '').toLowerCase();
+
+  if (!lowerProvider || !lowerModel) return null;
+
+  if (lowerProvider === 'openai' || lowerProvider === 'openai-codex') {
+    if (!isOpenAIReasoningModel(modelId)) return null;
+
+    if (lowerModel.startsWith('gpt-5.4')) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'Max' },
+      ]);
+    }
+
+    if (lowerProvider === 'openai-codex' && (lowerModel.startsWith('gpt-5.3') || lowerModel.startsWith('gpt-5.2'))) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'Max' },
+      ]);
+    }
+
+    if (lowerModel.startsWith('gpt-5.2') || lowerModel.startsWith('gpt-5.1')) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'Max' },
+      ]);
+    }
+
+    if (lowerModel.startsWith('gpt-5')) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'minimal', label: 'Minimal' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ]);
+    }
+
+    if (/^o\d/.test(lowerModel)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ]);
+    }
+
+    return null;
+  }
+
+  if (lowerProvider === 'anthropic' || lowerProvider === 'claude-code') {
+    if (!isAnthropicReasoningModel(modelId)) return null;
+    const options = [
+      { value: 'default', label: 'Default' },
+      { value: 'off', label: 'Off' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+    ];
+    if (lowerModel.startsWith('claude-opus-4-7')) {
+      options.push({ value: 'xhigh', label: 'Max' });
+    }
+    return buildReasoningControl('effort', options);
+  }
+
+  if (lowerProvider === 'gemini' || lowerProvider === 'gemini-cli') {
+    if (isGemini3ReasoningModel(modelId) || isGemini25ReasoningModel(modelId)) {
+      const options = [{ value: 'default', label: 'Default' }];
+      if (lowerModel.includes('flash')) {
+        options.push({ value: 'off', label: 'Off' });
+      }
+      options.push(
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      );
+      return buildReasoningControl('effort', options);
+    }
+    return null;
+  }
+
+  if (lowerProvider === 'deepseek') {
+    if (!supportsDeepSeekThinking(modelId)) return null;
+    return buildReasoningControl('effort', [
+      { value: 'default', label: 'Default' },
+      { value: 'off', label: 'Off' },
+      { value: 'high', label: 'High' },
+      { value: 'max', label: 'Max' },
+    ]);
+  }
+
+  if (lowerProvider === 'groq') {
+    if (isGroqGptOssReasoningModel(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ]);
+    }
+    if (isGroqQwenReasoningModel(modelId)) {
+      return buildReasoningControl('toggle', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+      ]);
+    }
+    return null;
+  }
+
+  if (lowerProvider === 'cerebras') {
+    if (isGroqGptOssReasoningModel(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ]);
+    }
+    if (isCerebrasGlmReasoningModel(modelId)) {
+      return buildReasoningControl('toggle', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+      ]);
+    }
+    return null;
+  }
+
+  if (lowerProvider === 'openrouter') {
+    if (isOpenRouterOpenAIReasoningModel(modelId) || isOpenRouterXaiReasoningModel(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'Max' },
+      ]);
+    }
+    if (isOpenRouterAnthropicReasoningModel(modelId) || isOpenRouterGeminiReasoningModel(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ]);
+    }
+    return null;
+  }
+
+  if (lowerProvider === 'togetherai') {
+    if (isTogetherGptOssReasoningModel(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ]);
+    }
+    return null;
+  }
+
+  if (lowerProvider === 'zai') {
+    if (!supportsZaiThinking(modelId)) return null;
+    return buildReasoningControl('toggle', [
+      { value: 'default', label: 'Default' },
+      { value: 'off', label: 'Off' },
+    ]);
+  }
+
+  if (lowerProvider === 'kimi' || lowerProvider === 'kimi-code') {
+    if (!supportsKimiToggle(lowerProvider, modelId)) return null;
+    return buildReasoningControl('toggle', [
+      { value: 'default', label: 'Default' },
+      { value: 'off', label: 'Off' },
+    ]);
+  }
+
+  return null;
 }
 
 const STORED_REASONING_VALUE = normalizeReasoningValue(localStorage.getItem('reasoningValue'));
@@ -237,11 +507,20 @@ export default {
     },
     selectedModelMetadata(state) {
       if (!state.selectedProvider || !state.selectedModel) return null;
-      return state.modelMetadata[state.selectedProvider]?.[state.selectedModel] || null;
+      const providerKey = resolveProviderKey(state.selectedProvider);
+      const metadata = state.modelMetadata[state.selectedProvider]?.[state.selectedModel] || null;
+      const inferredControl = inferReasoningControl(providerKey, state.selectedModel);
+      if (metadata || inferredControl) {
+        return inferredControl && !metadata?.reasoningControl
+          ? { ...(metadata || {}), reasoningControl: inferredControl }
+          : metadata;
+      }
+      return null;
     },
     selectedReasoningControl(state, getters) {
       return getters.selectedModelMetadata?.reasoningControl || null;
     },
+    inferReasoningControl: () => (provider, model) => inferReasoningControl(resolveProviderKey(provider), model),
     filteredProviders(state) {
       return state.providers;
     },

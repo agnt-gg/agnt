@@ -862,7 +862,11 @@ function isGemini25ReasoningModel(modelId) {
 
 function supportsDeepSeekThinkingToggle(modelId) {
   const lower = String(modelId || '').toLowerCase();
-  return lower === 'deepseek-chat' || lower === 'deepseek-reasoner';
+  return (
+    lower === 'deepseek-chat' ||
+    lower === 'deepseek-reasoner' ||
+    lower.startsWith('deepseek-v4-')
+  );
 }
 
 function isGroqGptOssReasoningModel(modelId) {
@@ -920,6 +924,15 @@ function isOpenRouterAnthropicReasoningModel(modelId) {
 function isOpenRouterGeminiReasoningModel(modelId) {
   const lower = String(modelId || '').toLowerCase();
   return lower.startsWith('google/gemini-3') || lower.startsWith('google/gemini-2.5');
+}
+
+function isOpenRouterXaiReasoningModel(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('x-ai/') || lower.startsWith('xai/');
+}
+
+function isTogetherGptOssReasoningModel(modelId) {
+  return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
 }
 
 function inferVariantModelMetadata(providerKey, modelId) {
@@ -1243,9 +1256,11 @@ export function getReasoningControl(providerKey, modelId) {
 
   if (lowerProvider === 'deepseek') {
     if (!supportsDeepSeekThinkingToggle(modelId)) return null;
-    return buildReasoningControl('toggle', [
+    return buildReasoningControl('effort', [
       { value: 'default', label: 'Default' },
       { value: 'off', label: 'Off' },
+      { value: 'high', label: 'High' },
+      { value: 'max', label: 'Max' },
     ]);
   }
 
@@ -1305,6 +1320,30 @@ export function getReasoningControl(providerKey, modelId) {
       return buildReasoningControl('effort', [
         { value: 'default', label: 'Default' },
         { value: 'off', label: 'Off' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ]);
+    }
+
+    if (isOpenRouterXaiReasoningModel(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'Max' },
+      ]);
+    }
+
+    return null;
+  }
+
+  if (lowerProvider === 'togetherai') {
+    if (isTogetherGptOssReasoningModel(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
         { value: 'low', label: 'Low' },
         { value: 'medium', label: 'Medium' },
         { value: 'high', label: 'High' },

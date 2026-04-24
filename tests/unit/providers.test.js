@@ -172,11 +172,12 @@ describe('Reasoning Controls', () => {
     assert.ok(control.options.some((option) => option.value === 'off'), 'kimi-for-coding should expose off');
   });
 
-  it('should expose an off toggle for DeepSeek thinking-capable chat models', () => {
+  it('should expose DeepSeek thinking controls for current chat models', () => {
     const control = getReasoningControl('deepseek', 'deepseek-chat');
     assert.ok(control, 'expected reasoning control for deepseek-chat');
-    assert.strictEqual(control.kind, 'toggle');
+    assert.strictEqual(control.kind, 'effort');
     assert.ok(control.options.some((option) => option.value === 'off'), 'deepseek-chat should expose off');
+    assert.ok(control.options.some((option) => option.value === 'max'), 'deepseek-chat should expose max');
   });
 
   it('should expose model-specific reasoning controls for Groq', () => {

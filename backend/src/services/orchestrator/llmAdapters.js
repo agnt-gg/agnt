@@ -4282,7 +4282,7 @@ function supportsKimiToggle(provider, model) {
 
 function supportsDeepSeekToggle(model) {
   const lower = String(model || '').toLowerCase();
-  return lower === 'deepseek-chat' || lower === 'deepseek-reasoner';
+  return lower === 'deepseek-chat' || lower === 'deepseek-reasoner' || lower.startsWith('deepseek-v4-');
 }
 
 function isGroqGptOssReasoningModel(model) {
@@ -4300,6 +4300,10 @@ function isCerebrasGptOssReasoningModel(model) {
 
 function isCerebrasGlmReasoningModel(model) {
   return String(model || '').toLowerCase() === 'zai-glm-4.7';
+}
+
+function isTogetherGptOssReasoningModel(model) {
+  return String(model || '').toLowerCase().startsWith('openai/gpt-oss-');
 }
 
 function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
@@ -4323,7 +4327,22 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
 
   if (normalizedProvider === 'deepseek' && supportsDeepSeekToggle(model)) {
     if (normalizedValue === 'off') return { thinking: { type: 'disabled' } };
-    return { thinking: { type: 'enabled' } };
+
+    let effort = normalizedValue;
+    if (effort === 'on' || effort === 'low' || effort === 'medium') {
+      effort = 'high';
+    } else if (effort === 'xhigh') {
+      effort = 'max';
+    }
+
+    if (!['high', 'max'].includes(effort)) {
+      effort = 'high';
+    }
+
+    return {
+      thinking: { type: 'enabled' },
+      reasoning_effort: effort,
+    };
   }
 
   if (normalizedProvider === 'groq') {
@@ -4371,6 +4390,12 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
       }
       return null;
     }
+  }
+
+  if (normalizedProvider === 'togetherai' && isTogetherGptOssReasoningModel(model)) {
+    const effort = normalizedValue === 'on' ? 'medium' : normalizedValue;
+    if (!['low', 'medium', 'high'].includes(effort)) return null;
+    return { reasoning_effort: effort };
   }
 
   if (normalizedProvider === 'grokai') {

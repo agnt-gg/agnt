@@ -164,7 +164,11 @@ export default {
     const isLoadingModels = computed(() => store.state.aiProvider.loadingModels[store.state.aiProvider.selectedProvider] || false);
     const selectedReasoningControl = computed(() => {
       if (!selectedProvider.value || !selectedModel.value) return null;
-      return store.state.aiProvider.modelMetadata[selectedProvider.value]?.[selectedModel.value]?.reasoningControl || null;
+      return (
+        store.state.aiProvider.modelMetadata[selectedProvider.value]?.[selectedModel.value]?.reasoningControl ||
+        store.getters['aiProvider/inferReasoningControl']?.(selectedProvider.value, selectedModel.value) ||
+        null
+      );
     });
     const reasoningStatusText = computed(() => {
       if (!selectedProvider.value) {

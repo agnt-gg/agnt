@@ -55,7 +55,11 @@ export default {
 
     const control = computed(() => {
       if (!props.provider || !props.model) return null;
-      return providerMetadata.value?.[props.model]?.reasoningControl || null;
+      return (
+        providerMetadata.value?.[props.model]?.reasoningControl ||
+        store.getters['aiProvider/inferReasoningControl']?.(props.provider, props.model) ||
+        null
+      );
     });
     const showUnavailableState = computed(() => {
       if (!props.showUnavailable || !props.provider) return false;
