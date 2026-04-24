@@ -1,22 +1,7 @@
 ---
 name: image-to-cinematic-video
-description: >-
-  Turn a prompt or an existing image into a polished multi-scene cinematic short video
-  using Seedance for clip generation, uguu.se for file hosting, and FFmpeg for last-frame
-  extraction and crossfade stitching. Supports two modes — PARALLEL (multiple scenes from
-  the same reference image, concurrent, ~3 min total) and CHAIN (each scene starts on the
-  last frame of the previous scene, sequential, ~3 min per scene, produces one continuous
-  long take). Use this skill whenever the user wants to "make a video from an image",
-  "animate this picture", "generate video scenes", "create a cinematic short", "stitch AI
-  videos together", "make a long continuous video", "chain AI clips", or any workflow
-  that goes from one reference image to a multi-clip stitched video. Also trigger when
-  the user mentions Seedance, image-to-video, video stitching, crossfades between clips,
-  frame chaining, last-frame continuity, or wants to turn a generated image into motion.
-  Covers the full pipeline end-to-end — generate image with the chat-level
-  `generate_image` tool (Gemini Nano Banana Pro by default) → pull the real bytes from
-  `/api/images/:id` → upload to uguu → Seedance (with the relative-filename quirk
-  handled) → copy output into the project folder → extract last frame → upload → chain
-  into next scene → FFmpeg xfade stitch → upload final → write manifest.
+description: "Turn a prompt or existing image into a polished multi-scene cinematic short video using Seedance for clip generation, uguu.se for hosting, and FFmpeg for crossfade stitching. Supports PARALLEL mode (multiple scenes from the same image, concurrent) and CHAIN mode (each scene starts on the last frame of the previous, producing one continuous long take). Use when the user wants to make a video from an image, animate a picture, generate video scenes, create a cinematic short, stitch AI videos, chain AI clips, or build a multi-clip stitched video. Also triggers on Seedance, image-to-video, video stitching, crossfades, frame chaining, or last-frame continuity."
+version: 1.0.0
 ---
 
 # Image → Cinematic Video Pipeline

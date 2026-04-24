@@ -1,7 +1,6 @@
 ---
 name: high-end-website-design
-description: >-
-  End-to-end pipeline for producing ULTRA high-end, novel, single-file HTML landing pages and presentation slides featuring AI-generated hero imagery and seamlessly looping AI video backgrounds. Combines Gemini Nano Banana Pro for cinematic stills, ByteDance Seedance 2.0 for native looping video clips (firstFrameUrl == lastFrameUrl), and frontend-slides design philosophy for the final HTML. Use this skill whenever the user asks for: a "high end" / "luxury" / "premium" / "novel" / "ultra unique" landing page or slide, hero sections with animated video backgrounds, presentation decks with AI-generated cinematic motion, agency-grade portfolio pages, fashion / fragrance / product launch sites, cyberpunk / brutalist / editorial / vaporwave / Swiss-design web pages, or anything that pairs a generated image with a looping video and premium typography. Also trigger when the user mentions Seedance, Nano Banana, video loops on a webpage, hero video backgrounds, or wants a "modern" / "ultra-engaging" / "highly dynamic" web design.
+description: "End-to-end pipeline for ultra-premium single-file HTML landing pages with AI-generated hero imagery and seamlessly looping AI video backgrounds. Combines Gemini Nano Banana Pro for cinematic stills, Seedance 2.0 for native looping video clips, and editorial-grade frontend design. Use when the user asks for high-end, luxury, or premium landing pages, hero sections with video backgrounds, agency-grade portfolio pages, product launch sites, or cyberpunk/brutalist/editorial/vaporwave web pages. Also triggers on mentions of Seedance, Nano Banana, video loops on webpages, hero video backgrounds, or ultra-engaging web design."
 version: 1.0.0
 ---
 
