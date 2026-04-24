@@ -5,43 +5,60 @@
       <span class="provider-selector-subtext"> (The AI model to use for Annie, AI orchestration, and generating agents, workflows, & tools) </span>
     </h3>
     <div class="provider-selector">
-      <label>AI Provider:</label>
-      <CustomSelect
-        ref="providerSelect"
-        :options="providerOptions"
-        :placeholder="PROVIDER_DISPLAY_NAMES[selectedProvider] || selectedProvider || 'Select Provider'"
-        @option-selected="handleProviderSelected"
-      />
+      <div class="provider-selector-main">
+        <div class="selector-field">
+          <label>AI Provider</label>
+          <CustomSelect
+            ref="providerSelect"
+            :options="providerOptions"
+            :placeholder="PROVIDER_DISPLAY_NAMES[selectedProvider] || selectedProvider || 'Select Provider'"
+            @option-selected="handleProviderSelected"
+          />
+        </div>
 
-      <label>Model:</label>
-      <CustomSelect
-        ref="modelSelect"
-        :options="modelOptions"
-        :placeholder="isLoadingModels ? 'Loading models...' : selectedModel || 'Select Model'"
-        @option-selected="handleModelSelected"
-      />
+        <div class="selector-field">
+          <div class="selector-label-row">
+            <label>Model</label>
+            <RefreshModelsButton :provider="selectedProvider" size="md" variant="icon+label" />
+          </div>
+          <CustomSelect
+            ref="modelSelect"
+            :options="modelOptions"
+            :placeholder="isLoadingModels ? 'Loading models...' : selectedModel || 'Select Model'"
+            @option-selected="handleModelSelected"
+          />
+        </div>
 
-      <RefreshModelsButton :provider="selectedProvider" size="md" variant="icon+label" />
+        <div class="selector-field selector-field-reasoning">
+          <ReasoningControl v-if="selectedReasoningControl" :provider="selectedProvider" :model="selectedModel" :show-hint="false" />
+          <div v-else class="reasoning-fallback">
+            <label>Reasoning</label>
+            <div class="reasoning-fallback-message">{{ reasoningStatusText }}</div>
+          </div>
+        </div>
+      </div>
 
-      <Tooltip text="Add Custom Provider" width="auto">
-        <button @click="openCustomProviderDialog" class="btn-add-provider">
-          <i class="fas fa-plus"></i>
-          <span>Add Custom</span>
-        </button>
-      </Tooltip>
-
-      <!-- Edit/Delete buttons for custom providers -->
-      <div v-if="isCustomProviderSelected" class="custom-provider-actions">
-        <Tooltip text="Edit" width="auto">
-          <button @click="editCurrentProvider" class="btn-edit-provider">
-            <i class="fas fa-edit"></i>
+      <div class="provider-selector-actions">
+        <Tooltip text="Add Custom Provider" width="auto">
+          <button @click="openCustomProviderDialog" class="btn-add-provider">
+            <i class="fas fa-plus"></i>
+            <span>Add Custom</span>
           </button>
         </Tooltip>
-        <Tooltip text="Delete" width="auto">
-          <button @click="deleteCurrentProvider" class="btn-delete-provider">
-            <i class="fas fa-trash"></i>
-          </button>
-        </Tooltip>
+
+        <!-- Edit/Delete buttons for custom providers -->
+        <div v-if="isCustomProviderSelected" class="custom-provider-actions">
+          <Tooltip text="Edit" width="auto">
+            <button @click="editCurrentProvider" class="btn-edit-provider">
+              <i class="fas fa-edit"></i>
+            </button>
+          </Tooltip>
+          <Tooltip text="Delete" width="auto">
+            <button @click="deleteCurrentProvider" class="btn-delete-provider">
+              <i class="fas fa-trash"></i>
+            </button>
+          </Tooltip>
+        </div>
       </div>
     </div>
 
@@ -78,9 +95,7 @@
           {{ customInstructionsDraft.length }} / 4000
         </span>
         <span v-if="customInstructionsStatus === 'saving'" class="status-indicator saving">Saving…</span>
-        <span v-else-if="customInstructionsStatus === 'saved'" class="status-indicator saved">
-          <i class="fas fa-check"></i> Saved
-        </span>
+        <span v-else-if="customInstructionsStatus === 'saved'" class="status-indicator saved"> <i class="fas fa-check"></i> Saved </span>
       </div>
     </div>
 
@@ -98,6 +113,7 @@ import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, 
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
+import ReasoningControl from '@/components/common/ReasoningControl.vue';
 import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
 
 export default {
@@ -106,6 +122,7 @@ export default {
     CustomProviderDialog,
     Tooltip,
     RefreshModelsButton,
+    ReasoningControl,
   },
   setup() {
     const providerSelect = ref(null);
@@ -201,6 +218,22 @@ export default {
 
     const filteredModels = computed(() => store.getters['aiProvider/filteredModels']);
     const isLoadingModels = computed(() => store.state.aiProvider.loadingModels[store.state.aiProvider.selectedProvider] || false);
+    const selectedReasoningControl = computed(() => {
+      if (!selectedProvider.value || !selectedModel.value) return null;
+      return store.state.aiProvider.modelMetadata[selectedProvider.value]?.[selectedModel.value]?.reasoningControl || null;
+    });
+    const reasoningStatusText = computed(() => {
+      if (!selectedProvider.value) {
+        return 'Select a provider to view reasoning options.';
+      }
+      if (!selectedModel.value) {
+        return 'Select a model to view reasoning options.';
+      }
+      if (isLoadingModels.value) {
+        return 'Checking reasoning options for this model...';
+      }
+      return 'No reasoning controls available for this model.';
+    });
 
     // Transform providers into CustomSelect options format
     const providerOptions = computed(() => {
@@ -503,6 +536,8 @@ export default {
       connectedProvidersLower,
       hasConnectedProviders,
       isLoadingModels,
+      selectedReasoningControl,
+      reasoningStatusText,
       providerOptions,
       modelOptions,
       handleProviderSelected,
@@ -538,14 +573,75 @@ export default {
 }
 .provider-selector {
   display: flex;
-  gap: 1rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
 }
-label {
+
+.provider-selector-main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 16px;
+  align-items: end;
+  width: 100%;
+}
+
+.selector-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.selector-field label {
   width: fit-content;
   text-wrap: nowrap;
 }
+
+.selector-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.selector-field-reasoning {
+  min-width: 220px;
+}
+
+.reasoning-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reasoning-fallback-message {
+  height: 32px;
+  padding: 0px 10px;
+  display: flex;
+  align-items: center;
+  border: 1px dashed var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-med-navy);
+  font-size: 0.85em;
+  line-height: 1.35;
+}
+
+.provider-selector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.provider-selector :deep(.custom-select) {
+  width: 100%;
+}
+
+.provider-selector :deep(.reasoning-control) {
+  min-width: 0;
+}
+
 .provider-selector-subtext {
   font-size: 14px;
   opacity: 0.5;

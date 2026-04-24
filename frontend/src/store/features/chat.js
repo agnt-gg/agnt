@@ -10,16 +10,22 @@ const MAX_TOOL_RESULT_CHARS = 2000; // Cap tool results in history to avoid huge
  * followed by role:"tool" result messages. The backend adapters handle
  * converting to provider-specific formats (Anthropic, Gemini, etc.).
  */
-function buildChatHistory(messages) {
+function buildChatHistory(messages, provider = null) {
   const result = [];
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  const preserveReasoningContent = new Set(['deepseek', 'kimi', 'kimi-code', 'zai']).has(normalizedProvider);
   const validMessages = messages.filter(
     (msg) => msg && msg.role && (msg.role === 'user' || msg.role === 'assistant')
   );
 
   for (const msg of validMessages) {
+    const reasoningContent = preserveReasoningContent
+      ? (msg.reasoning_content || msg.reasoning || '').trim()
+      : '';
+
     if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
       // Assistant message with tool_calls attached
-      result.push({
+      const assistantMessage = {
         role: 'assistant',
         content: msg.content || '',
         tool_calls: msg.toolCalls.map((tc) => ({
@@ -30,7 +36,11 @@ function buildChatHistory(messages) {
             arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
           },
         })),
-      });
+      };
+      if (reasoningContent) {
+        assistantMessage.reasoning_content = reasoningContent;
+      }
+      result.push(assistantMessage);
 
       // Tool result messages
       for (const tc of msg.toolCalls) {
@@ -50,7 +60,11 @@ function buildChatHistory(messages) {
         }
       }
     } else {
-      result.push({ role: msg.role, content: msg.content || '' });
+      const historyMessage = { role: msg.role, content: msg.content || '' };
+      if (msg.role === 'assistant' && reasoningContent) {
+        historyMessage.reasoning_content = reasoningContent;
+      }
+      result.push(historyMessage);
     }
   }
 
@@ -255,6 +269,7 @@ export default {
       const message = state.messages.find((m) => m.id === messageId);
       if (message) {
         message.reasoning = (message.reasoning || '') + delta;
+        message.reasoning_content = (message.reasoning_content || '') + delta;
       }
     },
     ADD_TOOL_CALL(state, { messageId, toolCall }) {
@@ -657,6 +672,7 @@ export default {
       const message = conv.messages.find(m => m.id === messageId);
       if (message) {
         message.reasoning = (message.reasoning || '') + delta;
+        message.reasoning_content = (message.reasoning_content || '') + delta;
       }
     },
 
@@ -876,7 +892,10 @@ export default {
      * Start a streaming conversation that persists across screen changes.
      * Supports multiple concurrent streams — each conversation gets its own slot.
      */
-    async startStreamingConversation({ commit, state, dispatch, rootState }, { userInput, files = [], provider, model, reasoningEnabled = false, mentionedAgent = null }) {
+    async startStreamingConversation(
+      { commit, state, dispatch, rootState },
+      { userInput, files = [], provider, model, reasoningValue = 'default', reasoningEnabled = false, mentionedAgent = null },
+    ) {
       // Determine which conversation to stream in
       let convId = state.activeConversationId || state.currentConversationId || `temp-${Date.now()}`;
 
@@ -906,7 +925,7 @@ export default {
       const token = localStorage.getItem('token');
       // Read messages from the conversation slot — includes tool call context
       const conv = state.conversations[convId];
-      const chatHistory = buildChatHistory(conv.messages);
+      const chatHistory = buildChatHistory(conv.messages, provider);
 
       // Remove duplicate trailing user message if it matches what we're about to send
       const deduped = chatHistory.length > 0 &&
@@ -926,6 +945,13 @@ export default {
       try {
         let body;
         const headers = {};
+        const normalizedReasoningValue = typeof reasoningValue === 'string' && reasoningValue.trim()
+          ? reasoningValue.trim().toLowerCase()
+          : 'default';
+        const derivedReasoningEnabled = normalizedReasoningValue !== 'default' &&
+          normalizedReasoningValue !== 'off' &&
+          normalizedReasoningValue !== 'none';
+        const effectiveReasoningEnabled = reasoningEnabled || derivedReasoningEnabled;
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
@@ -943,7 +969,10 @@ export default {
           }
           formData.append('provider', provider);
           formData.append('model', model);
-          if (reasoningEnabled) {
+          if (normalizedReasoningValue !== 'default') {
+            formData.append('reasoningValue', normalizedReasoningValue);
+          }
+          if (effectiveReasoningEnabled) {
             formData.append('reasoningEnabled', 'true');
           }
           if (resolvedAgentId) {
@@ -968,7 +997,8 @@ export default {
             conversationId: conv.conversationId && !conv.conversationId.startsWith('temp-') ? conv.conversationId : undefined,
             provider: provider,
             model: model,
-            reasoningEnabled: reasoningEnabled || undefined,
+            reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
+            reasoningEnabled: effectiveReasoningEnabled || undefined,
             agentId: resolvedAgentId || undefined,
             enabledTools: JSON.parse(localStorage.getItem('agnt_enabled_tools') || '[]'),
           });
@@ -1349,6 +1379,8 @@ export default {
             metadata: msg.metadata || [],
             toolCalls: msg.toolCalls || [],
             contentParts: msg.contentParts || [],
+            reasoning: msg.reasoning || undefined,
+            reasoning_content: msg.reasoning_content || undefined,
             files: msg.files || [],
             agentName: msg.agentName || undefined,
             agentIcon: msg.agentIcon || undefined,
@@ -1597,7 +1629,7 @@ export default {
 
       const token = localStorage.getItem('token');
       const conv = state.conversations[convId];
-      const chatHistory = buildChatHistory(conv.messages);
+      const chatHistory = buildChatHistory(conv.messages, provider);
 
       // Remove duplicate trailing user message if it matches what we're about to send
       const deduped = chatHistory.length > 0 &&

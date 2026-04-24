@@ -11,6 +11,7 @@ import {
   getProviderConfig,
   getModelMetadata,
   getAllModelMetadata,
+  getReasoningControl,
   buildBaseURLs,
 } from '../../backend/src/services/ai/providerConfigs.js';
 
@@ -150,6 +151,79 @@ describe('Kimi Provider', () => {
 });
 
 // ─────────────────────────── GEMINI SCHEMA FIX TESTS ───────────────────────────
+
+describe('Reasoning Controls', () => {
+  it('should expose reasoning controls for verified OpenAI reasoning models', () => {
+    const control = getReasoningControl('openai', 'gpt-5.2');
+    assert.ok(control, 'expected reasoning control for gpt-5.2');
+    assert.strictEqual(control.kind, 'effort');
+    assert.ok(control.options.some((option) => option.value === 'off'), 'gpt-5.2 should expose off');
+  });
+
+  it('should not expose a toggle for forced-thinking Kimi models', () => {
+    const control = getReasoningControl('kimi', 'kimi-k2-thinking');
+    assert.strictEqual(control, null);
+  });
+
+  it('should expose an off toggle for kimi-code coding model', () => {
+    const control = getReasoningControl('kimi-code', 'kimi-for-coding');
+    assert.ok(control, 'expected reasoning control for kimi-for-coding');
+    assert.strictEqual(control.kind, 'toggle');
+    assert.ok(control.options.some((option) => option.value === 'off'), 'kimi-for-coding should expose off');
+  });
+
+  it('should expose an off toggle for DeepSeek thinking-capable chat models', () => {
+    const control = getReasoningControl('deepseek', 'deepseek-chat');
+    assert.ok(control, 'expected reasoning control for deepseek-chat');
+    assert.strictEqual(control.kind, 'toggle');
+    assert.ok(control.options.some((option) => option.value === 'off'), 'deepseek-chat should expose off');
+  });
+
+  it('should expose model-specific reasoning controls for Groq', () => {
+    const gptOss = getReasoningControl('groq', 'openai/gpt-oss-120b');
+    const qwen3 = getReasoningControl('groq', 'qwen/qwen3-32b');
+
+    assert.ok(gptOss, 'expected reasoning control for Groq GPT-OSS');
+    assert.strictEqual(gptOss.kind, 'effort');
+    assert.ok(gptOss.options.some((option) => option.value === 'high'), 'Groq GPT-OSS should expose high effort');
+
+    assert.ok(qwen3, 'expected reasoning control for Groq Qwen3');
+    assert.strictEqual(qwen3.kind, 'toggle');
+    assert.ok(qwen3.options.some((option) => option.value === 'off'), 'Groq Qwen3 should expose off');
+  });
+
+  it('should expose model-specific reasoning controls for Cerebras', () => {
+    const gptOss = getReasoningControl('cerebras', 'gpt-oss-120b');
+    const glm = getReasoningControl('cerebras', 'zai-glm-4.7');
+
+    assert.ok(gptOss, 'expected reasoning control for Cerebras GPT-OSS');
+    assert.strictEqual(gptOss.kind, 'effort');
+    assert.ok(gptOss.options.some((option) => option.value === 'medium'), 'Cerebras GPT-OSS should expose medium effort');
+
+    assert.ok(glm, 'expected reasoning control for Cerebras GLM 4.7');
+    assert.strictEqual(glm.kind, 'toggle');
+    assert.ok(glm.options.some((option) => option.value === 'off'), 'Cerebras GLM 4.7 should expose off');
+  });
+
+  it('should expose OpenRouter reasoning controls for supported reasoning models', () => {
+    const openaiStyle = getReasoningControl('openrouter', 'openai/gpt-5.4');
+    const anthropicStyle = getReasoningControl('openrouter', 'anthropic/claude-sonnet-4.6');
+
+    assert.ok(openaiStyle, 'expected reasoning control for OpenRouter OpenAI reasoning models');
+    assert.strictEqual(openaiStyle.kind, 'effort');
+    assert.ok(openaiStyle.options.some((option) => option.value === 'xhigh'), 'OpenRouter OpenAI reasoning models should expose xhigh');
+
+    assert.ok(anthropicStyle, 'expected reasoning control for OpenRouter Anthropic reasoning models');
+    assert.strictEqual(anthropicStyle.kind, 'effort');
+    assert.ok(anthropicStyle.options.some((option) => option.value === 'off'), 'OpenRouter Anthropic reasoning models should expose off');
+  });
+
+  it('should infer metadata fallback for openai-codex variants', () => {
+    const meta = getModelMetadata('openai-codex', 'gpt-5.2-codex');
+    assert.ok(meta, 'expected inferred metadata for gpt-5.2-codex');
+    assert.strictEqual(meta.contextWindow, 400000);
+  });
+});
 
 describe('Gemini Schema Fix (_fixSchemaForGemini)', () => {
   // Import the adapter to test the schema fix method

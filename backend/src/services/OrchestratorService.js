@@ -599,12 +599,16 @@ async function universalChatHandler(req, res, context = {}) {
     goalContext,
     codeId,
     codeContext,
+    reasoningValue: rawReasoningValue,
     reasoningEnabled: rawReasoningEnabled,
     enabledTools: rawEnabledTools,
   } = req.body;
 
   // Normalize reasoningEnabled (FormData sends strings, JSON sends booleans)
   const reasoningEnabled = rawReasoningEnabled === true || rawReasoningEnabled === 'true';
+  const reasoningValue = typeof rawReasoningValue === 'string' && rawReasoningValue.trim()
+    ? rawReasoningValue.trim().toLowerCase()
+    : (reasoningEnabled ? 'on' : 'default');
 
   // Resolve provider/model: request body → agent config → user defaults
   let resolvedProvider = provider;
@@ -943,7 +947,7 @@ async function universalChatHandler(req, res, context = {}) {
       : Promise.resolve();
 
     const client = await createLlmClient(normalizedProvider, userId, { conversationId, authToken });
-    const adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled });
+    const adapter = await createLlmAdapter(normalizedProvider, client, model, { reasoningEnabled, reasoningValue });
 
     // Store client in context
     conversationContext.llmClient = client;

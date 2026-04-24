@@ -1,6 +1,15 @@
 import express from 'express';
 import GenericProviderService from '../services/ai/providers/GenericProviderService.js';
-import { getAllProviderConfigs, getProviderConfig, getModelMetadata, getModelCost, isReasoningModel, getAllModelMetadata, registerDynamicPricingFromModels } from '../services/ai/providerConfigs.js';
+import {
+  getAllProviderConfigs,
+  getProviderConfig,
+  getModelMetadata,
+  getModelCost,
+  isReasoningModel,
+  getAllModelMetadataForClient,
+  getModelMetadataForClient,
+  registerDynamicPricingFromModels,
+} from '../services/ai/providerConfigs.js';
 import providerHealthCheck from '../services/ai/ProviderHealthCheck.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
@@ -477,14 +486,14 @@ router.get('/models/categories', async (req, res) => {
 // Get metadata for all models of a provider
 router.get('/:provider/metadata', (req, res) => {
   const { provider } = req.params;
-  const metadata = getAllModelMetadata(provider.toLowerCase());
+  const metadata = getAllModelMetadataForClient(provider.toLowerCase());
   res.json({ success: true, provider: provider.toLowerCase(), metadata });
 });
 
 // Get metadata for a specific model
 router.get('/:provider/metadata/:modelId', (req, res) => {
   const { provider, modelId } = req.params;
-  const metadata = getModelMetadata(provider.toLowerCase(), modelId);
+  const metadata = getModelMetadataForClient(provider.toLowerCase(), modelId);
   if (!metadata) {
     return res.json({ success: true, provider: provider.toLowerCase(), model: modelId, metadata: null });
   }

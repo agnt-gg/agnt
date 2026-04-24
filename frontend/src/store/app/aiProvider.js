@@ -5,13 +5,13 @@ import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
 
 // Cache version — bump this to invalidate all provider model caches
-const MODEL_CACHE_VERSION = 5;
+const MODEL_CACHE_VERSION = 7;
 (() => {
   const storedVersion = localStorage.getItem('model_cache_version');
   if (storedVersion !== String(MODEL_CACHE_VERSION)) {
     // Clear all provider model caches when version changes
     for (const key of Object.keys(localStorage)) {
-      if (key.endsWith('_models')) {
+      if (key.endsWith('_models') || key.endsWith('_metadata')) {
         localStorage.removeItem(key);
       }
     }
@@ -93,6 +93,20 @@ for (const p of BUILT_IN_PROVIDERS) {
   INITIAL_ALL_MODELS[p.displayName] = [];
 }
 
+function normalizeReasoningValue(value) {
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : 'default';
+}
+
+function isReasoningEnabledValue(value) {
+  const normalized = normalizeReasoningValue(value);
+  return normalized !== 'default' && normalized !== 'off' && normalized !== 'none';
+}
+
+const STORED_REASONING_VALUE = normalizeReasoningValue(localStorage.getItem('reasoningValue'));
+const INITIAL_REASONING_VALUE = STORED_REASONING_VALUE !== 'default'
+  ? STORED_REASONING_VALUE
+  : (localStorage.getItem('reasoningEnabled') === 'true' ? 'on' : 'default');
+
 export default {
   namespaced: true,
   state: {
@@ -102,7 +116,8 @@ export default {
     modelMetadata: {},
     selectedProvider: localStorage.getItem('selectedProvider') || null,
     selectedModel: localStorage.getItem('selectedModel') || null,
-    reasoningEnabled: localStorage.getItem('reasoningEnabled') === 'true',
+    reasoningValue: INITIAL_REASONING_VALUE,
+    reasoningEnabled: isReasoningEnabledValue(INITIAL_REASONING_VALUE),
     customInstructions: localStorage.getItem('customInstructions') || '',
     loadingModels: {},
     modelCache: {},
@@ -140,12 +155,22 @@ export default {
       localStorage.setItem('selectedModel', newModel);
     },
     SET_REASONING_ENABLED(state, enabled) {
+      state.reasoningValue = enabled ? 'on' : 'off';
       state.reasoningEnabled = enabled;
-      if (enabled) {
-        localStorage.setItem('reasoningEnabled', 'true');
+      localStorage.setItem('reasoningValue', state.reasoningValue);
+      if (enabled) localStorage.setItem('reasoningEnabled', 'true');
+      else localStorage.removeItem('reasoningEnabled');
+    },
+    SET_REASONING_VALUE(state, value) {
+      state.reasoningValue = normalizeReasoningValue(value);
+      state.reasoningEnabled = isReasoningEnabledValue(state.reasoningValue);
+      if (state.reasoningValue === 'default') {
+        localStorage.removeItem('reasoningValue');
       } else {
-        localStorage.removeItem('reasoningEnabled');
+        localStorage.setItem('reasoningValue', state.reasoningValue);
       }
+      if (state.reasoningEnabled) localStorage.setItem('reasoningEnabled', 'true');
+      else localStorage.removeItem('reasoningEnabled');
     },
     SET_CUSTOM_INSTRUCTIONS(state, instructions) {
       const value = typeof instructions === 'string' ? instructions : '';
@@ -213,6 +238,9 @@ export default {
     selectedModelMetadata(state) {
       if (!state.selectedProvider || !state.selectedModel) return null;
       return state.modelMetadata[state.selectedProvider]?.[state.selectedModel] || null;
+    },
+    selectedReasoningControl(state, getters) {
+      return getters.selectedModelMetadata?.reasoningControl || null;
     },
     filteredProviders(state) {
       return state.providers;

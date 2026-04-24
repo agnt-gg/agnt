@@ -49,14 +49,12 @@
           />
         </div>
 
-        <!-- Reasoning Toggle -->
-        <div v-if="showReasoningToggle" class="reasoning-toggle">
-          <label class="toggle-label">
-            <input type="checkbox" :checked="reasoningEnabled" @change="toggleReasoning" />
-            <span class="toggle-switch"></span>
-            <span class="toggle-text">Reasoning Mode</span>
-          </label>
-          <span class="toggle-hint">Extended thinking for complex tasks (slower)</span>
+        <div class="selector-group">
+          <ReasoningControl v-if="selectedReasoningControl" :provider="selectedProvider" :model="selectedModel" compact :show-hint="false" />
+          <div v-else class="reasoning-fallback">
+            <label>Reasoning</label>
+            <div class="reasoning-fallback-message">{{ reasoningStatusText }}</div>
+          </div>
         </div>
 
         <!-- Connection Status -->
@@ -111,15 +109,10 @@ import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import CustomProviderDialog from '../../Settings/components/ProviderSelector/CustomProviderDialog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
+import ReasoningControl from '@/components/common/ReasoningControl.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
-
-// Models that support optional reasoning/thinking mode
-const REASONING_MODELS = {
-  zai: ['glm-5'],
-  deepseek: ['deepseek-reasoner'],
-};
 
 export default {
   name: 'ChatProviderSelector',
@@ -128,6 +121,7 @@ export default {
     CustomProviderDialog,
     Tooltip,
     RefreshModelsButton,
+    ReasoningControl,
   },
   props: {
     isOpen: {
@@ -168,6 +162,22 @@ export default {
     });
     const filteredModels = computed(() => store.getters['aiProvider/filteredModels']);
     const isLoadingModels = computed(() => store.state.aiProvider.loadingModels[store.state.aiProvider.selectedProvider] || false);
+    const selectedReasoningControl = computed(() => {
+      if (!selectedProvider.value || !selectedModel.value) return null;
+      return store.state.aiProvider.modelMetadata[selectedProvider.value]?.[selectedModel.value]?.reasoningControl || null;
+    });
+    const reasoningStatusText = computed(() => {
+      if (!selectedProvider.value) {
+        return 'Select a provider to view reasoning options.';
+      }
+      if (!selectedModel.value) {
+        return 'Select a model to view reasoning options.';
+      }
+      if (isLoadingModels.value) {
+        return 'Checking reasoning options for this model...';
+      }
+      return 'No reasoning controls available for this model.';
+    });
 
     // Check if current provider is connected
     const isProviderConnected = computed(() => {
@@ -417,18 +427,6 @@ export default {
       return getToolSupportWarning(selectedProvider.value, selectedModel.value);
     });
 
-    // Reasoning mode support
-    const reasoningEnabled = computed(() => store.state.aiProvider.reasoningEnabled);
-    const showReasoningToggle = computed(() => {
-      if (!selectedProvider.value || !selectedModel.value) return false;
-      const providerKey = resolveProviderKey(selectedProvider.value);
-      const models = REASONING_MODELS[providerKey];
-      return models?.includes(selectedModel.value);
-    });
-    const toggleReasoning = () => {
-      store.commit('aiProvider/SET_REASONING_ENABLED', !reasoningEnabled.value);
-    };
-
     // Edit current custom provider
     const editCurrentProvider = () => {
       const currentProvider = customProviders.value.find((p) => p.id === selectedProvider.value);
@@ -491,6 +489,8 @@ export default {
       providerOptions,
       modelOptions,
       isLoadingModels,
+      selectedReasoningControl,
+      reasoningStatusText,
       isProviderConnected,
       handleProviderSelected,
       handleModelSelected,
@@ -504,9 +504,6 @@ export default {
       editCurrentProvider,
       deleteCurrentProvider,
       toolSupportWarning,
-      reasoningEnabled,
-      showReasoningToggle,
-      toggleReasoning,
       PROVIDER_DISPLAY_NAMES,
     };
   },
@@ -629,6 +626,24 @@ export default {
   color: var(--color-light-med-navy);
 }
 
+.reasoning-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reasoning-fallback-message {
+  min-height: 34px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  border: 1px dashed var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-med-navy);
+  font-size: 0.85em;
+  line-height: 1.35;
+}
+
 .selector-label-row {
   display: flex;
   align-items: center;
@@ -661,72 +676,6 @@ export default {
 .status-text {
   color: var(--color-light-med-navy);
   font-weight: 500;
-}
-
-.reasoning-toggle {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 12px;
-  background: rgba(127, 129, 147, 0.05);
-  border-radius: 6px;
-}
-
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.toggle-label input[type='checkbox'] {
-  display: none;
-}
-
-.toggle-switch {
-  width: 32px;
-  height: 18px;
-  background: var(--color-dark-navy);
-  border-radius: 9px;
-  position: relative;
-  transition: background 0.2s;
-  flex-shrink: 0;
-}
-
-.toggle-switch::after {
-  content: '';
-  width: 14px;
-  height: 14px;
-  background: var(--color-med-navy);
-  border-radius: 50%;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  transition:
-    transform 0.2s,
-    background 0.2s;
-}
-
-.toggle-label input:checked + .toggle-switch {
-  background: rgba(var(--green-rgb), 0.3);
-}
-
-.toggle-label input:checked + .toggle-switch::after {
-  transform: translateX(14px);
-  background: var(--color-green);
-}
-
-.toggle-text {
-  font-size: 0.85em;
-  font-weight: 500;
-  color: var(--color-light-med-navy);
-}
-
-.toggle-hint {
-  font-size: 0.75em;
-  color: var(--color-med-navy);
-  padding-left: 40px;
 }
 
 .custom-provider-row {

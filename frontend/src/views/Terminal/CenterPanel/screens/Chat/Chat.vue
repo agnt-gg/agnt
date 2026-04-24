@@ -584,6 +584,7 @@ export default {
           files: files,
           provider: store.state.aiProvider.selectedProvider,
           model: store.state.aiProvider.selectedModel,
+          reasoningValue: store.state.aiProvider.reasoningValue,
           reasoningEnabled: store.state.aiProvider.reasoningEnabled,
           mentionedAgent: agent,
         })
@@ -614,6 +615,7 @@ export default {
         userInput: newContent,
         provider: store.state.aiProvider.selectedProvider,
         model: store.state.aiProvider.selectedModel,
+        reasoningValue: store.state.aiProvider.reasoningValue,
         reasoningEnabled: store.state.aiProvider.reasoningEnabled,
       });
     };

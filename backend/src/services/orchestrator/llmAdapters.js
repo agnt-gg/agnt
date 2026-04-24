@@ -5,7 +5,7 @@ import { manageContext } from '../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
-import { getProviderConfig, getModelMetadata } from '../ai/providerConfigs.js';
+import { getProviderConfig, getReasoningControl } from '../ai/providerConfigs.js';
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 
 /**
@@ -992,9 +992,10 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
  * Adapter for Anthropic's API.
  */
 class AnthropicAdapter extends BaseAdapter {
-  constructor(client, model, provider = 'anthropic') {
+  constructor(client, model, provider = 'anthropic', options = {}) {
     super(client, model);
     this.provider = provider.toLowerCase();
+    this.reasoningValue = options.reasoningValue || 'default';
     this.maxRetries = 3;
     this.baseDelay = 1000; // 1 second
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
@@ -1322,13 +1323,23 @@ class AnthropicAdapter extends BaseAdapter {
         const messageBreakpoints = Math.max(0, 4 - usedBreakpoints);
         this._applyRollingCacheBreakpoints(conversationMessages, messageBreakpoints);
 
-        const response = await this.client.messages.create({
+        const requestParams = {
           model: this.model,
           system: systemParam,
           messages: conversationMessages,
           tools: anthropicTools,
           max_tokens: this._getMaxTokensForModel(), // Model-specific max tokens
-        });
+        };
+
+        const reasoningConfig = buildAnthropicReasoningConfig(this.model, this.reasoningValue);
+        if (reasoningConfig?.thinking) {
+          requestParams.thinking = reasoningConfig.thinking;
+        }
+        if (reasoningConfig?.outputConfig) {
+          requestParams.output_config = reasoningConfig.outputConfig;
+        }
+
+        const response = await this.client.messages.create(requestParams);
 
         const toolUseBlocks = response.content.filter((block) => block.type === 'tool_use');
 
@@ -1617,13 +1628,23 @@ Please carefully check the tool schema and ensure all parameters match the expec
         this._applyRollingCacheBreakpoints(conversationMessages, messageBreakpoints);
 
         const abortSignal = context.abortSignal;
-        const stream = await this.client.messages.stream({
+        const requestParams = {
           model: this.model,
           system: systemParam,
           messages: conversationMessages,
           tools: anthropicTools,
           max_tokens: this._getMaxTokensForModel(), // Model-specific max tokens
-        });
+        };
+
+        const reasoningConfig = buildAnthropicReasoningConfig(this.model, this.reasoningValue);
+        if (reasoningConfig?.thinking) {
+          requestParams.thinking = reasoningConfig.thinking;
+        }
+        if (reasoningConfig?.outputConfig) {
+          requestParams.output_config = reasoningConfig.outputConfig;
+        }
+
+        const stream = await this.client.messages.stream(requestParams);
 
         // Handle streaming events with error recovery
         let streamParseError = null;
@@ -1970,8 +1991,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
  * - Same API interface as OpenAI (client.chat.completions.create())
  */
 class CerebrasAdapter extends OpenAiLikeAdapter {
-  constructor(client, model) {
-    super(client, model);
+  constructor(client, model, options = {}) {
+    super(client, model, options);
 
     // Models that support streaming + tool calling
     // Per Cerebras docs: "Streaming is supported for gpt-oss-120b, zai-glm-4.7, and non-reasoning models with these features"
@@ -2091,6 +2112,9 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
           model: this.model,
           messages: currentMessages,
         };
+        if (this.extraBody) {
+          Object.assign(requestParams, this.extraBody);
+        }
 
         if (cerebrasTools && cerebrasTools.length > 0) {
           requestParams.tools = cerebrasTools;
@@ -2289,6 +2313,9 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
           stream: true,
           stream_options: { include_usage: true },
         };
+        if (this.extraBody) {
+          Object.assign(requestParams, this.extraBody);
+        }
 
         // Add tools if present AND model supports streaming + tools
         // NOTE: Do NOT include parallel_tool_calls - causes 400 error per Cerebras docs
@@ -2505,8 +2532,9 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
  * This adapter is necessary because the Gemini API is not OpenAI-compatible.
  */
 class GeminiAdapter extends BaseAdapter {
-  constructor(client, model) {
+  constructor(client, model, options = {}) {
     super(client, model);
+    this.reasoningValue = options.reasoningValue || 'default';
     this.maxRetries = 6; // More retries to survive free-tier rate limits (quota resets ~20-60s)
     this.baseDelay = 1000; // 1 second for non-rate-limit errors
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
@@ -2893,6 +2921,11 @@ class GeminiAdapter extends BaseAdapter {
           };
         }
 
+        const thinkingConfig = buildGeminiThinkingConfig(this.model, this.reasoningValue);
+        if (thinkingConfig) {
+          config.thinkingConfig = thinkingConfig;
+        }
+
         const response = await this.client.models.generateContent({
           model: this.model,
           config: config,
@@ -3082,6 +3115,11 @@ class GeminiAdapter extends BaseAdapter {
         // Add tools if present
         if (geminiTools && geminiTools.length > 0) {
           config.tools = [{ functionDeclarations: geminiTools }];
+        }
+
+        const thinkingConfig = buildGeminiThinkingConfig(this.model, this.reasoningValue);
+        if (thinkingConfig) {
+          config.thinkingConfig = thinkingConfig;
         }
 
         const abortSignal = context.abortSignal;
@@ -3294,8 +3332,9 @@ class GeminiAdapter extends BaseAdapter {
  * - Any model with reasoning capabilities
  */
 class OpenAIResponsesAdapter extends BaseAdapter {
-  constructor(client, model) {
+  constructor(client, model, options = {}) {
     super(client, model);
+    this.reasoningValue = options.reasoningValue || 'default';
     this.maxRetries = 3;
     this.baseDelay = 1000;
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
@@ -3531,11 +3570,11 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           requestParams.tools = responsesTools;
         }
 
-        // Add reasoning config for o-series models
-        if (this.supportsReasoning()) {
-          requestParams.reasoning = {
-            effort: 'medium', // Can be 'low', 'medium', 'high'
-          };
+        const reasoningConfig = this.supportsReasoning()
+          ? buildResponsesReasoningConfig(this.model, this.reasoningValue)
+          : null;
+        if (reasoningConfig) {
+          requestParams.reasoning = reasoningConfig;
         }
 
         console.log(`[OpenAI Responses] Calling model '${this.model}' with Responses API`);
@@ -3643,10 +3682,11 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           requestParams.tools = responsesTools;
         }
 
-        if (this.supportsReasoning()) {
-          requestParams.reasoning = {
-            effort: 'medium',
-          };
+        const reasoningConfig = this.supportsReasoning()
+          ? buildResponsesReasoningConfig(this.model, this.reasoningValue)
+          : null;
+        if (reasoningConfig) {
+          requestParams.reasoning = reasoningConfig;
         }
 
         console.log(`[OpenAI Responses] Streaming call to model '${this.model}'`);
@@ -3813,8 +3853,8 @@ class OpenAIResponsesAdapter extends BaseAdapter {
  * - ALWAYS streams (endpoint requires `stream: true`); non-streaming call() collects internally
  */
 class CodexResponsesAdapter extends OpenAIResponsesAdapter {
-  constructor(client, model) {
-    super(client, model);
+  constructor(client, model, options = {}) {
+    super(client, model, options);
     // Codex reasoning models — match by prefix so new models work automatically
     this.reasoningModels = new Set();
   }
@@ -3844,10 +3884,12 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       include: ['reasoning.encrypted_content'],
     };
 
-    // Add reasoning config for Codex models
-    if (this.supportsReasoning()) {
+    const reasoningConfig = this.supportsReasoning()
+      ? buildResponsesReasoningConfig(this.model, this.reasoningValue)
+      : null;
+    if (reasoningConfig) {
       params.reasoning = {
-        effort: 'medium',
+        ...reasoningConfig,
         summary: 'auto',
       };
     }
@@ -4114,6 +4156,230 @@ function requiresResponsesApi(model) {
   return false;
 }
 
+function normalizeReasoningValue(reasoningValue) {
+  return typeof reasoningValue === 'string' && reasoningValue.trim()
+    ? reasoningValue.trim().toLowerCase()
+    : 'default';
+}
+
+function getOpenAIReasoningValues(model) {
+  const lower = String(model || '').toLowerCase();
+
+  if ((lower.startsWith('gpt-5.2') || lower.startsWith('gpt-5.3')) && lower.includes('codex')) {
+    return new Set(['low', 'medium', 'high', 'xhigh']);
+  }
+  if (lower.startsWith('gpt-5.4')) {
+    return new Set(['none', 'low', 'medium', 'high', 'xhigh']);
+  }
+  if (lower.startsWith('gpt-5.2') || lower.startsWith('gpt-5.1')) {
+    return new Set(['none', 'low', 'medium', 'high', 'xhigh']);
+  }
+  if (lower.startsWith('gpt-5')) {
+    return new Set(['minimal', 'low', 'medium', 'high']);
+  }
+  if (/^o\d/.test(lower)) {
+    return new Set(['low', 'medium', 'high']);
+  }
+
+  return new Set();
+}
+
+function buildResponsesReasoningConfig(model, reasoningValue) {
+  const normalized = normalizeReasoningValue(reasoningValue);
+  if (normalized === 'default') return null;
+
+  const allowed = getOpenAIReasoningValues(model);
+  if (allowed.size === 0) return null;
+
+  let effort = normalized;
+  if (effort === 'on') {
+    effort = 'medium';
+  } else if (effort === 'off') {
+    effort = 'none';
+  }
+
+  if (!allowed.has(effort)) return null;
+  return { effort };
+}
+
+function supportsAnthropicAdaptiveThinking(model) {
+  const lower = String(model || '').toLowerCase();
+  return (
+    lower.startsWith('claude-opus-4-7') ||
+    lower.startsWith('claude-opus-4-6') ||
+    lower.startsWith('claude-sonnet-4-6')
+  );
+}
+
+function buildAnthropicReasoningConfig(model, reasoningValue) {
+  if (!supportsAnthropicAdaptiveThinking(model)) return null;
+
+  const normalized = normalizeReasoningValue(reasoningValue);
+  if (normalized === 'default') return null;
+  if (normalized === 'off') {
+    return { thinking: { type: 'disabled' } };
+  }
+
+  const effort = normalized === 'on' ? 'high' : normalized;
+  const lower = String(model || '').toLowerCase();
+  const allowed = lower.startsWith('claude-opus-4-7')
+    ? new Set(['low', 'medium', 'high', 'xhigh'])
+    : new Set(['low', 'medium', 'high']);
+
+  if (!allowed.has(effort)) return null;
+
+  return {
+    thinking: { type: 'adaptive' },
+    outputConfig: { effort },
+  };
+}
+
+function buildGeminiThinkingConfig(model, reasoningValue) {
+  const normalized = normalizeReasoningValue(reasoningValue);
+  if (normalized === 'default') return null;
+
+  const lower = String(model || '').toLowerCase();
+  if (lower.startsWith('gemini-3')) {
+    if (lower.includes('flash')) {
+      if (normalized === 'off') return { thinkingLevel: 'minimal' };
+      if (normalized === 'on') return { thinkingLevel: 'high' };
+      if (['low', 'medium', 'high'].includes(normalized)) return { thinkingLevel: normalized };
+    } else {
+      if (normalized === 'on') return { thinkingLevel: 'high' };
+      if (['low', 'medium', 'high'].includes(normalized)) return { thinkingLevel: normalized };
+    }
+    return null;
+  }
+
+  if (lower.startsWith('gemini-2.5')) {
+    if (lower.includes('flash')) {
+      if (normalized === 'off') return { thinkingBudget: 0 };
+      if (normalized === 'on') return { thinkingBudget: -1 };
+      if (normalized === 'low') return { thinkingBudget: 1024 };
+      if (normalized === 'medium') return { thinkingBudget: 8192 };
+      if (normalized === 'high') return { thinkingBudget: 24576 };
+    } else {
+      if (normalized === 'on') return { thinkingBudget: -1 };
+      if (normalized === 'low') return { thinkingBudget: 1024 };
+      if (normalized === 'medium') return { thinkingBudget: 8192 };
+      if (normalized === 'high') return { thinkingBudget: 32768 };
+    }
+  }
+
+  return null;
+}
+
+function supportsKimiToggle(provider, model) {
+  const normalizedProvider = String(provider || '').toLowerCase();
+  const lower = String(model || '').toLowerCase();
+
+  if (normalizedProvider === 'kimi-code') {
+    return lower === 'kimi-for-coding';
+  }
+
+  return lower.startsWith('kimi-k2') && !lower.includes('thinking');
+}
+
+function supportsDeepSeekToggle(model) {
+  const lower = String(model || '').toLowerCase();
+  return lower === 'deepseek-chat' || lower === 'deepseek-reasoner';
+}
+
+function isGroqGptOssReasoningModel(model) {
+  const lower = String(model || '').toLowerCase();
+  return lower === 'openai/gpt-oss-20b' || lower === 'openai/gpt-oss-120b';
+}
+
+function isGroqQwenReasoningModel(model) {
+  return String(model || '').toLowerCase() === 'qwen/qwen3-32b';
+}
+
+function isCerebrasGptOssReasoningModel(model) {
+  return String(model || '').toLowerCase() === 'gpt-oss-120b';
+}
+
+function isCerebrasGlmReasoningModel(model) {
+  return String(model || '').toLowerCase() === 'zai-glm-4.7';
+}
+
+function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
+  const normalizedProvider = String(provider || '').toLowerCase();
+  const normalizedValue = normalizeReasoningValue(reasoningValue);
+  const reasoningControl = getReasoningControl(normalizedProvider, model);
+
+  if (!reasoningControl || normalizedValue === 'default') {
+    return null;
+  }
+
+  if (normalizedProvider === 'zai') {
+    if (normalizedValue === 'off') return { thinking: { type: 'disabled' } };
+    return { thinking: { type: 'enabled' } };
+  }
+
+  if ((normalizedProvider === 'kimi' || normalizedProvider === 'kimi-code') && supportsKimiToggle(normalizedProvider, model)) {
+    if (normalizedValue === 'off') return { thinking: { type: 'disabled' } };
+    return { thinking: { type: 'enabled' } };
+  }
+
+  if (normalizedProvider === 'deepseek' && supportsDeepSeekToggle(model)) {
+    if (normalizedValue === 'off') return { thinking: { type: 'disabled' } };
+    return { thinking: { type: 'enabled' } };
+  }
+
+  if (normalizedProvider === 'groq') {
+    if (isGroqGptOssReasoningModel(model)) {
+      const effort = normalizedValue === 'on' ? 'medium' : normalizedValue;
+      if (!['low', 'medium', 'high'].includes(effort)) return null;
+      return {
+        reasoning_effort: effort,
+        include_reasoning: true,
+      };
+    }
+
+    if (isGroqQwenReasoningModel(model)) {
+      if (normalizedValue === 'off') return { reasoning_effort: 'none' };
+      return { reasoning_effort: 'default' };
+    }
+
+    return null;
+  }
+
+  if (normalizedProvider === 'openrouter') {
+    let effort = normalizedValue;
+    if (effort === 'on') {
+      effort = 'medium';
+    } else if (effort === 'off') {
+      effort = 'none';
+    }
+    return {
+      reasoning: {
+        effort,
+      },
+    };
+  }
+
+  if (normalizedProvider === 'cerebras') {
+    if (isCerebrasGptOssReasoningModel(model)) {
+      const effort = normalizedValue === 'on' ? 'medium' : normalizedValue;
+      if (!['low', 'medium', 'high'].includes(effort)) return null;
+      return { reasoning_effort: effort };
+    }
+
+    if (isCerebrasGlmReasoningModel(model)) {
+      if (normalizedValue === 'off') {
+        return { reasoning_effort: 'none' };
+      }
+      return null;
+    }
+  }
+
+  if (normalizedProvider === 'grokai') {
+    return null;
+  }
+
+  return null;
+}
+
 /**
  * Factory function to create the appropriate LLM adapter.
  * @param {string} provider The name of the AI provider.
@@ -4136,21 +4402,23 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
   switch (lowerCaseProvider) {
     case 'claude-code':
     case 'anthropic':
-      return new AnthropicAdapter(client, model, lowerCaseProvider);
+      return new AnthropicAdapter(client, model, lowerCaseProvider, options);
 
     case 'gemini':
     case 'gemini-cli':
-      return new GeminiAdapter(client, model);
+      return new GeminiAdapter(client, model, options);
 
-    case 'cerebras':
+    case 'cerebras': {
       console.log(`[LLM Adapter] Using CerebrasAdapter for model: ${model}`);
-      return new CerebrasAdapter(client, model);
+      const extraBody = buildOpenAiLikeReasoningExtraBody('cerebras', model, options.reasoningValue);
+      return new CerebrasAdapter(client, model, extraBody ? { extraBody } : {});
+    }
 
     case 'openai':
       // Check if this model requires the new Responses API (GPT-5, o-series)
       if (requiresResponsesApi(model)) {
         console.log(`[LLM Adapter] Using OpenAIResponsesAdapter for model: ${model} (Responses API)`);
-        return new OpenAIResponsesAdapter(client, model);
+        return new OpenAIResponsesAdapter(client, model, options);
       }
       return new OpenAiLikeAdapter(client, model);
 
@@ -4158,7 +4426,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
       // Codex models use the ChatGPT backend Responses API (different from standard OpenAI).
       if (requiresResponsesApi(model)) {
         console.log(`[LLM Adapter] Using CodexResponsesAdapter for codex model: ${model} (ChatGPT backend)`);
-        return new CodexResponsesAdapter(client, model);
+        return new CodexResponsesAdapter(client, model, options);
       }
       return new OpenAiLikeAdapter(client, model);
 
@@ -4170,22 +4438,20 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'local':
     case 'minimax':
     case 'openrouter':
-    case 'togetherai':
-      return new OpenAiLikeAdapter(client, model);
+    case 'togetherai': {
+      const extraBody = buildOpenAiLikeReasoningExtraBody(lowerCaseProvider, model, options.reasoningValue);
+      return new OpenAiLikeAdapter(client, model, extraBody ? { extraBody } : {});
+    }
 
     case 'zai': {
       // Z.AI GLM-5 has optional thinking mode.
       // Only send the thinking param when explicitly enabling it — omitting it
       // lets the API use its default behavior without risking rejection.
-      const modelMeta = getModelMetadata('zai', model);
-      const supportsReasoning = modelMeta?.reasoning === true;
-      const useThinking = supportsReasoning && options.reasoningEnabled;
-      if (supportsReasoning) {
-        console.log(`[LLM Adapter] Z.AI reasoning model: ${model}, thinking: ${useThinking ? 'enabled' : 'off (param omitted)'}`);
+      const extraBody = buildOpenAiLikeReasoningExtraBody('zai', model, options.reasoningValue);
+      if (getReasoningControl('zai', model)) {
+        console.log(`[LLM Adapter] Z.AI reasoning model: ${model}, selection: ${normalizeReasoningValue(options.reasoningValue)}`);
       }
-      return new OpenAiLikeAdapter(client, model, {
-        extraBody: useThinking ? { thinking: { type: 'enabled' } } : null,
-      });
+      return new OpenAiLikeAdapter(client, model, extraBody ? { extraBody } : {});
     }
 
     default:
