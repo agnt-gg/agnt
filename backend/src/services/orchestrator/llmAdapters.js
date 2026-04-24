@@ -646,7 +646,65 @@ Please carefully check the tool schema and ensure all parameters match the expec
             contentLength: accumulatedContent.length,
             reasoningContentLength: accumulatedReasoningContent.length,
             toolCallsCount: accumulatedToolCalls.length,
+            finishReason: finishReason || 'none',
           });
+
+          // Detect silent premature stream close: upstream (Kimi, Cloudflare, etc.)
+          // cleanly half-closes the HTTP connection mid-response. The for-await exits
+          // normally with no error — but no finish_reason arrived and the response is
+          // empty. Without this check we'd silently return an empty assistant message.
+          // Abort-triggered exits are expected (client disconnect) and must NOT retry.
+          if (!finishReason && !context.abortSignal?.aborted) {
+            const isEmpty =
+              accumulatedContent.length === 0 &&
+              accumulatedReasoningContent.length === 0 &&
+              accumulatedToolCalls.length === 0;
+
+            const hasIncompleteToolCallJson = accumulatedToolCalls.some((tc) => {
+              if (!tc?.function?.arguments) return false;
+              try { JSON.parse(tc.function.arguments); return false; } catch { return true; }
+            });
+
+            if (isEmpty) {
+              if (attempt < this.maxRetries) {
+                const delay = this.calculateDelay(attempt);
+                console.warn(
+                  `[Stream Retry] Stream closed with no finish_reason and empty response (attempt ${attempt + 1}/${this.maxRetries + 1}). ` +
+                  `Upstream likely dropped connection silently. Retrying in ${Math.round(delay)}ms`,
+                );
+                await this.sleep(delay);
+                continue; // retry the request
+              }
+              console.error(`[Stream Error] Stream closed prematurely with empty response after ${this.maxRetries + 1} attempts`);
+              return {
+                responseMessage: {
+                  role: 'assistant',
+                  content: `⚠️ **Connection dropped:** The provider closed the stream without sending a response. This is usually a transient network issue — please try again.`,
+                  tool_calls: [],
+                },
+                toolCalls: [],
+                recoveredFromError: true,
+                recoveredError: 'Stream ended with no finish_reason and empty response',
+              };
+            }
+
+            if (hasIncompleteToolCallJson && attempt < this.maxRetries) {
+              const delay = this.calculateDelay(attempt);
+              console.warn(
+                `[Stream Retry] Stream truncated mid-tool-call with no finish_reason (attempt ${attempt + 1}/${this.maxRetries + 1}). Retrying in ${Math.round(delay)}ms`,
+              );
+              await this.sleep(delay);
+              continue;
+            }
+
+            // Had content/tool_calls but no finish_reason — partial response. Log it
+            // but fall through and return what we have; forcing retry would discard
+            // usable output.
+            console.warn(
+              `[Stream Warning] Stream ended with no finish_reason but has partial output ` +
+              `(content: ${accumulatedContent.length}, tools: ${accumulatedToolCalls.length}). Returning partial response.`,
+            );
+          }
 
           // Debug: log actual content when suspiciously short (helps diagnose truncated responses)
           if (accumulatedContent.length < 20 || accumulatedReasoningContent.length < 20) {

@@ -314,6 +314,44 @@ GROQ_API_KEY=
 
 All outputs saved to `dist/` (gitignored).
 
+## Releasing a New Version
+
+AGNT uses **tag-driven releases**. Pushing a version tag triggers `.github/workflows/docker-build.yml` to build and publish multi-arch Docker images (Full + Lite) to `ghcr.io/agnt-gg/agnt`. Regular commits to `main` do **NOT** rebuild images — this is intentional to keep CI cheap and releases deliberate.
+
+### Release Commands
+
+```bash
+npm run release:patch    # Bug fix (0.5.4 → 0.5.5)
+npm run release:minor    # New feature (0.5.4 → 0.6.0)
+npm run release:major    # Breaking change (0.5.4 → 1.0.0)
+```
+
+Each command runs `npm version <bump>` (updates `package.json`, commits, creates annotated `v{version}` tag) then `git push --follow-tags` (pushes commit + tag in one go).
+
+### Release Workflow
+
+1. Commit all code changes first (`npm version` requires a clean working tree)
+2. Run the appropriate `npm run release:*` command
+3. Wait ~15 min for CI to build both variants (Full + Lite, multi-arch amd64 + arm64)
+4. Docker users can now pull the update:
+
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+
+   **Important:** `docker compose up -d` alone does NOT fetch new images if the tag already exists locally. Always `pull` first (or use `--pull always`).
+
+### Image Tags Published
+
+**Full variant:** `:latest`, `:full`, `:{version}`, `:{version}-full`, `:{major}.{minor}`, `:{major}.{minor}-full`, `:sha-{short}`
+
+**Lite variant:** `:lite`, `:{version}-lite`, `:{major}.{minor}-lite`, `:sha-lite-{short}`
+
+### When NOT to release
+
+Don't release for docs-only changes, internal refactors with no user-facing impact, or WIP commits. The tag should represent a meaningful user-facing change. If you need to rebuild without bumping, use the `workflow_dispatch` trigger from the GitHub Actions UI.
+
 ## Docker Support (Self-Hosting)
 
 AGNT can run in Docker for server deployments:
@@ -499,8 +537,14 @@ node build-plugin.js my-plugin         # Build plugin
 git status                             # Check changes
 git commit -m "feat: add feature"      # Professional commit
 
+# Releasing
+npm run release:patch                  # Bug fix bump + tag + push
+npm run release:minor                  # Feature bump + tag + push
+npm run release:major                  # Breaking change bump + tag + push
+
 # Docker
 docker-compose up -d                   # Start in Docker
+docker compose pull && docker compose up -d  # Update to latest image
 ```
 
 ## Claude Acknowledgments

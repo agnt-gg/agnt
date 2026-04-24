@@ -645,6 +645,56 @@ Build outputs are saved to the `dist/` directory:
 
 ---
 
+## 🚢 Releasing a New Version
+
+AGNT uses tag-driven releases: pushing a version tag triggers CI to build and publish multi-arch Docker images (`Full` + `Lite`) to `ghcr.io/agnt-gg/agnt`. Everyday commits to `main` do **not** rebuild images — keeping CI cheap and releases deliberate.
+
+### Quick release commands
+
+```bash
+# Bug fix / hotfix (0.5.4 → 0.5.5)
+npm run release:patch
+
+# New feature (0.5.4 → 0.6.0)
+npm run release:minor
+
+# Breaking change (0.5.4 → 1.0.0)
+npm run release:major
+```
+
+Each command:
+
+1. Runs `npm version <bump>` — updates `package.json`, creates a commit, creates an annotated `v{version}` tag
+2. Runs `git push --follow-tags` — pushes both the commit and the tag
+
+Before releasing, **commit all code changes first** (`npm version` requires a clean working tree).
+
+### What happens on tag push
+
+1. `.github/workflows/docker-build.yml` triggers
+2. Builds multi-arch (`linux/amd64` + `linux/arm64`) images for both variants
+3. Publishes to `ghcr.io/agnt-gg/agnt` with tags:
+   - `:latest`, `:full`, `:{version}`, `:{version}-full`, `:{major}.{minor}`, `:sha-{short}` (Full variant)
+   - `:lite`, `:{version}-lite`, `:{major}.{minor}-lite`, `:sha-lite-{short}` (Lite variant)
+4. Typical build time: ~15 minutes (both variants in parallel, GHA layer cache warm)
+
+### End-user update flow
+
+After the CI run completes, Docker users pull the update with:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+> **Note:** `docker compose up -d` alone does **not** fetch new images if the tag already exists locally. Always run `pull` first, or use `docker compose up -d --pull always`.
+
+### Manual trigger (no version bump)
+
+If you ever need to rebuild the current version without bumping (e.g. to re-run CI after fixing the workflow), use the `workflow_dispatch` trigger from the GitHub Actions UI.
+
+---
+
 ## 🔌 Plugin Development
 
 AGNT plugins are distributed as `.agnt` packages (ZIP archives with manifest + code + bundled deps). 25+ reference templates live in `backend/plugins/dev/` (Discord, Slack, Gmail, GitHub, Notion, Stripe, Twitter, YouTube, Dropbox, Google Drive/Sheets/Slides, OpenWeatherMap, Plaid, Firecrawl, Unsplash, Calculator, Dice Roller, and more).

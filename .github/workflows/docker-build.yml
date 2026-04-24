@@ -60,8 +60,8 @@ jobs:
         with:
           images: ${{ env.GHCR_IMAGE }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=full,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=full,enable=${{ startsWith(github.ref, 'refs/tags/') }}
             type=semver,pattern={{version}}
             type=semver,pattern={{version}}-full
             type=semver,pattern={{major}}.{{minor}}
@@ -124,7 +124,7 @@ jobs:
         with:
           images: ${{ env.GHCR_IMAGE }}
           tags: |
-            type=raw,value=lite,enable={{is_default_branch}}
+            type=raw,value=lite,enable=${{ startsWith(github.ref, 'refs/tags/') }}
             type=semver,pattern={{version}}-lite
             type=semver,pattern={{major}}.{{minor}}-lite
             type=sha,prefix=sha-lite-,format=short

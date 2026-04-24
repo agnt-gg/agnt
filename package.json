@@ -31,7 +31,10 @@
     "build:both": "npm run build && npm run build:lite",
     "build:both:win": "npm run build:win && npm run build:lite:win",
     "build:both:mac": "npm run build:mac && npm run build:lite:mac",
-    "build:both:linux": "npm run build:linux && npm run build:lite:linux"
+    "build:both:linux": "npm run build:linux && npm run build:lite:linux",
+    "release:patch": "npm version patch && git push --follow-tags",
+    "release:minor": "npm version minor && git push --follow-tags",
+    "release:major": "npm version major && git push --follow-tags"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.16.1",

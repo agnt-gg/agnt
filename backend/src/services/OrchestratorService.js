@@ -701,9 +701,31 @@ async function universalChatHandler(req, res, context = {}) {
   const streamAbortController = new AbortController();
   let isClientDisconnected = false;
 
+  // SSE keepalive: Docker bridge NAT, reverse proxies (nginx/traefik), and corporate
+  // middleboxes silently drop idle TCP connections after 30–120s. During long tool
+  // executions or slow LLM generation, no bytes flow on the SSE channel and the
+  // connection dies with no error. A periodic comment line (`:` prefix) is ignored
+  // by the EventSource spec but keeps the underlying socket warm.
+  const HEARTBEAT_INTERVAL_MS = 15000;
+  const heartbeatInterval = setInterval(() => {
+    if (isClientDisconnected || res.writableFinished) {
+      clearInterval(heartbeatInterval);
+      return;
+    }
+    try {
+      res.write(': keepalive\n\n');
+    } catch (e) {
+      console.warn('[Stream Heartbeat] Write failed, marking client disconnected:', e.message);
+      isClientDisconnected = true;
+      streamAbortController.abort();
+      clearInterval(heartbeatInterval);
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+
   // Use res.on('close') — fires when the *response* connection is closed by the client.
   // req.on('close') can fire prematurely once the request body is consumed.
   res.on('close', () => {
+    clearInterval(heartbeatInterval);
     if (!res.writableFinished) {
       isClientDisconnected = true;
       streamAbortController.abort();
@@ -2216,6 +2238,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }).catch(() => {});
     }
 
+    clearInterval(heartbeatInterval);
     sendEvent('done', { message: 'Stream ended' });
     res.end();
   }
