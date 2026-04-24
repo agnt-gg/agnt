@@ -904,6 +904,15 @@ export default {
           });
         }
 
+        // Re-kick status polling. The backend deactivates + reactivates any
+        // already-active workflow when its data is saved; during the deactivate
+        // phase our poller sees 'stopped' and self-terminates (see pollWorkflowStatus).
+        // Without this, the UI status stays stuck until the user navigates away
+        // and back (which re-runs loadWorkflow → poll).
+        this.activeWorkflowId = workflowId;
+        this.stopPolling();
+        this.pollWorkflowStatus();
+
         // Only save to the remote endpoint if isSharing is true
         if (isSharing) {
           const remoteEndpoint = this.getEndpoint('share');
