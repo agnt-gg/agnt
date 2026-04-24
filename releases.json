@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.5.5",
+      "date": "April 24, 2026",
+      "title": "Orchestrator Stream Stability & Model Refresh - AGNT v0.5.5",
+      "type": "patch",
+      "features": [
+        { "name": "One-Click Refresh Models Button on Chat & Settings Provider Selectors (Busts Frontend + Backend + Client-Version Caches)", "status": "new" },
+        { "name": "SSE Keepalive Heartbeat Survives Docker NAT & Proxy Idle Drops During Long Tool Executions", "status": "bug" },
+        { "name": "Silent Upstream Stream Close Detection for Kimi Code & OpenAI-Compatible Providers with Automatic Retry", "status": "bug" },
+        { "name": "Reliable :latest / :full / :lite Docker Image Tags on Every Version Release (GHCR)", "status": "bug" },
+        { "name": "npm run release:patch|minor|major Scripts for One-Command Tag-Driven Releases", "status": "new" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.4",
       "date": "April 23, 2026",
       "title": "Kimi Code Provider, Local File Previews & Artifacts Polish - AGNT v0.5.4",
@@ -360,6 +374,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-04-23T12:00:00Z"
+    "lastUpdated": "2026-04-24T12:00:00Z"
   }
 }
