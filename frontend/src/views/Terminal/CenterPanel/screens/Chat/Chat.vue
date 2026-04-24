@@ -847,7 +847,20 @@ export default {
 
     const getMessageStatus = (message) => {
       if (!message || message.role !== 'assistant') return null;
-      return messageStates.value[message.id] || null;
+      const local = messageStates.value[message.id];
+      if (local) return local;
+
+      // Local messageStates is wiped when Chat.vue unmounts. Fall back to the
+      // store's per-conversation streaming flag ONLY for the trailing message
+      // (last element overall — not last assistant) so we never flag a prior
+      // completed assistant message while a new user turn is in flight.
+      const convId = store.state.chat.activeConversationId;
+      const conv = convId ? store.state.chat.conversations[convId] : null;
+      if (!conv?.isStreaming) return null;
+      const msgs = displayMessages.value;
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== 'assistant' || last.id !== message.id) return null;
+      return { type: 'streaming', text: '' };
     };
 
     const updateSuggestionsWithAI = async (lastUserMessage, lastAssistantMessage) => {

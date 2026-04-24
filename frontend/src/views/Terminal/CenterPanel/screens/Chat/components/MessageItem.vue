@@ -1254,8 +1254,27 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
             const pre = codeBlock.parentElement;
             if (!pre) return;
 
-            codeBlock.setAttribute('data-buttons-added', 'true');
             const htmlCode = codeBlock.textContent || '';
+
+            // Guard: if morphdom inserted a fresh <pre> next to an existing
+            // preserved .html-inline-preview-wrapper for the same code, drop
+            // the duplicate instead of creating a second wrapper.
+            const adjacentWrapper =
+              (pre.previousElementSibling && pre.previousElementSibling.classList?.contains('html-inline-preview-wrapper')
+                ? pre.previousElementSibling
+                : null) ||
+              (pre.nextElementSibling && pre.nextElementSibling.classList?.contains('html-inline-preview-wrapper')
+                ? pre.nextElementSibling
+                : null);
+            if (adjacentWrapper) {
+              const existingCode = adjacentWrapper.querySelector('.html-inline-code code');
+              if (existingCode && (existingCode.textContent || '') === htmlCode) {
+                pre.remove();
+                return;
+              }
+            }
+
+            codeBlock.setAttribute('data-buttons-added', 'true');
 
             // Create a wrapper that replaces the <pre> block
             const wrapper = document.createElement('div');
