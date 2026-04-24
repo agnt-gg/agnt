@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.5.6",
+      "date": "April 25, 2026",
+      "title": "Per-Model Reasoning Controls, Atlas Cloud Plugin & Chat Rendering Fixes - AGNT v0.5.6",
+      "type": "patch",
+      "features": [
+        { "name": "Per-Model Reasoning Controls with Effort/Toggle UI for OpenAI (GPT-5, o-series), Anthropic (Claude 4.x), Gemini 2.5/3, Kimi, Kimi-Code, DeepSeek v4, Z.ai, Groq (GPT-OSS/Qwen3), Cerebras (GPT-OSS/GLM), OpenRouter, TogetherAI & xAI", "status": "new" },
+        { "name": "Conversations Snapping Back to Ungrouped After Every Save (INSERT OR REPLACE Wiping group_id on Content Output UPSERT)", "status": "bug" },
+        { "name": "HTML Inline Preview Wrapper Duplicating on Every Streaming Delta After Mid-Stream View Switch", "status": "bug" },
+        { "name": "Atlas Cloud Plugin with Image, Video, Upload & Chat Tools (Native Plugin)", "status": "new" },
+        { "name": "Collapsible Reasoning Display in Chat Message Items", "status": "new" },
+        { "name": "Workflow Forge Designer State Resets on New-Workflow Navigation & Status Polling Re-Kicks After Save", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.5",
       "date": "April 24, 2026",
       "title": "Orchestrator Stream Stability & Model Refresh - AGNT v0.5.5",
