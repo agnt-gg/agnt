@@ -3,9 +3,21 @@ import db from './database/index.js';
 class ContentOutputModel {
   static createOrUpdate(id, userId, workflowId, toolId, content, isShareable, contentType = 'html', conversationId = null, title = null) {
     return new Promise((resolve, reject) => {
+      // Use UPSERT (not INSERT OR REPLACE) so columns we don't touch — like group_id —
+      // aren't wiped back to their defaults on every save.
       db.run(
-        `INSERT OR REPLACE INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO content_outputs (id, user_id, workflow_id, tool_id, content, is_shareable, content_type, conversation_id, title, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(id) DO UPDATE SET
+           user_id = excluded.user_id,
+           workflow_id = excluded.workflow_id,
+           tool_id = excluded.tool_id,
+           content = excluded.content,
+           is_shareable = excluded.is_shareable,
+           content_type = excluded.content_type,
+           conversation_id = excluded.conversation_id,
+           title = excluded.title,
+           updated_at = CURRENT_TIMESTAMP`,
         [id, userId, workflowId || null, toolId || null, content, isShareable ? 1 : 0, contentType, conversationId, title],
         function (err) {
           if (err) reject(err);
