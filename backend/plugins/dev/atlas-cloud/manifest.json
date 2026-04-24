@@ -1,0 +1,427 @@
+{
+  "name": "atlas-cloud",
+  "version": "1.1.5",
+  "description": "Atlas Cloud unified AI API plugin for images, video, uploads, and chat using AGNT built-in API key auth injection. Fixes Wan image-to-video required image field handling.",
+  "author": "AGNT",
+  "icon": "atlas-cloud",
+  "tools": [
+    {
+      "type": "atlas-image",
+      "entryPoint": "./atlas-image.js",
+      "schema": {
+        "title": "Atlas Image",
+        "category": "action",
+        "type": "atlas-image",
+        "icon": "atlas-cloud",
+        "description": "Generate or edit an image on Atlas Cloud. Supports Seedream 4.5/5.0 Lite, Flux, GPT-Image-2, Nano Banana 2, Ideogram, Qwen-Image, Wan-2.7 and more.",
+        "authRequired": "apiKey",
+        "authProvider": "atlas-cloud",
+        "parameters": {
+          "model": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Atlas model ID",
+            "required": true,
+            "default": "bytedance/seedream-v5.0-lite"
+          },
+          "prompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Prompt",
+            "required": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional reference image URL for edit/I2I",
+            "required": false
+          },
+          "size": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "1K",
+              "2K",
+              "3K",
+              "4K"
+            ],
+            "default": "2K"
+          },
+          "aspectRatio": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "1:1",
+              "4:3",
+              "3:4",
+              "16:9",
+              "9:16",
+              "3:2",
+              "2:3",
+              "21:9"
+            ],
+            "default": "1:1"
+          },
+          "outputFormat": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "png",
+              "jpeg",
+              "webp"
+            ],
+            "default": "png"
+          },
+          "maxImages": {
+            "type": "number",
+            "inputType": "number",
+            "default": 1,
+            "description": "Number of images"
+          },
+          "seed": {
+            "type": "number",
+            "inputType": "number",
+            "required": false
+          },
+          "extraParams": {
+            "type": "object",
+            "inputType": "json",
+            "required": false,
+            "description": "Optional raw JSON merged into request body"
+          },
+          "pollTimeoutSec": {
+            "type": "number",
+            "inputType": "number",
+            "default": 180
+          },
+          "saveToDisk": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": true
+          }
+        },
+        "outputs": {
+          "predictionId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "imageUrls": {
+            "type": "array"
+          },
+          "imageRef": {
+            "type": "string"
+          },
+          "savedPath": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "atlas-video",
+      "entryPoint": "./atlas-video.js",
+      "schema": {
+        "title": "Atlas Video",
+        "category": "action",
+        "type": "atlas-video",
+        "icon": "atlas-cloud",
+        "description": "Generate video on Atlas Cloud. Supports Wan/Seedance/etc. Returns videoUrl and can extract/upload the final frame for clip chaining. Fixes checkbox boolean handling for audio.",
+        "authRequired": "apiKey",
+        "authProvider": "atlas-cloud",
+        "parameters": {
+          "model": {
+            "type": "string",
+            "inputType": "text",
+            "required": true,
+            "default": "alibaba/wan-2.7/image-to-video",
+            "description": "Atlas model ID"
+          },
+          "prompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "description": "Optional cinematic shot prompt. Wan I2V allows image-only generation, but a prompt is recommended."
+          },
+          "firstFrameUrl": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Public starting image URL. For Wan image-to-video this is sent as required field \"image\"."
+          },
+          "lastFrameUrl": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional ending image URL. For Wan image-to-video this is sent as \"last_image\"."
+          },
+          "firstFramePath": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional local image path to auto-upload"
+          },
+          "duration": {
+            "type": "number",
+            "inputType": "number",
+            "default": 5
+          },
+          "resolution": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "720P",
+              "1080P",
+              "480p",
+              "720p",
+              "1080p"
+            ],
+            "default": "1080P"
+          },
+          "aspectRatio": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "9:16",
+              "16:9",
+              "1:1",
+              "4:3",
+              "3:4"
+            ],
+            "default": "9:16"
+          },
+          "generateAudio": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "description": "Optional: request model-generated audio if the selected Atlas model supports it. Unchecked/false will not send generate_audio."
+          },
+          "seed": {
+            "type": "number",
+            "inputType": "number",
+            "required": false,
+            "default": -1
+          },
+          "extraParams": {
+            "type": "object",
+            "inputType": "json",
+            "required": false
+          },
+          "pollTimeoutSec": {
+            "type": "number",
+            "inputType": "number",
+            "default": 600
+          },
+          "saveToDisk": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": true
+          },
+          "savePath": {
+            "type": "string",
+            "inputType": "text",
+            "required": false
+          },
+          "negativePrompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "description": "Optional negative prompt. Sent as negative_prompt for models that support it."
+          },
+          "image": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Alias for firstFrameUrl. Sent as Atlas field \"image\"."
+          },
+          "lastImage": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Alias for lastFrameUrl. Sent as Atlas field \"last_image\"."
+          },
+          "video": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional source video URL for video continuation models."
+          },
+          "audio": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional driving audio URL. Sent as audio/audio_url."
+          },
+          "promptExtend": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": true,
+            "required": false,
+            "description": "Atlas prompt_extend flag for models that support it."
+          },
+          "extractLastFrame": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": true,
+            "required": false,
+            "description": "Extract the final frame from the generated video using local ffmpeg and return lastFramePath. Enabled by default."
+          },
+          "uploadLastFrame": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "required": false,
+            "description": "Upload the extracted final frame to Atlas Cloud and return lastFrameUrl for chaining into the next video call."
+          },
+          "lastFramePath": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional local output path for the extracted last-frame JPG."
+          }
+        },
+        "outputs": {
+          "predictionId": {
+            "type": "string",
+            "description": "Atlas prediction ID."
+          },
+          "status": {
+            "type": "string",
+            "description": "Prediction status."
+          },
+          "videoUrl": {
+            "type": "string",
+            "description": "Generated video URL returned by Atlas."
+          },
+          "savedPath": {
+            "type": "string",
+            "description": "Local path of the downloaded video when saveToDisk or extractLastFrame is enabled."
+          },
+          "lastFramePath": {
+            "type": "string",
+            "description": "Local JPG path of the extracted final frame when extractLastFrame is enabled."
+          },
+          "lastFrameUrl": {
+            "type": "string",
+            "description": "Uploaded URL of the extracted final frame when uploadLastFrame is enabled."
+          },
+          "lastFrameError": {
+            "type": "string",
+            "description": "Non-fatal ffmpeg/upload error if final-frame extraction fails."
+          },
+          "lastFrameDiagnostics": {
+            "type": "object",
+            "description": "Debug details showing whether extraction/upload was requested, attempted, and where the frame was written."
+          },
+          "durationSec": {
+            "type": "number",
+            "description": "Generated video duration, if available."
+          },
+          "cost": {
+            "type": "number",
+            "description": "Generation cost, if returned by Atlas."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Raw Atlas prediction response."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if generation/polling failed. Poll failures are returned as structured output instead of throwing when possible."
+          }
+        }
+      }
+    },
+    {
+      "type": "atlas-upload",
+      "entryPoint": "./atlas-upload.js",
+      "schema": {
+        "title": "Atlas Upload Media",
+        "category": "action",
+        "type": "atlas-upload",
+        "icon": "atlas-cloud",
+        "description": "Upload a local image/video file to Atlas Cloud and receive a temporary public URL.",
+        "authRequired": "apiKey",
+        "authProvider": "atlas-cloud",
+        "parameters": {
+          "filePath": {
+            "type": "string",
+            "inputType": "text",
+            "required": true,
+            "description": "Local file path"
+          }
+        },
+        "outputs": {
+          "url": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "atlas-chat",
+      "entryPoint": "./atlas-chat.js",
+      "schema": {
+        "title": "Atlas LLM Chat",
+        "category": "action",
+        "type": "atlas-chat",
+        "icon": "atlas-cloud",
+        "description": "OpenAI-compatible chat completions on Atlas Cloud.",
+        "authRequired": "apiKey",
+        "authProvider": "atlas-cloud",
+        "parameters": {
+          "model": {
+            "type": "string",
+            "inputType": "text",
+            "default": "deepseek-v3",
+            "required": true
+          },
+          "systemPrompt": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false
+          },
+          "userMessage": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": true
+          },
+          "temperature": {
+            "type": "number",
+            "inputType": "number",
+            "default": 0.7
+          },
+          "maxTokens": {
+            "type": "number",
+            "inputType": "number",
+            "default": 2048
+          }
+        },
+        "outputs": {
+          "content": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}
