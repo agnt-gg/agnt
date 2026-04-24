@@ -801,8 +801,7 @@ export default {
           if (isActiveView) {
             isProcessing.value = false;
             Object.keys(messageStates.value).forEach((msgId) => {
-              const msg = displayMessages.value.find((m) => m.id === msgId);
-              if (!msg || msg.content) delete messageStates.value[msgId];
+              delete messageStates.value[msgId];
             });
             focusInput();
           }
