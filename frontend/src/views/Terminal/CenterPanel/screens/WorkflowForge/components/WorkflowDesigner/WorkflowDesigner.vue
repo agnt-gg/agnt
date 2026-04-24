@@ -820,8 +820,10 @@ export default {
         }
       }
 
-      const activeWorkflowId = localStorage.getItem('activeWorkflow');
-      const workflowId = activeWorkflowId || generateUUID();
+      // Prefer the designer's in-memory id (set on load/new-workflow reset) so
+      // we don't save under a stale localStorage id if state got out of sync.
+      const storedWorkflowId = localStorage.getItem('activeWorkflow');
+      const workflowId = this.activeWorkflowId || storedWorkflowId || generateUUID();
       this.updateWorkflowName(newWorkflowName);
 
       console.log('🔄 Processing workflow data for storage...');
@@ -841,7 +843,7 @@ export default {
       console.log('✅ Workflow data processing complete');
 
       const localStorageState = {
-        id: activeWorkflowId,
+        id: workflowId,
         name: newWorkflowName,
         nodes: nodesForLocalStorage,
         edges: this.edges,

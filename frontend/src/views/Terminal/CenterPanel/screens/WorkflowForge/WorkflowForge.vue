@@ -511,10 +511,28 @@ export default {
         hasAttemptedLoad = false;
         hasInitializedConversation = false;
       } else if (!currentUrlId && workflowDesigner.value) {
-        // Navigated to blank workflow forge — clear old data
-        workflowDesigner.value.nodes = [];
-        workflowDesigner.value.edges = [];
-        workflowDesigner.value.workflowName = 'My Workflow';
+        // Navigated to blank workflow forge — fully reset designer state.
+        // WorkflowDesigner is kept alive, so its onMounted "new workflow" branch
+        // does not re-run. We must reset activeWorkflowId/status/polling/localStorage
+        // here, otherwise the previous workflow's id and running status leak into
+        // the new canvas (causing "already running" UI and save-time overwrites).
+        const designer = workflowDesigner.value;
+        if (typeof designer.stopPolling === 'function') {
+          designer.stopPolling();
+        }
+        designer.nodes = [];
+        designer.edges = [];
+        designer.workflowName = 'My Workflow';
+        designer.workflowStatus = null;
+        designer.nodeOutputs = {};
+        designer.nodeErrors = {};
+
+        const newId = generateUUID();
+        designer.activeWorkflowId = newId;
+        designer.workflowId = newId;
+        localStorage.removeItem('canvasState');
+        localStorage.setItem('activeWorkflow', newId);
+
         lastLoadedWorkflowId = null;
         hasAttemptedLoad = false;
         hasInitializedConversation = false;
