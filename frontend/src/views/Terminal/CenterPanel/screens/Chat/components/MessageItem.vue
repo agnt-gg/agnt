@@ -25,10 +25,27 @@
             <i class="fas fa-pen"></i>
           </button>
 
-          <div v-if="status" class="status-indicator" :class="status.type">
+          <div
+            v-if="status"
+            class="status-indicator"
+            :class="[status.type, { clickable: !!message.reasoning }]"
+            @click="message.reasoning ? toggleReasoning() : null"
+          >
             <div class="status-spinner"></div>
             <span class="status-text">{{ status.text }}</span>
+            <span v-if="message.reasoning" class="reasoning-chevron">{{ showReasoning ? '▾' : '▸' }}</span>
           </div>
+          <button
+            v-else-if="message.reasoning"
+            class="reasoning-toggle"
+            :class="{ expanded: showReasoning }"
+            @click="toggleReasoning"
+          >
+            <span class="reasoning-chevron">{{ showReasoning ? '▾' : '▸' }}</span>
+            <i class="fas fa-brain"></i>
+            <span>Reasoning</span>
+          </button>
+          <div v-if="showReasoning && message.reasoning" class="reasoning-content" ref="reasoningContentRef">{{ message.reasoning }}</div>
           <!-- Interleaved content: text and tool calls rendered in order -->
           <template v-for="(part, partIdx) in renderedParts" :key="partIdx">
             <div v-if="part.type === 'text' && part.html" class="message-text" v-morph-html="part.html"></div>
@@ -605,6 +622,23 @@ export default {
     );
 
     const messageRef = ref(null);
+    const reasoningContentRef = ref(null);
+
+    const showReasoning = ref(false);
+    const toggleReasoning = () => {
+      showReasoning.value = !showReasoning.value;
+    };
+
+    watch(
+      () => props.message.reasoning,
+      () => {
+        if (!showReasoning.value) return;
+        nextTick(() => {
+          const el = reasoningContentRef.value;
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      },
+    );
 
     // Edit message state
     const isEditing = ref(false);
@@ -2719,6 +2753,9 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
     return {
       messageRef,
+      reasoningContentRef,
+      showReasoning,
+      toggleReasoning,
       renderedParts,
       // Edit message
       isEditing,
@@ -3424,6 +3461,74 @@ span.nodeLabel p {
   font-size: 0.85em;
   font-weight: 500;
   color: var(--color-light-med-navy);
+}
+
+.status-indicator.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.status-indicator.clickable:hover {
+  background: rgba(127, 129, 147, 0.1);
+}
+
+.reasoning-chevron {
+  margin-left: auto;
+  font-size: 0.9em;
+  color: var(--color-light-med-navy);
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.status-indicator.clickable:hover .reasoning-chevron {
+  opacity: 1;
+}
+
+.reasoning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin: 4px 0;
+  border-radius: 6px;
+  background: rgba(127, 129, 147, 0.05);
+  border: 1px solid rgba(127, 129, 147, 0.15);
+  color: var(--color-light-med-navy);
+  font-size: 0.82em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reasoning-toggle:hover {
+  background: rgba(127, 129, 147, 0.1);
+  border-color: rgba(127, 129, 147, 0.25);
+}
+
+.reasoning-toggle.expanded {
+  background: rgba(127, 129, 147, 0.08);
+}
+
+.reasoning-toggle .fa-brain {
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.reasoning-content {
+  margin: 8px 0 12px;
+  padding: 12px 14px;
+  border-left: 2px solid rgba(127, 129, 147, 0.25);
+  background: rgba(127, 129, 147, 0.04);
+  border-radius: 0 6px 6px 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.82em;
+  line-height: 1.55;
+  color: var(--color-light-med-navy);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 /* HTML Inline Preview */
