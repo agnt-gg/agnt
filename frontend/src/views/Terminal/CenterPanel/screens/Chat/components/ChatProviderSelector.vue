@@ -35,7 +35,10 @@
 
         <!-- Model Selector -->
         <div class="selector-group">
-          <label>Model:</label>
+          <div class="selector-label-row">
+            <label>Model:</label>
+            <RefreshModelsButton :provider="selectedProvider" size="sm" variant="icon" />
+          </div>
           <CustomSelect
             ref="modelSelect"
             :options="modelOptions"
@@ -107,6 +110,7 @@ import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 import CustomProviderDialog from '../../Settings/components/ProviderSelector/CustomProviderDialog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
@@ -123,6 +127,7 @@ export default {
     CustomSelect,
     CustomProviderDialog,
     Tooltip,
+    RefreshModelsButton,
   },
   props: {
     isOpen: {
@@ -622,6 +627,13 @@ export default {
   font-size: 0.85em;
   font-weight: 500;
   color: var(--color-light-med-navy);
+}
+
+.selector-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .connection-status {

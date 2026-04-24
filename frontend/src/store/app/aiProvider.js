@@ -485,6 +485,60 @@ export default {
       }
     },
 
+    // Full three-layer bust (frontend localStorage + backend 60-min cache +
+    // client-versions for CLI-subscription providers) followed by a fresh
+    // dispatch so Vuex state ends up with the current model list. Used by the
+    // RefreshModelsButton component.
+    async hardRefreshProviderModels({ dispatch }, { provider }) {
+      if (!provider) throw new Error('provider required');
+      const providerLower = resolveProviderKey(provider);
+      if (!providerLower) throw new Error(`Unknown provider: ${provider}`);
+
+      // 1. Clear frontend localStorage caches for this provider.
+      localStorage.removeItem(`${provider}_models`);
+      localStorage.removeItem(`${provider}_metadata`);
+
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      // 2. Bust client-version cache for CLI-subscription providers so the
+      //    subsequent /models call uses the freshest upstream CLI version.
+      const CLI_KEYS = ['openai-codex', 'claude-code', 'kimi-code'];
+      if (CLI_KEYS.includes(providerLower)) {
+        try {
+          await fetch(`${API_CONFIG.BASE_URL}/admin/client-versions/refresh`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ keys: [providerLower] }),
+          });
+        } catch (err) {
+          console.warn(`[hardRefresh] client-version refresh failed for ${providerLower}:`, err.message);
+        }
+      }
+
+      // 3. Bust the backend 60-minute in-process models cache and refetch.
+      const refreshRes = await fetch(
+        `${API_CONFIG.BASE_URL}/models/${providerLower}/models/refresh`,
+        { method: 'POST', headers },
+      );
+      if (!refreshRes.ok) {
+        const errBody = await refreshRes.json().catch(() => ({}));
+        throw new Error(
+          errBody?.error || `Backend refresh failed: HTTP ${refreshRes.status}`,
+        );
+      }
+
+      // 4. Re-dispatch the per-provider fetch with forceRefresh so Vuex state
+      //    picks up the fresh list (frontend cache is already cleared above).
+      const actionFullName = PROVIDER_FETCH_ACTIONS[provider];
+      if (actionFullName) {
+        const actionName = actionFullName.replace('aiProvider/', '');
+        return dispatch(actionName, { forceRefresh: true });
+      }
+      return dispatch('fetchProviderModels', { provider, forceRefresh: true });
+    },
+
     // Per-provider fetch actions (thin wrappers for backward compatibility)
     async fetchOpenRouterModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'OpenRouter', forceRefresh });

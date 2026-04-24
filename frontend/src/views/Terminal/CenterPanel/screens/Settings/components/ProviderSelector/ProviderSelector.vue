@@ -21,6 +21,8 @@
         @option-selected="handleModelSelected"
       />
 
+      <RefreshModelsButton :provider="selectedProvider" size="md" variant="icon+label" />
+
       <Tooltip text="Add Custom Provider" width="auto">
         <button @click="openCustomProviderDialog" class="btn-add-provider">
           <i class="fas fa-plus"></i>
@@ -95,6 +97,7 @@ import CustomProviderDialog from './CustomProviderDialog.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
 
 export default {
@@ -102,6 +105,7 @@ export default {
     CustomSelect,
     CustomProviderDialog,
     Tooltip,
+    RefreshModelsButton,
   },
   setup() {
     const providerSelect = ref(null);
