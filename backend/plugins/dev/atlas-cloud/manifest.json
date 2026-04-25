@@ -1,7 +1,7 @@
 {
   "name": "atlas-cloud",
-  "version": "1.1.5",
-  "description": "Atlas Cloud unified AI API plugin for images, video, uploads, and chat using AGNT built-in API key auth injection. Fixes Wan image-to-video required image field handling.",
+  "version": "1.1.7",
+  "description": "Atlas Cloud unified AI API plugin for images, video, uploads, and chat using AGNT built-in API key auth injection. Strips unsupported extras for gpt-image-2-developer models to avoid Apimart unmarshal 500s while keeping prompt at top level.",
   "author": "AGNT",
   "icon": "atlas-cloud",
   "tools": [

@@ -18,17 +18,32 @@ class AtlasImageTool {
       const { model, prompt, imageUrl, size, aspectRatio, outputFormat, maxImages, seed, extraParams, pollTimeoutSec, saveToDisk } = params;
       if (!model) throw new Error('Parameter "model" is required');
       if (!prompt) throw new Error('Parameter "prompt" is required');
-      const body = {
-        model,
-        prompt,
-        ...(size ? { size } : {}),
-        ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
-        ...(outputFormat ? { output_format: outputFormat } : {}),
-        ...(maxImages ? { max_images: Number(maxImages) } : {}),
-        ...(seed ? { seed: Number(seed) } : {}),
-        ...(imageUrl ? { image_url: imageUrl, reference_images: [imageUrl] } : {}),
-        ...parseExtra(extraParams),
-      };
+      // openai/gpt-image-2-developer/* expects only `prompt` at top level. Sending
+      // size/aspect_ratio/output_format/max_images/seed causes the upstream model
+      // to emit a response shape Atlas's Go parser cannot unmarshal, surfacing as
+      // HTTP 500 "cannot unmarshal string into Go struct field *** of type int"
+      // during polling. Strip extras for this model family; user can still pass
+      // anything via extraParams JSON if a future variant accepts more fields.
+      const isMinimalParamsModel = /(^|\/)openai\/gpt-image-2/i.test(String(model));
+      const extras = parseExtra(extraParams);
+      const body = isMinimalParamsModel
+        ? {
+            model,
+            prompt,
+            ...(imageUrl ? { image_url: imageUrl, reference_images: [imageUrl] } : {}),
+            ...extras,
+          }
+        : {
+            model,
+            prompt,
+            ...(size ? { size } : {}),
+            ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+            ...(outputFormat ? { output_format: outputFormat } : {}),
+            ...(maxImages ? { max_images: Number(maxImages) } : {}),
+            ...(seed ? { seed: Number(seed) } : {}),
+            ...(imageUrl ? { image_url: imageUrl, reference_images: [imageUrl] } : {}),
+            ...extras,
+          };
       const submit = await atlasFetch(`${BASE_API_V1}/model/generateImage`, { apiKey, body });
       const predictionId = submit?.data?.id || submit?.id;
       if (!predictionId) throw new Error(`No prediction ID returned: ${JSON.stringify(submit)}`);
