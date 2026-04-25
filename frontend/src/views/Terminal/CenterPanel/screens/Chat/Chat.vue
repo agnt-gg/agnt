@@ -59,7 +59,12 @@
                 :runningTools="getRunningToolsForMessage(message)"
                 :imageCache="imageCache"
                 :dataCache="dataCache"
-                :avatarUrl="message.agentIcon && (message.agentIcon.startsWith('http') || message.agentIcon.startsWith('data:') || message.agentIcon.startsWith('/')) ? message.agentIcon : null"
+                :avatarUrl="
+                  message.agentIcon &&
+                  (message.agentIcon.startsWith('http') || message.agentIcon.startsWith('data:') || message.agentIcon.startsWith('/'))
+                    ? message.agentIcon
+                    : null
+                "
                 @toggle-tool="toggleToolCallExpansion"
                 @provider-connected="handleProviderConnected"
                 @edit-message="handleEditMessage"
@@ -400,24 +405,45 @@ export default {
     // Known context windows for common models (static data, no API call needed)
     const MODEL_CONTEXT_WINDOWS = {
       // OpenAI
-      'gpt-5.2': 400000, 'gpt-5.1': 400000, 'gpt-5': 400000, 'gpt-5-mini': 400000, 'gpt-5-nano': 400000,
-      'o4-mini': 200000, 'o3': 200000, 'o3-mini': 200000,
-      'gpt-4.1': 1000000, 'gpt-4.1-mini': 1000000, 'gpt-4.1-nano': 1000000,
-      'gpt-4o': 128000, 'gpt-4o-mini': 128000,
+      'gpt-5.2': 400000,
+      'gpt-5.1': 400000,
+      'gpt-5': 400000,
+      'gpt-5-mini': 400000,
+      'gpt-5-nano': 400000,
+      'o4-mini': 200000,
+      o3: 200000,
+      'o3-mini': 200000,
+      'gpt-4.1': 1000000,
+      'gpt-4.1-mini': 1000000,
+      'gpt-4.1-nano': 1000000,
+      'gpt-4o': 128000,
+      'gpt-4o-mini': 128000,
       // Anthropic
-      'claude-opus-4-6': 200000, 'claude-sonnet-4-6': 200000,
-      'claude-opus-4-5-20251101': 200000, 'claude-sonnet-4-5-20250929': 200000, 'claude-haiku-4-5-20251001': 200000,
-      'claude-sonnet-4-20250514': 200000, 'claude-opus-4-20250514': 200000,
-      'claude-3-5-sonnet-20241022': 200000, 'claude-3-5-haiku-20241022': 200000,
+      'claude-opus-4-6': 200000,
+      'claude-sonnet-4-6': 200000,
+      'claude-opus-4-5-20251101': 200000,
+      'claude-sonnet-4-5-20250929': 200000,
+      'claude-haiku-4-5-20251001': 200000,
+      'claude-sonnet-4-20250514': 200000,
+      'claude-opus-4-20250514': 200000,
+      'claude-3-5-sonnet-20241022': 200000,
+      'claude-3-5-haiku-20241022': 200000,
       // Google
-      'gemini-3.1-pro-preview': 1048576, 'gemini-3-flash-preview': 1048576,
-      'gemini-2.5-pro': 1048576, 'gemini-2.5-flash': 1048576, 'gemini-2.5-flash-lite': 1048576,
+      'gemini-3.1-pro-preview': 1048576,
+      'gemini-3-flash-preview': 1048576,
+      'gemini-2.5-pro': 1048576,
+      'gemini-2.5-flash': 1048576,
+      'gemini-2.5-flash-lite': 1048576,
       // Grok
-      'grok-4-0709': 256000, 'grok-3': 131072, 'grok-3-mini': 131072,
+      'grok-4-0709': 256000,
+      'grok-3': 131072,
+      'grok-3-mini': 131072,
       // Groq
-      'llama-3.3-70b-versatile': 131072, 'llama-3.1-8b-instant': 131072,
+      'llama-3.3-70b-versatile': 131072,
+      'llama-3.1-8b-instant': 131072,
       // DeepSeek
-      'deepseek-chat': 128000, 'deepseek-reasoner': 128000,
+      'deepseek-chat': 128000,
+      'deepseek-reasoner': 128000,
       // Cerebras
       'llama3.1-8b': 131072,
     };
@@ -457,7 +483,7 @@ export default {
     const initialSuggestions = [
       { id: 1, text: 'What can you do?', icon: '🤔' },
       { id: 2, text: 'List all available tools', icon: '🛠️' },
-      { id: 4, text: "List files in './'", icon: '📁' },
+      { id: 4, text: 'What skills do you have?', icon: '📁' },
     ];
     const suggestions = ref([...initialSuggestions]);
     const isLoadingSuggestions = ref(false);
@@ -508,7 +534,8 @@ export default {
               message: {
                 id: `help-${Date.now()}`,
                 role: 'assistant',
-                content: `**Available Commands**\n\n` +
+                content:
+                  `**Available Commands**\n\n` +
                   `- \`/new-chat\` — Start a new conversation\n` +
                   `- \`/clear\` — Clear current conversation\n` +
                   `- \`/export\` — Save conversation to outputs\n` +
@@ -578,17 +605,19 @@ export default {
 
       // If multiple agents are mentioned, send requests in parallel
       const agents = mentionedAgents && mentionedAgents.length > 0 ? mentionedAgents : [null];
-      await Promise.all(agents.map(agent =>
-        store.dispatch('chat/startStreamingConversation', {
-          userInput: input,
-          files: files,
-          provider: store.state.aiProvider.selectedProvider,
-          model: store.state.aiProvider.selectedModel,
-          reasoningValue: store.state.aiProvider.reasoningValue,
-          reasoningEnabled: store.state.aiProvider.reasoningEnabled,
-          mentionedAgent: agent,
-        })
-      ));
+      await Promise.all(
+        agents.map((agent) =>
+          store.dispatch('chat/startStreamingConversation', {
+            userInput: input,
+            files: files,
+            provider: store.state.aiProvider.selectedProvider,
+            model: store.state.aiProvider.selectedModel,
+            reasoningValue: store.state.aiProvider.reasoningValue,
+            reasoningEnabled: store.state.aiProvider.reasoningEnabled,
+            mentionedAgent: agent,
+          }),
+        ),
+      );
     };
 
     // Edit & resend: truncate from edited message, re-add with new content, resend
@@ -646,7 +675,7 @@ export default {
         }
         case 'reasoning_delta': {
           if (!isActiveView) break;
-          const msg = displayMessages.value.find(m => m.id === data.assistantMessageId);
+          const msg = displayMessages.value.find((m) => m.id === data.assistantMessageId);
           const rName = msg?.agentName || 'Annie';
           messageStates.value[data.assistantMessageId] = {
             type: 'thinking',
@@ -774,9 +803,7 @@ export default {
               ms.totalCacheMetrics.cacheCreationTokens += data.cacheMetrics.cacheCreationTokens || 0;
               ms.totalCacheMetrics.uncachedTokens += data.cacheMetrics.uncachedTokens || 0;
               const totalIn = ms.totalTokenUsage.inputTokens;
-              ms.totalCacheMetrics.hitRate = totalIn > 0
-                ? ((ms.totalCacheMetrics.cacheReadTokens / totalIn) * 100).toFixed(1)
-                : '0';
+              ms.totalCacheMetrics.hitRate = totalIn > 0 ? ((ms.totalCacheMetrics.cacheReadTokens / totalIn) * 100).toFixed(1) : '0';
             }
             // Only count events that actually carried token usage. Some
             // agent_execution_completed events fire without tokenUsage (e.g.
@@ -1088,7 +1115,7 @@ export default {
           currentConversationId.value = convId;
 
           terminalLines.value.push(
-            `Loaded conversation from ${new Date(conversationData.createdAt).toLocaleDateString()} (${conversationData.messages.length} messages)`
+            `Loaded conversation from ${new Date(conversationData.createdAt).toLocaleDateString()} (${conversationData.messages.length} messages)`,
           );
 
           // Re-enable animations after DOM settles
@@ -1170,10 +1197,7 @@ export default {
 
       // PHASE 2: Check local server result (may already be resolved or will resolve soon)
       // Use a short race so we don't wait the full 1s timeout if LM Studio isn't running
-      await Promise.race([
-        localServerPromise,
-        new Promise(r => setTimeout(r, 200)),
-      ]);
+      await Promise.race([localServerPromise, new Promise((r) => setTimeout(r, 200))]);
 
       if (isLocalServerRunning.value) {
         await autoSwitchToLocalIfNeeded();
@@ -1268,10 +1292,7 @@ export default {
       // PHASE 3: Fire-and-forget background data (don't block the UI)
       // Note: userStats, workflows (summary), and goals are already fetched by initializeStore
       // Only fetch active workflows for status updates and await the version promise
-      Promise.allSettled([
-        store.dispatch('workflows/fetchWorkflows', { activeOnly: true }),
-        versionPromise,
-      ]);
+      Promise.allSettled([store.dispatch('workflows/fetchWorkflows', { activeOnly: true }), versionPromise]);
 
       // Set up polling and event listeners
       cleanup.setInterval(() => {
@@ -1439,7 +1460,7 @@ export default {
           await nextTick();
           scrollToTop();
         }
-      }
+      },
     );
 
     // Fetch the conversation's aggregated monitoring summary from the backend
@@ -1458,10 +1479,7 @@ export default {
         const token = localStorage.getItem('token');
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const response = await fetch(
-          `${API_CONFIG.BASE_URL}/executions/conversation/${encodeURIComponent(convId)}/summary`,
-          { headers }
-        );
+        const response = await fetch(`${API_CONFIG.BASE_URL}/executions/conversation/${encodeURIComponent(convId)}/summary`, { headers });
         if (!response.ok) return;
         const summary = await response.json();
         if (!summary || !summary.executionsCount || !summary.latest) return;
@@ -1524,7 +1542,7 @@ export default {
         }
         hydrateMonitoringFromDb(newId);
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     const handleScreenChange = (screenName) => {
@@ -1677,7 +1695,7 @@ export default {
           tutorialWithCallback.startTutorial.value = true;
         }
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     // Watch store's streaming states to update local processing state
@@ -1700,7 +1718,7 @@ export default {
           });
         }
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     // Watch for remote streaming to show thinking state in message bubble
@@ -1709,7 +1727,7 @@ export default {
       (remoteStreaming) => {
         if (remoteStreaming) {
           // Find the last assistant message (the one being streamed from other tab)
-          const lastAssistantMsg = [...displayMessages.value].reverse().find(m => m.role === 'assistant');
+          const lastAssistantMsg = [...displayMessages.value].reverse().find((m) => m.role === 'assistant');
           if (lastAssistantMsg) {
             const rsName = lastAssistantMsg.agentName || 'Annie';
             messageStates.value[lastAssistantMsg.id] = {
@@ -1719,7 +1737,7 @@ export default {
           }
         }
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     // Sync conversation ID from store
@@ -1729,7 +1747,7 @@ export default {
         if (newId) {
           currentConversationId.value = newId;
         }
-      }
+      },
     );
 
     // Auto-scroll to bottom when new messages arrive (if user is already near bottom)
@@ -1745,7 +1763,7 @@ export default {
           nextTick(() => scrollToBottom());
         }
       },
-      { deep: true }
+      { deep: true },
     );
 
     return {
@@ -1911,11 +1929,15 @@ export default {
 }
 
 .message-enter-active {
-  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+  transition:
+    opacity 0.3s ease-out,
+    transform 0.3s ease-out;
 }
 
 .message-leave-active {
-  transition: opacity 0.3s ease-in, transform 0.3s ease-in;
+  transition:
+    opacity 0.3s ease-in,
+    transform 0.3s ease-in;
 }
 
 .message-enter-from {
