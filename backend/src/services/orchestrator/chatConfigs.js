@@ -178,7 +178,7 @@ export const CHAT_CONFIGS = {
         context._frozenCustomInstructions = customInstructionsSection;
       }
 
-      return getOrchestratorSystemContent(skillsCatalogSection, memorySection, customInstructionsSection);
+      return getOrchestratorSystemContent(skillsCatalogSection, memorySection, customInstructionsSection, { provider: context.normalizedProvider });
     },
     maxToolRounds: 100,
     responseType: 'stream',

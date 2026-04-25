@@ -1110,6 +1110,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
     }
     let finalToolSchemas = Array.from(uniqueToolMap.values());
 
+    // Claude Code OAuth: Anthropic's third-party-app classifier flags mcp_client's
+    // shape as a wrapper framework and routes the request to "extra usage" billing
+    // (returns 400 invalid_request_error). Strip it on this provider only.
+    if (normalizedProvider === 'claude-code') {
+      finalToolSchemas = finalToolSchemas.filter((t) => t.function?.name !== 'mcp_client');
+    }
+
     // Generate assistant message ID early (needed for image extraction events)
     const assistantMessageId = `msg-asst-${Date.now()}`;
 
@@ -1159,6 +1166,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
     if (contextResult.wasManaged) {
       console.log(`Context automatically managed: ${contextResult.originalTokens} -> ${contextResult.managedTokens} tokens`);
+      messages = contextResult.messages;
       sendEvent('context_managed', {
         originalTokens: contextResult.originalTokens,
         managedTokens: contextResult.managedTokens,
@@ -1921,7 +1929,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // stable to preserve prompt cache hits. Between turns, the prefix changes anyway.
       let loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
       const utilization = loopContextResult.contextWindow > 0
-        ? (loopContextResult.originalTokens / loopContextResult.contextWindow)
+        ? (loopContextResult.totalRequestTokens / loopContextResult.contextWindow)
         : 0;
       if (utilization < 0.95 && loopContextResult.wasManaged) {
         // Skip context management — utilization is below 95%, preserve cache
@@ -1930,6 +1938,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
       if (loopContextResult.wasManaged) {
         console.log(`[Tool Loop] Context managed: ${loopContextResult.originalTokens} -> ${loopContextResult.managedTokens} tokens`);
+        messages = loopContextResult.messages;
         sendEvent('context_managed', {
           originalTokens: loopContextResult.originalTokens,
           managedTokens: loopContextResult.managedTokens,
@@ -2042,6 +2051,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
         });
 
         const followUpContext = manageContext(messages, model, finalToolSchemas, normalizedProvider);
+        if (followUpContext.wasManaged) {
+          messages = followUpContext.messages;
+        }
         const followUpResponse = await adapter.callStream(
           followUpContext.messages,
           [], // No tools - force a text-only response

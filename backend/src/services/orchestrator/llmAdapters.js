@@ -129,6 +129,43 @@ function findLastInjectableUserIndex(messages) {
 }
 
 /**
+ * Sanitize tool schemas for Kimi / Kimi Code (Moonshot).
+ *
+ * Moonshot's validator rejects any `type: "array"` parameter that is missing
+ * an `items` definition with: "tools.function.parameters is not a valid
+ * moonshot flavored json schema". This walks each tool's parameters and
+ * inserts a permissive `items: { type: "string" }` default. Scoped to Kimi
+ * only — other OpenAI-compatible providers tolerate the looser schemas, and
+ * applying this fix globally previously broke them (see reverted ecb5cf2).
+ */
+function sanitizeKimiToolSchemas(tools) {
+  if (!tools || tools.length === 0) return tools;
+
+  const fixSchema = (obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    if (obj.type === 'array' && !obj.items) {
+      obj.items = { type: 'string' };
+    }
+    if (obj.properties && typeof obj.properties === 'object') {
+      for (const prop of Object.values(obj.properties)) {
+        fixSchema(prop);
+      }
+    }
+    if (obj.items && typeof obj.items === 'object') {
+      fixSchema(obj.items);
+    }
+  };
+
+  return tools.map((tool) => {
+    const cloned = JSON.parse(JSON.stringify(tool));
+    if (cloned.function?.parameters) {
+      fixSchema(cloned.function.parameters);
+    }
+    return cloned;
+  });
+}
+
+/**
  * Base class for LLM provider adapters.
  * Defines the interface that all adapters must implement.
  */
@@ -231,6 +268,20 @@ class OpenAiLikeAdapter extends BaseAdapter {
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
     // Extra body params for providers that need custom parameters (e.g., Z.AI thinking mode)
     this.extraBody = options.extraBody || null;
+    // Provider key — used to gate provider-specific request shaping (e.g., Kimi schema sanitization)
+    this.provider = options.provider || null;
+  }
+
+  /**
+   * Apply provider-specific tool schema fixes. Currently only Kimi/Kimi Code
+   * (Moonshot) requires sanitization — every other OpenAI-compatible provider
+   * passes tools through unchanged.
+   */
+  _prepareTools(tools) {
+    if (this.provider === 'kimi' || this.provider === 'kimi-code') {
+      return sanitizeKimiToolSchemas(tools);
+    }
+    return tools;
   }
 
   /**
@@ -304,6 +355,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
   async call(messages, tools) {
     let lastError;
     let currentMessages = messages;
+    const preparedTools = this._prepareTools(tools);
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
       currentMessages = currentMessages.map((msg) => (msg?.role === 'developer' ? { ...msg, role: 'system' } : msg));
@@ -314,8 +366,8 @@ class OpenAiLikeAdapter extends BaseAdapter {
         const requestParams = {
           model: this.model,
           messages: currentMessages,
-          tools: tools.length > 0 ? tools : undefined,
-          tool_choice: tools.length > 0 ? 'auto' : undefined,
+          tools: preparedTools.length > 0 ? preparedTools : undefined,
+          tool_choice: preparedTools.length > 0 ? 'auto' : undefined,
         };
         // Pass extra body params for providers that need them (e.g., Z.AI thinking)
         if (this.extraBody) {
@@ -348,7 +400,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
         if (this.isTokenLimitError(error)) {
           console.warn(`Token limit error detected, attempting context reduction (attempt ${attempt + 1})`);
 
-          const contextResult = manageContext(currentMessages, this.model, tools);
+          const contextResult = manageContext(currentMessages, this.model, tools, this.provider);
           if (contextResult.wasManaged && contextResult.managedTokens < contextResult.originalTokens) {
             console.log(`Context reduced: ${contextResult.originalTokens} -> ${contextResult.managedTokens} tokens`);
             currentMessages = contextResult.messages;
@@ -514,13 +566,15 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
         const abortSignal = context.abortSignal;
 
+        // Apply provider-specific schema fixes (Kimi/Moonshot strict validator)
+        let effectiveTools = this._prepareTools(tools);
+
         // Z.AI GLM-5 network_error workaround: large tool payloads (121KB+) cause
         // Z.AI's server to abort during inference. Limit tools to reduce payload size.
         // TODO: Remove this cap once Z.AI fixes GLM-5 tool handling
-        let effectiveTools = tools;
-        if (this.model === 'glm-5' && tools.length > 20) {
-          console.warn(`[GLM-5 Workaround] Reducing tools from ${tools.length} to 20 to avoid Z.AI network_error`);
-          effectiveTools = tools.slice(0, 20);
+        if (this.model === 'glm-5' && effectiveTools.length > 20) {
+          console.warn(`[GLM-5 Workaround] Reducing tools from ${effectiveTools.length} to 20 to avoid Z.AI network_error`);
+          effectiveTools = effectiveTools.slice(0, 20);
         }
 
         const requestParams = {
@@ -912,7 +966,7 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
         if (this.isTokenLimitError(error)) {
           console.warn(`Token limit error detected in streaming, attempting context reduction (attempt ${attempt + 1})`);
 
-          const contextResult = manageContext(currentMessages, this.model, tools);
+          const contextResult = manageContext(currentMessages, this.model, tools, this.provider);
           if (contextResult.wasManaged && contextResult.managedTokens < contextResult.originalTokens) {
             console.log(`Context reduced: ${contextResult.originalTokens} -> ${contextResult.managedTokens} tokens`);
             currentMessages = contextResult.messages;
@@ -1299,7 +1353,7 @@ class AnthropicAdapter extends BaseAdapter {
           }
           systemParam = systemBlocks;
           usedBreakpoints = 1;
-        } else {
+        } else if (systemPrompt) {
           systemParam = [
             {
               type: 'text',
@@ -1308,6 +1362,11 @@ class AnthropicAdapter extends BaseAdapter {
             },
           ];
           usedBreakpoints = 1;
+        } else {
+          // No system prompt — omit `system` entirely. Sending an empty text
+          // block with cache_control triggers Anthropic's
+          // "cache_control cannot be set for empty text blocks" error.
+          systemParam = undefined;
         }
 
         // Breakpoint on last tool — 1h because the tools array grows
@@ -1325,11 +1384,11 @@ class AnthropicAdapter extends BaseAdapter {
 
         const requestParams = {
           model: this.model,
-          system: systemParam,
           messages: conversationMessages,
           tools: anthropicTools,
           max_tokens: this._getMaxTokensForModel(), // Model-specific max tokens
         };
+        if (systemParam) requestParams.system = systemParam;
 
         const reasoningConfig = buildAnthropicReasoningConfig(this.model, this.reasoningValue);
         if (reasoningConfig?.thinking) {
@@ -2171,7 +2230,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
         if (this.isTokenLimitError(error)) {
           console.warn(`Token limit error detected, attempting context reduction (attempt ${attempt + 1})`);
 
-          const contextResult = manageContext(currentMessages, this.model, tools);
+          const contextResult = manageContext(currentMessages, this.model, tools, this.provider || 'cerebras');
           if (contextResult.wasManaged && contextResult.managedTokens < contextResult.originalTokens) {
             console.log(`Context reduced: ${contextResult.originalTokens} -> ${contextResult.managedTokens} tokens`);
             currentMessages = contextResult.messages;
@@ -2444,7 +2503,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
         if (this.isTokenLimitError(error)) {
           console.warn(`Token limit error detected in Cerebras streaming (attempt ${attempt + 1})`);
 
-          const contextResult = manageContext(currentMessages, this.model, tools);
+          const contextResult = manageContext(currentMessages, this.model, tools, this.provider || 'cerebras');
           if (contextResult.wasManaged && contextResult.managedTokens < contextResult.originalTokens) {
             console.log(`Context reduced: ${contextResult.originalTokens} -> ${contextResult.managedTokens} tokens`);
             currentMessages = contextResult.messages;
@@ -4417,7 +4476,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
   const isCustom = await CustomOpenAIProviderService.isCustomProvider(provider);
   if (isCustom) {
     console.log(`[LLM Adapter] Using OpenAI-like adapter for custom provider: ${provider}`);
-    return new OpenAiLikeAdapter(client, model);
+    return new OpenAiLikeAdapter(client, model, { provider });
   }
 
   // Resolve provider key (handles display names like "Z-AI" → "zai")
@@ -4436,7 +4495,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'cerebras': {
       console.log(`[LLM Adapter] Using CerebrasAdapter for model: ${model}`);
       const extraBody = buildOpenAiLikeReasoningExtraBody('cerebras', model, options.reasoningValue);
-      return new CerebrasAdapter(client, model, extraBody ? { extraBody } : {});
+      return new CerebrasAdapter(client, model, { provider: lowerCaseProvider, ...(extraBody ? { extraBody } : {}) });
     }
 
     case 'openai':
@@ -4445,7 +4504,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
         console.log(`[LLM Adapter] Using OpenAIResponsesAdapter for model: ${model} (Responses API)`);
         return new OpenAIResponsesAdapter(client, model, options);
       }
-      return new OpenAiLikeAdapter(client, model);
+      return new OpenAiLikeAdapter(client, model, { provider: lowerCaseProvider });
 
     case 'openai-codex':
       // Codex models use the ChatGPT backend Responses API (different from standard OpenAI).
@@ -4453,7 +4512,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
         console.log(`[LLM Adapter] Using CodexResponsesAdapter for codex model: ${model} (ChatGPT backend)`);
         return new CodexResponsesAdapter(client, model, options);
       }
-      return new OpenAiLikeAdapter(client, model);
+      return new OpenAiLikeAdapter(client, model, { provider: lowerCaseProvider });
 
     case 'deepseek':
     case 'grokai':
@@ -4465,7 +4524,11 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'openrouter':
     case 'togetherai': {
       const extraBody = buildOpenAiLikeReasoningExtraBody(lowerCaseProvider, model, options.reasoningValue);
-      return new OpenAiLikeAdapter(client, model, extraBody ? { extraBody } : {});
+      // Pass provider key for Kimi/Kimi Code so their strict Moonshot schema validator
+      // gets pre-sanitized tool parameters (array fields require an `items` definition).
+      const adapterOptions = { provider: lowerCaseProvider };
+      if (extraBody) adapterOptions.extraBody = extraBody;
+      return new OpenAiLikeAdapter(client, model, adapterOptions);
     }
 
     case 'zai': {
@@ -4476,7 +4539,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
       if (getReasoningControl('zai', model)) {
         console.log(`[LLM Adapter] Z.AI reasoning model: ${model}, selection: ${normalizeReasoningValue(options.reasoningValue)}`);
       }
-      return new OpenAiLikeAdapter(client, model, extraBody ? { extraBody } : {});
+      return new OpenAiLikeAdapter(client, model, { provider: lowerCaseProvider, ...(extraBody ? { extraBody } : {}) });
     }
 
     default:

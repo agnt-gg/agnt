@@ -7,10 +7,15 @@ import { getModelMetadata } from '../services/ai/providerConfigs.js';
 
 // Rough token estimation (1 token ≈ 3.5 characters for more accurate estimation)
 const CHARS_PER_TOKEN = 3.5;
+// Provider tokenizers count JSON structure, tool-call payloads, multimodal blocks,
+// and schema wrappers differently. Bias high so context management triggers before
+// the provider's hard limit instead of a few tokens after it.
+const TOKEN_ESTIMATE_SAFETY_FACTOR = 1.12;
+const MESSAGE_OVERHEAD_TOKENS = 12;
 
 // Fallback token limit when model metadata isn't available
 const DEFAULT_TOKEN_LIMIT = 128000;
-const RESPONSE_BUFFER = 4000;
+const RESPONSE_BUFFER = 8000;
 
 /**
  * Estimate token count for text
@@ -20,7 +25,47 @@ function estimateTokens(text) {
   if (typeof text === 'object') {
     text = JSON.stringify(text);
   }
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
+  return Math.ceil((text.length / CHARS_PER_TOKEN) * TOKEN_ESTIMATE_SAFETY_FACTOR);
+}
+
+function estimateSerializedTokens(value) {
+  if (value === undefined || value === null) return 0;
+  try {
+    return estimateTokens(JSON.stringify(value));
+  } catch {
+    return estimateTokens(String(value));
+  }
+}
+
+function estimateContentTokens(content) {
+  if (!content) return 0;
+
+  if (typeof content === 'string') {
+    return estimateTokens(content);
+  }
+
+  if (Array.isArray(content)) {
+    return content.reduce((sum, block) => {
+      if (!block) return sum;
+      if (typeof block === 'string') return sum + estimateTokens(block);
+
+      // Common text-bearing blocks: OpenAI, Anthropic, and Gemini wrappers.
+      if (typeof block.text === 'string') return sum + estimateTokens(block.text);
+      if (block.content !== undefined) return sum + estimateContentTokens(block.content);
+
+      // Multimodal blocks are easy to undercount because payloads usually live
+      // under provider-specific fields instead of `text`.
+      if (block.image_url?.url) return sum + estimateTokens(block.image_url.url);
+      if (block.source?.data) return sum + estimateTokens(block.source.data);
+      if (block.inlineData?.data) return sum + estimateTokens(block.inlineData.data);
+
+      // Tool-use blocks include input JSON under `input`; unknown blocks still
+      // cost tokens when serialized into the provider request.
+      return sum + estimateSerializedTokens(block);
+    }, 0);
+  }
+
+  return estimateSerializedTokens(content);
 }
 
 /**
@@ -44,23 +89,23 @@ function estimateMessagesTokens(messages) {
   if (!Array.isArray(messages)) return 0;
 
   return messages.reduce((total, message) => {
-    let messageTokens = 0;
+    if (!message || typeof message !== 'object') return total;
 
-    if (message.content) {
-      if (typeof message.content === 'string') {
-        messageTokens += estimateTokens(message.content);
-      } else if (Array.isArray(message.content)) {
-        // Anthropic format
-        messageTokens += message.content.reduce((sum, block) => {
-          if (block.text) return sum + estimateTokens(block.text);
-          if (block.content) return sum + estimateTokens(block.content);
-          return sum;
-        }, 0);
-      }
-    }
+    let messageTokens = estimateContentTokens(message.content);
 
-    // Add overhead for role, metadata, etc.
-    messageTokens += 10;
+    // Gemini vision injection uses `parts`; OpenAI/Anthropic use `content`.
+    messageTokens += estimateContentTokens(message.parts);
+
+    // Assistant tool call arguments can be huge and were previously invisible
+    // to context management even though providers count them in the request.
+    messageTokens += estimateSerializedTokens(message.tool_calls);
+    messageTokens += estimateSerializedTokens(message.function_call);
+    messageTokens += estimateTokens(message.reasoning_content || '');
+
+    // Add overhead for role, name, tool_call_id, and provider framing.
+    messageTokens += MESSAGE_OVERHEAD_TOKENS;
+    if (message.name) messageTokens += estimateTokens(message.name);
+    if (message.tool_call_id) messageTokens += estimateTokens(message.tool_call_id);
 
     return total + messageTokens;
   }, 0);
@@ -90,6 +135,56 @@ function truncateContent(content, maxTokens) {
 
   const truncated = stringified.substring(0, targetChars - 100);
   return truncated + '\n[Object truncated due to length]';
+}
+
+function truncateMessagePayload(message, maxTokens) {
+  const truncateStructuredContent = (content) => {
+    if (!content) return content;
+
+    if (typeof content === 'string') {
+      return truncateContent(content, maxTokens);
+    }
+
+    if (Array.isArray(content)) {
+      const blockBudget = Math.max(100, Math.floor(maxTokens / Math.max(1, content.length)));
+      return content.map((block) => {
+        if (!block || typeof block !== 'object') return block;
+        const next = { ...block };
+
+        if (typeof next.text === 'string' && estimateTokens(next.text) > blockBudget) {
+          next.text = truncateContent(next.text, blockBudget);
+        }
+        if (typeof next.content === 'string' && estimateTokens(next.content) > blockBudget) {
+          next.content = truncateContent(next.content, blockBudget);
+        } else if (next.content && typeof next.content === 'object' && estimateSerializedTokens(next.content) > blockBudget) {
+          next.content = truncateContent(JSON.stringify(next.content), blockBudget);
+        }
+        if (next.functionResponse?.response && estimateSerializedTokens(next.functionResponse.response) > blockBudget) {
+          next.functionResponse = {
+            ...next.functionResponse,
+            response: {
+              success: false,
+              _truncated: true,
+              message: truncateContent(JSON.stringify(next.functionResponse.response), blockBudget),
+            },
+          };
+        }
+
+        return next;
+      });
+    }
+
+    return truncateContent(JSON.stringify(content), maxTokens);
+  };
+
+  const next = { ...message };
+  if (next.content && estimateContentTokens(next.content) > maxTokens) {
+    next.content = truncateStructuredContent(next.content);
+  }
+  if (next.parts && estimateContentTokens(next.parts) > maxTokens) {
+    next.parts = truncateStructuredContent(next.parts);
+  }
+  return next;
 }
 
 /**
@@ -174,7 +269,9 @@ function summarizeMessages(messages, maxSummaryTokens = 500) {
     : '';
   const summaryContent = `[Previous conversation: ${discardedUnits.length} message groups were summarized to fit context.${toolList}${topicList} The conversation continues below with recent context.]`;
 
-  const summaryMessage = { role: 'system', content: summaryContent };
+  // Use a user-role summary so provider adapters that extract a single system
+  // prompt do not silently drop the compressed conversation context.
+  const summaryMessage = { role: 'user', content: summaryContent };
   const recentMessages = keptUnits.flat();
 
   return [systemMessage, summaryMessage, ...recentMessages].filter(Boolean);
@@ -214,15 +311,12 @@ function manageContext(messages, model, tools = [], provider = null) {
         return message;
       }
 
-      if (message.content && typeof message.content === 'string') {
-        const messageTokens = estimateTokens(message.content);
+      if (message.content || message.parts) {
+        const messageTokens = estimateContentTokens(message.content) + estimateContentTokens(message.parts);
         // Tool messages get aggressive truncation (they're often huge JSON blobs)
-        const maxTokensForRole = message.role === 'tool' ? 1000 : 2000;
+        const maxTokensForRole = (message.role === 'tool' || (message.role === 'user' && Array.isArray(message.content))) ? 1000 : 2000;
         if (messageTokens > maxTokensForRole) {
-          return {
-            ...message,
-            content: truncateContent(message.content, maxTokensForRole),
-          };
+          return truncateMessagePayload(message, maxTokensForRole);
         }
       }
       return message;
@@ -295,8 +389,8 @@ function manageContext(messages, model, tools = [], provider = null) {
   // Per-component breakdown for UI reporting. Each request to the LLM
   // actually contains system + tools + non-system messages (not just
   // `managedTokens`, which is the full messages array estimate).
-  const systemMsg = managedMessages.find((m) => m.role === 'system');
-  const systemTokens = systemMsg ? estimateMessagesTokens([systemMsg]) : 0;
+  const systemMessages = managedMessages.filter((m) => m.role === 'system');
+  const systemTokens = estimateMessagesTokens(systemMessages);
   const nonSystemMessages = managedMessages.filter((m) => m.role !== 'system');
   const messagesTokens = estimateMessagesTokens(nonSystemMessages);
   const totalRequestTokens = systemTokens + toolTokens + messagesTokens;
