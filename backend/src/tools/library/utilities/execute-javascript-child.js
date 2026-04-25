@@ -1,9 +1,17 @@
-import { VM } from 'vm2';
+import vm from 'node:vm';
 import fetch from 'node-fetch';
 import { Blob } from 'node:buffer';
 import { TextEncoder, TextDecoder } from 'util';
 import crypto from 'crypto';
 import AuthManager from '../../../services/auth/AuthManager.js';
+
+// Note: this is an API-surface restriction, not a security boundary. The
+// curated `sandbox` object below limits which globals are visible to user code,
+// and the parent forks this child so a crash here can't take down the backend.
+// Code authored elsewhere by the same operator can still escape the context
+// (vm2's stronger claim was the reason it was used originally and the reason
+// it's now unmaintained). AGNT's local-first threat model — code is written
+// by the user running their own backend — makes node:vm the right fit.
 
 const sendResult = (result) => {
   process.send(result);
@@ -22,56 +30,53 @@ const handleError = (error) => {
 process.on('message', (message) => {
   const { code, inputData = {}, workflowContext = {} } = message;
 
-  const vm = new VM({
-    timeout: 55000,
-    sandbox: {
-      console: {
-        log: (...args) => console.log('Script log:', ...args),
-        error: (...args) => console.error('Script error:', ...args),
-      },
-      context: {
-        ...(workflowContext.DB || {}),
-        resolveTemplate: (template) => {
-          return template.replace(/{{(.*?)}}/g, (match, p1) => {
-            return inputData[p1.trim()] || null;
-          });
-        },
-      },
-      workflowContext,
-      inputData,
-      fetch,
-      btoa: (data) => Buffer.from(data).toString('base64'),
-      atob: (data) => Buffer.from(data, 'base64').toString(),
-      Blob,
-      TextEncoder,
-      TextDecoder,
-      FileReader: class FileReader {
-        constructor() {
-          this.onload = null;
-        }
-        readAsText(blob) {
-          blob.text().then((text) => {
-            if (this.onload) this.onload({ target: { result: text } });
-          });
-        }
-        readAsArrayBuffer(blob) {
-          blob.arrayBuffer().then((buffer) => {
-            if (this.onload) this.onload({ target: { result: buffer } });
-          });
-        }
-      },
-      setTimeout,
-      clearTimeout,
-      setInterval,
-      clearInterval,
-      URL,
-      URLSearchParams,
-      Uint8Array,
-      ArrayBuffer,
-      crypto,
-      AuthManager,
+  const sandbox = {
+    console: {
+      log: (...args) => console.log('Script log:', ...args),
+      error: (...args) => console.error('Script error:', ...args),
     },
-  });
+    context: {
+      ...(workflowContext.DB || {}),
+      resolveTemplate: (template) => {
+        return template.replace(/{{(.*?)}}/g, (match, p1) => {
+          return inputData[p1.trim()] || null;
+        });
+      },
+    },
+    workflowContext,
+    inputData,
+    fetch,
+    btoa: (data) => Buffer.from(data).toString('base64'),
+    atob: (data) => Buffer.from(data, 'base64').toString(),
+    Blob,
+    TextEncoder,
+    TextDecoder,
+    FileReader: class FileReader {
+      constructor() {
+        this.onload = null;
+      }
+      readAsText(blob) {
+        blob.text().then((text) => {
+          if (this.onload) this.onload({ target: { result: text } });
+        });
+      }
+      readAsArrayBuffer(blob) {
+        blob.arrayBuffer().then((buffer) => {
+          if (this.onload) this.onload({ target: { result: buffer } });
+        });
+      }
+    },
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    URL,
+    URLSearchParams,
+    Uint8Array,
+    ArrayBuffer,
+    crypto,
+    AuthManager,
+  };
 
   const wrappedCode = `
     (async () => {
@@ -83,7 +88,19 @@ process.on('message', (message) => {
     })()
   `;
 
-  vm.run(wrappedCode)
+  // node:vm `timeout` only stops the synchronous portion of the script. Once
+  // code hits an `await`, that timer no longer applies — the outer 58s
+  // setTimeout below catches runaway async chains.
+  let scriptResult;
+  try {
+    const ctx = vm.createContext(sandbox);
+    scriptResult = vm.runInContext(wrappedCode, ctx, { timeout: 55000 });
+  } catch (err) {
+    handleError(err);
+    return;
+  }
+
+  Promise.resolve(scriptResult)
     .then((result) => {
       sendResult({
         success: true,
