@@ -4458,6 +4458,8 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'deepseek':
     case 'grokai':
     case 'groq':
+    case 'chutes':
+    case 'chutes-e2ee':
     case 'kimi':
     case 'kimi-code':
     case 'local':

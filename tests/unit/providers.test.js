@@ -39,7 +39,7 @@ describe('Provider Configs', () => {
       });
 
       it('should have a valid sdkType', () => {
-        const validTypes = ['openai', 'anthropic', 'gemini', 'cerebras'];
+        const validTypes = ['openai', 'anthropic', 'gemini', 'cerebras', 'chutes-e2ee'];
         assert.ok(validTypes.includes(config.sdkType), `Invalid sdkType: ${config.sdkType}`);
       });
 

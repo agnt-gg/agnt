@@ -538,6 +538,96 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 
+  // ─────────────────────────── CHUTES ───────────────────────────
+  {
+    key: 'chutes',
+    name: 'Chutes',
+    baseURL: 'https://llm.chutes.ai/v1',
+    sdkType: 'openai',
+    authScheme: 'bearer',
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true },
+    },
+    recommendedModels: [
+      'deepseek-ai/DeepSeek-V3.1-TEE',
+      'deepseek-ai/DeepSeek-R1-TEE',
+      'unsloth/Llama-4-Maverick-17B-128E-Instruct-GGUF',
+      'zai-org/GLM-4.7-TEE',
+    ],
+    fallbackModels: [
+      'deepseek-ai/DeepSeek-V3.1-TEE',
+      'deepseek-ai/DeepSeek-R1-TEE',
+      'deepseek-ai/DeepSeek-V3.1',
+      'deepseek-ai/DeepSeek-R1',
+      'unsloth/Llama-4-Maverick-17B-128E-Instruct-GGUF',
+      'unsloth/Llama-4-Scout-17B-16E-Instruct',
+      'zai-org/GLM-4.7-TEE',
+      'Qwen/Qwen3-235B-A22B-FP8',
+      'meta-llama/Llama-3.3-70B-Instruct',
+      'mistralai/Mistral-Small-3.2-24B-Instruct-2506',
+    ],
+    modelMetadata: {
+      'deepseek-ai/DeepSeek-V3.1-TEE': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: false },
+      'deepseek-ai/DeepSeek-R1-TEE': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: true },
+      'deepseek-ai/DeepSeek-V3.1': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: false },
+      'deepseek-ai/DeepSeek-R1': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: true },
+      'unsloth/Llama-4-Maverick-17B-128E-Instruct-GGUF': { contextWindow: 1048576, maxOutputTokens: 32768, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: false },
+      'zai-org/GLM-4.7-TEE': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: false },
+    },
+    modelTransform: (raw) => ({
+      id: raw.id,
+      name: raw.id,
+      description: raw.description || '',
+      contextLength: raw.context_length || 0,
+      confidentialCompute: raw.confidential_compute || false,
+      createdAt: raw.created,
+    }),
+    modelFilter: (m) => !!m.id && !m.id.toLowerCase().includes('embed'),
+    compat: {},
+    sdkOptions: {},
+  },
+
+  // ─────────────────────────── CHUTES E2EE ───────────────────────────
+  // Uses native ML-KEM-768 + HKDF-SHA256 + ChaCha20-Poly1305 encryption.
+  // Only TEE (Trusted Execution Environment) models are supported.
+  {
+    key: 'chutes-e2ee',
+    name: 'Chutes (E2EE)',
+    baseURL: 'https://llm.chutes.ai/v1',
+    sdkType: 'chutes-e2ee',
+    authScheme: 'bearer',
+    e2eeApiBase: 'https://llm.chutes.ai',
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true },
+    },
+    recommendedModels: [
+      'deepseek-ai/DeepSeek-V3.1-TEE',
+      'deepseek-ai/DeepSeek-R1-TEE',
+      'zai-org/GLM-4.7-TEE',
+    ],
+    fallbackModels: [
+      'deepseek-ai/DeepSeek-V3.1-TEE',
+      'deepseek-ai/DeepSeek-R1-TEE',
+      'zai-org/GLM-4.7-TEE',
+    ],
+    modelMetadata: {
+      'deepseek-ai/DeepSeek-V3.1-TEE': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: false },
+      'deepseek-ai/DeepSeek-R1-TEE': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: true },
+      'zai-org/GLM-4.7-TEE': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: null, outputCostPer1M: null, supportsVision: false, supportsTools: true, reasoning: false },
+    },
+    modelTransform: (raw) => ({
+      id: raw.id,
+      name: raw.id,
+      description: raw.description || '',
+      contextLength: raw.context_length || 0,
+      confidentialCompute: raw.confidential_compute || false,
+      createdAt: raw.created,
+    }),
+    modelFilter: (m) => !!m.id && (m.confidential_compute === true || m.id.toUpperCase().endsWith('-TEE')),
+    compat: {},
+    sdkOptions: {},
+  },
+
   // ─────────────────────────── ZAI ───────────────────────────
   {
     key: 'zai',

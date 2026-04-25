@@ -10,6 +10,7 @@ import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { getProviderConfig } from './providerConfigs.js';
 import { createCchFetch } from './claudeBillingHeader.js';
 import { getClientIdentity, getClientVersion } from './clientVersions.js';
+import { ChutesE2EEClient } from './ChutesE2EETransport.js';
 
 // ── Gemini OAuth Proxy ──────────────────────────────────────────────
 // Lightweight wrapper that mimics the GoogleGenAI SDK's client interface
@@ -235,6 +236,10 @@ async function _createClientFromConfig(config, accessToken) {
 
     case 'cerebras':
       client = new Cerebras({ apiKey: accessToken, ...sdkOpts });
+      break;
+
+    case 'chutes-e2ee':
+      client = new ChutesE2EEClient(accessToken, config.e2eeApiBase || 'https://llm.chutes.ai');
       break;
 
     case 'openai':
