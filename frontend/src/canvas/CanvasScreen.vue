@@ -221,7 +221,16 @@ import { useElectron, electronUtils } from '@/composables/useElectron';
 // Each section has one sidebar icon and one or more sub-tabs in the toolbar.
 const MAIN_SECTIONS = [
   { id: 'chat', icon: 'fas fa-comments', label: 'Chat', screens: [{ screen: 'ChatScreen', label: 'CHAT' }] },
-  { id: 'dashboard', icon: 'fas fa-tachometer-alt', label: 'Dashboard', screens: [{ screen: 'DashboardScreen', label: 'DASHBOARD' }] },
+  {
+    id: 'dashboard',
+    icon: 'fas fa-tachometer-alt',
+    label: 'Dashboard',
+    screens: [
+      { screen: 'DashboardScreen', label: 'DASHBOARD' },
+      { screen: 'GoalsScreen', label: 'GOALS' },
+      { screen: 'TracesScreen', label: 'TRACES' },
+    ],
+  },
   {
     id: 'agents',
     icon: 'fas fa-robot',
@@ -255,8 +264,6 @@ const MAIN_SECTIONS = [
     icon: 'fas fa-flask',
     label: 'Lab',
     screens: [
-      { screen: 'GoalsScreen', label: 'GOALS' },
-      { screen: 'TracesScreen', label: 'TRACES' },
       { screen: 'SkillsScreen', label: 'SKILLS' },
       { screen: 'MemoryScreen', label: 'MEMORY' },
       { screen: 'ExperimentsScreen', label: 'EVOLUTION' },
