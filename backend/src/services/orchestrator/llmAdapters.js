@@ -5,7 +5,7 @@ import { manageContext } from '../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
-import { getProviderConfig, getReasoningControl } from '../ai/providerConfigs.js';
+import { getModelMetadata, getProviderConfig, getReasoningControl } from '../ai/providerConfigs.js';
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 
 /**
@@ -255,6 +255,14 @@ class OpenAiLikeAdapter extends BaseAdapter {
    * passes tools through unchanged.
    */
   _prepareTools(tools) {
+    if (this.provider === 'chutes') {
+      const metadata = getModelMetadata('chutes', this.model);
+      if (metadata?.supportsTools === false) {
+        console.warn(`[Chutes] Model '${this.model}' does not support tool calling; sending request without tools.`);
+        return [];
+      }
+    }
+
     if (this.provider === 'kimi' || this.provider === 'kimi-code') {
       return sanitizeKimiToolSchemas(tools);
     }
@@ -4496,6 +4504,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'groq':
     case 'kimi':
     case 'kimi-code':
+    case 'chutes':
     case 'local':
     case 'minimax':
     case 'openrouter':

@@ -169,6 +169,15 @@ const actions = {
           instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
           localOnly: true,
         },
+        {
+          id: 'chutes',
+          name: 'Chutes',
+          icon: 'chutes',
+          categories: ['AI'],
+          connectionType: 'apikey',
+          instructions: 'Chutes.ai E2EE inference. Add your Chutes API key in Settings > API Keys.',
+          localOnly: false,
+        },
       ];
 
       const existingIds = new Set(remoteProviders.map((p) => p.id));
@@ -210,6 +219,15 @@ const actions = {
           connectionType: 'oauth',
           instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
           localOnly: true,
+        },
+        {
+          id: 'chutes',
+          name: 'Chutes',
+          icon: 'chutes',
+          categories: ['AI'],
+          connectionType: 'apikey',
+          instructions: 'Chutes.ai E2EE inference. Add your Chutes API key in Settings > API Keys.',
+          localOnly: false,
         },
       ]);
     }

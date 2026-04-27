@@ -10,6 +10,7 @@ import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { getProviderConfig } from './providerConfigs.js';
 import { createCchFetch } from './claudeBillingHeader.js';
 import { getClientIdentity, getClientVersion } from './clientVersions.js';
+import ChutesE2EEFetchTransport from './chutes/ChutesE2EEFetchTransport.js';
 
 // ── Gemini OAuth Proxy ──────────────────────────────────────────────
 // Lightweight wrapper that mimics the GoogleGenAI SDK's client interface
@@ -246,6 +247,11 @@ async function _createClientFromConfig(config, accessToken) {
       // Only set baseURL if it's not the default OpenAI URL
       if (config.baseURL && config.baseURL !== 'https://api.openai.com/v1') {
         clientOpts.baseURL = config.baseURL;
+      }
+      // Chutes requires a custom fetch transport that encrypts/decrypts E2EE payloads.
+      if (config.key === 'chutes' && config.e2ee === true) {
+        const transport = new ChutesE2EEFetchTransport({ apiKey: accessToken });
+        clientOpts.fetch = transport.fetch();
       }
       client = new OpenAI(clientOpts);
     }
