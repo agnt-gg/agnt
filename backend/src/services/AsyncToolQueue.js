@@ -19,6 +19,7 @@ function stripControlParams(args) {
   delete clean._interval;
   delete clean._stopAfter;
   delete clean._duration;
+  delete clean._delayFirst;
   return clean;
 }
 
@@ -89,11 +90,12 @@ class AsyncToolQueue {
     const interval = execution.functionArgs._interval;
     const stopAfter = execution.functionArgs._stopAfter;
     const duration = execution.functionArgs._duration;
+    const delayFirst = execution.functionArgs._delayFirst === true;
 
     // Clean args for actual tool execution (strip ALL control params)
     const cleanArgs = stripControlParams(execution.functionArgs);
 
-    log(`[AsyncToolQueue] Started: ${execution.functionName} (${executionId})${interval ? ` | PERIODIC: every ${interval}s, stop=${stopAfter || '∞'}, dur=${duration || '∞'}min` : ''}`);
+    log(`[AsyncToolQueue] Started: ${execution.functionName} (${executionId})${interval ? ` | PERIODIC: every ${interval}s, stop=${stopAfter || '∞'}, dur=${duration || '∞'}min${delayFirst ? ', delayFirst' : ''}` : ''}`);
 
     broadcastToUser(execution.userId, RealtimeEvents.ASYNC_TOOL_STARTED, {
       executionId,
@@ -114,6 +116,7 @@ class AsyncToolQueue {
           intervalSeconds: interval,
           stopAfter,
           durationMinutes: duration,
+          delayFirst,
         });
       } else {
         // SINGLE EXECUTION with abort support
@@ -202,7 +205,7 @@ class AsyncToolQueue {
    * Execute a tool periodically/repeatedly
    */
   async executePeriodicTool(executionId, executeFunction, cleanArgs, progressCallback, options) {
-    const { intervalSeconds, stopAfter, durationMinutes } = options;
+    const { intervalSeconds, stopAfter, durationMinutes, delayFirst } = options;
     const execution = this.executions.get(executionId);
     if (!execution) return;
 
@@ -251,8 +254,10 @@ class AsyncToolQueue {
       }
     };
 
-    // Run first iteration immediately
-    await runIteration();
+    // Run first iteration immediately, unless delayFirst is set (silent heartbeat use case)
+    if (!delayFirst) {
+      await runIteration();
+    }
 
     // Schedule subsequent iterations if not already done/cancelled
     if (execution.status !== 'cancelled' && !execution.abortController.signal.aborted) {

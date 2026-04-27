@@ -13,6 +13,7 @@ Every tool supports async/background execution via built-in parameters:
 - \`_interval\`: seconds → Re-run tool every N seconds (requires _executeAsync)
 - \`_stopAfter\`: integer → Stop after N iterations (requires _interval)
 - \`_duration\`: minutes → Stop after N minutes total (requires _interval)
+- \`_delayFirst\`: true → Skip the immediate first run; wait one full _interval first (silent heartbeat). Requires _interval.
 - \`_estimatedMinutes\`: number → Optional duration estimate for UI
 
 ## When to use async:
@@ -30,6 +31,9 @@ Every tool supports async/background execution via built-in parameters:
 
 **Scrape a site every 5 minutes for 1 hour:**
 { "url": "https://example.com", "_executeAsync": true, "_interval": 300, "_duration": 60 }
+
+**Silent 5-minute timer (no first run, just come back later):**
+{ "_executeAsync": true, "_interval": 300, "_duration": 5, "_delayFirst": true }
 
 ## What happens:
 1. Tool returns immediately with an execution ID
