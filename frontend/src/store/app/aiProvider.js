@@ -23,6 +23,7 @@ const MODEL_CACHE_VERSION = 8;
 const BUILT_IN_PROVIDERS = [
   { key: 'anthropic', displayName: 'Anthropic' },
   { key: 'cerebras', displayName: 'Cerebras' },
+  { key: 'chutes', displayName: 'Chutes' },
   { key: 'claude-code', displayName: 'Claude-Code' },
   { key: 'deepseek', displayName: 'DeepSeek' },
   { key: 'gemini', displayName: 'Gemini' },
@@ -879,6 +880,9 @@ export default {
     },
     async fetchCerebrasModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Cerebras', forceRefresh });
+    },
+    async fetchChutesModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Chutes', forceRefresh });
     },
     async fetchClaudeCodeModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Claude-Code', forceRefresh });

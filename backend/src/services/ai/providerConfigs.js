@@ -570,6 +570,73 @@ const PROVIDER_CONFIGS = [
       defaultHeaders: { 'Accept-Language': 'en-US,en' }, // Required per Z.AI docs
     },
   },
+
+  // ─────────────────────────── CHUTES ───────────────────────────
+  {
+    key: 'chutes',
+    name: 'Chutes',
+    baseURL: 'https://llm.chutes.ai/v1',
+    sdkType: 'openai',
+    authScheme: 'bearer',
+    e2ee: true,
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true },
+      vision: { supportsStreaming: true },
+    },
+    recommendedModels: [
+      'moonshotai/Kimi-K2.5-TEE',
+      'moonshotai/Kimi-K2.6-TEE',
+      'zai-org/GLM-5-TEE',
+      'zai-org/GLM-5.1-TEE',
+    ],
+    fallbackModels: [
+      'moonshotai/Kimi-K2.5-TEE',
+      'moonshotai/Kimi-K2.6-TEE',
+      'zai-org/GLM-5-TEE',
+      'zai-org/GLM-5.1-TEE',
+      'Qwen/Qwen3-32B-TEE',
+      'Qwen/Qwen3.5-397B-A17B-TEE',
+      'Qwen/Qwen3.6-27B-TEE',
+      'MiniMaxAI/MiniMax-M2.5-TEE',
+    ],
+    fallbackVisionModels: [
+      'moonshotai/Kimi-K2.5-TEE',
+      'moonshotai/Kimi-K2.6-TEE',
+      'Qwen/Qwen3.5-397B-A17B-TEE',
+      'Qwen/Qwen3.6-27B-TEE',
+    ],
+    modelMetadata: {
+      'moonshotai/Kimi-K2.6-TEE': { contextWindow: 262144, maxOutputTokens: 65535, inputCostPer1M: 0.95, outputCostPer1M: 4.0, inputCacheReadCostPer1M: 0.475, supportsVision: true, supportsTools: true, reasoning: true, root: 'moonshotai/Kimi-K2.6', chuteId: 'aac09863-35b4-5d9b-9b67-6e6a9d54273a', ownedBy: 'vllm', quantization: 'int4', confidentialCompute: true },
+      'moonshotai/Kimi-K2.5-TEE': { contextWindow: 262144, maxOutputTokens: 65535, inputCostPer1M: 0.44, outputCostPer1M: 2.0, inputCacheReadCostPer1M: 0.22, supportsVision: true, supportsTools: true, reasoning: true, root: 'moonshotai/Kimi-K2.5', chuteId: '2ff25e81-4586-5ec8-b892-3a6f342693d7', ownedBy: 'vllm', quantization: 'int4', confidentialCompute: true },
+      'zai-org/GLM-5.1-TEE': { contextWindow: 202752, maxOutputTokens: 65535, inputCostPer1M: 1.05, outputCostPer1M: 3.5, inputCacheReadCostPer1M: 0.525, supportsVision: false, supportsTools: true, reasoning: true, root: 'zai-org/GLM-5.1-FP8', chuteId: 'b048fe26-0352-5c46-acf7-335e527e7f3d', ownedBy: 'sglang', quantization: 'fp8', confidentialCompute: true },
+      'zai-org/GLM-5-TEE': { contextWindow: 202752, maxOutputTokens: 65535, inputCostPer1M: 0.95, outputCostPer1M: 2.55, inputCacheReadCostPer1M: 0.475, supportsVision: false, supportsTools: true, reasoning: true, root: 'zai-org/GLM-5-FP8', chuteId: 'e51e818e-fa63-570d-9f68-49d7d1b4d12f', ownedBy: 'sglang', quantization: 'fp8', confidentialCompute: true },
+      'Qwen/Qwen3-32B-TEE': { contextWindow: 40960, maxOutputTokens: 40960, inputCostPer1M: 0.08, outputCostPer1M: 0.24, inputCacheReadCostPer1M: 0.04, supportsVision: false, supportsTools: true, reasoning: true, root: 'Qwen/Qwen3-32B-FP8', chuteId: 'ac059e33-eb27-541c-b9a9-24b214036475', ownedBy: 'sglang', quantization: 'fp8', confidentialCompute: true },
+      'Qwen/Qwen3.5-397B-A17B-TEE': { contextWindow: 262144, maxOutputTokens: 65536, inputCostPer1M: 0.39, outputCostPer1M: 2.34, inputCacheReadCostPer1M: 0.195, supportsVision: true, supportsTools: true, reasoning: true, root: 'Qwen/Qwen3.5-397B-A17B-FP8', chuteId: '51a4284a-a5a0-5e44-a9cc-6af5a2abfbcf', ownedBy: 'sglang', quantization: 'fp8', confidentialCompute: true },
+      'Qwen/Qwen3.6-27B-TEE': { contextWindow: 262144, maxOutputTokens: 65536, inputCostPer1M: 0.195, outputCostPer1M: 1.56, inputCacheReadCostPer1M: 0.0975, supportsVision: true, supportsTools: true, reasoning: true, root: 'Qwen/Qwen3.6-27B-FP8', chuteId: '7aa5e899-c0ba-5482-af48-d3f31d635c9f', ownedBy: 'vllm', quantization: 'fp8', confidentialCompute: true },
+      'MiniMaxAI/MiniMax-M2.5-TEE': { contextWindow: 196608, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 1.2, inputCacheReadCostPer1M: 0.075, supportsVision: false, supportsTools: true, reasoning: true, root: 'MiniMaxAI/MiniMax-M2.5', chuteId: 'ce6a92e4-5c2f-5681-9742-c80a4447bbdf', ownedBy: 'sglang', quantization: 'fp8', confidentialCompute: true },
+    },
+    modelTransform: (raw) => ({
+      id: raw.id,
+      name: raw.id,
+      description: raw.root ? `TEE model for ${raw.root}` : '',
+      createdAt: raw.created || null,
+      ownedBy: raw.owned_by || null,
+      contextLength: raw.context_length || raw.max_model_len || 0,
+      maxOutputLength: raw.max_output_length || 0,
+      inputCostPer1M: raw.pricing?.prompt ?? raw.price?.input?.usd ?? null,
+      outputCostPer1M: raw.pricing?.completion ?? raw.price?.output?.usd ?? null,
+      inputCacheReadCostPer1M: raw.pricing?.input_cache_read ?? raw.price?.input_cache_read?.usd ?? null,
+      supportsVision: Array.isArray(raw.input_modalities) && raw.input_modalities.includes('image'),
+      supportsTools: Array.isArray(raw.supported_features) && raw.supported_features.includes('tools'),
+      reasoning: Array.isArray(raw.supported_features) && raw.supported_features.includes('reasoning'),
+      chuteId: raw.chute_id || null,
+      root: raw.root || null,
+      confidentialCompute: raw.confidential_compute === true,
+    }),
+    modelFilter: (m) => m.id && m.confidential_compute === true,
+    compat: {},
+    sdkOptions: {},
+  },
 ];
 
 // ─────────────────────────── PROVIDER TEMPLATES ───────────────────────────
@@ -980,6 +1047,26 @@ export function registerDynamicPricingFromModels(providerKey, models) {
   if (!models?.length) return;
   let registered = 0;
   for (const model of models) {
+    if (model.inputCostPer1M != null && model.outputCostPer1M != null) {
+      dynamicPricingCache.set(`${providerKey}:${model.id}`, {
+        inputCostPer1M: model.inputCostPer1M,
+        outputCostPer1M: model.outputCostPer1M,
+        inputCacheReadCostPer1M: model.inputCacheReadCostPer1M ?? null,
+        contextWindow: model.contextLength || 0,
+        maxOutputTokens: model.maxOutputLength || 0,
+        supportsVision: model.supportsVision === true,
+        supportsTools: model.supportsTools === true,
+        reasoning: model.reasoning === true,
+        chuteId: model.chuteId || null,
+        root: model.root || null,
+        ownedBy: model.ownedBy || null,
+        confidentialCompute: model.confidentialCompute === true,
+        dynamic: true,
+      });
+      registered++;
+      continue;
+    }
+
     // OpenRouter format: pricing.prompt/completion are cost per token
     if (model.pricing?.prompt != null && model.pricing?.completion != null) {
       const inputCostPer1M = parseFloat(model.pricing.prompt) * 1_000_000;
@@ -1140,6 +1227,13 @@ export function getAllModelMetadata(providerKey) {
     if (inferredMeta) {
       metadata[modelId] = inferredMeta;
     }
+  }
+
+  const prefix = `${providerKey}:`;
+  for (const [cacheKey, meta] of dynamicPricingCache.entries()) {
+    if (!cacheKey.startsWith(prefix)) continue;
+    const modelId = cacheKey.slice(prefix.length);
+    metadata[modelId] = meta;
   }
 
   return metadata;

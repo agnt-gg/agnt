@@ -108,6 +108,7 @@ export default {
         'claude-code': 'Claude-Code',
         openai: 'OpenAI',
         'openai-codex': 'OpenAI-Codex',
+        chutes: 'Chutes',
         gemini: 'Gemini',
         grokai: 'GrokAI',
         groq: 'Groq',
