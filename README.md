@@ -53,6 +53,23 @@
 
 ---
 
+## 🖼️ Screenshots
+
+<p align="center">
+  <img src="https://agnt.gg/_assets/images/dashboard-1.png" alt="Dashboard" width="45%">
+  <img src="https://agnt.gg/_assets/images/multi-agent-1.png" alt="Agents" width="45%">
+</p>
+<p align="center">
+  <img src="https://agnt.gg/_assets/images/unlimited-canvas-1.png" alt="Workflow Canvas" width="45%">
+  <img src="https://agnt.gg/_assets/images/asset-marketplace-1.png" alt="Marketplace" width="45%">
+</p>
+<p align="center">
+  <img src="https://agnt.gg/_assets/images/chat-ui-md-1.png" alt="Agent Chat" width="45%">
+  <img src="https://agnt.gg/_assets/images/agent-workflow-1.png" alt="Workflow Designer" width="45%">
+</p>
+
+---
+
 ## ⭐ Star History
 
 <p align="center">
@@ -351,23 +368,6 @@ AGNT's provider layer is pluggable. Built-in support:
 | **Custom**        | Any OpenAI-compatible endpoint            | Configurable                           |
 
 **Connection health** is monitored across all providers in real time, with cached status plus live-check endpoints for dashboard badges and failure alerts.
-
----
-
-## 🖼️ Screenshots
-
-<p align="center">
-  <img src="https://agnt.gg/_assets/images/dashboard-1.png" alt="Dashboard" width="45%">
-  <img src="https://agnt.gg/_assets/images/multi-agent-1.png" alt="Agents" width="45%">
-</p>
-<p align="center">
-  <img src="https://agnt.gg/_assets/images/unlimited-canvas-1.png" alt="Workflow Canvas" width="45%">
-  <img src="https://agnt.gg/_assets/images/asset-marketplace-1.png" alt="Marketplace" width="45%">
-</p>
-<p align="center">
-  <img src="https://agnt.gg/_assets/images/chat-ui-md-1.png" alt="Agent Chat" width="45%">
-  <img src="https://agnt.gg/_assets/images/agent-workflow-1.png" alt="Workflow Designer" width="45%">
-</p>
 
 ---
 

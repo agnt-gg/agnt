@@ -485,7 +485,7 @@ body.dark .auth-section {
 }
 
 input[type='email'] {
-  width: 100%;
+  width: calc(100% - 28px);
   font-family: var(--font-family-primary);
   font-size: 15px;
   padding: 8px 14px;

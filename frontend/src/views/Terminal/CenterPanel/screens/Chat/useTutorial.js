@@ -23,34 +23,29 @@ export function useTutorial(emitFunction) {
     return connectedApps.some((app) => app.toLowerCase() === providerKey);
   });
 
-  const tutorialConfig = ref([
-    {
-      target: '.conversation-canvas',
-      position: 'center',
-      title: computed(() => {
-        if (!hasAIProvider.value) {
-          return '⚠️ No AI Provider Connected';
+  const tutorialConfig = computed(() => [
+    hasAIProvider.value
+      ? {
+          target: '.conversation-canvas',
+          position: 'center',
+          title: "💬 Hi! I'm Annie",
+          content:
+            "Welcome to our chat space! I'm your AI assistant, and I'm here to help you automate tasks, answer questions, and build workflows. Just type your message below and let's get started!",
+          buttonText: 'Show Me Around',
+          hideArrow: true,
         }
-        return "💬 Hi! I'm Annie";
-      }),
-      content: computed(() => {
-        if (!hasAIProvider.value) {
-          return "Before we can chat, you'll need to connect an AI provider. Click below and I'll help you set one up in the Integrations section.";
-        }
-        return "Welcome to our chat space! I'm your AI assistant, and I'm here to help you automate tasks, answer questions, and build workflows. Just type your message below and let's get started!";
-      }),
-      buttonText: computed(() => {
-        if (!hasAIProvider.value) {
-          return 'Go to Integrations';
-        }
-        return 'Show Me Around';
-      }),
-      hideArrow: true,
-      navigateToScreen: computed(() => {
-        // Only navigate if no provider is set
-        return !hasAIProvider.value ? 'ConnectorsScreen' : null;
-      }),
-    },
+      : {
+          // No provider connected: highlight the provider-picker card that's
+          // already rendered in the chat canvas instead of navigating away.
+          target: '.provider-setup',
+          position: 'top',
+          title: '🔌 Pick an AI Provider',
+          content:
+            "Before we can chat, you'll need to connect an AI provider. Choose any of the options below to get set up — once you're connected, I can help you automate tasks, answer questions, and build workflows!",
+          buttonText: 'Got It',
+          highlightTarget: true,
+          enforceStep: false,
+        },
     {
       target: '.input-container',
       position: 'top',
@@ -74,6 +69,16 @@ export function useTutorial(emitFunction) {
       position: 'top',
       title: '🤖 AI Provider',
       content: 'Switch between AI providers and models on the fly. Pick the best model for each task without leaving the chat!',
+      buttonText: 'Next',
+      highlightTarget: true,
+      enforceStep: false,
+    },
+    {
+      target: '.chat-tools-button',
+      position: 'top',
+      title: '🔧 Tools',
+      content:
+        "Toggle which tools I can reach for in this chat — web search, code execution, image generation, workflows, and more. Turn things off when you want me to stick to just talking, or flip them all on when you need me to take action!",
       buttonText: 'Next',
       highlightTarget: true,
       enforceStep: false,
