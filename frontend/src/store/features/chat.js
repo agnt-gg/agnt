@@ -1279,7 +1279,7 @@ export default {
      * Autosave conversation with debouncing.
      * Accepts optional conversationId to save a background conversation.
      */
-    async autosaveConversation({ commit, state, dispatch }, { debounce = true, conversationId } = {}) {
+    async autosaveConversation({ commit, state, dispatch, rootState }, { debounce = true, conversationId } = {}) {
       // Determine which conversation to save
       const convId = conversationId || state.activeConversationId;
       const conv = convId ? state.conversations[convId] : null;
@@ -1346,7 +1346,17 @@ export default {
       }
 
       try {
-        let conversationTitle = savedOutputTitle || null;
+        // Resolve the title with this priority order so user renames are NEVER
+        // overwritten by autosave's auto-generated title:
+        //   1. Title currently in the contentOutputs cache (reflects renames).
+        //   2. Cached savedOutputTitle on this conversation (from prior save/restore).
+        //   3. Auto-generate from the first user message (only used on FIRST save).
+        let conversationTitle = null;
+        if (savedOutputId) {
+          const cached = (rootState?.contentOutputs?.outputs || []).find((o) => o.id === savedOutputId);
+          if (cached?.title) conversationTitle = cached.title;
+        }
+        if (!conversationTitle) conversationTitle = savedOutputTitle || null;
         if (!conversationTitle) {
           const firstUserMessage = messages.find((msg) => msg.role === 'user');
           const agentPrefix = agentId && agentName ? `[${agentName}] ` : '';

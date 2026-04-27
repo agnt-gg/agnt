@@ -35,9 +35,9 @@
         </div>
         <div id="saved-outputs" class="saved-items">
           <div class="sort-controls">
-            <button @click="sortBy('created_at')" class="sort-button" :class="{ active: sortKey === 'created_at' }">
+            <button @click="sortBy('updated_at')" class="sort-button" :class="{ active: sortKey === 'updated_at' }">
               <span>Date</span>
-              <i :class="getSortIcon('created_at')"></i>
+              <i :class="getSortIcon('updated_at')"></i>
             </button>
             <Tooltip text="New Chat" width="auto">
               <button @click="handleNewChat" class="new-chat-btn">
@@ -93,7 +93,7 @@
                     <div class="output-content" @click="handleOutputClick(output.id, $event)">
                       <div class="output-date">
                         <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                        {{ formatDate(output.created_at) }}
+                        {{ formatDate(output.updated_at || output.created_at) }}
                       </div>
                       <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
                     </div>
@@ -137,7 +137,7 @@
                   <div class="output-content" @click="handleOutputClick(output.id, $event)">
                     <div class="output-date">
                       <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                      {{ formatDate(output.created_at) }}
+                      {{ formatDate(output.updated_at || output.created_at) }}
                     </div>
                     <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
                   </div>
@@ -178,7 +178,7 @@
                 <div class="output-content" @click="handleOutputClick(output.id, $event)">
                   <div class="output-date">
                     <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                    {{ formatDate(output.created_at) }}
+                    {{ formatDate(output.updated_at || output.created_at) }}
                   </div>
                   <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
                 </div>
@@ -278,7 +278,7 @@ export default {
     const playSound = inject('playSound', () => {});
     const simpleModal = ref(null);
     const searchQuery = ref('');
-    const sortKey = ref('created_at');
+    const sortKey = ref('updated_at');
     const sortOrder = ref('desc');
     const activeMenu = ref(null);
     const menuPosition = ref({});
@@ -386,8 +386,22 @@ export default {
           return title.includes(searchQuery.value.toLowerCase());
         })
         .sort((a, b) => {
-          let aValue = sortKey.value === 'content' ? getPreviewText(a.content, a) : a[sortKey.value];
-          let bValue = sortKey.value === 'content' ? getPreviewText(b.content, b) : b[sortKey.value];
+          let aValue;
+          let bValue;
+          if (sortKey.value === 'content') {
+            aValue = getPreviewText(a.content, a);
+            bValue = getPreviewText(b.content, b);
+          } else if (sortKey.value === 'updated_at' || sortKey.value === 'created_at') {
+            // Sort by updated_at if present, fall back to created_at for legacy rows.
+            // Compare as numbers so Date objects and ISO strings both work.
+            const aDate = a.updated_at || a.created_at;
+            const bDate = b.updated_at || b.created_at;
+            aValue = aDate ? new Date(aDate).getTime() : 0;
+            bValue = bDate ? new Date(bDate).getTime() : 0;
+          } else {
+            aValue = a[sortKey.value];
+            bValue = b[sortKey.value];
+          }
           if (aValue < bValue) return sortOrder.value === 'asc' ? -1 : 1;
           if (aValue > bValue) return sortOrder.value === 'asc' ? 1 : -1;
           return 0;

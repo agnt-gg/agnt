@@ -15,7 +15,8 @@ export default {
     SET_OUTPUTS(state, { outputs, totalCount, append = false }) {
       const mappedOutputs = outputs.map((output) => ({
         ...output,
-        created_at: new Date(output.created_at),
+        created_at: output.created_at ? new Date(output.created_at) : null,
+        updated_at: output.updated_at ? new Date(output.updated_at) : null,
       }));
 
       if (append) {
@@ -39,8 +40,17 @@ export default {
     ADD_OUTPUT(state, output) {
       state.outputs.unshift({
         ...output,
-        created_at: new Date(output.created_at),
+        created_at: output.created_at ? new Date(output.created_at) : null,
+        updated_at: output.updated_at ? new Date(output.updated_at) : null,
       });
+    },
+    /**
+     * Patch a single output in-place (e.g. after a rename) without reordering.
+     */
+    PATCH_OUTPUT(state, { id, updates }) {
+      const idx = state.outputs.findIndex((o) => o.id === id);
+      if (idx === -1) return;
+      state.outputs[idx] = { ...state.outputs[idx], ...updates };
     },
     REMOVE_OUTPUT(state, outputId) {
       state.outputs = state.outputs.filter((output) => output.id !== outputId);
