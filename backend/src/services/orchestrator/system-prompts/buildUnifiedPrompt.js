@@ -41,6 +41,20 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     agentOverride = null,
   } = options;
 
+  // Build the set of tool names actually exposed to the LLM this turn.
+  // OrchestratorService computes context.toolSchemas BEFORE calling this,
+  // so we can use it to gate every capability section that names specific
+  // tools — otherwise the LLM advertises tools the user has disabled in
+  // the per-channel tool selector and parrots them as available.
+  const enabledToolNames = new Set();
+  if (Array.isArray(context.toolSchemas)) {
+    for (const s of context.toolSchemas) {
+      const n = s?.function?.name;
+      if (n) enabledToolNames.add(n);
+    }
+  }
+  const has = (name) => enabledToolNames.has(name);
+
   const parts = [];
 
   if (agentOverride?.systemPrompt) {
@@ -52,14 +66,17 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
 Every Annie chat surface is functionally the same assistant. The current page context is a soft signal: prefer tools and interpretations relevant to that page, but you may use any available tool when the user's request crosses domains.`);
   }
 
-  parts.push(CRITICAL_IMAGE_HANDLING);
-  parts.push(CRITICAL_IMAGE_GENERATION);
+  // Image-handling rules only matter if the LLM can actually receive or
+  // produce images on this surface.
+  if (has('analyze_image')) parts.push(CRITICAL_IMAGE_HANDLING);
+  if (has('generate_image')) parts.push(CRITICAL_IMAGE_GENERATION);
   parts.push('IMPORTANT: Provider names are automatically normalized to lowercase by the backend. You do not need to worry about provider-name casing.');
   parts.push(ASYNC_EXECUTION_GUIDANCE);
   parts.push(OFFLOADED_DATA_GUIDANCE);
   parts.push(CRITICAL_TOOL_CALL_REQUIREMENTS);
 
-  parts.push(`TASK DELEGATION:
+  if (has('create_and_run_goal')) {
+    parts.push(`TASK DELEGATION:
 For non-trivial tasks, consider creating a Goal and delegating to agents.
 
 1. Do it yourself for simple questions, quick searches, single tool calls, or casual conversation.
@@ -67,12 +84,18 @@ For non-trivial tasks, consider creating a Goal and delegating to agents.
 3. Check goal progress with list_goals, get_goal_details, get_goal_status, or evaluate_goal.
 
 Goals run autonomously in the background. When a goal completes, results are automatically sent back to this conversation.`);
+  }
 
-  parts.push(`TOOL USAGE:
+  if (has('discover_tools')) {
+    parts.push(`TOOL USAGE:
 Tools are provided through the API tools parameter. Use exact tool names.
 If you need additional tools not currently visible, call discover_tools with operation="browse", then operation="load" with the needed categories.
 Do not tell the user you lack a capability before checking discover_tools first.
 When the user asks to list/show available tools, call discover_tools with operation="browse" first.`);
+  } else {
+    parts.push(`TOOL USAGE:
+Tools are provided through the API tools parameter. Use exact tool names. Only use tools that appear in the tools parameter — do not claim or imply access to tools that are not listed.`);
+  }
 
   const contextBlock = await buildPageContextBlock(context);
   if (contextBlock) parts.push(contextBlock);
@@ -80,11 +103,28 @@ When the user asks to list/show available tools, call discover_tools with operat
   if (skillsCatalogSection) parts.push(skillsCatalogSection);
   if (memorySection) parts.push(memorySection);
 
-  parts.push(IMAGE_ANALYSIS_CAPABILITIES);
-  parts.push(IMAGE_GENERATION_CAPABILITIES);
+  // Gate the long capability descriptions on whether the underlying tool
+  // is actually available for this channel.
+  if (has('analyze_image')) parts.push(IMAGE_ANALYSIS_CAPABILITIES);
+  if (has('generate_image')) parts.push(IMAGE_GENERATION_CAPABILITIES);
   parts.push(RESPONSE_FORMATTING);
-  parts.push(CRITICAL_IMAGE_REFERENCE_FORMATTING);
-  parts.push(IMPORTANT_GUIDELINES);
+  if (has('generate_image')) parts.push(CRITICAL_IMAGE_REFERENCE_FORMATTING);
+  // IMPORTANT_GUIDELINES is almost entirely about web_search / web_scrape /
+  // execute_javascript_code / file_operations / agnt_tools — skip the block
+  // when none of those are enabled, otherwise the LLM advertises tools the
+  // user has disabled in the per-channel selector.
+  if (
+    has('web_search') ||
+    has('web_scrape') ||
+    has('execute_javascript_code') ||
+    has('read_file') ||
+    has('write_file') ||
+    has('file_operations') ||
+    has('agnt_tools') ||
+    has('execute_custom_agnt_tool')
+  ) {
+    parts.push(IMPORTANT_GUIDELINES);
+  }
   parts.push(CHART_CHEATSHEET);
 
   if (context.normalizedProvider !== 'claude-code') {

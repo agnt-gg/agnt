@@ -186,6 +186,28 @@ function getForcedToolGroups(context) {
   return groups;
 }
 
+// Backend mirror of the frontend SIDEBAR_DEFAULTS in chatChannelConfig.js.
+// If a sidebar chat reaches the backend without an explicit enabledTools list
+// (older client, malformed request, etc.), we still cap its tool surface to
+// the page's specialty set instead of falling through to "everything in the
+// matched groups". Mirrors must stay in sync with the frontend file.
+const SIDEBAR_SPECIALTY = {
+  agent: ['generate_agent', 'modify_agent', 'save_agent', 'load_agent', 'delete_agent', 'list_agents', 'run_agent', 'get_agnt_api'],
+  workflow: ['update_workflow', 'revert_workflow', 'list_workflow_versions', 'create_checkpoint', 'get_available_tool_node_types', 'get_node_type_schema', 'start_workflow', 'stop_workflow', 'get_agnt_api'],
+  tool: ['generate_tool_update', 'save_tool', 'load_tool', 'delete_tool', 'list_tools', 'run_tool', 'get_agnt_api'],
+  widget: ['edit_widget_code', 'generate_widget', 'update_widget_config', 'save_widget', 'load_widget', 'get_agnt_api'],
+  artifact: ['read_file', 'write_file', 'edit_file', 'list_files', 'get_agnt_api'],
+};
+
+function detectSidebarSpecialty(context) {
+  if (context.agentId === 'agent-chat') return SIDEBAR_SPECIALTY.agent;
+  if (context.workflowId || context.workflowContext || context.workflowState) return SIDEBAR_SPECIALTY.workflow;
+  if (context.toolId || context.toolContext || context.toolState) return SIDEBAR_SPECIALTY.tool;
+  if (context.widgetId || context.widgetContext || context.widgetState) return SIDEBAR_SPECIALTY.widget;
+  if (context.codeId || context.codeContext) return SIDEBAR_SPECIALTY.artifact;
+  return null;
+}
+
 async function getSavedAgentToolSchemas(context, allSchemas) {
   const AgentModel = (await import('../../models/AgentModel.js')).default;
   const agent = await AgentModel.findOne(context.agentId);
@@ -194,6 +216,8 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
 
   let filteredSchemas = allSchemas.filter((tool) => allowedToolNames.has(tool.function?.name));
 
+  // The agent's assignedTools is a hard ceiling — runtime enabledTools can
+  // narrow it further but never widen it beyond what the agent was given.
   if (context.enabledTools) {
     filteredSchemas = filteredSchemas.filter((s) => context.enabledTools.has(s.function?.name));
   }
@@ -211,6 +235,29 @@ async function getUnifiedToolSchemas(context) {
     return getSavedAgentToolSchemas(context, allSchemas);
   }
 
+  // STRICT FILTER: when the frontend tool selector has sent an enabledTools
+  // list, that list is the single source of truth. The chat may ONLY see and
+  // call tools the user has explicitly enabled — no group expansion, no
+  // DEFAULT_TOOLS, no forced groups. If the user has disabled it, it is
+  // unreachable from this chat surface.
+  if (context.enabledTools && context.enabledTools.size > 0) {
+    const filteredSchemas = allSchemas.filter((s) => context.enabledTools.has(s.function?.name));
+    console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested) -> ${filteredSchemas.length} tools`);
+    return filteredSchemas;
+  }
+
+  // No explicit selection from the client. For sidebar chats, fall back to
+  // the page's specialty set (mirrored from the frontend) so we never leak
+  // tools the user hasn't asked for. For the orchestrator (no specialty
+  // set), keep the dynamic keyword-driven group selection.
+  const specialty = detectSidebarSpecialty(context);
+  if (specialty) {
+    const allowed = new Set(specialty);
+    const filteredSchemas = allSchemas.filter((s) => allowed.has(s.function?.name));
+    console.log(`[UnifiedChat] Sidebar specialty fallback (no enabledTools sent) -> ${filteredSchemas.length} tools`);
+    return filteredSchemas;
+  }
+
   const latestUserMessage = context.latestUserMessage || '';
   const { matchedGroups } = selectTools(allSchemas, latestUserMessage);
   const forcedGroups = getForcedToolGroups(context);
@@ -225,16 +272,12 @@ async function getUnifiedToolSchemas(context) {
     }
   }
 
-  let filteredSchemas = allSchemas.filter((schema) => {
+  const filteredSchemas = allSchemas.filter((schema) => {
     const name = schema.function?.name;
     if (!name) return false;
     if (DEFAULT_TOOLS.has(name)) return true;
     return groupToolNames.has(name);
   });
-
-  if (context.enabledTools) {
-    filteredSchemas = filteredSchemas.filter((s) => context.enabledTools.has(s.function?.name));
-  }
 
   context._loadedToolGroups = allGroups;
   console.log(`[UnifiedChat] Tool groups: [${[...allGroups].join(', ')}] -> ${filteredSchemas.length} tools`);
