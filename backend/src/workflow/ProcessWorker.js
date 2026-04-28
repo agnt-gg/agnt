@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import WorkflowEngine from './WorkflowEngine.js';
 import WorkflowModel from '../models/WorkflowModel.js';
+import { dbRunWithRetry } from '../models/database/index.js';
 
 class ProcessWorker extends EventEmitter {
   constructor(processManager) {
@@ -129,7 +130,7 @@ class ProcessWorker extends EventEmitter {
   async _updateWorkflowStatus(workflowId, status) {
     try {
       console.log(`Updating workflow ${workflowId} status to ${status}`);
-      const result = await WorkflowModel.updateStatus(workflowId, status);
+      const result = await dbRunWithRetry(() => WorkflowModel.updateStatus(workflowId, status));
       console.log(`Workflow status update result:`, result);
       if (!result) {
         console.warn(`No workflow found with id ${workflowId}`);

@@ -246,7 +246,7 @@ class WorkflowEngine extends EventEmitter {
 
         // IF CREDITS ARE INSUFFICIENT, UPDATE EXECUTION STATUS AND RETURN ERROR
         if (startNodeResult.error && startNodeResult.error.includes('Insufficient credits')) {
-          await ExecutionModel.update(this.currentExecutionId, 'insufficient-credits', executionLog, totalCreditsUsed);
+          await dbRunWithRetry(() => ExecutionModel.update(this.currentExecutionId, 'insufficient-credits', executionLog, totalCreditsUsed));
 
           // stop any trigger listeners
           await this.stopWorkflowListeners();
@@ -293,7 +293,7 @@ class WorkflowEngine extends EventEmitter {
             executionLog += `Workflow stopped: ${this.stopReason}\n`;
             await this.stopWorkflowListeners();
             await this._updateWorkflowStatus('stopped');
-            await ExecutionModel.update(this.currentExecutionId, this.stopReason, executionLog, totalCreditsUsed);
+            await dbRunWithRetry(() => ExecutionModel.update(this.currentExecutionId, this.stopReason, executionLog, totalCreditsUsed));
             return {
               success: true,
               outputs: this.outputs,
@@ -342,7 +342,7 @@ class WorkflowEngine extends EventEmitter {
             // Check for insufficient credits and stop the workflow if detected
             if (nodeResult.error.includes('Insufficient credits')) {
               await this._updateWorkflowStatus('insufficient-credits');
-              await ExecutionModel.update(this.currentExecutionId, 'insufficient-credits', executionLog, totalCreditsUsed);
+              await dbRunWithRetry(() => ExecutionModel.update(this.currentExecutionId, 'insufficient-credits', executionLog, totalCreditsUsed));
               return {
                 success: false,
                 outputs: this.outputs,
@@ -386,7 +386,7 @@ class WorkflowEngine extends EventEmitter {
           executionLog += `Workflow stopped: ${this.stopReason}\n`;
           await this.stopWorkflowListeners();
           await this._updateWorkflowStatus('stopped');
-          await ExecutionModel.update(this.currentExecutionId, this.stopReason, executionLog, totalCreditsUsed);
+          await dbRunWithRetry(() => ExecutionModel.update(this.currentExecutionId, this.stopReason, executionLog, totalCreditsUsed));
           return {
             success: true,
             outputs: this.outputs,
@@ -410,7 +410,7 @@ class WorkflowEngine extends EventEmitter {
       }
 
       // Update the workflow execution with the total credits used
-      await ExecutionModel.update(executionId, Object.keys(this.errors).length > 0 ? 'error' : 'completed', executionLog, totalCreditsUsed);
+      await dbRunWithRetry(() => ExecutionModel.update(executionId, Object.keys(this.errors).length > 0 ? 'error' : 'completed', executionLog, totalCreditsUsed));
 
       return {
         success: Object.keys(this.errors).length === 0,
@@ -422,7 +422,7 @@ class WorkflowEngine extends EventEmitter {
       console.error(`Error executing workflow ${this.workflowId}:`, error);
       executionLog += `Fatal error: ${error.message}\n`;
       totalCreditsUsed = await ExecutionModel.getTotalCreditsUsed(executionId);
-      await ExecutionModel.update(executionId, 'error', executionLog, totalCreditsUsed);
+      await dbRunWithRetry(() => ExecutionModel.update(executionId, 'error', executionLog, totalCreditsUsed));
       await this._updateWorkflowStatus('error');
       return {
         success: false,

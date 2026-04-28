@@ -119,12 +119,17 @@ class TriggerTimer extends BaseTrigger {
       engine.timerIntervals.set(node.id, this.timerId);
     };
 
-    // Check if fireOnStart is "Yes" and trigger immediately if so
+    // Defer fire-on-start until after setup completes so the worker can
+    // commit the 'listening' status update before _executeWorkflow's writes
+    // race against it. Without this, restarting many fire-on-start timers
+    // simultaneously caused SQLITE_BUSY on app restart.
     if (fireOnStart === 'Yes') {
-      engine.processWorkflowTrigger({
-        type: 'timer',
-        nodeId: node.id,
-        timestamp: new Date().toISOString(),
+      setImmediate(() => {
+        engine.processWorkflowTrigger({
+          type: 'timer',
+          nodeId: node.id,
+          timestamp: new Date().toISOString(),
+        });
       });
     }
 
