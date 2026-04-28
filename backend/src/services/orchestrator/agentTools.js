@@ -112,6 +112,9 @@ export const AGENT_TOOLS = {
           message: 'Successfully generated new agent using LLM.',
           updatedAgent: agentForFrontend,
           suggestion: 'The agent has been generated. You can now review and modify it as needed.',
+          frontendEvents: [
+            { type: 'agent-updated', data: { updatedAgent: agentForFrontend } },
+          ],
         });
       } catch (error) {
         console.error('Error in generate_agent:', error);
@@ -229,6 +232,9 @@ export const AGENT_TOOLS = {
           message: 'Successfully modified and saved agent using LLM regeneration.',
           updatedAgent: agentForFrontend,
           suggestion: 'The agent has been modified and saved according to your request. Please review the changes.',
+          frontendEvents: [
+            { type: 'agent-updated', data: { updatedAgent: agentForFrontend } },
+          ],
         });
       } catch (error) {
         console.error('Error in modify_agent:', error);

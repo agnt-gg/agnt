@@ -301,6 +301,7 @@ export default {
     const showToolsModal = ref(false);
     const showWorkflowsModal = ref(false);
     const showSkillsModal = ref(false);
+    const isDirty = ref(false);
 
     const isFormValid = computed(() => {
       return newAgent.value.name.trim() !== '';
