@@ -104,7 +104,7 @@ make pull-version-lite
 ### Running Containers
 
 ```bash
-# Build and run full image locally (port 33333)
+# Build and run full image locally (port 3333)
 make run-full-local
 
 # Build and run lite image locally (port 3333)
@@ -122,12 +122,12 @@ make run-both-local        # Build and run both
 make run-both-remote       # Pull and run both
 
 # Just start containers (assumes images exist)
-make run-full              # Full only on port 33333
+make run-full              # Full only on port 3333
 make run-lite              # Lite only on port 3333
 ```
 
 After running:
-- **Full**: http://localhost:33333
+- **Full**: http://localhost:3333
 - **Lite**: http://localhost:3333
 
 ### Managing Running Containers
@@ -394,7 +394,7 @@ docker login
 If you prefer docker-compose directly:
 
 ```bash
-# Full version (port 33333)
+# Full version (port 3333)
 docker-compose up -d
 docker-compose down
 docker-compose logs -f
@@ -414,7 +414,7 @@ docker-compose -f docker-compose.both.yml logs -f
 
 | File | Description | Port(s) |
 |------|-------------|---------|
-| `docker-compose.yml` | Full version with Chromium | 33333 |
+| `docker-compose.yml` | Full version with Chromium | 3333 |
 | `docker-compose.lite.yml` | Lite version without Chromium | 3333 |
 | `docker-compose.both.yml` | Both versions simultaneously | 33333 & 3333 |
 

@@ -9,7 +9,7 @@ Get AGNT running with **full browser automation** in under 5 minutes.
 - ✅ Multi-device access
 - ✅ Supports 2-10 concurrent users
 - 📦 Image size: **~1.5GB**
-- 🌐 Port: **33333**
+- 🌐 Port: **3333**
 
 ## Prerequisites
 
@@ -25,10 +25,10 @@ Get AGNT running with **full browser automation** in under 5 minutes.
 # Run container with pre-built image
 docker run -d \
   --name agnt-full \
-  -p 33333:33333 \
-  -v agnt-data:/root/.agnt/data \
+  -p 3333:3333 \
+  -v agnt-data:/app/data \
   -e NODE_ENV=production \
-  -e BASE_URL=http://localhost:33333 \
+  -e BASE_URL=http://localhost:3333 \
   --restart unless-stopped \
   ghcr.io/agnt-gg/agnt:latest
 ```
@@ -37,10 +37,10 @@ docker run -d \
 ```bash
 docker run -d \
   --name agnt-full \
-  -p 33333:33333 \
-  -v agnt-data:/root/.agnt/data \
+  -p 3333:3333 \
+  -v agnt-data:/app/data \
   -e NODE_ENV=production \
-  -e BASE_URL=http://localhost:33333 \
+  -e BASE_URL=http://localhost:3333 \
   --restart unless-stopped \
   ghcr.io/agnt-gg/agnt:v0.5.0
 ```
@@ -56,12 +56,12 @@ services:
     image: ghcr.io/agnt-gg/agnt:latest
     container_name: agnt-full
     ports:
-      - "33333:33333"
+      - "3333:3333"
     environment:
       - NODE_ENV=production
-      - BASE_URL=http://localhost:33333
+      - BASE_URL=http://localhost:3333
     volumes:
-      - agnt-data:/root/.agnt/data
+      - agnt-data:/app/data
     restart: unless-stopped
 
 volumes:
@@ -92,13 +92,13 @@ docker-compose up -d
 Open your browser to:
 
 ```
-http://localhost:33333
+http://localhost:3333
 ```
 
 From other devices on your network:
 
 ```
-http://YOUR_SERVER_IP:33333
+http://YOUR_SERVER_IP:3333
 ```
 
 ## Verify Installation
@@ -118,7 +118,7 @@ STATUS: Up X seconds (healthy)
 
 ## First Steps
 
-1. **Open web UI**: http://localhost:33333
+1. **Open web UI**: http://localhost:3333
 2. **Configure AI provider**: Add your OpenAI/Anthropic/Google API key
 3. **Create first agent**: Click "New Agent" and configure
 4. **Test chat**: Send a message to your agent
@@ -170,7 +170,7 @@ All data stored in:
 
 ## Troubleshooting
 
-### Port 33333 already in use
+### Port 3333 already in use
 
 Change port in docker run command:
 ```bash
@@ -186,13 +186,13 @@ docker logs agnt
 
 ### Can't access from other devices
 
-Ensure firewall allows port 33333:
+Ensure firewall allows port 3333:
 ```bash
 # Ubuntu/Debian
-sudo ufw allow 33333
+sudo ufw allow 3333
 
 # Check if port is open
-netstat -tlnp | grep 33333
+netstat -tlnp | grep 3333
 ```
 
 ## Next Steps

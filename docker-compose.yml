@@ -2,7 +2,7 @@ version: '3.8'
 
 # AGNT Full Version - Complete image with Chromium (~1.5GB)
 # ✅ Includes Puppeteer/Playwright browser automation support
-# Runs on port 33333
+# Runs on port 3333
 #
 # Use this for:
 # - Full-featured deployments
@@ -27,7 +27,7 @@ services:
     image: ghcr.io/agnt-gg/agnt:latest
     container_name: agnt
     ports:
-      - "33333:3333"
+      - "3333:3333"
     environment:
       # Application Environment
       - NODE_ENV=production
@@ -35,10 +35,10 @@ services:
       - USER_DATA_PATH=/app/data
 
       # URLs Configuration
-      - BASE_URL=http://localhost:33333
+      - BASE_URL=http://localhost:3333
       - REMOTE_URL=https://api.agnt.gg
       - WEBHOOK_URL=http://localhost:3001
-      - FRONTEND_URL=http://localhost:33333
+      - FRONTEND_URL=http://localhost:3333
 
       # Security Secrets (CHANGE THESE IN PRODUCTION!)
       # Generate secure secrets with: openssl rand -base64 32

@@ -27,7 +27,7 @@ Get AGNT running **lightweight** (no browser automation) in under 5 minutes.
 docker run -d \
   --name agnt-lite \
   -p 3333:3333 \
-  -v agnt-data:/root/.agnt/data \
+  -v agnt-data:/app/data \
   -e NODE_ENV=production \
   -e BASE_URL=http://localhost:3333 \
   --restart unless-stopped \
@@ -39,7 +39,7 @@ docker run -d \
 docker run -d \
   --name agnt-lite \
   -p 3333:3333 \
-  -v agnt-data:/root/.agnt/data \
+  -v agnt-data:/app/data \
   -e NODE_ENV=production \
   -e BASE_URL=http://localhost:3333 \
   --restart unless-stopped \
@@ -62,7 +62,7 @@ services:
       - NODE_ENV=production
       - BASE_URL=http://localhost:3333
     volumes:
-      - agnt-data:/root/.agnt/data
+      - agnt-data:/app/data
     restart: unless-stopped
 
 volumes:
@@ -227,7 +227,7 @@ docker rm agnt-lite
 docker-compose up -d
 
 # Access on new port
-http://localhost:33333
+http://localhost:3333
 ```
 
 Your data is preserved - just change the Docker image!

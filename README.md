@@ -432,14 +432,14 @@ Use Docker for an isolated, production-ready deployment.
 #### Option A: Pull Pre-built Images from GHCR (Recommended)
 
 ```bash
-# Full version with browser automation (~1.5GB) - Port 33333
+# Full version with browser automation (~1.5GB) - Port 3333
 docker run -d \
   --name agnt-full \
-  -p 33333:33333 \
-  -v agnt-data:/root/.agnt/data \
+  -p 3333:3333 \
+  -v agnt-data:/app/data \
   ghcr.io/agnt-gg/agnt:latest
 
-# Access at http://localhost:33333
+# Access at http://localhost:3333
 ```
 
 ```bash
@@ -447,7 +447,7 @@ docker run -d \
 docker run -d \
   --name agnt-lite \
   -p 3333:3333 \
-  -v agnt-data:/root/.agnt/data \
+  -v agnt-data:/app/data \
   ghcr.io/agnt-gg/agnt:lite
 
 # Access at http://localhost:3333
@@ -467,9 +467,9 @@ docker run -d \
 git clone https://github.com/agnt-gg/agnt.git
 cd agnt
 
-# Option 1: Full version with browser automation (~1.5GB) - Port 33333
+# Option 1: Full version with browser automation (~1.5GB) - Port 3333
 docker-compose up -d
-# Access at http://localhost:33333
+# Access at http://localhost:3333
 
 # Option 2: Lite version without browser automation (~715MB) - Port 3333
 docker-compose -f docker-compose.lite.yml up -d
@@ -528,7 +528,7 @@ See `.env.example` for all available configuration options including AI provider
 
 **Docker variants available:**
 
-- 🔋 **Full** (~1.5GB): Includes Chromium for web scraping & browser automation (Port **33333**)
+- 🔋 **Full** (~1.5GB): Includes Chromium for web scraping & browser automation (Port **3333**)
 - 🪶 **Lite** (~715MB): Smaller image without browser features, ~52% smaller (Port **3333**)
 - 🚀 **Both**: Run full and lite versions side-by-side for testing
 

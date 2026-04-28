@@ -168,7 +168,7 @@ See the Docker-specific sections below for complete setup instructions.
 ```bash
 # Docker Full (1.5GB, with browser)
 docker-compose up -d
-# Access at http://localhost:33333
+# Access at http://localhost:3333
 
 # Docker Lite (715MB, no browser)
 docker-compose -f docker-compose.lite.yml up -d
@@ -308,14 +308,14 @@ docker build -f Dockerfile.lite -t agnt:lite .
 ```bash
 docker run -d \
   --name agnt-full \
-  -p 33333:33333 \
-  -v agnt-data:/root/.agnt/data \
+  -p 3333:3333 \
+  -v agnt-data:/app/data \
   -e NODE_ENV=production \
-  -e BASE_URL=http://localhost:33333 \
+  -e BASE_URL=http://localhost:3333 \
   --restart unless-stopped \
   ghcr.io/agnt-gg/agnt:latest
 
-# Access at http://localhost:33333
+# Access at http://localhost:3333
 ```
 
 **Lite variant without browser automation (~715MB):**
@@ -323,7 +323,7 @@ docker run -d \
 docker run -d \
   --name agnt-lite \
   -p 3333:3333 \
-  -v agnt-data:/root/.agnt/data \
+  -v agnt-data:/app/data \
   -e NODE_ENV=production \
   -e BASE_URL=http://localhost:3333 \
   --restart unless-stopped \
@@ -377,16 +377,16 @@ services:
     image: ghcr.io/agnt-gg/agnt:latest
     container_name: agnt-full
     ports:
-      - "33333:33333"
+      - "3333:3333"
     environment:
       - NODE_ENV=production
-      - BASE_URL=http://localhost:33333
+      - BASE_URL=http://localhost:3333
       - REMOTE_URL=https://api.agnt.gg
       - JWT_SECRET=${JWT_SECRET:-your-random-jwt-secret-here}
       - SESSION_SECRET=${SESSION_SECRET:-your-random-session-secret-here}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-random-encryption-key-here}
     volumes:
-      - agnt-data:/root/.agnt/data
+      - agnt-data:/app/data
     restart: unless-stopped
 
 volumes:
@@ -411,7 +411,7 @@ services:
       - SESSION_SECRET=${SESSION_SECRET:-your-random-session-secret-here}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-random-encryption-key-here}
     volumes:
-      - agnt-data:/root/.agnt/data
+      - agnt-data:/app/data
     restart: unless-stopped
 
 volumes:

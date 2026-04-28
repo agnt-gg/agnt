@@ -33,7 +33,7 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-30s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Build Variants:$(NC)"
-	@echo "  $(YELLOW)Docker Full$(NC)    - Docker image with Chromium (~1.5GB) - Port 33333"
+	@echo "  $(YELLOW)Docker Full$(NC)    - Docker image with Chromium (~1.5GB) - Port 3333"
 	@echo "  $(YELLOW)Docker Lite$(NC)    - Docker image without browser (~715MB) - Port 3333"
 	@echo "  $(YELLOW)Electron Full$(NC)  - Desktop installer with browser (~150-200MB)"
 	@echo "  $(YELLOW)Electron Lite$(NC)  - Desktop installer without browser (~80-120MB)"
@@ -174,7 +174,7 @@ push-all: push-full push-lite ## Push both full and lite images to DockerHub
 run-full: setup-dirs ## Run full image with docker-compose
 	@echo "$(BLUE)Starting AGNT (full version)...$(NC)"
 	AGNT_HOME=$(AGNT_DATA_HOME) docker-compose up -d
-	@echo "$(GREEN)✓ AGNT Full is running at http://localhost:33333$(NC)"
+	@echo "$(GREEN)✓ AGNT Full is running at http://localhost:3333$(NC)"
 	@echo "$(YELLOW)View logs: make logs-full$(NC)"
 
 .PHONY: run-lite
@@ -194,7 +194,7 @@ run-lite-local: build-lite run-lite ## Build and run lite image locally
 run-full-remote: pull-full setup-dirs ## Pull and run full image from DockerHub
 	@echo "$(BLUE)Starting AGNT (full version from DockerHub)...$(NC)"
 	AGNT_HOME=$(AGNT_DATA_HOME) docker-compose up -d
-	@echo "$(GREEN)✓ AGNT Full is running at http://localhost:33333$(NC)"
+	@echo "$(GREEN)✓ AGNT Full is running at http://localhost:3333$(NC)"
 
 .PHONY: run-lite-remote
 run-lite-remote: pull-lite setup-dirs ## Pull and run lite image from DockerHub

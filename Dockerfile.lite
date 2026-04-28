@@ -104,6 +104,10 @@ RUN mkdir -p /app/backend/plugins/installed \
     /app/data/_logs \
     && chown -R node:node /app
 
+# Declare /app/data as a volume so data persists across container removal
+# even if users forget to pass -v. Named/bind mounts via -v take precedence.
+VOLUME /app/data
+
 # Copy built frontend from frontend-builder with correct ownership
 # Note: We stay as root here so the entrypoint can fix volume permissions
 COPY --from=frontend-builder --chown=node:node /app/frontend/dist /app/frontend/dist
@@ -118,6 +122,9 @@ COPY --chown=node:node main.js /app/
 COPY --chown=node:node preload.js /app/
 COPY --chown=node:node package*.json /app/
 COPY --chown=node:node assets/ /app/assets/
+
+# Expose backend/.env to dotenv (which loads from cwd=/app)
+RUN ln -sf /app/backend/.env /app/.env
 
 # Copy and set up entrypoint script
 COPY --chown=root:root scripts/docker-entrypoint.sh /usr/local/bin/

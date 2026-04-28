@@ -11,7 +11,7 @@ Run Docker backend with **web browser + native desktop apps** sharing the same d
 - ✅ Shared data for family/team (2-10 users)
 - ✅ Maximum flexibility
 - 📦 Size: Docker (~1.5GB or 715MB) + optional Electron per user
-- 🌐 Ports: **3333** (Lite) or **33333** (Full)
+- 🌐 Ports: **3333** (Lite) or **3333** (Full)
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ Run Docker backend with **web browser + native desktop apps** sharing the same d
 
 **Option A: Full (with browser automation)**
 - Image size: ~1.5GB
-- Port: 33333
+- Port: 3333
 - See: [Docker Full Guide](QUICKSTART_DOCKER_FULL.md)
 
 **Option B: Lite (without browser automation)**
@@ -46,7 +46,7 @@ Run Docker backend with **web browser + native desktop apps** sharing the same d
 git clone https://github.com/agnt-gg/agnt.git
 cd agnt
 
-# Option A: Start Docker Full (port 33333)
+# Option A: Start Docker Full (port 3333)
 make run-full
 
 # Option B: Start Docker Lite (port 3333)
@@ -62,7 +62,7 @@ Users can now access AGNT in **three ways**:
 **From same network:**
 ```
 http://SERVER_IP:3333    (Lite)
-http://SERVER_IP:33333   (Full)
+http://SERVER_IP:3333   (Full)
 ```
 
 **From internet (with port forwarding):**
@@ -114,7 +114,7 @@ Just open: `http://SERVER_IP:3333`
 ### Small Team Setup (5 users)
 
 **Server:** Cloud VPS running Docker Full (1.5GB)
-- Port: 33333 (or behind reverse proxy)
+- Port: 3333 (or behind reverse proxy)
 - Domain: agnt.yourcompany.com
 
 **User Access:**
@@ -125,7 +125,7 @@ Just open: `http://SERVER_IP:3333`
 ### Remote Work Setup (10 users)
 
 **Server:** Local server with Docker Full
-- Port: 33333
+- Port: 3333
 - VPN access for remote users
 
 **User Access:**
