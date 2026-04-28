@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Generate cinematic AI video clips (5-20s) using ByteDance Seedance 2.0 via OpenRouter. Supports text-to-video, first/last-frame image conditioning, and native audio-video joint generation.",
   "author": "AGNT",
-  "icon": "film",
+  "icon": "seedance",
   "homepage": "https://openrouter.ai/bytedance/seedance-2.0",
   "license": "MIT",
   "tools": [
@@ -14,7 +14,7 @@
         "title": "Seedance 2.0 Video",
         "category": "action",
         "type": "seedance-api",
-        "icon": "film",
+        "icon": "seedance",
         "description": "Generate 5-20s cinematic AI video clips using ByteDance Seedance 2.0 via OpenRouter. Pair with the Remotion plugin to add branded motion graphics, logos, and captions.",
         "documentation": "https://openrouter.ai/bytedance/seedance-2.0",
         "authRequired": "apiKey",
