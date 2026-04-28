@@ -22,20 +22,43 @@
         </div>
 
         <template v-if="!isLoading">
-          <div v-for="cat in categories" :key="cat.id" class="tool-section">
+          <div
+            v-for="cat in categories"
+            :key="cat.id"
+            class="tool-section"
+            :class="{ 'is-locked': cat.locked }"
+          >
             <div class="section-header" @click="toggleExpand(cat.id)">
               <span class="section-expand">{{ expanded[cat.id] ? '\u25BE' : '\u25B8' }}</span>
               <label class="group-toggle" @click.stop>
-                <input type="checkbox" :checked="isCategoryEnabled(cat)" @change="toggleCategory(cat)" />
+                <input
+                  type="checkbox"
+                  :checked="isCategoryEnabled(cat)"
+                  :disabled="cat.locked"
+                  @change="toggleCategory(cat)"
+                />
                 <span class="toggle-switch"></span>
               </label>
               <span class="section-title">{{ cat.name }}</span>
+              <span v-if="cat.locked" class="section-lock" title="Always enabled for this chat">
+                <i class="fas fa-lock"></i>
+              </span>
               <span class="section-badge">{{ getCategoryEnabledCount(cat) }}/{{ cat.tools.length }}</span>
             </div>
             <div v-if="cat.description && expanded[cat.id]" class="cat-description">{{ cat.description }}</div>
             <div v-if="expanded[cat.id]" class="section-tools">
-              <label v-for="tool in cat.tools" :key="tool.name" class="tool-item toggleable">
-                <input type="checkbox" :checked="isToolEnabled(tool.name)" @change="toggleTool(tool.name)" />
+              <label
+                v-for="tool in cat.tools"
+                :key="tool.name"
+                class="tool-item toggleable"
+                :class="{ 'is-locked': cat.locked }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="isToolEnabled(tool.name)"
+                  :disabled="cat.locked"
+                  @change="toggleTool(tool.name)"
+                />
                 <span class="toggle-switch"></span>
                 <span class="tool-name">{{ tool.name }}</span>
               </label>
@@ -48,15 +71,24 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { API_CONFIG } from '@/../user.config.js';
+import { getChannelConfig, setChannelEnabledTools, getDefaultEnabledTools, getSpecialtyToolNames } from '@/services/chatChannelConfig.js';
 
-var STORAGE_KEY = 'agnt_enabled_tools';
+// Legacy global keys, kept as a fallback for any chat without a channelKey
+// (and for backwards compatibility with users who never visited a per-channel
+// chat after the migration).
+var GLOBAL_ENABLED_KEY = 'agnt_enabled_tools';
+var GLOBAL_DISABLED_KEY = 'agnt_disabled_tools';
 
 export default {
   name: 'ChatToolSelector',
   props: {
     isOpen: { type: Boolean, default: false },
+    // When set, the selector reads/writes this channel's tool selections
+    // (chatChannelConfig.js). Each chat surface gets its own enabled set;
+    // the legacy global key is the fallback for unconfigured channels.
+    channelKey: { type: String, default: '' },
   },
   emits: ['close'],
   setup(props, { emit }) {
@@ -65,6 +97,52 @@ export default {
     var categories = ref([]);
     var enabledTools = ref(new Set());
     var expanded = ref({});
+
+    // Specialty (locked) tool names for this channel. Reactive on channelKey
+    // change so swapping chats while the selector is mounted re-derives.
+    var specialtyNames = computed(function () {
+      return new Set(getSpecialtyToolNames(props.channelKey) || []);
+    });
+    var hasSpecialty = computed(function () { return specialtyNames.value.size > 0; });
+    var isLocked = function (name) { return specialtyNames.value.has(name); };
+
+    // Backend returns Built In + Plugins. For sidebar chats with a specialty
+    // set, we split Built In into Specialty (locked) + System Tools, leaving
+    // Plugins alone. Orchestrator and any channel without specialty keep the
+    // backend's original two-bucket layout.
+    var reorganizeCategories = function (raw) {
+      if (!hasSpecialty.value) return raw;
+      var builtIn = raw.find(function (c) { return c.id === 'builtin'; });
+      var plugins = raw.find(function (c) { return c.id === 'plugins'; });
+      var others = raw.filter(function (c) { return c.id !== 'builtin' && c.id !== 'plugins'; });
+
+      var result = [];
+      if (builtIn) {
+        var specialty = builtIn.tools.filter(function (t) { return specialtyNames.value.has(t.name); });
+        var system = builtIn.tools.filter(function (t) { return !specialtyNames.value.has(t.name); });
+        if (specialty.length > 0) {
+          result.push({
+            id: 'specialty',
+            name: 'Specialty Tools',
+            description: 'Built into this page — always available.',
+            locked: true,
+            tools: specialty,
+          });
+        }
+        if (system.length > 0) {
+          result.push({
+            id: 'system',
+            name: 'System Tools',
+            description: 'General-purpose tools shared across all chats.',
+            locked: false,
+            tools: system,
+          });
+        }
+      }
+      result = result.concat(others);
+      if (plugins) result.push(plugins);
+      return result;
+    };
 
     var saveState = function () {
       var enabled = [];
@@ -79,8 +157,39 @@ export default {
           }
         });
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(enabled));
-      localStorage.setItem('agnt_disabled_tools', JSON.stringify(disabled));
+      if (props.channelKey) {
+        // Per-channel persistence — each chat surface gets its own list.
+        setChannelEnabledTools(props.channelKey, enabled);
+      } else {
+        // No channelKey (rare — only legacy mounts) → fall back to globals.
+        localStorage.setItem(GLOBAL_ENABLED_KEY, JSON.stringify(enabled));
+        localStorage.setItem(GLOBAL_DISABLED_KEY, JSON.stringify(disabled));
+      }
+    };
+
+    // Read this channel's enabled set. Order of precedence:
+    //   1. Explicit per-channel save.
+    //   2. Curated default for sidebar chat types (agent / workflow / tool /
+    //      widget / artifact) — a small page-relevant subset, no plugins.
+    //   3. Legacy global key (orchestrator-era).
+    //   4. null → "no saved state", caller defaults to all-enabled.
+    // Returning the curated default in case 2 means the very first open of a
+    // sidebar chat shows the right scoped selection without requiring a save.
+    var readSavedEnabled = function () {
+      if (props.channelKey) {
+        var cfg = getChannelConfig(props.channelKey);
+        if (cfg && Array.isArray(cfg.enabledTools)) return cfg.enabledTools;
+        var sidebarDefault = getDefaultEnabledTools(props.channelKey);
+        if (sidebarDefault) return sidebarDefault;
+      }
+      try {
+        var legacy = localStorage.getItem(GLOBAL_ENABLED_KEY);
+        if (legacy) {
+          var parsed = JSON.parse(legacy);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) { /* ignore */ }
+      return null;
     };
 
     var fetchTools = async function () {
@@ -92,25 +201,36 @@ export default {
         });
         if (!resp.ok) throw new Error(resp.status);
         var data = await resp.json();
-        categories.value = data.categories || [];
+        categories.value = reorganizeCategories(data.categories || []);
 
-        // Start with ALL tools enabled (locked ones are always on anyway)
+        // Build the universe of tool names from the categories the backend
+        // returned, then intersect with what's saved for this channel.
         var allNames = new Set();
         categories.value.forEach(function (cat) {
           cat.tools.forEach(function (t) {
             allNames.add(t.name);
           });
         });
-        enabledTools.value = new Set(allNames);
 
-        // Apply saved disabled state
-        try {
-          var disabled = JSON.parse(localStorage.getItem('agnt_disabled_tools') || '[]');
-          disabled.forEach(function (name) {
-            enabledTools.value.delete(name);
-          });
-        } catch (e) {
-          /* ignore */
+        var savedEnabled = readSavedEnabled();
+        if (savedEnabled) {
+          // Channel has a saved list — keep just those names enabled. Then
+          // unconditionally union in the specialty set so locked tools are
+          // never displayed as off (and never sent as off).
+          var savedSet = new Set(savedEnabled);
+          specialtyNames.value.forEach(function (n) { savedSet.add(n); });
+          enabledTools.value = new Set([...allNames].filter(function (n) {
+            return savedSet.has(n);
+          }));
+        } else if (hasSpecialty.value) {
+          // First open in a sidebar chat — only specialty tools are enabled.
+          // The user opts in to System / Plugins per chat from the selector.
+          enabledTools.value = new Set([...allNames].filter(function (n) {
+            return specialtyNames.value.has(n);
+          }));
+        } else {
+          // First open in a non-sidebar channel (orchestrator) — all on.
+          enabledTools.value = new Set(allNames);
         }
         enabledTools.value = new Set(enabledTools.value);
       } catch (err) {
@@ -142,6 +262,8 @@ export default {
     };
 
     var toggleTool = function (name) {
+      // Specialty tools are always enabled — refuse to toggle them off.
+      if (isLocked(name)) return;
       if (enabledTools.value.has(name)) {
         enabledTools.value.delete(name);
       } else {
@@ -169,6 +291,8 @@ export default {
     };
 
     var toggleCategory = function (cat) {
+      // Locked categories (Specialty Tools) are non-toggleable.
+      if (cat.locked) return;
       var allOn = isCategoryEnabled(cat);
       cat.tools.forEach(function (t) {
         if (allOn) {
@@ -198,7 +322,10 @@ export default {
 
     var disableAllOptional = function () {
       categories.value.forEach(function (cat) {
+        // Specialty Tools stay on — that's the whole point of "locked".
+        if (cat.locked) return;
         cat.tools.forEach(function (t) {
+          if (isLocked(t.name)) return;
           enabledTools.value.delete(t.name);
         });
       });
@@ -223,6 +350,58 @@ export default {
         document.addEventListener('keydown', handleEscape);
       }, 100);
     });
+
+    // Reload the enabled set when the parent swaps channels while this
+    // selector stays mounted (e.g. user pages between saved agents).
+    // Re-derive specialty + recompute the enabled set with the same locking
+    // semantics as fetchTools.
+    watch(
+      function () { return props.channelKey; },
+      function () {
+        if (categories.value.length === 0) return;
+        // Re-bucket tools for the new channel (specialty/system split).
+        // We rebuild from the original built-in + plugins shape every time
+        // by remerging the existing buckets.
+        var flat = [];
+        categories.value.forEach(function (cat) {
+          if (cat.id === 'specialty' || cat.id === 'system') {
+            flat = flat.concat({ id: 'builtin', name: 'Built In', locked: false, tools: cat.tools });
+          } else {
+            flat.push(cat);
+          }
+        });
+        // Coalesce duplicate built-in entries created by the loop above.
+        var builtInTools = [];
+        var others = [];
+        flat.forEach(function (c) {
+          if (c.id === 'builtin') builtInTools = builtInTools.concat(c.tools);
+          else others.push(c);
+        });
+        var raw = [];
+        if (builtInTools.length > 0) raw.push({ id: 'builtin', name: 'Built In', locked: false, tools: builtInTools });
+        raw = raw.concat(others);
+        categories.value = reorganizeCategories(raw);
+
+        var allNames = new Set();
+        categories.value.forEach(function (cat) {
+          cat.tools.forEach(function (t) { allNames.add(t.name); });
+        });
+        var savedEnabled = readSavedEnabled();
+        if (savedEnabled) {
+          var savedSet = new Set(savedEnabled);
+          specialtyNames.value.forEach(function (n) { savedSet.add(n); });
+          enabledTools.value = new Set([...allNames].filter(function (n) {
+            return savedSet.has(n);
+          }));
+        } else if (hasSpecialty.value) {
+          enabledTools.value = new Set([...allNames].filter(function (n) {
+            return specialtyNames.value.has(n);
+          }));
+        } else {
+          enabledTools.value = new Set(allNames);
+        }
+      },
+    );
 
     onUnmounted(function () {
       document.removeEventListener('click', handleClickOutside);
@@ -424,6 +603,29 @@ export default {
   padding: 1px 6px;
   border-radius: 8px;
   font-weight: 500;
+}
+
+/* Lock indicator for the Specialty Tools category. The category and its
+   rows render with a non-clickable cursor and a slightly muted toggle so
+   the user reads it as "always on" rather than "broken toggle". */
+.section-lock {
+  font-size: 0.65em;
+  color: var(--color-green);
+  margin-left: 4px;
+  opacity: 0.85;
+}
+
+.tool-section.is-locked .group-toggle,
+.tool-section.is-locked .tool-item.is-locked {
+  cursor: default;
+}
+
+.tool-item.is-locked {
+  opacity: 0.85;
+}
+
+.tool-item.is-locked .tool-name {
+  color: var(--color-light-green, var(--color-text));
 }
 
 .section-hint {

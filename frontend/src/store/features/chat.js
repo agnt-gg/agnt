@@ -1,5 +1,12 @@
 import { Message, ChatWindow } from '@/views/_components/base/ChatWindow';
 import { API_CONFIG } from '@/tt.config.js';
+import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
+
+// The orchestrator chat surface owns this channelKey; every send from chat.js
+// resolves provider/model from Vuex (already kept in sync by the popover) and
+// the enabled tool list from chatChannelConfig — same convention chatUnified
+// uses for sidebar chats.
+const ORCHESTRATOR_CHANNEL_KEY = 'orchestrator:default';
 
 const MAX_MESSAGES = 100; // Limit messages to prevent memory leaks
 const MAX_TOOL_RESULT_CHARS = 2000; // Cap tool results in history to avoid huge payloads
@@ -978,10 +985,11 @@ export default {
           if (resolvedAgentId) {
             formData.append('agentId', resolvedAgentId);
           }
-          // Send enabled tools from tool selector
-          const savedTools = localStorage.getItem('agnt_enabled_tools');
-          if (savedTools) {
-            formData.append('enabledTools', savedTools);
+          // Send enabled tools — per-channel override wins, falls back to
+          // legacy global key for users who haven't configured this chat yet.
+          const channelTools = resolveChannelEnabledTools(ORCHESTRATOR_CHANNEL_KEY);
+          if (channelTools && channelTools.length > 0) {
+            formData.append('enabledTools', JSON.stringify(channelTools));
           }
 
           files.forEach((file) => {
@@ -1000,7 +1008,7 @@ export default {
             reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
             reasoningEnabled: effectiveReasoningEnabled || undefined,
             agentId: resolvedAgentId || undefined,
-            enabledTools: JSON.parse(localStorage.getItem('agnt_enabled_tools') || '[]'),
+            enabledTools: resolveChannelEnabledTools(ORCHESTRATOR_CHANNEL_KEY) || [],
           });
         }
 

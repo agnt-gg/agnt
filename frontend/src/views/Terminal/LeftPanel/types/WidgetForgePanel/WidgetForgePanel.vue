@@ -23,21 +23,42 @@
 
     <!-- Chat container -->
     <div class="panel-content">
-      <WidgetChatContainer :key="widgetId" :widgetId="widgetId" />
+      <UnifiedChatContainer
+        :key="chatChannelKey"
+        :channel-key="chatChannelKey"
+        :chat-type="chatChatType"
+        :page-context="chatPageContext"
+        :page-state="chatPageState"
+        :on-frontend-event="chatOnFrontendEvent"
+        welcome-message="Hi! I'm Annie, your widget assistant. I can help you create, modify, and configure widgets!"
+        empty-icon="fas fa-puzzle-piece"
+        placeholder="Ask about widgets, create new ones..."
+        :initial-suggestions="initialWidgetSuggestions"
+        suggestions-context-label="widget"
+      />
     </div>
+    <SimpleModal ref="confirmModal" />
   </div>
 </template>
 
 <script>
 import { ref, computed, inject } from 'vue';
 import { useStore } from 'vuex';
-import WidgetChatContainer from './WidgetChatContainer.vue';
+import UnifiedChatContainer from '@/views/_components/chat/UnifiedChatContainer.vue';
+import { useWidgetChatContext } from '@/composables/chat/useWidgetChatContext.js';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
+const initialWidgetSuggestions = [
+  { id: 'widget-1', text: 'Create a new widget', icon: '🧩' },
+  { id: 'widget-2', text: 'Help me with HTML widgets', icon: '📦' },
+];
 
 export default {
   name: 'WidgetForgePanel',
   components: {
-    WidgetChatContainer,
+    UnifiedChatContainer,
+    SimpleModal,
     Tooltip,
   },
   emits: ['panel-action'],
@@ -61,9 +82,32 @@ export default {
       }
     };
 
-    const handleClearChat = () => {
-      const widgetIdToUse = widgetId.value || 'widget-forge';
-      store.dispatch('widgetChat/clearConversation', widgetIdToUse);
+    const {
+      channelKey: chatChannelKey,
+      chatType: chatChatType,
+      pageContext: chatPageContext,
+      pageState: chatPageState,
+      onFrontendEvent: chatOnFrontendEvent,
+    } = useWidgetChatContext({ widgetId });
+
+    const confirmModal = ref(null);
+    const handleClearChat = async () => {
+      const confirmed = await confirmModal.value?.showModal({
+        title: 'Clear Chat?',
+        message: 'This will permanently delete the conversation history for this chat.',
+        confirmText: 'Clear',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
+      store.dispatch('chatUnified/clearConversation', {
+        channelKey: chatChannelKey.value,
+        welcomeMessage: {
+          id: `widget-welcome-${Date.now()}`,
+          role: 'assistant',
+          content: "Hi! I'm Annie, your widget assistant. I can help you create, modify, and configure widgets!",
+          timestamp: Date.now(),
+        },
+      });
       emit('panel-action', 'clear-chat');
     };
 
@@ -72,6 +116,13 @@ export default {
       widgetId,
       toggleFullScreen,
       handleClearChat,
+      confirmModal,
+      chatChannelKey,
+      chatChatType,
+      chatPageContext,
+      chatPageState,
+      chatOnFrontendEvent,
+      initialWidgetSuggestions,
     };
   },
 };
@@ -182,12 +233,14 @@ export default {
   font-size: 0.9em;
 }
 
-.clear-chat-button:hover {
-  color: rgba(255, 107, 107, 0.8) !important;
+/* Clear-chat is a destructive action — always red, not green like other tabs. */
+.clear-chat-button,
+.clear-chat-button .tab-name {
+  color: var(--color-red, #ff6b6b);
 }
-
+.clear-chat-button:hover,
 .clear-chat-button:hover .tab-name {
-  color: rgba(255, 107, 107, 0.8);
+  color: var(--color-red, #ff6b6b);
 }
 
 .widget-editor-panel.fullscreen .scanline-overlay {

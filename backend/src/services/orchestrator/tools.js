@@ -8,6 +8,11 @@ import AGNT from '../../libs/agnt2.js';
 import scrapeUtil from '../../utils/webScrape.js';
 import toolRegistry from './toolRegistry.js';
 import { getGoalToolSchemas, executeGoalTool } from './goalTools.js';
+import { getAgentToolSchemas, executeAgentTool } from './agentTools.js';
+import { getWorkflowToolSchemas, executeWorkflowTool } from './workflowTools.js';
+import { getCodeToolSchemas, executeCodeFunction } from './codeTools.js';
+import { getToolForgeToolSchemas, executeToolForgeTool } from './toolForgeTools.js';
+import { getWidgetToolSchemas, executeWidgetTool } from './widgetTools.js';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import CodexCliService from '../ai/CodexCliService.js';
@@ -3863,6 +3868,10 @@ const ASYNC_TOOL_PARAMS = {
     type: 'number',
     description: 'For periodic execution: stop after this many minutes total. Requires _interval.',
   },
+  _delayFirst: {
+    type: 'boolean',
+    description: 'For periodic execution: skip the immediate first run and wait one full _interval before the first iteration. Use for silent heartbeats / "come back later" timers. Requires _interval.',
+  },
 };
 
 /**
@@ -3891,25 +3900,51 @@ export async function getAvailableToolSchemas() {
   await toolRegistry.ensureInitialized();
 
   const nativeToolSchemas = Object.values(TOOLS).map((tool) => tool.schema);
+  const agentToolSchemas = await getAgentToolSchemas();
+  const workflowToolSchemas = await getWorkflowToolSchemas();
   const goalToolSchemas = getGoalToolSchemas();
+  const codeToolSchemas = getCodeToolSchemas();
+  const toolForgeToolSchemas = getToolForgeToolSchemas();
+  const widgetToolSchemas = getWidgetToolSchemas();
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
 
   // Combine and deduplicate by function name to ensure unique tool names
-  const allSchemas = [...nativeToolSchemas, ...goalToolSchemas, ...registryToolSchemas, ...pluginToolSchemas];
+  // Precedence is intentional: native/orchestrator tools win duplicate names,
+  // then domain-specific Annie tools, then registry/plugin tools.
+  const allSchemas = [
+    ...nativeToolSchemas,
+    ...agentToolSchemas,
+    ...workflowToolSchemas,
+    ...goalToolSchemas,
+    ...codeToolSchemas,
+    ...toolForgeToolSchemas,
+    ...widgetToolSchemas,
+    ...registryToolSchemas,
+    ...pluginToolSchemas,
+  ];
   const uniqueSchemas = [];
   const seenNames = new Set();
+  const duplicateNames = new Set();
 
   for (const schema of allSchemas) {
-    if (schema.function && schema.function.name && !seenNames.has(schema.function.name)) {
+    if (schema.function && schema.function.name) {
+      if (seenNames.has(schema.function.name)) {
+        duplicateNames.add(schema.function.name);
+        continue;
+      }
       seenNames.add(schema.function.name);
       // Inject async execution params into every tool
       uniqueSchemas.push(injectAsyncParams(schema));
     }
   }
 
+  if (duplicateNames.size > 0) {
+    console.warn(`[Orchestrator] Duplicate tool names ignored by registry precedence: ${[...duplicateNames].join(', ')}`);
+  }
+
   console.log(
-    `[Orchestrator] Available tools: ${uniqueSchemas.length} (${nativeToolSchemas.length} native, ${registryToolSchemas.length} registry, ${pluginToolSchemas.length} plugins)`
+    `[Orchestrator] Available tools: ${uniqueSchemas.length} (${nativeToolSchemas.length} native, ${agentToolSchemas.length} agent, ${workflowToolSchemas.length} workflow, ${goalToolSchemas.length} goal, ${codeToolSchemas.length} code, ${toolForgeToolSchemas.length} tool-forge, ${widgetToolSchemas.length} widget, ${registryToolSchemas.length} registry, ${pluginToolSchemas.length} plugins)`
   );
 
   return uniqueSchemas;
@@ -3988,13 +4023,6 @@ export async function executeTool(toolName, args, authToken, context) {
     // CRITICAL: Resolve data references in arguments before execution
     const resolvedArgs = resolveDataReferences(args, context);
 
-    // Check if this is a goal tool from goalTools.js
-    const goalToolNames = new Set(getGoalToolSchemas().map(s => s.function.name));
-    if (goalToolNames.has(toolName)) {
-      console.log(`Executing goal tool: ${toolName}`);
-      return await executeGoalTool(toolName, resolvedArgs, authToken, context);
-    }
-
     const nativeTool = TOOLS[toolName];
     if (nativeTool) {
       console.log(`Executing native orchestrator tool: ${toolName}`);
@@ -4025,6 +4053,42 @@ export async function executeTool(toolName, args, authToken, context) {
           details: toolError.toString(),
         });
       }
+    }
+
+    const agentToolNames = new Set((await getAgentToolSchemas()).map(s => s.function.name));
+    if (agentToolNames.has(toolName)) {
+      console.log(`Executing agent tool: ${toolName}`);
+      return await executeAgentTool(toolName, resolvedArgs, authToken, context);
+    }
+
+    const workflowToolNames = new Set((await getWorkflowToolSchemas()).map(s => s.function.name));
+    if (workflowToolNames.has(toolName)) {
+      console.log(`Executing workflow tool: ${toolName}`);
+      return await executeWorkflowTool(toolName, resolvedArgs, authToken, context);
+    }
+
+    const goalToolNames = new Set(getGoalToolSchemas().map(s => s.function.name));
+    if (goalToolNames.has(toolName)) {
+      console.log(`Executing goal tool: ${toolName}`);
+      return await executeGoalTool(toolName, resolvedArgs, authToken, context);
+    }
+
+    const codeToolNames = new Set(getCodeToolSchemas().map(s => s.function.name));
+    if (codeToolNames.has(toolName)) {
+      console.log(`Executing artifact/code tool: ${toolName}`);
+      return await executeCodeFunction(toolName, resolvedArgs);
+    }
+
+    const toolForgeToolNames = new Set(getToolForgeToolSchemas().map(s => s.function.name));
+    if (toolForgeToolNames.has(toolName)) {
+      console.log(`Executing tool-forge tool: ${toolName}`);
+      return await executeToolForgeTool(toolName, resolvedArgs, authToken, context);
+    }
+
+    const widgetToolNames = new Set(getWidgetToolSchemas().map(s => s.function.name));
+    if (widgetToolNames.has(toolName)) {
+      console.log(`Executing widget tool: ${toolName}`);
+      return await executeWidgetTool(toolName, resolvedArgs, authToken, context);
     }
 
     const registryToolName = toolName.replace(/_/g, '-');

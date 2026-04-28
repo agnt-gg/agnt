@@ -1,8 +1,6 @@
 import { createStore } from 'vuex';
 import chat from './features/chat';
-import workflowChat from './features/workflowChat';
-import toolChat from './features/toolChat';
-import agentChat from './features/agentChat';
+import chatUnified from './features/chatUnified';
 import pluginBuilder from './features/pluginBuilder';
 import canvas from './features/canvas';
 import theme from './app/theme';
@@ -31,11 +29,9 @@ import contentOutputs from './features/contentOutputs';
 import groups from './features/groups';
 import widgetLayout from './features/widgetLayout';
 import widgetDefinitions from './features/widgetDefinitions';
-import widgetChat from './features/widgetChat';
 import skills from './features/skills';
 import skillforge from './features/skillforge';
 import experiments from './features/experiments';
-import artifactChat from './features/artifactChat';
 import insights from './features/insights';
 
 const store = createStore({
@@ -121,9 +117,7 @@ const store = createStore({
   },
   modules: {
     chat,
-    workflowChat,
-    toolChat,
-    agentChat,
+    chatUnified,
     pluginBuilder,
     canvas,
     theme,
@@ -152,11 +146,9 @@ const store = createStore({
     groups,
     widgetLayout,
     widgetDefinitions,
-    widgetChat,
     skills,
     skillforge,
     experiments,
-    artifactChat,
     insights,
   },
 });

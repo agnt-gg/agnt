@@ -726,8 +726,15 @@ export default {
       }
     }
 
-    function handleNewChat() {
+    async function handleNewChat() {
       playSound('buttonClick');
+      const confirmed = await simpleModal.value?.showModal({
+        title: 'Start a new chat?',
+        message: 'Your current conversation will be saved. You can pick it back up anytime from your saved chats.',
+        confirmText: 'New chat',
+        confirmClass: 'btn-primary',
+      });
+      if (!confirmed) return;
       // Navigate to chat screen without query params
       router.push('/chat');
       // Dispatch event to trigger full clear and re-initialization in Chat.vue

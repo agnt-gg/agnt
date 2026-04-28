@@ -186,6 +186,7 @@
       <ChatProviderSelector
         v-if="isProviderSelectorOpen"
         :isOpen="isProviderSelectorOpen"
+        :channel-key="channelKey"
         :style="providerSelectorStyle"
         @close="closeProviderSelector"
       />
@@ -196,6 +197,7 @@
       <ChatToolSelector
         v-if="isToolSelectorOpen"
         :isOpen="isToolSelectorOpen"
+        :channel-key="channelKey"
         @close="closeToolSelector"
       />
     </Teleport>
@@ -257,6 +259,14 @@ export default {
     screenId: {
       type: String,
       required: true,
+    },
+    // Per-channel chat config key (chatChannelConfig.js). When set, the
+    // provider/tool popovers persist their selection to this channel's
+    // config rather than the global Vuex state. The orchestrator passes
+    // 'orchestrator:default' so its config doesn't leak into sidebar chats.
+    channelKey: {
+      type: String,
+      default: '',
     },
     // Optional prop to control if the input line should be shown at all
     showInput: {

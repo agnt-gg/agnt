@@ -35,7 +35,19 @@
 
     <!-- Show chat when nothing is selected -->
     <div class="panel-content" v-if="!selectedNodeContent && !selectedEdgeContent">
-      <WorkflowChatContainer :key="workflowId" :workflowId="workflowId" :nodes="nodes" :edges="edges" />
+      <UnifiedChatContainer
+        :key="chatChannelKey"
+        :channel-key="chatChannelKey"
+        :chat-type="chatChatType"
+        :page-context="chatPageContext"
+        :page-state="chatPageState"
+        :on-frontend-event="chatOnFrontendEvent"
+        welcome-message="Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!"
+        empty-icon="fas fa-comments"
+        placeholder="Ask about workflows, nodes..."
+        :initial-suggestions="initialWorkflowSuggestions"
+        suggestions-context-label="workflow"
+      />
     </div>
     <div v-else-if="selectedNodeContent || selectedEdgeContent">
       <template v-if="selectedNodeContent && selectedNodeContent.error">
@@ -96,19 +108,28 @@
         @update:edgeContent="updateEdgeContent"
       /> -->
     </div>
+    <SimpleModal ref="confirmModal" />
   </div>
 </template>
 
 <script>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
-import WorkflowChatContainer from './WorkflowChatContainer.vue';
+import { ref, computed, toRefs, watch, onMounted, onBeforeUnmount } from 'vue';
+import { useStore } from 'vuex';
+import UnifiedChatContainer from '@/views/_components/chat/UnifiedChatContainer.vue';
+import { useWorkflowChatContext } from '@/composables/chat/useWorkflowChatContext.js';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
+const initialWorkflowSuggestions = [
+  { id: 'wf-1', text: 'List tools', icon: '📦' },
+  { id: 'wf-2', text: 'Analyze flow', icon: '🔍' },
+];
 
 export default {
   name: 'WorkflowForgePanel',
   components: {
-    // PanelTab,
-    WorkflowChatContainer,
+    UnifiedChatContainer,
+    SimpleModal,
     Tooltip,
   },
   props: {
@@ -156,7 +177,7 @@ export default {
           console.log('WorkflowForgePanel: Node has error:', newContent.error);
         }
       },
-      { deep: true }
+      { deep: true },
     );
 
     // Add watcher for debugging workflowId changes
@@ -164,7 +185,7 @@ export default {
       () => props.workflowId,
       (newId, oldId) => {
         console.log('WorkflowForgePanel: workflowId changed from', oldId, 'to', newId);
-      }
+      },
     );
 
     const tabs = [
@@ -221,7 +242,7 @@ export default {
       window.dispatchEvent(
         new CustomEvent('panel-fullscreen-toggle', {
           detail: { panel: 'left', isFullScreen: targetState },
-        })
+        }),
       );
 
       // Also emit for standard propagation
@@ -246,8 +267,34 @@ export default {
       }
     };
 
-    const handleClearChat = () => {
-      // Emit an event to clear the chat
+    const store = useStore();
+    const { workflowId, nodes, edges } = toRefs(props);
+    const {
+      channelKey: chatChannelKey,
+      chatType: chatChatType,
+      pageContext: chatPageContext,
+      pageState: chatPageState,
+      onFrontendEvent: chatOnFrontendEvent,
+    } = useWorkflowChatContext({ workflowId, nodes, edges });
+
+    const confirmModal = ref(null);
+    const handleClearChat = async () => {
+      const confirmed = await confirmModal.value?.showModal({
+        title: 'Clear Chat?',
+        message: 'This will permanently delete the conversation history for this chat.',
+        confirmText: 'Clear',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
+      store.dispatch('chatUnified/clearConversation', {
+        channelKey: chatChannelKey.value,
+        welcomeMessage: {
+          id: `wf-welcome-${Date.now()}`,
+          role: 'assistant',
+          content: "Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!",
+          timestamp: Date.now(),
+        },
+      });
       emit('panel-action', 'clear-chat');
     };
 
@@ -269,6 +316,13 @@ export default {
       updateEdgeContent,
       updateNodeName,
       handleClearChat,
+      confirmModal,
+      chatChannelKey,
+      chatChatType,
+      chatPageContext,
+      chatPageState,
+      chatOnFrontendEvent,
+      initialWorkflowSuggestions,
     };
   },
 };
@@ -432,13 +486,14 @@ export default {
   text-decoration: underline;
 }
 
-/* Special styling for the clear chat button */
-.clear-chat-button:hover {
-  color: rgba(255, 107, 107, 0.8) !important;
+/* Clear-chat is a destructive action — always red, not green like other tabs. */
+.clear-chat-button,
+.clear-chat-button .tab-name {
+  color: var(--color-red, #ff6b6b);
 }
-
+.clear-chat-button:hover,
 .clear-chat-button:hover .tab-name {
-  color: rgba(255, 107, 107, 0.8);
+  color: var(--color-red, #ff6b6b);
 }
 
 .no-selection-placeholder {

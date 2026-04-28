@@ -8,8 +8,8 @@
     <Tooltip text="Save Conversation Now" width="auto">
       <button class="action-icon-button save-button" @click="handleManualSave" :disabled="isSaving">💾</button>
     </Tooltip>
-    <Tooltip text="Clear Chat History" width="auto">
-      <button class="action-icon-button clear-button" @click="$emit('clear')">🗑️</button>
+    <Tooltip text="Start a new chat" width="auto">
+      <button class="action-icon-button new-chat-button" @click="$emit('clear')">➕</button>
     </Tooltip>
   </div>
 </template>
@@ -171,9 +171,9 @@ export default {
   cursor: not-allowed;
 }
 
-.clear-button:hover {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: rgba(255, 107, 107, 0.4);
+.new-chat-button:hover {
+  background: rgba(var(--green-rgb, 18, 224, 255), 0.18);
+  border-color: rgba(var(--green-rgb, 18, 224, 255), 0.4);
   color: var(--color-white);
 }
 

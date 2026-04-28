@@ -13,31 +13,83 @@
     </div>
 
     <div class="panel-content">
-      <ArtifactChatContainer :sessionId="sessionId" />
+      <UnifiedChatContainer
+        :channel-key="chatChannelKey"
+        :chat-type="chatChatType"
+        :page-context="chatPageContext"
+        :page-state="chatPageState"
+        :on-frontend-event="chatOnFrontendEvent"
+        welcome-message="Hi! I'm Annie, your artifacts assistant. I can help you create, edit, and explore files — code, docs, charts, and more!"
+        empty-icon="fas fa-cube"
+        placeholder="Ask about code, create files..."
+        :initial-suggestions="initialArtifactSuggestions"
+        suggestions-context-label="artifact"
+      />
     </div>
+    <SimpleModal ref="confirmModal" />
   </div>
 </template>
 
 <script>
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useStore } from 'vuex';
-import ArtifactChatContainer from './ArtifactChatContainer.vue';
+import UnifiedChatContainer from '@/views/_components/chat/UnifiedChatContainer.vue';
+import { useArtifactChatContext } from '@/composables/chat/useArtifactChatContext.js';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
+const initialArtifactSuggestions = [
+  { id: 'artifact-1', text: 'Create new file', icon: '📄' },
+  { id: 'artifact-2', text: 'List my files', icon: '📁' },
+];
 
 export default {
   name: 'ArtifactsPanel',
-  components: { ArtifactChatContainer, Tooltip },
+  components: { UnifiedChatContainer, SimpleModal, Tooltip },
   emits: ['panel-action'],
   setup(props, { emit }) {
     const store = useStore();
     const sessionId = 'artifacts';
+    const {
+      channelKey: chatChannelKey,
+      chatType: chatChatType,
+      pageContext: chatPageContext,
+      pageState: chatPageState,
+      onFrontendEvent: chatOnFrontendEvent,
+    } = useArtifactChatContext({ sessionId });
 
-    const handleClearChat = () => {
-      store.dispatch('artifactChat/clearConversation', sessionId);
+    const confirmModal = ref(null);
+    const handleClearChat = async () => {
+      const confirmed = await confirmModal.value?.showModal({
+        title: 'Clear Chat?',
+        message: 'This will permanently delete the conversation history for this chat.',
+        confirmText: 'Clear',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
+      store.dispatch('chatUnified/clearConversation', {
+        channelKey: chatChannelKey.value,
+        welcomeMessage: {
+          id: `artifact-welcome-${Date.now()}`,
+          role: 'assistant',
+          content:
+            "Hi! I'm Annie, your artifacts assistant. I can help you create, edit, and explore files in your workspace — code, documents, visualizations, and more. What would you like to work on?",
+          timestamp: Date.now(),
+        },
+      });
       emit('panel-action', 'clear-chat');
     };
 
-    return { sessionId, handleClearChat };
+    return {
+      chatChannelKey,
+      chatChatType,
+      chatPageContext,
+      chatPageState,
+      chatOnFrontendEvent,
+      handleClearChat,
+      confirmModal,
+      initialArtifactSuggestions,
+    };
   },
 };
 </script>
@@ -109,7 +161,13 @@ export default {
   font-size: 0.9em;
 }
 
-.clear-chat-button:hover {
-  color: rgba(255, 107, 107, 0.8) !important;
+/* Clear-chat is a destructive action — always red, not green like other tabs. */
+.clear-chat-button,
+.clear-chat-button .tab-name {
+  color: var(--color-red, #ff6b6b);
+}
+.clear-chat-button:hover,
+.clear-chat-button:hover .tab-name {
+  color: var(--color-red, #ff6b6b);
 }
 </style>

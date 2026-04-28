@@ -20,20 +20,13 @@
         </button>
         <!-- Show clear chat button only when in chat view (no element selected) -->
         <Tooltip v-if="!selectedAgentContent && !selectedParameterContent" text="Clear Chat History" width="auto">
-          <button
-            class="tab-button clear-chat-button"
-            @click="handleClearChat"
-          >
+          <button class="tab-button clear-chat-button" @click="handleClearChat">
             <i class="fas fa-trash"></i>
             <span class="tab-name">Clear</span>
           </button>
         </Tooltip>
         <Tooltip :text="isFullScreen ? 'Contract Panel' : 'Expand Panel'" width="auto">
-          <button
-            class="tab-button"
-            :class="{ active: isFullScreen }"
-            @click="toggleFullScreen"
-          >
+          <button class="tab-button" :class="{ active: isFullScreen }" @click="toggleFullScreen">
             <i :class="isFullScreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
           </button>
         </Tooltip>
@@ -42,7 +35,19 @@
 
     <!-- Show chat when nothing is selected -->
     <div class="panel-content" v-if="!selectedAgentContent && !selectedParameterContent">
-      <AgentChatContainer :key="'agent-chat'" :agentId="'agent-chat'" :agents="agents" :customAgents="customAgents" />
+      <UnifiedChatContainer
+        :key="chatChannelKey"
+        :channel-key="chatChannelKey"
+        :chat-type="chatChatType"
+        :page-context="chatPageContext"
+        :page-state="chatPageState"
+        :on-frontend-event="chatOnFrontendEvent"
+        welcome-message="Hi! I'm Annie, your agent assistant. I can help you create, modify, and manage AI agents!"
+        empty-icon="fas fa-robot"
+        placeholder="Ask about agents, create new ones..."
+        :initial-suggestions="initialAgentSuggestions"
+        suggestions-context-label="agent"
+      />
     </div>
     <div v-else-if="selectedAgentContent || selectedParameterContent">
       <template v-if="selectedAgentContent && selectedAgentContent.error">
@@ -65,21 +70,28 @@
         @update:edgeContent="updateParameterContent"
       /> -->
     </div>
+    <SimpleModal ref="confirmModal" />
   </div>
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, toRefs, watch } from 'vue';
 import { useStore } from 'vuex';
-// import PanelTab from '@/views/AgentDesigner/components/EditorPanel/components/PanelTab.vue';
-import AgentChatContainer from './AgentChatContainer.vue';
+import UnifiedChatContainer from '@/views/_components/chat/UnifiedChatContainer.vue';
+import { useAgentChatContext } from '@/composables/chat/useAgentChatContext.js';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+
+const initialAgentSuggestions = [
+  { id: 'agent-1', text: 'Create agent', icon: '🤖' },
+  { id: 'agent-2', text: 'List my agents', icon: '📋' },
+];
 
 export default {
   name: 'AgentForgePanel',
   components: {
-    // PanelTab,
-    AgentChatContainer,
+    UnifiedChatContainer,
+    SimpleModal,
     Tooltip,
   },
   props: {
@@ -120,7 +132,7 @@ export default {
           console.log('AgentForgePanel: Agent has error:', newContent.error);
         }
       },
-      { deep: true }
+      { deep: true },
     );
 
     // Add watcher for debugging agentId changes
@@ -128,7 +140,7 @@ export default {
       () => props.agentId,
       (newId, oldId) => {
         console.log('AgentForgePanel: agentId changed from', oldId, 'to', newId);
-      }
+      },
     );
 
     const tabs = [
@@ -195,12 +207,34 @@ export default {
       emit('panel-action', 'update:parameterContent', updatedContent);
     };
 
-    const handleClearChat = () => {
-      // Clear the chat directly using the store
-      // Always use 'agent-chat' for agent management mode
-      store.dispatch('agentChat/clearConversation', 'agent-chat');
+    const { agents, customAgents } = toRefs(props);
+    // AgentForge panel always operates in management mode (agentId === 'agent-chat')
+    const {
+      channelKey: chatChannelKey,
+      chatType: chatChatType,
+      pageContext: chatPageContext,
+      pageState: chatPageState,
+      onFrontendEvent: chatOnFrontendEvent,
+    } = useAgentChatContext({ agentId: 'agent-chat', agents, customAgents });
 
-      // Also emit the event for any parent handlers
+    const confirmModal = ref(null);
+    const handleClearChat = async () => {
+      const confirmed = await confirmModal.value?.showModal({
+        title: 'Clear Chat?',
+        message: 'This will permanently delete the conversation history for this chat.',
+        confirmText: 'Clear',
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
+      store.dispatch('chatUnified/clearConversation', {
+        channelKey: chatChannelKey.value,
+        welcomeMessage: {
+          id: `agent-welcome-${Date.now()}`,
+          role: 'assistant',
+          content: "Hi! I'm Annie, your agent assistant. I can help you create, modify, and manage AI agents!",
+          timestamp: Date.now(),
+        },
+      });
       emit('panel-action', 'clear-chat');
     };
 
@@ -215,6 +249,13 @@ export default {
       updateAgentContent,
       updateParameterContent,
       handleClearChat,
+      confirmModal,
+      chatChannelKey,
+      chatChatType,
+      chatPageContext,
+      chatPageState,
+      chatOnFrontendEvent,
+      initialAgentSuggestions,
     };
   },
 };
@@ -327,13 +368,14 @@ export default {
   font-size: 0.9em;
 }
 
-/* Special styling for the clear chat button */
-.clear-chat-button:hover {
-  color: rgba(255, 107, 107, 0.8) !important;
+/* Clear-chat is a destructive action — always red, not green like other tabs. */
+.clear-chat-button,
+.clear-chat-button .tab-name {
+  color: var(--color-red, #ff6b6b);
 }
-
+.clear-chat-button:hover,
 .clear-chat-button:hover .tab-name {
-  color: rgba(255, 107, 107, 0.8);
+  color: var(--color-red, #ff6b6b);
 }
 
 .no-selection-placeholder {

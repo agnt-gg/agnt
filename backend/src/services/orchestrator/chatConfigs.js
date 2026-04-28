@@ -1,20 +1,22 @@
 import { getAvailableToolSchemas } from './tools.js';
-import { getAgentToolSchemas } from './agentTools.js';
-import { getWorkflowToolSchemas } from './workflowTools.js';
-import { getGoalToolSchemas } from './goalTools.js';
-import { getOrchestratorSystemContent } from './system-prompts/orchestrator-chat.js';
-import { getCodeToolSchemas } from './codeTools.js';
-import { getCodeSystemContent } from './system-prompts/artifact-chat.js';
-import { getAgentSystemContent } from './system-prompts/agent-chat.js';
-import { getWorkflowSystemContent } from './system-prompts/workflow-chat.js';
-import { ASYNC_EXECUTION_GUIDANCE } from './system-prompts/async-execution.js';
-import { SECTION_NAMES } from './apiReference.js';
 import { selectTools, getToolsForCategories, DEFAULT_TOOLS } from './toolSelector.js';
+import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js';
 
-/**
- * Load relevant memories and format as a system prompt section.
- * Shared helper used by all chat types to inject dynamic learnings.
- */
+export const AGENT_DEFAULT_TOOLS = new Set([
+  'discover_tools',
+  'web_search',
+]);
+
+const CHAT_OVERRIDES = {
+  orchestrator: { maxToolRounds: 100, contextKey: null },
+  agent: { maxToolRounds: 100, contextKey: 'agentContext' },
+  workflow: { maxToolRounds: 25, contextKey: 'workflowContext' },
+  tool: { maxToolRounds: 100, contextKey: 'toolContext' },
+  widget: { maxToolRounds: 100, contextKey: 'widgetContext' },
+  goal: { maxToolRounds: 100, contextKey: 'goalContext' },
+  artifact: { maxToolRounds: 25, contextKey: 'codeContext' },
+};
+
 async function loadMemorySection(userId, query, agentId = null) {
   try {
     if (!userId) return '';
@@ -36,758 +38,247 @@ async function loadMemorySection(userId, query, agentId = null) {
   }
 }
 
-/**
- * Configuration for different chat types in the universal handler
- */
-export const CHAT_CONFIGS = {
-  orchestrator: {
-    name: 'orchestrator',
-    async getToolSchemas(context) {
-      const allSchemas = await getAvailableToolSchemas();
+async function loadSkillsCatalogSection(context) {
+  if (context._frozenSkillsCatalog !== undefined) return context._frozenSkillsCatalog;
 
-      // Extract latest user message text for keyword matching
-      const latestUserMessage = context.latestUserMessage || '';
+  let skillsCatalogSection = '';
+  try {
+    const { buildSkillCatalog, buildSkillActivationInstructions } = await import('../SkillService.js');
+    const catalogEntries = [];
+    const seenNames = new Set();
 
-      // If images are uploaded, force-add media group
-      const hasImages = context.imageData && context.imageData.length > 0;
-
-      const { matchedGroups } = selectTools(allSchemas, latestUserMessage);
-
-      // Force media group if images were uploaded
-      if (hasImages && !matchedGroups.has('media')) {
-        matchedGroups.add('media');
-        matchedGroups.add('core');
-      }
-
-      // --- Additive-only tool groups (prompt caching) ---
-      // Merge newly matched groups with previously loaded groups so tools
-      // only grow, never shrink.
-      const previousGroups = context._loadedToolGroups || new Set();
-      const allGroups = new Set([...previousGroups, ...matchedGroups]);
-
-      // Build the tool list DETERMINISTICALLY by filtering allSchemas in its
-      // native order. The previous implementation appended extras to whatever
-      // selectTools returned for THIS turn's matched groups, which made the
-      // array order depend on which subset matched — busting Anthropic's tools
-      // cache any time the matched set changed across turns.
-      const groupToolNames = new Set();
-      for (const group of allGroups) {
-        const tools = getToolsForCategories(allSchemas, [group]);
-        for (const t of tools) {
-          if (t.function?.name) groupToolNames.add(t.function.name);
+    try {
+      const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
+      if (SkillDiscoveryService.initialized) {
+        const discovered = SkillDiscoveryService.getSkillCatalog();
+        for (const ds of discovered) {
+          catalogEntries.push(ds);
+          seenNames.add(ds.name);
         }
       }
-      let filteredSchemas = allSchemas.filter((schema) => {
-        const name = schema.function?.name;
-        if (!name) return false;
-        if (DEFAULT_TOOLS.has(name)) return true;
-        return groupToolNames.has(name);
-      });
+    } catch {
+      // Discovery service may not be initialized.
+    }
 
-      // Apply user's tool selector choices — remove any tools the user disabled
-      if (context.enabledTools) {
-        filteredSchemas = filteredSchemas.filter((s) =>
-          context.enabledTools.has(s.function?.name)
-        );
-      }
-
-      // Persist the union of all loaded groups on context
-      context._loadedToolGroups = allGroups;
-
-      console.log(`[Cache] Tool groups: [${[...allGroups].join(', ')}] → ${filteredSchemas.length} tools (additive-only, deterministic order)`);
-
-      return filteredSchemas;
-    },
-    async buildSystemPrompt(context) {
-      // Freeze skill catalog per conversation — load once, reuse on subsequent turns
-      let skillsCatalogSection = '';
-      if (context._frozenSkillsCatalog !== undefined) {
-        skillsCatalogSection = context._frozenSkillsCatalog;
-      } else {
-        try {
-          const { buildSkillCatalog, buildSkillActivationInstructions } = await import('../SkillService.js');
-          const catalogEntries = [];
-
-          // Add filesystem-discovered skills first (canonical kebab-case names)
-          const seenNames = new Set();
-          try {
-            const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
-            if (SkillDiscoveryService.initialized) {
-              const discovered = SkillDiscoveryService.getSkillCatalog();
-              for (const ds of discovered) {
-                catalogEntries.push(ds);
-                seenNames.add(ds.name);
-              }
-            }
-          } catch (e) {
-            // Discovery service may not be initialized
-          }
-
-          // Add DB skills (deduplicate by slug)
-          if (context.userId) {
-            const SkillModel = (await import('../../models/SkillModel.js')).default;
-            const dbSkills = await SkillModel.findAll(context.userId);
-            for (const s of dbSkills) {
-              const key = s.slug || s.name;
-              if (!seenNames.has(key)) {
-                catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database' });
-                seenNames.add(key);
-              }
-            }
-          }
-
-          if (catalogEntries.length > 0) {
-            skillsCatalogSection = '\n' + buildSkillCatalog(catalogEntries) + '\n\n' + buildSkillActivationInstructions() + '\n';
-          }
-        } catch (e) {
-          console.warn('[chatConfigs] Failed to build skill catalog:', e.message);
-        }
-        context._frozenSkillsCatalog = skillsCatalogSection;
-      }
-
-      // Freeze memory per conversation — load once, reuse on subsequent turns
-      let memorySection = '';
-      if (context._frozenMemorySection !== undefined) {
-        memorySection = context._frozenMemorySection;
-      } else {
-        try {
-          memorySection = await loadMemorySection(context.userId, context.latestUserMessage);
-        } catch (e) {
-          console.warn('[chatConfigs] Failed to load orchestrator memories:', e.message);
-        }
-        context._frozenMemorySection = memorySection;
-      }
-
-      // Freeze user's custom system instructions per conversation
-      let customInstructionsSection = '';
-      if (context._frozenCustomInstructions !== undefined) {
-        customInstructionsSection = context._frozenCustomInstructions;
-      } else {
-        try {
-          if (context.userId) {
-            const UserModel = (await import('../../models/UserModel.js')).default;
-            const settings = await UserModel.getUserSettings(context.userId);
-            const raw = (settings.customInstructions || '').trim();
-            if (raw) {
-              customInstructionsSection = `## User's Custom System Instructions\nThe user has provided these persistent instructions that apply to every Annie orchestrator chat. Follow them unless they conflict with safety, tool-usage, or image-handling requirements above.\n\n${raw}`;
-            }
-          }
-        } catch (e) {
-          console.warn('[chatConfigs] Failed to load custom instructions:', e.message);
-        }
-        context._frozenCustomInstructions = customInstructionsSection;
-      }
-
-      return getOrchestratorSystemContent(skillsCatalogSection, memorySection, customInstructionsSection, { provider: context.normalizedProvider });
-    },
-    maxToolRounds: 100,
-    responseType: 'stream',
-    contextKey: null, // Uses default orchestrator context
-  },
-
-  agent: {
-    name: 'agent',
-    async getToolSchemas(context) {
-      // Check if this is agent management chat (AgentForge) or chatting WITH a specific agent
-      // Agent management: agentId is 'agent-chat' (special ID for AgentForge)
-      // Chatting with agent: agentId is an actual agent ID AND has agentContext.systemPrompt
-      const isAgentManagement = context.agentId === 'agent-chat';
-
-      if (isAgentManagement) {
-        // This is agent management chat (AgentForge) - use AGENT_TOOLS for creating/modifying agents
-        console.log('Agent management chat detected (AgentForge) - using AGENT_TOOLS');
-        return await getAgentToolSchemas();
-      }
-
-      // This is chatting WITH a specific agent - use the agent's assigned tools
-      console.log(`Chatting with agent ${context.agentId} - loading agent's assigned tools`);
-
-      // If we have agent context with tools already loaded, use them
-      if (context.agentContext && context.agentContext.availableTools) {
-        console.log(`Using pre-loaded tools for agent ${context.agentId}`);
-        return context.agentContext.availableTools;
-      }
-
-      // Otherwise, fetch agent's assigned tools from database
-      if (context.agentId) {
-        try {
-          const AgentModel = (await import('../../models/AgentModel.js')).default;
-          const agent = await AgentModel.findOne(context.agentId);
-
-          if (agent && agent.assignedTools) {
-            const { getAvailableToolSchemas } = await import('./tools.js');
-            const allTools = await getAvailableToolSchemas();
-
-            // Filter to only tools assigned to this agent
-            const assignedToolNames = Array.isArray(agent.assignedTools) ? agent.assignedTools : [];
-            const agentTools = allTools.filter((tool) => assignedToolNames.includes(tool.function.name));
-
-            console.log(`Agent ${context.agentId} has ${agentTools.length} assigned tools:`, assignedToolNames);
-            return agentTools;
-          }
-        } catch (error) {
-          console.error('Error getting agent assigned tools:', error);
+    if (context.userId) {
+      const SkillModel = (await import('../../models/SkillModel.js')).default;
+      const dbSkills = await SkillModel.findAll(context.userId);
+      for (const s of dbSkills) {
+        const key = s.slug || s.name;
+        if (!seenNames.has(key)) {
+          catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database' });
+          seenNames.add(key);
         }
       }
+    }
 
-      // Fallback to empty tools if agent has no assigned tools
-      console.warn('No assigned tools found for agent, returning empty tool set');
-      return [];
-    },
-    async buildSystemPrompt(context) {
-      const { agentId, agentState, toolSchemas } = context;
-      let { agentContext } = context;
+    if (catalogEntries.length > 0) {
+      skillsCatalogSection = '\n' + buildSkillCatalog(catalogEntries) + '\n\n' + buildSkillActivationInstructions() + '\n';
+    }
+  } catch (e) {
+    console.warn('[chatConfigs] Failed to build skill catalog:', e.message);
+  }
 
-      // Check if this is agent management chat (AgentForge)
-      const isAgentManagement = agentId === 'agent-chat';
-
-      if (isAgentManagement) {
-        // Use the agent management system prompt (Annie for creating/managing agents)
-        console.log('Using agent management system prompt for AgentForge');
-        return getAgentSystemContent(agentId, agentContext, agentState);
-      }
-
-      // This is chatting WITH a specific agent - use the agent's custom system prompt
-      console.log(`Using custom system prompt for agent ${agentId}`);
-
-      // If agentContext wasn't provided (e.g. @ mention from orchestrator chat),
-      // load the agent from DB to build context
-      if (!agentContext && agentId) {
-        try {
-          const AgentModel = (await import('../../models/AgentModel.js')).default;
-          const agent = await AgentModel.findOne(agentId);
-          if (agent) {
-            agentContext = {
-              name: agent.name,
-              description: agent.description,
-              systemPrompt: agent.systemPrompt || '',
-            };
-            console.log(`[Agent @mention] Loaded agent context from DB: ${agent.name}`);
-          }
-        } catch (e) {
-          console.warn(`[chatConfigs] Failed to load agent ${agentId} from DB:`, e.message);
-        }
-      }
-
-      // Load relevant agent memories (includes global/orchestrator memories).
-      // Freeze per conversation so the system prompt stays byte-identical
-      // across turns — required for Anthropic prompt caching (and OpenAI/Gemini
-      // auto-caches) to hit on the system breakpoint.
-      let memorySection = '';
-      if (context._frozenMemorySection !== undefined) {
-        memorySection = context._frozenMemorySection;
-      } else {
-        try {
-          const memBase = await loadMemorySection(context.userId, context.latestUserMessage, agentId);
-          if (memBase) {
-            memorySection = memBase + '\n\nUse these memories to provide personalized responses. If you learn new facts or receive corrections, use the save_agent_memory tool to store them.';
-          }
-        } catch (e) {
-          console.warn('[chatConfigs] Failed to load agent memories:', e.message);
-        }
-        context._frozenMemorySection = memorySection;
-      }
-
-      // If we have agent context from AgentService, use it
-      if (agentContext && agentContext.systemPrompt) {
-        // Append async execution guidance and memory so agents can use async tools
-        return `${agentContext.systemPrompt}${memorySection}\n\n${ASYNC_EXECUTION_GUIDANCE}`;
-      }
-
-      // Otherwise build a basic system prompt with the agent's assigned tools
-      const toolsList =
-        toolSchemas && toolSchemas.length > 0
-          ? toolSchemas.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n')
-          : '- No tools assigned to this agent';
-
-      const agentName = agentContext?.name || 'AI Agent';
-      const agentDesc = agentContext?.description ? `\n${agentContext.description}\n` : '';
-
-      return `You are ${agentName}, an AI agent with specific assigned tools.${agentDesc}
-Use only the tools assigned to you.
-
-AVAILABLE TOOLS:
-${toolsList}
-${memorySection}
-
-${ASYNC_EXECUTION_GUIDANCE}
-
-Use your assigned tools effectively to help the user accomplish their goals.`;
-    },
-    maxToolRounds: 100, // Same as orchestrator
-    responseType: 'stream',
-    contextKey: 'agentContext',
-  },
-
-  workflow: {
-    name: 'workflow',
-    async getToolSchemas(context) {
-      return await getWorkflowToolSchemas();
-    },
-    async buildSystemPrompt(context) {
-      const { workflowId, workflowContext, workflowState, userId, latestUserMessage } = context;
-      const basePrompt = await getWorkflowSystemContent(workflowId, workflowContext, workflowState);
-      // Freeze memory per conversation
-      if (context._frozenMemorySection !== undefined) {
-        return basePrompt + context._frozenMemorySection;
-      }
-      const memorySection = await loadMemorySection(userId, latestUserMessage);
-      context._frozenMemorySection = memorySection;
-      return basePrompt + memorySection;
-    },
-    maxToolRounds: 25,
-    responseType: 'stream',
-    contextKey: 'workflowContext',
-  },
-
-  tool: {
-    name: 'tool',
-    async getToolSchemas(context) {
-      // Tool chat uses a specific set of tool management functions
-      return [
-        {
-          type: 'function',
-          function: {
-            name: 'generate_tool_update',
-            description: 'Use AI to generate, create, or update a tool based on natural language instructions',
-            parameters: {
-              type: 'object',
-              properties: {
-                instruction: {
-                  type: 'string',
-                  description: 'Natural language instruction describing what to do with the tool',
-                },
-                currentToolState: {
-                  type: 'object',
-                  description: 'Current state/configuration of the tool being modified (optional)',
-                },
-                operationType: {
-                  type: 'string',
-                  enum: ['create', 'update', 'modify'],
-                  description: 'Type of operation to perform',
-                },
-              },
-              required: ['instruction'],
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'save_tool',
-            description: 'Save the current tool to the database',
-            parameters: {
-              type: 'object',
-              properties: {
-                toolData: { type: 'object', description: 'The tool data to save' },
-                isShareable: { type: 'boolean', description: 'Whether the tool should be shareable' },
-              },
-              required: ['toolData'],
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'load_tool',
-            description: 'Load a tool by its ID',
-            parameters: {
-              type: 'object',
-              properties: {
-                toolId: { type: 'string', description: 'The ID of the tool to load' },
-              },
-              required: ['toolId'],
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'delete_tool',
-            description: 'Delete a tool from the database',
-            parameters: {
-              type: 'object',
-              properties: {
-                toolId: { type: 'string', description: 'The ID of the tool to delete' },
-              },
-              required: ['toolId'],
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'list_tools',
-            description: 'List all available tools',
-            parameters: {
-              type: 'object',
-              properties: {
-                category: { type: 'string', description: 'Filter by category (optional)' },
-              },
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'run_tool',
-            description: 'Execute/run the current tool with provided parameters',
-            parameters: {
-              type: 'object',
-              properties: {
-                toolData: { type: 'object', description: 'The tool configuration to run' },
-                parameters: { type: 'object', description: 'The parameters to pass to the tool' },
-              },
-              required: ['toolData'],
-            },
-          },
-        },
-      ];
-    },
-    async buildSystemPrompt(context) {
-      const { toolId, toolContext, toolState, userId, latestUserMessage } = context;
-      // Freeze memory per conversation
-      let memorySection;
-      if (context._frozenMemorySection !== undefined) {
-        memorySection = context._frozenMemorySection;
-      } else {
-        memorySection = await loadMemorySection(userId, latestUserMessage);
-        context._frozenMemorySection = memorySection;
-      }
-      return `You are Annie, a helpful AI assistant specialized in creating and managing tools using AI-powered generation.
-You have access to powerful functions that can create, modify, and manage tools through natural language instructions.
-Tool ID: ${toolId}
-Tool context: ${JSON.stringify(toolContext)}
-Tool state: ${JSON.stringify(toolState)}
-
-AVAILABLE FUNCTIONS:
-1. **generate_tool_update** - Your primary function for all tool creation and modification tasks
-2. **save_tool** - Save a tool configuration to the database
-3. **load_tool** - Load an existing tool by ID
-4. **delete_tool** - Remove a tool from the database
-5. **list_tools** - Show all available tools
-6. **run_tool** - Execute a tool with specific parameters
-
-Always be helpful, creative, and guide users through the tool creation process step by step.${memorySection}`;
-    },
-    maxToolRounds: 100, // Same as orchestrator
-    responseType: 'stream',
-    contextKey: 'toolContext',
-  },
-
-  widget: {
-    name: 'widget',
-    async getToolSchemas(context) {
-      return [
-        {
-          type: 'function',
-          function: {
-            name: 'edit_widget_code',
-            description: 'Apply surgical search/replace edits to the current widget source code. Use this for bug fixes, style tweaks, adding features, or any targeted modification. You construct the diffs directly from the source code visible in your system prompt. Each edit is a { search, replace } pair applied sequentially.',
-            parameters: {
-              type: 'object',
-              properties: {
-                edits: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      search: { type: 'string', description: 'Exact string to find in the current source code' },
-                      replace: { type: 'string', description: 'Replacement string' },
-                    },
-                    required: ['search', 'replace'],
-                  },
-                  description: 'Array of search/replace pairs to apply sequentially',
-                },
-                description: {
-                  type: 'string',
-                  description: 'Brief summary of what these edits accomplish',
-                },
-              },
-              required: ['edits', 'description'],
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'generate_widget',
-            description: 'Generate a complete self-contained HTML widget from scratch via a specialized code-generation LLM. Use this when creating a brand new widget or doing a complete rewrite. For smaller edits to existing code, prefer edit_widget_code instead.',
-            parameters: {
-              type: 'object',
-              properties: {
-                instruction: {
-                  type: 'string',
-                  description: 'Natural language instruction describing what to build',
-                },
-                operationType: {
-                  type: 'string',
-                  enum: ['create', 'rewrite'],
-                  description: 'Whether this is a new widget or a complete rewrite of an existing one',
-                },
-                useThemeStyles: {
-                  type: 'boolean',
-                  description: 'When true, the widget uses the app\'s CSS theme variables for styling. Default to true unless the user explicitly wants custom/standalone styling.',
-                },
-              },
-              required: ['instruction'],
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'update_widget_config',
-            description: 'Update widget metadata/configuration without touching the source code. Use this for renaming, changing icon, category, description, size constraints, or widget type.',
-            parameters: {
-              type: 'object',
-              properties: {
-                name: { type: 'string', description: 'New widget name' },
-                description: { type: 'string', description: 'New widget description' },
-                icon: { type: 'string', description: 'New FontAwesome icon class (e.g. "fas fa-chart-bar")' },
-                category: { type: 'string', enum: ['custom', 'dashboard', 'home', 'assets', 'system'], description: 'New category (must be one of the allowed values)' },
-                widget_type: { type: 'string', enum: ['html', 'template', 'iframe', 'markdown'], description: 'New widget type' },
-                default_size: { type: 'object', properties: { cols: { type: 'integer' }, rows: { type: 'integer' } }, description: 'New default grid size' },
-                min_size: { type: 'object', properties: { cols: { type: 'integer' }, rows: { type: 'integer' } }, description: 'New minimum grid size' },
-              },
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'save_widget',
-            description: 'Save the current widget definition to the database',
-            parameters: {
-              type: 'object',
-              properties: {
-                widgetData: { type: 'object', description: 'The widget data to save' },
-              },
-              required: ['widgetData'],
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'load_widget',
-            description: 'Load a widget definition by its ID',
-            parameters: {
-              type: 'object',
-              properties: {
-                widgetId: { type: 'string', description: 'The ID of the widget to load' },
-              },
-              required: ['widgetId'],
-            },
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'get_agnt_api',
-            description: 'Look up AGNT backend API endpoints so you can build widgets that fetch live data. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements. AGNT auth works by reading the existing token from localStorage.getItem(\'token\') and sending it as Authorization: Bearer <token> on every request — this is how all AGNT API calls authenticate, no API keys or separate login needed.',
-            parameters: {
-              type: 'object',
-              properties: {
-                section: {
-                  type: 'string',
-                  description: 'API section to get details for. Omit for a full overview of all endpoints.',
-                  enum: [...SECTION_NAMES],
-                },
-              },
-            },
-          },
-        },
-      ];
-    },
-    async buildSystemPrompt(context) {
-      const { widgetId, widgetContext, widgetState, userId, latestUserMessage } = context;
-
-      // Build a concise summary of the current widget state for the system prompt
-      let widgetSummary = 'No widget loaded.';
-      if (widgetState && (widgetState.name || widgetState.source_code)) {
-        const meta = [];
-        if (widgetState.name) meta.push(`Name: ${widgetState.name}`);
-        if (widgetState.widget_type) meta.push(`Type: ${widgetState.widget_type}`);
-        if (widgetState.description) meta.push(`Description: ${widgetState.description}`);
-        if (widgetState.category) meta.push(`Category: ${widgetState.category}`);
-        if (widgetState.icon) meta.push(`Icon: ${widgetState.icon}`);
-        if (widgetState.default_size) meta.push(`Default size: ${JSON.stringify(widgetState.default_size)}`);
-        if (widgetState.min_size) meta.push(`Min size: ${JSON.stringify(widgetState.min_size)}`);
-        if (widgetState.config && Object.keys(widgetState.config).length > 0) meta.push(`Config: ${JSON.stringify(widgetState.config)}`);
-        widgetSummary = meta.join('\n');
-        if (widgetState.source_code) {
-          widgetSummary += `\n\nCurrent source code:\n\`\`\`html\n${widgetState.source_code}\n\`\`\``;
-        }
-      }
-
-      return `You are Annie, a helpful AI assistant specialized in creating and managing dashboard widgets.
-You can help users build HTML widgets, template widgets, iframe widgets, and markdown widgets.
-Widget ID: ${widgetId}
-
-CURRENT WIDGET STATE:
-${widgetSummary}
-
-AVAILABLE TOOLS:
-1. **edit_widget_code** — Apply surgical search/replace edits to the current source code
-2. **generate_widget** — Generate a complete HTML widget from scratch (uses a specialized code LLM)
-3. **update_widget_config** — Update widget metadata (name, icon, category, size, etc.) without touching code
-4. **save_widget** — Save a widget definition to the database
-5. **load_widget** — Load an existing widget by ID
-6. **get_agnt_api** — Look up AGNT backend API endpoints (call without args for overview, with section name for details)
-
-TOOL SELECTION GUIDELINES:
-- **No source code yet** → use \`generate_widget\` to create the initial widget
-- **Small/medium change to existing code** (fix a bug, change a color, add a feature) → use \`edit_widget_code\` with precise search/replace pairs from the source code above
-- **Complete rewrite** (start over, fundamentally different approach) → use \`generate_widget\` with operationType "rewrite"
-- **Metadata only** (rename, change icon, resize, re-categorize) → use \`update_widget_config\`
-
-WIDGET CATEGORIES (use ONLY these values):
-- **custom** — User-created widgets (default)
-- **dashboard** — Small composable dashboard cards (metrics, charts, status indicators)
-- **home** — Full-screen primary widgets
-- **assets** — Asset management widgets
-- **system** — System/settings widgets
-Do NOT invent new categories. Always use one of the five above.
-- You can combine \`edit_widget_code\` + \`update_widget_config\` in one turn when both code and metadata need changing
-
-USING edit_widget_code:
-- The current source code is shown above — use EXACT strings from it for the "search" field
-- Each { search, replace } pair is applied sequentially to the source
-- If a search string isn't found, that edit is skipped and reported as failed — you can retry with corrected strings
-- Keep search strings unique enough to match exactly one location
-
-USING generate_widget:
-- This calls a specialized code-generation LLM that returns a complete HTML document
-- The source_code must be a COMPLETE HTML document (<!DOCTYPE html><html>...</html>) that renders directly in an iframe
-- Hardcode demo/sample data directly in the HTML
-- Theme styles setting: ${widgetState?.useThemeStyles !== false ? `ENABLED — use var(--color-text), var(--color-primary), var(--color-text-muted), var(--color-background), var(--color-popup) for dropdowns/selects/option menus, var(--terminal-border-color) for borders, etc. for all styling. Always pass useThemeStyles: true.
-
-DESIGN SYSTEM — SPACING (Base-16 scale):
-All padding, margins, and gaps MUST use values from the base-16 spacing scale using CSS variables: var(--spacing-xxs) = 2px, var(--spacing-xs) = 4px, var(--spacing-sm) = 8px, var(--spacing-md) = 16px, var(--spacing-lg) = 24px, var(--spacing-xl) = 32px, var(--spacing-xxl) = 48px, var(--spacing-xxxl) = 64px.
-Never use arbitrary values like 5px, 10px, 15px, 20px, etc. Consistent spacing keeps the design polished and aligned with the host application.
-
-DESIGN SYSTEM — TYPOGRAPHY:
-Use the theme font-size scale instead of hardcoded pixel values:
-var(--font-size-xs) = 12px, var(--font-size-sm) = 14px, var(--font-size-md) = 16px (base), var(--font-size-lg) = 18px, var(--font-size-xl) = 20px, var(--font-size-xxl) = 24px, var(--font-size-xxxl) = 32px, var(--font-size-display) = 40px.
-Font weights: var(--font-weight-light) = 300, var(--font-weight-normal) = 400, var(--font-weight-medium) = 500, var(--font-weight-semibold) = 600, var(--font-weight-bold) = 700.
-Border radii: var(--border-radius-xs) = 2px, var(--border-radius-sm) = 4px, var(--border-radius-md) = 8px, var(--border-radius-lg) = 16px, var(--border-radius-xl) = 24px.` : 'DISABLED — use standalone/custom styling with hardcoded colors. Always pass useThemeStyles: false.'}
-
-DESIGN QUALITY (CRITICAL):
-- Every widget MUST look like it was crafted by a world-class design agency — bold, visually unique, and forward-thinking
-- Ultra high design quality is NON-NEGOTIABLE — think high-end architecture firm portfolio, not generic enterprise software
-- The aesthetic should feel like the world's leading design agencies: confident, distinctive, and visually striking
-- Use a base-2 spacing scale for all padding, margins, and gaps (2, 4, 8, 16, 24, 32, 48, 64px) — never arbitrary values
-- Establish clear typographic hierarchy: distinct sizes for headings, subheadings, body, and captions with consistent line-height
-- Generous whitespace — let content breathe, never feel cramped
-- Strong visual hierarchy: the user's eye should be guided naturally through the content
-- Consistent alignment and grid structure throughout the layout
-- Polished interactive states and smooth transitions on all interactive elements
-- Purposeful use of color: accent colors as highlights, not floods — accents on key UI elements and data points
-- Every element should feel intentional, refined, and professionally designed
-- NEVER produce generic or cookie-cutter layouts — every output should feel bespoke and premium
-
-WIDGET TYPES:
-- **html** — Custom HTML/CSS/JS in a sandboxed iframe (most common)
-- **template** — Pre-built templates (metric-card, chart, list, etc.)
-- **iframe** — External URL embedded in an iframe
-- **markdown** — Markdown content rendered as a widget
-
-USING get_agnt_api:
-- When building widgets that display live data from AGNT (agents, workflows, executions, goals, etc.), use \`get_agnt_api\` to look up the available endpoints
-- Call with no args first to see the full overview, then call with a section name for details
-- Use \`http://localhost:${process.env.PORT || 3333}/api\` as the API base URL — this points directly to the AGNT backend server (NOT the frontend dev server)
-
-HOW AGNT API CALLS WORK:
-All AGNT API calls follow the same pattern. Widgets run in iframes with allow-same-origin, which means they share the AGNT frontend's localStorage. The user's auth token is already stored there — this is how AGNT handles authentication. You MUST use this pattern for every API call:
-
-1. Read the token from \`localStorage.getItem('token')\` — it is always available
-2. Include it as \`Authorization: Bearer <token>\` on every request
-3. There are NO API keys, NO separate login flows, NO credentials to configure — the token from localStorage IS the auth mechanism
-
-Every widget you generate that calls the AGNT API MUST include this helper and use it for all fetch calls:
-\`\`\`js
-function getToken() { try { return localStorage.getItem('token') || null; } catch(e) { return null; } }
-function apiFetch(url, options = {}) {
-  const token = getToken();
-  const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...options.headers };
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-  return fetch(url, { ...options, headers });
+  context._frozenSkillsCatalog = skillsCatalogSection;
+  return skillsCatalogSection;
 }
-\`\`\`
-Always use \`apiFetch()\` instead of raw \`fetch()\` for AGNT API requests. This is not optional — endpoints that require auth will reject requests without the Bearer token.
 
-Always be helpful and guide users through the widget creation process step by step.${await (async () => {
+async function loadFrozenMemorySection(context, agentId = null) {
   if (context._frozenMemorySection !== undefined) return context._frozenMemorySection;
-  const m = await loadMemorySection(userId, latestUserMessage);
-  context._frozenMemorySection = m;
-  return m;
-})()}`;
-    },
-    maxToolRounds: 100,
-    responseType: 'stream',
-    contextKey: 'widgetContext',
-  },
 
-  goal: {
-    name: 'goal',
-    async getToolSchemas(context) {
-      return await getGoalToolSchemas();
-    },
-    async buildSystemPrompt(context) {
-      const { userId, latestUserMessage } = context;
-      // Freeze memory per conversation
-      let memorySection;
-      if (context._frozenMemorySection !== undefined) {
-        memorySection = context._frozenMemorySection;
-      } else {
-        memorySection = await loadMemorySection(userId, latestUserMessage);
-        context._frozenMemorySection = memorySection;
+  let memorySection = '';
+  try {
+    memorySection = await loadMemorySection(context.userId, context.latestUserMessage, agentId);
+    if (agentId && memorySection) {
+      memorySection += '\n\nUse these memories to provide personalized responses. If you learn new facts or receive corrections, use save_agent_memory to store them.';
+    }
+  } catch (e) {
+    console.warn('[chatConfigs] Failed to load memories:', e.message);
+  }
+
+  context._frozenMemorySection = memorySection;
+  return memorySection;
+}
+
+async function loadCustomInstructionsSection(context) {
+  if (context._frozenCustomInstructions !== undefined) return context._frozenCustomInstructions;
+
+  let customInstructionsSection = '';
+  try {
+    if (context.userId) {
+      const UserModel = (await import('../../models/UserModel.js')).default;
+      const settings = await UserModel.getUserSettings(context.userId);
+      const raw = (settings.customInstructions || '').trim();
+      if (raw) {
+        customInstructionsSection = `## User's Custom System Instructions\nThe user has provided these persistent instructions that apply to every Annie chat. Follow them unless they conflict with safety, tool-usage, or image-handling requirements above.\n\n${raw}`;
       }
-      return `You are Annie, a helpful AI assistant specialized in goal management and task orchestration.
+    }
+  } catch (e) {
+    console.warn('[chatConfigs] Failed to load custom instructions:', e.message);
+  }
 
-You have access to comprehensive goal management functions that allow you to:
-- Create and break down goals into actionable tasks
-- Execute and monitor goal progress
-- Manage goal lifecycles (pause, resume, delete)
-- Track goal status and completion
+  context._frozenCustomInstructions = customInstructionsSection;
+  return customInstructionsSection;
+}
 
-Always be proactive in helping users achieve their goals through structured task management.${memorySection}`;
-    },
-    maxToolRounds: 100, // Same as orchestrator
-    responseType: 'stream',
-    contextKey: 'goalContext',
+async function loadAgentOverride(context) {
+  const isSavedAgent = context.agentId && context.agentId !== 'agent-chat';
+  if (!isSavedAgent) return null;
+
+  if (context.agentContext?.systemPrompt) {
+    return {
+      name: context.agentContext.name,
+      systemPrompt: context.agentContext.systemPrompt,
+    };
+  }
+
+  try {
+    const AgentModel = (await import('../../models/AgentModel.js')).default;
+    const agent = await AgentModel.findOne(context.agentId);
+    if (!agent) return null;
+    context.agentContext = {
+      ...context.agentContext,
+      name: agent.name,
+      description: agent.description,
+      systemPrompt: agent.systemPrompt || '',
+    };
+    return {
+      name: agent.name,
+      systemPrompt: agent.systemPrompt || '',
+    };
+  } catch (e) {
+    console.warn(`[chatConfigs] Failed to load agent ${context.agentId} from DB:`, e.message);
+    return null;
+  }
+}
+
+function getForcedToolGroups(context) {
+  const groups = new Set();
+
+  if (context.workflowId || context.workflowContext || context.workflowState) {
+    groups.add('workflow_authoring');
+    groups.add('agnt_platform');
+  }
+  if (context.agentId === 'agent-chat') {
+    groups.add('agent_management');
+    groups.add('agnt_platform');
+  }
+  if (context.toolId || context.toolContext || context.toolState) {
+    groups.add('tool_authoring');
+    groups.add('agnt_platform');
+  }
+  if (context.widgetId || context.widgetContext || context.widgetState) {
+    groups.add('widget_authoring');
+    groups.add('agnt_platform');
+  }
+  if (context.goalId || context.goalContext) {
+    groups.add('goal_management');
+    groups.add('agnt_platform');
+  }
+  if (context.codeId || context.codeContext) {
+    groups.add('artifact_code');
+  }
+  if (context.imageData && context.imageData.length > 0) {
+    groups.add('media');
+  }
+
+  if (groups.size > 0) groups.add('core');
+  return groups;
+}
+
+async function getSavedAgentToolSchemas(context, allSchemas) {
+  const AgentModel = (await import('../../models/AgentModel.js')).default;
+  const agent = await AgentModel.findOne(context.agentId);
+  const assignedToolNames = Array.isArray(agent?.assignedTools) ? agent.assignedTools : [];
+  const allowedToolNames = new Set([...AGENT_DEFAULT_TOOLS, ...assignedToolNames]);
+
+  let filteredSchemas = allSchemas.filter((tool) => allowedToolNames.has(tool.function?.name));
+
+  if (context.enabledTools) {
+    filteredSchemas = filteredSchemas.filter((s) => context.enabledTools.has(s.function?.name));
+  }
+
+  console.log(
+    `[UnifiedChat] Saved-agent tool surface for ${context.agentId}: ${filteredSchemas.length} tools (${assignedToolNames.length} assigned + defaults: ${[...AGENT_DEFAULT_TOOLS].join(', ')})`
+  );
+  return filteredSchemas;
+}
+
+async function getUnifiedToolSchemas(context) {
+  const allSchemas = await getAvailableToolSchemas();
+
+  if (context.agentId && context.agentId !== 'agent-chat') {
+    return getSavedAgentToolSchemas(context, allSchemas);
+  }
+
+  const latestUserMessage = context.latestUserMessage || '';
+  const { matchedGroups } = selectTools(allSchemas, latestUserMessage);
+  const forcedGroups = getForcedToolGroups(context);
+  const previousGroups = context._loadedToolGroups || new Set();
+  const allGroups = new Set([...previousGroups, ...matchedGroups, ...forcedGroups]);
+
+  const groupToolNames = new Set();
+  for (const group of allGroups) {
+    const tools = getToolsForCategories(allSchemas, [group]);
+    for (const t of tools) {
+      if (t.function?.name) groupToolNames.add(t.function.name);
+    }
+  }
+
+  let filteredSchemas = allSchemas.filter((schema) => {
+    const name = schema.function?.name;
+    if (!name) return false;
+    if (DEFAULT_TOOLS.has(name)) return true;
+    return groupToolNames.has(name);
+  });
+
+  if (context.enabledTools) {
+    filteredSchemas = filteredSchemas.filter((s) => context.enabledTools.has(s.function?.name));
+  }
+
+  context._loadedToolGroups = allGroups;
+  console.log(`[UnifiedChat] Tool groups: [${[...allGroups].join(', ')}] -> ${filteredSchemas.length} tools`);
+  return filteredSchemas;
+}
+
+const unifiedConfig = {
+  name: 'unified',
+  async getToolSchemas(context) {
+    return getUnifiedToolSchemas(context);
   },
+  async buildSystemPrompt(context) {
+    const agentOverride = await loadAgentOverride(context);
+    const skillsCatalogSection = await loadSkillsCatalogSection(context);
+    const memorySection = await loadFrozenMemorySection(context, context.agentId && context.agentId !== 'agent-chat' ? context.agentId : null);
+    const customInstructionsSection = await loadCustomInstructionsSection(context);
 
-  artifact: {
-    name: 'artifact',
-    async getToolSchemas(context) {
-      return getCodeToolSchemas();
-    },
-    async buildSystemPrompt(context) {
-      return await getCodeSystemContent(context);
-    },
-    maxToolRounds: 25,
-    responseType: 'stream',
-    contextKey: 'codeContext',
+    return buildUnifiedSystemPrompt(context, {
+      skillsCatalogSection,
+      memorySection,
+      customInstructionsSection,
+      agentOverride,
+    });
   },
+  maxToolRounds: 100,
+  responseType: 'stream',
+  contextKey: null,
+};
 
-  suggestions: {
-    name: 'suggestions',
-    async getToolSchemas(context) {
-      // Suggestions don't need tools, they just generate contextual suggestions
-      return [];
-    },
-    buildSystemPrompt(context) {
-      const { agentContext } = context;
-      let availableToolsList = '';
+const suggestionsConfig = {
+  name: 'suggestions',
+  async getToolSchemas() {
+    return [];
+  },
+  buildSystemPrompt(context) {
+    const { agentContext } = context;
+    let availableToolsList = '';
 
-      if (agentContext && agentContext.availableTools) {
-        availableToolsList = agentContext.availableTools.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n');
-      }
+    if (agentContext && agentContext.availableTools) {
+      availableToolsList = agentContext.availableTools.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n');
+    }
 
-      return `You are a helpful assistant that generates smart, contextual suggestions for the user based on their conversation history.
-        
+    return `You are a helpful assistant that generates smart, contextual suggestions for the user based on their conversation history.
+
 Your task is to analyze the conversation and generate 3 relevant suggestions that:
 1. Build upon what was just discussed
 2. Explore related topics or next logical steps
@@ -803,20 +294,26 @@ Return ONLY a JSON array with exactly 3 suggestion objects, each with:
 Make suggestions relevant to the conversation context.
 
 IMPORTANT: Return ONLY the JSON array, no markdown formatting, no code blocks, no extra text.`;
-    },
-    maxToolRounds: 0, // Suggestions don't use tools
-    responseType: 'json', // Suggestions return JSON, not stream
-    contextKey: 'agentContext',
   },
+  maxToolRounds: 0,
+  responseType: 'json',
+  contextKey: 'agentContext',
 };
 
-/**
- * Detect chat type from request path and body
- */
+export const CHAT_CONFIGS = {
+  orchestrator: unifiedConfig,
+  agent: unifiedConfig,
+  workflow: unifiedConfig,
+  tool: unifiedConfig,
+  widget: unifiedConfig,
+  goal: unifiedConfig,
+  artifact: unifiedConfig,
+  suggestions: suggestionsConfig,
+};
+
 export function detectChatType(req, context = {}) {
   const path = req.path || req.route?.path || '';
 
-  // Check route path first
   if (path.includes('/agent-chat')) return 'agent';
   if (path.includes('/workflow-chat')) return 'workflow';
   if (path.includes('/tool-chat')) return 'tool';
@@ -825,7 +322,6 @@ export function detectChatType(req, context = {}) {
   if (path.includes('/artifact-chat')) return 'artifact';
   if (path.includes('/suggestions')) return 'suggestions';
 
-  // Check request body for context clues
   const body = req.body || {};
   if (body.agentId || body.agentContext || body.agentState) return 'agent';
   if (body.workflowId || body.workflowContext || body.workflowState) return 'workflow';
@@ -833,22 +329,23 @@ export function detectChatType(req, context = {}) {
   if (body.widgetId || body.widgetContext || body.widgetState) return 'widget';
   if (body.goalId || body.goalContext) return 'goal';
   if (body.codeId || body.codeContext) return 'artifact';
-
-  // Check explicit context parameter
   if (context.type) return context.type;
 
-  // Default to orchestrator
   return 'orchestrator';
 }
 
-/**
- * Get configuration for a specific chat type
- */
 export function getChatConfig(chatType) {
-  const config = CHAT_CONFIGS[chatType];
-  if (!config) {
+  if (chatType === 'suggestions') return suggestionsConfig;
+
+  const overrides = CHAT_OVERRIDES[chatType] || CHAT_OVERRIDES.orchestrator;
+  if (!CHAT_OVERRIDES[chatType]) {
     console.warn(`Unknown chat type: ${chatType}, falling back to orchestrator`);
-    return CHAT_CONFIGS.orchestrator;
   }
-  return config;
+
+  return {
+    ...unifiedConfig,
+    name: chatType,
+    ...overrides,
+    responseType: 'stream',
+  };
 }

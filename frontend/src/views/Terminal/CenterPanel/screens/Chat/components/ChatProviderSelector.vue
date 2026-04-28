@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-provider-selector" ref="selectorRef">
+  <div class="chat-provider-selector" :class="{ 'no-offset': cleanPosition }" ref="selectorRef">
     <div class="provider-dropdown" :class="{ open: isOpen }">
       <div class="dropdown-header">
         <span class="dropdown-title">AI Provider</span>
@@ -113,6 +113,7 @@ import ReasoningControl from '@/components/common/ReasoningControl.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
+import { getChannelConfig, setChannelProvider, setChannelModel } from '@/services/chatChannelConfig.js';
 
 export default {
   name: 'ChatProviderSelector',
@@ -127,6 +128,21 @@ export default {
     isOpen: {
       type: Boolean,
       default: false,
+    },
+    // When true the dropdown places its visible popup exactly at the root
+    // element's position (top/left from the parent). The default mode keeps the
+    // legacy negative-margin offset that the orchestrator chat relies on to
+    // pop the panel up-and-left from the trigger button.
+    cleanPosition: {
+      type: Boolean,
+      default: false,
+    },
+    // When set, the selector reads/writes this channel's saved provider/model
+    // (chatChannelConfig.js). Each chat surface gets its own remembered choice;
+    // global Vuex aiProvider remains the fallback for unconfigured channels.
+    channelKey: {
+      type: String,
+      default: '',
     },
   },
   emits: ['close'],
@@ -258,17 +274,33 @@ export default {
       }));
     });
 
-    // Handle provider selection
+    // Handle provider selection. Always update Vuex (so any code reading the
+    // global selection still works) AND persist to the per-channel config so
+    // this chat remembers the choice next time it's opened.
     const handleProviderSelected = (option) => {
-      if (!option.disabled) {
-        store.dispatch('aiProvider/setProvider', option.value);
-      }
+      if (option.disabled) return;
+      store.dispatch('aiProvider/setProvider', option.value);
+      if (props.channelKey) setChannelProvider(props.channelKey, option.value);
     };
 
-    // Handle model selection
     const handleModelSelected = (option) => {
-      if (!option.disabled) {
-        store.dispatch('aiProvider/setModel', option.value);
+      if (option.disabled) return;
+      store.dispatch('aiProvider/setModel', option.value);
+      if (props.channelKey) setChannelModel(props.channelKey, option.value);
+    };
+
+    // Restore the channel's saved provider/model into Vuex so the rest of the
+    // chat (request payload, model badges, reasoning controls) reflects this
+    // chat's choice rather than whatever the previous chat left in Vuex.
+    const restoreChannelConfig = () => {
+      if (!props.channelKey) return;
+      const cfg = getChannelConfig(props.channelKey);
+      if (!cfg) return;
+      if (cfg.provider && cfg.provider !== store.state.aiProvider.selectedProvider) {
+        store.dispatch('aiProvider/setProvider', cfg.provider);
+      }
+      if (cfg.model && cfg.model !== store.state.aiProvider.selectedModel) {
+        store.dispatch('aiProvider/setModel', cfg.model);
       }
     };
 
@@ -293,8 +325,18 @@ export default {
     watch(
       () => props.isOpen,
       (open) => {
-        if (open) updateCustomSelects();
+        if (open) {
+          restoreChannelConfig();
+          updateCustomSelects();
+        }
       },
+    );
+
+    // When the active channel changes (e.g. parent chat switches surfaces
+    // while this selector is mounted), reload that channel's saved provider.
+    watch(
+      () => props.channelKey,
+      () => restoreChannelConfig(),
     );
 
     // Watch for provider changes to fetch models
@@ -518,6 +560,14 @@ export default {
 .chat-provider-selector {
   position: fixed;
   z-index: 10000;
+}
+
+/* When the parent positions the root precisely (e.g. UnifiedChatContainer
+   computing top/left to fit the sidebar viewport), drop the legacy offset
+   that was tuned for the orchestrator chat's trigger-button geometry. */
+.chat-provider-selector.no-offset .provider-dropdown {
+  margin-top: 0;
+  margin-left: 0;
 }
 
 .provider-dropdown {

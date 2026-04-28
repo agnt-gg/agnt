@@ -316,7 +316,10 @@ export default {
 
       const existing = store.getters['widgetDefinitions/activeDefinition'];
       if (!existing || existing.id !== savedId) {
-        store.commit('widgetChat/MIGRATE_CONVERSATION', { fromId: 'widget-forge', toId: savedId });
+        store.commit('chatUnified/MIGRATE_CHANNEL_KEY', {
+          fromChannelKey: 'widget:widget-forge',
+          toChannelKey: `widget:${savedId}`,
+        });
         store.commit('widgetDefinitions/ADD_DEFINITION', def);
         store.dispatch('widgetDefinitions/setActiveDefinition', savedId);
       }
@@ -412,7 +415,7 @@ export default {
         activePanel.value = 'config';
         selectedTemplate.value = null;
         previewKey.value++;
-        store.dispatch('widgetChat/clearConversation', 'widget-forge');
+        store.dispatch('chatUnified/clearConversation', { channelKey: 'widget:widget-forge' });
       },
     );
 
@@ -718,7 +721,7 @@ export default {
       store.dispatch('widgetDefinitions/setActiveDefinition', null);
 
       // Clear widget chat conversation
-      store.dispatch('widgetChat/clearConversation', widgetId.value);
+      store.dispatch('chatUnified/clearConversation', { channelKey: `widget:${widgetId.value}` });
     }
 
     async function manualCapture() {

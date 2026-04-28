@@ -3,6 +3,7 @@
     class="chat-screen-wrapper"
     ref="baseScreenRef"
     screenId="ChatScreen"
+    channel-key="orchestrator:default"
     :useTutorialHook="useTutorial"
     :terminalLines="terminalLines"
     :disableInputInitially="!hasConnectedAIProvider"
@@ -48,32 +49,35 @@
         </div>
 
         <!-- Conversation Canvas -->
-        <div class="conversation-canvas" ref="conversationSpace">
-          <div class="conversation-container">
-            <TransitionGroup :name="bulkLoading ? '' : 'message'" tag="div" class="message-flow">
-              <MessageItem
-                v-for="message in displayMessages"
-                :key="message.id"
-                :message="message"
-                :status="getMessageStatus(message)"
-                :runningTools="getRunningToolsForMessage(message)"
-                :imageCache="imageCache"
-                :dataCache="dataCache"
-                :avatarUrl="
-                  message.agentIcon &&
-                  (message.agentIcon.startsWith('http') || message.agentIcon.startsWith('data:') || message.agentIcon.startsWith('/'))
-                    ? message.agentIcon
-                    : null
-                "
-                @toggle-tool="toggleToolCallExpansion"
-                @provider-connected="handleProviderConnected"
-                @edit-message="handleEditMessage"
-              />
-            </TransitionGroup>
+        <div class="conversation-canvas-wrapper">
+          <div class="conversation-canvas" ref="conversationSpace">
+            <div class="conversation-container">
+              <TransitionGroup :name="bulkLoading ? '' : 'message'" tag="div" class="message-flow">
+                <MessageItem
+                  v-for="message in displayMessages"
+                  :key="message.id"
+                  :message="message"
+                  :status="getMessageStatus(message)"
+                  :runningTools="getRunningToolsForMessage(message)"
+                  :imageCache="imageCache"
+                  :dataCache="dataCache"
+                  :avatarUrl="
+                    message.agentIcon &&
+                    (message.agentIcon.startsWith('http') || message.agentIcon.startsWith('data:') || message.agentIcon.startsWith('/'))
+                      ? message.agentIcon
+                      : null
+                  "
+                  @toggle-tool="toggleToolCallExpansion"
+                  @provider-connected="handleProviderConnected"
+                  @edit-message="handleEditMessage"
+                />
+              </TransitionGroup>
 
-            <!-- Processing State -->
-            <ProcessingState v-if="isProcessing" :text="`${activeAgentName} is working...`" />
+              <!-- Processing State -->
+              <ProcessingState v-if="isProcessing" :text="`${activeAgentName} is working...`" />
+            </div>
           </div>
+          <ChatScrollControls :target-getter="getConversationEl" />
         </div>
 
         <!-- Quick Actions -->
@@ -85,7 +89,9 @@
         />
 
         <!-- Chat Actions Bar for Clear and Save Buttons -->
-        <ChatActions v-if="!isMobile && hasConnectedAIProvider" @clear="clearConversation" @save="saveConversation" />
+        <ChatActions v-if="!isMobile && hasConnectedAIProvider" @clear="confirmClearConversation" @save="saveConversation" />
+
+        <SimpleModal ref="confirmModal" />
       </div>
     </template>
   </BaseScreen>
@@ -110,6 +116,8 @@ import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvider.js';
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
 
 export default {
   name: 'ChatScreen',
@@ -124,6 +132,8 @@ export default {
     SystemHealthPanel,
     ActivityFeed,
     PopupTutorial,
+    SimpleModal,
+    ChatScrollControls,
   },
   emits: ['screen-change'],
   setup(props, { emit }) {
@@ -960,6 +970,55 @@ export default {
       baseScreenRef.value?.scrollToBottom();
     };
 
+    // Handed to ChatScrollControls so it can attach listeners to the
+    // conversation pane without us plumbing the ref through props.
+    const getConversationEl = () => conversationSpace.value;
+
+    // Keyboard navigation for the conversation pane. The textarea is at most
+    // ~150px tall (4 lines), so PageUp/PageDown/Home/End are all wasted there
+    // and route directly to scrolling the chat — Home jumps to top, End jumps
+    // to bottom. The modal/external-input guards above keep us out of the way
+    // when something else owns focus.
+    const handleChatKeyboardScroll = (event) => {
+      const el = conversationSpace.value;
+      if (!el) return;
+
+      // Don't steal keys while a modal is open — the user is interacting with
+      // the modal (buttons, inputs, etc.), not the chat behind it.
+      if (document.querySelector('.modal-overlay')) return;
+
+      // Don't steal keys when a non-chat input is focused (e.g. a search box
+      // teleported to body, or a popover field). The chat textarea inside
+      // .input-container / .chat-input-container is the only typing surface
+      // we want to override PageUp/PageDown for.
+      const active = document.activeElement;
+      const insideModalInput =
+        active &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') &&
+        !active.closest?.('.input-container, .chat-input-container, .automation-interface');
+      if (insideModalInput) return;
+
+      const page = Math.max(80, Math.floor(el.clientHeight * 0.85));
+
+      if (event.key === 'PageUp') {
+        event.preventDefault();
+        try { el.scrollBy({ top: -page, behavior: 'smooth' }); }
+        catch (e) { el.scrollTop = Math.max(0, el.scrollTop - page); }
+      } else if (event.key === 'PageDown') {
+        event.preventDefault();
+        try { el.scrollBy({ top: page, behavior: 'smooth' }); }
+        catch (e) { el.scrollTop = el.scrollTop + page; }
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        try { el.scrollTo({ top: 0, behavior: 'smooth' }); }
+        catch (e) { el.scrollTop = 0; }
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        try { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }
+        catch (e) { el.scrollTop = el.scrollHeight; }
+      }
+    };
+
     const scrollToTop = () => {
       // Scroll the base screen to top
       if (baseScreenRef.value && baseScreenRef.value.$el) {
@@ -1299,6 +1358,7 @@ export default {
         checkLocalServer();
       }, 30000);
       window.addEventListener('trigger-new-chat', clearConversation);
+      window.addEventListener('keydown', handleChatKeyboardScroll);
 
       await nextTick();
       if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
@@ -1338,6 +1398,20 @@ export default {
       monitoringStates[convId] = defaultMonitoringState();
       const model = store.state.aiProvider?.selectedModel;
       monitoringStates[convId].contextStatus.tokenLimit = getContextWindowForModel(model);
+    };
+
+    const confirmModal = ref(null);
+    // User-initiated clear (button click) routes through this so we don't wipe
+    // history on a misclick. Programmatic clears (post-send, post-restore, the
+    // 'trigger-new-chat' window event) keep calling clearConversation directly.
+    const confirmClearConversation = async () => {
+      const confirmed = await confirmModal.value?.showModal({
+        title: 'Start a new chat?',
+        message: 'Your current conversation will be saved. You can pick it back up anytime from your saved chats.',
+        confirmText: 'New chat',
+        confirmClass: 'btn-primary',
+      });
+      if (confirmed) clearConversation();
     };
 
     const clearConversation = () => {
@@ -1444,6 +1518,7 @@ export default {
       // Unregister stream event callback when component unmounts
       store.dispatch('chat/unregisterStreamEventCallback', handleStreamEvent);
       window.removeEventListener('trigger-new-chat', clearConversation);
+      window.removeEventListener('keydown', handleChatKeyboardScroll);
     });
 
     // MathJax typesetting is handled per-message in MessageItem.vue (after streaming completes).
@@ -1800,6 +1875,9 @@ export default {
       getMessageStatus,
       getRunningToolsForMessage,
       clearConversation,
+      confirmClearConversation,
+      confirmModal,
+      getConversationEl,
       saveConversation,
       activeAgentName,
       useTutorial,
@@ -1887,6 +1965,14 @@ export default {
 .monitoring-content > * {
   flex: 1;
   min-width: 280px;
+}
+
+.conversation-canvas-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .conversation-canvas {

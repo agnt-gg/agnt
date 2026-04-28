@@ -265,17 +265,18 @@ export default {
     // Function to initialize conversation for a specific workflowId
     const initializeConversationForWorkflow = (workflowId) => {
       if (workflowId && !hasInitializedConversation) {
-        console.log('WorkflowForge: Initializing conversation for workflowId:', workflowId);
-        // Check if there's already a conversation for this workflowId
-        const existingConversation = store.getters['workflowChat/getConversation'](workflowId);
-        console.log('WorkflowForge: Existing conversation for workflowId:', workflowId, existingConversation);
-        // Initialize conversation only if it doesn't exist or has no messages
+        const channelKey = `workflow:${workflowId}`;
+        const existingConversation = store.getters['chatUnified/getConversation'](channelKey);
         if (!existingConversation || !existingConversation.messages || existingConversation.messages.length === 0) {
-          store.dispatch('workflowChat/initializeConversation', workflowId);
-          console.log('WorkflowForge: Initialized new conversation for workflowId:', workflowId);
-        } else {
-          // Conversation already exists, mark as initialized
-          console.log('WorkflowForge: Using existing conversation for workflowId:', workflowId);
+          store.dispatch('chatUnified/initializeChannel', {
+            channelKey,
+            welcomeMessage: {
+              id: `wf-welcome-${Date.now()}`,
+              role: 'assistant',
+              content: "Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!",
+              timestamp: Date.now(),
+            },
+          });
         }
         hasInitializedConversation = true;
       }
@@ -347,10 +348,16 @@ export default {
           updatePanelProps();
           break;
         case 'clear-chat':
-          // Clear the chat for the current workflow
-          console.log('Clearing chat for workflowId:', panelProps.value.workflowId);
           if (panelProps.value.workflowId) {
-            store.dispatch('workflowChat/clearConversation', panelProps.value.workflowId);
+            store.dispatch('chatUnified/clearConversation', {
+              channelKey: `workflow:${panelProps.value.workflowId}`,
+              welcomeMessage: {
+                id: `wf-welcome-${Date.now()}`,
+                role: 'assistant',
+                content: "Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!",
+                timestamp: Date.now(),
+              },
+            });
           }
           break;
         case 'edit-workflow':
@@ -412,8 +419,7 @@ export default {
           // Reset the flags when the workflow ID changes
           hasAttemptedLoad = false;
           hasInitializedConversation = false;
-          // Defer conversation reload off the critical loading path
-          setTimeout(() => store.dispatch('workflowChat/reloadConversations'), 0);
+          // chatUnified loads from localStorage on demand per channel; no global reload needed
           loadWorkflowFromUrl();
         } else if (!newId && workflowDesigner.value) {
           // If there's no URL ID, ensure we have a conversation for the current workflow
@@ -492,8 +498,7 @@ export default {
 
     onMounted(() => {
       console.log('WorkflowDesigner Screen Mounted');
-      // Reload conversations from localStorage when the screen is mounted
-      store.dispatch('workflowChat/reloadConversations');
+      // chatUnified hydrates from localStorage on demand per channel; no global reload needed
       window.addEventListener('workflow-updated', handleWorkflowUpdated);
       window.addEventListener('workflow-started-from-chat', handleWorkflowStartedFromChat);
       window.addEventListener('workflow-stopped-from-chat', handleWorkflowStoppedFromChat);
@@ -533,9 +538,18 @@ export default {
         localStorage.removeItem('canvasState');
         localStorage.setItem('activeWorkflow', newId);
 
+        // CRITICAL: also reset the closure-captured initialWorkflowId, otherwise
+        // updatePanelProps Priority 2 will hand the chat panel the OLD workflow id
+        // (causing chat saves to overwrite the previously-loaded workflow). Point
+        // it at the freshly-generated id so the chat channel re-keys cleanly.
+        initialWorkflowId = newId;
         lastLoadedWorkflowId = null;
+        lastUpdateProps = null;
         hasAttemptedLoad = false;
         hasInitializedConversation = false;
+
+        // Force the panel props to re-publish with the new id.
+        updatePanelProps();
       }
     });
 

@@ -13,6 +13,35 @@ import { getProviderConfig } from '../services/ai/providerConfigs.js';
 
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer, trimToWordLimit, generateUniqueId, computeFileHash } from './utils.js';
 
+/**
+ * Some newer Anthropic models reject the `temperature` parameter outright with
+ * "temperature is deprecated for this model". The error is model-specific and
+ * the deprecated set keeps growing, so instead of maintaining a hand-curated
+ * model allowlist we just retry without `temperature` on that exact error.
+ *
+ * Usage:
+ *   await callAnthropicWithTemperatureFallback(
+ *     (params) => client.messages.create(params),
+ *     { model, messages, temperature: 0, ... }
+ *   );
+ *
+ * On a non-deprecation error, the original error is re-thrown so the caller's
+ * error handling stays intact.
+ */
+async function callAnthropicWithTemperatureFallback(callFn, params) {
+  try {
+    return await callFn(params);
+  } catch (err) {
+    const msg = String(err?.message || err?.error?.message || err || '');
+    if (params && params.temperature !== undefined && /temperature.*deprecated/i.test(msg)) {
+      console.warn(`[StreamEngine] Anthropic model "${params.model}" rejected temperature — retrying without it.`);
+      const { temperature, ...rest } = params;
+      return await callFn(rest);
+    }
+    throw err;
+  }
+}
+
 class StreamEngine {
   constructor(userId) {
     this.userId = userId;
@@ -296,7 +325,17 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             `,
       });
 
-      const stream = await client.messages.stream(
+      const stream = await callAnthropicWithTemperatureFallback(
+        (params) => client.messages.stream(
+          params,
+          {
+            headers: {
+              'anthropic-beta': isClaudeCode
+                ? 'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15'
+                : 'max-tokens-3-5-sonnet-2024-07-15',
+            },
+          }
+        ),
         {
           model: modelName,
           messages: finalMessages,
@@ -310,13 +349,6 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
                   budget_tokens: 51200,
                 }
               : undefined,
-        },
-        {
-          headers: {
-            'anthropic-beta': isClaudeCode
-              ? 'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15'
-              : 'max-tokens-3-5-sonnet-2024-07-15',
-          },
         }
       );
 
@@ -771,18 +803,21 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             type: 'text',
             text: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
           });
-          response = await client.messages.create({
-            model: selectedModel,
-            max_tokens: 8192,
-            temperature: 0,
-            system: toolGenSystemBlocks,
-            messages: [
-              {
-                role: 'user',
-                content: [{ type: 'text', text: toolGenerationPrompt }],
-              },
-            ],
-          });
+          response = await callAnthropicWithTemperatureFallback(
+            (params) => client.messages.create(params),
+            {
+              model: selectedModel,
+              max_tokens: 8192,
+              temperature: 0,
+              system: toolGenSystemBlocks,
+              messages: [
+                {
+                  role: 'user',
+                  content: [{ type: 'text', text: toolGenerationPrompt }],
+                },
+              ],
+            }
+          );
           return { template: this._removeMarkdownJson(response.content[0].text) };
         }
 
@@ -1511,18 +1546,21 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             type: 'text',
             text: 'Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.',
           });
-          response = await client.messages.create({
-            model: selectedModel,
-            max_tokens: 8192,
-            temperature: 0,
-            system: agentGenSystemBlocks,
-            messages: [
-              {
-                role: 'user',
-                content: [{ type: 'text', text: agentGenerationPrompt }],
-              },
-            ],
-          });
+          response = await callAnthropicWithTemperatureFallback(
+            (params) => client.messages.create(params),
+            {
+              model: selectedModel,
+              max_tokens: 8192,
+              temperature: 0,
+              system: agentGenSystemBlocks,
+              messages: [
+                {
+                  role: 'user',
+                  content: [{ type: 'text', text: agentGenerationPrompt }],
+                },
+              ],
+            }
+          );
           return { agent: this._removeMarkdownJson(response.content[0].text) };
         }
 
@@ -1731,25 +1769,28 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             type: 'text',
             text: 'You are a helpful assistant. Generate valid responses based on the user instructions.',
           });
-          completion = await client.messages.create({
-            model: selectedModel,
-            max_tokens: selectedModel === 'claude-3-7-sonnet-20250219' ? 64000 : 8192,
-            temperature: selectedModel === 'claude-3-7-sonnet-20250219' ? 1 : 0,
-            system: completionSystemBlocks,
-            messages: [
-              {
-                role: 'user',
-                content: [{ type: 'text', text: prompt }],
-              },
-            ],
-            thinking:
-              selectedModel === 'claude-3-7-sonnet-20250219'
-                ? {
-                    type: 'enabled',
-                    budget_tokens: 4096,
-                  }
-                : undefined,
-          });
+          completion = await callAnthropicWithTemperatureFallback(
+            (params) => client.messages.create(params),
+            {
+              model: selectedModel,
+              max_tokens: selectedModel === 'claude-3-7-sonnet-20250219' ? 64000 : 8192,
+              temperature: selectedModel === 'claude-3-7-sonnet-20250219' ? 1 : 0,
+              system: completionSystemBlocks,
+              messages: [
+                {
+                  role: 'user',
+                  content: [{ type: 'text', text: prompt }],
+                },
+              ],
+              thinking:
+                selectedModel === 'claude-3-7-sonnet-20250219'
+                  ? {
+                      type: 'enabled',
+                      budget_tokens: 4096,
+                    }
+                  : undefined,
+            }
+          );
           console.log(completion);
 
           // Extract content based on response structure

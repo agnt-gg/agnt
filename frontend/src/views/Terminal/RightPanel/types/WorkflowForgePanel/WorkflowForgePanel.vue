@@ -37,7 +37,21 @@
 
     <!-- Show chat when nothing is selected -->
     <div class="panel-content" v-if="!selectedNodeContent && !selectedEdgeContent">
-      <WorkflowChatContainer :key="workflowId" :workflowId="workflowId" :nodes="nodes" :edges="edges" />
+      <UnifiedChatContainer
+        :key="chatChannelKey"
+        :channel-key="chatChannelKey"
+        :chat-type="chatChatType"
+        :page-context="chatPageContext"
+        :page-state="chatPageState"
+        :on-frontend-event="chatOnFrontendEvent"
+        welcome-message="Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!"
+        empty-icon="fas fa-comments"
+        placeholder="Ask about workflows, nodes, or get help..."
+        :initial-suggestions="initialWorkflowSuggestions"
+        :show-suggestions="true"
+        :show-voice-input="true"
+        suggestions-context-label="workflow"
+      />
 
       <!-- Resources Section -->
       <div style="margin-top: 24px; padding: 0 16px">
@@ -70,19 +84,24 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, toRefs, watch } from 'vue';
+import { useStore } from 'vuex';
 import PanelTab from '@/views/Terminal/CenterPanel/screens/WorkflowForge/components/WorkflowDesigner/components/EditorPanel/components/PanelTab.vue';
-import WorkflowChatContainer from './_WorkflowChatContainer.vue';
+import UnifiedChatContainer from '@/views/_components/chat/UnifiedChatContainer.vue';
+import { useWorkflowChatContext } from '@/composables/chat/useWorkflowChatContext.js';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
-// NOTE: toolLibrary is now fetched from backend via Vuex store (tools/fetchWorkflowTools)
-// The backendTools prop passed from parent contains the workflow tools
+
+const initialWorkflowSuggestions = [
+  { id: 'wf-1', text: 'List tools', icon: '📦' },
+  { id: 'wf-2', text: 'Analyze flow', icon: '🔍' },
+];
 
 export default {
   name: 'WorkflowForgePanel',
   components: {
     PanelTab,
-    WorkflowChatContainer,
+    UnifiedChatContainer,
     ResourcesSection,
     Tooltip,
   },
@@ -251,8 +270,26 @@ export default {
       emit('panel-action', 'update:edgeContent', updatedContent);
     };
 
+    const store = useStore();
+    const { workflowId, nodes, edges } = toRefs(props);
+    const {
+      channelKey: chatChannelKey,
+      chatType: chatChatType,
+      pageContext: chatPageContext,
+      pageState: chatPageState,
+      onFrontendEvent: chatOnFrontendEvent,
+    } = useWorkflowChatContext({ workflowId, nodes, edges });
+
     const handleClearChat = () => {
-      // Emit an event to clear the chat
+      store.dispatch('chatUnified/clearConversation', {
+        channelKey: chatChannelKey.value,
+        welcomeMessage: {
+          id: `wf-welcome-${Date.now()}`,
+          role: 'assistant',
+          content: "Hi! I'm Annie, your workflow assistant. Ask me anything about building workflows!",
+          timestamp: Date.now(),
+        },
+      });
       emit('panel-action', 'clear-chat');
     };
 
@@ -281,6 +318,12 @@ export default {
       updateNodeContent,
       updateEdgeContent,
       handleClearChat,
+      chatChannelKey,
+      chatChatType,
+      chatPageContext,
+      chatPageState,
+      chatOnFrontendEvent,
+      initialWorkflowSuggestions,
     };
   },
 };
