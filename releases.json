@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.5.7",
+      "date": "April 28, 2026",
+      "title": "Unified Chat Architecture, Workflow Restart Stability & Agent Generate Fix - AGNT v0.5.7",
+      "type": "patch",
+      "features": [
+        { "name": "Unified Chat Container Architecture Across Agent, Workflow, Tool, Widget & Artifact Forge Panels with Per-Channel Provider/Tool Configuration & Channel-Keyed Conversations", "status": "updated" },
+        { "name": "SQLITE_BUSY: database is locked Errors on App Restart from Cascading Fire-on-Start Timer Triggers Hitting the DB Concurrently During Workflow Re-Activation", "status": "bug" },
+        { "name": "Generate Agent Tool Returning Successfully but Not Populating AgentForge Form Fields (Missing frontendEvents Bridge to UI)", "status": "bug" },
+        { "name": "Async-Tool _delayFirst Parameter for Silent Heartbeat Timers (Skip Initial Tick Notification on Long-Running Polling Tools)", "status": "new" },
+        { "name": "Standalone Docker Run as a True One-Liner (No Manual docker pull Required Before docker run)", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.6",
       "date": "April 25, 2026",
       "title": "Per-Model Reasoning Controls, Atlas Cloud Plugin & Chat Rendering Fixes - AGNT v0.5.6",
