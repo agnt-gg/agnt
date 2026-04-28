@@ -9,85 +9,19 @@ import { getProviderConfig, getReasoningControl } from '../ai/providerConfigs.js
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 
 /**
- * Parse API error messages to extract user-friendly error details
+ * Return the upstream provider error verbatim.
+ *
+ * Previous versions of this function rewrote messages — stripping HTML,
+ * unwrapping JSON, replacing "quota" matches with generic templates — which
+ * destroyed useful provider-specific details (upgrade URLs, schema validation
+ * paths, rate-limit windows). The contract is now: whatever the SDK gave us
+ * is what surfaces to the user, regardless of provider.
+ *
  * @param {Error} error - The error object from the API
- * @returns {string} A user-friendly error message
+ * @returns {string} The raw upstream message
  */
 function parseApiErrorMessage(error) {
-  const rawMessage = error.message || '';
-
-  // If the error message contains HTML (e.g., 403 error pages), strip it and extract useful info
-  if (rawMessage.includes('<!DOCTYPE') || rawMessage.includes('<html') || rawMessage.includes('<HTML')) {
-    // Extract status code if present at the start (e.g., "403 <!DOCTYPE html>...")
-    const statusMatch = rawMessage.match(/^(\d{3})\s/);
-    const statusCode = statusMatch ? statusMatch[1] : error.status || 'Unknown';
-    // Try to extract a <title> from the HTML
-    const titleMatch = rawMessage.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim() : '';
-    return title ? `HTTP ${statusCode}: ${title}` : `HTTP ${statusCode} error from API. The server returned an HTML error page instead of JSON.`;
-  }
-
-  // Try to extract JSON error from the message (common pattern: "400 {...}")
-  try {
-    const jsonMatch = rawMessage.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      let parsed = JSON.parse(jsonMatch[0]);
-
-      // Handle Gemini's deeply nested error format where error.message is itself a JSON string
-      // e.g., {"error":{"message":"{\\n  \\"error\\": {\\n    \\"code\\": 429...
-      if (parsed.error?.message && typeof parsed.error.message === 'string') {
-        try {
-          // Try to parse the nested JSON string
-          const nestedParsed = JSON.parse(parsed.error.message);
-          if (nestedParsed.error?.message) {
-            return nestedParsed.error.message;
-          }
-        } catch (nestedError) {
-          // Not nested JSON, use the message directly
-          return parsed.error.message;
-        }
-      }
-
-      // Handle Anthropic error format
-      if (parsed.error?.message) {
-        return parsed.error.message;
-      }
-      // Handle OpenAI error format
-      if (parsed.message) {
-        return parsed.message;
-      }
-    }
-  } catch (e) {
-    // JSON parsing failed, continue with other methods
-  }
-
-  // Check for common error patterns
-  if (rawMessage.includes('credit balance is too low')) {
-    return 'Your API credit balance is too low. Please add credits to your account.';
-  }
-  if (rawMessage.includes('invalid_api_key') || rawMessage.includes('Invalid API Key')) {
-    return 'Invalid API key. Please check your API key configuration.';
-  }
-  if (rawMessage.includes('rate_limit') || rawMessage.includes('Rate limit')) {
-    return 'Rate limit exceeded. Please wait a moment and try again.';
-  }
-  if (rawMessage.includes('overloaded') || rawMessage.includes('capacity')) {
-    return 'The AI service is currently overloaded. Please try again in a few moments.';
-  }
-  if (rawMessage.includes('RESOURCE_EXHAUSTED') || rawMessage.includes('quota')) {
-    return 'API quota exceeded. Please check your plan and billing details, or wait for your quota to reset.';
-  }
-  if (rawMessage.includes('INVALID_ARGUMENT') || rawMessage.includes('not supported')) {
-    // Extract the specific error message if possible
-    const supportMatch = rawMessage.match(/not supported[^"]*|INVALID_ARGUMENT[^"]*/i);
-    if (supportMatch) {
-      return `Invalid request: ${supportMatch[0]}`;
-    }
-    return 'Invalid request. The model may not support this operation.';
-  }
-
-  // Return the raw message if no pattern matched
-  return rawMessage || 'Unknown error occurred';
+  return error?.message || 'Unknown error occurred';
 }
 
 /**
@@ -131,21 +65,64 @@ function findLastInjectableUserIndex(messages) {
 /**
  * Sanitize tool schemas for Kimi / Kimi Code (Moonshot).
  *
- * Moonshot's validator rejects any `type: "array"` parameter that is missing
- * an `items` definition with: "tools.function.parameters is not a valid
- * moonshot flavored json schema". This walks each tool's parameters and
- * inserts a permissive `items: { type: "string" }` default. Scoped to Kimi
- * only — other OpenAI-compatible providers tolerate the looser schemas, and
- * applying this fix globally previously broke them (see reverted ecb5cf2).
+ * Moonshot's validator is stricter than other OpenAI-compatible providers and
+ * rejects schemas with: "tools.function.parameters is not a valid moonshot
+ * flavored json schema". Two cases are known to trigger this:
+ *
+ *   1. `type: "array"` parameters missing an `items` definition.
+ *   2. `enum` values that don't match the declared `type` — e.g. a plugin
+ *      manifest that declares `{ type: "boolean", options: ["true"] }` and
+ *      gets transcribed to `{ type: "boolean", enum: ["true"] }`.
+ *
+ * For (1) we insert a permissive `items: { type: "string" }`. For (2) we drop
+ * the enum on boolean fields entirely (only two valid values, enum is
+ * meaningless) and coerce mismatched values for string/integer/number fields.
+ *
+ * Scoped to Kimi only — other OpenAI-compatible providers tolerate looser
+ * schemas, and applying this globally previously broke them (reverted ecb5cf2).
  */
 function sanitizeKimiToolSchemas(tools) {
   if (!tools || tools.length === 0) return tools;
 
+  const coerceEnumValues = (type, values) => {
+    if (!Array.isArray(values)) return values;
+    if (type === 'string') {
+      return values.map((v) => (v == null ? v : String(v))).filter((v) => v != null);
+    }
+    if (type === 'integer') {
+      return values
+        .map((v) => (typeof v === 'number' ? Math.trunc(v) : parseInt(v, 10)))
+        .filter((v) => Number.isFinite(v));
+    }
+    if (type === 'number') {
+      return values
+        .map((v) => (typeof v === 'number' ? v : Number(v)))
+        .filter((v) => Number.isFinite(v));
+    }
+    return values;
+  };
+
   const fixSchema = (obj) => {
     if (!obj || typeof obj !== 'object') return;
+
     if (obj.type === 'array' && !obj.items) {
       obj.items = { type: 'string' };
     }
+
+    if (Array.isArray(obj.enum)) {
+      if (obj.type === 'boolean') {
+        // Booleans only have two values — Moonshot rejects any enum here.
+        delete obj.enum;
+      } else if (obj.type === 'string' || obj.type === 'integer' || obj.type === 'number') {
+        const coerced = coerceEnumValues(obj.type, obj.enum);
+        if (coerced.length > 0) {
+          obj.enum = coerced;
+        } else {
+          delete obj.enum;
+        }
+      }
+    }
+
     if (obj.properties && typeof obj.properties === 'object') {
       for (const prop of Object.values(obj.properties)) {
         fixSchema(prop);

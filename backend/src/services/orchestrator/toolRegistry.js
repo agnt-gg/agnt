@@ -6,6 +6,40 @@ import PluginManager from '../../plugins/PluginManager.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Apply a manifest's `options` array as JSON Schema `enum`, but only when it
+ * makes sense for the declared type. Booleans get the enum dropped entirely
+ * (only two values, and Moonshot's strict validator rejects mismatched enum
+ * values like `enum: ["true"]` on `type: "boolean"`). String/integer/number
+ * fields get values coerced to the declared type so a manifest like
+ * `{ type: "integer", options: ["1", "2"] }` produces `enum: [1, 2]`.
+ */
+function applyOptionsAsEnum(target, type, options) {
+  if (!Array.isArray(options) || options.length === 0) return;
+  if (type === 'boolean') return;
+
+  const coerced = options
+    .map((v) => {
+      if (type === 'integer') {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) ? n : null;
+      }
+      if (type === 'number') {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+      if (type === 'string') {
+        return v == null ? null : String(v);
+      }
+      return v;
+    })
+    .filter((v) => v !== null && v !== undefined);
+
+  if (coerced.length > 0) {
+    target.enum = coerced;
+  }
+}
+
 class ToolRegistry {
   constructor() {
     this.tools = new Map();
@@ -109,8 +143,9 @@ class ToolRegistry {
 
     if (schema.parameters) {
       for (const [paramName, paramDef] of Object.entries(schema.parameters)) {
+        const paramType = paramDef.type || 'string';
         properties[paramName] = {
-          type: paramDef.type || 'string',
+          type: paramType,
           description: paramDef.description || '',
         };
 
@@ -118,12 +153,13 @@ class ToolRegistry {
           properties[paramName].default = paramDef.default;
         }
 
-        if (paramDef.options && Array.isArray(paramDef.options)) {
-          properties[paramName].enum = paramDef.options;
-        }
+        applyOptionsAsEnum(properties[paramName], paramType, paramDef.options);
 
         if (paramDef.items) {
           properties[paramName].items = paramDef.items;
+        } else if (paramType === 'array') {
+          // OpenAI / Moonshot require array properties to declare an `items` schema.
+          properties[paramName].items = { type: 'string' };
         }
 
         // Add to required if no default, not conditional, and not explicitly optional
@@ -251,9 +287,7 @@ class ToolRegistry {
         if (paramDef.default !== undefined) {
           properties[paramName].default = paramDef.default;
         }
-        if (paramDef.options && Array.isArray(paramDef.options)) {
-          properties[paramName].enum = paramDef.options;
-        }
+        applyOptionsAsEnum(properties[paramName], type, paramDef.options);
 
         // CRITICAL FIX: Only add to required if:
         // 1. No default value
