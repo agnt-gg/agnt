@@ -3,6 +3,7 @@ import AuthManager from '../services/auth/AuthManager.js';
 import ExecutionModel from '../models/ExecutionModel.js';
 import CustomToolExecutor from './CustomToolExecutor.js';
 import PluginManager from '../plugins/PluginManager.js';
+import { dbRunWithRetry } from '../models/database/index.js';
 
 class NodeExecutor {
   constructor(workflowEngine) {
@@ -17,7 +18,9 @@ class NodeExecutor {
     // Set the current node ID in the workflow engine
     this.workflowEngine.currentNodeId = node.id;
 
-    await ExecutionModel.createNodeExecution(this.workflowEngine.currentExecutionId, node.id, inputData);
+    await dbRunWithRetry(() =>
+      ExecutionModel.createNodeExecution(this.workflowEngine.currentExecutionId, node.id, inputData)
+    );
     let output;
 
     try {
@@ -179,14 +182,16 @@ class NodeExecutor {
         ? { inputTokens: output.inputTokens || 0, outputTokens: output.outputTokens || 0 }
         : null;
 
-      await ExecutionModel.updateNodeExecution(
-        this.workflowEngine.currentExecutionId,
-        node.id,
-        'completed',
-        output,
-        null,
-        shouldCharge ? executionDuration : 0,
-        tokenUsage
+      await dbRunWithRetry(() =>
+        ExecutionModel.updateNodeExecution(
+          this.workflowEngine.currentExecutionId,
+          node.id,
+          'completed',
+          output,
+          null,
+          shouldCharge ? executionDuration : 0,
+          tokenUsage
+        )
       );
       return { ...output, error: null };
     } catch (error) {
@@ -196,7 +201,9 @@ class NodeExecutor {
       const executionDuration = endTime - startTime;
 
       if (executionDuration > 0 && !error.message.includes('Insufficient credits')) {
-        await ExecutionModel.updateNodeExecution(this.workflowEngine.currentExecutionId, node.id, 'error', null, error.message, executionDuration);
+        await dbRunWithRetry(() =>
+          ExecutionModel.updateNodeExecution(this.workflowEngine.currentExecutionId, node.id, 'error', null, error.message, executionDuration)
+        );
       }
 
       this.workflowEngine.outputs[node.id] = {
