@@ -4,8 +4,9 @@ import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
 // Single source of truth for all built-in provider metadata on the frontend.
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
 
-// Cache version — bump this to invalidate all provider model caches
-const MODEL_CACHE_VERSION = 8;
+// Cache version — bump this to invalidate all provider model caches.
+// v9: chutes reasoning controls added — old cached metadata lacks reasoningControl.
+const MODEL_CACHE_VERSION = 9;
 (() => {
   const storedVersion = localStorage.getItem('model_cache_version');
   if (storedVersion !== String(MODEL_CACHE_VERSION)) {
@@ -23,6 +24,7 @@ const MODEL_CACHE_VERSION = 8;
 const BUILT_IN_PROVIDERS = [
   { key: 'anthropic', displayName: 'Anthropic' },
   { key: 'cerebras', displayName: 'Cerebras' },
+  { key: 'chutes', displayName: 'Chutes' },
   { key: 'claude-code', displayName: 'Claude-Code' },
   { key: 'deepseek', displayName: 'DeepSeek' },
   { key: 'gemini', displayName: 'Gemini' },
@@ -176,6 +178,19 @@ function isOpenRouterXaiReasoningModel(modelId) {
 
 function isTogetherGptOssReasoningModel(modelId) {
   return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
+}
+
+// Chutes hosts upstream models inside TEE; reasoning routes by underlying family.
+function isChutesKimiReasoningModel(modelId) {
+  return /^moonshotai\/kimi-k2/i.test(String(modelId || ''));
+}
+
+function isChutesGlmReasoningModel(modelId) {
+  return /^zai-org\/glm-5/i.test(String(modelId || ''));
+}
+
+function isChutesQwenReasoningModel(modelId) {
+  return /^qwen\/qwen3/i.test(String(modelId || ''));
 }
 
 function inferReasoningControl(providerKey, modelId) {
@@ -367,6 +382,20 @@ function inferReasoningControl(providerKey, modelId) {
       { value: 'default', label: 'Default' },
       { value: 'off', label: 'Off' },
     ]);
+  }
+
+  if (lowerProvider === 'chutes') {
+    if (
+      isChutesKimiReasoningModel(modelId) ||
+      isChutesGlmReasoningModel(modelId) ||
+      isChutesQwenReasoningModel(modelId)
+    ) {
+      return buildReasoningControl('toggle', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+      ]);
+    }
+    return null;
   }
 
   return null;
@@ -879,6 +908,9 @@ export default {
     },
     async fetchCerebrasModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Cerebras', forceRefresh });
+    },
+    async fetchChutesModels({ dispatch }, { forceRefresh = false } = {}) {
+      return dispatch('fetchProviderModels', { provider: 'Chutes', forceRefresh });
     },
     async fetchClaudeCodeModels({ dispatch }, { forceRefresh = false } = {}) {
       return dispatch('fetchProviderModels', { provider: 'Claude-Code', forceRefresh });

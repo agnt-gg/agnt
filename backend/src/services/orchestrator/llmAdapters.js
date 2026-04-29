@@ -5,7 +5,7 @@ import { manageContext } from '../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
-import { getProviderConfig, getReasoningControl } from '../ai/providerConfigs.js';
+import { getModelMetadata, getProviderConfig, getReasoningControl } from '../ai/providerConfigs.js';
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 
 /**
@@ -255,6 +255,14 @@ class OpenAiLikeAdapter extends BaseAdapter {
    * passes tools through unchanged.
    */
   _prepareTools(tools) {
+    if (this.provider === 'chutes') {
+      const metadata = getModelMetadata('chutes', this.model);
+      if (metadata?.supportsTools === false) {
+        console.warn(`[Chutes] Model '${this.model}' does not support tool calling; sending request without tools.`);
+        return [];
+      }
+    }
+
     if (this.provider === 'kimi' || this.provider === 'kimi-code') {
       return sanitizeKimiToolSchemas(tools);
     }
@@ -4342,6 +4350,19 @@ function isTogetherGptOssReasoningModel(model) {
   return String(model || '').toLowerCase().startsWith('openai/gpt-oss-');
 }
 
+// Chutes reasoning models — protocol routes by underlying family.
+function isChutesKimiReasoningModel(model) {
+  return /^moonshotai\/kimi-k2/i.test(String(model || ''));
+}
+
+function isChutesGlmReasoningModel(model) {
+  return /^zai-org\/glm-5/i.test(String(model || ''));
+}
+
+function isChutesQwenReasoningModel(model) {
+  return /^qwen\/qwen3/i.test(String(model || ''));
+}
+
 function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
   const normalizedProvider = String(provider || '').toLowerCase();
   const normalizedValue = normalizeReasoningValue(reasoningValue);
@@ -4434,6 +4455,26 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
     return { reasoning_effort: effort };
   }
 
+  if (normalizedProvider === 'chutes') {
+    // Chutes hosts upstream models via vLLM / sglang. The disable-thinking
+    // knob is `chat_template_kwargs`, but the inner key NAME is set by each
+    // model's chat template — not unified. Kimi K2.x uses `thinking`; GLM
+    // and Qwen3 use `enable_thinking`. References:
+    //   - SGLang Kimi-K2.6 cookbook: chat_template_kwargs: { thinking: false }
+    //   - vLLM Qwen3 / GLM5 docs:    chat_template_kwargs: { enable_thinking: false }
+    if (isChutesKimiReasoningModel(model)) {
+      if (normalizedValue === 'off') return { chat_template_kwargs: { thinking: false } };
+      if (normalizedValue === 'on')  return { chat_template_kwargs: { thinking: true } };
+      return null;
+    }
+    if (isChutesGlmReasoningModel(model) || isChutesQwenReasoningModel(model)) {
+      if (normalizedValue === 'off') return { chat_template_kwargs: { enable_thinking: false } };
+      if (normalizedValue === 'on')  return { chat_template_kwargs: { enable_thinking: true } };
+      return null;
+    }
+    return null;
+  }
+
   if (normalizedProvider === 'grokai') {
     return null;
   }
@@ -4496,6 +4537,7 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     case 'groq':
     case 'kimi':
     case 'kimi-code':
+    case 'chutes':
     case 'local':
     case 'minimax':
     case 'openrouter':
@@ -4525,4 +4567,4 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
 }
 
 // Export adapters for testing
-export { GeminiAdapter };
+export { GeminiAdapter, buildOpenAiLikeReasoningExtraBody };
