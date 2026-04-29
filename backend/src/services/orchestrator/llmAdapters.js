@@ -4350,6 +4350,19 @@ function isTogetherGptOssReasoningModel(model) {
   return String(model || '').toLowerCase().startsWith('openai/gpt-oss-');
 }
 
+// Chutes reasoning models — protocol routes by underlying family.
+function isChutesKimiReasoningModel(model) {
+  return /^moonshotai\/kimi-k2/i.test(String(model || ''));
+}
+
+function isChutesGlmReasoningModel(model) {
+  return /^zai-org\/glm-5/i.test(String(model || ''));
+}
+
+function isChutesQwenReasoningModel(model) {
+  return /^qwen\/qwen3/i.test(String(model || ''));
+}
+
 function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
   const normalizedProvider = String(provider || '').toLowerCase();
   const normalizedValue = normalizeReasoningValue(reasoningValue);
@@ -4440,6 +4453,23 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
     const effort = normalizedValue === 'on' ? 'medium' : normalizedValue;
     if (!['low', 'medium', 'high'].includes(effort)) return null;
     return { reasoning_effort: effort };
+  }
+
+  if (normalizedProvider === 'chutes') {
+    // Chutes hosts Kimi / GLM / Qwen3 in TEE. Body-param protocol matches the
+    // underlying family — same params we send to direct kimi / zai / qwen3.
+    if (isChutesKimiReasoningModel(model) || isChutesGlmReasoningModel(model)) {
+      if (normalizedValue === 'off') return { thinking: { type: 'disabled' } };
+      return { thinking: { type: 'enabled' } };
+    }
+
+    if (isChutesQwenReasoningModel(model)) {
+      // Mirrors Groq's qwen3 toggle: 'none' disables, omit for default.
+      if (normalizedValue === 'off') return { reasoning_effort: 'none' };
+      return null;
+    }
+
+    return null;
   }
 
   if (normalizedProvider === 'grokai') {
@@ -4534,4 +4564,4 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
 }
 
 // Export adapters for testing
-export { GeminiAdapter };
+export { GeminiAdapter, buildOpenAiLikeReasoningExtraBody };

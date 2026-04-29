@@ -1010,6 +1010,21 @@ function isTogetherGptOssReasoningModel(modelId) {
   return String(modelId || '').toLowerCase().startsWith('openai/gpt-oss-');
 }
 
+// Chutes hosts upstream models inside TEE; reasoning protocol routes by family
+// of the underlying model, not by Chutes itself. The model IDs follow the
+// pattern <family-org>/<model>-TEE.
+function isChutesKimiReasoningModel(modelId) {
+  return /^moonshotai\/kimi-k2/i.test(String(modelId || ''));
+}
+
+function isChutesGlmReasoningModel(modelId) {
+  return /^zai-org\/glm-5/i.test(String(modelId || ''));
+}
+
+function isChutesQwenReasoningModel(modelId) {
+  return /^qwen\/qwen3/i.test(String(modelId || ''));
+}
+
 function inferVariantModelMetadata(providerKey, modelId) {
   const lowerProvider = String(providerKey || '').toLowerCase();
   const lowerModel = String(modelId || '').toLowerCase();
@@ -1475,6 +1490,23 @@ export function getReasoningControl(providerKey, modelId) {
       { value: 'default', label: 'Default' },
       { value: 'off', label: 'Off' },
     ]);
+  }
+
+  if (lowerProvider === 'chutes') {
+    // Chutes serves Kimi / GLM / Qwen3 models inside TEE. Each accepts the
+    // same toggle UX; the underlying body-param protocol differs per family
+    // and is handled in buildOpenAiLikeReasoningExtraBody.
+    if (
+      isChutesKimiReasoningModel(modelId) ||
+      isChutesGlmReasoningModel(modelId) ||
+      isChutesQwenReasoningModel(modelId)
+    ) {
+      return buildReasoningControl('toggle', [
+        { value: 'default', label: 'Default' },
+        { value: 'off', label: 'Off' },
+      ]);
+    }
+    return null;
   }
 
   return null;

@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import {
   getAllModelMetadata,
   getProviderConfig,
+  getReasoningControl,
   registerDynamicPricingFromModels,
 } from '../../backend/src/services/ai/providerConfigs.js';
 
@@ -322,6 +323,89 @@ describe('Chutes E2EE Offline Transport', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe('Chutes reasoning controls', () => {
+  it('exposes a toggle UI for Kimi-TEE models', () => {
+    const ctrl = getReasoningControl('chutes', 'moonshotai/Kimi-K2.6-TEE');
+    assert.ok(ctrl, 'expected a control for Kimi-TEE');
+    assert.strictEqual(ctrl.kind, 'toggle');
+    const values = ctrl.options.map((o) => o.value);
+    assert.deepStrictEqual(values.sort(), ['default', 'off']);
+  });
+
+  it('exposes a toggle UI for GLM-TEE models', () => {
+    const ctrl = getReasoningControl('chutes', 'zai-org/GLM-5.1-TEE');
+    assert.ok(ctrl);
+    assert.strictEqual(ctrl.kind, 'toggle');
+  });
+
+  it('exposes a toggle UI for Qwen3-TEE models', () => {
+    const ctrl = getReasoningControl('chutes', 'Qwen/Qwen3.6-27B-TEE');
+    assert.ok(ctrl);
+    assert.strictEqual(ctrl.kind, 'toggle');
+  });
+
+  it('returns null for non-reasoning Chutes models (MiniMax skipped on first pass)', () => {
+    const ctrl = getReasoningControl('chutes', 'MiniMaxAI/MiniMax-M2.5-TEE');
+    assert.strictEqual(ctrl, null, 'MiniMax should not yet have a reasoning control');
+  });
+
+  it('returns null for unknown chutes model IDs', () => {
+    assert.strictEqual(getReasoningControl('chutes', 'unknown/Foo-TEE'), null);
+  });
+});
+
+describe('Chutes reasoning body params (buildOpenAiLikeReasoningExtraBody)', () => {
+  it('Kimi-TEE: off → thinking disabled, on → thinking enabled, default → null', async () => {
+    const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
+      '../../backend/src/services/orchestrator/llmAdapters.js'
+    );
+    assert.deepStrictEqual(
+      fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'off'),
+      { thinking: { type: 'disabled' } },
+    );
+    assert.deepStrictEqual(
+      fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'on'),
+      { thinking: { type: 'enabled' } },
+    );
+    assert.strictEqual(fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'default'), null);
+  });
+
+  it('GLM-TEE: off → thinking disabled, on → thinking enabled, default → null', async () => {
+    const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
+      '../../backend/src/services/orchestrator/llmAdapters.js'
+    );
+    assert.deepStrictEqual(
+      fn('chutes', 'zai-org/GLM-5.1-TEE', 'off'),
+      { thinking: { type: 'disabled' } },
+    );
+    assert.deepStrictEqual(
+      fn('chutes', 'zai-org/GLM-5.1-TEE', 'on'),
+      { thinking: { type: 'enabled' } },
+    );
+    assert.strictEqual(fn('chutes', 'zai-org/GLM-5.1-TEE', 'default'), null);
+  });
+
+  it('Qwen3-TEE: off → reasoning_effort: none, on/default → null (omit param)', async () => {
+    const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
+      '../../backend/src/services/orchestrator/llmAdapters.js'
+    );
+    assert.deepStrictEqual(
+      fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'off'),
+      { reasoning_effort: 'none' },
+    );
+    assert.strictEqual(fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'on'), null);
+    assert.strictEqual(fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'default'), null);
+  });
+
+  it('Non-reasoning chutes models (MiniMax) → null regardless of selection', async () => {
+    const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
+      '../../backend/src/services/orchestrator/llmAdapters.js'
+    );
+    assert.strictEqual(fn('chutes', 'MiniMaxAI/MiniMax-M2.5-TEE', 'off'), null);
+    assert.strictEqual(fn('chutes', 'MiniMaxAI/MiniMax-M2.5-TEE', 'on'), null);
   });
 });
 
