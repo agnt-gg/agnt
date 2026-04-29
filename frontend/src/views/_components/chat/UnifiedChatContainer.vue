@@ -179,7 +179,7 @@ export default {
       position: 'fixed',
       top: 'auto',
       right: '1592px',
-      bottom: '58px',
+      bottom: '148px',
       left: '96px',
       margin: 0,
     };
