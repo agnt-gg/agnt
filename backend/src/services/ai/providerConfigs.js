@@ -615,24 +615,32 @@ const PROVIDER_CONFIGS = [
       'Qwen/Qwen3.6-27B-TEE': { contextWindow: 262144, maxOutputTokens: 65536, inputCostPer1M: 0.195, outputCostPer1M: 1.56, inputCacheReadCostPer1M: 0.0975, supportsVision: true, supportsTools: true, reasoning: true, root: 'Qwen/Qwen3.6-27B-FP8', chuteId: '7aa5e899-c0ba-5482-af48-d3f31d635c9f', ownedBy: 'vllm', quantization: 'fp8', confidentialCompute: true },
       'MiniMaxAI/MiniMax-M2.5-TEE': { contextWindow: 196608, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 1.2, inputCacheReadCostPer1M: 0.075, supportsVision: false, supportsTools: true, reasoning: true, root: 'MiniMaxAI/MiniMax-M2.5', chuteId: 'ce6a92e4-5c2f-5681-9742-c80a4447bbdf', ownedBy: 'sglang', quantization: 'fp8', confidentialCompute: true },
     },
-    modelTransform: (raw) => ({
-      id: raw.id,
-      name: raw.id,
-      description: raw.root ? `TEE model for ${raw.root}` : '',
-      createdAt: raw.created || null,
-      ownedBy: raw.owned_by || null,
-      contextLength: raw.context_length || raw.max_model_len || 0,
-      maxOutputLength: raw.max_output_length || 0,
-      inputCostPer1M: raw.pricing?.prompt ?? raw.price?.input?.usd ?? null,
-      outputCostPer1M: raw.pricing?.completion ?? raw.price?.output?.usd ?? null,
-      inputCacheReadCostPer1M: raw.pricing?.input_cache_read ?? raw.price?.input_cache_read?.usd ?? null,
-      supportsVision: Array.isArray(raw.input_modalities) && raw.input_modalities.includes('image'),
-      supportsTools: Array.isArray(raw.supported_features) && raw.supported_features.includes('tools'),
-      reasoning: Array.isArray(raw.supported_features) && raw.supported_features.includes('reasoning'),
-      chuteId: raw.chute_id || null,
-      root: raw.root || null,
-      confidentialCompute: raw.confidential_compute === true,
-    }),
+    modelTransform: (raw) => {
+      // Capability fields: only emit explicit true/false when the provider sent
+      // an array we can interpret. Missing arrays mean unknown — emit undefined,
+      // not false. Coercing unknown → false would silently disable tool calling
+      // on dynamic models that actually support it.
+      const supportedFeatures = Array.isArray(raw.supported_features) ? raw.supported_features : null;
+      const inputModalities = Array.isArray(raw.input_modalities) ? raw.input_modalities : null;
+      return {
+        id: raw.id,
+        name: raw.id,
+        description: raw.root ? `TEE model for ${raw.root}` : '',
+        createdAt: raw.created || null,
+        ownedBy: raw.owned_by || null,
+        contextLength: raw.context_length || raw.max_model_len || 0,
+        maxOutputLength: raw.max_output_length || 0,
+        inputCostPer1M: raw.pricing?.prompt ?? raw.price?.input?.usd ?? null,
+        outputCostPer1M: raw.pricing?.completion ?? raw.price?.output?.usd ?? null,
+        inputCacheReadCostPer1M: raw.pricing?.input_cache_read ?? raw.price?.input_cache_read?.usd ?? null,
+        supportsVision: inputModalities ? inputModalities.includes('image') : undefined,
+        supportsTools: supportedFeatures ? supportedFeatures.includes('tools') : undefined,
+        reasoning: supportedFeatures ? supportedFeatures.includes('reasoning') : undefined,
+        chuteId: raw.chute_id || null,
+        root: raw.root || null,
+        confidentialCompute: raw.confidential_compute === true,
+      };
+    },
     modelFilter: (m) => m.id && m.confidential_compute === true,
     compat: {},
     sdkOptions: {},
@@ -1048,21 +1056,27 @@ export function registerDynamicPricingFromModels(providerKey, models) {
   let registered = 0;
   for (const model of models) {
     if (model.inputCostPer1M != null && model.outputCostPer1M != null) {
-      dynamicPricingCache.set(`${providerKey}:${model.id}`, {
+      // Capability fields: only persist explicit booleans. `=== true` would
+      // coerce undefined → false and silently disable tool calling for
+      // dynamic models whose provider data didn't expose capability arrays.
+      // The downstream guard (llmAdapters._prepareTools) intentionally fires
+      // only on `=== false`, so undefined preserves tools, false disables them.
+      const entry = {
         inputCostPer1M: model.inputCostPer1M,
         outputCostPer1M: model.outputCostPer1M,
         inputCacheReadCostPer1M: model.inputCacheReadCostPer1M ?? null,
         contextWindow: model.contextLength || 0,
         maxOutputTokens: model.maxOutputLength || 0,
-        supportsVision: model.supportsVision === true,
-        supportsTools: model.supportsTools === true,
-        reasoning: model.reasoning === true,
         chuteId: model.chuteId || null,
         root: model.root || null,
         ownedBy: model.ownedBy || null,
         confidentialCompute: model.confidentialCompute === true,
         dynamic: true,
-      });
+      };
+      if (typeof model.supportsVision === 'boolean') entry.supportsVision = model.supportsVision;
+      if (typeof model.supportsTools === 'boolean') entry.supportsTools = model.supportsTools;
+      if (typeof model.reasoning === 'boolean') entry.reasoning = model.reasoning;
+      dynamicPricingCache.set(`${providerKey}:${model.id}`, entry);
       registered++;
       continue;
     }

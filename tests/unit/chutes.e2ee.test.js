@@ -147,6 +147,93 @@ describe('Chutes Provider Config', () => {
       dynamic: true,
     });
   });
+
+  // ── PRD-045 §5.2: capability undefined-vs-false ─────────────────────────
+  // modelTransform must emit `undefined` (not `false`) for capability fields
+  // when the provider response doesn't expose the underlying array. Coercing
+  // unknown → false silently disables tool calling on dynamic models that
+  // actually support it. The downstream guard fires only on `=== false`.
+
+  it('modelTransform: missing supported_features → supportsTools/reasoning undefined', () => {
+    const cfg = getProviderConfig('chutes');
+    const raw = {
+      id: 'example/Bare-Model',
+      chute_id: '22222222-2222-4222-8222-222222222222',
+      confidential_compute: true,
+      // NOTE: no supported_features, no input_modalities
+    };
+    const transformed = cfg.modelTransform(raw);
+    assert.strictEqual(transformed.supportsTools, undefined, 'tools should be unknown, not false');
+    assert.strictEqual(transformed.reasoning, undefined, 'reasoning should be unknown, not false');
+    assert.strictEqual(transformed.supportsVision, undefined, 'vision should be unknown, not false');
+  });
+
+  it('modelTransform: empty supported_features → supportsTools false (explicit)', () => {
+    const cfg = getProviderConfig('chutes');
+    const raw = {
+      id: 'example/NoTools-Model',
+      chute_id: '33333333-3333-4333-8333-333333333333',
+      confidential_compute: true,
+      supported_features: [],
+      input_modalities: [],
+    };
+    const transformed = cfg.modelTransform(raw);
+    assert.strictEqual(transformed.supportsTools, false, 'empty array means explicitly no tools');
+    assert.strictEqual(transformed.reasoning, false, 'empty array means explicitly no reasoning');
+    assert.strictEqual(transformed.supportsVision, false, 'empty array means explicitly no vision');
+  });
+
+  it('modelTransform: supported_features: [tools] → supportsTools true', () => {
+    const cfg = getProviderConfig('chutes');
+    const raw = {
+      id: 'example/Tools-Model',
+      chute_id: '44444444-4444-4444-8444-444444444444',
+      confidential_compute: true,
+      supported_features: ['tools'],
+      input_modalities: ['text'],
+    };
+    const transformed = cfg.modelTransform(raw);
+    assert.strictEqual(transformed.supportsTools, true);
+    assert.strictEqual(transformed.reasoning, false, 'reasoning not in array → explicitly false');
+    assert.strictEqual(transformed.supportsVision, false, 'image not in modalities → explicitly false');
+  });
+
+  it('registerDynamicPricingFromModels: undefined capability fields are not persisted as false', () => {
+    registerDynamicPricingFromModels('chutes', [{
+      id: 'example/Capability-Unknown',
+      contextLength: 65536,
+      inputCostPer1M: 0.10,
+      outputCostPer1M: 0.20,
+      // NOTE: supportsTools, reasoning, supportsVision all undefined
+      chuteId: '55555555-5555-4555-8555-555555555555',
+      confidentialCompute: true,
+    }]);
+    const metadata = getAllModelMetadata('chutes');
+    const entry = metadata['example/Capability-Unknown'];
+    assert.ok(entry, 'entry should be registered');
+    assert.ok(!('supportsTools' in entry), 'supportsTools must not be persisted as false when undefined');
+    assert.ok(!('reasoning' in entry), 'reasoning must not be persisted as false when undefined');
+    assert.ok(!('supportsVision' in entry), 'supportsVision must not be persisted as false when undefined');
+  });
+
+  it('registerDynamicPricingFromModels: explicit false capability is preserved as false', () => {
+    registerDynamicPricingFromModels('chutes', [{
+      id: 'example/Tools-Disabled',
+      contextLength: 65536,
+      inputCostPer1M: 0.10,
+      outputCostPer1M: 0.20,
+      supportsTools: false,
+      reasoning: false,
+      supportsVision: false,
+      chuteId: '66666666-6666-4666-8666-666666666666',
+      confidentialCompute: true,
+    }]);
+    const metadata = getAllModelMetadata('chutes');
+    const entry = metadata['example/Tools-Disabled'];
+    assert.strictEqual(entry.supportsTools, false);
+    assert.strictEqual(entry.reasoning, false);
+    assert.strictEqual(entry.supportsVision, false);
+  });
 });
 
 describe('Chutes E2EE Offline Transport', () => {
