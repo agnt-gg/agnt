@@ -213,7 +213,13 @@ Available sections: ${Object.keys(sections).join(', ')}`;
  */
 function getSectionDetail(section) {
   const sections = parseSections();
-  const data = sections[section];
+  // Tolerate singular/plural variants — LLMs frequently default to plural
+  // ("plugins") when the canonical key is singular ("plugin").
+  let data = sections[section];
+  if (!data && typeof section === 'string') {
+    if (section.endsWith('s')) data = sections[section.slice(0, -1)];
+    if (!data) data = sections[`${section}s`];
+  }
   if (!data) {
     return `Unknown section: "${section}". Available sections: ${Object.keys(sections).join(', ')}`;
   }
