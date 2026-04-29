@@ -433,7 +433,7 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 20px;
   background: rgba(0, 0, 0, 0.2);
-  color: var(--color-light-green, var(--color-text));
+  color: var(--color-text);
   font-family: inherit;
   font-size: var(--font-size-sm);
   line-height: 1.4;

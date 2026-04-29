@@ -975,10 +975,9 @@ export default {
     const getConversationEl = () => conversationSpace.value;
 
     // Keyboard navigation for the conversation pane. The textarea is at most
-    // ~150px tall (4 lines), so PageUp/PageDown/Home/End are all wasted there
-    // and route directly to scrolling the chat — Home jumps to top, End jumps
-    // to bottom. The modal/external-input guards above keep us out of the way
-    // when something else owns focus.
+    // ~150px tall (4 lines), so PageUp/PageDown route to the chat (Home jumps
+    // to top, End jumps to bottom) — but Home/End are left alone whenever an
+    // editable element is focused so the user can move the cursor inside it.
     const handleChatKeyboardScroll = (event) => {
       const el = conversationSpace.value;
       if (!el) return;
@@ -987,16 +986,23 @@ export default {
       // the modal (buttons, inputs, etc.), not the chat behind it.
       if (document.querySelector('.modal-overlay')) return;
 
+      const active = document.activeElement;
+      const isEditable =
+        !!active &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+
       // Don't steal keys when a non-chat input is focused (e.g. a search box
       // teleported to body, or a popover field). The chat textarea inside
-      // .input-container / .chat-input-container is the only typing surface
-      // we want to override PageUp/PageDown for.
-      const active = document.activeElement;
+      // .input-container / .chat-input-container is still fair game for
+      // PageUp/PageDown.
       const insideModalInput =
-        active &&
-        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') &&
+        isEditable &&
         !active.closest?.('.input-container, .chat-input-container, .automation-interface');
       if (insideModalInput) return;
+
+      // Home/End have native cursor-movement semantics inside any editable
+      // element — never hijack them while the user is typing.
+      if (isEditable && (event.key === 'Home' || event.key === 'End')) return;
 
       const page = Math.max(80, Math.floor(el.clientHeight * 0.85));
 

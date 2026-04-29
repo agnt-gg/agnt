@@ -262,9 +262,10 @@ export default {
     // element without us plumbing the ref through component props.
     const getMessagesEl = () => chatMessagesRef.value;
 
-    // Keyboard scroll for the messages pane. Same shape as Chat.vue's
-    // handler — PageUp/PageDown/Home/End all route to the chat. The textarea
-    // is short (max ~150px) so we don't lose anything by stealing them.
+    // Keyboard scroll for the messages pane. PageUp/PageDown route to the
+    // chat (the textarea is ~150px tall so paging it is useless). Home/End
+    // are left alone whenever an editable element is focused — they have
+    // native cursor-movement meaning there.
     const handleKeyboardScroll = (event) => {
       const el = chatMessagesRef.value;
       if (!el) return;
@@ -272,16 +273,22 @@ export default {
       // Don't fight a focused modal/dialog.
       if (document.querySelector('.modal-overlay')) return;
 
+      const active = document.activeElement;
+      const isEditable =
+        !!active &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+
       // Don't steal keys when an input outside any chat surface is focused
       // (e.g. a search box teleported to body). Inputs inside our own chat
-      // input-container ARE fair game — the textarea is too small for these
-      // keys to be useful inside it.
-      const active = document.activeElement;
+      // input-container are still fair game for PageUp/PageDown.
       const insideExternalInput =
-        active &&
-        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') &&
+        isEditable &&
         !active.closest?.('.input-container, .chat-input-container, .unified-chat-container, .automation-interface');
       if (insideExternalInput) return;
+
+      // Home/End have native cursor-movement semantics inside any editable
+      // element — never hijack them while the user is typing.
+      if (isEditable && (event.key === 'Home' || event.key === 'End')) return;
 
       const page = Math.max(80, Math.floor(el.clientHeight * 0.85));
 
@@ -443,7 +450,20 @@ export default {
       setTimeout(scrollToBottom, 100);
     });
 
-    watch(formattedMessages, () => scrollToBottom(), { flush: 'post' });
+    // Sticky-bottom only when the user is already near the bottom — same
+    // pattern as the main chat (Chat.vue). Without this, every streaming
+    // token AND every tool-call expand/collapse click yanks the user back
+    // to the bottom, even if they scrolled up to read history.
+    watch(
+      formattedMessages,
+      () => {
+        const el = chatMessagesRef.value;
+        if (!el) return;
+        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+        if (isNearBottom) scrollToBottom();
+      },
+      { flush: 'post', deep: true },
+    );
 
     return {
       chatMessagesRef,

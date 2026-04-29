@@ -229,6 +229,14 @@ export default {
       if (status) state.messageStates[channelKey][messageId] = status;
       else delete state.messageStates[channelKey][messageId];
     },
+    /**
+     * Wipe all in-flight UI state for a channel — used by stopStream so
+     * "Annie is thinking…" and tool spinners don't outlive an aborted stream.
+     */
+    CLEAR_CHANNEL_TRANSIENT_STATE(state, { channelKey }) {
+      delete state.runningToolCalls[channelKey];
+      delete state.messageStates[channelKey];
+    },
     TRUNCATE_FROM(state, { channelKey, messageId }) {
       const conv = state.conversations[channelKey];
       if (!conv) return;
@@ -450,6 +458,10 @@ export default {
       }
       commit('CLEAR_ABORT_CONTROLLER', { channelKey });
       commit('SET_STREAMING', { channelKey, isStreaming: false });
+      // Server-side `tool_end` / `final_content` events won't arrive after an
+      // abort, so the "Annie is thinking…" indicator and any tool spinners
+      // would stay lit forever. Clear them client-side as part of the stop.
+      commit('CLEAR_CHANNEL_TRANSIENT_STATE', { channelKey });
     },
 
     /**
