@@ -308,6 +308,10 @@ export default {
 
     // Pending autosave — deferred until streaming ends to avoid remounting the chat mid-response
     let pendingAutosave = null;
+    // Track whether source_code was changed during a chat stream — if so we capture a
+    // thumbnail when the stream ends. (Backend tools save the widget themselves but
+    // don't capture thumbnails, so without this the saved record's thumbnail goes stale.)
+    let chatChangedSource = false;
 
     function applyPendingAutosave() {
       if (!pendingAutosave) return;
@@ -332,6 +336,9 @@ export default {
       switch (eventType) {
         case 'widget-field-updated':
           if (eventData?.field && eventData.value !== undefined) {
+            if (eventData.field === 'source_code' && eventData.value) {
+              chatChangedSource = true;
+            }
             if (eventData.field in form) {
               const value = eventData.value;
               // Deep-assign object fields (default_size, min_size) to preserve reactivity
@@ -376,6 +383,41 @@ export default {
         case 'widget-stream-done':
           // Stream finished — safe to apply the pending autosave now
           applyPendingAutosave();
+          // If source_code changed during the stream, capture a thumbnail in the
+          // background and PUT it. Same fire-and-forget pattern as doAutosave's
+          // background capture — never blocks anything.
+          if (chatChangedSource) {
+            chatChangedSource = false;
+            const active = store.getters['widgetDefinitions/activeDefinition'];
+            const captureType = form.widget_type;
+            const captureSource = form.source_code;
+            if (
+              active?.id &&
+              (captureType === 'html' || captureType === 'markdown') &&
+              captureSource?.trim()
+            ) {
+              const widgetId = active.id;
+              captureWidgetThumbnail(captureSource, captureType)
+                .then((thumbnail) => {
+                  if (!thumbnail) return;
+                  const current = store.getters['widgetDefinitions/activeDefinition'];
+                  if (!current || current.id !== widgetId) return;
+                  return fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${widgetId}`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ thumbnail }),
+                  }).then((r) => {
+                    if (r.ok) {
+                      store.commit('widgetDefinitions/UPDATE_DEFINITION', {
+                        id: widgetId,
+                        updates: { thumbnail },
+                      });
+                    }
+                  });
+                })
+                .catch(() => {});
+            }
+          }
           break;
         case 'widget-fields-cleared':
           form.name = '';
@@ -650,10 +692,16 @@ export default {
 
       if (thumbnail) widgetData.thumbnail = thumbnail;
 
+      // Mid-stream guard: the backend may have already auto-saved with a new
+      // id but we defer promoting it to activeDefinition until widget-stream-done
+      // (so the chat doesn't remount mid-response). If the user clicks Save in
+      // that window, fall back to pendingAutosave.savedId — otherwise we'd POST
+      // a duplicate row with a fresh id while the auto-saved one already exists.
       const existing = store.getters['widgetDefinitions/activeDefinition'];
-      if (existing) {
+      const knownId = existing?.id || pendingAutosave?.savedId || null;
+      if (knownId) {
         await store.dispatch('widgetDefinitions/updateDefinition', {
-          id: existing.id,
+          id: knownId,
           updates: widgetData,
         });
       } else {
