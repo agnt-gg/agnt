@@ -77,13 +77,12 @@ export function getWidgetToolSchemas() {
       type: 'function',
       function: {
         name: 'save_widget',
-        description: 'Save the current widget definition to the database',
+        description: 'Persist the current widget to the user\'s library and confirm completion. Note: generate_widget, edit_widget_code, and update_widget_config already auto-save their changes to the database — this tool is a final confirmation step. Call it with no arguments and the current widget state is used; pass widgetData only if you need to override specific fields before save.',
         parameters: {
           type: 'object',
           properties: {
-            widgetData: { type: 'object', description: 'The widget data to save' },
+            widgetData: { type: 'object', description: 'Optional. Partial or full widget data to override the current widget state before saving. Omit to save the current state as-is.' },
           },
-          required: ['widgetData'],
         },
       },
     },
@@ -364,49 +363,87 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
         break;
       }
 
-      case 'save_widget':
-        if (args.widgetData && db) {
-          const validCategories = ['custom', 'dashboard', 'home', 'assets', 'system'];
-          const widgetId = args.widgetData.id || `widget-def-${Date.now()}`;
-          const sanitizedCategory = validCategories.includes(args.widgetData.category) ? args.widgetData.category : 'custom';
-          const widgetData = { ...args.widgetData, id: widgetId, category: sanitizedCategory, updatedAt: new Date().toISOString() };
+      case 'save_widget': {
+        // Merge current widgetState with any explicit overrides. Lets Annie call
+        // save_widget() with no args after a generate/edit chain — those tools
+        // already wrote to the DB but a final save_widget call is the user-
+        // visible "done" confirmation, so it should always succeed when there's
+        // a widget in flight.
+        const stateData = widgetState || {};
+        const overrides = (args && typeof args.widgetData === 'object' && args.widgetData !== null) ? args.widgetData : {};
+        const merged = { ...stateData, ...overrides };
 
-          result = await new Promise((resolve) => {
-            const query = `INSERT OR REPLACE INTO widget_definitions (id, name, description, icon, category, widget_type, source_code, config, default_size, min_size, created_by, created_at, updated_at)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`;
-            db.run(
-              query,
-              [
-                widgetId,
-                widgetData.name || 'Untitled Widget',
-                widgetData.description || '',
-                widgetData.icon || 'fas fa-puzzle-piece',
-                widgetData.category || 'custom',
-                widgetData.widget_type || 'html',
-                widgetData.source_code || null,
-                widgetData.config ? JSON.stringify(widgetData.config) : null,
-                widgetData.default_size ? JSON.stringify(widgetData.default_size) : '{"cols":4,"rows":3}',
-                widgetData.min_size ? JSON.stringify(widgetData.min_size) : '{"cols":2,"rows":2}',
-                userId,
-              ],
-              function (err) {
-                if (err) resolve({ success: false, message: err.message });
-                else {
-                  resolve({
-                    success: true,
-                    widgetId,
-                    widgetData,
-                    message: 'Widget saved successfully to database',
-                    frontendEvents: [{ type: 'widget-saved', data: { widgetId, widgetData } }],
-                  });
-                }
-              }
-            );
-          });
-        } else {
-          result = { success: false, message: 'Widget data is required for saving' };
+        const hasContent = !!(merged.name || merged.source_code || merged.id);
+        if (!hasContent) {
+          result = {
+            success: false,
+            message: 'No widget in progress to save. Use generate_widget to create one first.',
+          };
+          break;
         }
+        if (!db) {
+          result = { success: false, message: 'Database not available' };
+          break;
+        }
+
+        const validCategories = ['custom', 'dashboard', 'home', 'assets', 'system'];
+        const widgetId = merged.id || `widget-def-${Date.now()}`;
+        const sanitizedCategory = validCategories.includes(merged.category) ? merged.category : 'custom';
+        const widgetData = { ...merged, id: widgetId, category: sanitizedCategory, updatedAt: new Date().toISOString() };
+
+        // UPSERT against the real schema. Uses `user_id` (the actual column —
+        // `created_by` doesn't exist) and ON CONFLICT…DO UPDATE so existing
+        // columns we don't write (thumbnail, data_bindings, is_shared, etc.)
+        // are preserved. INSERT OR REPLACE would wipe them.
+        result = await new Promise((resolve) => {
+          const query = `
+            INSERT INTO widget_definitions
+              (id, user_id, name, description, icon, category, widget_type, source_code, config, default_size, min_size, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              description = excluded.description,
+              icon = excluded.icon,
+              category = excluded.category,
+              widget_type = excluded.widget_type,
+              source_code = excluded.source_code,
+              config = excluded.config,
+              default_size = excluded.default_size,
+              min_size = excluded.min_size,
+              updated_at = datetime('now')
+          `;
+          db.run(
+            query,
+            [
+              widgetId,
+              userId || 'anonymous',
+              widgetData.name || 'Untitled Widget',
+              widgetData.description || '',
+              widgetData.icon || 'fas fa-puzzle-piece',
+              widgetData.category || 'custom',
+              widgetData.widget_type || 'html',
+              widgetData.source_code || null,
+              widgetData.config ? JSON.stringify(widgetData.config) : '{}',
+              widgetData.default_size ? JSON.stringify(widgetData.default_size) : '{"cols":4,"rows":3}',
+              widgetData.min_size ? JSON.stringify(widgetData.min_size) : '{"cols":2,"rows":2}',
+            ],
+            function (err) {
+              if (err) resolve({ success: false, message: err.message });
+              else {
+                if (widgetState && !widgetState.id) widgetState.id = widgetId;
+                resolve({
+                  success: true,
+                  widgetId,
+                  widgetData,
+                  message: 'Widget saved successfully to database',
+                  frontendEvents: [{ type: 'widget-saved', data: { widgetId, widgetData } }],
+                });
+              }
+            }
+          );
+        });
         break;
+      }
 
       case 'load_widget':
         if (args.widgetId && db) {
@@ -486,6 +523,14 @@ RULES:
 - Use inline/hardcoded demo data unless the user requests live AGNT data
 - Use var(--font-family-primary) for UI text and var(--font-family-mono) for code/monospace text
 ${useTheme ? '- Use the theme CSS variables provided below for ALL styling' : '- Dark theme preferred unless the user specifies otherwise'}
+
+AUTH & DATA FETCHING:
+- A global \`agnt\` object is injected into every widget iframe by the runtime.
+- Tool calls:    await agnt.tool('tool-name', { args })            // returns the tool result, throws on failure
+- API calls:     await agnt.fetch('/api/path', { method, body })   // returns parsed body, throws on non-2xx
+- User context:  agnt.user                                          // { id, email, name } | null (synchronous)
+- NEVER write localStorage.getItem('token'), NEVER set Authorization headers, NEVER write a getToken() helper.
+  The SDK handles auth — bypassing it will 401.
 
 DESIGN QUALITY:
 - Make the widget polished, distinctive, and production-ready

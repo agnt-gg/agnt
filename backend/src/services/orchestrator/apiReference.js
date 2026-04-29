@@ -12,30 +12,50 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCS_PATH = path.resolve(__dirname, '../../../../docs/_API-DOCUMENTATION.md');
 
-const BOILERPLATE = `// -- AGNT API Helper --
-// Use the correct auth method for your context:
+const BOILERPLATE = `// -- AGNT API helper --
+// Use the right pattern for your runtime context:
 //
-// FRONTEND / WIDGETS (browser): Token lives in localStorage
-// BACKEND / NODE.JS (server):   Token lives in process.env.AGNT_AUTH_TOKEN
-
+// ─────────────────────────────────────────────────────────
+// WIDGETS (browser iframe) — use the global agnt SDK
+// ─────────────────────────────────────────────────────────
+// Auth is handled automatically. The token never enters the iframe — every
+// call is proxied through the parent via postMessage. Do NOT call
+// localStorage.getItem('token'), do NOT set Authorization headers, do NOT
+// write a getToken() helper. Bypassing the SDK will 401.
+//
+//   // Plugin / native / registry tool calls (most common)
+//   const joke = await agnt.tool('chucknorris-get-joke', { category: 'dev' });
+//
+//   // Any /api/* endpoint
+//   const agents = await agnt.fetch('/api/agents');
+//   const created = await agnt.fetch('/api/agents', {
+//     method: 'POST',
+//     body: { name: 'My Agent' }   // object or JSON.stringify(...) both work
+//   });
+//
+//   // User context (synchronous)
+//   console.log(agnt.user);   // { id, email, name } | null
+//
+// agnt.tool returns the tool's result directly (not the {success, result}
+// envelope) and throws on tool failure. agnt.fetch returns the parsed
+// response body and throws on non-2xx.
+//
+// ─────────────────────────────────────────────────────────
+// SERVER (execute_javascript_code, Node.js) — manual token
+// ─────────────────────────────────────────────────────────
+// In a Node.js context there is no \`agnt\` object. The auth token is
+// injected as an env var by the orchestrator.
+//
 const API = 'http://localhost:${process.env.PORT || 3333}/api';
 
-// --- Frontend / Widget usage (browser context) ---
-function getToken() { try { return localStorage.getItem('token') || null; } catch(e) { return null; } }
 function apiFetch(url, options = {}) {
-  const token = getToken();
+  const token = process.env.AGNT_AUTH_TOKEN;
   const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = 'Bearer ' + token;
   return fetch(url, { ...options, headers });
 }
 
-// --- Backend / Node.js usage (server context) ---
-// const TOKEN = process.env.AGNT_AUTH_TOKEN;
-// const res = await fetch(API + '/agents/', {
-//   headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
-// });
-
-// Usage examples (frontend):
+// Server-side usage examples:
 // const res = await apiFetch(API + '/agents/');
 // const data = await res.json();
 //

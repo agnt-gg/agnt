@@ -3578,7 +3578,7 @@ export const TOOLS = {
       function: {
         name: 'get_agnt_api',
         description:
-          'Look up AGNT backend API endpoints. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements. AGNT auth works by reading the existing token from localStorage.getItem(\'token\') and sending it as Authorization: Bearer <token> on every request. This is how all AGNT API calls authenticate — no API keys or separate login needed.',
+          'Look up AGNT backend API endpoints. Call without a section for an overview of all endpoints, or with a section name for full details including request/response shapes and auth requirements. The overview includes correct boilerplate for both browser/widget context (the global `agnt` SDK — agnt.tool / agnt.fetch / agnt.user) and server context (process.env.AGNT_AUTH_TOKEN). Use whichever pattern matches your runtime.',
         parameters: {
           type: 'object',
           properties: {
