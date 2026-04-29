@@ -108,9 +108,9 @@ router.get('/installed', async (req, res) => {
 router.get('/installed/:name', async (req, res) => {
   try {
     const { name } = req.params;
-    const manifest = PluginManager.getPluginManifest(name);
+    const plugin = PluginManager.getPlugin(name);
 
-    if (!manifest) {
+    if (!plugin) {
       return res.status(404).json({
         success: false,
         error: `Plugin '${name}' not found`,
@@ -118,17 +118,23 @@ router.get('/installed/:name', async (req, res) => {
     }
 
     const isValid = await PluginInstaller.validatePlugin(name);
+    const manifest = plugin.manifest || {};
 
     res.json({
       success: true,
       plugin: {
-        ...manifest,
+        name: plugin.name,
+        displayName: plugin.displayName,
+        version: plugin.version,
+        description: plugin.description,
+        author: plugin.author,
         isValid,
-        tools: manifest.tools?.map((t) => ({
+        tools: (manifest.tools || []).map((t) => ({
           type: t.type,
           title: t.schema?.title,
           description: t.schema?.description,
           category: t.schema?.category,
+          schema: t.schema,
         })),
       },
     });

@@ -206,13 +206,19 @@ app.get('/api/releases', async (req, res) => {
 // Catch-all route for client-side routing (only if frontend exists)
 if (frontendExists) {
   app.get('*', (req, res) => {
+    // Never let the SPA fallback swallow API misses — that turns 404s into
+    // silent 200 OK + HTML responses and confuses every API client (including
+    // LLM agents, which then JSON.parse the HTML and quietly continue).
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API endpoint not found', path: req.path });
+    }
     res.sendFile(path.join(frontendDistPath, 'index.html'));
   });
 } else {
   // Fallback route for backend-only mode
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
-      res.status(404).json({ error: 'API endpoint not found' });
+      res.status(404).json({ error: 'API endpoint not found', path: req.path });
     } else {
       res.status(404).json({
         error: 'Frontend not available',
