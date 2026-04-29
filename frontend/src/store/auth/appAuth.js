@@ -440,10 +440,10 @@ const actions = {
 
       // Refresh the connected apps list after deletion
       await dispatch('fetchConnectedApps');
-      return response.data;
+      return { success: true, ...response.data };
     } catch (error) {
       console.error('Error deleting provider:', error);
-      throw error;
+      return { success: false, error: error.message };
     }
   },
   async checkConnectionHealthStream({ commit, state }) {
