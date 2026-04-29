@@ -176,7 +176,47 @@ async function buildToolContextBlock({ toolId, toolContext, toolState }) {
 
 async function buildWidgetContextBlock({ widgetId, widgetContext, widgetState }) {
   if (!widgetId && !widgetContext && !widgetState) return '';
-  return getWidgetForgeSystemContent(widgetId, widgetContext, widgetState);
+
+  // The widget chat lives in the LeftPanel while the WidgetForge editor lives
+  // in the CenterPanel — they're sibling components, so the editor's
+  // `provide('widgetForge', ...)` can't reach the chat's `inject(...)`. The
+  // chat ends up sending only `{ id }` for widgetState, with no source_code.
+  // Hydrate from the widget_definitions DB row whenever we have a real
+  // widgetId but the inbound widgetState is missing the source. Every edit
+  // path (edit_widget_code, generate_widget, update_widget_config, manual
+  // form autosave) writes the row before the next chat turn starts, so the
+  // DB is the freshest source of truth.
+  let hydratedState = widgetState || {};
+  if (
+    widgetId &&
+    widgetId !== 'widget-forge' &&
+    (!hydratedState.source_code || typeof hydratedState.source_code !== 'string')
+  ) {
+    try {
+      const { default: db } = await import('../../../models/database/index.js');
+      const row = await new Promise((resolve, reject) => {
+        db.get(
+          'SELECT id, name, description, icon, category, widget_type, source_code, config, default_size, min_size FROM widget_definitions WHERE id = ?',
+          [widgetId],
+          (err, r) => (err ? reject(err) : resolve(r)),
+        );
+      });
+      if (row) {
+        // DB row wins for source_code (canonical), but inbound widgetState
+        // wins for everything else (in case the user has unsaved form edits
+        // we shouldn't clobber when echoing the prompt back).
+        hydratedState = {
+          ...row,
+          ...hydratedState,
+          source_code: row.source_code || hydratedState.source_code || '',
+        };
+      }
+    } catch (e) {
+      console.warn('[Widget prompt] Failed to hydrate widget from DB:', e.message);
+    }
+  }
+
+  return getWidgetForgeSystemContent(widgetId, widgetContext, hydratedState);
 }
 
 async function buildArtifactContextBlock(context) {
