@@ -507,10 +507,31 @@ function extractText(responseMessage) {
 
 function buildWidgetGenerationPrompt(enhancedInstruction, useTheme) {
   const themeSection = useTheme ? `
-THEME STYLING:
-The widget iframe is pre-loaded with CSS custom properties that match the user's active theme.
-Use var(--color-text), var(--color-text-muted), var(--color-primary), var(--color-secondary), var(--color-background), var(--color-darker-1), var(--terminal-border-color), spacing, font, radius, shadow, and transition variables.
-Do NOT define :root variables yourself and do NOT hardcode colors unless the user explicitly asks for standalone styling.` : '';
+THEME SYSTEM (variables auto-injected into the iframe — every name below is guaranteed-defined regardless of active theme):
+
+NEVER write var(--name, #fallback) — fallbacks are noise; the runtime always defines these.
+NEVER invent variables not on this list (no --color-accent, --color-card-bg, --color-hover, --color-success, --color-error, --color-warning). Derive what you need from the list (rgba(var(--primary-rgb), 0.2) for tinted overlays, etc.).
+Do NOT define :root variables yourself.
+
+Colour palette:    --color-red --color-orange --color-yellow --color-green --color-blue --color-indigo --color-violet --color-pink
+                   --color-primary --color-secondary --color-light-green
+Semantic colours:  --color-background --color-background-rgb --color-surface --color-popup
+                   --color-text --color-text-secondary --color-text-muted --color-text-dull --color-border
+                   --terminal-border-color --terminal-border-color-light --terminal-highlight-color --terminal-muted-color
+Navy scale:        --color-ultra-light-navy --color-bright-light-navy --color-light-navy --color-light-med-navy
+                   --color-med-navy --color-duller-navy --color-dull-navy --color-navy --color-dark-navy
+                   --color-ultra-dark-navy --color-black-navy --color-dull-white --color-white
+Tonal layers:      --color-light-0..3 --color-medium-0..3 --color-dark-0..3 --color-darker-0..3 --color-lighter-0..3
+RGB components:    --primary-rgb --green-rgb --blue-rgb --pink-rgb --red-rgb --yellow-rgb --orange-rgb --indigo-rgb --violet-rgb
+Typography:        --font-family-primary (UI), --font-family-mono (code)
+                   --base-font-size, --font-size-xs|sm|md|lg|xl|xxl|xxxl|display
+                   --font-weight-light|normal|medium|semibold|bold
+Spacing:           --spacing-xxs|xs|sm|md|lg|xl|xxl|xxxl   (2,4,8,16,24,32,48,64px)
+Radius:            --border-radius-xs|sm|md|lg|xl|full
+Shadow:            --shadow-sm|md|lg|xl, --shadow-default
+Transition:        --transition-fast|medium|slow, --transition-default
+
+Brand accent hexes (use only when an accent must persist across theme switches): #e53d8f pink, #12e0ff cyan, #19ef83 green, #ffd700 gold, #7d3de5 purple, #ff9500 orange. Prefer var(--color-pink) etc. when possible.` : '';
 
   return `Generate a complete, self-contained HTML document for a dashboard widget.
 

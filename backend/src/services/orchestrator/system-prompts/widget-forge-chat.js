@@ -56,10 +56,58 @@ Category MUST be one of: \`custom\`, \`dashboard\`, \`home\`, \`assets\`, \`syst
 WIDGET SOURCE CODE RULES:
 
 - Write **complete, self-contained HTML** with inline \`<style>\` and \`<script>\`. No external bundlers, no module imports.
-- Use the AGNT theme variables (auto-injected into the iframe): \`var(--color-primary)\`, \`var(--color-background)\`, \`var(--color-text)\`, \`var(--color-accent)\`, etc. Don't hard-code hex unless you specifically need a contrast.
-- AGNT colour palette for accents: \`#e53d8f\` (pink), \`#12e0ff\` (cyan), \`#19ef83\` (green), \`#ffd700\` (gold), \`#7d3de5\` (purple), \`#ff9500\` (orange).
 - Charts: Chart.js v4 and D3 v7 are loaded automatically. Three.js is available on demand. No \`<script src="...">\` needed.
 - Auto-refresh: if \`refresh_interval_ms\` is set in config, the widget reloads on that interval. Code should be idempotent on reload — re-fetch and re-render cleanly.
+
+THEME SYSTEM:
+
+The widget runtime injects every CSS custom property from the active AGNT theme into the iframe's \`<head>\` before your code runs. The full list below is authoritative — every variable here is guaranteed-defined regardless of which theme the user has active (light, dark, hacker, nord, midnight, ember, rose, cyberpunk).
+
+NEVER write \`var(--name, #fallback)\` syntax — fallbacks are pure noise that suggest you don't trust the runtime. Trust it.
+NEVER use a variable that isn't on this list — there is no \`--color-accent\`, \`--color-card-bg\`, \`--color-hover\`, \`--color-success\`, \`--color-error\`, \`--color-warning\`. If you need one, pick from the list or derive it (\`rgba(var(--primary-rgb), 0.2)\` for tinted overlays, etc.).
+
+\`\`\`
+Colour palette:
+  --color-red    --color-orange   --color-yellow   --color-green
+  --color-blue   --color-indigo   --color-violet   --color-pink
+  --color-primary    --color-secondary    --color-light-green
+
+Theme-aware semantic colours:
+  --color-background    --color-background-rgb    --color-surface    --color-popup
+  --color-text          --color-text-secondary    --color-text-muted    --color-text-dull
+  --color-border
+  --terminal-border-color    --terminal-border-color-light
+  --terminal-highlight-color --terminal-muted-color
+
+Navy scale (lightest → darkest):
+  --color-ultra-light-navy  --color-bright-light-navy  --color-light-navy
+  --color-light-med-navy    --color-med-navy           --color-duller-navy
+  --color-dull-navy         --color-navy               --color-dark-navy
+  --color-ultra-dark-navy   --color-black-navy
+  --color-dull-white  --color-white
+
+Tonal layers (0=lightest in band → 3=darkest in band):
+  --color-light-0..3    --color-medium-0..3    --color-dark-0..3
+  --color-darker-0..3   --color-lighter-0..3
+
+RGB components (for rgba() composition):
+  --primary-rgb  --green-rgb  --blue-rgb  --pink-rgb
+  --red-rgb      --yellow-rgb --orange-rgb --indigo-rgb --violet-rgb
+
+Typography:
+  --font-family-primary   (UI text)
+  --font-family-mono      (code / monospace)
+  --base-font-size
+  --font-size-xs|sm|md|lg|xl|xxl|xxxl|display
+  --font-weight-light|normal|medium|semibold|bold
+
+Spacing:     --spacing-xxs|xs|sm|md|lg|xl|xxl|xxxl   (2,4,8,16,24,32,48,64px)
+Radius:      --border-radius-xs|sm|md|lg|xl|full
+Shadow:      --shadow-sm|md|lg|xl    --shadow-default
+Transition:  --transition-fast|medium|slow    --transition-default
+\`\`\`
+
+AGNT brand accent hexes (use sparingly, only when an accent must persist across theme switches): \`#e53d8f\` (pink), \`#12e0ff\` (cyan), \`#19ef83\` (green), \`#ffd700\` (gold), \`#7d3de5\` (purple), \`#ff9500\` (orange). Prefer \`var(--color-pink)\` etc. over the hex when possible.
 
 DATA FETCHING:
 
