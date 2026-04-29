@@ -1,8 +1,12 @@
 /**
  * Chutes.ai E2EE instance discovery, model resolution, and nonce cache.
  *
- * Single-threaded (Node.js event loop) — no locks needed, but safe for
- * concurrent async usage because all state mutation is promise-sequential.
+ * Single-threaded (Node.js event loop), but `getNonce()` does an async fetch
+ * before mutating cache, so two concurrent first-use callers could each
+ * receive the same provider nonce list and consume the first nonce from
+ * separate copies — a protocol-level nonce-reuse risk for an encrypted
+ * transport. We dedupe in-flight refreshes per chuteId so only one
+ * `_fetchInstances()` runs and all waiters share the same cache object.
  */
 
 const DEFAULT_API_BASE = 'https://api.chutes.ai';
@@ -23,6 +27,11 @@ class ChutesDiscoveryManager {
 
     // chute_id -> { instances, expiresAt }
     this._nonceCache = new Map();
+
+    // chute_id -> in-flight Promise<fresh> for the active refresh.
+    // Ensures concurrent first-use callers share one fetch + one cache write,
+    // preventing two callers from independently consuming the first nonce.
+    this._nonceRefreshes = new Map();
 
     // model_name -> chute_id
     this._modelMap = new Map();
@@ -100,26 +109,52 @@ class ChutesDiscoveryManager {
   /**
    * Get an (instance, nonce) pair, fetching fresh ones if needed.
    *
+   * Concurrent callers for the same chuteId share a single in-flight refresh
+   * (see `_nonceRefreshes`) so they can never receive duplicate nonces from
+   * independent fetches. If the shared fresh cache is drained by other
+   * waiters, force one more refresh and retry — bounded to avoid runaway
+   * recursion if the provider keeps returning empty nonce lists.
+   *
    * @param {string} chuteId
+   * @param {number} [_retries=0] — internal guard; do not pass externally
    * @returns {Promise<{ instanceId: string, e2ePubkey: string, nonce: string }>}
    */
-  async getNonce(chuteId) {
+  async getNonce(chuteId, _retries = 0) {
     const cached = this._nonceCache.get(chuteId);
-
     if (cached && Date.now() < cached.expiresAt) {
       const result = this._takeNonce(cached);
       if (result) return result;
     }
 
-    const discovery = await this._fetchInstances(chuteId);
-    const fresh = {
-      instances: discovery.instances,
-      expiresAt: discovery.nonceExpiresAt,
-    };
-    this._nonceCache.set(chuteId, fresh);
+    let refresh = this._nonceRefreshes.get(chuteId);
+    if (!refresh) {
+      refresh = this._fetchInstances(chuteId)
+        .then((discovery) => {
+          const fresh = {
+            instances: discovery.instances,
+            expiresAt: discovery.nonceExpiresAt,
+          };
+          this._nonceCache.set(chuteId, fresh);
+          return fresh;
+        })
+        .finally(() => {
+          // Always clear the in-flight slot, success or failure, so a failed
+          // refresh doesn't poison the map and block future retries.
+          this._nonceRefreshes.delete(chuteId);
+        });
+      this._nonceRefreshes.set(chuteId, refresh);
+    }
 
+    const fresh = await refresh;
     const result = this._takeNonce(fresh);
     if (result) return result;
+
+    // Other waiters drained the just-refreshed cache. Force one more refresh
+    // and retry once — bounded so a misbehaving provider can't spin forever.
+    if (_retries < 2) {
+      this._nonceCache.delete(chuteId);
+      return this.getNonce(chuteId, _retries + 1);
+    }
 
     throw new Error(
       `No nonces available for chute ${chuteId}. ` +
@@ -168,8 +203,10 @@ class ChutesDiscoveryManager {
   clearNonceCache(chuteId) {
     if (chuteId) {
       this._nonceCache.delete(chuteId);
+      this._nonceRefreshes.delete(chuteId);
     } else {
       this._nonceCache.clear();
+      this._nonceRefreshes.clear();
     }
   }
 
