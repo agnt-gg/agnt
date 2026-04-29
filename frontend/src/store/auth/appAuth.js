@@ -141,6 +141,9 @@ const actions = {
       const remoteProviders = Array.isArray(response.data) ? response.data : [];
 
       // Inject local providers so they can be configured without the remote auth service.
+      // Only true CLI-tied providers belong here (no remote identity by design).
+      // Remote-API-backed providers (including Chutes) come from the /auth/providers
+      // response above — never hardcode them as a fallback.
       const localCodexProviders = [
         {
           id: 'openai-codex',
@@ -169,15 +172,6 @@ const actions = {
           instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
           localOnly: true,
         },
-        {
-          id: 'chutes',
-          name: 'Chutes',
-          icon: 'chutes',
-          categories: ['AI'],
-          connectionType: 'apikey',
-          instructions: 'Chutes.ai E2EE inference. Add your Chutes API key in Settings > API Keys.',
-          localOnly: false,
-        },
       ];
 
       const existingIds = new Set(remoteProviders.map((p) => p.id));
@@ -191,7 +185,9 @@ const actions = {
       commit('SET_ALL_PROVIDERS', mergedProviders);
     } catch (error) {
       console.error('Error fetching all providers:', error);
-      // Still expose the local providers even if the remote fetch fails.
+      // Still expose the CLI-tied local providers even if the remote fetch fails.
+      // Chutes is intentionally absent: it requires the remote auth service to
+      // store/retrieve its API key, so showing it offline would be misleading.
       commit('SET_ALL_PROVIDERS', [
         {
           id: 'openai-codex',
@@ -219,15 +215,6 @@ const actions = {
           connectionType: 'oauth',
           instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
           localOnly: true,
-        },
-        {
-          id: 'chutes',
-          name: 'Chutes',
-          icon: 'chutes',
-          categories: ['AI'],
-          connectionType: 'apikey',
-          instructions: 'Chutes.ai E2EE inference. Add your Chutes API key in Settings > API Keys.',
-          localOnly: false,
         },
       ]);
     }
