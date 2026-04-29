@@ -191,12 +191,40 @@ function getForcedToolGroups(context) {
 // (older client, malformed request, etc.), we still cap its tool surface to
 // the page's specialty set instead of falling through to "everything in the
 // matched groups". Mirrors must stay in sync with the frontend file.
+// Tools that ALWAYS get unioned into the final whitelist for every chat
+// surface regardless of what the user has selected. These are system
+// primitives — capabilities the assistant must always know about even when
+// the user has narrowed the per-channel selector. Without this, the v0.5.7
+// strict-scoping silently hides MCP awareness from users who don't have
+// `mcp_client` in their saved enabledTools list.
+const UNIVERSAL_TOOLS = new Set([
+  'mcp_client',
+]);
+
+// Per-tool MCP entries are namespaced as `mcp__<server>__<tool>`. We can't
+// enumerate them in UNIVERSAL_TOOLS (the set would change every time a user
+// configures a server), so we match by prefix during whitelist filtering —
+// every mcp__-prefixed tool is implicitly universal.
+const UNIVERSAL_TOOL_PREFIXES = ['mcp__'];
+
+function isUniversalToolName(name) {
+  if (!name) return false;
+  if (UNIVERSAL_TOOLS.has(name)) return true;
+  for (const prefix of UNIVERSAL_TOOL_PREFIXES) {
+    if (name.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+// mcp_client is a universal capability — every sidebar chat needs awareness
+// of MCP servers regardless of its specialty. Including it in every list so
+// the strict-scoping introduced in v0.5.7 doesn't accidentally hide it.
 const SIDEBAR_SPECIALTY = {
-  agent: ['generate_agent', 'modify_agent', 'save_agent', 'load_agent', 'delete_agent', 'list_agents', 'run_agent', 'get_agnt_api'],
-  workflow: ['update_workflow', 'revert_workflow', 'list_workflow_versions', 'create_checkpoint', 'get_available_tool_node_types', 'get_node_type_schema', 'start_workflow', 'stop_workflow', 'get_agnt_api'],
-  tool: ['generate_tool_update', 'save_tool', 'load_tool', 'delete_tool', 'list_tools', 'run_tool', 'get_agnt_api'],
-  widget: ['edit_widget_code', 'generate_widget', 'update_widget_config', 'save_widget', 'load_widget', 'get_agnt_api'],
-  artifact: ['read_file', 'write_file', 'edit_file', 'list_files', 'get_agnt_api'],
+  agent: ['generate_agent', 'modify_agent', 'save_agent', 'load_agent', 'delete_agent', 'list_agents', 'run_agent', 'get_agnt_api', 'mcp_client'],
+  workflow: ['update_workflow', 'revert_workflow', 'list_workflow_versions', 'create_checkpoint', 'get_available_tool_node_types', 'get_node_type_schema', 'start_workflow', 'stop_workflow', 'get_agnt_api', 'mcp_client'],
+  tool: ['generate_tool_update', 'save_tool', 'load_tool', 'delete_tool', 'list_tools', 'run_tool', 'get_agnt_api', 'mcp_client'],
+  widget: ['edit_widget_code', 'generate_widget', 'update_widget_config', 'save_widget', 'load_widget', 'get_agnt_api', 'mcp_client'],
+  artifact: ['read_file', 'write_file', 'edit_file', 'list_files', 'get_agnt_api', 'mcp_client'],
 };
 
 function detectSidebarSpecialty(context) {
@@ -212,14 +240,26 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   const AgentModel = (await import('../../models/AgentModel.js')).default;
   const agent = await AgentModel.findOne(context.agentId);
   const assignedToolNames = Array.isArray(agent?.assignedTools) ? agent.assignedTools : [];
-  const allowedToolNames = new Set([...AGENT_DEFAULT_TOOLS, ...assignedToolNames]);
+  // UNIVERSAL_TOOLS ride along even on saved agents — system primitives like
+  // mcp_client should be available regardless of which tools the agent was
+  // explicitly assigned at save time.
+  const allowedToolNames = new Set([...AGENT_DEFAULT_TOOLS, ...assignedToolNames, ...UNIVERSAL_TOOLS]);
 
-  let filteredSchemas = allSchemas.filter((tool) => allowedToolNames.has(tool.function?.name));
+  let filteredSchemas = allSchemas.filter((tool) => {
+    const name = tool.function?.name;
+    return name && (allowedToolNames.has(name) || isUniversalToolName(name));
+  });
 
   // The agent's assignedTools is a hard ceiling — runtime enabledTools can
-  // narrow it further but never widen it beyond what the agent was given.
+  // narrow it further but never widen it beyond what the agent was given,
+  // except universal tools (mcp_client, every mcp__* entry) which always
+  // pass through.
   if (context.enabledTools) {
-    filteredSchemas = filteredSchemas.filter((s) => context.enabledTools.has(s.function?.name));
+    const runtimeAllowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
+    filteredSchemas = filteredSchemas.filter((s) => {
+      const name = s.function?.name;
+      return name && (runtimeAllowed.has(name) || isUniversalToolName(name));
+    });
   }
 
   console.log(
@@ -237,23 +277,32 @@ async function getUnifiedToolSchemas(context) {
 
   // STRICT FILTER: when the frontend tool selector has sent an enabledTools
   // list, that list is the single source of truth. The chat may ONLY see and
-  // call tools the user has explicitly enabled — no group expansion, no
-  // DEFAULT_TOOLS, no forced groups. If the user has disabled it, it is
-  // unreachable from this chat surface.
+  // call tools the user has explicitly enabled — except for universal tools,
+  // which are system primitives that always ride along (mcp_client, every
+  // mcp__server__tool entry, etc.). MCP per-tool names are matched by prefix
+  // because they're discovered dynamically and can't be enumerated upfront.
   if (context.enabledTools && context.enabledTools.size > 0) {
-    const filteredSchemas = allSchemas.filter((s) => context.enabledTools.has(s.function?.name));
-    console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested) -> ${filteredSchemas.length} tools`);
+    const allowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
+    const filteredSchemas = allSchemas.filter((s) => {
+      const name = s.function?.name;
+      return name && (allowed.has(name) || isUniversalToolName(name));
+    });
+    console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested + universal) -> ${filteredSchemas.length} tools`);
     return filteredSchemas;
   }
 
   // No explicit selection from the client. For sidebar chats, fall back to
   // the page's specialty set (mirrored from the frontend) so we never leak
   // tools the user hasn't asked for. For the orchestrator (no specialty
-  // set), keep the dynamic keyword-driven group selection.
+  // set), keep the dynamic keyword-driven group selection. Universal tools
+  // (including every mcp__* entry) always ride along.
   const specialty = detectSidebarSpecialty(context);
   if (specialty) {
-    const allowed = new Set(specialty);
-    const filteredSchemas = allSchemas.filter((s) => allowed.has(s.function?.name));
+    const allowed = new Set([...specialty, ...UNIVERSAL_TOOLS]);
+    const filteredSchemas = allSchemas.filter((s) => {
+      const name = s.function?.name;
+      return name && (allowed.has(name) || isUniversalToolName(name));
+    });
     console.log(`[UnifiedChat] Sidebar specialty fallback (no enabledTools sent) -> ${filteredSchemas.length} tools`);
     return filteredSchemas;
   }

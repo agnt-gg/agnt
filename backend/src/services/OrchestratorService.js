@@ -2375,21 +2375,56 @@ async function getAvailableTools(req, res) {
       };
     });
 
+    // MCP tool categories — a single top-level "MCP" group with one
+    // subcategory per discovered server. Names are namespaced as
+    // `mcp__server__tool` and MUST be excluded from "Built In" below so
+    // they only appear in their own MCP category. Without this exclusion
+    // the same tool appears in both lists, and toggling either category's
+    // group checkbox flips the shared state in both — the "conflict" the
+    // user sees in the dropdown.
+    //
+    // Recurses into subcategories: the parent MCP group has empty
+    // `tools: []` and the real tools live in `subcategories[].tools`.
+    let mcpCategories = [];
+    const mcpNameSet = new Set();
+    const collectToolNames = (cat) => {
+      for (const tool of cat.tools || []) {
+        if (tool.name) mcpNameSet.add(tool.name);
+      }
+      for (const sub of cat.subcategories || []) {
+        collectToolNames(sub);
+      }
+    };
+    try {
+      const { default: MCPToolService } = await import('./MCPToolService.js');
+      mcpCategories = await MCPToolService.getCategories();
+      for (const cat of mcpCategories) {
+        collectToolNames(cat);
+      }
+    } catch (err) {
+      console.warn('[OrchestratorService] Failed to load MCP categories:', err.message);
+    }
+
     // Built In = everything else surfaced by getAvailableToolSchemas().
     // The unified registry now aggregates from many internal sources (native,
     // agent, workflow, goal, code, tool-forge, widget, registry library),
-    // so we treat the schemaMap as the source of truth and just exclude
-    // plugin-registered tools. This collapses the previous three-category
-    // (Built In / Plugins / Installed) UI into the user's mental model:
-    // shipped vs. user-installed.
+    // so we treat the schemaMap as the source of truth and exclude plugin
+    // and MCP tools — those have their own categories.
     const builtInTools = [];
     for (const [name, info] of schemaMap) {
       if (pluginNameSet.has(name)) continue;
+      if (mcpNameSet.has(name)) continue;
       builtInTools.push({ name, description: info.description });
     }
     builtInTools.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Build response — nothing is locked, everything toggleable
+    // Build response in the canonical order:
+    //   1. Built In  (the frontend re-splits this into Specialty Tools +
+    //      System Built In Tools — Specialty bubbles to the top, locked)
+    //   2. Plugins
+    //   3. MCP  (single top-level entry; per-server entries are nested
+    //      subcategories inside it, kept hierarchical so users with many
+    //      MCP servers don't get a flat wall of top-level categories)
     const categories = [
       {
         id: 'builtin',
@@ -2408,6 +2443,13 @@ async function getAvailableTools(req, res) {
         locked: false,
         tools: pluginTools,
       });
+    }
+
+    // mcpCategories is now a single-element array containing the parent
+    // "MCP" group with `subcategories: [<server>, <server>, ...]`. Append
+    // it last so it sits beneath Built In + Plugins in the dropdown.
+    for (const cat of mcpCategories) {
+      categories.push(cat);
     }
 
     res.json({ categories });

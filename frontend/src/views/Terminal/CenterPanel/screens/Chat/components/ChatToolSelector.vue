@@ -34,7 +34,7 @@
                 <input
                   type="checkbox"
                   :checked="isCategoryEnabled(cat)"
-                  :disabled="cat.locked"
+:disabled="cat.locked"
                   @change="toggleCategory(cat)"
                 />
                 <span class="toggle-switch"></span>
@@ -43,10 +43,12 @@
               <span v-if="cat.locked" class="section-lock" title="Always enabled for this chat">
                 <i class="fas fa-lock"></i>
               </span>
-              <span class="section-badge">{{ getCategoryEnabledCount(cat) }}/{{ cat.tools.length }}</span>
+              <span class="section-badge">{{ getCategoryEnabledCount(cat) }}/{{ getCategoryTotalCount(cat) }}</span>
             </div>
             <div v-if="cat.description && expanded[cat.id]" class="cat-description">{{ cat.description }}</div>
-            <div v-if="expanded[cat.id]" class="section-tools">
+
+            <!-- Direct tools (everything except the parent MCP group, which has none here). -->
+            <div v-if="expanded[cat.id] && cat.tools && cat.tools.length > 0" class="section-tools">
               <label
                 v-for="tool in cat.tools"
                 :key="tool.name"
@@ -62,6 +64,49 @@
                 <span class="toggle-switch"></span>
                 <span class="tool-name">{{ tool.name }}</span>
               </label>
+            </div>
+
+            <!-- Subcategories (one level deep \u2014 used by the MCP parent group). -->
+            <div v-if="expanded[cat.id] && cat.subcategories && cat.subcategories.length > 0" class="subsection-list">
+              <div
+                v-for="subcat in cat.subcategories"
+                :key="subcat.id"
+                class="tool-subsection"
+                :class="{ 'is-locked': subcat.locked }"
+              >
+                <div class="subsection-header" @click.stop="toggleExpand(subcat.id)">
+                  <span class="section-expand">{{ expanded[subcat.id] ? '\u25BE' : '\u25B8' }}</span>
+                  <label class="group-toggle" @click.stop>
+                    <input
+                      type="checkbox"
+                      :checked="isCategoryEnabled(subcat)"
+:disabled="subcat.locked"
+                      @change.stop="toggleCategory(subcat)"
+                    />
+                    <span class="toggle-switch"></span>
+                  </label>
+                  <span class="subsection-title">{{ subcat.name }}</span>
+                  <span class="section-badge">{{ getCategoryEnabledCount(subcat) }}/{{ getCategoryTotalCount(subcat) }}</span>
+                </div>
+                <div v-if="subcat.description && expanded[subcat.id]" class="cat-description sub">{{ subcat.description }}</div>
+                <div v-if="expanded[subcat.id]" class="section-tools sub-tools">
+                  <label
+                    v-for="tool in subcat.tools"
+                    :key="tool.name"
+                    class="tool-item toggleable"
+                    :class="{ 'is-locked': subcat.locked }"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="isToolEnabled(tool.name)"
+                      :disabled="subcat.locked"
+                      @change="toggleTool(tool.name)"
+                    />
+                    <span class="toggle-switch"></span>
+                    <span class="tool-name">{{ tool.name }}</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </template>
@@ -110,14 +155,22 @@ export default {
     // set, we split Built In into Specialty (locked) + System Tools, leaving
     // Plugins alone. Orchestrator and any channel without specialty keep the
     // backend's original two-bucket layout.
+    // Canonical order in the dropdown:
+    //   Specialty Tools (locked) → System Built In Tools → Plugins → MCP
+    // Specialty/System are split out of the backend's `builtin` bucket only
+    // when this channel has a specialty set (sidebar chats); the
+    // orchestrator skips that split and keeps the backend's order.
     var reorganizeCategories = function (raw) {
-      if (!hasSpecialty.value) return raw;
       var builtIn = raw.find(function (c) { return c.id === 'builtin'; });
       var plugins = raw.find(function (c) { return c.id === 'plugins'; });
-      var others = raw.filter(function (c) { return c.id !== 'builtin' && c.id !== 'plugins'; });
+      var mcp = raw.find(function (c) { return c.id === 'mcp'; });
+      var others = raw.filter(function (c) {
+        return c.id !== 'builtin' && c.id !== 'plugins' && c.id !== 'mcp';
+      });
 
       var result = [];
-      if (builtIn) {
+
+      if (hasSpecialty.value && builtIn) {
         var specialty = builtIn.tools.filter(function (t) { return specialtyNames.value.has(t.name); });
         var system = builtIn.tools.filter(function (t) { return !specialtyNames.value.has(t.name); });
         if (specialty.length > 0) {
@@ -138,9 +191,16 @@ export default {
             tools: system,
           });
         }
+      } else if (builtIn) {
+        result.push(builtIn);
       }
+
+      // Anything the backend sent that isn't builtin/plugins/mcp goes here
+      // (currently nothing — kept for forward-compat).
       result = result.concat(others);
+
       if (plugins) result.push(plugins);
+      if (mcp) result.push(mcp);
       return result;
     };
 
@@ -149,7 +209,9 @@ export default {
       var disabled = [];
       categories.value.forEach(function (cat) {
         if (cat.locked) return;
-        cat.tools.forEach(function (t) {
+        // Recurse into subcategories so MCP tools (nested under the parent
+        // MCP group) are persisted alongside the rest.
+        allToolsIn(cat).forEach(function (t) {
           if (enabledTools.value.has(t.name)) {
             enabled.push(t.name);
           } else {
@@ -207,7 +269,7 @@ export default {
         // returned, then intersect with what's saved for this channel.
         var allNames = new Set();
         categories.value.forEach(function (cat) {
-          cat.tools.forEach(function (t) {
+          allToolsIn(cat).forEach(function (t) {
             allNames.add(t.name);
           });
         });
@@ -239,10 +301,23 @@ export default {
       isLoading.value = false;
     };
 
+    // Walk a category and yield every tool, including those nested in
+    // subcategories. MCP categories use the parent/subcategory shape so
+    // counts must recurse rather than just reading `cat.tools`.
+    var allToolsIn = function (cat) {
+      if (!cat) return [];
+      var out = (cat.tools || []).slice();
+      var subs = cat.subcategories || [];
+      for (var i = 0; i < subs.length; i++) {
+        out = out.concat(allToolsIn(subs[i]));
+      }
+      return out;
+    };
+
     var totalCount = computed(function () {
       var count = 0;
       categories.value.forEach(function (cat) {
-        count += cat.tools.length;
+        count += allToolsIn(cat).length;
       });
       return count;
     });
@@ -250,7 +325,7 @@ export default {
     var enabledCount = computed(function () {
       var count = 0;
       categories.value.forEach(function (cat) {
-        cat.tools.forEach(function (t) {
+        allToolsIn(cat).forEach(function (t) {
           if (enabledTools.value.has(t.name)) count++;
         });
       });
@@ -273,29 +348,46 @@ export default {
       saveState();
     };
 
+    // Category-level helpers that recurse into subcategories. The MCP parent
+    // group uses subcategories so counts and toggle-all need to walk them
+    // rather than only reading the parent's direct `tools` array.
+    //
+    // "Enabled" = ANY tool in the category is on. The previous semantic
+    // (every tool on) made the parent checkbox flip OFF the moment a single
+    // child tool was disabled — visually identical to "the whole category
+    // got turned off" even though only one tool changed. The any-on rule
+    // means the parent stays checked while ANY tool is on, and only goes
+    // unchecked when the entire category is fully disabled.
     var isCategoryEnabled = function (cat) {
-      return (
-        cat.tools.length > 0 &&
-        cat.tools.every(function (t) {
-          return enabledTools.value.has(t.name);
-        })
-      );
+      var all = allToolsIn(cat);
+      if (all.length === 0) return false;
+      return all.some(function (t) {
+        return enabledTools.value.has(t.name);
+      });
     };
 
     var getCategoryEnabledCount = function (cat) {
       var count = 0;
-      cat.tools.forEach(function (t) {
+      allToolsIn(cat).forEach(function (t) {
         if (enabledTools.value.has(t.name)) count++;
       });
       return count;
     };
 
+    var getCategoryTotalCount = function (cat) {
+      return allToolsIn(cat).length;
+    };
+
     var toggleCategory = function (cat) {
       // Locked categories (Specialty Tools) are non-toggleable.
       if (cat.locked) return;
-      var allOn = isCategoryEnabled(cat);
-      cat.tools.forEach(function (t) {
-        if (allOn) {
+      // Parent acts as a master switch: when any tool is on (parent shows
+      // checked), clicking turns everything off. When nothing is on (parent
+      // shows unchecked), clicking turns everything on. This pairs with the
+      // any-on `isCategoryEnabled` semantics so the visual state matches.
+      var anyOn = isCategoryEnabled(cat);
+      allToolsIn(cat).forEach(function (t) {
+        if (anyOn) {
           enabledTools.value.delete(t.name);
         } else {
           enabledTools.value.add(t.name);
@@ -312,7 +404,7 @@ export default {
 
     var enableAll = function () {
       categories.value.forEach(function (cat) {
-        cat.tools.forEach(function (t) {
+        allToolsIn(cat).forEach(function (t) {
           enabledTools.value.add(t.name);
         });
       });
@@ -324,7 +416,7 @@ export default {
       categories.value.forEach(function (cat) {
         // Specialty Tools stay on — that's the whole point of "locked".
         if (cat.locked) return;
-        cat.tools.forEach(function (t) {
+        allToolsIn(cat).forEach(function (t) {
           if (isLocked(t.name)) return;
           enabledTools.value.delete(t.name);
         });
@@ -420,6 +512,7 @@ export default {
       toggleTool: toggleTool,
       isCategoryEnabled: isCategoryEnabled,
       getCategoryEnabledCount: getCategoryEnabledCount,
+      getCategoryTotalCount: getCategoryTotalCount,
       toggleCategory: toggleCategory,
       toggleExpand: toggleExpand,
       enableAll: enableAll,
@@ -659,6 +752,53 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* Hierarchical subsections — used by the MCP parent group to display each
+   server (chrome-devtools, notion, linear, …) as a nested section with its
+   own checkbox + toggle list, rather than flooding the top-level dropdown. */
+.subsection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-left: 16px;
+  border-left: 1px solid rgba(127, 129, 147, 0.2);
+  margin-left: 6px;
+}
+
+.tool-subsection {
+  padding: 2px 0;
+}
+
+.subsection-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: background 0.15s ease;
+}
+
+.subsection-header:hover {
+  background: rgba(127, 129, 147, 0.08);
+}
+
+.subsection-title {
+  flex: 1;
+  font-weight: 500;
+  opacity: 0.95;
+}
+
+.cat-description.sub {
+  padding-left: 18px;
+  font-size: 0.78em;
+}
+
+.section-tools.sub-tools {
+  padding-left: 18px;
 }
 
 .tool-item {

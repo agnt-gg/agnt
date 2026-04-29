@@ -33,12 +33,22 @@ class MCPService {
   }
 
   /**
-   * Write to the MCP configuration file
+   * Write to the MCP configuration file. Also invalidates the MCPToolService
+   * cache so the next chat turn re-discovers tools from the new server set
+   * — without this, a server added through the UI wouldn't appear in the
+   * tool selector / chat surface until the cache TTL expired.
    */
   async writeMCPFile(data) {
     try {
       const filePath = await this.getMcpFilePath();
       await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+      // Lazy import to avoid a circular dependency at module load time.
+      try {
+        const { default: MCPToolService } = await import('./MCPToolService.js');
+        MCPToolService.invalidate();
+      } catch (invalidateErr) {
+        console.warn('[MCPService] Failed to invalidate MCP tool cache:', invalidateErr.message);
+      }
     } catch (error) {
       throw new Error(`Failed to write MCP file: ${error.message}`);
     }
@@ -261,13 +271,47 @@ class MCPService {
           });
         }
       } else if (server.transport.type === 'stdio') {
-        // For STDIO, we can't easily test without actually running the command
-        // Return a message indicating this
-        res.json({
-          success: true,
-          connected: null,
-          message: 'STDIO transport cannot be tested directly. Server will be validated when used.',
+        // Actually exercise STDIO by spawning the process, performing the
+        // MCP `initialize` handshake, and listing tools. This is what the
+        // assistant does on every chat — if it works here it'll work there.
+        const { default: MCPClient } = await import('../tools/library/mcp/MCPClient.js');
+        const client = new MCPClient({
+          transport: 'stdio',
+          transportOptions: {
+            command: server.transport.command,
+            args: server.transport.args || [],
+            env: server.transport.env || {},
+          },
+          clientName: 'agnt-mcp-test',
+          clientVersion: '1.0.0',
         });
+        const start = Date.now();
+        try {
+          // Hard cap so a hanging server doesn't lock the request.
+          await Promise.race([
+            client.initialize(),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Test timed out after 10s')), 10000),
+            ),
+          ]);
+          const tools = await client.listTools().catch(() => []);
+          const ms = Date.now() - start;
+          await client.close().catch(() => {});
+          res.json({
+            success: true,
+            connected: true,
+            message: `Connection successful (${tools.length} tools, ${ms}ms)`,
+            toolCount: tools.length,
+            durationMs: ms,
+          });
+        } catch (error) {
+          await client.close().catch(() => {});
+          res.json({
+            success: true,
+            connected: false,
+            message: `Connection failed: ${error.message}`,
+          });
+        }
       } else {
         res.status(400).json({ success: false, error: 'Unknown transport type' });
       }

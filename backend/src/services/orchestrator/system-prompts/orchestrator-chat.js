@@ -445,45 +445,11 @@ WHEN TO USE WHICH:
 
 
 
-export const MCP_TOOL_USE_RULES = `MCP TOOL USE RULES
+export const MCP_TOOL_USE_RULES = `MCP TOOLS
 
-CRITICAL: When using the mcp_client tool, you MUST follow these rules EXACTLY:
+MCP server tools are exposed as first-class tools with namespaced names of the form \`mcp__<server>__<tool>\`. Call them directly the same way you'd call any other tool — pass arguments as a regular JSON object matching the tool's input schema. No \`mcp_client\` operation/action ceremony, no stringified args, no separate "List Servers" step. The tool list you've been given already contains every available MCP tool from every configured server.
 
-1. **For "List Servers" operation**: Only send operation parameter. Do NOT include any other parameters.
-   Example: operation="List Servers" (no other params)
-
-2. **For "Get Server Capabilities" operation**: Only send operation and serverName. Do NOT include toolArgs, action, or any other parameters.
-   Example: operation="Get Server Capabilities", serverName="chrome-devtools-mcp" (no other params)
-
-3. **For "Use Server" operation**: Send operation, serverName, action, and ONLY the parameters needed for that specific action:
-   - For "List Tools": operation="Use Server", serverName="...", action="List Tools"
-   - For "Call Tool": operation="Use Server", serverName="...", action="Call Tool", toolName="THE_ACTUAL_TOOL_NAME", toolArgs="STRINGIFIED_JSON"
-   - For "List Resources": operation="Use Server", serverName="...", action="List Resources"
-   - For "Read Resource": operation="Use Server", serverName="...", action="Read Resource", resourceUri="..."
-   - For "List Prompts": operation="Use Server", serverName="...", action="List Prompts"
-   - For "Get Prompt": operation="Use Server", serverName="...", action="Get Prompt", promptName="...", promptArgs="STRINGIFIED_JSON"
-
-CRITICAL: toolArgs and promptArgs MUST be JSON STRINGS, NOT objects!
-WRONG: toolArgs: {"url": "https://example.com"}
-RIGHT: toolArgs: "{\"url\": \"https://example.com\"}"
-
-When you have an object like {"url": "https://agnt.gg", "timeout": 30000}, you must:
-1. Convert it to a JSON string using JSON.stringify()
-2. The result should be: "{\"url\": \"https://agnt.gg\", \"timeout\": 30000}"
-3. Pass that STRING as the toolArgs parameter
-
-CRITICAL: The "action" parameter can ONLY be one of these exact values:
-- "List Tools"
-- "Call Tool"
-- "List Resources"
-- "Read Resource"
-- "List Prompts"
-- "Get Prompt"
-
-DO NOT use tool names (like "navigate_page", "browser_close", etc.) as the action value!
-Instead, use action="Call Tool" and then specify the tool name in the toolName parameter.
-
-WORKFLOW: First use "List Servers", then "Get Server Capabilities" to see what's available, finally "Use Server" with action="Call Tool" to call specific tools.`;
+If a user asks something an MCP tool can do (e.g., a Notion search, a Linear issue lookup, a Sentry incident query), prefer the matching \`mcp__\` tool over a manual API call. The legacy \`mcp_client\` tool is still available for low-level operations (introspecting server capabilities, calling tools by raw name) but you shouldn't normally need it.`;
 
 export const CRITICAL_TOOL_RESPONSE_RULES = `CRITICAL TOOL RESPONSE RULES (MUST FOLLOW):
 ⚠️ AFTER CALLING ANY TOOL, YOU **MUST** PROVIDE A TEXT RESPONSE ⚠️

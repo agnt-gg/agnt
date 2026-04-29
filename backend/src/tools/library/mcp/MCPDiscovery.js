@@ -2,6 +2,7 @@ import { readFile, access } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 import fetch from 'node-fetch';
+import PathManager from '../../../utils/PathManager.js';
 
 /**
  * MCP Discovery - Automatic server discovery from multiple sources
@@ -22,19 +23,26 @@ class MCPDiscovery {
       await this._discoverFromFile(process.env.MCP_CONFIG_PATH, 'environment variable: MCP_CONFIG_PATH');
     }
 
-    // 1. Current directory mcp.json
+    // 1. AGNT-managed user data mcp.json — this is where the in-app MCP page
+    // (MCPService.writeMCPFile via PathManager) saves servers. Without this
+    // entry the discovery would never see servers added through the AGNT UI;
+    // the standard `~/.config/mcp/mcp.json` path below targets the global
+    // MCP convention but AGNT manages its own copy at userDataPath/mcp.json.
+    await this._discoverFromAgntUserData();
+
+    // 2. Current directory mcp.json
     await this._discoverFromFile('./mcp.json', 'current directory');
 
-    // 2. User config directory
+    // 3. User config directory (~/.config/mcp/mcp.json — global MCP convention)
     await this._discoverFromUserConfig();
 
-    // 3. VSCode workspace
+    // 4. VSCode workspace
     await this._discoverFromFile('./.vscode/mcp.json', 'VSCode workspace');
 
-    // 4. Environment variable
+    // 5. Environment variable
     await this._discoverFromEnv();
 
-    // 5. Well-known endpoints (if base URLs provided)
+    // 6. Well-known endpoints (if base URLs provided)
     if (options.baseUrls && Array.isArray(options.baseUrls)) {
       for (const baseUrl of options.baseUrls) {
         await this._discoverFromWellKnown(baseUrl);
@@ -42,6 +50,20 @@ class MCPDiscovery {
     }
 
     return this.discoveredServers;
+  }
+
+  /**
+   * Discover from AGNT's own managed mcp.json under PathManager's userDataPath.
+   * This is the file the MCP settings page (MCPService) reads/writes — the
+   * source of truth for any servers the user has configured in the app.
+   */
+  async _discoverFromAgntUserData() {
+    try {
+      const filePath = PathManager.getPath('mcp.json');
+      await this._discoverFromFile(filePath, 'AGNT user data');
+    } catch (err) {
+      console.warn('[MCPDiscovery] Failed to resolve AGNT user-data mcp.json path:', err.message);
+    }
   }
 
   /**

@@ -25,6 +25,9 @@ const STORAGE_KEY = 'agnt_chat_channel_configs';
 // These mirror the backend's TOOL_GROUPS in toolSelector.js; if the canonical
 // list there changes, mirror the change here so the frontend default matches
 // what the backend actually exposes.
+// mcp_client is included in every sidebar default — MCP awareness is a
+// universal capability. v0.5.7 added strict whitelist enforcement; without
+// adding mcp_client here it would be hidden from every sidebar chat.
 const SIDEBAR_DEFAULTS = {
   agent: [
     'generate_agent',
@@ -35,6 +38,7 @@ const SIDEBAR_DEFAULTS = {
     'list_agents',
     'run_agent',
     'get_agnt_api',
+    'mcp_client',
   ],
   workflow: [
     'update_workflow',
@@ -46,6 +50,7 @@ const SIDEBAR_DEFAULTS = {
     'start_workflow',
     'stop_workflow',
     'get_agnt_api',
+    'mcp_client',
   ],
   tool: [
     'generate_tool_update',
@@ -55,6 +60,7 @@ const SIDEBAR_DEFAULTS = {
     'list_tools',
     'run_tool',
     'get_agnt_api',
+    'mcp_client',
   ],
   widget: [
     'edit_widget_code',
@@ -63,6 +69,7 @@ const SIDEBAR_DEFAULTS = {
     'save_widget',
     'load_widget',
     'get_agnt_api',
+    'mcp_client',
   ],
   artifact: [
     'read_file',
@@ -70,6 +77,7 @@ const SIDEBAR_DEFAULTS = {
     'edit_file',
     'list_files',
     'get_agnt_api',
+    'mcp_client',
   ],
 };
 

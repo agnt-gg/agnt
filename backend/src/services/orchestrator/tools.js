@@ -3909,9 +3909,20 @@ export async function getAvailableToolSchemas() {
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
 
+  // MCP tools are first-class entries — one schema per tool from each
+  // configured MCP server. Lazy-imported so a slow/failed MCP discovery
+  // never blocks normal tool resolution; failures degrade to an empty list.
+  let mcpToolSchemas = [];
+  try {
+    const { default: MCPToolService } = await import('../MCPToolService.js');
+    mcpToolSchemas = await MCPToolService.getSchemas();
+  } catch (err) {
+    console.warn('[Orchestrator] Failed to load MCP tool schemas:', err.message);
+  }
+
   // Combine and deduplicate by function name to ensure unique tool names
   // Precedence is intentional: native/orchestrator tools win duplicate names,
-  // then domain-specific Annie tools, then registry/plugin tools.
+  // then domain-specific Annie tools, then registry/plugin/MCP tools.
   const allSchemas = [
     ...nativeToolSchemas,
     ...agentToolSchemas,
@@ -3922,6 +3933,7 @@ export async function getAvailableToolSchemas() {
     ...widgetToolSchemas,
     ...registryToolSchemas,
     ...pluginToolSchemas,
+    ...mcpToolSchemas,
   ];
   const uniqueSchemas = [];
   const seenNames = new Set();
@@ -3944,7 +3956,7 @@ export async function getAvailableToolSchemas() {
   }
 
   console.log(
-    `[Orchestrator] Available tools: ${uniqueSchemas.length} (${nativeToolSchemas.length} native, ${agentToolSchemas.length} agent, ${workflowToolSchemas.length} workflow, ${goalToolSchemas.length} goal, ${codeToolSchemas.length} code, ${toolForgeToolSchemas.length} tool-forge, ${widgetToolSchemas.length} widget, ${registryToolSchemas.length} registry, ${pluginToolSchemas.length} plugins)`
+    `[Orchestrator] Available tools: ${uniqueSchemas.length} (${nativeToolSchemas.length} native, ${agentToolSchemas.length} agent, ${workflowToolSchemas.length} workflow, ${goalToolSchemas.length} goal, ${codeToolSchemas.length} code, ${toolForgeToolSchemas.length} tool-forge, ${widgetToolSchemas.length} widget, ${registryToolSchemas.length} registry, ${pluginToolSchemas.length} plugins, ${mcpToolSchemas.length} mcp)`
   );
 
   return uniqueSchemas;
@@ -4022,6 +4034,25 @@ export async function executeTool(toolName, args, authToken, context) {
   try {
     // CRITICAL: Resolve data references in arguments before execution
     const resolvedArgs = resolveDataReferences(args, context);
+
+    // MCP tools are namespaced as mcp__<server>__<tool> and dispatched via
+    // MCPToolService — earliest in the chain so they can never collide with
+    // a native or registry tool whose name happens to start with `mcp_`.
+    if (typeof toolName === 'string' && toolName.startsWith('mcp__')) {
+      try {
+        const { default: MCPToolService } = await import('../MCPToolService.js');
+        console.log(`[Orchestrator] Executing MCP tool: ${toolName}`);
+        const result = await MCPToolService.executeTool(toolName, resolvedArgs);
+        return JSON.stringify({ success: true, tool: toolName, result });
+      } catch (mcpErr) {
+        console.error(`MCP tool execution error for ${toolName}:`, mcpErr);
+        return JSON.stringify({
+          success: false,
+          tool: toolName,
+          error: `MCP tool '${toolName}' failed: ${mcpErr.message}`,
+        });
+      }
+    }
 
     const nativeTool = TOOLS[toolName];
     if (nativeTool) {
