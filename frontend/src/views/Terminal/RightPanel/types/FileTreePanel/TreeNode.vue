@@ -35,11 +35,7 @@
 
     <!-- Context menu -->
     <Teleport to="body">
-      <div
-        v-if="contextMenuVisible"
-        class="tree-context-menu"
-        :style="{ top: contextMenuY + 'px', left: contextMenuX + 'px' }"
-      >
+      <div v-if="contextMenuVisible" class="tree-context-menu" :style="{ top: contextMenuY + 'px', left: contextMenuX + 'px' }">
         <div class="ctx-item" @click.stop="copyPath">
           <i :class="copyFlash ? 'fas fa-check' : 'fas fa-copy'"></i>
           {{ copyFlash ? 'Copied!' : 'Copy Path' }}
@@ -67,6 +63,7 @@
         :expanded-dirs="expandedDirs"
         :children-map="childrenMap"
         :active-dir="activeDir"
+        :workspace-root="workspaceRoot"
         @toggle-dir="$emit('toggle-dir', $event)"
         @select-file="$emit('select-file', $event)"
         @rename-item="$emit('rename-item', $event)"
@@ -111,6 +108,7 @@ export default {
     expandedDirs: { type: Object, required: true },
     childrenMap: { type: Object, required: true },
     activeDir: { type: String, default: '' },
+    workspaceRoot: { type: String, default: '' },
   },
   emits: ['toggle-dir', 'select-file', 'rename-item', 'delete-item', 'move-item', 'new-file-in-dir', 'new-folder-in-dir'],
   setup(props, { emit }) {
@@ -170,9 +168,7 @@ export default {
       isRenaming.value = false;
       if (!newName || newName === props.item.name) return;
 
-      const parentDir = props.item.path.includes('/')
-        ? props.item.path.substring(0, props.item.path.lastIndexOf('/'))
-        : '';
+      const parentDir = props.item.path.includes('/') ? props.item.path.substring(0, props.item.path.lastIndexOf('/')) : '';
       const newPath = parentDir ? `${parentDir}/${newName}` : newName;
 
       emit('rename-item', { oldPath: props.item.path, newPath });
@@ -193,7 +189,23 @@ export default {
     // closes the menu, so the user gets a visual confirmation.
     const copyFlash = ref(false);
     const copyPath = async () => {
-      const path = props.item.path || '';
+      const relPath = props.item.path || '';
+      const root = props.workspaceRoot || '';
+      // Detect OS-style separator from the workspace root so the joined path
+      // matches what the user's filesystem actually expects (Windows uses `\`).
+      const isWindows = root.includes('\\');
+      const sep = isWindows ? '\\' : '/';
+      let path;
+      if (!root) {
+        path = relPath;
+      } else {
+        // Normalize the relative path's separators to match the root's, then strip
+        // any leading separator before joining so we don't end up with a double.
+        const normalizedRel = isWindows ? relPath.replace(/\//g, '\\') : relPath.replace(/\\/g, '/');
+        const trimmedRoot = root.replace(/[\\/]+$/, '');
+        const trimmedRel = normalizedRel.replace(/^[\\/]+/, '');
+        path = trimmedRel ? `${trimmedRoot}${sep}${trimmedRel}` : trimmedRoot;
+      }
       try {
         if (navigator.clipboard?.writeText) {
           await navigator.clipboard.writeText(path);
@@ -410,7 +422,7 @@ export default {
 .tree-context-menu {
   position: fixed;
   z-index: 9999;
-  background: var(--color-darker-0);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 6px;
   padding: 4px 0;

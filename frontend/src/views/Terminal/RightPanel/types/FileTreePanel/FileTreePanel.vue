@@ -59,6 +59,7 @@
         :expanded-dirs="expandedDirs"
         :children-map="childrenMap"
         :active-dir="activeDir"
+        :workspace-root="workspaceRoot"
         @toggle-dir="handleDirClick"
         @select-file="handleFileClick"
         @rename-item="renameItem"
@@ -137,6 +138,10 @@ export default {
     const newItemInputRef = ref(null);
     const settingsInputRef = ref(null);
     const activeDir = ref('');
+    // Absolute path of the user's configured workspace — passed to TreeNode so
+    // "Copy Path" surfaces the full path (root + relative) instead of just the
+    // workspace-relative path the API works with internally.
+    const workspaceRoot = ref('');
 
     const newItemInput = reactive({
       show: false,
@@ -396,12 +401,26 @@ export default {
       }
     };
 
+    // Load the current workspace root so children (TreeNode > Copy Path) can
+    // show absolute paths. Called on mount and after a successful save.
+    const loadWorkspaceRoot = async () => {
+      try {
+        const data = await getSettings();
+        workspaceRoot.value = data.workspaceRoot || data.defaultRoot || '';
+      } catch (err) {
+        console.warn('[FileTreePanel] Failed to load workspace root:', err);
+        workspaceRoot.value = '';
+      }
+    };
+
     // ── Settings ──
     const openSettings = async () => {
       try {
         const data = await getSettings();
         settingsDialog.workspaceRoot = data.workspaceRoot;
         settingsDialog.defaultRoot = data.defaultRoot;
+        // Also keep the top-level ref fresh in case it was edited externally.
+        workspaceRoot.value = data.workspaceRoot || data.defaultRoot || '';
       } catch {
         settingsDialog.workspaceRoot = '';
         settingsDialog.defaultRoot = '';
@@ -421,6 +440,7 @@ export default {
       settingsDialog.error = '';
       try {
         await updateSettings(settingsDialog.workspaceRoot.trim());
+        workspaceRoot.value = settingsDialog.workspaceRoot.trim();
         settingsDialog.show = false;
         // Clear tree cache and reload from new root
         Object.keys(childrenMap).forEach((key) => delete childrenMap[key]);
@@ -453,6 +473,7 @@ export default {
 
     onMounted(() => {
       fetchRootTree();
+      loadWorkspaceRoot();
       window.addEventListener('code-file-written', handleFileWritten);
     });
 
@@ -466,6 +487,7 @@ export default {
       expandedDirs,
       childrenMap,
       activeDir,
+      workspaceRoot,
       newItemInput,
       newItemInputRef,
       settingsInputRef,
