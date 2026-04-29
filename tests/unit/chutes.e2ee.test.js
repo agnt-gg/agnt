@@ -358,36 +358,52 @@ describe('Chutes reasoning controls', () => {
 });
 
 describe('Chutes reasoning body params (buildOpenAiLikeReasoningExtraBody)', () => {
-  // Chutes hosts via vLLM / sglang — the disable-thinking protocol is unified
-  // across all reasoning families: chat_template_kwargs.enable_thinking.
-  // Model-native params (thinking.type, reasoning_effort) silently no-op.
-  const OFF = { chat_template_kwargs: { enable_thinking: false } };
-  const ON = { chat_template_kwargs: { enable_thinking: true } };
+  // Chutes hosts via vLLM / sglang. The chat-template-kwargs key NAME differs
+  // per model family: Kimi K2.x uses `thinking`, GLM and Qwen3 use
+  // `enable_thinking`. Each model's chat template controls the variable name.
 
-  it('Kimi-TEE: off → enable_thinking=false, on → true, default → null', async () => {
+  it('Kimi-TEE: off → chat_template_kwargs.thinking=false (Kimi key)', async () => {
     const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
       '../../backend/src/services/orchestrator/llmAdapters.js'
     );
-    assert.deepStrictEqual(fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'off'), OFF);
-    assert.deepStrictEqual(fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'on'), ON);
+    assert.deepStrictEqual(
+      fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'off'),
+      { chat_template_kwargs: { thinking: false } },
+    );
+    assert.deepStrictEqual(
+      fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'on'),
+      { chat_template_kwargs: { thinking: true } },
+    );
     assert.strictEqual(fn('chutes', 'moonshotai/Kimi-K2.6-TEE', 'default'), null);
   });
 
-  it('GLM-TEE: off → enable_thinking=false, on → true, default → null', async () => {
+  it('GLM-TEE: off → chat_template_kwargs.enable_thinking=false (GLM key)', async () => {
     const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
       '../../backend/src/services/orchestrator/llmAdapters.js'
     );
-    assert.deepStrictEqual(fn('chutes', 'zai-org/GLM-5.1-TEE', 'off'), OFF);
-    assert.deepStrictEqual(fn('chutes', 'zai-org/GLM-5.1-TEE', 'on'), ON);
+    assert.deepStrictEqual(
+      fn('chutes', 'zai-org/GLM-5.1-TEE', 'off'),
+      { chat_template_kwargs: { enable_thinking: false } },
+    );
+    assert.deepStrictEqual(
+      fn('chutes', 'zai-org/GLM-5.1-TEE', 'on'),
+      { chat_template_kwargs: { enable_thinking: true } },
+    );
     assert.strictEqual(fn('chutes', 'zai-org/GLM-5.1-TEE', 'default'), null);
   });
 
-  it('Qwen3-TEE: off → enable_thinking=false, on → true, default → null', async () => {
+  it('Qwen3-TEE: off → chat_template_kwargs.enable_thinking=false (Qwen key)', async () => {
     const { buildOpenAiLikeReasoningExtraBody: fn } = await import(
       '../../backend/src/services/orchestrator/llmAdapters.js'
     );
-    assert.deepStrictEqual(fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'off'), OFF);
-    assert.deepStrictEqual(fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'on'), ON);
+    assert.deepStrictEqual(
+      fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'off'),
+      { chat_template_kwargs: { enable_thinking: false } },
+    );
+    assert.deepStrictEqual(
+      fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'on'),
+      { chat_template_kwargs: { enable_thinking: true } },
+    );
     assert.strictEqual(fn('chutes', 'Qwen/Qwen3.6-27B-TEE', 'default'), null);
   });
 

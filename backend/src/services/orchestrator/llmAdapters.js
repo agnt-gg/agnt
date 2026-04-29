@@ -4456,25 +4456,20 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
   }
 
   if (normalizedProvider === 'chutes') {
-    // Chutes hosts upstream models via vLLM / sglang, which use a UNIFIED
-    // template-level disable knob across all reasoning families (Kimi / GLM /
-    // Qwen3 / etc.). Sending the model-native params (`thinking.type`,
-    // `reasoning_effort`) silently no-ops because the vLLM-hosted version
-    // doesn't surface those — the right param is `enable_thinking` inside
-    // `chat_template_kwargs`. Reference:
-    //   https://docs.vllm.ai/en/latest/features/reasoning_outputs/
-    if (
-      isChutesKimiReasoningModel(model) ||
-      isChutesGlmReasoningModel(model) ||
-      isChutesQwenReasoningModel(model)
-    ) {
-      if (normalizedValue === 'off') {
-        return { chat_template_kwargs: { enable_thinking: false } };
-      }
-      if (normalizedValue === 'on') {
-        return { chat_template_kwargs: { enable_thinking: true } };
-      }
-      // 'default' → omit the param entirely so the server default applies.
+    // Chutes hosts upstream models via vLLM / sglang. The disable-thinking
+    // knob is `chat_template_kwargs`, but the inner key NAME is set by each
+    // model's chat template — not unified. Kimi K2.x uses `thinking`; GLM
+    // and Qwen3 use `enable_thinking`. References:
+    //   - SGLang Kimi-K2.6 cookbook: chat_template_kwargs: { thinking: false }
+    //   - vLLM Qwen3 / GLM5 docs:    chat_template_kwargs: { enable_thinking: false }
+    if (isChutesKimiReasoningModel(model)) {
+      if (normalizedValue === 'off') return { chat_template_kwargs: { thinking: false } };
+      if (normalizedValue === 'on')  return { chat_template_kwargs: { thinking: true } };
+      return null;
+    }
+    if (isChutesGlmReasoningModel(model) || isChutesQwenReasoningModel(model)) {
+      if (normalizedValue === 'off') return { chat_template_kwargs: { enable_thinking: false } };
+      if (normalizedValue === 'on')  return { chat_template_kwargs: { enable_thinking: true } };
       return null;
     }
     return null;
