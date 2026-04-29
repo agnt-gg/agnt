@@ -4456,19 +4456,27 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
   }
 
   if (normalizedProvider === 'chutes') {
-    // Chutes hosts Kimi / GLM / Qwen3 in TEE. Body-param protocol matches the
-    // underlying family — same params we send to direct kimi / zai / qwen3.
-    if (isChutesKimiReasoningModel(model) || isChutesGlmReasoningModel(model)) {
-      if (normalizedValue === 'off') return { thinking: { type: 'disabled' } };
-      return { thinking: { type: 'enabled' } };
-    }
-
-    if (isChutesQwenReasoningModel(model)) {
-      // Mirrors Groq's qwen3 toggle: 'none' disables, omit for default.
-      if (normalizedValue === 'off') return { reasoning_effort: 'none' };
+    // Chutes hosts upstream models via vLLM / sglang, which use a UNIFIED
+    // template-level disable knob across all reasoning families (Kimi / GLM /
+    // Qwen3 / etc.). Sending the model-native params (`thinking.type`,
+    // `reasoning_effort`) silently no-ops because the vLLM-hosted version
+    // doesn't surface those — the right param is `enable_thinking` inside
+    // `chat_template_kwargs`. Reference:
+    //   https://docs.vllm.ai/en/latest/features/reasoning_outputs/
+    if (
+      isChutesKimiReasoningModel(model) ||
+      isChutesGlmReasoningModel(model) ||
+      isChutesQwenReasoningModel(model)
+    ) {
+      if (normalizedValue === 'off') {
+        return { chat_template_kwargs: { enable_thinking: false } };
+      }
+      if (normalizedValue === 'on') {
+        return { chat_template_kwargs: { enable_thinking: true } };
+      }
+      // 'default' → omit the param entirely so the server default applies.
       return null;
     }
-
     return null;
   }
 
