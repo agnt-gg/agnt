@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.5.8",
+      "date": "April 29, 2026",
+      "title": "Chutes E2EE Provider, Universal Context-Window Coverage & Workflow Stability - AGNT v0.5.8",
+      "type": "patch",
+      "features": [
+        { "name": "Chutes E2EE Provider with End-to-End Encrypted Inference (ML-KEM-768 + HKDF-SHA256 + ChaCha20-Poly1305) for Confidential-Compute TEE Models (Kimi-K2.5/2.6-TEE, GLM-5/5.1-TEE, Qwen3-32B/3.5/3.6-TEE, MiniMax-M2.5-TEE) with Per-Family Reasoning Toggle (chat_template_kwargs.thinking for Kimi, enable_thinking for GLM/Qwen3)", "status": "new" },
+        { "name": "Provider-Agnostic Context-Window Registration on /models Fetch (Groq, Cerebras, Anthropic, Gemini, TogetherAI, Chutes Now All Register Their contextWindow) Plus Codex gpt-5.5 Per-Model context_window Wired In & Family-Prefix Heuristic for Cold-Start Chats — Eliminates 'Exceeds Context Window' Errors Before Compression Triggers", "status": "new" },
+        { "name": "SQLITE_BUSY: database is locked Errors During Workflow Node Execution from Unwrapped Per-Node ExecutionModel.createNodeExecution / updateNodeExecution Writes (Completes the v0.5.7 Timer-Trigger Retry Fix Across the Whole Execution Path)", "status": "bug" },
+        { "name": "Connectors Delete Provider Showing 'Failed to Delete' Error After Successful Removal (Store Action Returning Bare Remote {message: ...} Instead of {success: true} Contract Expected by the Caller)", "status": "bug" },
+        { "name": "Universal Tool-Execute API Endpoint POST /api/tools/:toolName/execute Dispatching Across Native, Agent, Workflow, Registry & Plugin Tools Through the Same Pipeline as the Chat Orchestrator (Accepts Kebab-Case or Snake_Case Names) Plus a Widget agnt SDK That Proxies tool/fetch/user Calls via postMessage So the JWT Never Enters the Iframe — Widget Code Drops from ~15 Lines of localStorage Plumbing to One Line: agnt.tool('name', { ... })", "status": "new" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.7",
       "date": "April 28, 2026",
       "title": "Unified Chat Architecture, Workflow Restart Stability & Agent Generate Fix - AGNT v0.5.7",
