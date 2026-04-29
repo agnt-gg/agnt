@@ -4212,12 +4212,17 @@ function getOpenAIReasoningValues(model) {
   if ((lower.startsWith('gpt-5.2') || lower.startsWith('gpt-5.3')) && lower.includes('codex')) {
     return new Set(['low', 'medium', 'high', 'xhigh']);
   }
-  if (lower.startsWith('gpt-5.4')) {
+  // Modern gpt-5.x contract (5.1, 5.2 non-codex, 5.4, 5.5+): 'none' instead of
+  // 'minimal', plus 'xhigh'. The Codex Responses API rejects 'minimal' for
+  // gpt-5.5+, hence the widened match on 5.4 through 5.99 (and 5.10+ for future).
+  if (
+    lower.startsWith('gpt-5.1') ||
+    lower.startsWith('gpt-5.2') ||
+    /^gpt-5\.([4-9]|\d{2,})/.test(lower)
+  ) {
     return new Set(['none', 'low', 'medium', 'high', 'xhigh']);
   }
-  if (lower.startsWith('gpt-5.2') || lower.startsWith('gpt-5.1')) {
-    return new Set(['none', 'low', 'medium', 'high', 'xhigh']);
-  }
+  // Legacy original gpt-5 (no decimal / -mini / -nano): 'minimal' contract.
   if (lower.startsWith('gpt-5')) {
     return new Set(['minimal', 'low', 'medium', 'high']);
   }

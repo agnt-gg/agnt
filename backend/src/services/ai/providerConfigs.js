@@ -1305,17 +1305,8 @@ export function getReasoningControl(providerKey, modelId) {
   if (lowerProvider === 'openai' || lowerProvider === 'openai-codex') {
     if (!isOpenAIResponsesReasoningModel(modelId)) return null;
 
-    if (lowerModel.startsWith('gpt-5.4')) {
-      return buildReasoningControl('effort', [
-        { value: 'default', label: 'Default' },
-        { value: 'off', label: 'Off' },
-        { value: 'low', label: 'Low' },
-        { value: 'medium', label: 'Medium' },
-        { value: 'high', label: 'High' },
-        { value: 'xhigh', label: 'Max' },
-      ]);
-    }
-
+    // Codex-specific siblings (gpt-5.2-codex, gpt-5.3-codex) — narrower set,
+    // no off/none. Must come before the broader gpt-5.x match below.
     if (lowerProvider === 'openai-codex' && (lowerModel.startsWith('gpt-5.3') || lowerModel.startsWith('gpt-5.2'))) {
       return buildReasoningControl('effort', [
         { value: 'default', label: 'Default' },
@@ -1326,7 +1317,15 @@ export function getReasoningControl(providerKey, modelId) {
       ]);
     }
 
-    if (lowerModel.startsWith('gpt-5.2') || lowerModel.startsWith('gpt-5.1')) {
+    // Modern gpt-5.x contract: off (sent as 'none'), low, medium, high, xhigh.
+    // Covers 5.1, 5.2 (non-codex), 5.4, 5.5+. The Codex Responses API rejects
+    // 'minimal' for gpt-5.5+, so this branch must catch them before the
+    // legacy gpt-5* fallback below. Regex handles 5.10+ for future versions.
+    if (
+      lowerModel.startsWith('gpt-5.1') ||
+      lowerModel.startsWith('gpt-5.2') ||
+      /^gpt-5\.([4-9]|\d{2,})/.test(lowerModel)
+    ) {
       return buildReasoningControl('effort', [
         { value: 'default', label: 'Default' },
         { value: 'off', label: 'Off' },
@@ -1337,6 +1336,8 @@ export function getReasoningControl(providerKey, modelId) {
       ]);
     }
 
+    // Legacy original gpt-5 (no decimal / -mini / -nano): 'minimal' contract,
+    // no xhigh. Only the no-decimal variants land here.
     if (lowerModel.startsWith('gpt-5')) {
       return buildReasoningControl('effort', [
         { value: 'default', label: 'Default' },
