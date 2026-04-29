@@ -4,14 +4,19 @@ import { getBestChromePath } from '../utils/chrome-detector.js';
 
 // --- Persistent Puppeteer browser for thumbnail captures ---
 // Lazy-launched on first capture, auto-closes after 60s of inactivity.
+// `_activeCaptures` tracks in-flight captures so the idle timer can never
+// fire while a screenshot is mid-flight — that's what was causing
+// "TargetCloseError: Session closed" mid-capture under load.
 let _browser = null;
 let _browserIdleTimer = null;
+let _activeCaptures = 0;
 const BROWSER_IDLE_MS = 60000;
 
 async function getThumbnailBrowser() {
-  // Reset idle timer on every use
+  // Mark this capture as in-flight and cancel any pending idle close.
+  _activeCaptures += 1;
   clearTimeout(_browserIdleTimer);
-  _browserIdleTimer = setTimeout(closeThumbnailBrowser, BROWSER_IDLE_MS);
+  _browserIdleTimer = null;
 
   if (_browser && _browser.connected) return _browser;
 
@@ -44,7 +49,23 @@ async function getThumbnailBrowser() {
   return _browser;
 }
 
+/**
+ * Release a capture slot. Schedules the idle close only when nothing else
+ * is in flight. Callers must invoke this in their `finally` to avoid
+ * leaking the browser open forever.
+ */
+function releaseThumbnailBrowser() {
+  _activeCaptures = Math.max(0, _activeCaptures - 1);
+  if (_activeCaptures === 0) {
+    clearTimeout(_browserIdleTimer);
+    _browserIdleTimer = setTimeout(closeThumbnailBrowser, BROWSER_IDLE_MS);
+  }
+}
+
 function closeThumbnailBrowser() {
+  // Belt-and-suspenders: if somehow this fires while a capture is active,
+  // bail out — releaseThumbnailBrowser will schedule a new close.
+  if (_activeCaptures > 0) return;
   if (_browser) {
     _browser.close().catch(() => {});
     _browser = null;
@@ -508,6 +529,10 @@ class WidgetDefinitionService {
       res.status(500).json({ error: 'Failed to capture thumbnail' });
     } finally {
       if (page) await page.close().catch(() => {});
+      // Release the in-flight slot so the idle timer can schedule a close
+      // once everything settles. Counter-based so concurrent captures don't
+      // close the browser out from under each other.
+      releaseThumbnailBrowser();
     }
   }
 }
