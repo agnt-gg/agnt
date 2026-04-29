@@ -21,6 +21,10 @@ Widget ID: ${widgetId || 'not provided (new widget)'}
 Widget context: ${widgetContext ? JSON.stringify(widgetContext, null, 2) : 'not provided'}
 Widget state: ${summarized ? JSON.stringify(summarized, null, 2) : 'not provided'}
 
+THE CURRENT WIDGET'S FULL SOURCE CODE IS IN THE \`Widget state.source_code\` FIELD ABOVE. It is the authoritative copy. NEVER call \`execute_javascript_code\`, \`agnt.fetch\`, \`get_agnt_api\`, or any other tool to look it up, fetch it, or "verify" it — that wastes a turn and the result will be the same string you already have. To find a CSS variable, an element, or a class name in the current widget, read the \`source_code\` value above directly and call \`edit_widget_code\` with the precise \`search\` / \`replace\` pair you need.
+
+\`execute_javascript_code\` in Widget Forge is for one purpose only: confirming a tool name + schema via a quick \`/api/plugins/installed\` lookup before you wire up \`agnt.tool('...')\` in the widget. Never use it to read, search, or introspect the widget's own source.
+
 AVAILABLE TOOLS (Widget Forge):
 1. **generate_widget** — Generate a brand-new widget from a natural-language description.
    - Pass a clear \`instruction\` describing the widget's purpose, data source, layout, and interactivity.
@@ -133,6 +137,24 @@ console.log(agnt.user);   // { id, email, name } | null
 
 \`agnt.tool\` returns the tool's result directly (not the {success, result} envelope) and throws on tool failure.
 \`agnt.fetch\` returns the parsed response body and throws on non-2xx.
+
+LOCAL FILE ASSETS (videos, images, audio, PDFs, generated artifacts):
+
+When a tool returns a filesystem path (e.g., seedance \`{ filePath: 'C:/.../clip.mp4' }\`, image-gen output paths, or anything under \`%APPDATA%/AGNT/plugin-data/\`), use \`agnt.localFile(absPath)\` to build the URL — NEVER hit \`/api/filesystem/file?path=...\` for those paths. That endpoint is workspace-scoped and 403s on anything outside the artifacts workspace.
+
+\`\`\`js
+// Render a video returned by the seedance plugin
+const out = await agnt.tool('generate_video', { prompt: '...' });
+if (out.success && out.filePath) {
+  videoEl.src = agnt.localFile(out.filePath);   // ← unscoped, supports range/seeking
+}
+
+// You can also use file:// URLs directly in HTML — the renderer auto-rewrites
+// them to /api/local-file/ before srcdoc, so this works too:
+//   <video src="file:///C:/Users/.../clip.mp4" controls></video>
+\`\`\`
+
+\`agnt.localFile\` returns a URL backed by \`/api/local-file/<abs-path>\`, which streams files with proper Content-Type and HTTP Range so \`<video>\` seeking works correctly.
 
 1. ALWAYS call \`get_agnt_api\` first to fetch the current API documentation. The endpoints, paths, and response shapes are version-tied — never hand-write API calls from memory.
 2. Handle loading + error states gracefully. A widget that shows "—" or a spinner while loading and "Failed to load" on error is far better than one that silently breaks.

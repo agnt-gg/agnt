@@ -131,13 +131,17 @@ export function registerWidgetWindow(contentWindow) {
  *
  * @param {object} ctx
  * @param {object|null} ctx.user - { id, email, name } or null
+ * @param {string} [ctx.apiBase] - API base URL (e.g. 'http://localhost:3333/api').
+ *   Used to synthesize URLs for `agnt.localFile()`. Defaults to '/api' if absent.
  */
 export function buildSdkPreamble(ctx = {}) {
   // JSON-in-script escape: turn '<' into a safe unicode escape so a value
   // containing '</script>' can't break out of the surrounding script tag.
   const safeUser = JSON.stringify(ctx.user || null).replace(/</g, '\\u003c');
+  const safeApiBase = JSON.stringify(ctx.apiBase || '/api').replace(/</g, '\\u003c');
   return `<script>(function(){
   if (window.agnt) return;
+  var API_BASE = ${safeApiBase};
   var pending = new Map();
   var lastId = 0;
 
@@ -165,6 +169,20 @@ export function buildSdkPreamble(ctx = {}) {
     else slot.reject(new Error(data.error || 'Request failed'));
   });
 
+  // Build a /api/local-file URL for an arbitrary filesystem absolute path.
+  // The /api/local-file/* route streams files with proper Content-Type +
+  // HTTP Range, so <video src="${'$'}{agnt.localFile(p)}"> works for seeking.
+  // Use this for plugin output paths (seedance video, image-gen output, etc.)
+  // — DO NOT use /api/filesystem/file?path=... for those, that endpoint is
+  // workspace-scoped and 403s on anything outside the artifacts workspace.
+  function localFile(absPath) {
+    if (typeof absPath !== 'string' || !absPath) {
+      throw new Error('agnt.localFile: absolute path required');
+    }
+    var normalized = absPath.replace(/\\\\/g, '/');
+    return API_BASE + '/local-file/' + encodeURI(normalized);
+  }
+
   Object.defineProperty(window, 'agnt', {
     value: Object.freeze({
       user: ${safeUser},
@@ -180,6 +198,7 @@ export function buildSdkPreamble(ctx = {}) {
         }
         return send('fetch', { url: url, opts: opts || {} });
       },
+      localFile: localFile,
     }),
     writable: false,
     configurable: false,

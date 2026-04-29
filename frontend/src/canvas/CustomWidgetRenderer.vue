@@ -63,6 +63,8 @@ import CountdownTemplate from './templates/CountdownTemplate.vue';
 import LiveFeedTemplate from './templates/LiveFeedTemplate.vue';
 import MarkdownNoteTemplate from './templates/MarkdownNoteTemplate.vue';
 import { ensureBridgeInitialized, registerWidgetWindow, buildSdkPreamble } from './widgetSdk.js';
+import { rewriteLocalFileURLsInHTML } from '@/utils/localFileUrl.js';
+import { API_CONFIG } from '@/tt.config.js';
 
 const TEMPLATE_MAP = {
   'metric-card': MetricCardTemplate,
@@ -105,7 +107,7 @@ export default {
         email: (u && u.email) || auth.userEmail || null,
         name: (u && u.name) || auth.userName || null,
       } : null;
-      return buildSdkPreamble({ user: userInfo });
+      return buildSdkPreamble({ user: userInfo, apiBase: API_CONFIG.BASE_URL });
     });
 
     // ── HTML rendering ──
@@ -157,7 +159,13 @@ export default {
     const noScrollbarCSS = '<style>html,body{scrollbar-width:none;-ms-overflow-style:none;}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}</style>';
 
     const renderedSource = computed(() => {
-      const html = sourceCode.value || '';
+      // First pass: rewrite file:// URLs on src/href/poster to /api/local-file/.
+      // Chromium blocks file:// frames inside http:// origins, and the
+      // /api/local-file/ route streams arbitrary paths with HTTP Range so
+      // <video> seeking works. This is the same rewriter the chat uses, so
+      // a widget that does <video src="file:///C:/.../seedance.mp4"> renders
+      // identically to the same tag inside an assistant message.
+      const html = rewriteLocalFileURLsInHTML(sourceCode.value || '');
       const theme = themeStyleTag.value;
       const sdk = sdkPreamble.value;
 

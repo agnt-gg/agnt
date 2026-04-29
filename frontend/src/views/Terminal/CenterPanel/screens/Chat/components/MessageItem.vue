@@ -324,6 +324,11 @@ import GoalProgressWidget from './GoalProgressWidget.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import morphdom from 'morphdom';
 import { API_CONFIG } from '@/../user.config.js';
+import {
+  buildLocalFileUrl as sharedBuildLocalFileUrl,
+  fileUrlToLocalFileUrl as sharedFileUrlToLocalFileUrl,
+  rewriteLocalFileURLsInHTML as sharedRewriteLocalFileURLsInHTML,
+} from '@/utils/localFileUrl.js';
 
 // --- v-morph-html directive ---
 // Uses morphdom to diff/patch DOM instead of innerHTML replacement (v-html).
@@ -767,67 +772,11 @@ export default {
     // <base href="/api/local-file/<dir>/"> so sibling relative paths inside
     // the HTML (e.g. href="../index.html") resolve against a real location
     // instead of about:srcdoc.
-    const fileUrlToLocalFileUrl = (val) => {
-      let rawPath = val.replace(/^file:\/\//i, '').replace(/^\//, '');
-      let normalized;
-      try { normalized = decodeURI(rawPath); } catch { normalized = rawPath; }
-      return `${API_CONFIG.BASE_URL}/local-file/${encodeURI(normalized)}`;
-    };
-
-    const rewriteLocalFileURLsInHTML = (html, { baseDir } = {}) => {
-      const hasFileURL = /file:\/\//i.test(html);
-      if (!html || (!hasFileURL && !baseDir)) return html;
-      try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-
-        let firstFileDir = '';
-        const tryCaptureDir = (val) => {
-          if (firstFileDir) return;
-          const m = /^file:\/\/(\/?[^?#]*)/i.exec(val);
-          if (!m) return;
-          let p = m[1].replace(/^\//, '');
-          try { p = decodeURI(p); } catch { /* keep encoded */ }
-          const slash = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
-          if (slash > 0) firstFileDir = p.slice(0, slash);
-        };
-
-        const rewriteAttr = (el, attr) => {
-          const val = el.getAttribute(attr);
-          if (val && /^file:\/\//i.test(val)) {
-            tryCaptureDir(val);
-            el.setAttribute(attr, fileUrlToLocalFileUrl(val));
-          }
-        };
-
-        for (const attr of ['src', 'href', 'poster']) {
-          doc.querySelectorAll(`[${attr}]`).forEach((el) => rewriteAttr(el, attr));
-        }
-
-        // Pick base dir: explicit override (from a file-write tool call in the
-        // same message) takes priority, then the first absolute file:// we saw.
-        const chosenDir = baseDir || firstFileDir;
-        if (chosenDir && !doc.querySelector('base[href]')) {
-          // Normalize Windows backslashes to forward slashes for URL use.
-          const normalized = chosenDir.replace(/\\/g, '/').replace(/\/+$/, '');
-          const base = doc.createElement('base');
-          base.setAttribute('href', `${API_CONFIG.BASE_URL}/local-file/${encodeURI(normalized)}/`);
-          const head = doc.head || doc.documentElement;
-          head.insertBefore(base, head.firstChild);
-        }
-
-        if (/<html[^>]*>/i.test(html)) {
-          const doctype = /<!DOCTYPE[^>]*>/i.test(html) ? '<!DOCTYPE html>\n' : '';
-          return doctype + doc.documentElement.outerHTML;
-        }
-        // Fragment: merge any injected <base> back into the body output.
-        const headHTML = doc.head ? doc.head.innerHTML : '';
-        return headHTML + (doc.body ? doc.body.innerHTML : '');
-      } catch (e) {
-        console.warn('[Chat] Failed to rewrite file:// URLs for srcdoc:', e);
-        return html;
-      }
-    };
+    // Thin wrappers around the shared util — kept as locals so existing call
+    // sites don't need to change. The actual implementation lives in
+    // utils/localFileUrl.js so the widget renderer can reuse it verbatim.
+    const fileUrlToLocalFileUrl = (val) => sharedFileUrlToLocalFileUrl(val);
+    const rewriteLocalFileURLsInHTML = (html, opts) => sharedRewriteLocalFileURLsInHTML(html, opts);
 
     // Pair a ```html code block with a file the LLM just READ from disk, so we
     // can render the block via iframe.src pointing at the real file. The
@@ -943,11 +892,7 @@ export default {
 
     // Build a /api/local-file URL for a filesystem absolute path. Cache-busted
     // with the message id so edits in a later turn pick up fresh content.
-    const buildLocalFileUrl = (absPath) => {
-      const normalized = absPath.replace(/\\/g, '/');
-      const cacheBust = props.message?.id ? `?_=${encodeURIComponent(props.message.id)}` : '';
-      return `${API_CONFIG.BASE_URL}/local-file/${encodeURI(normalized)}${cacheBust}`;
-    };
+    const buildLocalFileUrl = (absPath) => sharedBuildLocalFileUrl(absPath, props.message?.id);
 
     // Open preview modal with HTML in iframe
     const openPreviewModal = (html) => {
