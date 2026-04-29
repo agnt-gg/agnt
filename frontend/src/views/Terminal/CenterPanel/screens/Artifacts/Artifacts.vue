@@ -43,7 +43,7 @@
               </div>
 
               <!-- Editor -->
-              <div class="ce-editor" v-if="activeTab">
+              <div class="ce-editor" v-if="activeTab && !isUnpreviewable">
                 <Codemirror
                   :key="activeTab.path"
                   :model-value="activeTab.content"
@@ -53,6 +53,12 @@
                   :extensions="editorExtensions"
                   @update:model-value="handleEditorChange"
                 />
+              </div>
+
+              <!-- No-preview placeholder for binary / oversized files -->
+              <div class="ce-empty" v-else-if="activeTab && isUnpreviewable">
+                <i class="fas fa-eye-slash"></i>
+                <p>{{ noPreviewMessage }}</p>
               </div>
 
               <!-- Empty state -->
@@ -93,7 +99,11 @@
               </div>
             </div>
             <div class="ce-preview-content">
-              <iframe v-if="isHtmlFile && activeTab" ref="previewFrame" class="ce-preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+              <div v-if="isUnpreviewable" class="ce-preview-empty">
+                <i class="fas fa-eye-slash"></i>
+                <p>{{ noPreviewMessage }}</p>
+              </div>
+              <iframe v-else-if="isHtmlFile && activeTab" ref="previewFrame" class="ce-preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
               <div v-else-if="isMarkdownFile && activeTab" ref="markdownPreviewRef" class="ce-markdown-preview" v-html="renderedMarkdown"></div>
               <div v-else-if="isImageFile && activeTab" class="ce-media-preview">
                 <img :src="rawFileUrl" :alt="activeTab.name" />
@@ -489,6 +499,17 @@ const EPUB_EXTS = new Set(['epub']);
 const MODEL3D_EXTS = new Set(['glb', 'gltf', 'fbx', 'obj', 'stl', 'ply', 'dae', '3mf']);
 const SPREADSHEET_EXTS = new Set(['csv', 'tsv']);
 const TEXT_EXTS = new Set(['txt', 'log', 'ini', 'cfg', 'conf', 'env', 'yaml', 'yml', 'toml']);
+// Archives, executables, packaged plugins, databases, and other formats we
+// don't render as text. Short-circuited in `openFile` so we never even read
+// them — the backend NUL-byte sniff is a backstop for stuff not listed here.
+const UNPREVIEWABLE_EXTS = new Set([
+  'agnt', 'zip', 'tar', 'gz', 'tgz', 'bz2', '7z', 'rar', 'xz',
+  'exe', 'dll', 'so', 'dylib', 'bin', 'dat', 'iso', 'dmg', 'pkg', 'deb', 'rpm', 'msi',
+  'class', 'jar', 'war', 'pyc', 'pyo', 'o', 'a', 'lib', 'obj',
+  'db', 'sqlite', 'sqlite3', 'mdb',
+  'ttf', 'otf', 'woff', 'woff2', 'eot',
+  'psd', 'ai', 'sketch', 'fig',
+]);
 
 /**
  * Parse CSV/TSV content into rows, handling quoted fields with commas/newlines.
@@ -764,6 +785,22 @@ export default {
     const fileExt = computed(() => {
       if (!activeTab.value) return '';
       return activeTab.value.path.split('.').pop()?.toLowerCase() || '';
+    });
+
+    // Set when the backend reports a file is too large or binary — we open a
+    // placeholder tab in `openFile` and gate the editor + preview off of this.
+    const isUnpreviewable = computed(() => !!activeTab.value?.noPreview);
+    const noPreviewMessage = computed(() => {
+      const tab = activeTab.value;
+      if (!tab?.noPreview) return '';
+      const sizeMb = tab.size ? (tab.size / (1024 * 1024)).toFixed(1) : null;
+      if (tab.noPreviewReason === 'too_large') {
+        return sizeMb ? `File is too large to preview (${sizeMb} MB).` : 'File is too large to preview.';
+      }
+      if (tab.noPreviewReason === 'binary') {
+        return 'No preview available — this file appears to be binary.';
+      }
+      return 'No preview available for this file.';
     });
 
     const isHtmlFile = computed(() => HTML_PREVIEW_EXTS.has(fileExt.value));
@@ -1551,11 +1588,41 @@ export default {
         let tab;
 
         if (isBinaryExt(ext)) {
-          // Binary files — don't read content, just open the tab for preview
+          // Known binary types we already render in the preview pane (image,
+          // video, audio, pdf, epub, 3d) — don't read content, just open a tab.
           tab = { path: filePath, name, content: '', savedContent: '', isDirty: false };
+        } else if (UNPREVIEWABLE_EXTS.has(ext)) {
+          // Known archive/executable/db/font formats we have no renderer for.
+          // Skip the network read entirely and open a placeholder tab.
+          tab = {
+            path: filePath,
+            name,
+            content: '',
+            savedContent: '',
+            isDirty: false,
+            noPreview: true,
+            noPreviewReason: 'binary',
+            size: 0,
+          };
         } else {
           const data = await getFile(filePath);
-          tab = { path: filePath, name, content: data.content, savedContent: data.content, isDirty: false };
+          if (data?.noPreview) {
+            // Backend refused to read the bytes (file too large or detected as
+            // binary by NUL-byte sniff). Open a placeholder tab so the user
+            // sees "No preview available" instead of a UI freeze.
+            tab = {
+              path: filePath,
+              name,
+              content: '',
+              savedContent: '',
+              isDirty: false,
+              noPreview: true,
+              noPreviewReason: data.reason || 'unsupported',
+              size: data.size || 0,
+            };
+          } else {
+            tab = { path: filePath, name, content: data.content, savedContent: data.content, isDirty: false };
+          }
         }
 
         openTabs.value.push(tab);
@@ -1722,6 +1789,8 @@ export default {
       isTextFile,
       isJsonFile,
       isCodeFile,
+      isUnpreviewable,
+      noPreviewMessage,
       prettyJson,
       highlightedCode,
       highlightedLang,

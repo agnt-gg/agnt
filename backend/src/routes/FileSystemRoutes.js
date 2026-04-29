@@ -1,5 +1,6 @@
 import express from 'express';
 import fs from 'fs/promises';
+import { open as fsOpen } from 'fs/promises';
 import path from 'path';
 import { authenticateToken } from './Middleware.js';
 import PathManager from '../utils/PathManager.js';
@@ -9,6 +10,38 @@ const router = express.Router();
 // Default workspace root and settings file live alongside other app data
 const DEFAULT_WORKSPACE_ROOT = PathManager.getPath('projects');
 const SETTINGS_FILE = PathManager.getPath('code-settings.json');
+
+// Hard cap for the GET /file *text* preview. Files above this are reported as
+// `{ noPreview: true, reason: 'too_large' }` so the frontend can short-circuit
+// instead of allocating a huge UTF-8 string in the Node process and shipping
+// it to the client (which freezes the editor and can OOM the backend).
+//
+// IMPORTANT: this cap only applies to the text-into-editor path. Streamed
+// previews (images, video, audio, PDF, etc.) go through `/api/local-file/`
+// with HTTP Range support and are NOT subject to this limit — a 100 MB .mp4
+// previews fine because it streams chunk-by-chunk into a <video> element.
+const MAX_PREVIEW_BYTES = 25 * 1024 * 1024;
+// First chunk size used to sniff whether a file is binary. Looking for a NUL
+// byte in the first ~8 KB is the same heuristic git/grep/file(1) use.
+const BINARY_SNIFF_BYTES = 8192;
+
+async function isBinaryFile(absPath) {
+  let handle;
+  try {
+    handle = await fsOpen(absPath, 'r');
+    const buf = Buffer.alloc(BINARY_SNIFF_BYTES);
+    const { bytesRead } = await handle.read(buf, 0, BINARY_SNIFF_BYTES, 0);
+    for (let i = 0; i < bytesRead; i++) {
+      if (buf[i] === 0) return true;
+    }
+    return false;
+  } catch {
+    // If we can't sniff, fall through and let the caller try a normal read.
+    return false;
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+  }
+}
 
 /**
  * Get the current workspace root from settings
@@ -128,7 +161,10 @@ router.get('/tree', authenticateToken, async (req, res) => {
 });
 
 // GET /api/filesystem/file?path=<relPath>
-// Returns file content
+// Returns file content. Guards against opening huge or binary files: if the
+// file is over MAX_PREVIEW_BYTES or contains NUL bytes in its first chunk,
+// responds with `{ noPreview: true, reason, size }` (HTTP 200) so the frontend
+// can show a "No preview available" placeholder without ever loading the bytes.
 router.get('/file', authenticateToken, async (req, res) => {
   try {
     const root = await getWorkspaceRoot();
@@ -136,8 +172,34 @@ router.get('/file', authenticateToken, async (req, res) => {
     if (!relPath) return res.status(400).json({ error: 'path is required' });
 
     const absPath = validatePath(relPath, root);
+
+    // Stat first so we can short-circuit on size before allocating any buffer.
+    const stat = await fs.stat(absPath);
+    if (stat.isDirectory()) {
+      return res.status(400).json({ error: 'path is a directory' });
+    }
+    if (stat.size > MAX_PREVIEW_BYTES) {
+      return res.json({
+        path: relPath,
+        noPreview: true,
+        reason: 'too_large',
+        size: stat.size,
+      });
+    }
+
+    // Cheap binary sniff (NUL byte in first 8 KB). Catches .exe/.dll/.zip/etc.
+    // that don't have a known extension we already special-case in the UI.
+    if (await isBinaryFile(absPath)) {
+      return res.json({
+        path: relPath,
+        noPreview: true,
+        reason: 'binary',
+        size: stat.size,
+      });
+    }
+
     const content = await fs.readFile(absPath, 'utf-8');
-    res.json({ content, path: relPath });
+    res.json({ content, path: relPath, size: stat.size });
   } catch (error) {
     console.error('FileSystem read error:', error);
     if (error.code === 'ENOENT') return res.status(404).json({ error: 'File not found' });
