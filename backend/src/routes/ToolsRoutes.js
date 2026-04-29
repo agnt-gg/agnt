@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getAvailableToolSchemas } from '../services/orchestrator/tools.js';
+import { getAvailableToolSchemas, executeTool } from '../services/orchestrator/tools.js';
 import toolRegistry from '../services/orchestrator/toolRegistry.js';
 import ToolRegistry from '../tools/ToolRegistry.js';
 import PluginManager from '../plugins/PluginManager.js';
@@ -223,6 +223,56 @@ router.get('/plugins-only', async (req, res) => {
   } catch (error) {
     console.error('Error fetching plugin tools:', error);
     res.status(500).json({ error: 'Failed to fetch plugin tools' });
+  }
+});
+
+/**
+ * POST /api/tools/:toolName/execute
+ * Universal tool execution endpoint — invokes any registered tool by name.
+ *
+ * Resolves across native orchestrator tools, agent/workflow/goal/code/widget/
+ * tool-forge tools, registry tools, and plugin tools (all unified under
+ * executeTool() in orchestrator/tools.js).
+ *
+ * Body: { args: { ... } }    // tool parameters; defaults to {}
+ *
+ * Tool name accepts both `kebab-case` and `snake_case` — registry/plugin
+ * tools are looked up with `_` normalised to `-` internally.
+ *
+ * Response 200:
+ *   { success: true,  tool, result }     // result is parsed JSON when possible
+ *   { success: false, tool, error }      // tool ran but reported a failure
+ *
+ * Response 401: { success: false, error: 'Authentication required' }
+ */
+router.post('/:toolName/execute', authenticateToken, async (req, res) => {
+  const { toolName } = req.params;
+
+  if (!req.user?.isAuthenticated) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  const args = (req.body && typeof req.body.args === 'object' && req.body.args !== null) ? req.body.args : {};
+  const authToken = req.headers['authorization'] || null;
+
+  try {
+    const raw = await executeTool(toolName, args, authToken, { userId: req.user.id });
+
+    let parsed;
+    try {
+      parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {
+      parsed = raw;
+    }
+
+    if (parsed && typeof parsed === 'object' && parsed.success === false) {
+      return res.json({ success: false, tool: toolName, error: parsed.error || 'Tool execution failed', details: parsed });
+    }
+
+    return res.json({ success: true, tool: toolName, result: parsed });
+  } catch (error) {
+    console.error(`[ToolsRoutes] Unexpected error executing tool '${toolName}':`, error);
+    return res.status(500).json({ success: false, tool: toolName, error: error.message });
   }
 });
 

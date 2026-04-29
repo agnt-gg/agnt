@@ -58,37 +58,48 @@ The authentication middleware (`authenticateToken`) will:
 
 ### Token Storage & Access
 
-The JWT token is **not stored in the database**. It lives in two places depending on context:
+The JWT token is **not stored in the database**. It lives in three places depending on context:
 
 | Context                              | Where the token lives                                  | How to access it                                 |
 | ------------------------------------ | ------------------------------------------------------ | ------------------------------------------------ |
-| Frontend / Widgets (browser)         | `localStorage`                                         | `localStorage.getItem('token')`                  |
+| Widgets (iframe)                     | Never enters the iframe                                | Use the global `agnt` SDK (auth is proxied)      |
+| Frontend (Vue app, browser)          | `localStorage`                                         | `localStorage.getItem('token')` (legacy callsites) |
 | Backend services (Express)           | `req.headers.authorization` or `req.session.userToken` | Passed as `authToken` parameter between services |
 | Orchestrator tools (spawned Node.js) | `process.env.AGNT_AUTH_TOKEN`                          | Automatically injected by the orchestrator       |
 
-### Frontend / Widgets (browser context)
+### Widgets (browser iframe — use the agnt SDK)
 
-Widgets run in iframes with `allow-same-origin`, so they share the AGNT frontend's `localStorage`. The user's token is already stored there — just read it:
+The widget runtime injects a global `agnt` object into every widget iframe at mount time. **The token never enters the iframe** — every call is proxied through the parent via `postMessage` and executed by the parent's authenticated axios instance. Widget code should NOT read `localStorage`, NOT set `Authorization` headers, NOT write a `getToken()` helper. Bypassing the SDK will 401.
 
 ```js
-const API = 'http://localhost:3333/api';
-function getToken() {
-  try {
-    return localStorage.getItem('token') || null;
-  } catch (e) {
-    return null;
-  }
-}
-function apiFetch(url, options = {}) {
-  const token = getToken();
-  const headers = { Accept: 'application/json', 'Content-Type': 'application/json', ...options.headers };
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-  return fetch(url, { ...options, headers });
-}
+// Plugin / native / registry tool execution (most common widget use case)
+const joke = await agnt.tool('chucknorris-get-joke', { category: 'dev' });
 
-// Example: get all agents
-const res = await apiFetch(API + '/agents/');
-const data = await res.json();
+// Any /api/* endpoint
+const agents = await agnt.fetch('/api/agents');
+const created = await agnt.fetch('/api/agents', {
+  method: 'POST',
+  body: { name: 'My Agent' },   // object or JSON.stringify(...) both work
+});
+
+// User context, available synchronously
+console.log(agnt.user);   // { id, email, name } | null
+```
+
+`agnt.tool` returns the tool's `result` directly (not the `{ success, result }` envelope) and throws on tool failure. `agnt.fetch` returns the parsed response body and throws on non-2xx. `agnt.fetch` is allowlisted to `/api/*` paths and to standard HTTP methods (GET/POST/PUT/PATCH/DELETE).
+
+### Frontend Vue app (browser, non-widget context)
+
+The Vue app stores the JWT in `localStorage` under the key `token` and a global axios interceptor in `frontend/src/main.js` attaches `Authorization: Bearer ...` to every outbound request automatically. New code should use the existing axios setup; reach for `localStorage.getItem('token')` only when bypassing axios.
+
+```js
+// Most code — interceptor handles auth automatically
+import axios from 'axios';
+const { data } = await axios.get('/api/agents');
+
+// Bypass case (raw fetch outside axios):
+const token = localStorage.getItem('token');
+const res = await fetch('/api/agents', { headers: { Authorization: `Bearer ${token}` } });
 ```
 
 ### Backend Services (Express context)
@@ -3749,28 +3760,45 @@ Base path: `/api/plugins`
 - **Authentication**: None
 - **Parameters**:
   - `name` (path): Plugin name
-- **Description**: Get details of a specific installed plugin
+- **Description**: Get details of a specific installed plugin, including each tool's full input schema (use this to discover param types and allowed values without guessing).
 - **Response**:
 
 ```json
 {
   "success": true,
   "plugin": {
-    "name": "plugin-name",
+    "name": "chucknorris-joke-plugin",
+    "displayName": "Chuck Norris Jokes",
     "version": "1.0.0",
-    "description": "Plugin description",
+    "description": "Fetch random Chuck Norris jokes from the public Chuck Norris API.",
+    "author": "AGNT User",
     "isValid": true,
     "tools": [
       {
-        "type": "tool-type",
-        "title": "Tool Title",
-        "description": "Tool description",
-        "category": "action"
+        "type": "chucknorris-get-joke",
+        "title": "Get Random Chuck Norris Joke",
+        "description": "Retrieves a random Chuck Norris joke, optionally filtered by category.",
+        "category": "action",
+        "schema": {
+          "title": "Get Random Chuck Norris Joke",
+          "description": "Retrieves a random Chuck Norris joke, optionally filtered by category.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string",
+                "enum": ["animal", "career", "celebrity", "dev", "explicit", "fashion", "food", "history", "money", "movie", "music", "political", "religion", "science", "sport", "travel"]
+              }
+            }
+          }
+        }
       }
     ]
   }
 }
 ```
+
+- **Response (404)**: `{ "success": false, "error": "Plugin '<name>' not found" }`
 
 ### Get Plugin Source Code
 
@@ -4999,6 +5027,50 @@ Base path: `/api/tools`
 }
 ```
 
+### Execute Tool
+
+**POST** `/:toolName/execute`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `toolName` (path): Tool identifier — accepts kebab-case (`chucknorris-get-joke`) or snake_case (`chucknorris_get_joke`). Resolves across native orchestrator tools, agent/workflow/goal/code/widget/tool-forge tools, registry tools, and installed plugin tools.
+- **Body**:
+
+```json
+{
+  "args": { "category": "dev" }
+}
+```
+
+- **Description**: Universal tool execution endpoint. Invokes any registered tool by name with the supplied arguments and returns the parsed result. Argument validation, OAuth resolution for tools that require it, and registry/plugin dispatch are all handled internally — this is the same pipeline the chat orchestrator uses to call tools.
+- **Response (success)**:
+
+```json
+{
+  "success": true,
+  "tool": "chucknorris-get-joke",
+  "result": {
+    "joke": "Chuck Norris doesn't write code...",
+    "id": "abc123",
+    "categories": ["dev"],
+    "url": "https://api.chucknorris.io/jokes/abc123"
+  }
+}
+```
+
+- **Response (tool reported failure)**:
+
+```json
+{
+  "success": false,
+  "tool": "chucknorris-get-joke",
+  "error": "Validation failed: 'category' must be one of [...]",
+  "details": { "...": "full payload returned by the tool" }
+}
+```
+
+- **Response 401**: `{ "success": false, "error": "Authentication required" }`
+
 ---
 
 ## User Routes
@@ -5479,6 +5551,34 @@ Manage custom widget definitions for the dashboard. Widgets are user-created HTM
 ```
 
 - **Response** (201): Same as Create Widget Definition
+
+### Capture Widget Thumbnail
+
+**POST** `/capture-thumbnail`
+
+- **Authentication**: Required
+- **Description**: Render an HTML widget in a headless Puppeteer browser and return a JPEG screenshot as a base64 data URL. The renderer reuses a persistent browser instance (auto-closed after 60s idle) and auto-dismisses any `alert`/`confirm`/`prompt` dialogs so popup-heavy widgets don't block.
+- **Body**:
+
+```json
+{
+  "html": "<!DOCTYPE html><html>...</html>",
+  "storageData": { "token": "<jwt>", "...": "any other localStorage keys to inject before render" }
+}
+```
+
+  - `html` (required): Full HTML document for the widget.
+  - `storageData` (optional): Object whose keys/values get written into the headless page's `localStorage` before the widget loads. Pass the user's token here if the widget makes authenticated fetches during render.
+
+- **Response**:
+
+```json
+{
+  "thumbnail": "data:image/jpeg;base64,..."
+}
+```
+
+- **Notes**: Used by the widget editor and by the orchestrator's chat-driven widget flow (`generate_widget` / `edit_widget_code`). Capture is fire-and-forget from the frontend — the resulting `thumbnail` data URL is then PUT back to `/api/widget-definitions/:widgetId` to persist.
 
 ---
 

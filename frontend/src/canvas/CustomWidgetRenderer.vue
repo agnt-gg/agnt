@@ -14,6 +14,7 @@
     <!-- HTML widget: sandboxed iframe with srcdoc -->
     <iframe
       v-else-if="widgetType === 'html'"
+      ref="iframeRef"
       class="cwr-iframe"
       :srcdoc="renderedSource"
       sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
@@ -61,6 +62,7 @@ import DataTableTemplate from './templates/DataTableTemplate.vue';
 import CountdownTemplate from './templates/CountdownTemplate.vue';
 import LiveFeedTemplate from './templates/LiveFeedTemplate.vue';
 import MarkdownNoteTemplate from './templates/MarkdownNoteTemplate.vue';
+import { ensureBridgeInitialized, registerWidgetWindow, buildSdkPreamble } from './widgetSdk.js';
 
 const TEMPLATE_MAP = {
   'metric-card': MetricCardTemplate,
@@ -79,6 +81,7 @@ export default {
   },
   setup(props) {
     const store = useStore();
+    const iframeRef = ref(null);
     const isLoading = ref(true);
     const error = ref(null);
     let refreshTimer = null;
@@ -86,6 +89,24 @@ export default {
     const widgetType = computed(() => props.definition?.widget_type || 'html');
     const config = computed(() => props.definition?.config || {});
     const sourceCode = computed(() => props.definition?.source_code || '');
+
+    // ── Widget SDK bridge ──
+    // Authorise this iframe to use `window.agnt.tool()` / `agnt.fetch()` /
+    // `agnt.user`. The token never crosses into the iframe — every call is
+    // proxied via postMessage and executed by the parent's authenticated
+    // axios instance. See widgetSdk.js for the full contract.
+    ensureBridgeInitialized();
+
+    const sdkPreamble = computed(() => {
+      const auth = store.state.userAuth || {};
+      const u = auth.user;
+      const userInfo = u || auth.userEmail || auth.userName ? {
+        id: (u && u.id) || null,
+        email: (u && u.email) || auth.userEmail || null,
+        name: (u && u.name) || auth.userName || null,
+      } : null;
+      return buildSdkPreamble({ user: userInfo });
+    });
 
     // ── HTML rendering ──
     // Build theme CSS by extracting ALL CSS custom properties from the live document.
@@ -138,15 +159,18 @@ export default {
     const renderedSource = computed(() => {
       const html = sourceCode.value || '';
       const theme = themeStyleTag.value;
+      const sdk = sdkPreamble.value;
 
+      // Order matters: the SDK preamble must run before any user code, so it
+      // goes first in <head>. Theme + scrollbar styles follow.
       if (html.trim().toLowerCase().startsWith('<!doctype') || html.trim().toLowerCase().startsWith('<html')) {
-        // Inject theme vars + scrollbar hide into existing <head> (or after <html> if no <head>)
+        // Inject SDK + theme vars + scrollbar hide into existing <head> (or after <html> if no <head>)
         if (/<head[^>]*>/i.test(html)) {
-          return html.replace(/<head([^>]*)>/i, `<head$1>${theme}${noScrollbarCSS}`);
+          return html.replace(/<head([^>]*)>/i, `<head$1>${sdk}${theme}${noScrollbarCSS}`);
         }
-        return html.replace(/<html([^>]*)>/i, `<html$1><head>${theme}${noScrollbarCSS}</head>`);
+        return html.replace(/<html([^>]*)>/i, `<html$1><head>${sdk}${theme}${noScrollbarCSS}</head>`);
       }
-      return `<!DOCTYPE html><html><head><meta charset="utf-8">${theme}<style>html,body{scrollbar-width:none;-ms-overflow-style:none;}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}</style></head><body>${html}</body></html>`;
+      return `<!DOCTYPE html><html><head><meta charset="utf-8">${sdk}${theme}<style>html,body{scrollbar-width:none;-ms-overflow-style:none;}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}</style></head><body>${html}</body></html>`;
     });
 
     // ── Markdown rendering (basic) ──
@@ -180,6 +204,10 @@ export default {
 
     function onIframeLoad() {
       isLoading.value = false;
+      // Authorise this iframe's window for the agnt SDK. Re-runs on every
+      // srcdoc reload — the WeakSet auto-cleans old contentWindows.
+      const win = iframeRef.value?.contentWindow;
+      if (win) registerWidgetWindow(win);
     }
 
     // Auto-refresh
@@ -224,6 +252,7 @@ export default {
     watch(() => config.value.refresh_interval, setupAutoRefresh);
 
     return {
+      iframeRef,
       isLoading,
       error,
       widgetType,
