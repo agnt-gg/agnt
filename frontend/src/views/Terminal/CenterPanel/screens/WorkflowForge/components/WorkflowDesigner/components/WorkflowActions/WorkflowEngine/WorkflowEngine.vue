@@ -398,6 +398,15 @@ export default {
       }
     },
     async pollWorkflowStatus() {
+      // Disabled — `WorkflowDesigner.pollWorkflowStatus()` is the canonical
+      // workflow-status poller. Running both produces duplicate `/status`
+      // requests every few seconds (visible in DevTools Network) and the
+      // double cadence rebuilds the nodes array often enough to break
+      // mid-drag interactions. Kept as a stub so any caller stays harmless;
+      // delete this method once we're confident nothing depends on it.
+      return;
+
+      // eslint-disable-next-line no-unreachable
       if (!this.activeWorkflowId) {
         return;
       }
@@ -455,8 +464,10 @@ export default {
       this.pollTimeout = setTimeout(() => this.pollWorkflowStatus(), 5000);
     },
     startPolling() {
-      this.stopPolling(); // Ensure any existing polling is stopped
-      this.pollWorkflowStatus(); // Poll immediately
+      // Disabled — see note on `pollWorkflowStatus()`. WorkflowDesigner owns
+      // the poll loop; this shim stays so call sites keep compiling, but it
+      // intentionally does nothing.
+      this.stopPolling();
     },
     stopPolling() {
       if (this.pollTimeout) {

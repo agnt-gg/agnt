@@ -68,6 +68,8 @@
       @delete-node="deleteNode"
       @delete-selected-edge="deleteSelectedEdge"
       @delete-selected-node="deleteSelectedNode"
+      @node-drag-start="handleNodeDragStart"
+      @node-drag-end="handleNodeDragEnd"
     />
     <!-- <AgentChat /> -->
   </div>
@@ -146,6 +148,10 @@ export default {
       customToolsLastFetched: null,
       didPromptForNameOnce: false,
       currentNodeId: null, // Track current node to prevent unnecessary updates
+      // Set while the user is dragging a node. Polled status updates rebuild
+      // `this.nodes` with new object references, which drops Vue/Vue-Flow drag
+      // context — we skip the rebuild entirely while a drag is in progress.
+      isDragging: false,
     };
   },
   computed: {
@@ -1457,6 +1463,12 @@ export default {
     setActiveWorkflowId(id) {
       this.activeWorkflowId = id;
     },
+    handleNodeDragStart() {
+      this.isDragging = true;
+    },
+    handleNodeDragEnd() {
+      this.isDragging = false;
+    },
     async pollWorkflowStatus() {
       if (!this.activeWorkflowId) {
         console.log('No active workflow ID, stopping polling');
@@ -1466,6 +1478,14 @@ export default {
       // Check if page is visible to avoid unnecessary polling
       if (document.hidden) {
         this.pollingTimer = this.cleanup.setTimeout(() => this.pollWorkflowStatus(), 10000); // Poll every 10 seconds when hidden
+        return;
+      }
+
+      // While the user is dragging a node, skip the request entirely and
+      // reschedule. Applying the response would rebuild `this.nodes` with new
+      // object references and drop the in-flight drag context.
+      if (this.isDragging) {
+        this.pollingTimer = this.cleanup.setTimeout(() => this.pollWorkflowStatus(), 1000);
         return;
       }
 
@@ -1507,29 +1527,54 @@ export default {
         // Update the current active node
         const currentNodeId = data.currentNodeId;
 
-        // Update nodes
-        this.nodes = this.nodes.map((node) => ({
-          ...node,
-          isActive: node.id === currentNodeId,
-          error: this.nodeErrors[node.id] || null,
-          output: this.nodeOutputs[node.id] || null,
-        }));
+        // Diff-skip the nodes rebuild — only allocate new node objects when
+        // the per-node fields the poll touches (isActive / error / output)
+        // would actually change. The hot path is "nothing changed since last
+        // poll", and a no-op rebuild burns reactivity recalc + Vue Flow
+        // re-render (which can drop drag/select context on a node the user
+        // is still interacting with).
+        const nodesChanged = this.nodes.some((node) => {
+          const nextActive = node.id === currentNodeId;
+          const nextError = this.nodeErrors[node.id] || null;
+          const nextOutput = this.nodeOutputs[node.id] || null;
+          return (
+            (node.isActive || false) !== nextActive ||
+            (node.error || null) !== nextError ||
+            (node.output || null) !== nextOutput
+          );
+        });
+        if (nodesChanged) {
+          this.nodes = this.nodes.map((node) => ({
+            ...node,
+            isActive: node.id === currentNodeId,
+            error: this.nodeErrors[node.id] || null,
+            output: this.nodeOutputs[node.id] || null,
+          }));
 
-        // Update selectedNode if it exists and matches one of the updated nodes
-        if (this.selectedNode && this.selectedNodeIndex !== null) {
-          const updatedSelectedNode = this.nodes[this.selectedNodeIndex];
-          if (updatedSelectedNode && updatedSelectedNode.id === this.selectedNode.id) {
-            this.selectedNode = { ...updatedSelectedNode };
-            // Re-emit the node-selected event with updated content
-            this.$emit('node-selected', this.selectedNodeContent);
+          // Update selectedNode if it exists and matches one of the updated nodes
+          if (this.selectedNode && this.selectedNodeIndex !== null) {
+            const updatedSelectedNode = this.nodes[this.selectedNodeIndex];
+            if (updatedSelectedNode && updatedSelectedNode.id === this.selectedNode.id) {
+              this.selectedNode = { ...updatedSelectedNode };
+              // Re-emit the node-selected event with updated content
+              this.$emit('node-selected', this.selectedNodeContent);
+            }
           }
         }
 
-        // Update edges
-        this.edges = this.edges.map((edge) => ({
-          ...edge,
-          isActive: data.activeEdges && data.activeEdges.includes(edge.id),
-        }));
+        // Same diff-skip for edges. activeEdges is the only field the poll
+        // touches; rebuilding the array unconditionally re-renders every edge.
+        const activeEdgeIds = new Set(Array.isArray(data.activeEdges) ? data.activeEdges : []);
+        const edgesChanged = this.edges.some((edge) => {
+          const nextActive = activeEdgeIds.has(edge.id);
+          return (edge.isActive || false) !== nextActive;
+        });
+        if (edgesChanged) {
+          this.edges = this.edges.map((edge) => ({
+            ...edge,
+            isActive: activeEdgeIds.has(edge.id),
+          }));
+        }
 
         // Update animation state
         this.updateAnimationState(this.workflowStatus === 'running' || this.workflowStatus === 'error' || this.workflowStatus === 'listening');

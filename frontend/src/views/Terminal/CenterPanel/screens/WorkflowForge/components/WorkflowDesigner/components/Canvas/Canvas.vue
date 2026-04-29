@@ -372,6 +372,9 @@ export default {
       document.body.classList.add('no-select');
       document.addEventListener('mousemove', this.drag);
       document.addEventListener('mouseup', this.stopDragging);
+      // Tell the Designer the drag started so it can pause workflow-status
+      // polling (which rebuilds the nodes array and would drop drag context).
+      this.$emit('node-drag-start');
     },
     drag(e) {
       if (this.draggedNodeIndex === null) return;
@@ -419,6 +422,8 @@ export default {
         this.selectedEdgeIndex = null;
         this.$emit('deselect-all-edges');
       }
+      // Resume workflow-status polling now that the drag is over.
+      this.$emit('node-drag-end');
     },
     handleCanvasMouseMove(e) {
       if (this.isSelecting) {
@@ -815,6 +820,8 @@ export default {
     'delete-selected-edge',
     'delete-selected-node',
     'show-notification',
+    'node-drag-start',
+    'node-drag-end',
   ],
 };
 </script>
