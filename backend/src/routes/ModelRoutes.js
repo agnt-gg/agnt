@@ -8,6 +8,7 @@ import {
   isReasoningModel,
   getAllModelMetadataForClient,
   getModelMetadataForClient,
+  registerDynamicPricing,
   registerDynamicPricingFromModels,
 } from '../services/ai/providerConfigs.js';
 import providerHealthCheck from '../services/ai/ProviderHealthCheck.js';
@@ -82,6 +83,17 @@ async function fetchCodexModels(token) {
       }));
 
     console.log(`[ModelRoutes] Fetched ${mapped.length} Codex models: ${mapped.map((m) => m.id).join(', ')}`);
+
+    // Register contextWindow for compression. The ChatGPT Codex backend exposes
+    // a per-model context_window that doesn't match the underlying OpenAI model
+    // metadata (gpt-5.5 in particular has a smaller per-request input cap than
+    // 128k). Without this, manageContext() falls back to DEFAULT_TOKEN_LIMIT
+    // and the API rejects long inputs before compression triggers.
+    for (const m of mapped) {
+      if (m.contextWindow) {
+        registerDynamicPricing('openai-codex', m.id, { contextWindow: m.contextWindow });
+      }
+    }
 
     codexModelsCache = mapped;
     codexModelsCacheTime = now;

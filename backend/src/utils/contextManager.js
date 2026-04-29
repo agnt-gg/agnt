@@ -69,14 +69,70 @@ function estimateContentTokens(content) {
 }
 
 /**
- * Get effective token limit for a model using provider metadata.
- * Falls back to DEFAULT_TOKEN_LIMIT if metadata is unavailable.
+ * Family-prefix heuristic table — used as a cold-start fallback when no exact
+ * metadata is registered yet (chat fires before /models fetch, or a model
+ * that hasn't been added to providerConfigs.modelMetadata).
+ *
+ * The table is hand-maintained but only needs entries for *families*, not
+ * individual models — so it scales with model lineages, not releases.
+ *
+ * Conservative-by-design when wrong: under-reporting causes premature
+ * compression (safe). Over-reporting causes one user request to hit a
+ * provider error before the next /models fetch heals it (acceptable).
+ */
+const FAMILY_CONTEXT_WINDOWS = [
+  // OpenAI / Codex
+  [/^gpt-5/i, 400_000],
+  [/^gpt-4\.1/i, 1_000_000],
+  [/^gpt-4o/i, 128_000],
+  [/^o[34]/i, 200_000],
+  // Anthropic
+  [/^claude-opus-4/i, 200_000],
+  [/^claude-sonnet-4/i, 200_000],
+  [/^claude-haiku-4/i, 200_000],
+  // Gemini
+  [/^gemini-3/i, 1_048_576],
+  [/^gemini-2\.5/i, 1_048_576],
+  // xAI / Grok
+  [/^grok-4/i, 256_000],
+  [/^grok-3/i, 131_072],
+  // DeepSeek
+  [/^deepseek-(chat|reasoner|v\d)/i, 128_000],
+  // Generic Llama / Qwen / Kimi (also covers Chutes-hosted prefixed variants)
+  [/^kimi-k2/i, 256_000],
+  [/kimi-k2/i, 256_000],
+  [/^moonshotai\/kimi-k2/i, 256_000],
+  [/llama-?3\.[1-9]/i, 131_072],
+  [/qwen3/i, 131_072],
+  [/^zai-org\/glm-5/i, 200_000],
+  [/^glm-5/i, 200_000],
+];
+
+function inferContextWindowFromFamily(modelId) {
+  if (!modelId) return null;
+  for (const [pattern, ctx] of FAMILY_CONTEXT_WINDOWS) {
+    if (pattern.test(modelId)) return ctx;
+  }
+  return null;
+}
+
+/**
+ * Get effective token limit for a model.
+ * Resolution order:
+ *   1. Exact metadata via getModelMetadata (static + dynamic cache)
+ *   2. Family-prefix heuristic (cold-start fallback before /models fetch)
+ *   3. DEFAULT_TOKEN_LIMIT (last-resort fallback)
  */
 function getTokenLimit(model, provider) {
   if (provider && model) {
     const meta = getModelMetadata(provider, model);
     if (meta?.contextWindow) {
       return meta.contextWindow - RESPONSE_BUFFER;
+    }
+    const familyWindow = inferContextWindowFromFamily(model);
+    if (familyWindow) {
+      console.log(`[Context Manager] Using family-prefix heuristic for ${provider}/${model}: ${familyWindow}`);
+      return familyWindow - RESPONSE_BUFFER;
     }
   }
   return DEFAULT_TOKEN_LIMIT - RESPONSE_BUFFER;

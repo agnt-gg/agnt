@@ -1049,20 +1049,41 @@ function inferVariantModelMetadata(providerKey, modelId) {
 const dynamicPricingCache = new Map();
 
 /**
- * Register dynamic pricing for a model (from provider API response).
+ * Register dynamic metadata for a model (from provider API response).
+ *
+ * Merges field-by-field with any prior cache entry. Accepts any value that is
+ * not strictly `undefined` — including `false` and `0`. This is load-bearing:
+ * capability fields like `supportsTools: false` would be silently dropped by
+ * truthy gates (`?? null`, `metadata.x ? {...} : {}`), regressing the
+ * undefined-vs-false fix that lets unknown capability stay unknown rather
+ * than getting coerced to "explicitly unsupported."
+ *
  * @param {string} providerKey - Provider key (e.g., 'openrouter')
  * @param {string} modelId - Model ID
- * @param {Object} metadata - { inputCostPer1M, outputCostPer1M, ... }
+ * @param {Object} metadata - { contextWindow, inputCostPer1M, supportsTools, ... }
  */
 export function registerDynamicPricing(providerKey, modelId, metadata) {
-  if (metadata?.inputCostPer1M != null && metadata?.outputCostPer1M != null) {
-    dynamicPricingCache.set(`${providerKey}:${modelId}`, metadata);
+  if (!metadata) return;
+  const key = `${providerKey}:${modelId}`;
+  const prior = dynamicPricingCache.get(key) || {};
+  const merged = { ...prior };
+  for (const [k, v] of Object.entries(metadata)) {
+    if (v !== undefined) merged[k] = v; // accept false / 0; reject only undefined
   }
+  merged.dynamic = true;
+  dynamicPricingCache.set(key, merged);
 }
 
 /**
- * Register dynamic pricing from an array of fetched model objects.
- * Automatically extracts pricing from models that have it (e.g., OpenRouter format).
+ * Register dynamic metadata from an array of fetched model objects.
+ *
+ * Provider-agnostic: handles every provider's `/models` response shape that
+ * exposes a context window (under any of the known field aliases) and/or
+ * pricing (either pre-parsed numeric or OpenRouter's per-token strings).
+ * Capability fields are persisted only when strictly boolean — unknown stays
+ * unknown. Provider-specific extras (Chutes' chuteId/root/ownedBy/etc.) flow
+ * through verbatim.
+ *
  * @param {string} providerKey - Provider key
  * @param {Object[]} models - Array of model objects from fetchModels()
  */
@@ -1070,49 +1091,58 @@ export function registerDynamicPricingFromModels(providerKey, models) {
   if (!models?.length) return;
   let registered = 0;
   for (const model of models) {
-    if (model.inputCostPer1M != null && model.outputCostPer1M != null) {
-      // Capability fields: only persist explicit booleans. `=== true` would
-      // coerce undefined → false and silently disable tool calling for
-      // dynamic models whose provider data didn't expose capability arrays.
-      // The downstream guard (llmAdapters._prepareTools) intentionally fires
-      // only on `=== false`, so undefined preserves tools, false disables them.
-      const entry = {
-        inputCostPer1M: model.inputCostPer1M,
-        outputCostPer1M: model.outputCostPer1M,
-        inputCacheReadCostPer1M: model.inputCacheReadCostPer1M ?? null,
-        contextWindow: model.contextLength || 0,
-        maxOutputTokens: model.maxOutputLength || 0,
-        chuteId: model.chuteId || null,
-        root: model.root || null,
-        ownedBy: model.ownedBy || null,
-        confidentialCompute: model.confidentialCompute === true,
-        dynamic: true,
-      };
-      if (typeof model.supportsVision === 'boolean') entry.supportsVision = model.supportsVision;
-      if (typeof model.supportsTools === 'boolean') entry.supportsTools = model.supportsTools;
-      if (typeof model.reasoning === 'boolean') entry.reasoning = model.reasoning;
-      dynamicPricingCache.set(`${providerKey}:${model.id}`, entry);
-      registered++;
-      continue;
+    const ctx =
+      model.contextWindow ??
+      model.contextLength ??
+      model.context_window ??
+      model.context_length ??
+      model.inputTokenLimit ??
+      null;
+
+    // Capability fields: preserve undefined for unknown.
+    const cap = {};
+    if (typeof model.supportsTools === 'boolean') cap.supportsTools = model.supportsTools;
+    if (typeof model.reasoning === 'boolean') cap.reasoning = model.reasoning;
+    if (typeof model.supportsVision === 'boolean') cap.supportsVision = model.supportsVision;
+
+    // Pricing — present for OpenRouter (per-token strings, post-parse) and for
+    // providers like Chutes that pre-parse via their own modelTransform.
+    const pricing = {};
+    if (model.pricing?.prompt != null && model.pricing?.completion != null) {
+      pricing.inputCostPer1M = parseFloat(model.pricing.prompt) * 1_000_000;
+      pricing.outputCostPer1M = parseFloat(model.pricing.completion) * 1_000_000;
+    }
+    if (model.inputCostPer1M != null) pricing.inputCostPer1M = model.inputCostPer1M;
+    if (model.outputCostPer1M != null) pricing.outputCostPer1M = model.outputCostPer1M;
+    if (model.inputCacheReadCostPer1M != null) {
+      pricing.inputCacheReadCostPer1M = model.inputCacheReadCostPer1M;
     }
 
-    // OpenRouter format: pricing.prompt/completion are cost per token
-    if (model.pricing?.prompt != null && model.pricing?.completion != null) {
-      const inputCostPer1M = parseFloat(model.pricing.prompt) * 1_000_000;
-      const outputCostPer1M = parseFloat(model.pricing.completion) * 1_000_000;
-      if (inputCostPer1M > 0 || outputCostPer1M > 0) {
-        dynamicPricingCache.set(`${providerKey}:${model.id}`, {
-          inputCostPer1M,
-          outputCostPer1M,
-          contextWindow: model.contextLength || 0,
-          dynamic: true,
-        });
-        registered++;
-      }
+    // Provider-specific extras (Chutes' chuteId/root/ownedBy/etc.).
+    const extras = {};
+    for (const k of ['chuteId', 'root', 'ownedBy', 'quantization', 'confidentialCompute']) {
+      if (model[k] != null) extras[k] = model[k];
+    }
+
+    const hasAnything =
+      ctx ||
+      Object.keys(pricing).length ||
+      Object.keys(cap).length ||
+      Object.keys(extras).length;
+
+    if (hasAnything) {
+      registerDynamicPricing(providerKey, model.id, {
+        contextWindow: ctx || undefined,
+        maxOutputTokens: model.maxOutputLength || model.outputTokenLimit || undefined,
+        ...pricing,
+        ...cap,
+        ...extras,
+      });
+      registered++;
     }
   }
   if (registered > 0) {
-    console.log(`[Dynamic Pricing] Registered pricing for ${registered} ${providerKey} models`);
+    console.log(`[Dynamic Metadata] Registered ${registered} ${providerKey} models`);
   }
 }
 
