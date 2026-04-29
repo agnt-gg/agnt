@@ -40,6 +40,11 @@
         class="tree-context-menu"
         :style="{ top: contextMenuY + 'px', left: contextMenuX + 'px' }"
       >
+        <div class="ctx-item" @click.stop="copyPath">
+          <i :class="copyFlash ? 'fas fa-check' : 'fas fa-copy'"></i>
+          {{ copyFlash ? 'Copied!' : 'Copy Path' }}
+        </div>
+        <div class="ctx-divider"></div>
         <div class="ctx-item" @click="startRename"><i class="fas fa-pen"></i> Rename</div>
         <div class="ctx-item ctx-danger" @click="requestDelete"><i class="fas fa-trash"></i> Delete</div>
         <template v-if="item.type === 'directory'">
@@ -183,6 +188,37 @@ export default {
       emit('delete-item', { path: props.item.path, name: props.item.name, type: props.item.type });
     };
 
+    // ── Copy Path ──
+    // Briefly flips the menu item to "Copied!" before the document-click handler
+    // closes the menu, so the user gets a visual confirmation.
+    const copyFlash = ref(false);
+    const copyPath = async () => {
+      const path = props.item.path || '';
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(path);
+        } else {
+          // Fallback for contexts without the async clipboard API
+          const ta = document.createElement('textarea');
+          ta.value = path;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        copyFlash.value = true;
+        setTimeout(() => {
+          copyFlash.value = false;
+          hideContextMenu();
+        }, 600);
+      } catch (e) {
+        console.error('[TreeNode] Copy path failed:', e);
+        hideContextMenu();
+      }
+    };
+
     // ── New File/Folder in Directory ──
     const newFileInDir = () => {
       hideContextMenu();
@@ -271,6 +307,9 @@ export default {
       cancelRename,
       // Delete
       requestDelete,
+      // Copy path
+      copyPath,
+      copyFlash,
       // New in dir
       newFileInDir,
       newFolderInDir,
