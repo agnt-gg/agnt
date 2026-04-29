@@ -135,8 +135,39 @@
               </p>
             </div>
 
-            <!-- Step 5: Referral Bonus (conditional) -->
-            <div v-if="currentStep === 5 && hasReferralBonus" class="step referral-step">
+            <!-- Step 5: Workspace Folder -->
+            <div v-if="currentStep === 5" class="step workspace-step">
+              <div class="icon-circle">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </div>
+              <h2>Choose Your Workspace</h2>
+              <p class="subtitle">Where should AGNT save the files your agents create?</p>
+              <p class="description" style="margin-bottom: 24px">
+                This is the root folder for projects, generated code, and artifacts. You can change it anytime in the file tree settings.
+              </p>
+              <div class="input-group">
+                <label for="workspaceRoot">Workspace Folder</label>
+                <input
+                  id="workspaceRoot"
+                  v-model="workspaceRoot"
+                  type="text"
+                  class="workspace-path-input"
+                  :placeholder="defaultWorkspaceRoot || 'Loading default...'"
+                  spellcheck="false"
+                  @keyup.enter="nextStep"
+                />
+                <p v-if="workspaceError" class="hint error">{{ workspaceError }}</p>
+                <p v-else-if="defaultWorkspaceRoot" class="hint">
+                  Default: <code>{{ defaultWorkspaceRoot }}</code>
+                </p>
+                <p v-else class="hint">Leave blank to use the default location.</p>
+              </div>
+            </div>
+
+            <!-- Step 6: Referral Bonus (conditional) -->
+            <div v-if="currentStep === 6 && hasReferralBonus" class="step referral-step">
               <div class="celebration-icon">🎉</div>
               <h2>You've Earned a Bonus!</h2>
               <div class="bonus-display">
@@ -199,6 +230,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { PROVIDER_DISPLAY_NAMES, PROVIDER_FETCH_ACTIONS, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { encrypt } from '@/views/_utils/encryption.js';
+import { getSettings as getWorkspaceSettings, updateSettings as updateWorkspaceSettings } from '@/services/fileSystemService.js';
 
 export default {
   name: 'OnboardingModal',
@@ -247,6 +279,15 @@ export default {
     const transitionName = ref('slide-left');
     let checkTimeout = null;
 
+    // Workspace folder step state — populated from filesystemService.getSettings().
+    // We keep `initialWorkspaceRoot` so we only PUT to the backend when the user
+    // actually changed something (avoids clobbering an existing setting with the
+    // same value and writing code-settings.json unnecessarily).
+    const workspaceRoot = ref('');
+    const defaultWorkspaceRoot = ref('');
+    const initialWorkspaceRoot = ref('');
+    const workspaceError = ref('');
+
     // Provider state
     const allProviders = computed(() => store.state.appAuth.allProviders || []);
     const connectedApps = computed(() => store.state.appAuth.connectedApps || []);
@@ -279,12 +320,32 @@ export default {
 
     // Computed
     const totalSteps = computed(() => {
-      let steps = 5; // Base steps: Welcome, Theme, Profile, Provider, Ready
+      // Base steps: Welcome, Theme, Profile, Provider, Workspace, Ready
+      let steps = 6;
       if (hasReferralBonus.value) steps++; // Add referral bonus step
       return steps;
     });
     const finalStep = computed(() => totalSteps.value);
     const referrerName = ref(null);
+
+    // Persists the workspace root if the user changed it. Returns true on
+    // success (or no-op), false if validation/network failed so callers can
+    // decide whether to advance the step.
+    const saveWorkspaceIfChanged = async () => {
+      workspaceError.value = '';
+      const trimmed = workspaceRoot.value.trim();
+      // Empty input means "stick with default" — no PUT needed.
+      if (!trimmed) return true;
+      if (trimmed === initialWorkspaceRoot.value) return true;
+      try {
+        await updateWorkspaceSettings(trimmed);
+        initialWorkspaceRoot.value = trimmed;
+        return true;
+      } catch (err) {
+        workspaceError.value = err?.message || 'Failed to save workspace folder';
+        return false;
+      }
+    };
 
     // Methods
     const nextStep = async () => {
@@ -292,6 +353,12 @@ export default {
       if (currentStep.value === 4 && !hasAnyProviderConnected.value) {
         await showAlert('Provider Required', 'Please connect at least one AI provider to continue. AGNT needs an AI provider to power chat, agents, and workflows.');
         return;
+      }
+      // On workspace step, persist any changes before moving on so the user
+      // sees the same root in the file tree once onboarding finishes.
+      if (currentStep.value === 5) {
+        const ok = await saveWorkspaceIfChanged();
+        if (!ok) return;
       }
       if (currentStep.value < totalSteps.value) {
         transitionName.value = 'slide-left';
@@ -306,12 +373,17 @@ export default {
       }
     };
 
-    const complete = () => {
+    const complete = async () => {
       // Save pseudonym if changed
       if (pseudonym.value && pseudonym.value !== userPseudonym.value) {
         // TODO: Save pseudonym to backend
         console.log('Saving pseudonym:', pseudonym.value);
       }
+
+      // Final safety net — if the user reached the end without ever advancing
+      // past the workspace step (e.g., back-and-forth navigation), still
+      // persist whatever they typed.
+      await saveWorkspaceIfChanged();
 
       emit('complete', 'ChatScreen');
     };
@@ -716,6 +788,18 @@ export default {
         }
       }
 
+      // Fetch workspace settings so the workspace step shows the user's
+      // current root (or the platform default if they've never changed it).
+      try {
+        const wsSettings = await getWorkspaceSettings();
+        defaultWorkspaceRoot.value = wsSettings.defaultRoot || '';
+        const current = wsSettings.workspaceRoot || '';
+        workspaceRoot.value = current;
+        initialWorkspaceRoot.value = current;
+      } catch (err) {
+        console.warn('Failed to load workspace settings:', err);
+      }
+
       // ALWAYS fetch pseudonym to ensure it's loaded
       await store.dispatch('userAuth/fetchPseudonym');
 
@@ -752,6 +836,9 @@ export default {
       aiProviders,
       currentTheme,
       availableThemes,
+      workspaceRoot,
+      defaultWorkspaceRoot,
+      workspaceError,
       selectTheme,
       nextStep,
       prevStep,
@@ -981,6 +1068,18 @@ export default {
 .hint.error {
   color: var(--color-red);
   opacity: 1;
+}
+
+.hint code {
+  background: var(--color-darker-1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.92em;
+}
+
+.workspace-path-input {
+  font-family: var(--font-family-mono, monospace) !important;
+  font-size: 0.95em !important;
 }
 
 /* Theme Step */
