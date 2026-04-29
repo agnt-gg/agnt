@@ -325,6 +325,126 @@ describe('Chutes E2EE Offline Transport', () => {
   });
 });
 
+describe('ChutesE2EECrypto — fail-fast on auth failure', () => {
+  it('chachaDecrypt: tampered ciphertext throws explicit Chutes E2EE error', async () => {
+    const { chachaEncrypt, chachaDecrypt } = await import(
+      '../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'
+    );
+    const { randomBytes } = await import('crypto');
+
+    const key = randomBytes(32);
+    const nonce = randomBytes(12);
+    const plaintext = Buffer.from('top secret payload');
+    const { ciphertext, tag } = chachaEncrypt(key, nonce, plaintext);
+
+    // Tamper a ciphertext byte
+    const tampered = Buffer.from(ciphertext);
+    tampered[0] ^= 0xff;
+
+    assert.throws(
+      () => chachaDecrypt(key, nonce, tampered, tag),
+      /Chutes E2EE authentication failed/,
+      'tampered ciphertext must throw the explicit auth-failure error',
+    );
+  });
+
+  it('chachaDecrypt: tampered tag throws explicit Chutes E2EE error', async () => {
+    const { chachaEncrypt, chachaDecrypt } = await import(
+      '../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'
+    );
+    const { randomBytes } = await import('crypto');
+
+    const key = randomBytes(32);
+    const nonce = randomBytes(12);
+    const { ciphertext, tag } = chachaEncrypt(key, nonce, Buffer.from('hello'));
+
+    const tamperedTag = Buffer.from(tag);
+    tamperedTag[tamperedTag.length - 1] ^= 0x01;
+
+    assert.throws(
+      () => chachaDecrypt(key, nonce, ciphertext, tamperedTag),
+      /Chutes E2EE authentication failed/,
+    );
+  });
+
+  it('chachaDecrypt: round-trips clean plaintext unchanged', async () => {
+    const { chachaEncrypt, chachaDecrypt } = await import(
+      '../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'
+    );
+    const { randomBytes } = await import('crypto');
+
+    const key = randomBytes(32);
+    const nonce = randomBytes(12);
+    const plaintext = Buffer.from('legitimate payload');
+    const { ciphertext, tag } = chachaEncrypt(key, nonce, plaintext);
+    const recovered = chachaDecrypt(key, nonce, ciphertext, tag);
+    assert.strictEqual(recovered.toString('utf-8'), 'legitimate payload');
+  });
+
+  it('decryptStreamChunk: tampered chunk throws Chutes E2EE error (not gzip/buffer error)', async () => {
+    const { chachaEncrypt, decryptStreamChunk } = await import(
+      '../../backend/src/services/ai/chutes/ChutesE2EECrypto.js'
+    );
+    const { randomBytes } = await import('crypto');
+
+    const streamKey = randomBytes(32);
+    const nonce = randomBytes(12);
+    const { ciphertext, tag } = chachaEncrypt(streamKey, nonce, Buffer.from('data: chunk\n\n'));
+    const goodChunk = Buffer.concat([nonce, ciphertext, tag]);
+
+    // Tamper the ciphertext region
+    const tampered = Buffer.from(goodChunk);
+    tampered[12] ^= 0x01; // first byte of ciphertext
+
+    assert.throws(
+      () => decryptStreamChunk(tampered.toString('base64'), streamKey),
+      /Chutes E2EE authentication failed/,
+      'streaming chunk must surface E2EE auth failure, not gzip/buffer coercion error',
+    );
+  });
+
+  it('decryptResponse: tampered response blob throws Chutes E2EE error', async () => {
+    const {
+      buildE2EERequest,
+      decryptResponse,
+      generateKeyPair,
+      decapsulate,
+      deriveKey,
+      chachaEncrypt,
+    } = await import('../../backend/src/services/ai/chutes/ChutesE2EECrypto.js');
+    const { randomBytes } = await import('crypto');
+    const { gzipSync } = await import('zlib');
+
+    // Build a real round-trip first
+    const { pk: instancePk, sk: instanceSk } = await generateKeyPair();
+    const { responseSk } = await buildE2EERequest(instancePk.toString('base64'), { hello: 'world' });
+
+    // Server side: encrypt a response back to responseSk's pubkey would normally
+    // happen on the provider. Simulate by encapsulating against the response pk.
+    // Easier: just build a malformed blob — the MLKEM ciphertext will validate
+    // but the symmetric tag will fail. Use a real-shape blob with corrupted tail.
+    const { encapsulate } = await import('../../backend/src/services/ai/chutes/ChutesE2EECrypto.js');
+    const responsePk = instancePk; // placeholder; we just need a valid encapsulation
+    const { ct: mlkemCt, ss: sharedSecret } = await encapsulate(responsePk);
+    const symKey = deriveKey(sharedSecret, mlkemCt, Buffer.from('e2e-resp-v1'));
+    const nonce = randomBytes(12);
+    const compressed = gzipSync(Buffer.from('{"valid":"json"}'));
+    const { ciphertext, tag } = chachaEncrypt(symKey, nonce, compressed);
+
+    // Tamper the tag
+    const badTag = Buffer.from(tag);
+    badTag[0] ^= 0xff;
+
+    const blob = Buffer.concat([mlkemCt, nonce, ciphertext, badTag]);
+
+    // Use the matching secret key (instanceSk corresponds to instancePk used as responsePk)
+    await assert.rejects(
+      decryptResponse(blob, instanceSk),
+      /Chutes E2EE authentication failed/,
+    );
+  });
+});
+
 describe('ChutesDiscoveryManager.getNonce — concurrency', () => {
   it('returns distinct nonces to concurrent callers for the same chute', async () => {
     const { default: ChutesDiscoveryManager } = await import(

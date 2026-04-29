@@ -68,15 +68,28 @@ export function chachaEncrypt(key, nonce, plaintext) {
 /**
  * Decrypt ChaCha20-Poly1305 ciphertext.
  *
+ * @stablelib/chacha20poly1305's `open()` returns null if the Poly1305 tag
+ * doesn't authenticate. Returning that null lets it propagate into
+ * gunzipSync() / Buffer.from() and surface as a confusing decompression or
+ * type error several frames away. Fail fast with an explicit protocol
+ * error so callers can distinguish E2EE auth failures from downstream
+ * processing bugs. The message intentionally carries no ciphertext, key,
+ * or nonce bytes.
+ *
  * @param {Buffer} key — 32 bytes
  * @param {Buffer} nonce — 12 bytes
  * @param {Buffer} ciphertext — encrypted data (without tag)
  * @param {Buffer} tag — 16-byte Poly1305 tag
  * @returns {Buffer} plaintext
+ * @throws {Error} 'Chutes E2EE authentication failed while decrypting payload'
  */
 export function chachaDecrypt(key, nonce, ciphertext, tag) {
   const cipher = new ChaCha20Poly1305(key);
-  return cipher.open(nonce, Buffer.concat([ciphertext, tag]), null);
+  const plaintext = cipher.open(nonce, Buffer.concat([ciphertext, tag]), null);
+  if (!plaintext) {
+    throw new Error('Chutes E2EE authentication failed while decrypting payload');
+  }
+  return Buffer.from(plaintext);
 }
 
 // ---------------------------------------------------------------------------
