@@ -315,16 +315,20 @@ export default {
 
     function applyPendingAutosave() {
       if (!pendingAutosave) return;
-      const { savedId, def } = pendingAutosave;
+      const { savedId } = pendingAutosave;
       pendingAutosave = null;
 
+      // ADD_DEFINITION already happened on the widget-autosaved event so the
+      // widget is visible in WidgetManager immediately. Here we only handle
+      // the deferred chat-remount-causing operations: switching the active
+      // widget id and migrating the chat channel key. Those are deferred so
+      // the chat container doesn't remount mid-response and lose the stream.
       const existing = store.getters['widgetDefinitions/activeDefinition'];
       if (!existing || existing.id !== savedId) {
         store.commit('chatUnified/MIGRATE_CHANNEL_KEY', {
           fromChannelKey: 'widget:widget-forge',
           toChannelKey: `widget:${savedId}`,
         });
-        store.commit('widgetDefinitions/ADD_DEFINITION', def);
         store.dispatch('widgetDefinitions/setActiveDefinition', savedId);
       }
     }
@@ -358,25 +362,36 @@ export default {
           }
           break;
         case 'widget-autosaved': {
-          // Stash for later — don't switch widgetId mid-stream or the chat remounts and loses the response
+          // The backend has already persisted the widget. Commit it to the
+          // definitions list IMMEDIATELY so it shows up in the WidgetManager
+          // and elsewhere — don't wait for widget-stream-done. (If the stream
+          // errors or the user navigates away before 'done' fires, deferring
+          // here would mean the widget exists on the server but never lands
+          // in local Vuex.) The active-definition switch + chat-channel
+          // migration are still deferred to widget-stream-done because they
+          // remount the chat container mid-response.
           const savedId = eventData?.id;
           if (savedId && savedId !== 'widget-forge') {
-            pendingAutosave = {
-              savedId,
-              def: {
-                id: savedId,
-                name: form.name || eventData?.widgetData?.name || '',
-                description: form.description || eventData?.widgetData?.description || '',
-                icon: form.icon || 'fas fa-puzzle-piece',
-                category: form.category || 'custom',
-                widget_type: form.widget_type || 'html',
-                source_code: form.source_code || '',
-                config: form.config || {},
-                default_size: form.default_size || { cols: 4, rows: 3 },
-                min_size: form.min_size || { cols: 2, rows: 2 },
-                useThemeStyles: form.useThemeStyles !== false,
-              },
+            const def = {
+              id: savedId,
+              name: form.name || eventData?.widgetData?.name || '',
+              description: form.description || eventData?.widgetData?.description || '',
+              icon: form.icon || 'fas fa-puzzle-piece',
+              category: form.category || 'custom',
+              widget_type: form.widget_type || 'html',
+              source_code: form.source_code || '',
+              config: form.config || {},
+              default_size: form.default_size || { cols: 4, rows: 3 },
+              min_size: form.min_size || { cols: 2, rows: 2 },
+              useThemeStyles: form.useThemeStyles !== false,
             };
+            const alreadyInStore = store.getters['widgetDefinitions/getDefinitionById'](savedId);
+            if (alreadyInStore) {
+              store.commit('widgetDefinitions/UPDATE_DEFINITION', { id: savedId, updates: def });
+            } else {
+              store.commit('widgetDefinitions/ADD_DEFINITION', def);
+            }
+            pendingAutosave = { savedId, def };
           }
           break;
         }

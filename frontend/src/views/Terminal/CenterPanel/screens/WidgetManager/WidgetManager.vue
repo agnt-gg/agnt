@@ -298,11 +298,11 @@ export default {
     }));
 
     onMounted(async () => {
-      // Definitions are fetched at startup (store initializeStore Phase 2).
-      // If somehow not yet loaded (e.g. race condition), fetch now as fallback.
-      if (!store.getters['widgetDefinitions/isLoaded']) {
-        await store.dispatch('widgetDefinitions/fetchDefinitions');
-      }
+      // Always refetch on mount so widgets created via chat (whose Vuex
+      // commits depend on widget-stream-done firing) or in another tab show
+      // up here even when our local store missed the update. The startup
+      // prefetch covers the cold-start case; this covers everything else.
+      await store.dispatch('widgetDefinitions/fetchDefinitions');
     });
 
     const customDefinitions = computed(() => store.getters['widgetDefinitions/allDefinitions']);
