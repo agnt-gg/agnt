@@ -21,9 +21,13 @@ class ParameterResolver {
     return resolved;
   }
   resolveTemplate(template) {
-    console.log('Resolving template:', template);
-    console.log('Current trigger data:', JSON.stringify(this.workflowEngine.currentTriggerData));
-    
+    // Per-parameter debug logs disabled — they fire once per template per
+    // parameter per workflow tick, and on a many-param node a single timer
+    // trigger fire produces dozens of lines, drowning every other useful
+    // log. Re-enable temporarily if you're debugging trigger-data shape.
+    // console.log('Resolving template:', template);
+    // console.log('Current trigger data:', JSON.stringify(this.workflowEngine.currentTriggerData));
+
     const templateString = String(template);
   
     // return templateString.replace(/{{(.*?)}}/g, (match, p1) => {
