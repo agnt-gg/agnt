@@ -7,18 +7,26 @@
  * orchestrator can call it directly — no more 3-step `mcp_client` operation
  * ceremony, no more "operation/action/serverName/toolName/toolArgs" dance.
  *
- * Pipeline:
- *   1. discoverAll() — merge servers from every config source
- *      (env, AGNT user-data mcp.json, ./mcp.json, ~/.config/mcp/mcp.json,
- *      VSCode workspace, MCP_SERVERS env, .well-known endpoints)
- *   2. for each server: spawn / connect, run MCP `initialize`, call
- *      `tools/list` — short-lived connection, closed immediately
- *   3. cache the resulting schemas + UI categories + reverse-lookup map
- *      (5-minute TTL, manual invalidate() on MCP page writes)
+ * Schema source — disk-backed cache:
+ *   Tool schemas (name + description + inputSchema per server) are persisted
+ *   at PathManager.getPath('mcp-schema-cache.json') and loaded synchronously
+ *   at module import. `build()` returns from the in-memory cache without ever
+ *   spawning a server. The chat hot path therefore costs ZERO MCP server
+ *   spawns when the LLM doesn't actually invoke any MCP tool — which is the
+ *   common case.
  *
- * On tool dispatch the orchestrator calls `executeTool(mcpName, args)` which
- * resolves the namespaced name back to (serverConfig, originalToolName) and
- * runs `MCPClient.callTool()`.
+ *   The cache is refreshed via `refreshSchemas()`, which is the only method
+ *   that calls `tools/list` against the live servers (and therefore spawns
+ *   stdio processes / opens HTTP connections). `refreshSchemas()` runs in
+ *   exactly three places:
+ *     1. Background, after server boot, ONLY when no cache file exists yet.
+ *     2. When the user saves an MCP config change (via MCPService → invalidate).
+ *     3. When the user clicks "Refresh schemas" / "Test" on the MCP page.
+ *
+ * Tool execution — fully lazy:
+ *   `executeTool()` spawns the relevant server, runs `initialize` + `callTool`,
+ *   and closes the connection. One spawn per tool call. We don't pool — by
+ *   design — so MCP servers only run when their tools are being used.
  *
  * Why namespaced rather than flat tool names?
  *   - Two MCP servers can legitimately expose tools with the same short name
@@ -27,17 +35,27 @@
  *     more specific than a bare `search_pages` from a registry of 120+ tools.
  *
  * Failure isolation:
- *   - If discovery fails, no MCP tools are exposed (chat keeps working).
- *   - If listTools fails for one server, other servers still surface.
+ *   - If the disk cache is corrupt, we fall back to an empty surface and log.
+ *     Chat keeps working without MCP tools.
+ *   - During refresh, per-server failures don't fail the whole refresh —
+ *     working servers still surface, dead servers are skipped (and remembered
+ *     so we can warn at the UI layer).
  */
 
+import fs from 'fs';
+import path from 'path';
 import MCPDiscovery from '../tools/library/mcp/MCPDiscovery.js';
 import MCPClient from '../tools/library/mcp/MCPClient.js';
+import PathManager from '../utils/PathManager.js';
 
 const TOOL_NAME_PREFIX = 'mcp__';
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const INITIALIZE_TIMEOUT_MS = 8000; // STDIO spawn + MCP handshake budget
-const LIST_TOOLS_TIMEOUT_MS = 5000;
+// Lowered from 8s to 3s. A healthy MCP server initializes in <500ms; the
+// extra time only helps *dead* servers that are going to fail anyway.
+const INITIALIZE_TIMEOUT_MS = 3000;
+const LIST_TOOLS_TIMEOUT_MS = 3000;
+
+const SCHEMA_CACHE_FILE = PathManager.getPath('mcp-schema-cache.json');
+const SCHEMA_CACHE_VERSION = 1;
 
 /**
  * Sanitize a name segment for OpenAI/Anthropic tool-function-name compliance.
@@ -56,80 +74,70 @@ function isMCPToolName(name) {
 class MCPToolService {
   constructor() {
     this.discovery = new MCPDiscovery();
-    this._cache = null; // { schemas, categories, byMcpName, cachedAt }
-    this._buildPromise = null;
+    // In-memory cache. Populated synchronously at import time from
+    // SCHEMA_CACHE_FILE if it exists, otherwise an empty surface that
+    // refreshSchemas() will fill in on first call.
+    this._cache = this._readCacheFromDisk() || this._emptyCache();
+    // De-duplicates concurrent refreshSchemas() calls.
+    this._refreshPromise = null;
+  }
+
+  _emptyCache() {
+    return {
+      schemas: [],
+      categories: [],
+      byMcpName: new Map(),
+      cachedAt: 0,
+      hasFile: false,
+    };
   }
 
   /**
-   * Build the full MCP tool surface (or return the cached copy if fresh).
-   * Concurrent callers share a single in-flight build promise.
+   * Read the persisted schema cache. Synchronous so the constructor can
+   * populate `_cache` before the first call to `build()` / `getSchemas()`.
+   * Returns null if the file is missing or corrupt — caller treats that as
+   * "no cache yet, refresh in the background."
    */
-  async build() {
-    if (this._cache && Date.now() - this._cache.cachedAt < CACHE_TTL_MS) {
-      return this._cache;
-    }
-    if (this._buildPromise) return this._buildPromise;
+  _readCacheFromDisk() {
+    try {
+      if (!fs.existsSync(SCHEMA_CACHE_FILE)) return null;
+      const raw = fs.readFileSync(SCHEMA_CACHE_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed?.version !== SCHEMA_CACHE_VERSION || !Array.isArray(parsed?.entries)) {
+        console.warn('[MCPToolService] Schema cache file present but unreadable; ignoring');
+        return null;
+      }
 
-    this._buildPromise = this._build().finally(() => {
-      this._buildPromise = null;
-    });
-    return this._buildPromise;
+      // Reconstruct the {schemas, categories, byMcpName} shape from the
+      // serialized per-server entries. We persist per-server because that's
+      // the natural unit of refresh — schemas/categories/byMcpName are all
+      // derived from it.
+      return this._buildCacheFromEntries(parsed.entries, parsed.cachedAt || 0);
+    } catch (err) {
+      console.warn('[MCPToolService] Failed to read schema cache:', err.message);
+      return null;
+    }
   }
 
-  async _build() {
+  /**
+   * Take the persisted form (an array of `{ serverConfig, tools }` entries)
+   * and produce the in-memory cache shape. Used by both _readCacheFromDisk
+   * and refreshSchemas so the disk format and the runtime shape stay in sync.
+   */
+  _buildCacheFromEntries(entries, cachedAt) {
     const schemas = [];
     const categories = [];
-    const byMcpName = new Map(); // mcpName -> { server: serverConfig, originalToolName }
+    const byMcpName = new Map();
 
-    let servers;
-    try {
-      servers = await this.discovery.discoverAll();
-    } catch (err) {
-      console.warn('[MCPToolService] Discovery failed:', err.message);
-      this._cache = { schemas: [], categories: [], byMcpName, cachedAt: Date.now() };
-      return this._cache;
-    }
-
-    if (!Array.isArray(servers) || servers.length === 0) {
-      this._cache = { schemas: [], categories: [], byMcpName, cachedAt: Date.now() };
-      return this._cache;
-    }
-
-    // Discover tools per server in parallel — one slow/dead server shouldn't
-    // block the others. We tolerate per-server failures (skip the server,
-    // keep the rest).
-    const perServerResults = await Promise.all(
-      servers.map(async (serverConfig) => {
-        try {
-          const tools = await this._listToolsForServer(serverConfig);
-          return { serverConfig, tools };
-        } catch (err) {
-          console.warn(
-            `[MCPToolService] listTools failed for ${serverConfig.name}:`,
-            err.message,
-          );
-          return { serverConfig, tools: [] };
-        }
-      }),
-    );
-
-    for (const { serverConfig, tools } of perServerResults) {
-      if (tools.length === 0) continue;
+    for (const entry of entries) {
+      const { serverConfig, tools } = entry || {};
+      if (!serverConfig || !Array.isArray(tools) || tools.length === 0) continue;
 
       const categoryTools = [];
       for (const t of tools) {
         if (!t || !t.name) continue;
         const mcpName = `${TOOL_NAME_PREFIX}${sanitize(serverConfig.name)}__${sanitize(t.name)}`;
-
-        // Guard: if two MCP tools sanitize to the same name (rare — e.g. a
-        // server with literal underscores in its name), keep the first one
-        // discovered and warn. The user can rename one to disambiguate.
-        if (byMcpName.has(mcpName)) {
-          console.warn(
-            `[MCPToolService] Sanitized name collision for "${mcpName}" — keeping first registration`,
-          );
-          continue;
-        }
+        if (byMcpName.has(mcpName)) continue; // dedupe colliding sanitized names
 
         const schema = {
           type: 'function',
@@ -141,21 +149,12 @@ class MCPToolService {
               : { type: 'object', properties: {} },
           },
         };
-
         schemas.push(schema);
-        categoryTools.push({
-          name: mcpName,
-          description: schema.function.description,
-        });
-        byMcpName.set(mcpName, {
-          server: serverConfig,
-          originalToolName: t.name,
-        });
+        categoryTools.push({ name: mcpName, description: schema.function.description });
+        byMcpName.set(mcpName, { server: serverConfig, originalToolName: t.name });
       }
 
       if (categoryTools.length > 0) {
-        // Subcategory under the parent "MCP" group — surfaces just the
-        // server name (no `MCP:` prefix); the prefix lives on the parent.
         categories.push({
           id: `mcp:${serverConfig.name}`,
           name: serverConfig.name,
@@ -166,11 +165,114 @@ class MCPToolService {
       }
     }
 
-    this._cache = { schemas, categories, byMcpName, cachedAt: Date.now() };
-    console.log(
-      `[MCPToolService] Built ${schemas.length} MCP tool schemas across ${categories.length} servers`,
-    );
+    return { schemas, categories, byMcpName, cachedAt, hasFile: true };
+  }
+
+  /**
+   * Persist the cache to disk. Best-effort — failures are logged but don't
+   * fail the refresh; the in-memory cache stays valid for the rest of the
+   * process lifetime even if the write fails.
+   */
+  _writeCacheToDisk(entries, cachedAt) {
+    try {
+      const dir = path.dirname(SCHEMA_CACHE_FILE);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const payload = {
+        version: SCHEMA_CACHE_VERSION,
+        cachedAt,
+        entries,
+      };
+      fs.writeFileSync(SCHEMA_CACHE_FILE, JSON.stringify(payload, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn('[MCPToolService] Failed to write schema cache:', err.message);
+    }
+  }
+
+  /**
+   * Returns the in-memory cache. NEVER spawns servers. The chat hot path
+   * (orchestrator building its tool list) calls this on every request and
+   * must remain free of side effects.
+   *
+   * If the cache hasn't been built yet (first run, no cache file), kick off
+   * a background refresh and return the empty surface for now — better to
+   * have the first chat after install ship with no MCP tools than to block
+   * it on N spawn timeouts.
+   */
+  async build() {
+    if (!this._cache.hasFile && !this._refreshPromise) {
+      // Fire-and-forget — we don't await. Chat tool-list building shouldn't
+      // block on MCP server discovery.
+      this.refreshSchemas().catch((err) => {
+        console.warn('[MCPToolService] First-run refresh failed:', err.message);
+      });
+    }
     return this._cache;
+  }
+
+  /**
+   * Force a full re-discovery: spawn each configured MCP server, call
+   * `tools/list`, write the result to disk. Concurrent callers share the
+   * same in-flight promise.
+   *
+   * Call sites:
+   *   - server.js boot path, only when cache file is missing
+   *   - MCPService.writeMCPConfig (after the user changes their MCP config)
+   *   - MCP page "Refresh" / "Test" buttons (via a dedicated route)
+   *
+   * Returns the refreshed cache.
+   */
+  async refreshSchemas() {
+    if (this._refreshPromise) return this._refreshPromise;
+
+    this._refreshPromise = (async () => {
+      let servers;
+      try {
+        servers = await this.discovery.discoverAll();
+      } catch (err) {
+        console.warn('[MCPToolService] Discovery failed:', err.message);
+        // Persist an empty cache so we don't keep retrying the failing
+        // discovery on every chat call.
+        this._cache = this._buildCacheFromEntries([], Date.now());
+        this._writeCacheToDisk([], Date.now());
+        return this._cache;
+      }
+
+      if (!Array.isArray(servers) || servers.length === 0) {
+        this._cache = this._buildCacheFromEntries([], Date.now());
+        this._writeCacheToDisk([], Date.now());
+        return this._cache;
+      }
+
+      // Parallel per-server discovery. One slow/dead server doesn't block
+      // the others; per-server failures just produce an empty tool list
+      // for that server.
+      const perServerResults = await Promise.all(
+        servers.map(async (serverConfig) => {
+          try {
+            const tools = await this._listToolsForServer(serverConfig);
+            return { serverConfig, tools };
+          } catch (err) {
+            console.warn(
+              `[MCPToolService] listTools failed for ${serverConfig.name}:`,
+              err.message,
+            );
+            return { serverConfig, tools: [] };
+          }
+        }),
+      );
+
+      const cachedAt = Date.now();
+      this._cache = this._buildCacheFromEntries(perServerResults, cachedAt);
+      this._writeCacheToDisk(perServerResults, cachedAt);
+      console.log(
+        `[MCPToolService] Refreshed: ${this._cache.schemas.length} tool schemas across ${this._cache.categories.length} servers`,
+      );
+      return this._cache;
+    })().finally(() => {
+      this._refreshPromise = null;
+    });
+
+    return this._refreshPromise;
   }
 
   async _listToolsForServer(serverConfig) {
@@ -242,8 +344,6 @@ class MCPToolService {
     const subcategories = built.categories;
     if (!subcategories || subcategories.length === 0) return [];
 
-    // Total tool count across all servers — surfaced on the parent header
-    // badge so users see e.g. "MCP 25/25" without expanding.
     let totalTools = 0;
     for (const sc of subcategories) {
       totalTools += (sc.tools || []).length;
@@ -255,7 +355,7 @@ class MCPToolService {
         name: 'MCP',
         description: `Tools from configured MCP (Model Context Protocol) servers — ${subcategories.length} server${subcategories.length === 1 ? '' : 's'}, ${totalTools} tool${totalTools === 1 ? '' : 's'}.`,
         locked: false,
-        tools: [], // No tools directly under the parent — they live in subcategories.
+        tools: [],
         subcategories,
       },
     ];
@@ -273,15 +373,15 @@ class MCPToolService {
   }
 
   /**
-   * Execute an MCP tool by its namespaced name. Connection is short-lived
-   * (spawn → initialize → callTool → close) — fine for occasional calls,
-   * but if a tool is called many times in a row this becomes the bottleneck.
-   * Connection pooling is a follow-up.
+   * Execute an MCP tool by its namespaced name. Connection is short-lived by
+   * design — spawn → initialize → callTool → close. We deliberately do NOT
+   * pool: an MCP server should only be running while one of its tools is
+   * being used. The user's intent is "lazy spawn, no daemons."
    */
   async executeTool(mcpName, args) {
     const resolved = await this.resolve(mcpName);
     if (!resolved) {
-      throw new Error(`MCP tool "${mcpName}" not found. Available servers may have changed — try listing tools again.`);
+      throw new Error(`MCP tool "${mcpName}" not found. The schema cache may be stale — try clicking Refresh on the MCP page.`);
     }
     const { server, originalToolName } = resolved;
     const client = this._buildClient(server);
@@ -294,11 +394,20 @@ class MCPToolService {
     }
   }
 
-  /** Force a rebuild of the MCP tool surface on the next call. */
+  /**
+   * Trigger a fresh discovery on the next opportunity. Called from the MCP
+   * config writer (MCPService) so a user adding/editing/removing a server
+   * sees the change reflected the next time they look at the tool selector.
+   *
+   * Runs the refresh in the background — callers don't await. The currently-
+   * cached schemas remain visible until the refresh completes; only after
+   * a successful refresh does `_cache` flip to the new surface.
+   */
   invalidate() {
-    this._cache = null;
-    this._buildPromise = null;
-    console.log('[MCPToolService] Cache invalidated — next call will re-discover');
+    console.log('[MCPToolService] Cache invalidated — refreshing in background');
+    this.refreshSchemas().catch((err) => {
+      console.warn('[MCPToolService] Background refresh after invalidate failed:', err.message);
+    });
   }
 }
 
