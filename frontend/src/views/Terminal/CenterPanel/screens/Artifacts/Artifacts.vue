@@ -250,6 +250,7 @@ import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, saveFile } from '@/services/fileSystemService.js';
 import { API_CONFIG } from '@/tt.config.js';
+import { fileUrlToLocalFileUrl } from '@/utils/localFileUrl.js';
 
 // Lazy-loaded heavy library caches
 let _Chart = null;
@@ -1164,6 +1165,11 @@ export default {
       if (!ref) return ref;
       const trimmed = ref.trim();
       if (!trimmed) return ref;
+      // Absolute file:// URLs are real filesystem paths — possibly outside the
+      // workspace (e.g. %APPDATA%/AGNT/projects/...). Route them through the
+      // unscoped /api/local-file/ endpoint instead of /filesystem/raw, which
+      // is workspace-only.
+      if (/^file:\/\//i.test(trimmed)) return fileUrlToLocalFileUrl(trimmed);
       if (/^(https?:|\/\/|data:|blob:|javascript:|mailto:|tel:|about:|#)/i.test(trimmed)) return ref;
       const rel = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
       const parts = `${dir}/${rel}`.split('/');

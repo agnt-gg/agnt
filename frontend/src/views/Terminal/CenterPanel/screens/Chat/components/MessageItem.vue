@@ -778,6 +778,45 @@ export default {
     const fileUrlToLocalFileUrl = (val) => sharedFileUrlToLocalFileUrl(val);
     const rewriteLocalFileURLsInHTML = (html, opts) => sharedRewriteLocalFileURLsInHTML(html, opts);
 
+    // Skip URLs that already resolve on their own (absolute, protocol-relative,
+    // data/blob/etc.). Anything else is treated as a relative asset path that
+    // should be resolved against the message's known base directory.
+    const isAlreadyResolvedURL = (url) => {
+      if (!url) return true;
+      const t = String(url).trim();
+      if (!t) return true;
+      return /^(https?:|\/\/|data:|blob:|javascript:|mailto:|tel:|about:|cid:|file:|agnt-file:|#)/i.test(t);
+    };
+
+    // Resolve a relative asset reference (e.g. "../images/x.jpg") against an
+    // absolute filesystem dir and return a /api/local-file/<abs-path> URL the
+    // backend can stream. Mirrors the rewriting Artifacts.vue does for srcdoc
+    // iframes — same idea, different endpoint (local-file is unscoped, so it
+    // also works for files outside the active workspace).
+    const resolveRelativeAssetURL = (ref, baseDir) => {
+      const dir = String(baseDir || '').replace(/\\/g, '/').replace(/\/+$/, '');
+      if (!dir) return ref;
+      const trimmed = String(ref).trim();
+      const rel = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+      const isWinDir = /^[a-zA-Z]:/.test(dir);
+      const isPosixDir = dir.startsWith('/');
+      const segs = `${dir}/${rel}`.split('/');
+      const stack = [];
+      let prefix = '';
+      if (isWinDir) {
+        prefix = segs.shift();
+      } else if (isPosixDir) {
+        segs.shift();
+      }
+      for (const p of segs) {
+        if (p === '' || p === '.') continue;
+        if (p === '..') stack.pop();
+        else stack.push(p);
+      }
+      const joined = isWinDir ? `${prefix}/${stack.join('/')}` : `/${stack.join('/')}`;
+      return `${API_CONFIG.BASE_URL}/local-file/${encodeURI(joined)}`;
+    };
+
     // Pair a ```html code block with a file the LLM just READ from disk, so we
     // can render the block via iframe.src pointing at the real file. The
     // browser then uses the file's URL as the iframe's base, and every asset
@@ -1519,6 +1558,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
     // Helper function to add target="_blank" to all links
     const addTargetBlankToLinks = (html) => {
+      // When the message read a file from disk, resolve relative asset paths
+      // (e.g. ../images/x.jpg) against that file's directory — same behavior
+      // as the artifacts preview iframe, just inline in the chat.
+      const inlineBaseDir = getBaseDirFromToolCalls();
       // Use DOMPurify hook to add target="_blank" and rel="noopener noreferrer" to all anchor tags
       DOMPurify.addHook('afterSanitizeAttributes', (node) => {
         // Set all elements owning target to target=_blank
@@ -1533,8 +1576,30 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         // real filesystem path, not a dropped query string.
         for (const attr of ['src', 'href', 'poster']) {
           const val = node.getAttribute && node.getAttribute(attr);
-          if (val && /^file:\/\//i.test(val)) {
+          if (!val) continue;
+          if (/^file:\/\//i.test(val)) {
             node.setAttribute(attr, fileUrlToLocalFileUrl(val));
+          } else if (inlineBaseDir && !isAlreadyResolvedURL(val)) {
+            node.setAttribute(attr, resolveRelativeAssetURL(val, inlineBaseDir));
+          }
+        }
+        // srcset (img/source) carries multiple URLs with descriptors — rewrite
+        // each entry independently so density/width hints survive.
+        if (inlineBaseDir && node.getAttribute) {
+          const srcset = node.getAttribute('srcset');
+          if (srcset) {
+            const rewritten = srcset
+              .split(',')
+              .map((part) => {
+                const t = part.trim();
+                if (!t) return '';
+                const [url, ...desc] = t.split(/\s+/);
+                if (isAlreadyResolvedURL(url)) return t;
+                return [resolveRelativeAssetURL(url, inlineBaseDir), ...desc].join(' ');
+              })
+              .filter(Boolean)
+              .join(', ');
+            node.setAttribute('srcset', rewritten);
           }
         }
       });
@@ -1602,6 +1667,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         ALLOWED_ATTR: [
           'href',
           'src',
+          'srcset',
           'alt',
           'class',
           'id',
