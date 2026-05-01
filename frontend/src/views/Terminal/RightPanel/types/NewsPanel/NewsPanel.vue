@@ -147,7 +147,11 @@ export default {
 
     const fetchReleases = async () => {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/releases`);
+        // Hit the website's CORS-enabled endpoint directly — no local proxy.
+        // 15s timeout so a stuck remote can't hold a connection slot forever.
+        const response = await fetch('https://agnt.gg/api/releases', {
+          signal: AbortSignal.timeout(15000),
+        });
         const data = await response.json();
         releases.value = data.releases || [];
       } catch (error) {
@@ -196,12 +200,19 @@ export default {
       }
     };
 
-    onMounted(async () => {
-      // Fetch version using shared composable
-      await fetchVersion();
+    onMounted(() => {
+      // Local version lookup — cheap, keep on the critical path so the
+      // version badge is right when the panel first paints.
+      fetchVersion();
 
-      // Fetch releases and check for updates in parallel
-      await Promise.all([fetchReleases(), checkForUpdates()]);
+      // Fire-and-forget the releases list + update check. NOT awaited:
+      // first paint must not block on agnt.gg, but we still want the data
+      // to load as soon as the network can deliver it. The fetches each
+      // have an internal timeout so a stuck remote can't hold a connection
+      // slot indefinitely — but we give them a generous window since they
+      // can be slow on cold starts and nothing on the page is waiting.
+      fetchReleases();
+      checkForUpdates();
     });
 
     return {
