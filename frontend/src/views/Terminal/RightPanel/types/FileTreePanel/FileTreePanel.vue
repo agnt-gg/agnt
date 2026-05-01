@@ -463,8 +463,22 @@ export default {
     };
 
     const refreshTree = async () => {
+      const expanded = Object.keys(expandedDirs);
       Object.keys(childrenMap).forEach((key) => delete childrenMap[key]);
       await fetchRootTree();
+      // Re-fetch children for any directory the user had expanded so they
+      // don't render as "empty" until manually toggled closed and reopened.
+      await Promise.all(
+        expanded.map(async (dirPath) => {
+          try {
+            const data = await getTree(dirPath);
+            childrenMap[dirPath] = data.items;
+          } catch {
+            // Directory no longer exists — collapse it so UI matches reality.
+            delete expandedDirs[dirPath];
+          }
+        }),
+      );
     };
 
     const handleFileWritten = () => {
