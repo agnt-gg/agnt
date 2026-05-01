@@ -36,15 +36,41 @@ app.mount('#app');
 const LICENSE_REFRESH_INTERVAL = 60 * 60 * 1000;
 let licenseRefreshTimer = null;
 
-// Initialize app data in background AFTER mount
+// Polyfill for runtimes without requestIdleCallback (older Chromium versions
+// or Node-side SSR). Falls back to a 1ms timeout — the timing isn't exact,
+// but the goal is just "after first paint, not blocking it."
+const idle = (cb, opts) =>
+  (typeof window !== 'undefined' && window.requestIdleCallback)
+    ? window.requestIdleCallback(cb, opts)
+    : setTimeout(cb, 1);
+
+// Initialize app data in background AFTER mount.
+//
+// Two phases:
+//   1. CRITICAL — fired immediately. Subscription + user identity drive what
+//      UI we render first (gated features, etc.). These are remote calls, but
+//      the responses *seed* the first paint of authenticated screens.
+//   2. DEFERRED — fired from requestIdleCallback after first paint. Includes
+//      license validation (off the critical path; cached license already
+//      hydrated below), custom providers, the local-data fan-out
+//      (`initializeStore`), and connector polling.
+//
+// Why this matters: Chromium caps at 6 concurrent connections per origin,
+// and `<img>` requests are scheduled at lower priority than fetch/XHR. Firing
+// 4–7 auth fetches in parallel at startup pushes assets like the Settings
+// logo behind them. Splitting buys the asset pipeline first dibs on the
+// connection pool while still loading auth data in the same animation frame.
 const initializeApp = async () => {
   const token = localStorage.getItem('token');
 
   if (!token) {
     console.log('No token found, skipping authenticated init');
-    // Still validate license for free tier (non-blocking)
-    store.dispatch('userAuth/validateLicense').catch((error) => {
-      console.log('License validation skipped (no auth):', error.message);
+    // Defer license validation off first-paint. Anonymous/free tier doesn't
+    // need it before the shell renders.
+    idle(() => {
+      store.dispatch('userAuth/validateLicense').catch((error) => {
+        console.log('License validation skipped (no auth):', error.message);
+      });
     });
     return;
   }
@@ -73,42 +99,50 @@ const initializeApp = async () => {
       }
     }
 
-    // Fire LOCAL data loading IMMEDIATELY - don't wait for remote auth
-    // initializeStore only hits localhost:3333 and should be fast
-    console.log('Starting local data + remote auth in parallel...');
-    store.dispatch('initializeStore').catch(console.error);
-    store.dispatch('appAuth/startPolling');
-
-    // Remote auth calls (agnt.gg) run in parallel - don't block local data
-    const authPromises = [
+    // ── CRITICAL ── Fetch the two pieces of state that gate which UI we
+    // render first. Both are remote calls but cheap. fetchSubscription drives
+    // plan-tier UI; fetchUserData drives identity-aware screens.
+    const criticalPromises = [
       store.dispatch('userAuth/fetchUserData'),
-      store.dispatch('aiProvider/fetchCustomProviders'),
       store.dispatch('userAuth/fetchSubscription'),
     ];
-
-    // Only validate license if cache is expired/missing
-    if (needsLicenseValidation) {
-      authPromises.push(store.dispatch('userAuth/validateLicense'));
-    }
-
-    const results = await Promise.allSettled(authPromises);
-
-    // Log any failures for debugging
-    results.forEach((result, index) => {
+    const criticalResults = await Promise.allSettled(criticalPromises);
+    criticalResults.forEach((result, index) => {
       if (result.status === 'rejected') {
-        console.warn(`Auth init item ${index} failed:`, result.reason?.message || result.reason);
+        console.warn(`Critical auth item ${index} failed:`, result.reason?.message || result.reason);
       }
     });
+    console.log('Critical auth data fetched. planType:', store.state.userAuth.planType);
 
-    console.log('Auth data fetched. planType:', store.state.userAuth.planType);
+    // ── DEFERRED ── Run the rest from requestIdleCallback so above-the-fold
+    // images and other low-priority assets get connection slots first.
+    idle(() => {
+      // Local data fan-out (initializeStore) — agents, workflows, tools, etc.
+      // All hit localhost:3333; not blocking the first paint anyway, but
+      // deferring keeps the network panel calmer during initial render.
+      store.dispatch('initializeStore').catch(console.error);
+      store.dispatch('appAuth/startPolling');
 
-    // Load user settings in background (non-blocking)
-    store.dispatch('aiProvider/loadUserSettings').catch((error) => {
-      console.error('Failed to load user settings:', error);
-    });
+      // Remote, but not on the critical path.
+      store.dispatch('aiProvider/fetchCustomProviders').catch((err) => {
+        console.warn('fetchCustomProviders failed:', err?.message);
+      });
 
-    // Start periodic license refresh
-    startLicenseRefresh();
+      // Only validate license if cache is expired/missing (already hydrated above otherwise).
+      if (needsLicenseValidation) {
+        store.dispatch('userAuth/validateLicense').catch((err) => {
+          console.warn('validateLicense failed:', err?.message);
+        });
+      }
+
+      // User settings — loads custom-instructions etc. into the AI provider state.
+      store.dispatch('aiProvider/loadUserSettings').catch((error) => {
+        console.error('Failed to load user settings:', error);
+      });
+
+      // Start periodic license refresh
+      startLicenseRefresh();
+    }, { timeout: 2000 });
   } catch (error) {
     console.error('Failed to initialize app:', error);
   }

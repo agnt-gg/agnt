@@ -1,6 +1,12 @@
 import axios from 'axios';
 import { API_CONFIG } from '@/tt.config.js';
 import LicenseValidator from '@/services/LicenseValidator.js';
+import { withFreshness } from '../_utils/withFreshness.js';
+import { TTL } from '../_utils/freshnessConfig.js';
+
+// All fetch* actions in this module are wrapped with `withFreshness` so the
+// second call within the per-action TTL is a no-op. Pass `{ forceRefresh: true }`
+// to bypass — required after writes that change the underlying data.
 
 // Helper function to sync token with local backend
 const syncTokenWithBackend = async (token) => {
@@ -114,7 +120,7 @@ export default {
     },
   },
   actions: {
-    async fetchUserData({ commit, state, dispatch }) {
+    fetchUserData: withFreshness('userAuth.fetchUserData', async ({ commit, state, dispatch }) => {
       if (!state.token) return;
 
       try {
@@ -135,8 +141,8 @@ export default {
       } catch (error) {
         console.error('Error fetching user data:', error);
       }
-    },
-    async fetchPseudonym({ commit, state }) {
+    }, { staleAfter: TTL.userAuthFetchUserData }),
+    fetchPseudonym: withFreshness('userAuth.fetchPseudonym', async ({ commit, state }) => {
       if (!state.userEmail) return;
 
       try {
@@ -154,7 +160,7 @@ export default {
         const fallback = state.userEmail.split('@')[0];
         commit('SET_PSEUDONYM', fallback);
       }
-    },
+    }, { staleAfter: TTL.userAuthFetchPseudonym }),
     async requestMagicLink({ commit }, email) {
       try {
         const response = await axios.post(`${API_CONFIG.REMOTE_URL}/users/auth/magic-link/request`, { email }, { withCredentials: true });
@@ -219,7 +225,7 @@ export default {
         dispatch('initializeStore', null, { root: true });
       }
     },
-    async fetchSubscription({ commit, state }) {
+    fetchSubscription: withFreshness('userAuth.fetchSubscription', async ({ commit, state }) => {
       if (!state.token) {
         console.log('❌ fetchSubscription: No token available');
         return;
@@ -245,7 +251,7 @@ export default {
         commit('CLEAR_SUBSCRIPTION');
         return null;
       }
-    },
+    }, { staleAfter: TTL.userAuthFetchSubscription }),
     async createSubscription({ commit, state }, { planType, interval = 'yearly', pricingTier = 'discount', successUrl, cancelUrl }) {
       if (!state.token) {
         throw new Error('Authentication required');
@@ -346,7 +352,7 @@ export default {
      * Validate license with AGNT server
      * Fetches a fresh signed license and verifies it locally
      */
-    async validateLicense({ commit, state }) {
+    validateLicense: withFreshness('userAuth.validateLicense', async ({ commit, state }) => {
       const machineId = await LicenseValidator.getMachineId();
       const appVersion = window.electron?.getAppVersion?.() || '1.0.0';
 
@@ -409,7 +415,7 @@ export default {
         commit('SET_LICENSE_STATUS', 'expired');
         return null;
       }
-    },
+    }, { staleAfter: TTL.userAuthValidateLicense }),
 
     /**
      * Refresh license if needed (based on refreshBefore timestamp)

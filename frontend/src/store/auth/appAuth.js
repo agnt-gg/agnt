@@ -2,11 +2,15 @@ import { API_CONFIG } from '@/tt.config.js';
 import axios from 'axios';
 import { resolveProviderKey } from '@/store/app/aiProvider.js';
 import providerAuthService from '@/services/providerAuthService.js';
+import { withFreshness } from '../_utils/withFreshness.js';
+import { TTL } from '../_utils/freshnessConfig.js';
 
 // CLI provider IDs that use local filesystem auth
 const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli'];
 
-// In-flight promise for deduplicating concurrent fetchConnectedApps calls
+// In-flight promise for deduplicating concurrent fetchConnectedApps calls.
+// (withFreshness also de-dupes concurrent callers, so this is a redundant
+// safety net for any legacy callers that bypass the wrapper.)
 let _fetchConnectedAppsPromise = null;
 
 const state = {
@@ -70,7 +74,7 @@ const mutations = {
 };
 
 const actions = {
-  async fetchConnectedApps({ commit }) {
+  fetchConnectedApps: withFreshness('appAuth.fetchConnectedApps', async ({ commit }) => {
     // Deduplicate concurrent calls - return existing in-flight promise
     if (_fetchConnectedAppsPromise) return _fetchConnectedAppsPromise;
 
@@ -130,8 +134,8 @@ const actions = {
     })();
 
     return _fetchConnectedAppsPromise;
-  },
-  async fetchAllProviders({ commit }) {
+  }, { staleAfter: TTL.appAuthFetchConnectedApps }),
+  fetchAllProviders: withFreshness('appAuth.fetchAllProviders', async ({ commit }) => {
     try {
       const response = await axios.get(`${API_CONFIG.REMOTE_URL}/auth/providers`, {
         headers: {
@@ -218,7 +222,7 @@ const actions = {
         },
       ]);
     }
-  },
+  }, { staleAfter: TTL.appAuthFetchAllProviders }),
 
   // ── Generic provider actions (unified endpoints) ──────────────────
 

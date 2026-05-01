@@ -1,4 +1,6 @@
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
+import { withFreshness } from '../_utils/withFreshness.js';
+import { TTL } from '../_utils/freshnessConfig.js';
 
 // ─────────────────────────── PROVIDER REGISTRY ───────────────────────────
 // Single source of truth for all built-in provider metadata on the frontend.
@@ -1050,7 +1052,7 @@ export default {
     },
 
     // Custom provider management actions
-    async fetchCustomProviders({ commit, state }) {
+    fetchCustomProviders: withFreshness('aiProvider.fetchCustomProviders', async ({ commit, state }) => {
       try {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -1087,7 +1089,7 @@ export default {
         console.error('Error fetching custom providers:', error);
         return [];
       }
-    },
+    }, { staleAfter: TTL.aiProviderFetchCustomProviders }),
 
     async createCustomProvider({ commit }, providerData) {
       try {

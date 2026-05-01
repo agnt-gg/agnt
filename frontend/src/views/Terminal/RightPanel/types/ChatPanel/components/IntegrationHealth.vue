@@ -831,17 +831,11 @@ export default {
       }
     });
 
-    // Fetch providers and connection health on mount (skip if already cached)
+    // `initializeStore` (state.js) already loads `appAuth/fetchAllProviders`
+    // and `appAuth/fetchConnectedApps` at app startup. We rely on the existing
+    // `watch(connectedApps, ...)` above to refresh health when data arrives or
+    // changes — no need to refire those dispatches on every chat mount.
     onMounted(async () => {
-      const hasProviders = store.state.appAuth.allProviders?.length > 0;
-      const hasConnectedApps = store.state.appAuth.connectedApps?.length > 0;
-
-      if (!hasProviders) {
-        await store.dispatch('appAuth/fetchAllProviders');
-      }
-      if (!hasConnectedApps) {
-        await store.dispatch('appAuth/fetchConnectedApps');
-      }
       if (store.getters['appAuth/needsHealthCheck']) {
         await refreshHealth();
       }
