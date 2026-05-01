@@ -138,11 +138,27 @@ export default {
   width: 100%;
   min-height: 36px;
   padding: 8px 10px;
-  background: var(--color-popup);
+  background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--color-lightest);
   font-size: 0.9em;
+}
+
+/* Native <select> open-menu palette — mirrors CustomSelect.vue's
+   .options-container so the dropdown panel matches the rest of the UI
+   (browsers honor `option` background/color to varying degrees). */
+.reasoning-select option {
+  background: var(--color-popup);
+  color: var(--color-lightest);
+}
+
+:deep(body.dark) .reasoning-select {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+:deep(body.dark) .reasoning-select option {
+  background-color: var(--color-darker-3);
 }
 
 .reasoning-hint {
