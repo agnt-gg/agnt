@@ -987,8 +987,13 @@ export default {
           }
           // Send enabled tools — per-channel override wins, falls back to
           // legacy global key for users who haven't configured this chat yet.
+          // We send the array even when it is *empty* so the backend can
+          // distinguish "user unchecked everything" (`[]`) from "user has no
+          // opinion" (field absent). Without this, turning off all tools
+          // silently fell through to the no-selection branch and the LLM
+          // still received every tool.
           const channelTools = resolveChannelEnabledTools(ORCHESTRATOR_CHANNEL_KEY);
-          if (channelTools && channelTools.length > 0) {
+          if (Array.isArray(channelTools)) {
             formData.append('enabledTools', JSON.stringify(channelTools));
           }
 
@@ -999,6 +1004,11 @@ export default {
           body = formData;
         } else {
           headers['Content-Type'] = 'application/json';
+          // Respect the "no opinion" / "explicit zero tools" distinction the
+          // backend now enforces. `resolveChannelEnabledTools` returns
+          // `undefined` when the user has never configured this channel —
+          // omit the key entirely in that case so the backend uses defaults.
+          const channelToolsForJson = resolveChannelEnabledTools(ORCHESTRATOR_CHANNEL_KEY);
           body = JSON.stringify({
             message: userInput,
             history: deduped,
@@ -1008,7 +1018,8 @@ export default {
             reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
             reasoningEnabled: effectiveReasoningEnabled || undefined,
             agentId: resolvedAgentId || undefined,
-            enabledTools: resolveChannelEnabledTools(ORCHESTRATOR_CHANNEL_KEY) || [],
+            // undefined → field omitted by JSON.stringify; array (incl. []) → preserved
+            enabledTools: Array.isArray(channelToolsForJson) ? channelToolsForJson : undefined,
           });
         }
 

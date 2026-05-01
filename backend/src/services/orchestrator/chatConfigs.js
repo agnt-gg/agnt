@@ -251,14 +251,18 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   });
 
   // The agent's assignedTools is a hard ceiling — runtime enabledTools can
-  // narrow it further but never widen it beyond what the agent was given,
-  // except universal tools (mcp_client, every mcp__* entry) which always
-  // pass through.
+  // narrow it further but never widen it beyond what the agent was given.
+  // When the frontend sends an explicit enabledTools list it is the single
+  // source of truth: we honour the user's checkbox exactly. `mcp_client`
+  // (the meta-discovery tool) still rides along as a universal capability,
+  // but specific `mcp__server__tool` entries must be in enabledTools to
+  // appear — otherwise turning off the MCP category in the sidebar selector
+  // had no effect (the LLM still saw every MCP tool via the prefix bypass).
   if (context.enabledTools) {
     const runtimeAllowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
     filteredSchemas = filteredSchemas.filter((s) => {
       const name = s.function?.name;
-      return name && (runtimeAllowed.has(name) || isUniversalToolName(name));
+      return name && runtimeAllowed.has(name);
     });
   }
 
@@ -276,18 +280,26 @@ async function getUnifiedToolSchemas(context) {
   }
 
   // STRICT FILTER: when the frontend tool selector has sent an enabledTools
-  // list, that list is the single source of truth. The chat may ONLY see and
-  // call tools the user has explicitly enabled — except for universal tools,
-  // which are system primitives that always ride along (mcp_client, every
-  // mcp__server__tool entry, etc.). MCP per-tool names are matched by prefix
-  // because they're discovered dynamically and can't be enumerated upfront.
-  if (context.enabledTools && context.enabledTools.size > 0) {
+  // list, that list is the single source of truth. The chat sees exactly the
+  // tools the user has checked, plus a small set of system primitives in
+  // UNIVERSAL_TOOLS (currently just `mcp_client`, the meta-discovery tool).
+  //
+  // The frontend already enumerates specific MCP tool names in enabledTools
+  // (e.g. `mcp__chrome-devtools-mcp__click`), so there is no need to bypass
+  // the whitelist with a `mcp__` prefix match — that bypass let MCP tools
+  // slip through even when the user explicitly turned them off.
+  //
+  // We honour an *empty* enabledTools Set as "user wants zero tools" — it's
+  // a real selection, not a missing one (see OrchestratorService where the
+  // distinction is preserved). Only `null`/missing falls through to the
+  // no-selection branch below.
+  if (context.enabledTools instanceof Set) {
     const allowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
     const filteredSchemas = allSchemas.filter((s) => {
       const name = s.function?.name;
-      return name && (allowed.has(name) || isUniversalToolName(name));
+      return name && allowed.has(name);
     });
-    console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested + universal) -> ${filteredSchemas.length} tools`);
+    console.log(`[UnifiedChat] enabledTools whitelist (${context.enabledTools.size} requested + ${UNIVERSAL_TOOLS.size} universal) -> ${filteredSchemas.length} tools`);
     return filteredSchemas;
   }
 

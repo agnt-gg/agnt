@@ -100,6 +100,49 @@ function sanitizeOrphanToolCalls(msgs) {
   return out;
 }
 
+// Empty-response placeholder text. This string is structural padding for the
+// LLM's *next* turn (strict providers reject empty assistant messages). It
+// must NEVER reach the user-facing UI — see `extractDisplayText` /
+// `scrubEmptyPlaceholder` below for the SSE-boundary scrubbers.
+const EMPTY_RESPONSE_PLACEHOLDER = '[The model returned an empty response.]';
+
+/**
+ * Extract user-displayable text from any assistant content shape:
+ *   - string                             → returned as-is
+ *   - Anthropic-style array of blocks    → text blocks joined
+ *   - generic object {text|message}      → that field
+ *   - anything else                      → ''
+ *
+ * Used at SSE boundaries so we never JSON.stringify an array into the chat
+ * stream (which is exactly how `[{"type":"text","text":"..."}]` was leaking
+ * to the UI).
+ */
+function extractDisplayText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((c) => c && c.type === 'text' && typeof c.text === 'string')
+      .map((c) => c.text)
+      .join('\n\n');
+  }
+  if (content && typeof content === 'object') {
+    return content.text || content.message || '';
+  }
+  return '';
+}
+
+/**
+ * If the extracted display text is *only* the empty-response placeholder,
+ * collapse it to ''. Returns the original text otherwise. Use this at every
+ * point where assistant content crosses into the SSE stream or the persisted
+ * `final_response` DB field — the placeholder is provider-bookkeeping, not
+ * something a human should ever read.
+ */
+function scrubEmptyPlaceholder(text) {
+  if (typeof text !== 'string') return '';
+  return text.trim() === EMPTY_RESPONSE_PLACEHOLDER ? '' : text;
+}
+
 /**
  * Check whether an assistant message is effectively empty — no text, no tool
  * calls, no tool_use blocks. Strict providers (Anthropic, Kimi, OpenAI) reject
@@ -138,7 +181,7 @@ function isEmptyAssistantMessage(msg) {
 function sanitizeEmptyAssistantMessages(msgs) {
   if (!Array.isArray(msgs) || msgs.length === 0) return msgs;
 
-  const EMPTY_PLACEHOLDER = '[The model returned an empty response.]';
+  const EMPTY_PLACEHOLDER = EMPTY_RESPONSE_PLACEHOLDER;
   const out = [];
   let dropped = 0;
   let padded = 0;
@@ -191,9 +234,9 @@ function safePushAssistantMessage(messages, responseMessage) {
     console.warn('[safePushAssistantMessage] Adapter returned empty assistant message; padding before history push');
     const padded = { ...responseMessage };
     if (Array.isArray(padded.content)) {
-      padded.content = [{ type: 'text', text: '[The model returned an empty response.]' }];
+      padded.content = [{ type: 'text', text: EMPTY_RESPONSE_PLACEHOLDER }];
     } else {
-      padded.content = '[The model returned an empty response.]';
+      padded.content = EMPTY_RESPONSE_PLACEHOLDER;
     }
     messages.push(padded);
     return;
@@ -845,12 +888,19 @@ async function universalChatHandler(req, res, context = {}) {
     conversationId,
     // Latest user message text (for dynamic tool selection)
     latestUserMessage,
-    // User-selected enabled tools from frontend tool selector
+    // User-selected enabled tools from frontend tool selector.
+    //
+    // null  = frontend didn't send a list → backend picks defaults
+    // Set() = frontend explicitly sent zero tools → user wants zero tools
+    //
+    // We must distinguish these two — collapsing an empty array to null made
+    // "turn off all tools" silently fall through to the no-selection branch,
+    // which then sent every tool the chat had access to.
     enabledTools: (() => {
-      if (!rawEnabledTools) return null;
+      if (rawEnabledTools === undefined || rawEnabledTools === null) return null;
       try {
         const parsed = typeof rawEnabledTools === 'string' ? JSON.parse(rawEnabledTools) : rawEnabledTools;
-        return Array.isArray(parsed) && parsed.length > 0 ? new Set(parsed) : null;
+        return Array.isArray(parsed) ? new Set(parsed) : null;
       } catch { return null; }
     })(),
     // AI provider settings
@@ -1264,10 +1314,24 @@ IMPORTANT: The image data is already available in the system context. You don't 
     accumulateUsage(initialUsage);
 
     // Handle API errors that the adapter recovered from (401, 429, etc.)
+    // Also catches the wasEmpty branch — adapters mark empty responses with
+    // recoveredFromError so the user gets *something* in the bubble. We
+    // scrub the structural placeholder here so it doesn't render.
     if (recoveredFromError) {
-      console.warn(`[OrchestratorService] LLM adapter recovered from error: ${recoveredError}`);
-      const rawContent = responseMessage?.content;
-      const errorContent = (typeof rawContent === 'string' && rawContent)
+      console.warn(
+        `[OrchestratorService] LLM adapter recovered from error ` +
+        `(provider=${normalizedProvider} model=${model} chatType=${chatType}): ${recoveredError}`
+      );
+      const extracted = extractDisplayText(responseMessage?.content);
+      const scrubbed = scrubEmptyPlaceholder(extracted);
+      if (!scrubbed) {
+        console.warn(
+          `[Empty Response] provider=${normalizedProvider} model=${model} ` +
+          `round=0 chatType=${chatType} recoveredError="${recoveredError || 'unknown'}" ` +
+          `→ suppressing placeholder from chat stream`
+        );
+      }
+      const errorContent = scrubbed
         || `API Error: ${typeof recoveredError === 'string' ? recoveredError : String(recoveredError)}`;
       // Send as content_delta to fill the existing empty assistant message bubble
       sendEvent('content_delta', {
@@ -1943,10 +2007,29 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // If the adapter recovered from an error (e.g. 429 rate limit), the error
       // message was returned as responseMessage.content but was never streamed
       // via onChunk. Send it to the frontend now so the user sees the error.
+      //
+      // CRITICAL: extract text properly. Earlier this code did
+      // `JSON.stringify(responseMessage.content)` which serialized Anthropic
+      // array shapes verbatim — the user saw raw `[{"type":"text",...}]` in
+      // chat. Use extractDisplayText so arrays unwrap correctly, and
+      // scrubEmptyPlaceholder so the bookkeeping placeholder
+      // ("[The model returned an empty response.]") never reaches the UI.
       if (nextResponse.recoveredFromError && responseMessage.content) {
-        const errorContent = typeof responseMessage.content === 'string'
-          ? responseMessage.content
-          : JSON.stringify(responseMessage.content);
+        const extracted = extractDisplayText(responseMessage.content);
+        const scrubbed = scrubEmptyPlaceholder(extracted);
+        // Diagnostic: empty responses are usually a streaming bug or a
+        // tool-call-only turn the adapter mistakenly classified as empty.
+        // Log enough to identify which provider/model/round triggered it.
+        if (!scrubbed) {
+          console.warn(
+            `[Empty Response] provider=${normalizedProvider} model=${model} ` +
+            `round=${currentRound} chatType=${chatType} recoveredError="${nextResponse.recoveredError || 'unknown'}" ` +
+            `→ suppressing placeholder from chat stream`
+          );
+        }
+        // Fall back to a real error sentence when we have nothing to show.
+        const errorContent = scrubbed
+          || `API Error: ${typeof nextResponse.recoveredError === 'string' ? nextResponse.recoveredError : String(nextResponse.recoveredError || 'empty response')}`;
         sendEvent('content_delta', {
           assistantMessageId,
           delta: errorContent,
@@ -1971,21 +2054,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
       });
     }
 
-    // Extract final content — always extract text from content arrays
-    const rawContent = responseMessage.content;
-    if (typeof rawContent === 'string') {
-      finalContentForLogging = rawContent;
-    } else if (Array.isArray(rawContent)) {
-      // Handle Anthropic-style [{type: "text", text: "..."}] arrays (all providers)
-      const textParts = rawContent
-        .filter((c) => c.type === 'text' && c.text)
-        .map((c) => c.text);
-      finalContentForLogging = textParts.join('\n\n') || JSON.stringify(rawContent);
-    } else if (rawContent && typeof rawContent === 'object') {
-      finalContentForLogging = rawContent.text || rawContent.message || JSON.stringify(rawContent);
-    } else {
-      finalContentForLogging = rawContent || '';
-    }
+    // Extract final content — always extract text from content arrays.
+    // scrubEmptyPlaceholder collapses the bookkeeping placeholder to ''; the
+    // safety-net follow-up below will then trigger a real summary turn.
+    finalContentForLogging = scrubEmptyPlaceholder(extractDisplayText(responseMessage.content));
 
     // Safety net: if tool loop ran but final response has no text content,
     // make one more LLM call to generate a summary response
@@ -2025,9 +2097,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
         accumulateUsage(followUpResponse.usage);
         if (followUpResponse.responseMessage.content) {
-          finalContentForLogging = typeof followUpResponse.responseMessage.content === 'string'
-            ? followUpResponse.responseMessage.content
-            : followUpResponse.responseMessage.content?.find?.((c) => c.type === 'text')?.text || '';
+          finalContentForLogging = scrubEmptyPlaceholder(
+            extractDisplayText(followUpResponse.responseMessage.content)
+          );
           safePushAssistantMessage(messages, followUpResponse.responseMessage);
         }
       } catch (followUpError) {
@@ -2035,10 +2107,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     }
 
-    // Send final content event
+    // Send final content event. Final scrub here covers any code path that
+    // set finalContentForLogging without going through extractDisplayText —
+    // the placeholder must never reach the chat UI.
     sendEvent('final_content', {
       assistantMessageId,
-      content: finalContentForLogging,
+      content: scrubEmptyPlaceholder(finalContentForLogging),
       usage: tokenAccumulator.totalTokens > 0 ? tokenAccumulator : undefined,
     });
   } catch (error) {
@@ -2074,7 +2148,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
     sendEvent('final_content', {
       assistantMessageId: `msg-asst-${Date.now()}`,
-      content: finalContentForLogging,
+      content: scrubEmptyPlaceholder(finalContentForLogging),
       recovered_from_error: true,
     });
   } finally {
@@ -2091,7 +2165,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
       userId: userId,
       initial_prompt: message || (originalMessages && originalMessages[originalMessages.length - 1]?.content),
       full_history: JSON.stringify(messages),
-      final_response: finalContentForLogging,
+      // Persist a clean final_response — old reloads of this conversation
+      // would otherwise re-render the bookkeeping placeholder as the saved
+      // assistant text. The full_history above keeps the placeholder intact
+      // because subsequent provider calls still need the non-empty padding.
+      final_response: scrubEmptyPlaceholder(finalContentForLogging),
       tool_calls: JSON.stringify(allToolCallsForLogging),
       errors: streamErrorForLogging ? JSON.stringify(streamErrorForLogging) : null,
     };

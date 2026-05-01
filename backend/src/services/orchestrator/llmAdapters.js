@@ -369,7 +369,20 @@ class OpenAiLikeAdapter extends BaseAdapter {
 
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(message);
         if (wasEmpty) {
-          console.warn('[OpenAiLike] Provider returned empty response (no content, no tool calls) — padded for history safety');
+          // Diagnostic: log the raw shape so we can tell whether the provider
+          // really sent nothing, or sent something the normalizer mistakenly
+          // classified as empty. finish_reason is especially useful — many
+          // streaming-bug empties come back with finish_reason='stop' AND no
+          // content, which usually indicates a content filter or guardrail.
+          const finishReason = response.choices[0]?.finish_reason;
+          const rawShape = JSON.stringify({
+            hasContent: message?.content !== undefined && message?.content !== null,
+            contentType: typeof message?.content,
+            contentLen: typeof message?.content === 'string' ? message.content.length : (Array.isArray(message?.content) ? message.content.length : null),
+            toolCallsLen: Array.isArray(message?.tool_calls) ? message.tool_calls.length : 0,
+            finishReason,
+          });
+          console.warn(`[OpenAiLike] Empty response model=${this.model} provider=${this.provider} ${rawShape}`);
         }
 
         return {
@@ -934,7 +947,13 @@ ${tools.map((t) => `- ${t.function.name}: ${JSON.stringify(t.function.parameters
 
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
         if (wasEmpty) {
-          console.warn('[OpenAiLike Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+          const rawShape = JSON.stringify({
+            accumulatedContentLen: typeof accumulatedContent === 'string' ? accumulatedContent.length : null,
+            validToolCalls: validToolCalls.length,
+            invalidToolCalls: invalidToolCalls.length,
+            hasReasoning: !!accumulatedReasoningContent,
+          });
+          console.warn(`[OpenAiLike Stream] Empty response model=${this.model} provider=${this.provider} ${rawShape}`);
         }
 
         return {
@@ -1411,7 +1430,12 @@ class AnthropicAdapter extends BaseAdapter {
         // array-shape path will treat them as non-empty structural blocks automatically.
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(historyMessage);
         if (wasEmpty) {
-          console.warn('[Anthropic] Provider returned empty response (no content, no tool calls) — padded for history safety');
+          const rawShape = JSON.stringify({
+            stopReason: response?.stop_reason,
+            contentBlockTypes: Array.isArray(historyMessage?.content) ? historyMessage.content.map((b) => b?.type) : null,
+            contentLen: Array.isArray(historyMessage?.content) ? historyMessage.content.length : null,
+          });
+          console.warn(`[Anthropic] Empty response model=${this.model} ${rawShape}`);
         }
 
         return {
