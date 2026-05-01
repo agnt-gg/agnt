@@ -64,7 +64,11 @@ class HTTPTransport {
 
       const timeout = setTimeout(() => {
         if (!connectionEstablished) {
-          this.sse.close();
+          // `this.sse` can be null here if the SSE connection errored before
+          // we attached handlers and got cleaned up by an earlier branch —
+          // closing again would throw an uncaught TypeError that destabilizes
+          // the server. Guard the close.
+          try { this.sse?.close?.(); } catch { /* swallow */ }
           // Use the last error if available, otherwise generic timeout
           if (lastError) {
             reject(lastError);
