@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
+import compression from 'compression';
 import bodyParser from 'body-parser';
 import path from 'path';
 import fs from 'fs';
@@ -84,6 +85,38 @@ const app = express();
 
 // Enable CORS and body parsing
 app.use(cors(config.corsOptions));
+// Gzip JSON / text responses above 1 KB. JSON compresses 10-20x.
+//
+// CRITICAL: compression buffers responses by default, which destroys
+// Server-Sent Events streaming (chat tokens arrive only after the full
+// response, not incrementally). We exclude known streaming route prefixes
+// up front, and additionally honour `x-no-compression` so any new endpoint
+// can opt out without touching this file.
+//
+// SSE-bearing route prefixes (verified via grep for `text/event-stream`
+// and `Content-Type: text/event-stream`):
+//   /api/stream/*         — StreamEngine SSE
+//   /api/orchestrator/*   — chat orchestrator SSE (every chat surface)
+//   /api/users/*          — magic-link SSE response
+//   /api/plugins/*        — plugin install/uninstall progress SSE
+const STREAMING_PATH_PREFIXES = [
+  '/api/stream',
+  '/api/orchestrator',
+  '/api/users/auth/magic-link',
+  '/api/plugins',
+];
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    if (STREAMING_PATH_PREFIXES.some((p) => req.path.startsWith(p))) return false;
+    // Last-resort guard: if the route has already set a streaming
+    // content-type by the time the filter runs, skip too.
+    const ct = res.getHeader('Content-Type');
+    if (typeof ct === 'string' && ct.includes('text/event-stream')) return false;
+    return compression.filter(req, res);
+  },
+}));
 app.use(bodyParser.json({ limit: config.bodyParserLimit }));
 app.use(bodyParser.urlencoded({ limit: config.bodyParserLimit, extended: true }));
 app.use(sessionMiddleware);
@@ -95,16 +128,20 @@ const frontendExists = fs.existsSync(frontendDistPath) && fs.existsSync(path.joi
 
 if (frontendExists) {
   console.log('Frontend dist found - serving static files from:', frontendDistPath);
-  // Disable caching for development - ensures fresh files are served
   app.use(express.static(frontendDistPath, {
-    etag: false,
-    lastModified: false,
-    setHeaders: (res, path) => {
-      // No cache for HTML files (they reference the JS/CSS bundles)
-      if (path.endsWith('.html')) {
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
+    // Let express set ETags on every static asset so reload conditional GETs
+    // can short-circuit with 304 when nothing changed.
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        // `no-cache` = store but always revalidate. With ETag the browser
+        // sends a conditional GET on reload and gets a 0-byte 304 when the
+        // bundle hash hasn't changed (instead of re-downloading the shell).
+        res.setHeader('Cache-Control', 'no-cache');
+      } else {
+        // Vite-hashed JS/CSS/asset filenames are content-addressed — safe
+        // to cache forever. New deploys ship new filenames; old ones stay
+        // valid for already-loaded pages.
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       }
     }
   }));
@@ -188,18 +225,6 @@ app.get('/api/updates/check', async (req, res) => {
       error: 'Failed to check for updates',
       updateAvailable: false,
     });
-  }
-});
-
-// Releases endpoint - proxies to agnt.gg to avoid CORS issues
-app.get('/api/releases', async (req, res) => {
-  try {
-    const response = await fetch('https://agnt.gg/releases.json');
-    const data = await response.json();
-    res.status(200).json(data);
-  } catch (error) {
-    console.error('Error fetching releases:', error);
-    res.status(500).json({ error: 'Failed to fetch releases', releases: [], roadmap: [] });
   }
 });
 
@@ -289,6 +314,23 @@ async function deferredInit() {
     console.log('Skill discovery initialized');
   } catch (error) {
     console.warn('[Server] Skill discovery initialization failed (non-fatal):', error);
+  }
+
+  // The MCP tool service loads its schema cache from disk synchronously at
+  // import. We don't need to do anything here — `build()` returns the
+  // disk-backed cache without spawning any servers, and the service kicks
+  // off its own first-run refresh in the background if the cache file is
+  // missing. Schemas are explicitly refreshed only when the user changes
+  // their MCP config (via MCPService.invalidate) or clicks Refresh on the
+  // MCP page. No more spawn-N-servers-on-every-chat.
+  //
+  // Touch the singleton here just so the lazy import + disk read happens
+  // during deferredInit rather than on the first chat call.
+  try {
+    await import('./src/services/MCPToolService.js');
+    console.log('[Server] MCP schema cache loaded from disk');
+  } catch (error) {
+    console.warn('[Server] MCP schema cache load failed (non-fatal):', error?.message);
   }
 
   // Initialize plugins before spawning workflow process
