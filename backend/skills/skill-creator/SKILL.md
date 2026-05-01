@@ -64,10 +64,39 @@ Check available MCPs - if useful for research (searching docs, finding similar s
 
 Based on the user interview, fill in these components:
 
-- **name**: Skill identifier
+- **name**: Skill identifier (must match the directory name exactly, kebab-case)
 - **description**: When to trigger, what it does. This is the primary triggering mechanism - include both what the skill does AND specific contexts for when to use it. All "when to use" info goes here, not in the body. Note: currently Claude has a tendency to "undertrigger" skills -- to not use them when they'd be useful. To combat this, please make the skill descriptions a little bit "pushy". So for instance, instead of "How to build a simple fast dashboard to display internal Anthropic data.", you might write "How to build a simple fast dashboard to display internal Anthropic data. Make sure to use this skill whenever the user mentions dashboards, data visualization, internal metrics, or wants to display any kind of company data, even if they don't explicitly ask for a 'dashboard.'"
+- **version**: Semver string (e.g., `1.0.0`). Bump the patch on edits, minor on new behavior.
 - **compatibility**: Required tools, dependencies (optional, rarely needed)
 - **the rest of the skill :)**
+
+#### CRITICAL: YAML frontmatter format
+
+Every SKILL.md MUST begin with YAML frontmatter delimited by `---` lines. The
+parser is strict — missing or malformed delimiters cause the skill to be
+silently dropped from discovery. Use this exact shape (the leading `---` is
+the very first line of the file, no blank line before it, no BOM, no triple
+backticks around it):
+
+```
+---
+name: <skill-directory-name>
+description: <one long line describing what the skill does AND when to trigger it — see field guidance above; plain string, no quotes needed unless the value's first character is special>
+version: 1.0.0
+---
+
+# Skill body starts here as normal markdown
+```
+
+Rules the parser actually enforces:
+1. **First line must be exactly `---`** — three hyphens, nothing else, no spaces.
+2. **Closing `---`** on its own line. Body markdown begins on the next line.
+3. **`name`** must match the directory name exactly (e.g. `hermes-subagent/SKILL.md` → `name: hermes-subagent`).
+4. **`description`** is a single string. If it spans multiple sentences, keep them on one line — do NOT use multi-line YAML block scalars (`|` or `>`); they parse but reduce trigger reliability.
+5. **No code fences around the frontmatter.** Do not write ` ```yaml ` then `---`; the literal `---` must be the file's first character.
+6. **Quoting is only required** when the value's first non-space character is one of `{ [ : # & * ! | > ' " % @ \``  or the value is `yes`/`no`/`true`/`false`/`null`/a number you want as a string. Otherwise omit quotes — descriptions read more naturally that way.
+
+When asked to update an existing skill, preserve its frontmatter shape verbatim — only edit the field values, never restructure or re-indent the YAML.
 
 ### Skill Writing Guide
 
