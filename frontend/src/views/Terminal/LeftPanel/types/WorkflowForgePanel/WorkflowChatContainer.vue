@@ -143,6 +143,13 @@ export default {
       });
     };
 
+    const stickToBottomIfNearBottom = () => {
+      if (!chatMessagesRef.value) return;
+      const el = chatMessagesRef.value;
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+      if (isNearBottom) scrollToBottom();
+    };
+
     const sendChatMessage = async () => {
       if (!chatInput.value.trim() || !props.workflowId) return;
 
@@ -547,6 +554,9 @@ export default {
         }
       }
     );
+
+    // Auto-scroll on new messages / streamed content if user is near bottom.
+    watch(formattedChatMessages, () => stickToBottomIfNearBottom(), { deep: true });
 
     // Watch for conversation being cleared and reset suggestions
     watch(

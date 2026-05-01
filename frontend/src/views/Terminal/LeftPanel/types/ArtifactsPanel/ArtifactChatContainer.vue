@@ -87,6 +87,13 @@ export default {
       });
     };
 
+    const stickToBottomIfNearBottom = () => {
+      if (!chatMessagesRef.value) return;
+      const el = chatMessagesRef.value;
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+      if (isNearBottom) scrollToBottom();
+    };
+
     // Listen for open file context updates from Artifacts screen
     const openFileContext = ref({ path: null, content: null });
 
@@ -322,7 +329,7 @@ export default {
           break;
       }
 
-      scrollToBottom();
+      stickToBottomIfNearBottom();
     };
 
     const handleFrontendEvent = (eventType, eventData) => {
@@ -353,6 +360,9 @@ export default {
     };
 
     watch(() => props.sessionId, () => { setTimeout(scrollToBottom, 100); });
+
+    // Auto-scroll on new messages / streamed content if user is near bottom.
+    watch(formattedChatMessages, () => stickToBottomIfNearBottom(), { deep: true });
 
     return {
       chatMessagesRef,
