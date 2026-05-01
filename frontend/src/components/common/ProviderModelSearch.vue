@@ -42,11 +42,30 @@
 </template>
 
 <script>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 
 const MAX_RESULTS = 40;
+
+// Dispatch fetches for every provider that hasn't loaded its models yet.
+// fetchProviderModels uses a 1-hour localStorage cache, so repeated
+// invocations are cheap — and per-provider failures (missing API key,
+// not connected) are silenced so unrelated providers still populate.
+async function ensureAllProviderModelsLoaded(store) {
+  const { allModels = {}, providers = [], customProviders = [] } = store.state.aiProvider;
+  const targets = [
+    ...providers,
+    ...customProviders.map((cp) => cp.id),
+  ].filter((p) => !allModels[p] || allModels[p].length === 0);
+
+  if (!targets.length) return;
+  await Promise.all(
+    targets.map((provider) =>
+      store.dispatch('aiProvider/fetchProviderModels', { provider }).catch(() => {}),
+    ),
+  );
+}
 
 export default {
   name: 'ProviderModelSearch',
@@ -162,6 +181,14 @@ export default {
       await store.dispatch('aiProvider/setModel', result.model);
       emit('selected', result);
     };
+
+    // Models for a provider are only fetched when that provider is first
+    // selected. To make search cover every provider, kick off background
+    // fetches on mount — fetchProviderModels has a 1-hour localStorage
+    // cache, so this is a one-time hit per provider per hour.
+    onMounted(() => {
+      ensureAllProviderModelsLoaded(store);
+    });
 
     return {
       rootRef,
