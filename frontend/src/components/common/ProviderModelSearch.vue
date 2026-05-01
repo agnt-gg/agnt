@@ -9,6 +9,7 @@
         class="search-input"
         :placeholder="placeholder"
         @focus="onFocus"
+        @input="onInput"
         @blur="onBlur"
         @keydown.escape="close"
         @keydown.down.prevent="moveCursor(1)"
@@ -124,6 +125,13 @@ export default {
       open.value = true;
     };
 
+    // Re-open after a previous selection closed the dropdown — the input
+    // keeps focus, so the focus handler doesn't fire again on next keystroke.
+    const onInput = () => {
+      open.value = true;
+      cursor.value = 0;
+    };
+
     // Delay closing on blur so result mousedown handlers fire first.
     const onBlur = () => {
       focused.value = false;
@@ -166,6 +174,7 @@ export default {
       close,
       clear,
       onFocus,
+      onInput,
       onBlur,
       moveCursor,
       selectCursor,
