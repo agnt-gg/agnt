@@ -1,24 +1,30 @@
 <template>
   <div v-if="control || showUnavailableState" class="reasoning-control" :class="{ compact, 'without-hint': !showHint, unavailable: showUnavailableState && !control }">
     <label class="reasoning-label" :for="selectId">Reasoning</label>
-    <select v-if="control" :id="selectId" class="reasoning-select" :value="effectiveValue" @change="handleChange">
-      <option v-for="option in control.options" :key="option.value" :value="option.value">
-        {{ option.label }}
-      </option>
-    </select>
+    <CustomSelect
+      v-if="control"
+      ref="selectRef"
+      :options="control.options"
+      :placeholder="effectiveLabel"
+      :zIndex="10001"
+      maxHeight="220px"
+      @option-selected="handleSelected"
+    />
     <div v-else class="reasoning-unavailable-message">{{ unavailableMessage }}</div>
     <span v-if="showHint" class="reasoning-hint">{{ hintText }}</span>
   </div>
 </template>
 
 <script>
-import { computed, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useStore } from 'vuex';
+import CustomSelect from '@/views/_components/common/CustomSelect.vue';
 
 let nextReasoningControlId = 0;
 
 export default {
   name: 'ReasoningControl',
+  components: { CustomSelect },
   props: {
     provider: {
       type: String,
@@ -44,6 +50,7 @@ export default {
   setup(props) {
     const store = useStore();
     const selectId = `reasoning-control-${nextReasoningControlId++}`;
+    const selectRef = ref(null);
     const providerMetadata = computed(() => {
       if (!props.provider) return null;
       return store.state.aiProvider.modelMetadata[props.provider] || null;
@@ -77,6 +84,11 @@ export default {
       const valid = control.value.options.some((option) => option.value === selectedValue.value);
       return valid ? selectedValue.value : (control.value.defaultValue || 'default');
     });
+    const effectiveLabel = computed(() => {
+      if (!control.value) return '';
+      const match = control.value.options.find((option) => option.value === effectiveValue.value);
+      return match ? match.label : '';
+    });
 
     const hintText = computed(() => {
       if (!control.value) return '';
@@ -104,17 +116,32 @@ export default {
       { immediate: true },
     );
 
-    const handleChange = (event) => {
-      store.commit('aiProvider/SET_REASONING_VALUE', event.target.value);
+    // Keep CustomSelect's internal selectedOption in sync with the store value
+    // (CustomSelect tracks its own state and only mutates it via selectOption /
+    // setSelectedOption — initial render and external changes need a push).
+    const syncSelected = async () => {
+      if (!control.value) return;
+      await nextTick();
+      const match = control.value.options.find((opt) => opt.value === effectiveValue.value);
+      if (match && selectRef.value?.setSelectedOption) {
+        selectRef.value.setSelectedOption(match);
+      }
+    };
+    watch([effectiveValue, control], syncSelected, { immediate: true });
+
+    const handleSelected = (option) => {
+      if (!option) return;
+      store.commit('aiProvider/SET_REASONING_VALUE', option.value);
     };
 
     return {
       control,
-      effectiveValue,
-      handleChange,
+      effectiveLabel,
+      handleSelected,
       hintText,
       unavailableMessage,
       selectId,
+      selectRef,
       showUnavailableState,
     };
   },
@@ -134,33 +161,6 @@ export default {
   color: var(--color-light-med-navy);
 }
 
-.reasoning-select {
-  width: 100%;
-  min-height: 36px;
-  padding: 8px 10px;
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 8px;
-  color: var(--color-lightest);
-  font-size: 0.9em;
-}
-
-/* Native <select> open-menu palette — mirrors CustomSelect.vue's
-   .options-container so the dropdown panel matches the rest of the UI
-   (browsers honor `option` background/color to varying degrees). */
-.reasoning-select option {
-  background: var(--color-popup);
-  color: var(--color-lightest);
-}
-
-:deep(body.dark) .reasoning-select {
-  background-color: rgba(0, 0, 0, 0.2);
-}
-
-:deep(body.dark) .reasoning-select option {
-  background-color: var(--color-darker-3);
-}
-
 .reasoning-hint {
   font-size: 0.75em;
   color: var(--color-med-navy);
@@ -172,14 +172,10 @@ export default {
   display: flex;
   align-items: center;
   border: 1px dashed var(--terminal-border-color);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--color-med-navy);
   font-size: 0.85em;
   line-height: 1.35;
-}
-
-.reasoning-control.compact .reasoning-select {
-  min-height: 34px;
 }
 
 .reasoning-control.compact .reasoning-unavailable-message {
