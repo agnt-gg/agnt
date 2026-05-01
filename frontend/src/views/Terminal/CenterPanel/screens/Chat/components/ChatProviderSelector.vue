@@ -20,6 +20,9 @@
           </div>
         </div>
 
+        <!-- Quick search across all providers + models -->
+        <ProviderModelSearch class="chat-provider-search" />
+
         <!-- Provider Selector -->
         <div class="selector-group">
           <label>Provider:</label>
@@ -106,6 +109,7 @@
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import ProviderModelSearch from '@/components/common/ProviderModelSearch.vue';
 import CustomProviderDialog from '../../Settings/components/ProviderSelector/CustomProviderDialog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
@@ -120,6 +124,7 @@ export default {
   components: {
     CustomSelect,
     CustomProviderDialog,
+    ProviderModelSearch,
     Tooltip,
     RefreshModelsButton,
     ReasoningControl,

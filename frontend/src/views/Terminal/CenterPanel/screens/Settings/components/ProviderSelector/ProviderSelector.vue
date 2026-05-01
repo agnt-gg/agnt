@@ -5,6 +5,7 @@
       <span class="provider-selector-subtext"> (The AI model to use for Annie, AI orchestration, and generating agents, workflows, & tools) </span>
     </h3>
     <div class="provider-selector">
+      <ProviderModelSearch class="provider-selector-search" />
       <div class="provider-selector-main">
         <div class="selector-field">
           <label>AI Provider</label>
@@ -108,6 +109,7 @@
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import CustomSelect from '@/views/_components/common/CustomSelect.vue';
+import ProviderModelSearch from '@/components/common/ProviderModelSearch.vue';
 import CustomProviderDialog from './CustomProviderDialog.vue';
 import { AI_PROVIDERS_WITH_API, PROVIDER_FETCH_ACTIONS, PROVIDER_DISPLAY_NAMES, resolveProviderKey } from '@/store/app/aiProvider.js';
 import { getToolSupportWarning } from '@/store/app/toolSupport.js';
@@ -120,6 +122,7 @@ export default {
   components: {
     CustomSelect,
     CustomProviderDialog,
+    ProviderModelSearch,
     Tooltip,
     RefreshModelsButton,
     ReasoningControl,
