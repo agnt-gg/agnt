@@ -208,8 +208,8 @@ export default {
 .search-input {
   flex: 1;
   width: 100%;
-  min-height: 36px;
-  padding: 8px 36px 8px 34px;
+  min-height: 24px;
+  padding: 4px 32px 4px 30px;
   background: transparent;
   border: none;
   border-radius: 8px;
