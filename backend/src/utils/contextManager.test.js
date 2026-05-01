@@ -64,8 +64,13 @@ describe('contextManager', () => {
 });
 
 describe('getTokenLimit — provider-agnostic resolution', () => {
-  // Buffer reserved for response generation; mirrors RESPONSE_BUFFER in contextManager.js
+  // Mirrors the buffers + safety margin in contextManager.js. Reasoning models
+  // (gpt-5.x, o3/o4) and openai-codex reserve a larger output buffer because
+  // hidden chain-of-thought consumes far more than the 8k default. openai-codex
+  // also gets a 0.93 safety margin to offset Responses-API tokenization undercounts.
   const RESPONSE_BUFFER = 8000;
+  const REASONING_RESPONSE_BUFFER = 32_000;
+  const CODEX_SAFETY_MARGIN = 0.93;
 
   it('falls back to the family-prefix heuristic for Codex gpt-5.5 when no metadata is registered', () => {
     // Pre-condition: no entry registered for openai-codex/gpt-5.5
@@ -75,13 +80,19 @@ describe('getTokenLimit — provider-agnostic resolution', () => {
       // is meaningless when an exact match exists.
       expect.fail('precondition: openai-codex/gpt-5.5 has registered metadata; heuristic path not exercised');
     }
-    // gpt-5* heuristic = 400k
-    expect(getTokenLimit('gpt-5.5', 'openai-codex')).toBe(400_000 - RESPONSE_BUFFER);
+    // gpt-5* heuristic = 400k, Codex reasoning buffer = 32k, Codex margin = 0.93
+    expect(getTokenLimit('gpt-5.5', 'openai-codex')).toBe(
+      Math.floor((400_000 - REASONING_RESPONSE_BUFFER) * CODEX_SAFETY_MARGIN),
+    );
   });
 
   it('honors registered dynamic metadata over the family heuristic', () => {
     registerDynamicPricing('openai-codex', 'heuristic-test-model', { contextWindow: 200_000 });
-    expect(getTokenLimit('heuristic-test-model', 'openai-codex')).toBe(200_000 - RESPONSE_BUFFER);
+    // openai-codex routes always go through the reasoning Responses API, so
+    // the 32k reasoning buffer + 0.93 margin apply regardless of model name.
+    expect(getTokenLimit('heuristic-test-model', 'openai-codex')).toBe(
+      Math.floor((200_000 - REASONING_RESPONSE_BUFFER) * CODEX_SAFETY_MARGIN),
+    );
   });
 
   it('registers contextWindow for non-OpenRouter providers (provider-agnostic path)', () => {

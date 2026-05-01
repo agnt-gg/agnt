@@ -16,6 +16,12 @@ const MESSAGE_OVERHEAD_TOKENS = 12;
 // Fallback token limit when model metadata isn't available
 const DEFAULT_TOKEN_LIMIT = 128000;
 const RESPONSE_BUFFER = 8000;
+// Reasoning models (gpt-5.x, o3/o4, Codex Responses API) routinely spend
+// tens of thousands of output tokens on hidden chain-of-thought before
+// visible content. The 8k default leaves no headroom and the provider
+// rejects the request with "input exceeds context window" once reasoning
+// tokens are counted.
+const REASONING_RESPONSE_BUFFER = 32_000;
 
 /**
  * Estimate token count for text
@@ -117,6 +123,30 @@ function inferContextWindowFromFamily(modelId) {
 }
 
 /**
+ * Output buffer reserved for the model's response. Most providers complete
+ * within 8k, but reasoning models (gpt-5.x, o3/o4, Codex Responses) consume
+ * far more on hidden chain-of-thought; we reserve more so compression
+ * triggers before reasoning tokens push us past the hard limit.
+ */
+function getResponseBuffer(model, provider) {
+  if (provider === 'openai-codex') return REASONING_RESPONSE_BUFFER;
+  if (!model) return RESPONSE_BUFFER;
+  if (/^gpt-5/i.test(model) || /^o[34]/i.test(model)) return REASONING_RESPONSE_BUFFER;
+  return RESPONSE_BUFFER;
+}
+
+/**
+ * Multiplier on the available-input budget. The chars/3.5 * 1.12 estimator
+ * undercounts what the Codex Responses API actually charges for tool
+ * schemas, instruction framing, and reasoning content — reserving an extra
+ * ~7% of budget keeps compression ahead of the provider's hard limit.
+ */
+function getProviderSafetyMargin(model, provider) {
+  if (provider === 'openai-codex') return 0.93;
+  return 1.0;
+}
+
+/**
  * Get effective token limit for a model.
  * Resolution order:
  *   1. Exact metadata via getModelMetadata (static + dynamic cache)
@@ -124,18 +154,32 @@ function inferContextWindowFromFamily(modelId) {
  *   3. DEFAULT_TOKEN_LIMIT (last-resort fallback)
  */
 function getTokenLimit(model, provider) {
+  const { availableTokens } = getContextBudget(model, provider);
+  return availableTokens;
+}
+
+/**
+ * Resolve the full context budget for a model in one place so callers see
+ * a consistent (contextWindow, outputBuffer, availableTokens) triple.
+ */
+function getContextBudget(model, provider) {
+  let contextWindow = DEFAULT_TOKEN_LIMIT;
   if (provider && model) {
     const meta = getModelMetadata(provider, model);
     if (meta?.contextWindow) {
-      return meta.contextWindow - RESPONSE_BUFFER;
-    }
-    const familyWindow = inferContextWindowFromFamily(model);
-    if (familyWindow) {
-      console.log(`[Context Manager] Using family-prefix heuristic for ${provider}/${model}: ${familyWindow}`);
-      return familyWindow - RESPONSE_BUFFER;
+      contextWindow = meta.contextWindow;
+    } else {
+      const familyWindow = inferContextWindowFromFamily(model);
+      if (familyWindow) {
+        console.log(`[Context Manager] Using family-prefix heuristic for ${provider}/${model}: ${familyWindow}`);
+        contextWindow = familyWindow;
+      }
     }
   }
-  return DEFAULT_TOKEN_LIMIT - RESPONSE_BUFFER;
+  const outputBuffer = getResponseBuffer(model, provider);
+  const margin = getProviderSafetyMargin(model, provider);
+  const availableTokens = Math.floor((contextWindow - outputBuffer) * margin);
+  return { contextWindow, outputBuffer, availableTokens };
 }
 
 /**
@@ -337,7 +381,7 @@ function summarizeMessages(messages, maxSummaryTokens = 500) {
  * Manage context size to fit within token limits
  */
 function manageContext(messages, model, tools = [], provider = null) {
-  const tokenLimit = getTokenLimit(model, provider);
+  const { contextWindow, outputBuffer, availableTokens: tokenLimit } = getContextBudget(model, provider);
 
   // Estimate tokens for tools
   const toolTokens = estimateTokens(JSON.stringify(tools));
@@ -456,13 +500,13 @@ function manageContext(messages, model, tools = [], provider = null) {
     originalTokens: estimateMessagesTokens(messages),
     managedTokens: currentTokens,
     tokenLimit: availableTokens,
-    contextWindow: tokenLimit + RESPONSE_BUFFER,
+    contextWindow,
     wasManaged: currentTokens < estimateMessagesTokens(messages),
     // Per-component breakdown for accurate "what Anthropic sees" reporting
     systemTokens,
     toolTokens,
     messagesTokens,
-    outputBufferTokens: RESPONSE_BUFFER,
+    outputBufferTokens: outputBuffer,
     totalRequestTokens,
   };
 }
