@@ -1779,10 +1779,19 @@ export default {
       { immediate: true },
     );
 
-    // Watch store's streaming states to update local processing state
-    // Includes both local streaming (this tab) and remote streaming (other tabs)
+    // Watch store's streaming states to update local processing state.
+    // Active = local streaming (this tab) OR remote streaming (other tabs)
+    // OR an async tool still running after the LLM turn finished — so the
+    // "working..." indicator stays up while background work is in flight.
     watch(
-      () => store.state.chat.isStreaming || store.state.chat.isRemoteStreaming,
+      () => {
+        const c = store.state.chat;
+        return (
+          c.isStreaming ||
+          c.isRemoteStreaming ||
+          (c.activeAsyncTools && c.activeAsyncTools.size > 0)
+        );
+      },
       (streaming) => {
         isProcessing.value = streaming;
 

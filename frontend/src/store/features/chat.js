@@ -857,8 +857,12 @@ export default {
         }
       });
     },
-    // Combined streaming indicator - true if THIS tab or ANOTHER tab is streaming
-    isAnyStreaming: (state) => state.isStreaming || state.isRemoteStreaming,
+    // Combined streaming indicator - true if THIS tab or ANOTHER tab is streaming,
+    // or an async tool is still running after the LLM turn finished.
+    isAnyStreaming: (state) =>
+      state.isStreaming ||
+      state.isRemoteStreaming ||
+      (state.activeAsyncTools && state.activeAsyncTools.size > 0),
     // Agent chat getters
     isAgentChat: (state) => !!state.currentAgentId,
     currentAgent: (state) => ({
@@ -869,12 +873,20 @@ export default {
     hasAgentConversation: (state) => (agentId) => !!state.agentConversations[agentId],
     // Concurrent conversation getters
     activeConversation: (state) => state.conversations[state.activeConversationId] || null,
-    isAnyConversationStreaming: (state) => Object.values(state.conversations).some(c => c.isStreaming),
-    streamingConversationIds: (state) => Object.keys(state.conversations).filter(id => state.conversations[id].isStreaming),
+    isAnyConversationStreaming: (state) =>
+      Object.values(state.conversations).some(
+        (c) => c.isStreaming || (c.activeAsyncTools && c.activeAsyncTools.size > 0),
+      ),
+    streamingConversationIds: (state) =>
+      Object.keys(state.conversations).filter((id) => {
+        const c = state.conversations[id];
+        return c.isStreaming || (c.activeAsyncTools && c.activeAsyncTools.size > 0);
+      }),
     streamingOutputIds: (state) => {
       const ids = new Set();
       for (const conv of Object.values(state.conversations)) {
-        if (conv.isStreaming && conv.savedOutputId) {
+        const active = conv.isStreaming || (conv.activeAsyncTools && conv.activeAsyncTools.size > 0);
+        if (active && conv.savedOutputId) {
           ids.add(conv.savedOutputId);
         }
       }
