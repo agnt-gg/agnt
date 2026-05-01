@@ -19,6 +19,8 @@ export const DEFAULT_TOOLS = new Set([
   'agnt_agents',
   'agnt_chat',
   'agnt_goals',
+  'get_agnt_api',
+  'activate_skill',
   'execute_javascript',
   'execute_python',
   'random_number',
