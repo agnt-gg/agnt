@@ -7,16 +7,24 @@ import { ref, onMounted, onUnmounted, computed } from 'vue';
 
 export function useArtifactChatContext({ sessionId = 'artifacts' } = {}) {
   const openFile = ref({ path: null, content: null });
+  const consoleMessages = ref([]);
 
   const handleOpenFileUpdate = (e) => {
     if (e?.detail) openFile.value = { ...e.detail };
   };
 
+  const handleConsoleUpdate = (e) => {
+    const msgs = e?.detail?.messages;
+    consoleMessages.value = Array.isArray(msgs) ? msgs : [];
+  };
+
   onMounted(() => {
     window.addEventListener('artifacts-open-file', handleOpenFileUpdate);
+    window.addEventListener('artifacts-console-update', handleConsoleUpdate);
   });
   onUnmounted(() => {
     window.removeEventListener('artifacts-open-file', handleOpenFileUpdate);
+    window.removeEventListener('artifacts-console-update', handleConsoleUpdate);
   });
 
   const channelKey = computed(() => `artifact:${sessionId}`);
@@ -25,6 +33,7 @@ export function useArtifactChatContext({ sessionId = 'artifacts' } = {}) {
     codeContext: {
       openFilePath: openFile.value.path,
       openFileContent: openFile.value.content,
+      consoleMessages: consoleMessages.value,
     },
   }));
 

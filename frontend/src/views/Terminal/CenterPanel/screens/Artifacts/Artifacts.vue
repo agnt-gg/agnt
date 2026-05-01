@@ -12,15 +12,26 @@
       <div class="ce-root">
         <!-- Tab bar (full width) -->
         <div class="ce-tabs" v-if="openTabs.length > 0">
-          <div class="ce-tabs-scroll">
-            <div v-for="tab in openTabs" :key="tab.path" class="ce-tab" :class="{ active: activeTabPath === tab.path }" @click="switchTab(tab.path)">
-              <span class="ce-tab-name">{{ tab.name }}{{ tab.isDirty ? ' *' : '' }}</span>
-              <Tooltip text="Close">
-                <button class="ce-tab-close" @click.stop="closeTab(tab.path)">
-                  <i class="fas fa-times"></i>
-                </button>
-              </Tooltip>
-            </div>
+          <div class="ce-tabs-scroll" ref="tabsScrollRef" @wheel="handleTabsWheel">
+            <draggable
+              v-model="openTabs"
+              item-key="path"
+              class="ce-tabs-list"
+              :animation="150"
+              ghost-class="ce-tab-ghost"
+              chosen-class="ce-tab-chosen"
+            >
+              <template #item="{ element: tab }">
+                <div class="ce-tab" :class="{ active: activeTabPath === tab.path }" @click="switchTab(tab.path)">
+                  <span class="ce-tab-name">{{ tab.name }}{{ tab.isDirty ? ' *' : '' }}</span>
+                  <Tooltip text="Close">
+                    <button class="ce-tab-close" @click.stop="closeTab(tab.path)">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </Tooltip>
+                </div>
+              </template>
+            </draggable>
           </div>
           <button class="ce-tabs-close-all" @click="closeAllTabs">
             <i class="fas fa-times-circle"></i>
@@ -91,6 +102,12 @@
                     <i class="fas fa-sync-alt"></i>
                   </button>
                 </Tooltip>
+                <Tooltip :text="showConsole ? 'Hide console' : 'Show console'" v-if="isHtmlFile">
+                  <button class="ce-preview-btn ce-console-btn" :class="{ active: showConsole }" @click="showConsole = !showConsole">
+                    <i class="fas fa-terminal"></i>
+                    <span v-if="consoleErrorCount > 0" class="ce-console-badge">{{ consoleErrorCount > 99 ? '99+' : consoleErrorCount }}</span>
+                  </button>
+                </Tooltip>
                 <Tooltip text="Share to AGNT Creations" v-if="isHtmlFile">
                   <button class="ce-preview-btn" @click="openShareModal" :disabled="isSharing">
                     <i class="fas fa-share-alt"></i>
@@ -159,6 +176,49 @@
               <div v-else class="ce-preview-empty">
                 <i class="fas fa-eye"></i>
                 <p>Open a file to see preview</p>
+              </div>
+            </div>
+
+            <!-- Preview console (HTML files only) -->
+            <div v-if="isHtmlFile && showConsole" class="ce-console">
+              <div class="ce-console-header">
+                <span class="ce-console-label">
+                  <i class="fas fa-terminal"></i>
+                  Console
+                  <span class="ce-console-count" v-if="consoleMessages.length > 0">{{ consoleMessages.length }}</span>
+                </span>
+                <div class="ce-console-filters">
+                  <button class="ce-console-filter" :class="{ active: consoleFilter === 'all' }" @click="consoleFilter = 'all'">All</button>
+                  <button class="ce-console-filter" :class="{ active: consoleFilter === 'warnings' }" @click="consoleFilter = 'warnings'">Warnings</button>
+                  <button class="ce-console-filter" :class="{ active: consoleFilter === 'errors' }" @click="consoleFilter = 'errors'">Errors</button>
+                </div>
+                <Tooltip text="Clear console">
+                  <button class="ce-preview-btn" @click="clearConsole" :disabled="consoleMessages.length === 0">
+                    <i class="fas fa-ban"></i>
+                  </button>
+                </Tooltip>
+              </div>
+              <div class="ce-console-body">
+                <div v-if="filteredConsoleMessages.length === 0" class="ce-console-empty">
+                  <i class="fas fa-terminal"></i>
+                  <span v-if="consoleMessages.length === 0">No messages — try adding console.log() to your HTML</span>
+                  <span v-else>No messages match the current filter</span>
+                </div>
+                <div v-for="msg in filteredConsoleMessages" :key="msg.id" class="ce-console-msg" :class="'ce-console-msg-' + msg.level">
+                  <i class="ce-console-msg-icon" :class="{
+                    'fas fa-info-circle': msg.level === 'info',
+                    'fas fa-angle-right': msg.level === 'log' || msg.level === 'debug',
+                    'fas fa-exclamation-triangle': msg.level === 'warn',
+                    'fas fa-times-circle': msg.level === 'error',
+                  }"></i>
+                  <div class="ce-console-msg-content">
+                    <span v-for="(arg, i) in msg.args" :key="i" class="ce-console-arg">{{ formatConsoleArg(arg) }}</span>
+                    <div v-if="msg.meta && msg.meta.file" class="ce-console-meta">
+                      {{ msg.meta.file }}<span v-if="msg.meta.line">:{{ msg.meta.line }}</span><span v-if="msg.meta.col">:{{ msg.meta.col }}</span>
+                    </div>
+                    <pre v-if="msg.meta && msg.meta.stack" class="ce-console-stack">{{ msg.meta.stack }}</pre>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -246,6 +306,7 @@ import { html } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
 import showdown from 'showdown';
 import 'highlight.js/styles/atom-one-dark.css';
+import draggable from 'vuedraggable';
 import BaseScreen from '../../BaseScreen.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, saveFile } from '@/services/fileSystemService.js';
@@ -554,7 +615,7 @@ function parseDelimited(content, delimiter) {
 
 export default {
   name: 'ArtifactsScreen',
-  components: { BaseScreen, Codemirror, Tooltip },
+  components: { BaseScreen, Codemirror, Tooltip, draggable },
   emits: ['screen-change'],
   setup() {
     const baseScreenRef = ref(null);
@@ -563,10 +624,87 @@ export default {
     const markdownPreviewRef = ref(null);
     const openTabs = ref([]);
     const activeTabPath = ref(null);
+    const tabsScrollRef = ref(null);
+
+    // Translate vertical wheel to horizontal scroll on the tab strip
+    const handleTabsWheel = (e) => {
+      const el = tabsScrollRef.value;
+      if (!el) return;
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (e.deltaX !== 0) return;
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
     const isSaving = ref(false);
     const editorWidth = ref(50);
     const isResizing = ref(false);
     const showCode = ref(false);
+
+    // Preview console state
+    const showConsole = ref(false);
+    const consoleMessages = ref([]);
+    const consoleFilter = ref('all');
+    const MAX_CONSOLE_MESSAGES = 500;
+
+    const consoleErrorCount = computed(() => consoleMessages.value.filter((m) => m.level === 'error').length);
+
+    const filteredConsoleMessages = computed(() => {
+      if (consoleFilter.value === 'all') return consoleMessages.value;
+      if (consoleFilter.value === 'errors') return consoleMessages.value.filter((m) => m.level === 'error');
+      if (consoleFilter.value === 'warnings') return consoleMessages.value.filter((m) => m.level === 'warn' || m.level === 'error');
+      return consoleMessages.value;
+    });
+
+    const formatConsoleArg = (arg) => {
+      if (arg === null) return 'null';
+      if (arg === undefined) return 'undefined';
+      if (typeof arg === 'string') return arg;
+      if (typeof arg === 'number' || typeof arg === 'boolean') return String(arg);
+      if (arg && arg.__type === 'Error') return `${arg.name || 'Error'}: ${arg.message || ''}`;
+      try { return JSON.stringify(arg, null, 2); } catch { return String(arg); }
+    };
+
+    // Broadcast a compact console snapshot so the chat orchestrator can include
+    // recent preview output in its system prompt (mirrors the open-file pipeline).
+    let consoleBroadcastTimer = null;
+    const broadcastConsoleUpdate = () => {
+      clearTimeout(consoleBroadcastTimer);
+      consoleBroadcastTimer = setTimeout(() => {
+        const recent = consoleMessages.value.slice(-50).map((m) => ({
+          level: m.level,
+          args: m.args,
+          meta: m.meta || null,
+          time: m.time,
+        }));
+        window.dispatchEvent(
+          new CustomEvent('artifacts-console-update', { detail: { messages: recent } }),
+        );
+      }, 200);
+    };
+
+    const clearConsole = () => {
+      consoleMessages.value = [];
+      broadcastConsoleUpdate();
+    };
+
+    const handlePreviewMessage = (event) => {
+      const data = event.data;
+      if (!data || data.source !== PREVIEW_CONSOLE_SOURCE) return;
+      // Only accept messages from our preview iframe
+      if (!previewFrame.value || event.source !== previewFrame.value.contentWindow) return;
+      consoleMessages.value.push({
+        id: Date.now() + Math.random(),
+        level: data.level,
+        args: data.args || [],
+        meta: data.meta,
+        time: data.time,
+      });
+      if (consoleMessages.value.length > MAX_CONSOLE_MESSAGES) {
+        consoleMessages.value.splice(0, consoleMessages.value.length - MAX_CONSOLE_MESSAGES);
+      }
+      broadcastConsoleUpdate();
+    };
 
     // Share to AGNT Creations state
     const store = useStore();
@@ -1158,6 +1296,67 @@ export default {
       return langFn ? [langFn(), oneDark] : [oneDark];
     });
 
+    // ── Preview console (captures console.* + errors from the iframe) ──
+    // The iframe is sandboxed with allow-same-origin + allow-scripts, so parent.postMessage works.
+    // If the sandbox is ever tightened (no allow-same-origin), this shim still works because
+    // postMessage is allowed across sandbox boundaries — but module scripts may not.
+    const PREVIEW_CONSOLE_SOURCE = 'agnt-preview-console';
+    const PREVIEW_CONSOLE_SHIM = `
+(function(){
+  if (window.__agntConsoleHooked) return;
+  window.__agntConsoleHooked = true;
+  var SOURCE = ${JSON.stringify(PREVIEW_CONSOLE_SOURCE)};
+  function safe(v, d) {
+    d = d || 0;
+    if (d > 4) return '[…]';
+    if (v === null) return null;
+    if (v === undefined) return undefined;
+    var t = typeof v;
+    if (t === 'string' || t === 'number' || t === 'boolean') return v;
+    if (t === 'function') return '[Function ' + (v.name || 'anonymous') + ']';
+    if (v instanceof Error) return { __type: 'Error', name: v.name, message: v.message, stack: v.stack };
+    if (v && v.nodeType) return '<' + (v.tagName ? v.tagName.toLowerCase() : 'node') + '>';
+    if (Array.isArray(v)) return v.slice(0, 100).map(function(x){ return safe(x, d+1); });
+    if (t === 'object') {
+      try {
+        var out = {}, keys = Object.keys(v).slice(0, 50);
+        for (var i = 0; i < keys.length; i++) out[keys[i]] = safe(v[keys[i]], d+1);
+        return out;
+      } catch(e) { return String(v); }
+    }
+    return String(v);
+  }
+  function send(level, args, meta) {
+    try {
+      var s = []; for (var i = 0; i < args.length; i++) s.push(safe(args[i]));
+      parent.postMessage({ source: SOURCE, level: level, args: s, meta: meta || null, time: Date.now() }, '*');
+    } catch(e) {}
+  }
+  ['log','info','warn','error','debug'].forEach(function(m){
+    var orig = console[m] && console[m].bind(console);
+    console[m] = function(){ send(m, arguments); if (orig) orig.apply(console, arguments); };
+  });
+  window.addEventListener('error', function(e){
+    send('error', [e.message || 'Error'], { file: e.filename, line: e.lineno, col: e.colno, stack: e.error && e.error.stack });
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var r = e.reason;
+    send('error', [r && r.message ? r.message : 'Unhandled rejection'], { stack: r && r.stack });
+  });
+})();
+`;
+
+    const injectConsoleShim = (doc) => {
+      let head = doc.querySelector('head');
+      if (!head) {
+        head = doc.createElement('head');
+        doc.documentElement.insertBefore(head, doc.documentElement.firstChild);
+      }
+      const script = doc.createElement('script');
+      script.textContent = PREVIEW_CONSOLE_SHIM;
+      head.insertBefore(script, head.firstChild);
+    };
+
     // ── Preview ──────────────────────────────────────────────
     // srcdoc iframes have no base URL, so relative asset paths (./img.png, assets/x.mp4)
     // can't resolve. Rewrite them to absolute /filesystem/raw URLs based on the HTML file's dir.
@@ -1225,6 +1424,8 @@ export default {
           el.setAttribute('style', rewriteCss(el.getAttribute('style')));
         });
 
+        injectConsoleShim(doc);
+
         return '<!DOCTYPE html>' + doc.documentElement.outerHTML;
       } catch (e) {
         console.warn('[Artifacts] HTML asset rewrite failed, using original content:', e);
@@ -1239,6 +1440,7 @@ export default {
 
     const refreshPreview = () => {
       if (isHtmlFile.value && previewFrame.value) {
+        clearConsole();
         // Force iframe reload by clearing then re-setting srcdoc
         previewFrame.value.srcdoc = '';
         nextTick(() => updatePreview());
@@ -1640,6 +1842,7 @@ export default {
     };
 
     const switchTab = (path) => {
+      if (activeTabPath.value !== path) clearConsole();
       activeTabPath.value = path;
       const tab = openTabs.value.find((t) => t.path === path);
       if (tab) broadcastOpenFile(tab);
@@ -1746,15 +1949,18 @@ export default {
     onMounted(() => {
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('code-file-written', handleFileWritten);
+      window.addEventListener('message', handlePreviewMessage);
     });
 
     onUnmounted(() => {
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('code-file-written', handleFileWritten);
+      window.removeEventListener('message', handlePreviewMessage);
       document.removeEventListener('mousemove', onResize);
       document.removeEventListener('mouseup', stopResize);
       clearTimeout(previewTimer);
       clearTimeout(mathJaxTimer);
+      clearTimeout(consoleBroadcastTimer);
       destroyVizInstances();
       destroyEpub();
       destroy3DModel();
@@ -1774,10 +1980,19 @@ export default {
       openTabs,
       activeTabPath,
       activeTab,
+      tabsScrollRef,
+      handleTabsWheel,
       isSaving,
       editorWidth,
       isResizing,
       showCode,
+      showConsole,
+      consoleMessages,
+      consoleFilter,
+      consoleErrorCount,
+      filteredConsoleMessages,
+      formatConsoleArg,
+      clearConsole,
       isHtmlFile,
       isMarkdownFile,
       isImageFile,
@@ -1866,11 +2081,27 @@ export default {
   flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
-  scrollbar-width: none;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-text-muted) transparent;
 }
 
 .ce-tabs-scroll::-webkit-scrollbar {
-  display: none;
+  height: 6px;
+}
+
+.ce-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ce-tabs-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-text-muted);
+  border-radius: 3px;
+}
+
+.ce-tabs-list {
+  display: flex;
+  min-width: max-content;
 }
 
 .ce-tabs-close-all {
@@ -1906,11 +2137,15 @@ export default {
   padding: 6px 12px;
   font-size: 12px;
   color: var(--color-text-muted);
-  cursor: pointer;
+  cursor: grab;
   border-right: 1px solid var(--terminal-border-color);
   white-space: nowrap;
-  transition: all 0.12s;
+  transition: background 0.12s, color 0.12s;
   user-select: none;
+}
+
+.ce-tab:active {
+  cursor: grabbing;
 }
 
 .ce-tab:hover {
@@ -1923,6 +2158,18 @@ export default {
   color: var(--color-primary);
   border-bottom: 1px solid var(--color-primary);
   margin-bottom: -1px;
+}
+
+/* Drag-state styling (vuedraggable / SortableJS) */
+.ce-tab-ghost {
+  opacity: 0.4;
+  background: rgba(var(--primary-rgb), 0.12);
+  color: var(--color-primary);
+}
+
+.ce-tab-chosen {
+  background: var(--color-darker-1);
+  color: var(--color-text);
 }
 
 .ce-tab-name {
@@ -2138,6 +2385,212 @@ export default {
   height: 100%;
   border: none;
   background: #fff;
+}
+
+/* ── Preview console ── */
+.ce-console-btn {
+  position: relative;
+}
+
+.ce-console-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--color-red);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ce-console {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  max-height: 50%;
+  border-top: 1px solid var(--terminal-border-color);
+  background: var(--color-darker-0);
+  overflow: hidden;
+}
+
+.ce-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--color-darker-0);
+  border-bottom: 1px solid var(--terminal-border-color);
+  flex-shrink: 0;
+}
+
+.ce-console-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ce-console-count {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--color-primary);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ce-console-filters {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+.ce-console-filter {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  transition: all 0.12s;
+}
+
+.ce-console-filter:hover {
+  color: var(--color-text);
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+.ce-console-filter.active {
+  color: var(--color-primary);
+  background: rgba(var(--primary-rgb), 0.12);
+}
+
+.ce-console-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  font-family: var(--font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-text-muted) transparent;
+}
+
+.ce-console-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ce-console-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ce-console-body::-webkit-scrollbar-thumb {
+  background: var(--color-text-muted);
+  border-radius: 3px;
+}
+
+.ce-console-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: center;
+  padding: 16px;
+}
+
+.ce-console-msg {
+  display: flex;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(var(--primary-rgb), 0.04);
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.ce-console-msg-icon {
+  flex-shrink: 0;
+  margin-top: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.ce-console-msg-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ce-console-arg {
+  white-space: pre-wrap;
+}
+
+.ce-console-meta {
+  width: 100%;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.ce-console-stack {
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.ce-console-msg-log,
+.ce-console-msg-debug {
+  color: var(--color-text);
+}
+
+.ce-console-msg-info {
+  color: var(--color-primary);
+}
+
+.ce-console-msg-warn {
+  background: rgba(255, 170, 0, 0.04);
+  color: #f5b73a;
+}
+
+.ce-console-msg-warn .ce-console-msg-icon {
+  color: #f5b73a;
+  opacity: 1;
+}
+
+.ce-console-msg-error {
+  background: rgba(255, 60, 60, 0.05);
+  color: var(--color-red);
+}
+
+.ce-console-msg-error .ce-console-msg-icon {
+  color: var(--color-red);
+  opacity: 1;
 }
 
 .ce-markdown-preview {

@@ -7,6 +7,7 @@ export async function getCodeSystemContent(context = {}) {
   const { codeContext } = context;
   const openFilePath = codeContext?.openFilePath || null;
   const openFileContent = codeContext?.openFileContent || null;
+  const consoleMessages = Array.isArray(codeContext?.consoleMessages) ? codeContext.consoleMessages : [];
 
   // Get current workspace root for system prompt
   let workspaceRootDisplay = '~/.agnt/projects/';
@@ -37,6 +38,31 @@ export async function getCodeSystemContent(context = {}) {
     fileSection = `\n\nCURRENTLY OPEN FILE: ${openFilePath} (content not provided)`;
   }
 
+  // Recent console output from the live HTML preview iframe (console.log/warn/error,
+  // window.onerror, unhandledrejection). Use this to debug the user's preview.
+  let consoleSection = '';
+  if (consoleMessages.length > 0) {
+    const formatArg = (a) => {
+      if (a === null) return 'null';
+      if (a === undefined) return 'undefined';
+      if (typeof a === 'string') return a;
+      if (typeof a === 'number' || typeof a === 'boolean') return String(a);
+      if (a && a.__type === 'Error') return `${a.name || 'Error'}: ${a.message || ''}`;
+      try {
+        const s = JSON.stringify(a);
+        return s.length > 300 ? s.slice(0, 300) + '…' : s;
+      } catch { return '[unserializable]'; }
+    };
+    const recent = consoleMessages.slice(-30);
+    const lines = recent.map((m) => {
+      const args = (m.args || []).map(formatArg).join(' ');
+      const loc = m.meta?.file ? ` (${m.meta.file}:${m.meta.line ?? '?'})` : '';
+      const stack = m.meta?.stack ? `\n  ${String(m.meta.stack).split('\n').slice(0, 3).join('\n  ')}` : '';
+      return `[${(m.level || 'log').toUpperCase()}] ${args}${loc}${stack}`;
+    });
+    consoleSection = `\n\nRECENT PREVIEW CONSOLE OUTPUT (last ${lines.length} of ${consoleMessages.length} entries from the live HTML preview):\n${lines.join('\n')}`;
+  }
+
   return `You are Annie, a helpful AI assistant within AGNT's Artifacts workspace.
 
 You help users create, edit, and explore artifacts — code, documents, visualizations, and any other files — in their workspace (${workspaceRootDisplay}).
@@ -44,6 +70,7 @@ You help users create, edit, and explore artifacts — code, documents, visualiz
 The Artifacts screen has four panels: Chat (left), Editor (center-left), Preview (center-right), and File Tree (right). Files open in the editor with syntax highlighting, and the preview panel renders them live.
 ${workspaceSection}
 ${fileSection}
+${consoleSection}
 
 AVAILABLE TOOLS:
 1. **read_file** — Read a file's contents from the workspace
