@@ -38,6 +38,7 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     skillsCatalogSection = '',
     memorySection = '',
     customInstructionsSection = '',
+    workspaceSection = '',
     agentOverride = null,
   } = options;
 
@@ -65,6 +66,10 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
 
 Every Annie chat surface is functionally the same assistant. The current page context is a soft signal: prefer tools and interpretations relevant to that page, but you may use any available tool when the user's request crosses domains.`);
   }
+
+  // Workspace path is environment context — every surface should know it
+  // before reasoning about file-related tool calls.
+  if (workspaceSection) parts.push(workspaceSection);
 
   // Image-handling rules only matter if the LLM can actually receive or
   // produce images on this surface.

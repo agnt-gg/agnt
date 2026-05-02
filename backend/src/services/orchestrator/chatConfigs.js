@@ -121,6 +121,24 @@ async function loadCustomInstructionsSection(context) {
   return customInstructionsSection;
 }
 
+// Single source of truth for the user's workspace directory across every chat
+// surface (orchestrator, agent, workflow, tool, widget, goal, artifact). The
+// path is set in onboarding and editable in artifacts settings; reading it
+// here means tools that take a file path can default to under the workspace.
+async function loadWorkspaceContextSection() {
+  try {
+    const { getWorkspaceRootPath } = await import('./codeTools.js');
+    const workspaceRoot = await getWorkspaceRootPath();
+    if (!workspaceRoot) return '';
+    return `## Workspace
+The user's workspace directory is: ${workspaceRoot}
+When you create, edit, or save files on the user's behalf, place them under this workspace path unless the user explicitly names a different location. This is where their project files live, and any tool that accepts a file path (file_operations, write_file, code generators, video tools, etc.) should default to a path under here.`;
+  } catch (e) {
+    console.warn('[chatConfigs] Failed to load workspace root:', e.message);
+    return '';
+  }
+}
+
 async function loadAgentOverride(context) {
   const isSavedAgent = context.agentId && context.agentId !== 'agent-chat';
   if (!isSavedAgent) return null;
@@ -355,11 +373,13 @@ const unifiedConfig = {
     const skillsCatalogSection = await loadSkillsCatalogSection(context);
     const memorySection = await loadFrozenMemorySection(context, context.agentId && context.agentId !== 'agent-chat' ? context.agentId : null);
     const customInstructionsSection = await loadCustomInstructionsSection(context);
+    const workspaceSection = await loadWorkspaceContextSection();
 
     return buildUnifiedSystemPrompt(context, {
       skillsCatalogSection,
       memorySection,
       customInstructionsSection,
+      workspaceSection,
       agentOverride,
     });
   },
