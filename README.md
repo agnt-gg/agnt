@@ -176,7 +176,7 @@ AGNT overlaps with a handful of other open-source agent projects, but the featur
 | **MCP protocol**                        | ✅                                               | ✅                                  | ✅                        |
 | **Model-agnostic**                      | ✅                                               | ✅                                  | ✅                        |
 | **Multi-agent coordination**            | ✅ Via orchestrator + goals                      | ✅                                  | ✅                        |
-| **Voice (TTS/STT)**                     | ✅ Native                                        | ⚠️ Via tools                        | ❌                        |
+| **Voice (TTS/STT)**                     | ✅ Native                                        | ⚠️ Via tools                        | ✅ Native                 |
 | **Email-driven automation**             | ✅ Native listener                               | ⚠️ Chat only                        | ❌                        |
 | **Chat platforms (WhatsApp/Slack/etc)** | Via tools/MCP                                    | ✅ Native strength                  | ⚠️                        |
 | **Self-hostable**                       | ✅                                               | ✅                                  | ✅                        |
