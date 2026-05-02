@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "0.5.9",
+      "date": "May 2, 2026",
+      "title": "Mid-Turn Chat Steering, Tool-Aware Async Follow-Ups & Universal AI Selector Search - AGNT v0.5.9",
+      "type": "patch",
+      "features": [
+        { "name": "Mid-Turn Chat Steering with Per-Conversation Pending Queue, Inline Cancel Chip, Visible Transcript Surfacing & Auto-Fire Fallback (Hermes-Style Drain Between Tool Rounds — Works in Main Annie Chat and Every Sidebar Forge Panel)", "status": "new" },
+        { "name": "Autonomous Async-Tool Follow-Ups Now Run a Real Multi-Round Tool Loop with the Same Tool List the Original Turn Had (Was a Single Tool-Less LLM Call That Cut Annie Off Mid-Task After Every Async Tool Completed)", "status": "bug" },
+        { "name": "Universal Provider/Model Search Bar Across Settings, Chat Toolbar & Canvas Header Selectors with Background Pre-Fetch of Every Provider's Model List on Mount", "status": "new" },
+        { "name": "Workspace Folder Capture During Onboarding + Workspace Path Auto-Injected into All Chat System Prompts (Annie Knows Where Your Files Live)", "status": "new" },
+        { "name": "Uploaded Files Now Persisted to Disk and Their Absolute Paths Surfaced to the LLM (Annie Can Read User Uploads as Real Files via file:/// — No More Base64-Only Round-Trips)", "status": "new" },
+        { "name": "MCP Tools Exposed as First-Class Hierarchical Tool Entries Plus SSE Close Guard on Transport Error (No Longer Buried Under a Single mcp_client Wrapper)", "status": "updated" },
+        { "name": "file:///<absolute-path> Asset Embedding Guidance Across Orchestrator, Artifact & Widget Forge System Prompts with Explicit Anti-Pattern Warning Against Signed Cloud-Storage URLs (Aliyun OSS / dashscope / S3 / R2 / GCS) That the Sandboxed Renderer Can't Load and That Expire Within Minutes", "status": "bug" },
+        { "name": "Codex / Reasoning Model Context-Window Headroom Fix: 32k Output Buffer + 0.93 Safety Margin for openai-codex So gpt-5.5 No Longer Hits 'Input Exceeds Context Window' Mid-Turn", "status": "bug" },
+        { "name": "Artifact Tabs Drag-to-Reorder Plus Live HTML Preview Console (Captures console.log/warn/error, window.onerror & unhandledrejection from the Sandboxed Iframe and Surfaces Them Back to Annie for Debugging)", "status": "new" },
+        { "name": "AGNT Design System Reference Document Bundled in the Repo for AI Agents Authoring HTML Artifacts and Widgets (Colors, Spacing, Typography, Component Conventions — Drop the Generic Stock Aesthetic, Match the Real Look)", "status": "new" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.8",
       "date": "April 29, 2026",
       "title": "Chutes E2EE Provider, Universal Context-Window Coverage & Workflow Stability - AGNT v0.5.8",
