@@ -76,9 +76,8 @@ export default {
 }
 
 .suggestion-text {
-  flex: 1;
-  min-width: 0;
   display: block;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   container-type: inline-size;
