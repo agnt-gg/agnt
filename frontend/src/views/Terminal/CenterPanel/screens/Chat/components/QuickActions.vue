@@ -77,10 +77,9 @@ export default {
 
 .suggestion-text {
   display: block;
-  min-width: 0;
+  max-width: 220px;
   overflow: hidden;
   white-space: nowrap;
-  container-type: inline-size;
   position: relative;
   font-weight: 300;
 }
@@ -91,11 +90,12 @@ export default {
 }
 
 .suggestion-card:hover .suggestion-text-inner {
-  /* Container query trick: if the text fits, 100cqw - 100% is positive,
-     min() clamps to 0 (no movement). If it overflows, the value is
-     negative and the text slides left to reveal the end on hover. */
+  /* If text fits inside the 220px max-width, 220px - 100% (inner's own
+     content width) is positive, min() clamps to 0, no movement.
+     If text overflows, the value is negative and the inner span slides
+     left to reveal the end. */
   transition: transform 4s linear;
-  transform: translateX(min(0px, calc(100cqw - 100%)));
+  transform: translateX(min(0px, calc(220px - 100%)));
 }
 
 .suggestions-bar.loading {
