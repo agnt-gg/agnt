@@ -508,6 +508,21 @@ export default {
     const handleUserInputSubmit = async (input, files = null, mentionedAgents = null) => {
       if (!input || !input.trim()) return;
 
+      // Mid-turn steer: a turn is already streaming. Don't start a new POST
+      // (it'd race the in-flight one). Send the text via socket so the
+      // backend can drain it between tool rounds, OR — if the turn ends
+      // before another round happens — the auto-fire watcher below sends
+      // it as a fresh user turn.
+      if (store.state.chat.isStreaming && store.state.chat.currentConversationId) {
+        const resp = await store.dispatch('chat/steerInFlight', { content: input });
+        if (resp?.ok) {
+          clearInput();
+        } else {
+          console.warn('[Chat] steer failed:', resp?.error);
+        }
+        return;
+      }
+
       const command = input.trim().toLowerCase();
       if (command === 'clear' || command === 'cls') {
         clearConversation();
@@ -1041,6 +1056,22 @@ export default {
 
     const clearInput = () => baseScreenRef.value?.clearInput();
     const focusInput = () => baseScreenRef.value?.focusInput();
+
+    // Auto-fire pending steer as a fresh user turn whenever the stream is
+    // not running and a steer is parked. Two cases:
+    //   1) Stream ends with steer already queued → fire on isStreaming flip
+    //   2) Steer's socket ack arrives AFTER stream ended (race) → fire on
+    //      pendingSteer becoming set
+    // Two watchers calling the same guard keeps both paths simple.
+    const tryAutoFireSteer = () => {
+      if (store.state.chat.isStreaming) return;
+      const steer = store.state.chat.pendingSteer;
+      if (!steer) return;
+      store.commit('chat/CLEAR_PENDING_STEER');
+      setTimeout(() => handleUserInputSubmit(steer, null, null), 0);
+    };
+    watch(() => store.state.chat.isStreaming, tryAutoFireSteer);
+    watch(() => store.state.chat.pendingSteer, tryAutoFireSteer);
 
     const saveConversation = async () => {
       const token = localStorage.getItem('token');

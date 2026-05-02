@@ -5,6 +5,7 @@
 
 import { streamChat, toChatHistory } from '@/services/chatService.js';
 import { resolveChannelProviderModel, resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
+import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 
 const STORAGE_KEY = 'unifiedChatConversations';
 const LEGACY_KEYS = {
@@ -111,6 +112,7 @@ export default {
     runningToolCalls: {},           // channelKey → { 'msgId-toolCallId': true }
     messageStates: {},              // channelKey → { messageId: status }
     abortControllers: {},           // channelKey → AbortController
+    pendingSteers: {},              // channelKey → string (mid-run steer awaiting drain)
     _migrated: {},                  // channelKey → boolean
   },
 
@@ -266,6 +268,15 @@ export default {
     CLEAR_ABORT_CONTROLLER(state, { channelKey }) {
       delete state.abortControllers[channelKey];
     },
+    SET_PENDING_STEER(state, { channelKey, content }) {
+      // Append rather than replace — multiple steers within one round all
+      // count and get drained together at the next seam.
+      const prev = state.pendingSteers[channelKey];
+      state.pendingSteers[channelKey] = prev ? `${prev}\n${content}` : content;
+    },
+    CLEAR_PENDING_STEER(state, { channelKey }) {
+      delete state.pendingSteers[channelKey];
+    },
     PERSIST_CONVERSATIONS(state) {
       persistConversations(state.conversations);
     },
@@ -292,6 +303,7 @@ export default {
     isStreaming: (state) => (channelKey) => !!state.streamingChannels[channelKey],
     isLoadingSuggestions: (state) => (channelKey) =>
       !!state.loadingSuggestionsChannels[channelKey],
+    pendingSteer: (state) => (channelKey) => state.pendingSteers[channelKey] || '',
     getMessageStatus: (state) => (channelKey, messageId) =>
       state.messageStates[channelKey]?.[messageId] || null,
     getRunningToolsForMessage: (state) => (channelKey, messageId) => {
@@ -399,7 +411,10 @@ export default {
         });
       } catch (error) {
         if (error?.name === 'AbortError') {
-          // user-initiated stop — silent
+          // User-initiated stop — drop any pending steer too. They aborted
+          // for a reason; auto-firing the steer as a new turn would override
+          // their intent.
+          commit('CLEAR_PENDING_STEER', { channelKey });
         } else {
           console.error('[chatUnified] sendMessage error:', error);
           commit('ADD_MESSAGE', {
@@ -415,6 +430,60 @@ export default {
       } finally {
         commit('SET_STREAMING', { channelKey, isStreaming: false });
         commit('CLEAR_ABORT_CONTROLLER', { channelKey });
+
+        // If a mid-turn steer never drained (turn ended on a final response
+        // with no more tool rounds, so the between-rounds seam never fired),
+        // re-fire the steer as a new user turn so the agent actually
+        // responds. Hermes calls this the "agent exits mid-steer → next
+        // user turn" fallback.
+        const leftoverSteer = state.pendingSteers[channelKey];
+        if (leftoverSteer) {
+          commit('CLEAR_PENDING_STEER', { channelKey });
+          // setTimeout breaks out of the current call stack so the
+          // streaming state cleanly resets before the new turn starts.
+          setTimeout(() => {
+            dispatch('sendMessage', {
+              channelKey,
+              chatType,
+              content: leftoverSteer,
+              pageContext,
+              pageState,
+              provider,
+              model,
+              onFrontendEvent,
+            });
+          }, 0);
+        }
+      }
+    },
+
+    /**
+     * Send a mid-run steer instead of starting a new turn. The chat input
+     * dispatcher routes here when isStreaming(channelKey) is true.
+     */
+    async steerInFlight({ commit, state }, { channelKey, content }) {
+      const conversationId = state.conversations[channelKey]?.conversationId || null;
+      if (!conversationId) return { ok: false, error: 'no_conversation' };
+      if (!content || !content.trim()) return { ok: false, error: 'empty' };
+      const resp = await emitSteer(conversationId, content.trim());
+      if (resp?.ok) {
+        commit('SET_PENDING_STEER', { channelKey, content: content.trim() });
+      }
+      return resp;
+    },
+
+    /**
+     * Cancel a pending steer — user clicked the X on the chip before it
+     * was drained at a tool-round seam OR auto-fired at turn end.
+     */
+    async cancelSteer({ commit, state }, { channelKey }) {
+      const conversationId = state.conversations[channelKey]?.conversationId || null;
+      // Always clear locally so the chip disappears, even if the socket
+      // call fails — local state is what's user-visible.
+      commit('CLEAR_PENDING_STEER', { channelKey });
+      if (conversationId) {
+        // Fire-and-forget — backend cleanup is best-effort.
+        emitClearSteer(conversationId).catch(() => {});
       }
     },
 
@@ -519,6 +588,26 @@ function handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEven
   switch (eventName) {
     case 'conversation_started':
       commit('SET_CONVERSATION_ID', { channelKey, conversationId: data.conversationId });
+      break;
+
+    case 'steering_applied':
+      commit('CLEAR_PENDING_STEER', { channelKey });
+      // Surface the steer text as a real user message in the transcript at
+      // the round it landed. Without this, the steer is buried inside the
+      // tool-result content (Hermes pattern) and the user never sees what
+      // they sent.
+      if (data.content) {
+        commit('ADD_MESSAGE', {
+          channelKey,
+          message: {
+            id: generateMessageId(channelKey),
+            role: 'user',
+            content: data.content,
+            timestamp: Date.now(),
+            steered: true,
+          },
+        });
+      }
       break;
 
     case 'assistant_message': {

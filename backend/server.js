@@ -51,6 +51,7 @@ import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
 import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
+import { stashSteer, clearSteer } from './src/services/OrchestratorService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -436,6 +437,36 @@ function startServer() {
           console.log(`[Socket.IO] Authentication failed - no userId provided`);
           socket.emit('authenticated', { success: false, error: 'No userId provided' });
         }
+      });
+
+      // Mid-run steering: user types a message while a turn is streaming.
+      // Stash it; OrchestratorService drains between tool rounds.
+      socket.on('steer', ({ conversationId, content } = {}, ack) => {
+        if (!socket.userId) {
+          return ack?.({ ok: false, error: 'unauthenticated' });
+        }
+        if (!conversationId || typeof conversationId !== 'string') {
+          return ack?.({ ok: false, error: 'no_conversation' });
+        }
+        if (!content || typeof content !== 'string' || !content.trim()) {
+          return ack?.({ ok: false, error: 'empty' });
+        }
+        const ok = stashSteer(conversationId, content);
+        if (!ok) return ack?.({ ok: false, error: 'rejected' });
+        console.log(`[Socket.IO] Steer stashed for ${conversationId} from user ${socket.userId} (${content.length} chars)`);
+        ack?.({ ok: true });
+      });
+
+      // Cancel a pending steer before it's drained — user clicked the X
+      // on the steering chip. Clears the backend queue so the next tool
+      // round (or auto-fire) doesn't see it.
+      socket.on('clear_steer', ({ conversationId } = {}, ack) => {
+        if (!socket.userId || !conversationId) {
+          return ack?.({ ok: false });
+        }
+        const cleared = clearSteer(conversationId);
+        console.log(`[Socket.IO] Steer cleared for ${conversationId} from user ${socket.userId} (had-pending=${cleared})`);
+        ack?.({ ok: true });
       });
 
       socket.on('disconnect', () => {

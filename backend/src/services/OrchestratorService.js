@@ -34,6 +34,53 @@ const CANCELLED_TOOL_RESULT = JSON.stringify({
   error: 'Tool execution cancelled: stream aborted before completion.',
 });
 
+// Mid-run user steering. While a turn is streaming, the chat input is
+// otherwise dead — this lets a user nudge the agent's next round without
+// aborting. Steers are stashed per conversation, drained between tool
+// rounds, and appended to the last tool-result message's content (Hermes
+// /steer pattern). Tool-result messages already invalidate the prefix
+// cache per turn, so this append is cache-neutral.
+const pendingSteers = new Map(); // conversationId → string
+
+export function stashSteer(conversationId, content) {
+  if (!conversationId || !content || typeof content !== 'string') return false;
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  const prev = pendingSteers.get(conversationId);
+  pendingSteers.set(conversationId, prev ? `${prev}\n${trimmed}` : trimmed);
+  return true;
+}
+
+function drainSteer(conversationId) {
+  const text = pendingSteers.get(conversationId);
+  pendingSteers.delete(conversationId);
+  return text || null;
+}
+
+export function clearSteer(conversationId) {
+  return pendingSteers.delete(conversationId);
+}
+
+function applySteerToLastToolResult(messages, steerText) {
+  const tail = `\n\n[USER STEER (mid-run, not tool output): ${steerText}]`;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== 'tool') continue;
+    if (typeof msg.content === 'string') {
+      msg.content = msg.content + tail;
+    } else if (Array.isArray(msg.content)) {
+      msg.content = [...msg.content, { type: 'text', text: tail }];
+    } else {
+      // Unknown content shape — fall back to a sibling user message.
+      messages.push({ role: 'user', content: tail });
+    }
+    return true;
+  }
+  // No tool message to anchor onto — push as a standalone user nudge.
+  messages.push({ role: 'user', content: tail });
+  return true;
+}
+
 /**
  * Ensure every tool_use (Anthropic) / tool_calls[] (OpenAI-style) has a matching
  * tool_result / role:'tool' reply in the next message. If not, inject a synthetic
@@ -1229,6 +1276,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
       finalToolSchemas = finalToolSchemas.filter((t) => t.function?.name !== 'mcp_client');
     }
 
+    // Stash on conversationContext so the finally-block conversationManager.store
+    // captures it via {...conversationContext}. finalToolSchemas itself is
+    // block-scoped to this try, so the autonomous follow-up code path can't
+    // reach it directly — the context spread is the bridge.
+    conversationContext.finalToolSchemas = finalToolSchemas;
+
     // Generate assistant message ID early (needed for image extraction events)
     const assistantMessageId = `msg-asst-${Date.now()}`;
 
@@ -1972,6 +2025,16 @@ IMPORTANT: The image data is already available in the system context. You don't 
       const formattedToolResponses = adapter.formatToolResults(toolResponses);
       messages.push(...formattedToolResponses);
 
+      // Drain any user steers that arrived during this round and append them
+      // to the last tool-result message. The model picks them up on the next
+      // LLM call without us starting a new turn.
+      const steerText = drainSteer(conversationId);
+      if (steerText) {
+        applySteerToLastToolResult(messages, steerText);
+        sendEvent('steering_applied', { content: steerText, round: currentRound });
+        console.log(`[Steering] Applied steer at round ${currentRound} (${steerText.length} chars)`);
+      }
+
       // Send tool execution summary for this round
       sendEvent('tool_executions', { assistantMessageId, tool_executions: toolExecutionDetails, round: currentRound });
 
@@ -2111,6 +2174,15 @@ IMPORTANT: The image data is already available in the system context. You don't 
       } else {
         console.log(`[Tool Loop] Round ${currentRound}: LLM provided final response, ending loop`);
       }
+    }
+
+    // The between-rounds drain only fires when there's a next round. If the
+    // turn ended on a final response (no more tool calls), any steer queued
+    // during that final stream is still parked. Clear it here so the
+    // frontend's auto-fire (which resends the steer text as a fresh user
+    // turn) doesn't double-apply on the next POST.
+    if (drainSteer(conversationId)) {
+      console.log(`[Steering] Cleared leftover steer for ${conversationId} (turn ended without drain — frontend will auto-fire)`);
     }
 
     if (currentRound >= config.maxToolRounds) {
@@ -2321,13 +2393,16 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     }
 
-    // Store conversation context for autonomous messages
-    // This allows async tools to trigger AI responses later
+    // Store conversation context for autonomous messages.
+    // finalToolSchemas was assigned onto conversationContext inside the
+    // try block (it's block-scoped to that try and not visible here).
+    // chatType is function-body-scoped so it's safe to reference directly.
     conversationManager.store(conversationId, {
       ...conversationContext,
       messages,
       authToken,
       agentExecutionId, // Link autonomous messages to the execution
+      chatType, // Routes broadcast events to the right cross-tab handler
     });
 
     console.log(`[ConversationManager] Stored conversation ${conversationId} for autonomous messages`);

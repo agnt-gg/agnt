@@ -49,11 +49,18 @@
     </div>
 
     <div class="chat-input-container">
+      <div v-if="pendingSteer" class="steering-chip">
+        <i class="fas fa-arrow-rotate-right"></i>
+        <span class="steering-chip-text" :title="pendingSteer">Steer pending: "{{ pendingSteer }}"</span>
+        <button type="button" class="steering-chip-cancel" @click="onCancelSteer" title="Cancel steer">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
       <ChatInputBar
         ref="inputBarRef"
         v-model="chatInput"
-        :placeholder="placeholder"
-        :disabled="isProcessing"
+        :placeholder="isProcessing ? 'Steer Annie mid-turn…' : placeholder"
+        :disabled="false"
         :is-streaming="isProcessing"
         :show-attachments="showAttachments"
         :show-voice="showVoiceInput"
@@ -244,6 +251,7 @@ export default {
     const isProcessing = computed(() => store.getters['chatUnified/isStreaming'](props.channelKey));
     const isLoadingSuggestions = computed(() => store.getters['chatUnified/isLoadingSuggestions'](props.channelKey));
     const storedSuggestions = computed(() => store.getters['chatUnified/getSuggestions'](props.channelKey));
+    const pendingSteer = computed(() => store.getters['chatUnified/pendingSteer'](props.channelKey));
 
     const suggestions = computed(() => {
       const stored = storedSuggestions.value;
@@ -326,7 +334,27 @@ export default {
 
     const onSend = async () => {
       if (!chatInput.value.trim() && selectedFiles.value.length === 0) return;
-      if (isProcessing.value) return;
+
+      // Mid-turn steering branch: a turn is already streaming for this
+      // channel, so don't start a new POST /chat — emit a 'steer' over the
+      // socket. Backend stashes it; OrchestratorService drains it between
+      // tool rounds and appends it to the last tool-result message.
+      if (isProcessing.value && chatInput.value.trim()) {
+        const content = chatInput.value.trim();
+        chatInput.value = '';
+        const resp = await store.dispatch('chatUnified/steerInFlight', {
+          channelKey: props.channelKey,
+          content,
+        });
+        if (!resp?.ok) {
+          console.warn('[UnifiedChatContainer] steer failed:', resp?.error);
+          // Restore input so the user can retry.
+          chatInput.value = content;
+        }
+        focusInput();
+        return;
+      }
+
       const content = chatInput.value;
       const filesToSend = selectedFiles.value.slice();
       chatInput.value = '';
@@ -364,6 +392,10 @@ export default {
     const onStop = () => {
       store.dispatch('chatUnified/stopStream', { channelKey: props.channelKey });
       focusInput();
+    };
+
+    const onCancelSteer = () => {
+      store.dispatch('chatUnified/cancelSteer', { channelKey: props.channelKey });
     };
 
     const executeSuggestion = (suggestion) => {
@@ -475,6 +507,8 @@ export default {
       isProcessing,
       isLoadingSuggestions,
       suggestions,
+      pendingSteer,
+      onCancelSteer,
       onSend,
       onStop,
       onAttachFiles,
@@ -584,6 +618,63 @@ export default {
 .chat-input-container {
   padding: 16px 0 0 2px;
   border-top: 1px solid var(--terminal-border-color);
+}
+
+.steering-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px 2px;
+  padding: 4px 4px 4px 10px;
+  background: rgba(var(--green-rgb, 18, 224, 255), 0.08);
+  border: 1px solid rgba(var(--green-rgb, 18, 224, 255), 0.25);
+  border-radius: 999px;
+  color: var(--color-green);
+  font-size: 0.78em;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+.steering-chip > i:first-child {
+  font-size: 0.85em;
+  animation: steering-spin 1.6s linear infinite;
+  flex-shrink: 0;
+}
+
+.steering-chip-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
+}
+
+.steering-chip-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-green);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.steering-chip-cancel:hover {
+  background: rgba(var(--green-rgb, 18, 224, 255), 0.18);
+  color: var(--color-lightest);
+}
+
+.steering-chip-cancel i {
+  font-size: 0.7em;
+}
+
+@keyframes steering-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .unified-chat-container :deep(.message-wrapper) { max-width: 100%; }

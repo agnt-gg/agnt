@@ -1,6 +1,7 @@
 import { Message, ChatWindow } from '@/views/_components/base/ChatWindow';
 import { API_CONFIG } from '@/tt.config.js';
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
+import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 
 // The orchestrator chat surface owns this channelKey; every send from chat.js
 // resolves provider/model from Vuex (already kept in sync by the popover) and
@@ -107,6 +108,7 @@ function createConversationState(conversationId) {
     agentName: null,
     agentAvatar: null,
     streamEventCallbacks: [],
+    pendingSteer: '', // Per-conversation so switching chats doesn't drag a steer
   };
 }
 
@@ -134,6 +136,7 @@ function syncMirror(state, conv) {
   state.currentAgentName = conv.agentName;
   state.currentAgentAvatar = conv.agentAvatar;
   state.currentConversationId = conv.conversationId;
+  state.pendingSteer = conv.pendingSteer || '';
 }
 
 export default {
@@ -143,6 +146,10 @@ export default {
     activeStreamId: null,
     isStreaming: false,
     isRemoteStreaming: false, // True when another tab is streaming (for "thinking" indicator)
+    // Mid-turn steer text awaiting drain. Set when the user submits a message
+    // while a turn is already streaming. Auto-fires as a new user turn when
+    // the current turn ends if it was never drained at a tool-round seam.
+    pendingSteer: '',
     messageCount: 0,
     messages: [],
     page: null,
@@ -187,6 +194,29 @@ export default {
     },
     SET_REMOTE_STREAMING(state, value) {
       state.isRemoteStreaming = value;
+    },
+    SET_PENDING_STEER(state, content) {
+      // Per-conversation: write to the active conversation's slot AND
+      // mirror to flat state so existing UI bindings still work. Without
+      // this, switching conversations would carry the steer over.
+      const conv = state.conversations[state.activeConversationId];
+      const prev = conv?.pendingSteer || '';
+      const next = prev ? `${prev}\n${content}` : content;
+      if (conv) conv.pendingSteer = next;
+      state.pendingSteer = next;
+    },
+    CLEAR_PENDING_STEER(state) {
+      const conv = state.conversations[state.activeConversationId];
+      if (conv) conv.pendingSteer = '';
+      state.pendingSteer = '';
+    },
+    SCOPED_CLEAR_PENDING_STEER(state, { conversationId }) {
+      // Clear steer on a specific conversation slot — used when the SSE
+      // event for a steer drain arrives and the user may have already
+      // switched away to a different conversation in this tab.
+      const conv = state.conversations[conversationId];
+      if (conv) conv.pendingSteer = '';
+      if (state.activeConversationId === conversationId) state.pendingSteer = '';
     },
     SET_ACTIVE_STREAM(state, value) {
       state.activeStreamId = value;
@@ -905,6 +935,37 @@ export default {
     },
     incrementMessageCount({ commit }) {
       commit('INCREMENT_MESSAGE_COUNT');
+    },
+
+    /**
+     * Send a mid-turn steer over the socket. Backend stashes it and drains
+     * between tool rounds (appending to the last tool-result message) or, if
+     * the turn ends without another tool round, the frontend's auto-fire
+     * watcher sends the text as a fresh user turn.
+     */
+    async steerInFlight({ commit, state }, { content }) {
+      const conversationId = state.currentConversationId;
+      if (!conversationId) return { ok: false, error: 'no_conversation' };
+      const text = (content || '').trim();
+      if (!text) return { ok: false, error: 'empty' };
+      const resp = await emitSteer(conversationId, text);
+      if (resp?.ok) {
+        commit('SET_PENDING_STEER', text);
+      }
+      return resp;
+    },
+
+    /**
+     * Cancel a pending steer — user clicked the X on the chip before it
+     * was drained at a tool-round seam OR auto-fired at turn end.
+     */
+    async cancelSteer({ commit, state }) {
+      const conversationId = state.currentConversationId;
+      // Always clear locally so the chip disappears immediately.
+      commit('CLEAR_PENDING_STEER');
+      if (conversationId) {
+        emitClearSteer(conversationId).catch(() => {});
+      }
     },
 
     /**
@@ -2097,6 +2158,28 @@ function handleScopedStreamEvent({ commit, state, dispatch }, eventName, data, c
       // The conversation will appear in OutputList after the debounce period.
       if (dispatch) {
         dispatch('autosaveConversation', { debounce: true, conversationId });
+      }
+      break;
+    case 'steering_applied':
+      // Backend drained a queued steer at a tool-round seam — clear the
+      // chip on the conversation that owns this stream (not necessarily
+      // the active one — user may have switched mid-flight).
+      commit('SCOPED_CLEAR_PENDING_STEER', { conversationId });
+      // Surface the steer text as a real user message in the transcript
+      // at the round it landed. Without this, the steer is buried inside
+      // the tool-result content (Hermes pattern) and the user never sees
+      // what they sent.
+      if (data.content) {
+        commit('SCOPED_ADD_MESSAGE', {
+          conversationId,
+          message: {
+            id: `msg-steer-${Date.now()}`,
+            role: 'user',
+            content: data.content,
+            timestamp: Date.now(),
+            steered: true,
+          },
+        });
       }
       break;
     case 'assistant_message':

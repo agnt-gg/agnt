@@ -8,6 +8,44 @@ let socket = null;
 const isConnected = ref(false);
 const isAuthenticated = ref(false);
 
+/**
+ * Send a mid-run steer to a streaming conversation. Resolves with the
+ * server's ack ({ ok: boolean, error? }). Used by the chat input to
+ * dispatch text via socket while a turn is in flight, instead of
+ * starting a new POST /chat that would race or queue.
+ */
+export function emitSteer(conversationId, content) {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve({ ok: false, error: 'disconnected' });
+      return;
+    }
+    const timeout = setTimeout(() => resolve({ ok: false, error: 'timeout' }), 5000);
+    socket.emit('steer', { conversationId, content }, (resp) => {
+      clearTimeout(timeout);
+      resolve(resp || { ok: false, error: 'no_response' });
+    });
+  });
+}
+
+/**
+ * Cancel a pending steer for a conversation — the user clicked the X
+ * on the steering chip before the steer was drained.
+ */
+export function emitClearSteer(conversationId) {
+  return new Promise((resolve) => {
+    if (!socket || !socket.connected) {
+      resolve({ ok: false, error: 'disconnected' });
+      return;
+    }
+    const timeout = setTimeout(() => resolve({ ok: false, error: 'timeout' }), 3000);
+    socket.emit('clear_steer', { conversationId }, (resp) => {
+      clearTimeout(timeout);
+      resolve(resp || { ok: false, error: 'no_response' });
+    });
+  });
+}
+
 // Debounced fetch functions to prevent cascade of API calls
 // When multiple events fire rapidly, only the last one triggers a fetch
 let debouncedAgentFetch = null;

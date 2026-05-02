@@ -58,6 +58,16 @@
             <span>No AI provider connected. Select a provider to start chatting.</span>
           </div>
 
+          <!-- Mid-turn steer pending: user submitted while a turn was streaming.
+               Will fire as a fresh user turn the moment the stream ends. -->
+          <div v-if="pendingSteer" class="steering-chip">
+            <i class="fas fa-arrow-rotate-right"></i>
+            <span class="steering-chip-text" :title="pendingSteer">Steer pending: "{{ pendingSteer }}"</span>
+            <button type="button" class="steering-chip-cancel" @click="onCancelSteer" title="Cancel steer">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+
           <!-- Scrollable content area for file chips -->
           <div class="input-scrollable-area">
             <!-- File preview chips -->
@@ -347,6 +357,10 @@ export default {
     // --- Streaming State ---
     // Mirror property (state.isStreaming) is kept in sync by SCOPED_SET_STREAMING
     const isStreaming = computed(() => store.state.chat.isStreaming);
+    // Mid-turn steer text awaiting drain. Drives the "↻ Steer pending"
+    // chip below the input — same UX as the sidebar UnifiedChatContainer.
+    const pendingSteer = computed(() => store.state.chat.pendingSteer || '');
+    const onCancelSteer = () => store.dispatch('chat/cancelSteer');
 
     // --- 3-Panel System State ---
     const actualLeftPanelWidth = ref(store.getters['theme/actualLeftPanelWidth'] || 384);
@@ -1210,6 +1224,8 @@ export default {
       toggleListening,
       // Streaming
       isStreaming,
+      pendingSteer,
+      onCancelSteer,
       stopStreaming,
       // File handling
       selectedFiles,
@@ -1987,6 +2003,65 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
 .input-disabled-notice i {
   flex-shrink: 0;
   font-size: 0.9em;
+}
+
+/* Mid-turn steer indicator — mirrors the chip in UnifiedChatContainer.vue
+   so the main chat and sidebar panels have identical UX. */
+.steering-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px 0;
+  padding: 4px 4px 4px 10px;
+  background: rgba(var(--green-rgb, 18, 224, 255), 0.08);
+  border: 1px solid rgba(var(--green-rgb, 18, 224, 255), 0.25);
+  border-radius: 999px;
+  color: var(--color-green);
+  font-size: 0.78em;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+.steering-chip > i:first-child {
+  font-size: 0.85em;
+  animation: steering-spin 1.6s linear infinite;
+  flex-shrink: 0;
+}
+
+.steering-chip-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 480px;
+}
+
+.steering-chip-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-green);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.steering-chip-cancel:hover {
+  background: rgba(var(--green-rgb, 18, 224, 255), 0.18);
+  color: var(--color-lightest);
+}
+
+.steering-chip-cancel i {
+  font-size: 0.7em;
+}
+
+@keyframes steering-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .base-screen-lines-output {
