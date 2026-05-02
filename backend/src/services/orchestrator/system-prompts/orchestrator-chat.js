@@ -117,6 +117,36 @@ You have access to the generate_image tool which supports multiple AI providers:
 - The tool returns base64-encoded images that are automatically displayed
 - Remember to display generated images using HTML <img> tags with {{IMAGE_REF:...}} patterns`;
 
+export const LOCAL_FILE_RENDERING = `LOCAL FILE RENDERING:
+
+When a tool returns an absolute filesystem path to a video, image, audio file, PDF, or any other artifact (e.g. \`{ filePath: 'C:/.../clip.mp4' }\` from generation tools, image-gen outputs, anything under \`%APPDATA%/AGNT/plugin-data/\`, etc.), embed it in your HTML or Markdown response using a \`file:///<absolute-path>\` URL.
+
+The chat renderer auto-rewrites \`file:///\` URLs to a streaming endpoint that serves with the correct Content-Type and HTTP Range support — so \`<video>\` seeking, large images, and PDF embeds all work correctly. This is the simplest and most reliable approach — prefer it whenever you have an absolute path.
+
+Examples in HTML:
+\\\`\\\`\\\`html
+<video src="file:///C:/Users/.../clip.mp4" controls></video>
+<img src="file:///C:/Users/.../image.png" alt="Generated">
+<iframe src="file:///C:/Users/.../report.pdf"></iframe>
+<audio src="file:///C:/Users/.../track.mp3" controls></audio>
+\\\`\\\`\\\`
+
+Example in Markdown:
+\\\`\\\`\\\`md
+![Generated chart](file:///C:/Users/.../chart.png)
+\\\`\\\`\\\`
+
+⚠️ NEVER use third-party / cloud-storage URLs as the \`src\`/\`href\` of an embedded asset, even if a tool returns one. Signed URLs from services like Aliyun OSS / dashscope, AWS S3, Cloudflare R2, GCS, etc. (anything with \`Expires=\`, \`Signature=\`, \`AccessKeyId=\`, \`X-Amz-...\` query params, or similar) fail to render because:
+- The sandboxed renderer blocks cross-origin loads via CORS
+- The signed URL expires (often within minutes — \`Expires=1777788702\` style timestamps)
+- The signature can be invalidated by URL re-encoding or proxying
+
+If a tool returns BOTH a local \`filePath\` (or an absolute path under \`%APPDATA%/AGNT/...\`) AND a cloud \`url\`, ALWAYS use the local \`filePath\` with \`file:///\`.
+- BAD:  \`<video src="https://dashscope-....oss-accelerate.aliyuncs.com/...?Expires=...&Signature=...">\`
+- GOOD: \`<video src="file:///C:/Users/.../clip.mp4">\`
+
+NOTE: This applies to local artifact files. Generated images that come back as \`{{IMAGE_REF:id}}\` references must still use the HTML \`<img src="{{IMAGE_REF:...}}">\` pattern described above — they are NOT file paths.`;
+
 export const RESPONSE_FORMATTING = `RESPONSE_FORMATTING (VERY IMPORTANT):
 IMPORTANT: If returning advanced math or chemical notation, use the appropriate MathJax delimiters based on the context:
 - For inline mathematical expressions, use LaTeX-style delimiters: "\\(...\\)" (without the quotes). NEVER use single dollar signs "$...$" for math — they conflict with currency symbols.
@@ -543,6 +573,7 @@ IMPORTANT: When the user asks to "list tools", "what tools do you have", "show m
 
   parts.push(IMAGE_ANALYSIS_CAPABILITIES);
   parts.push(IMAGE_GENERATION_CAPABILITIES);
+  parts.push(LOCAL_FILE_RENDERING);
   parts.push(RESPONSE_FORMATTING);
   parts.push(CRITICAL_IMAGE_REFERENCE_FORMATTING);
   parts.push(IMPORTANT_GUIDELINES);

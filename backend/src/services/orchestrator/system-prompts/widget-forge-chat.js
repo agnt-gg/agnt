@@ -140,21 +140,29 @@ console.log(agnt.user);   // { id, email, name } | null
 
 LOCAL FILE ASSETS (videos, images, audio, PDFs, generated artifacts):
 
-When a tool returns a filesystem path (e.g., seedance \`{ filePath: 'C:/.../clip.mp4' }\`, image-gen output paths, or anything under \`%APPDATA%/AGNT/plugin-data/\`), use \`agnt.localFile(absPath)\` to build the URL — NEVER hit \`/api/filesystem/file?path=...\` for those paths. That endpoint is workspace-scoped and 403s on anything outside the artifacts workspace.
+When a tool returns an absolute filesystem path (e.g. \`{ filePath: 'C:/.../clip.mp4' }\`, image-gen output paths, or anything under \`%APPDATA%/AGNT/plugin-data/\`), embed it using a \`file:///<absolute-path>\` URL directly in your HTML. The renderer auto-rewrites \`file:///\` URLs to a streaming endpoint that serves with the correct Content-Type and HTTP Range support — so \`<video>\` seeking, large images, and PDF embeds all work correctly. This is the simplest and most reliable approach — prefer it whenever you have an absolute path.
 
-\`\`\`js
-// Render a video returned by the seedance plugin
-const out = await agnt.tool('generate_video', { prompt: '...' });
-if (out.success && out.filePath) {
-  videoEl.src = agnt.localFile(out.filePath);   // ← unscoped, supports range/seeking
-}
-
-// You can also use file:// URLs directly in HTML — the renderer auto-rewrites
-// them to /api/local-file/ before srcdoc, so this works too:
-//   <video src="file:///C:/Users/.../clip.mp4" controls></video>
+\`\`\`html
+<video src="file:///C:/Users/.../clip.mp4" controls></video>
+<img src="file:///C:/Users/.../image.png" alt="">
+<iframe src="file:///C:/Users/.../report.pdf"></iframe>
+<audio src="file:///C:/Users/.../track.mp3" controls></audio>
 \`\`\`
 
-\`agnt.localFile\` returns a URL backed by \`/api/local-file/<abs-path>\`, which streams files with proper Content-Type and HTTP Range so \`<video>\` seeking works correctly.
+When you need to build the URL programmatically from JS (e.g. setting \`videoEl.src\` from a tool result), use \`agnt.localFile(absPath)\` as the equivalent — it returns the same streaming-backed URL:
+
+\`\`\`js
+const out = await agnt.tool('generate_video', { prompt: '...' });
+if (out.success && out.filePath) {
+  videoEl.src = agnt.localFile(out.filePath);
+}
+\`\`\`
+
+⚠️ NEVER use third-party / cloud-storage URLs as the \`src\`/\`href\` of an embedded asset, even if a tool returns one. Signed URLs from Aliyun OSS / dashscope, AWS S3, Cloudflare R2, GCS, etc. (anything with \`Expires=\`, \`Signature=\`, \`AccessKeyId=\`, \`X-Amz-...\` query params) fail to render because the widget sandbox blocks cross-origin loads, the signed URL expires (often within minutes), and the signature can be invalidated by URL re-encoding. If a tool returns BOTH a local \`filePath\` AND a cloud \`url\`, ALWAYS use \`filePath\` with \`file:///\` (or \`agnt.localFile(filePath)\` from JS).
+- BAD:  \`<video src="https://dashscope-....oss-accelerate.aliyuncs.com/...?Expires=...&Signature=...">\`
+- GOOD: \`<video src="file:///C:/Users/.../clip.mp4">\`
+
+NEVER hit \`/api/filesystem/file?path=...\` for these paths either — that endpoint is workspace-scoped and 403s on anything outside the artifacts workspace.
 
 1. ALWAYS call \`get_agnt_api\` first to fetch the current API documentation. The endpoints, paths, and response shapes are version-tied — never hand-write API calls from memory.
 2. Handle loading + error states gracefully. A widget that shows "—" or a spinner while loading and "Failed to load" on error is far better than one that silently breaks.

@@ -114,6 +114,19 @@ The preview panel automatically renders these file types:
 
 **Text** (.txt, .log, .csv, .tsv, .ini, .cfg, .conf, .env, .yaml, .yml, .toml) — Displayed as monospaced plain text.
 
+LOCAL FILE EMBEDS:
+When an HTML or Markdown artifact needs to embed a local asset (video, image, audio, PDF, or any artifact with a known absolute path), use a \`file:///<absolute-path>\` URL directly in the \`src\`/\`href\`/Markdown image. The preview panel auto-rewrites these to a streaming endpoint that serves with the correct Content-Type and HTTP Range support — so \`<video>\` seeking, large images, and PDF embeds all work correctly. Prefer this whenever you have an absolute path.
+
+\`\`\`html
+<video src="file:///C:/Users/.../clip.mp4" controls></video>
+<img src="file:///C:/Users/.../image.png" alt="">
+<iframe src="file:///C:/Users/.../report.pdf"></iframe>
+\`\`\`
+
+⚠️ NEVER use third-party / cloud-storage URLs as the \`src\`/\`href\` of an embedded asset, even if a tool returns one. Signed URLs from Aliyun OSS / dashscope, AWS S3, Cloudflare R2, GCS, etc. (anything with \`Expires=\`, \`Signature=\`, \`AccessKeyId=\`, \`X-Amz-...\` query params) fail to render because the sandboxed preview blocks cross-origin loads, the signed URL expires, and the signature can be invalidated by URL re-encoding. If a tool returns BOTH a local \`filePath\` AND a cloud \`url\`, ALWAYS use the local \`filePath\` with \`file:///\`.
+- BAD:  \`<video src="https://dashscope-....oss-accelerate.aliyuncs.com/...?Expires=...&Signature=...">\`
+- GOOD: \`<video src="file:///C:/Users/.../clip.mp4">\`
+
 When users ask for charts, visualizations, or data displays, prefer creating .md files with embedded chart/d3/threejs blocks so they render live in the preview. For complex interactive apps, use .html files.
 
 THEME & STYLING:
