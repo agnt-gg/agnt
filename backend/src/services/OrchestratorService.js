@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { executeTool } from './orchestrator/tools.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
@@ -531,15 +533,46 @@ function offloadLargeData(toolResult, toolCallId, conversationContext, threshold
  * ANY tool can be run async by the LLM adding: _executeAsync: true, _estimatedMinutes: N
  */
 
+// Mirrors ImageStorage.js's data-dir cascade so uploads land in the same root.
+const resolveUploadsDir = () => {
+  let dataDir;
+  if (process.env.NODE_ENV === 'production' && fs.existsSync('/app/data')) {
+    dataDir = '/app/data';
+  } else if (process.env.USER_DATA_PATH) {
+    dataDir = path.join(process.env.USER_DATA_PATH, 'Data');
+  } else if (process.env.NODE_ENV !== 'production' || process.cwd().includes('backend')) {
+    dataDir = path.resolve(process.cwd(), 'data');
+  } else {
+    dataDir = path.join(process.env.HOME || process.env.USERPROFILE, '.agnt', 'data');
+  }
+  return path.join(dataDir, 'uploads');
+};
+
+const sanitizeFilename = (name) => {
+  const base = path.basename(String(name || 'file'));
+  return base.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 200) || 'file';
+};
+
 /**
- * Process uploaded files and extract text content
+ * Process uploaded files: persist to disk so tools that take a filesystem
+ * path can use them, AND extract text / base64 for inline LLM context.
  */
-async function processUploadedFiles(files) {
+async function processUploadedFiles(files, conversationId) {
   let fileContext = '';
   const imageData = [];
+  const savedFiles = [];
 
   if (!files || files.length === 0) {
-    return { fileContext, imageData };
+    return { fileContext, imageData, savedFiles };
+  }
+
+  // Per-conversation upload dir so paths are stable and easy to clean up later.
+  const safeConvId = String(conversationId || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const convDir = path.join(resolveUploadsDir(), safeConvId);
+  try {
+    fs.mkdirSync(convDir, { recursive: true });
+  } catch (err) {
+    console.error('[Upload] Failed to create upload dir:', convDir, err.message);
   }
 
   for (let i = 0; i < files.length; i++) {
@@ -547,6 +580,24 @@ async function processUploadedFiles(files) {
     const fileBuffer = file.buffer;
     const fileType = file.mimetype;
     let textContent = '';
+
+    // Save the buffer to disk under a sanitized name; collisions get an index prefix.
+    try {
+      const safeName = sanitizeFilename(file.originalname);
+      const finalName = savedFiles.some((f) => path.basename(f.path) === safeName)
+        ? `${i}_${safeName}`
+        : safeName;
+      const savedPath = path.join(convDir, finalName);
+      fs.writeFileSync(savedPath, fileBuffer);
+      savedFiles.push({
+        filename: file.originalname,
+        path: savedPath,
+        mimetype: fileType,
+        size: fileBuffer.length,
+      });
+    } catch (err) {
+      console.error(`[Upload] Failed to save file ${file.originalname}:`, err.message);
+    }
 
     if (fileType.startsWith('image/')) {
       // Handle images - store for vision models
@@ -590,7 +641,7 @@ async function processUploadedFiles(files) {
     fileContext += `\n\n[FILE ${i + 1}/${files.length}: ${file.originalname}]\n${textContent}\n`;
   }
 
-  return { fileContext, imageData };
+  return { fileContext, imageData, savedFiles };
 }
 
 /**
@@ -946,7 +997,7 @@ async function universalChatHandler(req, res, context = {}) {
 
   try {
     // Process uploaded files
-    const { fileContext, imageData } = await processUploadedFiles(files);
+    const { fileContext, imageData, savedFiles } = await processUploadedFiles(files, conversationId);
 
     // Send file processing event if files were uploaded
     if (files.length > 0) {
@@ -1061,12 +1112,27 @@ async function universalChatHandler(req, res, context = {}) {
       }
     }
 
-    // Add file context to the first user message if files were uploaded
-    // Images are handled separately via vision API
-    if (fileContext.trim()) {
+    // Build an [ATTACHED FILES] block listing absolute disk paths so the LLM can
+    // pass them to tools that take a file path (video gen, file_operations, etc.).
+    // Without this, images especially had no path — only base64 for vision.
+    let attachmentsBlock = '';
+    if (savedFiles && savedFiles.length > 0) {
+      const lines = savedFiles.map(
+        (f) => `- ${f.path} (${f.mimetype}, ${Math.round(f.size / 1024)} KB)`,
+      );
+      attachmentsBlock =
+        `[ATTACHED FILES]\n` +
+        `The user uploaded ${savedFiles.length} file(s), saved on disk at these absolute paths. ` +
+        `Pass these paths to any tool that accepts a file path parameter (video generators, file_operations, etc.):\n` +
+        `${lines.join('\n')}\n[/ATTACHED FILES]\n\n`;
+    }
+
+    // Add file context (and attachments block) to the first user message if files were uploaded.
+    // Images are handled separately via vision API.
+    if (attachmentsBlock || fileContext.trim()) {
       const firstUserMsgIndex = messages.findIndex((m) => m.role === 'user');
       if (firstUserMsgIndex !== -1) {
-        messages[firstUserMsgIndex].content = `${fileContext}\n\n${messages[firstUserMsgIndex].content}`;
+        messages[firstUserMsgIndex].content = `${attachmentsBlock}${fileContext}\n\n${messages[firstUserMsgIndex].content}`;
       }
     }
 
