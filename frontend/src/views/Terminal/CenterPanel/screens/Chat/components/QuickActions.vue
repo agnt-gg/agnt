@@ -56,7 +56,7 @@ export default {
   display: flex;
   flex-shrink: 0;
   width: auto;
-  max-width: 280px;
+  max-width: 300px;
   align-items: center;
   gap: 10px;
   padding: 7px 16px 8px;
@@ -77,6 +77,8 @@ export default {
 
 .suggestion-text {
   display: block;
+  flex-shrink: 0;
+  width: max-content;
   max-width: 220px;
   overflow: hidden;
   white-space: nowrap;
