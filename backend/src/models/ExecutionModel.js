@@ -166,12 +166,21 @@ class ExecutionModel {
   }
   static getAgentActivityData(userId, startDate, endDate) {
     return new Promise((resolve, reject) => {
-      // Pre-aggregate node_executions once via a LEFT JOIN against a derived
-      // table, instead of running a correlated SUM subquery per
-      // workflow_executions row. The previous shape was O(N×M) and got
-      // noticeably slower as execution history grew — this is the dashboard's
-      // Cumulative Credits chart and gets called on every dashboard mount.
-      // idx_node_executions_execution_id already covers the inner GROUP BY.
+      // The dashboard's Cumulative Credits chart calls this on every mount.
+      // Output is one row per date (small response), but the work to compute
+      // it scales with execution history. Two things that matter here:
+      //
+      // 1. Pre-aggregate node_executions ONCE via a derived LEFT JOIN
+      //    instead of running a correlated SUM subquery per workflow row
+      //    (was O(N*M); now O(N+M)).
+      //
+      // 2. Scope the inner node_executions aggregate to the SAME date+user
+      //    window as the outer query. Without the inner WHERE the planner
+      //    happily sums every node_execution row ever, across all users,
+      //    just to throw most of it away — that's the "huge" cost on
+      //    365-day windows even though the response is tiny.
+      //
+      // idx_node_executions_execution_id covers the join + inner group by.
       const query = `
         SELECT
           date,
@@ -186,9 +195,12 @@ class ExecutionModel {
             0 as estimated_cost
           FROM workflow_executions we
           LEFT JOIN (
-            SELECT execution_id, SUM(input_tokens + output_tokens) as tokens
-            FROM node_executions
-            GROUP BY execution_id
+            SELECT ne.execution_id,
+                   SUM(ne.input_tokens + ne.output_tokens) as tokens
+            FROM node_executions ne
+            INNER JOIN workflow_executions we2 ON we2.id = ne.execution_id
+            WHERE we2.user_id = ? AND we2.start_time BETWEEN ? AND ?
+            GROUP BY ne.execution_id
           ) ne_sum ON ne_sum.execution_id = we.id
           WHERE we.user_id = ? AND we.start_time BETWEEN ? AND ?
           GROUP BY DATE(we.start_time, 'localtime')
@@ -206,14 +218,18 @@ class ExecutionModel {
         ORDER BY date
       `;
 
-      db.all(query, [userId, startDate, endDate, userId, startDate, endDate], (err, rows) => {
-        if (err) {
-          console.error('Database error:', err);
-          reject(err);
-        } else {
-          resolve(rows);
+      db.all(
+        query,
+        [userId, startDate, endDate, userId, startDate, endDate, userId, startDate, endDate],
+        (err, rows) => {
+          if (err) {
+            console.error('Database error:', err);
+            reject(err);
+          } else {
+            resolve(rows);
+          }
         }
-      });
+      );
     });
   }
   static async getTotalCreditsUsed(executionId) {
