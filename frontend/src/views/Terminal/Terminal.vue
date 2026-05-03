@@ -193,7 +193,12 @@ export default {
 
       store.dispatch('userStats/fetchStats').catch(() => {});
       store.dispatch('userStats/fetchCreditsActivity', { activityDays: 14, isCumulativeView: true }).catch(() => {});
-      store.dispatch('goals/fetchGoals').catch(() => {});
+      // Use the skinny /api/goals/summary endpoint here — fetching the full
+      // /api/goals during prewarm pulled `world_state` for every goal, which
+      // can run hundreds of KB per goal once the AGI loop has been used.
+      // The goals screen still calls fetchGoals on its own mount when the
+      // user actually navigates there.
+      store.dispatch('goals/fetchGoalsSummary').catch(() => {});
       store.dispatch('tools/fetchTools').catch(() => {});
       store.dispatch('executionHistory/fetchExecutions').catch(() => {});
     };

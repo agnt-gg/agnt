@@ -24,6 +24,13 @@ const state = {
   liveIteration: {}, // goalId -> { iteration, phase, score }
   // Task-level progress
   goalTaskProgress: {}, // goalId -> { total, completed, running, failed, tasks: { taskId -> { title, status, agentName } } }
+  // Skinny summary cache — populated by fetchGoalsSummary (which hits
+  // /api/goals/summary, no world_state). Kept in a separate slot so it
+  // doesn't clobber state.goals (which the goals screen expects to have
+  // world_state on each row).
+  goalsSummary: [],
+  goalsSummaryLastFetchTime: null,
+  isFetchingGoalsSummary: false,
 };
 
 const getters = {
@@ -100,6 +107,15 @@ const mutations = {
 
   SET_GOALS(state, goals) {
     state.goals = goals;
+  },
+
+  SET_GOALS_SUMMARY(state, goals) {
+    state.goalsSummary = goals;
+    state.goalsSummaryLastFetchTime = Date.now();
+  },
+
+  SET_FETCHING_GOALS_SUMMARY(state, isFetching) {
+    state.isFetchingGoalsSummary = isFetching;
   },
 
   ADD_GOAL(state, goal) {
@@ -269,6 +285,41 @@ const actions = {
     } finally {
       commit('SET_LOADING', false);
       commit('SET_FETCHING_GOALS', false);
+    }
+  },
+
+  // Skinny variant — hits /api/goals/summary (no world_state). Populates
+  // its own state slot so it never clobbers state.goals (which the goals
+  // screen expects to have world_state). Use this from boot prewarm and
+  // from any widget that only needs name/status/progress.
+  async fetchGoalsSummary({ commit, state }) {
+    if (state.isFetchingGoalsSummary) return;
+
+    const now = Date.now();
+    if (
+      state.goalsSummaryLastFetchTime &&
+      now - state.goalsSummaryLastFetchTime < 5 * 60 * 1000 &&
+      state.goalsSummary.length > 0
+    ) {
+      return;
+    }
+
+    commit('SET_FETCHING_GOALS_SUMMARY', true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/goals/summary`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Failed to fetch goals summary');
+
+      const data = await response.json();
+      commit('SET_GOALS_SUMMARY', data.goals || []);
+    } catch (error) {
+      console.error('Error fetching goals summary:', error);
+    } finally {
+      commit('SET_FETCHING_GOALS_SUMMARY', false);
     }
   },
 
