@@ -166,6 +166,12 @@ class ExecutionModel {
   }
   static getAgentActivityData(userId, startDate, endDate) {
     return new Promise((resolve, reject) => {
+      // Pre-aggregate node_executions once via a LEFT JOIN against a derived
+      // table, instead of running a correlated SUM subquery per
+      // workflow_executions row. The previous shape was O(N×M) and got
+      // noticeably slower as execution history grew — this is the dashboard's
+      // Cumulative Credits chart and gets called on every dashboard mount.
+      // idx_node_executions_execution_id already covers the inner GROUP BY.
       const query = `
         SELECT
           date,
@@ -175,19 +181,26 @@ class ExecutionModel {
         FROM (
           SELECT
             DATE(we.start_time, 'localtime') as date,
-            we.credits_used,
-            COALESCE((SELECT SUM(ne.input_tokens + ne.output_tokens) FROM node_executions ne WHERE ne.execution_id = we.id), 0) as total_tokens,
+            SUM(we.credits_used) as credits_used,
+            COALESCE(SUM(ne_sum.tokens), 0) as total_tokens,
             0 as estimated_cost
           FROM workflow_executions we
+          LEFT JOIN (
+            SELECT execution_id, SUM(input_tokens + output_tokens) as tokens
+            FROM node_executions
+            GROUP BY execution_id
+          ) ne_sum ON ne_sum.execution_id = we.id
           WHERE we.user_id = ? AND we.start_time BETWEEN ? AND ?
+          GROUP BY DATE(we.start_time, 'localtime')
           UNION ALL
           SELECT
             DATE(start_time, 'localtime') as date,
-            credits_used,
-            COALESCE(total_tokens, 0) as total_tokens,
-            COALESCE(estimated_cost, 0) as estimated_cost
+            SUM(credits_used) as credits_used,
+            COALESCE(SUM(total_tokens), 0) as total_tokens,
+            COALESCE(SUM(estimated_cost), 0) as estimated_cost
           FROM agent_executions
           WHERE user_id = ? AND start_time BETWEEN ? AND ?
+          GROUP BY DATE(start_time, 'localtime')
         )
         GROUP BY date
         ORDER BY date

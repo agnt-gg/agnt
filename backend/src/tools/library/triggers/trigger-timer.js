@@ -119,18 +119,27 @@ class TriggerTimer extends BaseTrigger {
       engine.timerIntervals.set(node.id, this.timerId);
     };
 
-    // Defer fire-on-start until after setup completes so the worker can
-    // commit the 'listening' status update before _executeWorkflow's writes
-    // race against it. Without this, restarting many fire-on-start timers
-    // simultaneously caused SQLITE_BUSY on app restart.
+    // Defer fire-on-start so the worker can commit the 'listening' status
+    // update before _executeWorkflow races against it.
+    //
+    // During app boot, every fire-on-start timer in the user's library wakes
+    // up at the same moment and races the dashboard for the SQLite lock and
+    // the event loop. To keep the UI responsive, we stagger any fire-on-start
+    // that lands inside the first BOOT_GRACE_MS of process uptime so it runs
+    // after the boot stampede settles. Workflows the user activates later
+    // (well after boot) fire immediately as before — `process.uptime()`
+    // distinguishes the two cases without any extra state.
     if (fireOnStart === 'Yes') {
-      setImmediate(() => {
+      const BOOT_GRACE_MS = 30_000;
+      const uptimeMs = process.uptime() * 1000;
+      const delay = uptimeMs < BOOT_GRACE_MS ? BOOT_GRACE_MS - uptimeMs : 0;
+      setTimeout(() => {
         engine.processWorkflowTrigger({
           type: 'timer',
           nodeId: node.id,
           timestamp: new Date().toISOString(),
         });
-      });
+      }, delay);
     }
 
     scheduleNextRun();

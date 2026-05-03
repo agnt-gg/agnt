@@ -180,6 +180,24 @@ export default {
       changeScreen('ChatScreen');
     };
 
+    // Prime the store with dashboard-heavy data while the app is calm —
+    // before timer-trigger workflows fire (backend grants a 30s boot grace)
+    // and before the user actually navigates to the Dashboard. Each
+    // dispatched action handles its own caching/dedup, so this is a no-op
+    // if the user already has fresh data. Without this prewarm, opening
+    // Dashboard later (after workflows are running) means the heavy queries
+    // contend with workflow IO for the SQLite lock and the event loop.
+    const prefetchDashboardData = () => {
+      if (shouldShowOnboarding.value) return;
+      if (!localStorage.getItem('token')) return;
+
+      store.dispatch('userStats/fetchStats').catch(() => {});
+      store.dispatch('userStats/fetchCreditsActivity', { activityDays: 14, isCumulativeView: true }).catch(() => {});
+      store.dispatch('goals/fetchGoals').catch(() => {});
+      store.dispatch('tools/fetchTools').catch(() => {});
+      store.dispatch('executionHistory/fetchExecutions').catch(() => {});
+    };
+
     onMounted(() => {
       // Eagerly load the active screen if it's not already available
       // This ensures reloading on /workflows (etc.) shows content immediately
@@ -193,8 +211,12 @@ export default {
         }
       }
 
-      // Preload remaining screens in background after the active screen renders
-      const startPreload = () => preloadScreens();
+      // Preload remaining screens AND prime dashboard data in the same idle
+      // window. Both run in background so the active screen paints first.
+      const startPreload = () => {
+        preloadScreens();
+        prefetchDashboardData();
+      };
       if (typeof requestIdleCallback === 'function') {
         requestIdleCallback(startPreload);
       } else {

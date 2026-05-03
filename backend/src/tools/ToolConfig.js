@@ -215,13 +215,21 @@ export default {
           engine.timerIntervals.set(node.id, timerId);
         };
 
-        // Check if fireOnStart is "Yes" and trigger immediately if so
+        // Stagger fire-on-start during the boot window so simultaneous
+        // restarts of many timer triggers don't race the dashboard for the
+        // event loop and SQLite lock. Workflows activated after boot fire
+        // immediately. See trigger-timer.js for the rationale.
         if (fireOnStart === 'Yes') {
-          engine.processWorkflowTrigger({
-            type: 'timer',
-            nodeId: node.id,
-            timestamp: new Date().toISOString(),
-          });
+          const BOOT_GRACE_MS = 30_000;
+          const uptimeMs = process.uptime() * 1000;
+          const delay = uptimeMs < BOOT_GRACE_MS ? BOOT_GRACE_MS - uptimeMs : 0;
+          setTimeout(() => {
+            engine.processWorkflowTrigger({
+              type: 'timer',
+              nodeId: node.id,
+              timestamp: new Date().toISOString(),
+            });
+          }, delay);
         }
 
         scheduleNextRun();
