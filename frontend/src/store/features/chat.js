@@ -275,9 +275,11 @@ export default {
     },
     ADD_ACTIVE_ASYNC_TOOL(state, { executionId, toolName, messageId, toolCallId }) {
       state.activeAsyncTools.set(executionId, { toolName, messageId, toolCallId });
+      state.activeAsyncTools = new Map(state.activeAsyncTools);
     },
     REMOVE_ACTIVE_ASYNC_TOOL(state, executionId) {
       state.activeAsyncTools.delete(executionId);
+      state.activeAsyncTools = new Map(state.activeAsyncTools);
     },
     CLEAR_ACTIVE_ASYNC_TOOLS(state) {
       state.activeAsyncTools.clear();
@@ -800,6 +802,7 @@ export default {
       const conv = state.conversations[conversationId];
       if (conv) {
         conv.activeAsyncTools.set(executionId, { toolName, messageId, toolCallId });
+        conv.activeAsyncTools = new Map(conv.activeAsyncTools);
         if (state.activeConversationId === conversationId) {
           state.activeAsyncTools = conv.activeAsyncTools;
         }
@@ -810,6 +813,10 @@ export default {
       const conv = state.conversations[conversationId];
       if (conv) {
         conv.activeAsyncTools.delete(executionId);
+        conv.activeAsyncTools = new Map(conv.activeAsyncTools);
+        if (state.activeConversationId === conversationId) {
+          state.activeAsyncTools = conv.activeAsyncTools;
+        }
       }
     },
 

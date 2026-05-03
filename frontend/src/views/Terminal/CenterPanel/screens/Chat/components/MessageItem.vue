@@ -2438,8 +2438,22 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     let lastRenderTime = 0;
     const RENDER_INTERVAL = 66; // ~15fps during streaming
 
+    const toolCallRenderSignature = computed(() => (props.message.toolCalls || [])
+      .map((tc) => {
+        const result = typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result || null);
+        return `${tc.id}:${tc.status || ''}:${tc.error || ''}:${result}`;
+      })
+      .join('|'));
+
     watch(
-      () => [props.message.content, props.message.contentParts?.length, props.message.toolCalls?.length, props.status, props.imageCache],
+      () => [
+        props.message.content,
+        props.message.contentParts?.length,
+        props.message.toolCalls?.length,
+        toolCallRenderSignature.value,
+        props.status,
+        props.imageCache,
+      ],
       () => {
         if (!props.status) {
           // Not streaming - render immediately
@@ -2586,10 +2600,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     };
 
     const isAsyncToolRunning = (toolCall) => {
-      if (!toolCall.result) return false;
+      const currentToolCall = props.message.toolCalls?.find((tc) => tc.id === toolCall.id) || toolCall;
+      if (!currentToolCall.result) return false;
 
       try {
-        const result = typeof toolCall.result === 'string' ? JSON.parse(toolCall.result) : toolCall.result;
+        const result = typeof currentToolCall.result === 'string' ? JSON.parse(currentToolCall.result) : currentToolCall.result;
 
         return Boolean(result.executionId) && (result.status === 'queued' || result.status === 'running');
       } catch {
@@ -2604,7 +2619,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         const executionId = result.executionId;
         if (!executionId) return;
 
-        const response = await fetch(`${API_CONFIG.BASE_URL}/async-tools/cancel/${executionId}`, {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/async-tools/cancel/${executionId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
