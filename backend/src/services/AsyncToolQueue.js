@@ -90,7 +90,9 @@ class AsyncToolQueue {
     const interval = execution.functionArgs._interval;
     const stopAfter = execution.functionArgs._stopAfter;
     const duration = execution.functionArgs._duration;
-    const delayFirst = execution.functionArgs._delayFirst === true;
+    const explicitDelayFirst = execution.functionArgs._delayFirst;
+    const isDelayedOneShot = interval && Number(stopAfter) === 1;
+    const delayFirst = explicitDelayFirst === true || (explicitDelayFirst !== false && isDelayedOneShot);
 
     // Clean args for actual tool execution (strip ALL control params)
     const cleanArgs = stripControlParams(execution.functionArgs);
@@ -213,27 +215,33 @@ class AsyncToolQueue {
     const maxDuration = durationMinutes ? durationMinutes * 60 * 1000 : null;
     const startTime = Date.now();
     let iterationCount = 0;
+    let isIterationRunning = false;
     const results = [];
 
     const runIteration = async () => {
+      if (isIterationRunning) {
+        return false;
+      }
+
       if (execution.status === 'cancelled' || execution.abortController.signal.aborted) {
         log(`[AsyncToolQueue] Periodic cancelled: ${execution.functionName} (${executionId})`);
         if (execution.intervalId) clearInterval(execution.intervalId);
-        return;
+        return true;
       }
 
       if (maxDuration && (Date.now() - startTime) >= maxDuration) {
         log(`[AsyncToolQueue] Duration limit reached: ${execution.functionName} (${executionId})`);
         await this.completePeriodicExecution(executionId, results, startTime);
-        return;
+        return true;
       }
 
       if (stopAfter && iterationCount >= stopAfter) {
         log(`[AsyncToolQueue] Iteration limit reached: ${execution.functionName} (${executionId})`);
         await this.completePeriodicExecution(executionId, results, startTime);
-        return;
+        return true;
       }
 
+      isIterationRunning = true;
       try {
         iterationCount++;
         log(`[AsyncToolQueue] Iteration ${iterationCount} of ${execution.functionName} (${executionId})`);
@@ -251,7 +259,23 @@ class AsyncToolQueue {
       } catch (error) {
         log(`[AsyncToolQueue] Iteration ${iterationCount} error: ${error.message}`);
         results.push({ iteration: iterationCount, error: error.message, timestamp: Date.now() });
+      } finally {
+        isIterationRunning = false;
       }
+
+      if (stopAfter && iterationCount >= stopAfter) {
+        log(`[AsyncToolQueue] Iteration limit reached: ${execution.functionName} (${executionId})`);
+        await this.completePeriodicExecution(executionId, results, startTime);
+        return true;
+      }
+
+      if (maxDuration && (Date.now() - startTime) >= maxDuration) {
+        log(`[AsyncToolQueue] Duration limit reached: ${execution.functionName} (${executionId})`);
+        await this.completePeriodicExecution(executionId, results, startTime);
+        return true;
+      }
+
+      return false;
     };
 
     // Run first iteration immediately, unless delayFirst is set (silent heartbeat use case)
@@ -267,9 +291,9 @@ class AsyncToolQueue {
 
       await new Promise((resolve) => {
         execution.intervalId = setInterval(async () => {
-          await runIteration();
+          const completed = await runIteration();
           // Check if we should stop after this iteration
-          if (execution.status !== 'running' || execution.abortController.signal.aborted) {
+          if (completed || execution.status !== 'running' || execution.abortController.signal.aborted) {
             if (execution.intervalId) clearInterval(execution.intervalId);
             resolve();
           }
