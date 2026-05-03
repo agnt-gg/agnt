@@ -6,11 +6,11 @@
       "title": "Async Tool Reliability & Autonomous Follow-Up Polish - AGNT v0.5.10",
       "type": "patch",
       "features": [
-        { "name": "Async-Tool Re-Entrancy Guard Prevents Overlapping Iterations and Auto-Delays One-Shot Scheduled Runs (Was Firing Immediately)", "status": "bug" },
-        { "name": "Periodic Async Tools No Longer Spam Autonomous LLM Follow-Ups After Every iteration_complete Tick", "status": "bug" },
-        { "name": "Autonomous Tool Follow-Up Loop Strips Internal Async Params from Broadcasted Tool Calls and Forces a Final Text Response When the Round Cap Is Hit", "status": "updated" },
-        { "name": "Async-Execution Prompt Now Tells the LLM to Attach Async Params to the Real Tool Call Instead of Creating a Fake Timer/Echo Placeholder", "status": "updated" },
-        { "name": "Chat UI: activeAsyncTools Map Mutations Trigger Vuex Reactivity and Async-Tool Cancel Endpoint URL Corrected (/api/async-tools/cancel/*)", "status": "bug" }
+        { "name": "Background Tasks No Longer Overlap, and Scheduled Tasks Now Wait for Their Set Time Instead of Running Immediately", "status": "bug" },
+        { "name": "Recurring Background Tasks No Longer Spam the Chat With a Follow-Up Message Every Time They Tick", "status": "bug" },
+        { "name": "Annie Now Wraps Up With a Clean Final Response When She Reaches Her Tool Call Limit", "status": "updated" },
+        { "name": "Annie Now Correctly Schedules Background Tasks Instead of Creating Empty Placeholder Timers", "status": "updated" },
+        { "name": "Live Status Indicators for Background Tasks Now Update in Real Time, and the Cancel Button Works Again", "status": "bug" }
       ],
       "tags": ["Backwards Compatible"]
     },
