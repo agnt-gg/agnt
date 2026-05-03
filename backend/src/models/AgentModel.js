@@ -97,6 +97,39 @@ class AgentModel {
       );
     });
   }
+
+  // Skinny variant for list views. Drops the three biggest per-row payload
+  // contributors:
+  //   - icon         — base64 data URLs are routinely 60-90 KB per agent
+  //   - system_prompt — can be multiple KB of narrative text
+  //   - tools/workflows/skills JSON blobs — replaced with json_array_length()
+  //     counts so the UI can still show "5 tools" without parsing the array
+  // Uses the same agent_resources LEFT JOIN as the fat version so the
+  // resource fields the UI reads (credit_limit, credits_used) stay present.
+  static findAllSummaryByUserId(userId) {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT a.id, a.name, a.description, a.status, a.category,
+         a.provider, a.model, a.created_by, a.last_active, a.success_rate,
+         a.created_at, a.updated_at, a.deleted_at, a.insight_version,
+         ar.credit_limit, ar.credits_used,
+         (SELECT COUNT(*) FROM agent_workflows WHERE agent_id = a.id) as workflow_count,
+         CASE WHEN a.tools IS NULL OR a.tools = '' THEN 0
+              ELSE json_array_length(a.tools) END as tool_count,
+         CASE WHEN a.skills IS NULL OR a.skills = '' THEN 0
+              ELSE json_array_length(a.skills) END as skill_count
+         FROM agents a
+         LEFT JOIN agent_resources ar ON a.id = ar.agent_id
+         WHERE a.created_by = ? AND a.deleted_at IS NULL AND a.id != 'orchestrator'
+         ORDER BY a.updated_at DESC`,
+        [userId],
+        (err, agents) => {
+          if (err) reject(err);
+          else resolve(agents);
+        }
+      );
+    });
+  }
   static findResourcesForAgents(agentIds) {
     return new Promise((resolve, reject) => {
       const placeholders = agentIds.map(() => '?').join(',');

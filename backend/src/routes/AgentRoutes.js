@@ -7,6 +7,7 @@ const AgentRoutes = express.Router();
 
 AgentRoutes.get('/health', AgentService.healthCheck);
 AgentRoutes.get('/', authenticateToken, AgentService.getAllAgents);
+AgentRoutes.get('/summary', authenticateToken, AgentService.getAllAgentsSummary);
 AgentRoutes.post('/save', authenticateToken, AgentService.saveOrUpdateAgent);
 AgentRoutes.get('/:id', authenticateToken, AgentService.getAgent);
 AgentRoutes.put('/:id', authenticateToken, AgentService.saveOrUpdateAgent);

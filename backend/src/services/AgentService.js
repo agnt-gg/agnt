@@ -112,7 +112,6 @@ class AgentService {
     try {
       const userId = req.user.userId;
       const agents = await AgentModel.findAllByUserId(userId);
-      console.log('Agents fetched from database:', agents);
 
       // Fetch resources for all agents
       const resources = await AgentModel.findResourcesForAgents(agents.map((a) => a.id));
@@ -145,6 +144,40 @@ class AgentService {
     } catch (error) {
       console.error('Error retrieving agents:', error);
       res.status(500).json({ error: 'Error retrieving agents' });
+    }
+  }
+  // Skinny list endpoint. Drops the three biggest per-row payload
+  // contributors: base64 icon (~60-90 KB each), system_prompt, and the
+  // tools/workflows/skills JSON blobs. Callers that need to render an
+  // agent card with name/category/status/counts can use this; anything
+  // that actually shows the icon or system prompt should still hit
+  // /api/agents/:id for that one row.
+  async getAllAgentsSummary(req, res) {
+    try {
+      const userId = req.user.userId;
+      const agents = await AgentModel.findAllSummaryByUserId(userId);
+      const formatted = agents.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        description: agent.description,
+        status: agent.status,
+        category: agent.category,
+        provider: agent.provider,
+        model: agent.model,
+        toolCount: agent.tool_count || 0,
+        skillCount: agent.skill_count || 0,
+        workflows: agent.workflow_count || 0,
+        creditsUsed: agent.credits_used || 0,
+        creditLimit: agent.credit_limit || 0,
+        lastActive: agent.last_active,
+        successRate: agent.success_rate,
+        createdAt: agent.created_at,
+        updatedAt: agent.updated_at,
+      }));
+      res.json({ agents: formatted });
+    } catch (error) {
+      console.error('Error retrieving agents summary:', error);
+      res.status(500).json({ error: 'Error retrieving agents summary' });
     }
   }
   async getAgent(req, res) {

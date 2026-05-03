@@ -63,6 +63,46 @@ class GoalModel {
       );
     });
   }
+
+  // Skinny variant for list views: same shape as findAllByUserId but
+  // explicitly excludes the `world_state` column, which can be hundreds of
+  // KB per goal once the AGI loop has been running. Use this for any
+  // dashboard/sidebar that just needs name/status/progress.
+  static findAllSummaryByUserId(userId, { includeDeleted = false } = {}) {
+    const deletedFilter = includeDeleted ? '' : 'AND g.deleted_at IS NULL';
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT g.id, g.user_id, g.title, g.description, g.priority,
+         g.success_criteria, g.status, g.estimated_duration, g.actual_duration,
+         g.completed_at, g.created_at, g.updated_at, g.deleted_at,
+         g.current_iteration, g.max_iterations, g.loop_status,
+         COUNT(t.id) as task_count,
+         COUNT(CASE WHEN t.status = 'completed' THEN 1 END) as completed_tasks,
+         (SELECT SUM(ge.input_tokens) FROM goal_evaluations ge WHERE ge.goal_id = g.id) as input_tokens,
+         (SELECT SUM(ge.output_tokens) FROM goal_evaluations ge WHERE ge.goal_id = g.id) as output_tokens,
+         (SELECT SUM(ge.total_tokens) FROM goal_evaluations ge WHERE ge.goal_id = g.id) as total_tokens,
+         (SELECT SUM(ge.estimated_cost) FROM goal_evaluations ge WHERE ge.goal_id = g.id) as estimated_cost
+         FROM goals g
+         LEFT JOIN tasks t ON g.id = t.goal_id
+         WHERE g.user_id = ? ${deletedFilter}
+         GROUP BY g.id
+         ORDER BY g.created_at DESC`,
+        [userId],
+        (err, goals) => {
+          if (err) reject(err);
+          else {
+            goals.forEach((goal) => {
+              goal.success_criteria = JSON.parse(goal.success_criteria || '{}');
+              goal.progress = goal.task_count > 0
+                ? Math.round((goal.completed_tasks / goal.task_count) * 100)
+                : 0;
+            });
+            resolve(goals);
+          }
+        }
+      );
+    });
+  }
   static updateStatus(id, status, completedAt = null) {
     const updatedAt = new Date().toISOString();
     const finalCompletedAt = completedAt || (status === 'completed' || status === 'validated' ? updatedAt : null);

@@ -6,6 +6,7 @@ const GoalRoutes = express.Router();
 
 GoalRoutes.get('/health', GoalService.healthCheck);
 GoalRoutes.get('/', authenticateToken, GoalService.getAllGoals);
+GoalRoutes.get('/summary', authenticateToken, GoalService.getAllGoalsSummary);
 GoalRoutes.post('/create', authenticateToken, GoalService.createGoal);
 GoalRoutes.post('/:goalId/execute', authenticateToken, GoalService.executeGoal);
 GoalRoutes.get('/:id', authenticateToken, GoalService.getGoal);

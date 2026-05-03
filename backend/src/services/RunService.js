@@ -215,15 +215,10 @@ class RunService {
     }
   }
   async getAgentActivityData(req, res) {
-    console.log('getAgentActivityData called');
     try {
       const { startDate, endDate } = req.body;
       const userId = req.user.id;
-
-      console.log('Fetching data for user:', userId, 'from', startDate, 'to', endDate);
-
       const activityData = await ExecutionModel.getAgentActivityData(userId, startDate, endDate);
-      console.log('Activity data:', activityData);
       res.json(activityData);
     } catch (error) {
       console.error('Error in getAgentActivityData:', error);

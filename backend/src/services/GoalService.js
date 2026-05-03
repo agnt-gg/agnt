@@ -78,6 +78,21 @@ class GoalService {
       res.status(500).json({ error: 'Error retrieving goals' });
     }
   }
+  // Skinny list endpoint — same shape as getAllGoals minus world_state.
+  // Use this for any UI that doesn't actually render the AGI loop's
+  // world_state blob (which can run hundreds of KB per goal). Old
+  // /api/goals endpoint is unchanged.
+  async getAllGoalsSummary(req, res) {
+    try {
+      const userId = req.user.userId;
+      const includeDeleted = req.query.includeDeleted === 'true';
+      const goals = await GoalModel.findAllSummaryByUserId(userId, { includeDeleted });
+      res.json({ goals });
+    } catch (error) {
+      console.error('Error retrieving goals summary:', error);
+      res.status(500).json({ error: 'Error retrieving goals summary' });
+    }
+  }
   async getGoal(req, res) {
     try {
       const { id } = req.params;
