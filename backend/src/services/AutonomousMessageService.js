@@ -14,10 +14,28 @@ import log from '../utils/logger.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
 
-// Cap autonomous tool-loop iterations the same way the orchestrator caps
-// its main loop. Prevents a runaway autonomous turn from looping forever
-// on bad tool calls.
-const MAX_AUTONOMOUS_ROUNDS = 10;
+const MAX_AUTONOMOUS_TOOL_ROUNDS = 3;
+
+function parseToolArgs(toolCall) {
+  const rawArgs = toolCall.function?.arguments ?? toolCall.input ?? {};
+  if (typeof rawArgs !== 'string') return rawArgs || {};
+  try {
+    return JSON.parse(rawArgs);
+  } catch {
+    return {};
+  }
+}
+
+function stripAsyncControlParams(args) {
+  const clean = { ...(args || {}) };
+  delete clean._executeAsync;
+  delete clean._estimatedMinutes;
+  delete clean._interval;
+  delete clean._stopAfter;
+  delete clean._duration;
+  delete clean._delayFirst;
+  return clean;
+}
 
 class AutonomousMessageService {
   constructor() {
@@ -72,21 +90,7 @@ Keep your response brief (1-2 sentences) since this is a progress update.`,
     // Get conversation context to find user ID
     const context = conversationManager.get(conversationId);
 
-    // Broadcast tool result update to mark as completed
-    if (context && context.userId && toolCallId) {
-      log(`[AutonomousMessage] Broadcasting tool completion status update for ${toolCallId}`);
-      broadcastToUser(context.userId, RealtimeEvents.ASYNC_TOOL_COMPLETED, {
-        conversationId,
-        toolCallId,
-        executionId,
-        assistantMessageId: context.assistantMessageId,
-        result,
-        duration,
-        functionName,
-      });
-    }
-
-    const systemMessage = {
+      const systemMessage = {
       role: 'user',
       content: `[System: Async tool completed]
 
@@ -121,19 +125,6 @@ Be conversational and enthusiastic about the completion.`,
 
     // Get conversation context to find user ID
     const context = conversationManager.get(conversationId);
-
-    // Broadcast tool result update to mark as failed
-    if (context && context.userId && toolCallId) {
-      log(`[AutonomousMessage] Broadcasting tool failure status update for ${toolCallId}`);
-      broadcastToUser(context.userId, RealtimeEvents.ASYNC_TOOL_FAILED, {
-        conversationId,
-        toolCallId,
-        executionId,
-        assistantMessageId: context.assistantMessageId,
-        error,
-        functionName,
-      });
-    }
 
     const systemMessage = {
       role: 'user',
@@ -211,82 +202,64 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       });
       const adapter = await createLlmAdapter(context.normalizedProvider, client, context.model);
 
-      // Pull the tool schemas the original turn had access to. If they
-      // weren't stashed (older conversations stored before this fix), fall
-      // back to no tools — the LLM still gets a chance to respond, just
-      // without tool use.
+      const contentDeltaCb = (chunk) => {
+        if (chunk.type === 'content') {
+          broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_CONTENT_DELTA, {
+            conversationId,
+            assistantMessageId,
+            delta: chunk.delta,
+            accumulated: chunk.accumulated,
+            timestamp: Date.now(),
+          });
+        }
+      };
+
       const tools = Array.isArray(context.finalToolSchemas) ? context.finalToolSchemas : [];
+      let loopMessages = updatedMessages;
+      const newMessages = [];
+      let responseMessage = { role: 'assistant', content: '' };
+      let needsFinalResponse = false;
 
-      // Multi-round tool loop — mirrors universalChatHandler so an async
-      // tool finishing doesn't cut the agent off mid-task. Each round:
-      //   1. LLM call with full tool list
-      //   2. If it returns tool calls → execute each, append results, loop
-      //   3. If no tool calls → final response, exit
-      let loopMessages = [...updatedMessages];
-      const newMessages = []; // Append to conversationManager at the end (excludes the bookkeeping systemMessage)
-      let finalResponseMessage = null;
-
-      for (let round = 0; round < MAX_AUTONOMOUS_ROUNDS; round++) {
-        // Destructure toolCalls from the adapter's normalized return value —
-        // NOT from responseMessage.tool_calls, since Anthropic returns tool
-        // use blocks inside content[] rather than as a sibling field. The
-        // adapter normalizes both shapes into `toolCalls` so we get the same
-        // structure for OpenAI, Anthropic, and Gemini.
-        const { responseMessage, toolCalls: rawToolCalls } = await adapter.callStream(
+      for (let round = 0; round < MAX_AUTONOMOUS_TOOL_ROUNDS; round++) {
+        const { responseMessage: roundResponse, toolCalls: rawToolCalls } = await adapter.callStream(
           loopMessages,
           tools,
-          (chunk) => {
-            if (chunk.type === 'content') {
-              broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_CONTENT_DELTA, {
-                conversationId,
-                assistantMessageId,
-                delta: chunk.delta,
-                accumulated: chunk.accumulated,
-                timestamp: Date.now(),
-              });
-            }
-          },
+          contentDeltaCb,
           context
         );
 
-        finalResponseMessage = responseMessage;
-        loopMessages.push(responseMessage);
+        responseMessage = roundResponse;
         newMessages.push(responseMessage);
+        loopMessages = [...loopMessages, responseMessage];
 
         const toolCalls = Array.isArray(rawToolCalls) ? rawToolCalls : [];
         if (toolCalls.length === 0) {
-          // No more tools — the agent is done.
+          needsFinalResponse = false;
           break;
         }
+        needsFinalResponse = true;
 
-        log(`[AutonomousMessage] Round ${round + 1}: ${toolCalls.length} tool call(s) requested`);
+        log(`[AutonomousMessage] Tool follow-up round ${round + 1}: executing ${toolCalls.length} tool(s)`);
 
-        // Execute each tool call, broadcasting status so the UI can render them
-        // on the same assistant message bubble as the streamed content.
         const toolResults = [];
         for (const toolCall of toolCalls) {
           const functionName = toolCall.function?.name || toolCall.name;
-          const rawArgs = toolCall.function?.arguments ?? toolCall.input ?? {};
-          let functionArgs;
-          try {
-            functionArgs = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
-          } catch {
-            functionArgs = {};
-          }
+          const functionArgs = parseToolArgs(toolCall);
+          const cleanArgs = stripAsyncControlParams(functionArgs);
 
           broadcastToUser(context.userId, RealtimeEvents.CHAT_TOOL_START, {
             conversationId,
             chatType: context.chatType,
             assistantMessageId,
-            toolCall: { id: toolCall.id, name: functionName, args: functionArgs },
+            toolCall: { id: toolCall.id, name: functionName, args: cleanArgs },
             timestamp: Date.now(),
           });
 
-          let resultParsed = null;
-          let toolError = null;
           let resultRaw;
+          let resultParsed;
+          let toolError = null;
           try {
-            resultRaw = await executeTool(functionName, functionArgs, context.authToken, context);
+            resultRaw = await executeTool(functionName, cleanArgs, context.authToken, context);
             try {
               resultParsed = typeof resultRaw === 'string' ? JSON.parse(resultRaw) : resultRaw;
             } catch {
@@ -314,17 +287,28 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
           });
         }
 
-        const formattedToolResponses = adapter.formatToolResults(toolResults);
-        loopMessages.push(...formattedToolResponses);
-        newMessages.push(...formattedToolResponses);
+        const formattedToolResults = adapter.formatToolResults(toolResults);
+        newMessages.push(...formattedToolResults);
+        loopMessages = [...loopMessages, ...formattedToolResults];
       }
 
-      const responseMessage = finalResponseMessage || { role: 'assistant', content: '' };
+      if (needsFinalResponse) {
+        log('[AutonomousMessage] Tool follow-up reached cap; forcing final text response');
+        const { responseMessage: finalResponse } = await adapter.callStream(
+          loopMessages,
+          [],
+          contentDeltaCb,
+          context
+        );
 
-      // Extract content to check if final message is empty
+        responseMessage = finalResponse;
+        newMessages.push(responseMessage);
+      }
+
+      // Extract content to check if message is empty
       let finalContent = '';
       if (context.normalizedProvider === 'anthropic') {
-        const textBlock = responseMessage.content?.find?.((c) => c.type === 'text');
+        const textBlock = responseMessage.content?.find((c) => c.type === 'text');
         finalContent = textBlock ? textBlock.text : '';
       } else {
         finalContent = responseMessage.content || '';
@@ -335,24 +319,20 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
         finalContent = JSON.stringify(finalContent);
       }
 
-      // Skip if the entire loop produced no visible content AND no tool calls
-      // (a truly empty turn). If tools ran, we still want to persist them.
-      const ranAnyTools = newMessages.some((m) => m.role === 'tool');
-      if ((!finalContent || finalContent.trim() === '') && !ranAnyTools) {
+      const ranTools = newMessages.some((m) => m.role === 'tool' || (Array.isArray(m.content) && m.content.some((c) => c?.type === 'tool_result')));
+      if ((!finalContent || finalContent.trim() === '') && !ranTools) {
         log(`[AutonomousMessage] Skipping empty autonomous message for conversation ${conversationId}`);
+        // Still broadcast end so frontend clears "thinking" indicator
         broadcastToUser(context.userId, RealtimeEvents.AUTONOMOUS_MESSAGE_END, {
           conversationId,
           assistantMessageId,
           content: '',
-          isEmpty: true,
+          isEmpty: true, // Flag for frontend to not display
           timestamp: Date.now(),
         });
-        return;
+        return; // Don't save empty message
       }
 
-      // Append all assistant responses + tool results from this autonomous
-      // turn — but NOT the bookkeeping systemMessage (that's a "react to
-      // this tool result" injection, not real conversation history).
       conversationManager.appendMessages(conversationId, newMessages);
 
       // Broadcast autonomous message end
