@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.5.11",
+      "date": "May 3, 2026",
+      "title": "Faster Boot, Faster Dashboard & Lighter API Responses - AGNT v0.5.11",
+      "type": "patch",
+      "features": [
+        { "name": "Workflows No Longer Stampede the Dashboard at Startup — They Wait 30 Seconds So the App Has Time to Load First", "status": "updated" },
+        { "name": "The Dashboard's Cumulative Credits Chart Now Loads Much Faster, Especially on Long Time Ranges Like 365 Days", "status": "updated" },
+        { "name": "Dashboard Data Now Loads Quietly in the Background So Pages Open Instantly Instead of Spinning When You Click", "status": "new" },
+        { "name": "Goals and Agents Lists No Longer Drag Along Heavy Hidden Data Like Background State and Big Profile Icons When the App Doesn't Need Them", "status": "new" },
+        { "name": "Cleaned Up Noisy Backend Logs That Were Spamming Every Time the Dashboard Opened", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.10",
       "date": "May 2, 2026",
       "title": "Async Tool Reliability & Autonomous Follow-Up Polish - AGNT v0.5.10",
