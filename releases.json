@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.5.10",
+      "date": "May 2, 2026",
+      "title": "Async Tool Reliability & Autonomous Follow-Up Polish - AGNT v0.5.10",
+      "type": "patch",
+      "features": [
+        { "name": "Async-Tool Re-Entrancy Guard Prevents Overlapping Iterations and Auto-Delays One-Shot Scheduled Runs (Was Firing Immediately)", "status": "bug" },
+        { "name": "Periodic Async Tools No Longer Spam Autonomous LLM Follow-Ups After Every iteration_complete Tick", "status": "bug" },
+        { "name": "Autonomous Tool Follow-Up Loop Strips Internal Async Params from Broadcasted Tool Calls and Forces a Final Text Response When the Round Cap Is Hit", "status": "updated" },
+        { "name": "Async-Execution Prompt Now Tells the LLM to Attach Async Params to the Real Tool Call Instead of Creating a Fake Timer/Echo Placeholder", "status": "updated" },
+        { "name": "Chat UI: activeAsyncTools Map Mutations Trigger Vuex Reactivity and Async-Tool Cancel Endpoint URL Corrected (/api/async-tools/cancel/*)", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.9",
       "date": "May 2, 2026",
       "title": "Mid-Turn Chat Steering, Tool-Aware Async Follow-Ups & Universal AI Selector Search - AGNT v0.5.9",
