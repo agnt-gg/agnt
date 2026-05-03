@@ -1276,10 +1276,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
       finalToolSchemas = finalToolSchemas.filter((t) => t.function?.name !== 'mcp_client');
     }
 
-    // Stash on conversationContext so the finally-block conversationManager.store
-    // captures it via {...conversationContext}. finalToolSchemas itself is
-    // block-scoped to this try, so the autonomous follow-up code path can't
-    // reach it directly — the context spread is the bridge.
     conversationContext.finalToolSchemas = finalToolSchemas;
 
     // Generate assistant message ID early (needed for image extraction events)
@@ -1677,7 +1673,11 @@ IMPORTANT: The image data is already available in the system context. You don't 
         if (shouldExecuteAsync) {
           console.log(`[AsyncTool] ${chatType === 'agent' ? 'Agent' : 'Orchestrator'} requested async execution for: ${functionName}`);
 
-          const estimatedDuration = estimatedMinutes ? estimatedMinutes * 60 * 1000 : null;
+          const estimatedDuration = estimatedMinutes
+            ? estimatedMinutes * 60 * 1000
+            : (functionArgs._interval && Number(functionArgs._stopAfter) === 1
+              ? Number(functionArgs._interval) * 1000
+              : null);
 
           // Queue the async tool for background execution
           const executionId = asyncToolQueue.enqueue(
@@ -1689,6 +1689,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
             assistantMessageId, // Pass message ID for frontend status updates
             {
               onProgress: async (progressData, execution) => {
+                if (progressData?.type === 'iteration_complete') {
+                  return;
+                }
                 // Trigger autonomous message for progress update
                 await autonomousMessageService.triggerToolProgress(conversationId, {
                   toolCallId: toolCall.id,
@@ -2393,16 +2396,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
     }
 
-    // Store conversation context for autonomous messages.
-    // finalToolSchemas was assigned onto conversationContext inside the
-    // try block (it's block-scoped to that try and not visible here).
-    // chatType is function-body-scoped so it's safe to reference directly.
+    // Store conversation context for autonomous messages
+    // This allows async tools to trigger AI responses later
     conversationManager.store(conversationId, {
       ...conversationContext,
       messages,
       authToken,
       agentExecutionId, // Link autonomous messages to the execution
-      chatType, // Routes broadcast events to the right cross-tab handler
+      chatType, // Routes autonomous follow-up events to the right chat surface
     });
 
     console.log(`[ConversationManager] Stored conversation ${conversationId} for autonomous messages`);
