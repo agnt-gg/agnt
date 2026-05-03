@@ -120,7 +120,12 @@
                 <i class="fas fa-eye-slash"></i>
                 <p>{{ noPreviewMessage }}</p>
               </div>
-              <iframe v-else-if="isHtmlFile && activeTab" ref="previewFrame" class="ce-preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+              <iframe
+                v-else-if="isHtmlFile && activeTab"
+                ref="previewFrame"
+                class="ce-preview-iframe"
+                sandbox="allow-scripts allow-same-origin"
+              ></iframe>
               <div v-else-if="isMarkdownFile && activeTab" ref="markdownPreviewRef" class="ce-markdown-preview" v-html="renderedMarkdown"></div>
               <div v-else-if="isImageFile && activeTab" class="ce-media-preview">
                 <img :src="rawFileUrl" :alt="activeTab.name" />
@@ -166,9 +171,15 @@
                   </tbody>
                 </table>
               </div>
-              <pre v-else-if="isJsonFile && activeTab" class="ce-code-preview"><code class="hljs" :class="highlightedLang ? 'language-' + highlightedLang : ''" v-html="highlightedCode"></code></pre>
+              <pre
+                v-else-if="isJsonFile && activeTab"
+                class="ce-code-preview"
+              ><code class="hljs" :class="highlightedLang ? 'language-' + highlightedLang : ''" v-html="highlightedCode"></code></pre>
               <div v-else-if="isTextFile && activeTab" class="ce-text-preview">{{ activeTab.content }}</div>
-              <pre v-else-if="isCodeFile && activeTab" class="ce-code-preview"><code class="hljs" :class="highlightedLang ? 'language-' + highlightedLang : ''" v-html="highlightedCode"></code></pre>
+              <pre
+                v-else-if="isCodeFile && activeTab"
+                class="ce-code-preview"
+              ><code class="hljs" :class="highlightedLang ? 'language-' + highlightedLang : ''" v-html="highlightedCode"></code></pre>
               <div v-else-if="activeTab" class="ce-preview-empty">
                 <i class="fas fa-eye-slash"></i>
                 <p>No preview for .{{ activeTab.path.split('.').pop() }} files</p>
@@ -189,7 +200,9 @@
                 </span>
                 <div class="ce-console-filters">
                   <button class="ce-console-filter" :class="{ active: consoleFilter === 'all' }" @click="consoleFilter = 'all'">All</button>
-                  <button class="ce-console-filter" :class="{ active: consoleFilter === 'warnings' }" @click="consoleFilter = 'warnings'">Warnings</button>
+                  <button class="ce-console-filter" :class="{ active: consoleFilter === 'warnings' }" @click="consoleFilter = 'warnings'">
+                    Warnings
+                  </button>
                   <button class="ce-console-filter" :class="{ active: consoleFilter === 'errors' }" @click="consoleFilter = 'errors'">Errors</button>
                 </div>
                 <Tooltip text="Clear console">
@@ -205,16 +218,20 @@
                   <span v-else>No messages match the current filter</span>
                 </div>
                 <div v-for="msg in filteredConsoleMessages" :key="msg.id" class="ce-console-msg" :class="'ce-console-msg-' + msg.level">
-                  <i class="ce-console-msg-icon" :class="{
-                    'fas fa-info-circle': msg.level === 'info',
-                    'fas fa-angle-right': msg.level === 'log' || msg.level === 'debug',
-                    'fas fa-exclamation-triangle': msg.level === 'warn',
-                    'fas fa-times-circle': msg.level === 'error',
-                  }"></i>
+                  <i
+                    class="ce-console-msg-icon"
+                    :class="{
+                      'fas fa-info-circle': msg.level === 'info',
+                      'fas fa-angle-right': msg.level === 'log' || msg.level === 'debug',
+                      'fas fa-exclamation-triangle': msg.level === 'warn',
+                      'fas fa-times-circle': msg.level === 'error',
+                    }"
+                  ></i>
                   <div class="ce-console-msg-content">
                     <span v-for="(arg, i) in msg.args" :key="i" class="ce-console-arg">{{ formatConsoleArg(arg) }}</span>
                     <div v-if="msg.meta && msg.meta.file" class="ce-console-meta">
-                      {{ msg.meta.file }}<span v-if="msg.meta.line">:{{ msg.meta.line }}</span><span v-if="msg.meta.col">:{{ msg.meta.col }}</span>
+                      {{ msg.meta.file }}<span v-if="msg.meta.line">:{{ msg.meta.line }}</span
+                      ><span v-if="msg.meta.col">:{{ msg.meta.col }}</span>
                     </div>
                     <pre v-if="msg.meta && msg.meta.stack" class="ce-console-stack">{{ msg.meta.stack }}</pre>
                   </div>
@@ -331,32 +348,52 @@ const loadHljs = async () => {
 
 // Map file extensions to highlight.js language identifiers
 const EXT_TO_HLJS_LANG = {
-  js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
-  ts: 'typescript', tsx: 'typescript',
-  py: 'python', pyw: 'python',
+  js: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  jsx: 'javascript',
+  ts: 'typescript',
+  tsx: 'typescript',
+  py: 'python',
+  pyw: 'python',
   rb: 'ruby',
   go: 'go',
   rs: 'rust',
   java: 'java',
-  kt: 'kotlin', kts: 'kotlin',
+  kt: 'kotlin',
+  kts: 'kotlin',
   swift: 'swift',
-  c: 'c', h: 'c',
-  cpp: 'cpp', cxx: 'cpp', cc: 'cpp', hpp: 'cpp', hh: 'cpp',
+  c: 'c',
+  h: 'c',
+  cpp: 'cpp',
+  cxx: 'cpp',
+  cc: 'cpp',
+  hpp: 'cpp',
+  hh: 'cpp',
   cs: 'csharp',
   php: 'php',
-  sh: 'bash', bash: 'bash', zsh: 'bash',
+  sh: 'bash',
+  bash: 'bash',
+  zsh: 'bash',
   ps1: 'powershell',
   sql: 'sql',
-  css: 'css', scss: 'scss', sass: 'scss', less: 'less',
-  yaml: 'yaml', yml: 'yaml',
+  css: 'css',
+  scss: 'scss',
+  sass: 'scss',
+  less: 'less',
+  yaml: 'yaml',
+  yml: 'yaml',
   toml: 'ini',
-  xml: 'xml', svg: 'xml',
+  xml: 'xml',
+  svg: 'xml',
   lua: 'lua',
   r: 'r',
   dart: 'dart',
   scala: 'scala',
-  pl: 'perl', pm: 'perl',
-  ex: 'elixir', exs: 'elixir',
+  pl: 'perl',
+  pm: 'perl',
+  ex: 'elixir',
+  exs: 'elixir',
   erl: 'erlang',
   vue: 'xml',
   dockerfile: 'dockerfile',
@@ -565,12 +602,49 @@ const TEXT_EXTS = new Set(['txt', 'log', 'ini', 'cfg', 'conf', 'env', 'yaml', 'y
 // don't render as text. Short-circuited in `openFile` so we never even read
 // them — the backend NUL-byte sniff is a backstop for stuff not listed here.
 const UNPREVIEWABLE_EXTS = new Set([
-  'agnt', 'zip', 'tar', 'gz', 'tgz', 'bz2', '7z', 'rar', 'xz',
-  'exe', 'dll', 'so', 'dylib', 'bin', 'dat', 'iso', 'dmg', 'pkg', 'deb', 'rpm', 'msi',
-  'class', 'jar', 'war', 'pyc', 'pyo', 'o', 'a', 'lib', 'obj',
-  'db', 'sqlite', 'sqlite3', 'mdb',
-  'ttf', 'otf', 'woff', 'woff2', 'eot',
-  'psd', 'ai', 'sketch', 'fig',
+  'agnt',
+  'zip',
+  'tar',
+  'gz',
+  'tgz',
+  'bz2',
+  '7z',
+  'rar',
+  'xz',
+  'exe',
+  'dll',
+  'so',
+  'dylib',
+  'bin',
+  'dat',
+  'iso',
+  'dmg',
+  'pkg',
+  'deb',
+  'rpm',
+  'msi',
+  'class',
+  'jar',
+  'war',
+  'pyc',
+  'pyo',
+  'o',
+  'a',
+  'lib',
+  'obj',
+  'db',
+  'sqlite',
+  'sqlite3',
+  'mdb',
+  'ttf',
+  'otf',
+  'woff',
+  'woff2',
+  'eot',
+  'psd',
+  'ai',
+  'sketch',
+  'fig',
 ]);
 
 /**
@@ -662,7 +736,11 @@ export default {
       if (typeof arg === 'string') return arg;
       if (typeof arg === 'number' || typeof arg === 'boolean') return String(arg);
       if (arg && arg.__type === 'Error') return `${arg.name || 'Error'}: ${arg.message || ''}`;
-      try { return JSON.stringify(arg, null, 2); } catch { return String(arg); }
+      try {
+        return JSON.stringify(arg, null, 2);
+      } catch {
+        return String(arg);
+      }
     };
 
     // Broadcast a compact console snapshot so the chat orchestrator can include
@@ -677,9 +755,7 @@ export default {
           meta: m.meta || null,
           time: m.time,
         }));
-        window.dispatchEvent(
-          new CustomEvent('artifacts-console-update', { detail: { messages: recent } }),
-        );
+        window.dispatchEvent(new CustomEvent('artifacts-console-update', { detail: { messages: recent } }));
       }, 200);
     };
 
@@ -1004,8 +1080,7 @@ export default {
       return '';
     };
 
-    const escapeHtml = (s) =>
-      String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     const updateHighlightedCode = async () => {
       if (!activeTab.value || (!isCodeFile.value && !isJsonFile.value)) {
@@ -1037,7 +1112,7 @@ export default {
       () => {
         updateHighlightedCode();
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     const spreadsheetData = computed(() => {
@@ -2083,7 +2158,7 @@ export default {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
-  scrollbar-color: var(--color-text-muted) transparent;
+  scrollbar-color: var(--terminal-border-color) transparent;
 }
 
 .ce-tabs-scroll::-webkit-scrollbar {
@@ -2140,7 +2215,9 @@ export default {
   cursor: grab;
   border-right: 1px solid var(--terminal-border-color);
   white-space: nowrap;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
   user-select: none;
 }
 
