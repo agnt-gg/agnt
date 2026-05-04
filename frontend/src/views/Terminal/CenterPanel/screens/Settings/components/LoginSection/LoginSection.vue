@@ -1,6 +1,14 @@
 <template>
   <inner-setting-panel class="auth-section" :class="{ 'with-grid': !isAuthenticated }">
-    <img src="/images/agnt-logo.png" alt="AGNT Logo" class="logo" :class="{ 'logged-in': isAuthenticated }" />
+    <img
+      src="/images/agnt-logo.png"
+      alt="AGNT Logo"
+      class="logo"
+      :class="{ 'logged-in': isAuthenticated }"
+      width="140"
+      height="140"
+      fetchpriority="high"
+    />
 
     <div v-if="!isAuthenticated" class="auth-content">
       <!-- Email Login Form -->
