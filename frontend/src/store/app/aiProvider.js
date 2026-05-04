@@ -706,7 +706,19 @@ export default {
     },
 
     // Generic function to fetch models for any provider
-    async fetchProviderModels({ commit, state }, { provider, forceRefresh = false } = {}) {
+    async fetchProviderModels({ commit, state, dispatch }, { provider, forceRefresh = false } = {}) {
+      if (!provider) return [];
+
+      // Route non-built-in providers to their dedicated fetchers. Without this,
+      // callers (ModelSelector, AgentForge) that pass 'Local' or a custom-provider
+      // UUID hit /api/models/<id>/models, which only knows built-in keys and 400s.
+      if (String(provider).toLowerCase() === 'local') {
+        return dispatch('fetchLocalModels', { forceRefresh });
+      }
+      if (state.customProviders.some((cp) => cp.id === provider)) {
+        return dispatch('fetchCustomProviderModels', provider);
+      }
+
       if (state.loadingModels[provider]) {
         return state.allModels[provider];
       }
