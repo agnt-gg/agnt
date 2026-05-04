@@ -3,6 +3,15 @@
  * Broadcasts database changes to all connected clients via Socket.IO
  */
 
+// High-frequency streaming events fire per-token during chat responses.
+// Logging each one floods the console with hundreds of lines per message
+// and drowns out everything else. Start/end events still log so you can
+// see when a stream begins/ends — just not every chunk in between.
+const SILENT_BROADCAST_EVENTS = new Set([
+  'chat:content_delta',
+  'chat:autonomous_content_delta',
+]);
+
 /**
  * Broadcast an event to all connected clients
  * @param {string} event - Event name (e.g., 'agent:created', 'workflow:updated')
@@ -11,7 +20,9 @@
 export function broadcast(event, data) {
   if (global.io) {
     global.io.emit(event, data);
-    console.log(`[Realtime] Broadcasted ${event} to all clients`);
+    if (!SILENT_BROADCAST_EVENTS.has(event)) {
+      console.log(`[Realtime] Broadcasted ${event} to all clients`);
+    }
   }
 }
 
@@ -24,9 +35,11 @@ export function broadcast(event, data) {
 export function broadcastToUser(userId, event, data) {
   if (global.io) {
     const room = `user:${userId}`;
-    const socketsInRoom = global.io.sockets.adapter.rooms.get(room);
-    const numClients = socketsInRoom ? socketsInRoom.size : 0;
-    console.log(`[Realtime] Broadcasting ${event} to room ${room} (${numClients} clients)`);
+    if (!SILENT_BROADCAST_EVENTS.has(event)) {
+      const socketsInRoom = global.io.sockets.adapter.rooms.get(room);
+      const numClients = socketsInRoom ? socketsInRoom.size : 0;
+      console.log(`[Realtime] Broadcasting ${event} to room ${room} (${numClients} clients)`);
+    }
     global.io.to(room).emit(event, data);
   } else {
     console.log(`[Realtime] Cannot broadcast - Socket.IO not initialized`);
