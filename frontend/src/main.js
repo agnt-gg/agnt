@@ -102,17 +102,29 @@ const initializeApp = async () => {
     // ── CRITICAL ── Fetch the two pieces of state that gate which UI we
     // render first. Both are remote calls but cheap. fetchSubscription drives
     // plan-tier UI; fetchUserData drives identity-aware screens.
+    //
+    // Race the auth fetches against a 1.5s ceiling so a slow/hung agnt.gg
+    // can't pin the rest of init (especially `initializeStore`, which gates
+    // the dashboard skeleton via `criticalDataReady`). On a healthy network
+    // both fetches resolve well under 1.5s and the original ordering holds.
+    // The per-axios `timeout: 10000` in userAuth.js is the second safety net
+    // so the in-flight promises don't dangle even after we move on.
     const criticalPromises = [
       store.dispatch('userAuth/fetchUserData'),
       store.dispatch('userAuth/fetchSubscription'),
     ];
-    const criticalResults = await Promise.allSettled(criticalPromises);
-    criticalResults.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        console.warn(`Critical auth item ${index} failed:`, result.reason?.message || result.reason);
-      }
-    });
-    console.log('Critical auth data fetched. planType:', store.state.userAuth.planType);
+    const AUTH_WAIT_CEILING_MS = 1500;
+    await Promise.race([
+      Promise.allSettled(criticalPromises).then((results) => {
+        results.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.warn(`Critical auth item ${index} failed:`, result.reason?.message || result.reason);
+          }
+        });
+      }),
+      new Promise((resolve) => setTimeout(resolve, AUTH_WAIT_CEILING_MS)),
+    ]);
+    console.log('Critical auth data fetched (or 1.5s ceiling hit). planType:', store.state.userAuth.planType);
 
     // ── DEFERRED ── Run the rest from requestIdleCallback so above-the-fold
     // images and other low-priority assets get connection slots first.

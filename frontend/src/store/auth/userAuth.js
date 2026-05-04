@@ -127,6 +127,7 @@ export default {
         const response = await axios.get(`${API_CONFIG.REMOTE_URL}/users/auth/status`, {
           headers: { Authorization: `Bearer ${state.token}` },
           withCredentials: true,
+          timeout: 10000,
         });
 
         if (response.data.isAuthenticated && response.data.user) {
@@ -236,6 +237,7 @@ export default {
         const response = await axios.get(`${API_CONFIG.REMOTE_URL}/users/subscription/status`, {
           headers: { Authorization: `Bearer ${state.token}` },
           withCredentials: true,
+          timeout: 10000,
         });
 
         console.log('✅ Subscription API response:', response.data);
