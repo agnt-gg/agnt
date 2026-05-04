@@ -100,6 +100,72 @@ router.post('/', async (req, res) => {
 });
 
 /**
+ * GET /custom-providers/templates
+ * Get all pre-configured provider templates
+ *
+ * Must be defined BEFORE /:id — Express matches routes top-down, so /:id
+ * would otherwise swallow /templates with id="templates" and 404.
+ */
+router.get('/templates', async (req, res) => {
+  try {
+    const templates = getAllProviderTemplates();
+    res.json({
+      success: true,
+      templates,
+      count: templates.length,
+    });
+  } catch (error) {
+    console.error('Error fetching provider templates:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch provider templates',
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * POST /custom-providers/test
+ * Test connection to a custom provider (without saving)
+ *
+ * Must be defined BEFORE /:id for the same reason as /templates above.
+ */
+router.post('/test', async (req, res) => {
+  try {
+    const userId = getUserIdFromToken(req);
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+
+    const { base_url, api_key } = req.body;
+
+    if (!base_url) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: base_url',
+      });
+    }
+
+    const result = await CustomOpenAIProviderService.testConnection(base_url, api_key);
+
+    res.json({
+      success: result.success,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error testing custom provider connection:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to test connection',
+      details: error.message,
+    });
+  }
+});
+
+/**
  * GET /custom-providers/:id
  * Get a specific custom provider
  */
@@ -199,67 +265,6 @@ router.delete('/:id', async (req, res) => {
     res.status(statusCode).json({
       success: false,
       error: 'Failed to delete custom provider',
-      details: error.message,
-    });
-  }
-});
-
-/**
- * GET /custom-providers/templates
- * Get all pre-configured provider templates
- */
-router.get('/templates', async (req, res) => {
-  try {
-    const templates = getAllProviderTemplates();
-    res.json({
-      success: true,
-      templates,
-      count: templates.length,
-    });
-  } catch (error) {
-    console.error('Error fetching provider templates:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch provider templates',
-      details: error.message,
-    });
-  }
-});
-
-/**
- * POST /custom-providers/test
- * Test connection to a custom provider (without saving)
- */
-router.post('/test', async (req, res) => {
-  try {
-    const userId = getUserIdFromToken(req);
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication required',
-      });
-    }
-
-    const { base_url, api_key } = req.body;
-
-    if (!base_url) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: base_url',
-      });
-    }
-
-    const result = await CustomOpenAIProviderService.testConnection(base_url, api_key);
-
-    res.json({
-      success: result.success,
-      ...result,
-    });
-  } catch (error) {
-    console.error('Error testing custom provider connection:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to test connection',
       details: error.message,
     });
   }
