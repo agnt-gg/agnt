@@ -48,11 +48,7 @@
           </button>
         </Tooltip>
         <template v-if="isProcessing">
-          <Tooltip text="Stop generating" width="auto">
-            <button @click="stopStream" class="chat-stop-button">
-              <i class="fas fa-stop"></i>
-            </button>
-          </Tooltip>
+          <ChatStopButton @click="stopStream" />
         </template>
         <template v-else>
           <button @click="sendChatMessage" :disabled="!chatInput.trim()" class="chat-send-button">
@@ -72,6 +68,7 @@ import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/Me
 import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/components/ProcessingState.vue';
 import QuickActions from '@/views/Terminal/CenterPanel/screens/Chat/components/QuickActions.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 
 const initialSuggestions = [
@@ -86,6 +83,7 @@ export default {
     ProcessingState,
     QuickActions,
     Tooltip,
+    ChatStopButton,
   },
   props: {
     widgetId: {
@@ -742,26 +740,6 @@ export default {
   50% {
     box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
   }
-}
-
-.chat-stop-button {
-  min-width: 40px;
-  height: 40px;
-  border-radius: 20px;
-  border: none;
-  background: var(--color-red, #ff6b6b);
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.chat-stop-button:hover {
-  background: rgba(255, 107, 107, 0.8);
-  transform: scale(1.05);
 }
 
 .chat-send-button {

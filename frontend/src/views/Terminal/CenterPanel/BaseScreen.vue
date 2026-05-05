@@ -146,11 +146,7 @@
               </Tooltip>
             </template>
             <template v-else>
-              <Tooltip text="Stop generating" width="auto">
-                <button @click="stopStreaming" class="chat-stop-button">
-                  <i class="fas fa-stop"></i>
-                </button>
-              </Tooltip>
+              <ChatStopButton variant="circle" @click="stopStreaming" />
             </template>
           </div>
         </div>
@@ -239,6 +235,7 @@ import ChatToolSelector from './screens/Chat/components/ChatToolSelector.vue';
 // import PromoBanner from '@/views/_components/common/PromoBanner.vue';
 import RateLimitBanner from '@/views/_components/common/RateLimitBanner.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import CommandMenu from './screens/Chat/components/CommandMenu.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 import { useCommandMenu } from '@/composables/useCommandMenu';
@@ -246,7 +243,7 @@ import annieAvatar from '@/assets/images/annie-avatar.png';
 
 export default {
   name: 'BaseScreen',
-  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, CommandMenu },
+  components: { LeftPanel, RightPanel, PopupTutorial, ChatProviderSelector, ChatToolSelector, RateLimitBanner, Tooltip, ChatStopButton, CommandMenu },
   props: {
     activeRightPanel: {
       type: [String, null],
@@ -1592,39 +1589,6 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   transform: none;
 }
 
-.chat-stop-button {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: var(--color-red);
-  color: var(--color-dull-white);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  margin-left: 8px;
-  flex-shrink: 0;
-  animation: pulse-stop 2s ease-in-out infinite;
-}
-
-.chat-stop-button:hover {
-  background: var(--color-red);
-  opacity: 0.8;
-  transform: scale(1.05);
-}
-
-@keyframes pulse-stop {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(var(--red-rgb), 0.7);
-  }
-  50% {
-    box-shadow: 0 0 0 10px rgba(var(--red-rgb), 0);
-  }
-}
-
 .user-input-area {
   display: none; /* No longer used */
 }
@@ -1884,7 +1848,6 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   /* Reduce button sizes slightly */
   .chat-mic-button,
   .chat-send-button,
-  .chat-stop-button,
   .chat-attach-button,
   .chat-provider-button,
   .chat-tools-button {

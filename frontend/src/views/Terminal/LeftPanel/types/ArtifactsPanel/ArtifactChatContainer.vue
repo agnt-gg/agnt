@@ -34,11 +34,7 @@
           ref="chatInputRef"
         />
         <template v-if="isProcessing">
-          <Tooltip text="Stop generating">
-            <button @click="stopStream" class="chat-stop-button">
-              <i class="fas fa-stop"></i>
-            </button>
-          </Tooltip>
+          <ChatStopButton @click="stopStream" />
         </template>
         <template v-else>
           <button @click="sendChatMessage" :disabled="!chatInput.trim()" class="chat-send-button">
@@ -57,10 +53,11 @@ import { API_CONFIG } from '@/tt.config.js';
 import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/MessageItem.vue';
 import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/components/ProcessingState.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 
 export default {
   name: 'ArtifactChatContainer',
-  components: { MessageItem, ProcessingState, Tooltip },
+  components: { MessageItem, ProcessingState, Tooltip, ChatStopButton },
   props: {
     sessionId: { type: String, default: 'artifacts' },
   },
@@ -508,26 +505,6 @@ export default {
   background: rgba(var(--green-rgb), 0.3);
   cursor: not-allowed;
   transform: none;
-}
-
-.chat-stop-button {
-  min-width: 40px;
-  height: 40px;
-  border-radius: 20px;
-  border: none;
-  background: rgba(255, 107, 107, 0.6);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.chat-stop-button:hover {
-  background: rgba(255, 107, 107, 0.8);
-  transform: scale(1.05);
 }
 
 .artifact-chat-container :deep(.message-wrapper) {

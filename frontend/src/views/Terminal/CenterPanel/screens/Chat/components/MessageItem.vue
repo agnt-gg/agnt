@@ -2619,7 +2619,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         const executionId = result.executionId;
         if (!executionId) return;
 
-        const response = await fetch(`${API_CONFIG.BASE_URL}/api/async-tools/cancel/${executionId}`, {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/async-tools/cancel/${executionId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -1297,7 +1297,7 @@ export default {
         const token = localStorage.getItem('token');
         const stopPromises = asyncToolsToStop.map(async (executionId) => {
           try {
-            const response = await fetch(`${API_CONFIG.BASE_URL}/api/async-tools/cancel/${executionId}`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}/async-tools/cancel/${executionId}`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

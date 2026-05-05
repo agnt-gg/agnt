@@ -47,9 +47,14 @@
             <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'"></i>
           </button>
         </Tooltip>
-        <button @click="sendChatMessage" :disabled="!chatInput.trim() || isProcessing" class="chat-send-button">
-          <i class="fas fa-paper-plane"></i>
-        </button>
+        <template v-if="isProcessing">
+          <ChatStopButton @click="stopStream" />
+        </template>
+        <template v-else>
+          <button @click="sendChatMessage" :disabled="!chatInput.trim()" class="chat-send-button">
+            <i class="fas fa-paper-plane"></i>
+          </button>
+        </template>
       </div>
     </div>
   </div>
@@ -63,6 +68,7 @@ import MessageItem from '@/views/Terminal/CenterPanel/screens/Chat/components/Me
 import ProcessingState from '@/views/Terminal/CenterPanel/screens/Chat/components/ProcessingState.vue';
 import QuickActions from '@/views/Terminal/CenterPanel/screens/Chat/components/QuickActions.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import ChatStopButton from '@/views/_components/chat/ChatStopButton.vue';
 import { useSpeechRecognition } from '@/composables/useSpeechRecognition';
 
 const initialSuggestions = [
@@ -77,6 +83,7 @@ export default {
     ProcessingState,
     QuickActions,
     Tooltip,
+    ChatStopButton,
   },
   props: {
     workflowId: {
@@ -103,6 +110,7 @@ export default {
 
     // Chat input state
     const chatInput = ref('');
+    let abortController = null;
 
     // Watch for speech recognition transcript changes
     watch(transcript, (newTranscript) => {
@@ -167,8 +175,18 @@ export default {
       await processAssistantResponse(messageToSend);
     };
 
+    const stopStream = () => {
+      if (abortController) {
+        abortController.abort();
+        abortController = null;
+      }
+      store.dispatch('workflowChat/setStreaming', false);
+      focusInput();
+    };
+
     const processAssistantResponse = async (userInput) => {
       store.dispatch('workflowChat/setStreaming', true);
+      abortController = new AbortController();
       const token = localStorage.getItem('token');
 
       // Log the workflowId being sent
@@ -229,6 +247,7 @@ export default {
         const response = await fetch(`${API_CONFIG.BASE_URL}/orchestrator/workflow-chat`, {
           method: 'POST',
           headers: headers,
+          signal: abortController.signal,
           body: JSON.stringify({
             messages: chatHistory,
             provider: store.state.aiProvider.selectedProvider,
@@ -281,17 +300,20 @@ export default {
 
         processStream();
       } catch (error) {
-        console.error('Error calling workflow orchestrator API:', error);
-        const errorMessage = error.message || 'An unexpected error occurred.';
-        const errorMsg = {
-          id: generateMessageId(),
-          role: 'assistant',
-          content: `Sorry, I encountered an error: ${errorMessage}`,
-          timestamp: Date.now(),
-        };
-        store.dispatch('workflowChat/addMessage', { workflowId: props.workflowId, message: errorMsg });
+        if (error.name !== 'AbortError') {
+          console.error('Error calling workflow orchestrator API:', error);
+          const errorMessage = error.message || 'An unexpected error occurred.';
+          const errorMsg = {
+            id: generateMessageId(),
+            role: 'assistant',
+            content: `Sorry, I encountered an error: ${errorMessage}`,
+            timestamp: Date.now(),
+          };
+          store.dispatch('workflowChat/addMessage', { workflowId: props.workflowId, message: errorMsg });
+        }
         store.dispatch('workflowChat/setStreaming', false);
       } finally {
+        abortController = null;
         focusInput();
         // scrollToBottom();
       }
@@ -590,6 +612,7 @@ export default {
       suggestions,
       isLoadingSuggestions,
       sendChatMessage,
+      stopStream,
       executeSuggestion,
       toggleToolCallExpansion,
       getMessageStatus,
