@@ -3896,7 +3896,17 @@ function injectAsyncParams(schema) {
   };
 }
 
-export async function getAvailableToolSchemas() {
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.asyncEnabled=true] - When false, the universal
+ *   async-control parameters (`_executeAsync`, `_interval`, `_stopAfter`,
+ *   `_duration`, `_delayFirst`, `_estimatedMinutes`) are NOT grafted onto
+ *   tool schemas. The LLM never sees them and will not call tools async.
+ *   Used by the per-user "Async tool execution" toggle in chat surfaces.
+ *   Defaults to true so unrelated callers (saved agents, goal flows,
+ *   /api/tools listings, internal lookups) keep their current behaviour.
+ */
+export async function getAvailableToolSchemas({ asyncEnabled = true } = {}) {
   await toolRegistry.ensureInitialized();
 
   const nativeToolSchemas = Object.values(TOOLS).map((tool) => tool.schema);
@@ -3946,8 +3956,9 @@ export async function getAvailableToolSchemas() {
         continue;
       }
       seenNames.add(schema.function.name);
-      // Inject async execution params into every tool
-      uniqueSchemas.push(injectAsyncParams(schema));
+      // Inject async execution params into every tool — unless the caller
+      // has gated them off (per-user toggle in chat surfaces).
+      uniqueSchemas.push(asyncEnabled ? injectAsyncParams(schema) : schema);
     }
   }
 

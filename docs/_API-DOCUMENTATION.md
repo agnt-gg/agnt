@@ -372,6 +372,191 @@ Base path: `/api/agents`
 
 Base path: `/api/async-tools`
 
+
+
+> ## \u26A0\uFE0F Critical Behaviour Notes (read before integrating)
+>
+> These behaviours were discovered during empirical stress-testing on 2026-05-04. Most of the silent-degradation cases were fixed in the same dated commit \u2014 see [`ASYNC-TOOLS-REFERENCE.md` \u00A7 Recent Fixes](./ASYNC-TOOLS-REFERENCE.md#recent-fixes-2026-05-04) for the fix table.
+>
+> **\ud83d\udd34 In-batch ordering is NOT guaranteed.** When multiple async tool calls are submitted in the same function-calls block, the orchestrator fires them all in the **same millisecond** with no ordering. Submitting a `write` followed by a `read` of the same path can produce a read failure (`ENOENT`) 2+ seconds *before* the write completes. This is by design \u2014 async tools are independent and unordered. **Use synchronous calls for any read-after-write or dependent operation.** Non-LLM integrators (workflow nodes, webhook handlers, third-party callers) must enforce ordering themselves: await the queued result before issuing the next dependent call.
+>
+> **\u2705 Silent-degradation parameter patterns FIXED (2026-05-04).** The four shapes below used to silently fall back to a one-shot. They now return a structured validation error at queue time so callers can self-correct:
+> 1. `_interval: 0` (or negative / non-numeric) \u2014 rejected.
+> 2. `_stopAfter: N` without `_interval` \u2014 rejected.
+> 3. `_duration: N` without `_interval` \u2014 rejected.
+> 4. `_delayFirst: true` without `_interval` \u2014 rejected.
+>
+> **\u2705 Failure observability FIXED (2026-05-04).** The `GET /api/async-tools/status` endpoint now reports three failure-related counters:
+> - `failed` \u2014 system-level failures only (worker crashed/aborted). Same semantics as before.
+> - `businessFailed` \u2014 completed executions whose inner `result.success === false` (ENOENT, EPERM, per-iteration errors in periodic runs).
+> - `totalFailed` \u2014 `failed + businessFailed`, exact (the source sets are disjoint).
+>
+> **\u2705 Autonomous-message banner FIXED (2026-05-04).** The wrapper that delivers async results into the conversation now inspects the inner result and emits `\u26A0\uFE0F ASYNC TOOL FINISHED WITH ERROR` with an honesty directive when the operation reported failure, instead of always claiming success.
+>
+> **\u2705 Sub-second intervals work** (validated down to `_interval: 0.1`), but at intervals shorter than the tool\u2019s own execution time the actual gap is dominated by tool throughput, not the timer. Note: `_interval: 0` is no longer accepted (see fix above).
+>
+> **\u2705 True OS-level concurrency is real** \u2014 five parallel `ping` shells took 5.2 s total instead of 21 s.
+>
+> **\u26a0\ufe0f Whole feature is experimental and OFF by default (2026-05-04).** A per-user setting (`asyncToolsEnabled` on `PUT /api/users/settings`) gates whether the LLM can use async tools at all. With it OFF (default), the universal async control params drop off every tool schema AND the async-guidance prompt section is omitted, so the LLM has no way to know async exists. In-flight tasks that started before the toggle flipped run to completion. New users see the chat behave like a conventional sync-only assistant until they explicitly enable the feature in Settings. See [`ASYNC-TOOLS-REFERENCE.md` \u00a7 Async tools toggle](./ASYNC-TOOLS-REFERENCE.md#async-tools-toggle-per-user-setting-2026-05-04) for the full contract.
+
+### Tool-Call Async Parameters (How to Use Async)
+
+Every tool in the AGNT registry — native, plugin, registry, MCP — supports background and recurring execution via a set of universal **underscore-prefixed parameters**. These are **not** part of the tool's own schema; they are intercepted by the orchestrator before the tool runs.
+
+> 📘 **For the comprehensive guide with worked examples, error handling patterns, edge cases, and empirically-validated test results, see [`ASYNC-TOOLS-REFERENCE.md`](./ASYNC-TOOLS-REFERENCE.md).**
+
+#### Universal Async Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `_executeAsync` | boolean | `false` | Run the tool in the background. Returns an `executionId` immediately; results arrive later via autonomous message. |
+| `_interval` | integer (seconds) | — | Re-run the tool every N seconds. Requires `_executeAsync`. |
+| `_stopAfter` | integer | — | Stop after N iterations. Requires `_interval`. |
+| `_duration` | number (minutes) | — | Stop after N minutes total. Decimals allowed (e.g. `0.1` = 6 seconds). Requires `_interval`. |
+| `_delayFirst` | boolean | `false` | Skip the immediate first run — wait one full `_interval` before the first execution. Requires `_interval`. |
+| `_estimatedMinutes` | number | — | UI hint for expected duration. **No functional impact** on scheduling — purely cosmetic. |
+
+#### Common Patterns
+
+**Run once in the background:**
+
+```json
+{ "query": "latest AI news", "_executeAsync": true }
+```
+
+**Run a real tool once after a delay (e.g. send a reminder email in 1 hour):**
+
+```json
+{
+  "to": "user@example.com",
+  "subject": "Reminder",
+  "body": "Don't forget!",
+  "_executeAsync": true,
+  "_interval": 3600,
+  "_stopAfter": 1,
+  "_delayFirst": true
+}
+```
+
+**Run every 60 seconds, exactly 5 times:**
+
+```json
+{ "...": "...", "_executeAsync": true, "_interval": 60, "_stopAfter": 5 }
+```
+
+**Scrape a site every 5 minutes for 1 hour:**
+
+```json
+{ "url": "https://example.com", "_executeAsync": true, "_interval": 300, "_duration": 60 }
+```
+
+**Safety-belt pattern (stop at whichever limit hits first):**
+
+```json
+{ "...": "...", "_executeAsync": true, "_interval": 60, "_stopAfter": 100, "_duration": 60 }
+```
+
+#### Response Shapes
+
+**Sync (no async params)** — returns the tool's native payload directly:
+
+```json
+{ "success": true, "total": 20, "individualRolls": [20], "error": null }
+```
+
+**Async, queued** — returned immediately when `_executeAsync: true`:
+
+```json
+{
+  "success": true,
+  "status": "queued",
+  "executionId": "8604c5b0-8515-4cb1-8894-918acb31ac25",
+  "message": "<toolName> started in the background. You'll receive updates as it progresses.",
+  "estimatedDuration": null
+}
+```
+
+**Async, completed (one-shot)** — arrives via autonomous message:
+
+```json
+{
+  "success": true,
+  "status": "completed",
+  "executionId": "8604c5b0-8515-4cb1-8894-918acb31ac25",
+  "result": "{\"success\":true,\"total\":20,...}",
+  "duration": 480
+}
+```
+
+> The `result` field is often a **JSON-stringified payload**. Clients must `JSON.parse()` it before consuming.
+
+**Periodic execution completed** — a single combined payload after the full schedule finishes:
+
+```json
+{
+  "success": true,
+  "status": "completed",
+  "executionId": "af4cd05e-0c19-4e3b-96fb-fc38c57d81bc",
+  "result": {
+    "periodicExecution": true,
+    "totalIterations": 3,
+    "results": [
+      { "iteration": 1, "result": "{...}", "timestamp": 1777909033895 },
+      { "iteration": 2, "result": "{...}", "timestamp": 1777909043897 },
+      { "iteration": 3, "result": "{...}", "timestamp": 1777909053906 }
+    ],
+    "totalDuration": 20011
+  },
+  "duration": 20011
+}
+```
+
+#### Two-Layer Status Model (Critical)
+
+Async responses have **two independent layers** that must both be checked:
+
+1. **System layer** — the outer envelope (`success`, `status`). Tells you whether the orchestrator queued/ran the task.
+2. **Business-logic layer** — `result.success` or the parsed payload. Tells you whether the tool's operation actually succeeded.
+
+A task can be `status: "completed"` at the system level while `result.success: false` at the business layer (e.g. file not found, invalid parameter, API error).
+
+```javascript
+if (response.status === "completed") {
+  const inner = typeof response.result === "string"
+    ? JSON.parse(response.result)
+    : response.result;
+  if (inner.success) {
+    // use inner data
+  } else {
+    // handle inner.error (e.g. ENOENT, EPERM, validation message)
+  }
+}
+```
+
+#### Empirically-Verified Behaviors
+
+These behaviors were validated via live tool calls (see `ASYNC-TOOLS-REFERENCE.md` for the full test log):
+
+- **Validation runs at execution time, not queue time.** Invalid parameters are queued successfully and only fail when the task actually runs.
+- **Conflicting stop conditions:** when both `_stopAfter` and `_duration` are set, **whichever limit triggers first wins**. Tested with `_stopAfter: 100` + `_duration: 0.1` (6 s) — task stopped at 3 iterations.
+- **Parallel concurrency:** 19+ simultaneous async calls in a single function-calls block all queue and execute cleanly. No rate limit observed.
+- **Mixed sync + async** in the same function-calls block works — sync results return inline, async return execution IDs.
+- **Periodic results are batched.** A periodic task delivers **no output** until the full schedule completes. Use separate async calls (one per assistant message) if streaming is required.
+- **`_estimatedMinutes` is purely cosmetic.** Tasks run as fast as they can regardless of the estimate.
+- **Minimum interval** tested: 1 second (with ~10–20 ms drift per iteration). Sub-second intervals untested.
+- **Decimal `_duration`** values work (e.g. `0.1` = 6 seconds).
+- **Error envelope:** business-logic failures (`ENOENT`, `EPERM`, validation errors) surface inside `result.error` while the outer `status` remains `"completed"`. The system never crashes or hangs on bad input.
+
+#### Anti-Patterns
+
+❌ **Do not** use async for dependent tasks. If Task B references Task A's output, Task A must be sync.
+
+❌ **Do not** build a fake `sleep` / `echo` / `timer` tool to schedule something later. Attach `_executeAsync`, `_interval`, `_stopAfter: 1`, `_delayFirst: true` directly to the **real tool you want to run**.
+
+❌ **Do not** start a periodic task without `_stopAfter` or `_duration`. It will run until cancelled via `POST /cancel/:executionId`.
+
+---
+
 ### Get Queue Status
 
 **GET** `/status`

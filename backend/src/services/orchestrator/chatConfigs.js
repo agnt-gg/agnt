@@ -121,6 +121,31 @@ async function loadCustomInstructionsSection(context) {
   return customInstructionsSection;
 }
 
+// Resolve the per-user "Async tool execution" toggle. Cached on the context
+// for the life of the chat turn so we hit the DB once even though both the
+// tool-schema fetcher and the prompt builder need the answer. Defaults to
+// FALSE (off) — async tool execution is an experimental opt-in capability;
+// any failure to load the user's preference, missing userId, or unknown
+// row falls back to off. Strict equality coercion (=== true) means anything
+// other than an explicit `true` from the DB is treated as off.
+async function loadAsyncToolsEnabled(context) {
+  if (context._frozenAsyncToolsEnabled !== undefined) return context._frozenAsyncToolsEnabled;
+
+  let asyncToolsEnabled = false;
+  try {
+    if (context.userId) {
+      const UserModel = (await import('../../models/UserModel.js')).default;
+      const settings = await UserModel.getUserSettings(context.userId);
+      asyncToolsEnabled = settings.asyncToolsEnabled === true;
+    }
+  } catch (e) {
+    console.warn('[chatConfigs] Failed to load asyncToolsEnabled:', e.message);
+  }
+
+  context._frozenAsyncToolsEnabled = asyncToolsEnabled;
+  return asyncToolsEnabled;
+}
+
 // Single source of truth for the user's workspace directory across every chat
 // surface (orchestrator, agent, workflow, tool, widget, goal, artifact). The
 // path is set in onboarding and editable in artifacts settings; reading it
@@ -291,7 +316,8 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
 }
 
 async function getUnifiedToolSchemas(context) {
-  const allSchemas = await getAvailableToolSchemas();
+  const asyncEnabled = await loadAsyncToolsEnabled(context);
+  const allSchemas = await getAvailableToolSchemas({ asyncEnabled });
 
   if (context.agentId && context.agentId !== 'agent-chat') {
     return getSavedAgentToolSchemas(context, allSchemas);
@@ -374,6 +400,7 @@ const unifiedConfig = {
     const memorySection = await loadFrozenMemorySection(context, context.agentId && context.agentId !== 'agent-chat' ? context.agentId : null);
     const customInstructionsSection = await loadCustomInstructionsSection(context);
     const workspaceSection = await loadWorkspaceContextSection();
+    const asyncToolsEnabled = await loadAsyncToolsEnabled(context);
 
     return buildUnifiedSystemPrompt(context, {
       skillsCatalogSection,
@@ -381,6 +408,7 @@ const unifiedConfig = {
       customInstructionsSection,
       workspaceSection,
       agentOverride,
+      asyncToolsEnabled,
     });
   },
   maxToolRounds: 100,

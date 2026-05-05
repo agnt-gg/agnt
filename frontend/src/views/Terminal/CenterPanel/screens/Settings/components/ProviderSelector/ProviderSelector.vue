@@ -100,6 +100,38 @@
       </div>
     </div>
 
+    <!-- Async tool execution toggle (experimental, off by default) -->
+    <div class="async-tools-section">
+      <div class="async-tools-row">
+        <label for="async-tools-toggle" class="async-tools-label">
+          <span>Async tool execution</span>
+          <span class="experimental-badge">Experimental</span>
+          <Tooltip
+            title="Background &amp; scheduled tool calls (experimental)"
+            text="Off by default. When on, Annie can run tools in the background, schedule recurring tasks, and delay actions (e.g. 'do this in 15 seconds'). The capability is still being hardened — turn it on if you want to try it. With it off, every tool call runs synchronously, just like a normal chat. Takes effect on new chats."
+          >
+            <i class="fas fa-info-circle info-icon"></i>
+          </Tooltip>
+        </label>
+        <button
+          id="async-tools-toggle"
+          type="button"
+          role="switch"
+          class="async-tools-switch"
+          :class="{ 'is-on': asyncToolsEnabled }"
+          :aria-checked="asyncToolsEnabled"
+          @click="toggleAsyncTools"
+        >
+          <span class="switch-thumb" :class="{ 'is-on': asyncToolsEnabled }"></span>
+        </button>
+      </div>
+      <p class="async-tools-help">
+        {{ asyncToolsEnabled
+          ? 'On — Annie can queue tools to run in the background and on a schedule. (Experimental capability.)'
+          : 'Off (default) — every tool call runs synchronously. No background tasks, no scheduled actions, no autonomous follow-ups.' }}
+      </p>
+    </div>
+
     <!-- Custom Provider Dialog -->
     <CustomProviderDialog :is-open="isDialogOpen" :edit-provider="editingProvider" @close="closeDialog" @saved="handleProviderSaved" />
   </div>
@@ -195,6 +227,15 @@ export default {
         }
       },
     );
+
+    // Async tool execution toggle — reflects the per-user capability gate.
+    // On = Annie sees the async control params on every tool and the prompt
+    // section that teaches her how to use them. Off = both vanish from the
+    // request, so the LLM can't queue async or recurring tool calls.
+    const asyncToolsEnabled = computed(() => store.state.aiProvider.asyncToolsEnabled !== false);
+    const toggleAsyncTools = () => {
+      store.dispatch('aiProvider/setAsyncToolsEnabled', !asyncToolsEnabled.value);
+    };
 
     const saveCustomInstructions = async () => {
       const next = (customInstructionsDraft.value || '').trim();
@@ -564,6 +605,8 @@ export default {
       customInstructionsDraft,
       customInstructionsStatus,
       saveCustomInstructions,
+      asyncToolsEnabled,
+      toggleAsyncTools,
     };
   },
 };
@@ -842,5 +885,100 @@ export default {
 
 .status-indicator.saved {
   color: var(--color-green);
+}
+
+/* Async tool execution toggle */
+.async-tools-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.async-tools-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.async-tools-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  cursor: default;
+}
+
+.experimental-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.7em;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-yellow);
+  border: 1px solid var(--color-yellow);
+  border-radius: 999px;
+  background: rgba(255, 215, 0, 0.08);
+  line-height: 1;
+}
+
+.async-tools-label .info-icon {
+  color: var(--color-med-navy);
+  font-size: 0.95em;
+  cursor: help;
+  transition: color 0.15s ease;
+}
+
+.async-tools-label .info-icon:hover {
+  color: var(--color-primary);
+}
+
+.async-tools-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 11px;
+  background: var(--terminal-background-color, transparent);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.async-tools-switch:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.async-tools-switch.is-on {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-med-navy);
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+
+.switch-thumb.is-on {
+  transform: translateX(16px);
+  background: var(--color-white, #fff);
+}
+
+.async-tools-help {
+  margin: 0;
+  font-size: 0.75em;
+  color: var(--color-med-navy);
+  line-height: 1.4;
 }
 </style>

@@ -1605,6 +1605,35 @@ IMPORTANT: The image data is already available in the system context. You don't 
       currentRound++;
       console.log(`[Tool Loop] Round ${currentRound}: Executing ${toolCalls.length} tool(s)`);
 
+      // Build the set of tool names being queued asynchronously this round.
+      // Used to reject sync duplicates of the same tool in the same batch —
+      // e.g. the LLM emits both an async file_operations (delayed) AND a sync
+      // file_operations (preview) for the same path, then concatenates the
+      // preview answer into the queueing-turn reply, producing duplicate
+      // output when the autonomous follow-up later delivers the real result.
+      // The prompt forbids this; this guard makes it impossible.
+      const asyncQueuedToolNames = new Set();
+      for (const tc of toolCalls) {
+        try {
+          const args = JSON.parse(tc.function.arguments);
+          if (args && args._executeAsync === true) {
+            asyncQueuedToolNames.add(tc.function.name);
+          }
+        } catch {
+          // Per-call parse error is reported separately downstream.
+        }
+      }
+
+      // Per-user "Async tool execution" toggle. Default is OFF (experimental
+      // opt-in). Strict-true check means any context that didn't go through
+      // chatConfigs (and therefore lacks _frozenAsyncToolsEnabled) is treated
+      // as disabled. When off, the prompt has no async guidance and the tool
+      // schemas have no async params, so the LLM shouldn't try to use them.
+      // Belt-and-suspenders: if a stale schema or in-flight turn slips one
+      // through anyway, force it to sync below.
+      const asyncToolsGloballyDisabled =
+        conversationContext._frozenAsyncToolsEnabled !== true;
+
       const toolPromises = toolCalls.map(async (toolCall) => {
         const functionName = toolCall.function.name;
         let functionArgs;
@@ -1653,9 +1682,26 @@ IMPORTANT: The image data is already available in the system context. You don't 
           }
         }
 
-        // CHECK IF LLM REQUESTED ASYNC EXECUTION via _executeAsync parameter
-        const shouldExecuteAsync = functionArgs._executeAsync === true;
+        // CHECK IF LLM REQUESTED ASYNC EXECUTION via _executeAsync parameter.
+        // The per-user toggle wins: if disabled globally for this user, treat
+        // the call as sync regardless of what the LLM submitted. The schemas
+        // and prompt should have prevented this, but a stale tool schema or a
+        // leftover param in an in-flight turn can still arrive — fall back to
+        // sync silently rather than fail the call.
+        const llmRequestedAsync = functionArgs._executeAsync === true;
+        if (llmRequestedAsync && asyncToolsGloballyDisabled) {
+          console.warn(`[AsyncTool] User has async tools disabled; downgrading ${functionName} to sync.`);
+        }
+        const shouldExecuteAsync = llmRequestedAsync && !asyncToolsGloballyDisabled;
         const estimatedMinutes = functionArgs._estimatedMinutes || null;
+
+        // Reject sync duplicates of tools that are ALSO being queued async in
+        // this same batch. Without this, the LLM can ask for `file_operations`
+        // both async (delayed) and sync (preview) in one turn, then dump the
+        // preview answer into the queueing reply — producing duplicate output
+        // when the autonomous follow-up later delivers the real result.
+        const isDuplicateSyncOfAsyncTool =
+          !shouldExecuteAsync && asyncQueuedToolNames.has(functionName);
 
         // Pass raw args to AsyncToolQueue - it strips control params internally
         // For sync execution, strip them here
@@ -1670,8 +1716,36 @@ IMPORTANT: The image data is already available in the system context. You don't 
         // Preserved before offloading to avoid DATA_REF placeholders in frontend events
         let preservedFrontendEvents = null;
 
-        if (shouldExecuteAsync) {
+        if (isDuplicateSyncOfAsyncTool) {
+          console.warn(`[AsyncTool] Rejecting sync duplicate of async-queued tool: ${functionName}`);
+          const dupError = {
+            success: false,
+            error: `Tool "${functionName}" was already queued asynchronously in this same turn. The sync duplicate is rejected to prevent double-output. The async result will arrive via autonomous message — do not preview the answer; wait for it.`,
+            hint: 'Reply only acknowledges the queue (e.g. "Started X in the background, results coming"). Do not include the actual answer data — that arrives in a separate autonomous message.',
+          };
+          functionResponseContent = JSON.stringify(dupError);
+          toolCallResult = dupError;
+        } else if (shouldExecuteAsync) {
           console.log(`[AsyncTool] ${chatType === 'agent' ? 'Agent' : 'Orchestrator'} requested async execution for: ${functionName}`);
+
+          // Validate async control params up-front. Without this, _interval: 0
+          // silently degrades to one-shot, and orphan _stopAfter / _duration /
+          // _delayFirst (without _interval) are silently dropped — the LLM
+          // gets a misleading "queued" success and the wrong shape runs.
+          const asyncValidation = asyncToolQueue.validateAsyncParams(functionArgs);
+          if (!asyncValidation.valid) {
+            console.warn(`[AsyncTool] Validation failed for ${functionName}: ${asyncValidation.error}`);
+            const validationError = {
+              success: false,
+              error: asyncValidation.error,
+              hint: 'Adjust the async control parameters and retry.',
+            };
+            functionResponseContent = JSON.stringify(validationError);
+            toolCallResult = validationError;
+            // Skip enqueue; downstream handling at the end of the .map callback
+            // wraps this synthetic error into the tool-result message so the
+            // LLM sees it on its next turn and self-corrects.
+          } else {
 
           const estimatedDuration = estimatedMinutes
             ? estimatedMinutes * 60 * 1000
@@ -1740,6 +1814,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           toolCallResult = asyncResult; // Set the parsed result for tool_end event
 
           console.log(`[AsyncTool] Queued ${functionName} with execution ID ${executionId} (${chatType} chat)`);
+          } // End of valid-async-params else branch
         } else {
           // SYNCHRONOUS TOOL EXECUTION — single dispatcher across all chat surfaces
           try {

@@ -40,6 +40,11 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     customInstructionsSection = '',
     workspaceSection = '',
     agentOverride = null,
+    // Per-user toggle for the async/background tool execution capability.
+    // When false, the ASYNC_EXECUTION_GUIDANCE block is omitted from the
+    // prompt so the LLM doesn't advertise (or attempt to use) async params
+    // that aren't on the tool schemas this turn.
+    asyncToolsEnabled = true,
   } = options;
 
   // Build the set of tool names actually exposed to the LLM this turn.
@@ -76,7 +81,9 @@ Every Annie chat surface is functionally the same assistant. The current page co
   if (has('analyze_image')) parts.push(CRITICAL_IMAGE_HANDLING);
   if (has('generate_image')) parts.push(CRITICAL_IMAGE_GENERATION);
   parts.push('IMPORTANT: Provider names are automatically normalized to lowercase by the backend. You do not need to worry about provider-name casing.');
-  parts.push(ASYNC_EXECUTION_GUIDANCE);
+  if (asyncToolsEnabled) {
+    parts.push(ASYNC_EXECUTION_GUIDANCE);
+  }
   parts.push(OFFLOADED_DATA_GUIDANCE);
   parts.push(CRITICAL_TOOL_CALL_REQUIREMENTS);
 

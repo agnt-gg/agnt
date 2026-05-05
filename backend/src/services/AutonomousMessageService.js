@@ -9,6 +9,7 @@ import conversationManager from './ConversationManager.js';
 import { createLlmClient } from './ai/LlmService.js';
 import { createLlmAdapter } from './orchestrator/llmAdapters.js';
 import { executeTool } from './orchestrator/tools.js';
+import { inspectAsyncResult } from './asyncResultInspector.js';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import log from '../utils/logger.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
@@ -90,11 +91,31 @@ Keep your response brief (1-2 sentences) since this is a progress update.`,
     // Get conversation context to find user ID
     const context = conversationManager.get(conversationId);
 
-      const systemMessage = {
-      role: 'user',
-      content: `[System: Async tool completed]
+    // Outer status reaching this handler is always "completed" (the queue
+    // ran the tool to the end). The INNER payload may still report failure —
+    // ENOENT, EPERM, validation errors raised by the tool, periodic
+    // iterations that errored, etc. Inspect both layers so the directive
+    // matches the actual outcome instead of always celebrating success.
+    const inspection = inspectAsyncResult(result);
+    const headline = inspection.ok
+      ? '[System: Async tool completed]'
+      : '[System: Async tool finished with errors]';
+    const banner = inspection.ok
+      ? '✅ ASYNC TOOL COMPLETED'
+      : '⚠️ ASYNC TOOL FINISHED WITH ERROR';
+    const instructions = inspection.ok
+      ? `The async tool completed successfully. Inform the user about the final result.
+Format the result in a user-friendly, natural way.
+Be conversational and confirm the completion.`
+      : `The async tool ran but the operation FAILED${inspection.errorSummary ? ` (${inspection.errorSummary})` : ''}.
+Inform the user about the failure clearly and honestly using the error details in the result above.
+Do NOT claim success. Suggest a sensible next step or fix if appropriate.`;
 
-✅ ASYNC TOOL COMPLETED
+    const systemMessage = {
+      role: 'user',
+      content: `${headline}
+
+${banner}
 
 Tool: ${functionName}
 Execution ID: ${executionId}
@@ -105,9 +126,7 @@ Result:
 ${JSON.stringify(result, null, 2)}
 
 INSTRUCTIONS:
-The async tool has completed successfully. Inform the user about the final result.
-Format the result in a user-friendly, natural way.
-Be conversational and enthusiastic about the completion.`,
+${instructions}`,
     };
 
     await this.triggerAutonomousMessage(conversationId, systemMessage);

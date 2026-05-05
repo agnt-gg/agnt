@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'crypto';
 import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
+import { inspectAsyncResult } from './asyncResultInspector.js';
 import log from '../utils/logger.js';
 
 /**
@@ -29,6 +30,69 @@ class AsyncToolQueue {
     this.maxConcurrentPerConversation = 10;
     this.cleanupIntervalMs = 60 * 60 * 1000;
     this.startCleanupTimer();
+  }
+
+  /**
+   * Validate async control params before enqueue. Catches silent param
+   * degradation: _interval <= 0 used to silently fall back to one-shot;
+   * orphan _stopAfter / _duration / _delayFirst (without _interval) used to
+   * be accepted and silently dropped. Returning a clear error here lets the
+   * caller surface a structured failure to the LLM so it can self-correct
+   * instead of running the wrong shape of execution.
+   */
+  validateAsyncParams(args) {
+    const has = (k) => args && args[k] !== undefined && args[k] !== null;
+
+    if (has('_interval')) {
+      const intervalNum = Number(args._interval);
+      if (!Number.isFinite(intervalNum) || intervalNum <= 0) {
+        return {
+          valid: false,
+          error: `_interval must be a positive number of seconds. Received: ${JSON.stringify(args._interval)}.`,
+        };
+      }
+    }
+
+    if (has('_stopAfter') && !has('_interval')) {
+      return {
+        valid: false,
+        error: '_stopAfter requires _interval. To run a tool once in the background use only _executeAsync: true. To run a single delayed execution set _interval (seconds), _stopAfter: 1, and _delayFirst: true.',
+      };
+    }
+    if (has('_duration') && !has('_interval')) {
+      return {
+        valid: false,
+        error: '_duration requires _interval (it caps a recurring task by elapsed time, not a single run).',
+      };
+    }
+    if (args && args._delayFirst === true && !has('_interval')) {
+      return {
+        valid: false,
+        error: '_delayFirst requires _interval (it skips the first run of a recurring task).',
+      };
+    }
+
+    if (has('_stopAfter')) {
+      const stopNum = Number(args._stopAfter);
+      if (!Number.isInteger(stopNum) || stopNum <= 0) {
+        return {
+          valid: false,
+          error: `_stopAfter must be a positive integer. Received: ${JSON.stringify(args._stopAfter)}.`,
+        };
+      }
+    }
+
+    if (has('_duration')) {
+      const durNum = Number(args._duration);
+      if (!Number.isFinite(durNum) || durNum <= 0) {
+        return {
+          valid: false,
+          error: `_duration must be a positive number of minutes. Received: ${JSON.stringify(args._duration)}.`,
+        };
+      }
+    }
+
+    return { valid: true };
   }
 
   /**
@@ -431,7 +495,7 @@ class AsyncToolQueue {
   }
 
   startCleanupTimer() {
-    setInterval(() => {
+    const timer = setInterval(() => {
       const now = Date.now();
       for (const [executionId, execution] of this.executions.entries()) {
         if (execution.completedAt && now - execution.completedAt > this.cleanupIntervalMs) {
@@ -439,17 +503,44 @@ class AsyncToolQueue {
         }
       }
     }, this.cleanupIntervalMs);
+    // unref() prevents the cleanup interval from keeping the Node event loop
+    // alive. In production the HTTP server keeps the process alive anyway, so
+    // this is a no-op there. In test/CLI contexts (and any future usage where
+    // the queue is loaded outside a long-running server), processes can now
+    // exit cleanly instead of hanging on the hourly tick.
+    if (typeof timer.unref === 'function') timer.unref();
   }
 
   getStats() {
     const executions = Array.from(this.executions.values());
+    const completed = executions.filter((e) => e.status === 'completed');
+
+    // Worker-level failures: the executeFunction threw, the task aborted, or
+    // status was set to 'failed' by the catch block in execute(). Does NOT
+    // include tools that ran to completion but returned success: false.
+    const failed = executions.filter((e) => e.status === 'failed').length;
+
+    // Business-logic failures: subset of completed executions whose inner
+    // result reported failure (success: false / ENOENT / EPERM / per-iteration
+    // errors in periodic runs). Tracked as a separate counter so existing
+    // dashboards reading `failed` stay stable.
+    const businessFailed = completed.filter((e) => !inspectAsyncResult(e.result).ok).length;
+
     return {
       total: executions.length,
       queued: executions.filter((e) => e.status === 'queued').length,
       running: executions.filter((e) => e.status === 'running').length,
-      completed: executions.filter((e) => e.status === 'completed').length,
-      failed: executions.filter((e) => e.status === 'failed').length,
+      completed: completed.length,
+      failed,
       cancelled: executions.filter((e) => e.status === 'cancelled').length,
+      businessFailed,
+      // Sum of the two failure counters. Safe to add: the sets are disjoint
+      // by construction — every execution has exactly one terminal status,
+      // and businessFailed only counts executions whose status is 'completed'
+      // (so a worker-crashed task is in `failed`, never `businessFailed`).
+      // Use this when you want a single "anything that didn't fully succeed"
+      // number for monitoring or dashboards.
+      totalFailed: failed + businessFailed,
     };
   }
 }

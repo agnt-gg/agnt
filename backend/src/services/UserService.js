@@ -49,20 +49,30 @@ class UserService {
   }
   async updateUserSettings(req, res) {
     try {
-      const { selectedProvider, selectedModel, customInstructions } = req.body;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled } = req.body;
 
-      if (selectedProvider === undefined && selectedModel === undefined && customInstructions === undefined) {
-        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, or customInstructions) is required' });
+      if (
+        selectedProvider === undefined &&
+        selectedModel === undefined &&
+        customInstructions === undefined &&
+        asyncToolsEnabled === undefined
+      ) {
+        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, or asyncToolsEnabled) is required' });
       }
 
       if (customInstructions !== undefined && typeof customInstructions === 'string' && customInstructions.length > 4000) {
         return res.status(400).json({ error: 'customInstructions must be 4000 characters or fewer' });
       }
 
+      if (asyncToolsEnabled !== undefined && typeof asyncToolsEnabled !== 'boolean') {
+        return res.status(400).json({ error: 'asyncToolsEnabled must be a boolean' });
+      }
+
       const result = await UserModel.updateUserSettings(req.user.id, {
         selectedProvider,
         selectedModel,
         customInstructions,
+        asyncToolsEnabled,
       });
 
       res.json({
@@ -72,6 +82,7 @@ class UserService {
           selectedProvider,
           selectedModel,
           customInstructions,
+          asyncToolsEnabled,
         },
       });
     } catch (error) {

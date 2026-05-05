@@ -52,7 +52,7 @@ class UserModel {
   static getUserSettings(userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions
+        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled
          FROM users WHERE id = ?`,
         [userId],
         (err, row) => {
@@ -63,6 +63,13 @@ class UserModel {
               selectedProvider: row.selectedProvider || 'Anthropic',
               selectedModel: row.selectedModel || 'claude-3-5-sonnet-20240620',
               customInstructions: row.customInstructions || '',
+              // Stored as INTEGER (0/1) in SQLite. Coerce to boolean for the
+              // API layer. NULL (legacy rows that pre-date the column) is
+              // treated as the documented default — false (off) — since
+              // async tool execution is an experimental opt-in capability.
+              asyncToolsEnabled: row.asyncToolsEnabled === null || row.asyncToolsEnabled === undefined
+                ? false
+                : Boolean(row.asyncToolsEnabled),
             });
           } else {
             // User not found, return defaults
@@ -70,6 +77,7 @@ class UserModel {
               selectedProvider: 'Anthropic',
               selectedModel: 'claude-3-5-sonnet-20240620',
               customInstructions: '',
+              asyncToolsEnabled: false,
             });
           }
         }
@@ -79,7 +87,7 @@ class UserModel {
 
   static updateUserSettings(userId, settings) {
     return new Promise((resolve, reject) => {
-      const { selectedProvider, selectedModel, customInstructions } = settings;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled } = settings;
 
       const fields = [];
       const params = [];
@@ -101,6 +109,11 @@ class UserModel {
         params.push(customInstructions ? String(customInstructions).trim() : null);
       }
 
+      if (asyncToolsEnabled !== undefined) {
+        fields.push('async_tools_enabled = ?');
+        params.push(asyncToolsEnabled ? 1 : 0);
+      }
+
       if (fields.length === 0) {
         return resolve({ changes: 0 });
       }
@@ -117,13 +130,15 @@ class UserModel {
           } else if (this.changes === 0) {
             // User doesn't exist, create with settings
             db.run(
-              `INSERT INTO users (id, default_provider, default_model, custom_instructions, created_at)
-               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+              `INSERT INTO users (id, default_provider, default_model, custom_instructions, async_tools_enabled, created_at)
+               VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
               [
                 userId,
                 selectedProvider || 'Anthropic',
                 selectedModel || 'claude-3-5-sonnet-20240620',
                 customInstructions ? String(customInstructions).trim() : null,
+                // New rows default to async OFF (experimental opt-in).
+                asyncToolsEnabled === undefined ? 0 : (asyncToolsEnabled ? 1 : 0),
               ],
               function (insertErr) {
                 if (insertErr) {

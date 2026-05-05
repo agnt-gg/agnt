@@ -147,7 +147,8 @@ function createTables() {
         credits INTEGER DEFAULT 0,
         default_provider TEXT DEFAULT 'Anthropic',
         default_model TEXT DEFAULT 'claude-3-5-sonnet-20240620',
-        custom_instructions TEXT
+        custom_instructions TEXT,
+        async_tools_enabled INTEGER DEFAULT 0
       )`);
 
       db.run(`CREATE TABLE IF NOT EXISTS transactions (
@@ -1070,6 +1071,18 @@ function runMigrations() {
           console.error('Error adding custom_instructions column to users:', err);
         } else if (!err) {
           console.log('✓ Added custom_instructions column to users table');
+        }
+      });
+
+      // Migration: Add async_tools_enabled column to users for the chat-side
+      // capability toggle (2026-05-04). Defaults to 0 (off) — async tool
+      // execution is currently an experimental capability and users opt in
+      // via Settings → AI Provider → "Async tool execution".
+      db.run(`ALTER TABLE users ADD COLUMN async_tools_enabled INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding async_tools_enabled column to users:', err);
+        } else if (!err) {
+          console.log('✓ Added async_tools_enabled column to users table');
         }
       });
 

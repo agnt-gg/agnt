@@ -420,6 +420,12 @@ export default {
     reasoningValue: INITIAL_REASONING_VALUE,
     reasoningEnabled: isReasoningEnabledValue(INITIAL_REASONING_VALUE),
     customInstructions: localStorage.getItem('customInstructions') || '',
+    // Per-user "Async tool execution" toggle. Default FALSE — async tool
+    // execution is currently an experimental opt-in feature. Users enable
+    // it in Settings → AI Provider. localStorage is the source of truth on
+    // the frontend so the toggle survives reloads; loadUserSettings()
+    // reconciles it with the backend value on session start.
+    asyncToolsEnabled: localStorage.getItem('asyncToolsEnabled') === 'true',
     loadingModels: {},
     modelCache: {},
   },
@@ -481,6 +487,15 @@ export default {
       } else {
         localStorage.removeItem('customInstructions');
       }
+    },
+    SET_ASYNC_TOOLS_ENABLED(state, enabled) {
+      const value = Boolean(enabled);
+      state.asyncToolsEnabled = value;
+      // Persist explicitly even when true, so a deliberate "leave it on"
+      // setting is preserved across reloads (rather than relying on the
+      // localStorage-missing-key default and tripping over future default
+      // changes).
+      localStorage.setItem('asyncToolsEnabled', value ? 'true' : 'false');
     },
     ENSURE_VALID_MODEL(state) {
       const availableModels = state.allModels[state.selectedProvider] || [];
@@ -628,6 +643,34 @@ export default {
       }
     },
 
+    async setAsyncToolsEnabled({ commit }, enabled) {
+      const value = Boolean(enabled);
+      commit('SET_ASYNC_TOOLS_ENABLED', value);
+
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              asyncToolsEnabled: value,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Backend sync failed:', response.status, errorText);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to sync async tools toggle with backend:', error);
+      }
+    },
+
     async setModel({ commit, state }, newModel) {
       commit('SET_SELECTED_MODEL', newModel);
 
@@ -673,6 +716,10 @@ export default {
 
             if (settings.customInstructions !== undefined) {
               commit('SET_CUSTOM_INSTRUCTIONS', settings.customInstructions || '');
+            }
+
+            if (settings.asyncToolsEnabled !== undefined) {
+              commit('SET_ASYNC_TOOLS_ENABLED', settings.asyncToolsEnabled === true);
             }
 
             if (provider) {
