@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.5.12",
+      "date": "May 5, 2026",
+      "title": "Background Tasks Now Opt-In, Honest Completion Messages & Video Theme Backgrounds - AGNT v0.5.12",
+      "type": "patch",
+      "features": [
+        { "name": "Background and Scheduled Tasks Are Now an Experimental Opt-In, Off by Default for New Installs — Turn Them on in Settings if You Want to Use Them", "status": "updated" },
+        { "name": "Annie Now Honestly Tells You When a Background Task Finished With an Error Instead of Always Saying 'Completed Successfully' Over a Failure", "status": "bug" },
+        { "name": "The Stop Button on Background Tasks Works Again After a URL Bug Was Silently Sending Cancels to a 404", "status": "bug" },
+        { "name": "Custom Theme Backgrounds Now Support Video Files Alongside Images and Load Much Faster for Large Files", "status": "new" },
+        { "name": "The Widget Catalog Opens Faster and Uses Less Memory Because It Only Loads Code for Widgets You Actually Open", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.11",
       "date": "May 3, 2026",
       "title": "Faster Boot, Faster Dashboard & Lighter API Responses - AGNT v0.5.11",
