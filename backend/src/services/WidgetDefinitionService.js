@@ -74,7 +74,13 @@ function closeThumbnailBrowser() {
 
 class WidgetDefinitionService {
   /**
-   * Get all widget definitions for a user (+ shared ones).
+   * List widget definitions for the user (+ shared ones).
+   *
+   * The list response intentionally omits `source_code` because it can be
+   * megabytes per widget (full HTML/JS) and a large user library would
+   * otherwise pin tens of MB in the frontend Vuex store. Callers that need
+   * the source (the renderer iframe, the Forge editor, thumbnail capture)
+   * fetch it on demand via GET /:widgetId, which returns the full row.
    */
   async getAllWidgets(req, res) {
     try {
@@ -89,14 +95,17 @@ class WidgetDefinitionService {
         );
       });
 
-      const widgets = rows.map((row) => ({
-        ...row,
-        config: JSON.parse(row.config || '{}'),
-        data_bindings: JSON.parse(row.data_bindings || '[]'),
-        default_size: JSON.parse(row.default_size || '{"cols":4,"rows":3}'),
-        min_size: JSON.parse(row.min_size || '{"cols":2,"rows":2}'),
-        useThemeStyles: row.use_theme_styles !== 0,
-      }));
+      const widgets = rows.map((row) => {
+        const { source_code: _omitSource, ...rest } = row;
+        return {
+          ...rest,
+          config: JSON.parse(rest.config || '{}'),
+          data_bindings: JSON.parse(rest.data_bindings || '[]'),
+          default_size: JSON.parse(rest.default_size || '{"cols":4,"rows":3}'),
+          min_size: JSON.parse(rest.min_size || '{"cols":2,"rows":2}'),
+          useThemeStyles: rest.use_theme_styles !== 0,
+        };
+      });
 
       res.json({ widgets });
     } catch (error) {

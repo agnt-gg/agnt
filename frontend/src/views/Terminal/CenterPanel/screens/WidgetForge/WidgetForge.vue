@@ -267,20 +267,25 @@ export default {
     const canSave = computed(() => form.name.trim().length > 0);
 
     // Load existing definition or reset form — runs on mount AND when activeDefinition changes
-    function loadOrResetForm() {
+    async function loadOrResetForm() {
       const existing = store.getters['widgetDefinitions/activeDefinition'];
       if (existing) {
-        form.name = existing.name || '';
-        form.description = existing.description || '';
-        form.icon = existing.icon || 'fas fa-puzzle-piece';
-        form.category = existing.category || 'custom';
-        form.widget_type = existing.widget_type || 'html';
-        form.source_code = existing.source_code || '';
-        form.config = existing.config || {};
-        form.default_size = existing.default_size || { cols: 4, rows: 3 };
-        form.min_size = existing.min_size || { cols: 2, rows: 2 };
-        form.useThemeStyles = existing.useThemeStyles !== false;
-        configJson.value = JSON.stringify(existing.config || {}, null, 2);
+        // The catalog list omits source_code; hydrate before populating the editor.
+        if (!('source_code' in existing)) {
+          await store.dispatch('widgetDefinitions/ensureDefinitionLoaded', existing.id);
+        }
+        const hydrated = store.getters['widgetDefinitions/activeDefinition'] || existing;
+        form.name = hydrated.name || '';
+        form.description = hydrated.description || '';
+        form.icon = hydrated.icon || 'fas fa-puzzle-piece';
+        form.category = hydrated.category || 'custom';
+        form.widget_type = hydrated.widget_type || 'html';
+        form.source_code = hydrated.source_code || '';
+        form.config = hydrated.config || {};
+        form.default_size = hydrated.default_size || { cols: 4, rows: 3 };
+        form.min_size = hydrated.min_size || { cols: 2, rows: 2 };
+        form.useThemeStyles = hydrated.useThemeStyles !== false;
+        configJson.value = JSON.stringify(hydrated.config || {}, null, 2);
       } else {
         form.name = '';
         form.description = '';

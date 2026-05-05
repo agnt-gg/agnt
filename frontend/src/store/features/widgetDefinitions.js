@@ -17,6 +17,11 @@ function getAuthHeaders() {
     : { 'Content-Type': 'application/json' };
 }
 
+// In-flight detail fetches, keyed by widget id. Used to coalesce concurrent
+// callers (e.g. two widgets of the same id mounting at once) onto a single
+// network request so we don't hammer the backend.
+const _pendingDetailLoads = new Map();
+
 const state = {
   definitions: [],
   isLoaded: false,
@@ -112,6 +117,50 @@ const actions = {
     } finally {
       commit('SET_LOADING', false);
     }
+  },
+
+  /**
+   * Hydrate a definition with its full source_code by fetching the row from
+   * the server. The list endpoint omits `source_code` to keep the catalog
+   * lightweight; consumers that actually need to render or edit a widget
+   * call this first.
+   *
+   * Idempotent — `'source_code' in def` is the hydrated marker. Concurrent
+   * calls for the same id share a single in-flight request.
+   */
+  async ensureDefinitionLoaded({ commit, state }, id) {
+    if (!id) return null;
+    const existing = state.definitions.find((d) => d.id === id);
+    if (existing && 'source_code' in existing) return existing;
+
+    if (_pendingDetailLoads.has(id)) return _pendingDetailLoads.get(id);
+
+    const fetchPromise = (async () => {
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${id}`, {
+          headers: getAuthHeaders(),
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        const widget = data.widget || data;
+        if (!widget || !widget.id) return null;
+
+        if (state.definitions.find((d) => d.id === widget.id)) {
+          commit('UPDATE_DEFINITION', { id: widget.id, updates: widget });
+        } else {
+          commit('ADD_DEFINITION', widget);
+        }
+        return state.definitions.find((d) => d.id === widget.id) || null;
+      } catch (error) {
+        console.error(`Failed to load widget definition ${id}:`, error);
+        return null;
+      } finally {
+        _pendingDetailLoads.delete(id);
+      }
+    })();
+
+    _pendingDetailLoads.set(id, fetchPromise);
+    return fetchPromise;
   },
 
   /**

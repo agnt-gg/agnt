@@ -409,7 +409,13 @@ export default {
       if (def.thumbnail) return true;
       const type = def.widget_type || '';
       if (type === 'iframe') return !!def.config?.url;
-      if (type === 'html' || type === 'markdown') return !!def.source_code;
+      // For html/markdown the source_code is loaded lazily by the renderer;
+      // we only know if a preview is renderable once source is hydrated.
+      // Treat hydrated-but-empty as "no preview"; pre-hydration assume yes
+      // so the catalog tile reserves space until the renderer loads it.
+      if (type === 'html' || type === 'markdown') {
+        return 'source_code' in def ? !!def.source_code : true;
+      }
       return false;
     }
 
@@ -485,7 +491,13 @@ export default {
 
     async function captureWidgetPreview(widget) {
       if (!widget._isCustom || !widget._definition) return;
-      const def = widget._definition;
+      let def = widget._definition;
+
+      // The catalog list omits source_code; hydrate the full row before capture.
+      if (!('source_code' in def)) {
+        const hydrated = await store.dispatch('widgetDefinitions/ensureDefinitionLoaded', widget.id);
+        if (hydrated) def = hydrated;
+      }
       if (!def.source_code) return;
 
       capturingId.value = widget.id;

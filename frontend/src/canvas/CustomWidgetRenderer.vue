@@ -90,7 +90,20 @@ export default {
 
     const widgetType = computed(() => props.definition?.widget_type || 'html');
     const config = computed(() => props.definition?.config || {});
-    const sourceCode = computed(() => props.definition?.source_code || '');
+
+    // The catalog list intentionally omits `source_code` to keep memory flat —
+    // see widgetDefinitions store. Trigger a one-shot fetch the first time
+    // this widget renders, then read source reactively from the store so the
+    // computed re-runs once the source lands.
+    if (props.definition?.id) {
+      store.dispatch('widgetDefinitions/ensureDefinitionLoaded', props.definition.id);
+    }
+    const liveDefinition = computed(() =>
+      props.definition?.id ? store.getters['widgetDefinitions/getDefinitionById'](props.definition.id) : null
+    );
+    const sourceCode = computed(
+      () => liveDefinition.value?.source_code ?? props.definition?.source_code ?? ''
+    );
 
     // ── Widget SDK bridge ──
     // Authorise this iframe to use `window.agnt.tool()` / `agnt.fetch()` /
