@@ -86,6 +86,9 @@ body:not(.dark):not(.rose) {
   --indigo-rgb: 125, 61, 229;
   --primary-rgb: 229, 61, 143;
 
+  /* Soft blue tint for user-authored chat messages in light mode */
+  --user-message-bg: rgba(var(--blue-rgb), 0.05);
+
   font-size: var(--font-size-sm);
   line-height: 1.25;
   color: #2a2a3a;

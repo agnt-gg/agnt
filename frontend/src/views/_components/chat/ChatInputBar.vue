@@ -62,12 +62,7 @@
            the user needs to be able to stop dictating without clicking through. -->
       <template v-else>
         <Tooltip v-if="showVoice && voiceSupported && voiceListening && !isStreaming" text="Stop recording" width="auto">
-          <button
-            @click="$emit('toggle-voice')"
-            :disabled="disabled"
-            class="chat-icon-btn chat-mic-btn is-listening"
-            type="button"
-          >
+          <button @click="$emit('toggle-voice')" :disabled="disabled" class="chat-icon-btn chat-mic-btn is-listening" type="button">
             <i class="fas fa-stop"></i>
           </button>
         </Tooltip>
@@ -88,12 +83,7 @@
               <i class="fas fa-paperclip"></i>
               <span>Attach files</span>
             </button>
-            <button
-              v-if="showVoice && voiceSupported"
-              @click="onOverflowItem(() => $emit('toggle-voice'))"
-              class="chat-overflow-item"
-              type="button"
-            >
+            <button v-if="showVoice && voiceSupported" @click="onOverflowItem(() => $emit('toggle-voice'))" class="chat-overflow-item" type="button">
               <i class="fas fa-microphone"></i>
               <span>Voice input</span>
             </button>
@@ -432,7 +422,7 @@ export default {
   max-height: 150px;
   border: 1px solid var(--terminal-border-color);
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.2);
+  background: transparent;
   color: var(--color-text);
   font-family: inherit;
   font-size: var(--font-size-sm);
@@ -441,7 +431,10 @@ export default {
   overflow: hidden; /* never any scrollbar */
   scrollbar-width: none;
   -ms-overflow-style: none;
-  transition: border-color 0.2s ease, background 0.2s ease, border-radius 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    border-radius 0.2s ease;
 }
 
 .chat-input-bar.is-expanded .chat-input-textarea {

@@ -25,6 +25,11 @@ td {
   overflow-wrap: normal;
   vertical-align: top;
   background: var(--color-darker-0);
+  font-size: 12px;
+}
+
+td code {
+  font-size: 10px !important;
 }
 
 tr:last-child td {

@@ -2959,7 +2959,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 }
 
 .message-wrapper.user .message-card {
-  background: var(--color-darker-1);
+  background: var(--user-message-bg);
   border: 1px solid var(--terminal-border-color);
   /* border-right: 3px solid var(--color-blue); */
   margin-left: auto;

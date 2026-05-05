@@ -60,6 +60,9 @@
   --color-darker-2: rgba(0, 0, 0, 0.4);
   --color-darker-3: rgba(0, 0, 0, 0.8);
 
+  /* Chat message backgrounds — themes can override per-role */
+  --user-message-bg: var(--color-darker-1);
+
   --color-popup: rgba(16, 16, 24, 0.95);
 
   --color-light-green: var(--color-green);
