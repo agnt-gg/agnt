@@ -78,6 +78,7 @@ export default {
     // --- Background Layer ---
     const useCustomBackground = computed(() => store.getters['theme/useCustomBackground']);
     const currentThemeBackgroundImage = computed(() => store.getters['theme/currentThemeBackgroundImage']);
+    const currentBackgroundType = computed(() => store.getters['theme/currentBackgroundType']);
     const defaultBackgroundImage = computed(() => store.state.theme.defaultBackgroundImage);
 
     const bgSrc = computed(() => {
@@ -85,9 +86,11 @@ export default {
       return currentThemeBackgroundImage.value || defaultBackgroundImage.value;
     });
 
+    // The custom background type comes from the store (set when the Blob is loaded);
+    // the default fallback image is always an image.
     const bgType = computed(() => {
       if (!bgSrc.value) return 'image';
-      return bgSrc.value.startsWith('data:video/') ? 'video' : 'image';
+      return currentThemeBackgroundImage.value ? currentBackgroundType.value || 'image' : 'image';
     });
 
     const hasBgLayer = computed(() => useCustomBackground.value && !!bgSrc.value);

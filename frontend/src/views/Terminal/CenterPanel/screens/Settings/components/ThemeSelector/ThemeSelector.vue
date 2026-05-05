@@ -157,6 +157,7 @@ export default {
       'currentTheme',
       'isGreyscaleMode',
       'currentThemeBackgroundImage',
+      'isCurrentBackgroundVideo',
       'useCustomBackground',
       'fontFamily',
       'uiScale',
@@ -164,8 +165,7 @@ export default {
       'bgBlur',
     ]),
     isVideoBackground() {
-      if (!this.currentThemeBackgroundImage) return false;
-      return this.currentThemeBackgroundImage.startsWith('data:video/');
+      return this.isCurrentBackgroundVideo;
     },
   },
   mounted() {
@@ -220,14 +220,10 @@ export default {
 
       this.bgFileName = file.name;
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        this.setCustomBackgroundImage({
-          theme: this.currentTheme,
-          imageDataUrl: e.target.result,
-        });
-      };
-      reader.readAsDataURL(file);
+      this.setCustomBackgroundImage({
+        theme: this.currentTheme,
+        file,
+      });
 
       event.target.value = '';
     },

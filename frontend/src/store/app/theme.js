@@ -1,5 +1,36 @@
 import { mediaStorage } from '../../utils/mediaStorage.js';
 
+const SUPPORTED_THEMES = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose'];
+
+function mediaKeyFor(theme) {
+  return `customBackgroundImage_${theme}`;
+}
+
+function existsKeyFor(theme) {
+  return `customBackgroundImage_${theme}_exists`;
+}
+
+function buildHasCustomBackgroundFlags() {
+  const flags = {};
+  for (const theme of SUPPORTED_THEMES) {
+    flags[theme] = localStorage.getItem(existsKeyFor(theme)) === 'true';
+  }
+  return flags;
+}
+
+function blobTypeKind(blob) {
+  if (!blob) return null;
+  if (blob.type && blob.type.startsWith('video/')) return 'video';
+  return 'image';
+}
+
+// Revoke an object URL after the next paint cycle so any <video>/<img>
+// element that just received the new src has time to start loading.
+function revokeSoon(url) {
+  if (!url || !url.startsWith('blob:')) return;
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // Helper function to remove legacy body-level background media
 function removeLegacyBackgroundMedia() {
   const existingVideo = document.getElementById('background-video');
@@ -51,17 +82,15 @@ export default {
     leftPanelCollapsed: localStorage.getItem('leftPanelCollapsed') !== null ? localStorage.getItem('leftPanelCollapsed') === 'true' : false,
     rightPanelCollapsed: localStorage.getItem('rightPanelCollapsed') !== null ? localStorage.getItem('rightPanelCollapsed') === 'true' : false,
 
-    // Custom background images for each theme (stores references, actual data in IndexedDB)
-    customBackgroundImages: {
-      light: null,
-      dark: null,
-      cyberpunk: null,
-      midnight: null,
-      ember: null,
-      nord: null,
-      hacker: null,
-      rose: null,
-    },
+    // Per-theme flag indicating whether a custom background exists in IndexedDB.
+    // Actual media is loaded lazily for the active theme only — see currentBackgroundUrl.
+    hasCustomBackground: buildHasCustomBackgroundFlags(),
+
+    // Object URL for the active theme's custom background (or null). Only one
+    // is ever in memory; replaced (and the previous URL revoked) when the
+    // active theme changes.
+    currentBackgroundUrl: null,
+    currentBackgroundType: null, // 'video' | 'image' | null
 
     // Default background image for all themes
     defaultBackgroundImage: '/images/backgrounds/bg7.jpg',
@@ -210,36 +239,30 @@ export default {
     RESET_RATE_LIMIT_HIT_COUNT(state) {
       state.rateLimitHitCount = 0;
     },
-    // Custom background image mutations
-    async SET_CUSTOM_BACKGROUND_IMAGE(state, { theme, imageDataUrl }) {
-      state.customBackgroundImages[theme] = imageDataUrl;
-
-      // Store in IndexedDB for large files (videos)
-      try {
-        await mediaStorage.setItem(`customBackgroundImage_${theme}`, imageDataUrl);
-        // Store a flag in localStorage to indicate media exists
-        localStorage.setItem(`customBackgroundImage_${theme}_exists`, 'true');
-      } catch (error) {
-        console.error('Error storing background media:', error);
+    // Mark/unmark whether a theme has a custom background stored.
+    SET_HAS_CUSTOM_BACKGROUND(state, { theme, hasCustom }) {
+      state.hasCustomBackground = { ...state.hasCustomBackground, [theme]: !!hasCustom };
+      if (hasCustom) {
+        localStorage.setItem(existsKeyFor(theme), 'true');
+      } else {
+        localStorage.removeItem(existsKeyFor(theme));
       }
     },
-    async REMOVE_CUSTOM_BACKGROUND_IMAGE(state, theme) {
-      state.customBackgroundImages[theme] = null;
 
-      // Remove from IndexedDB
-      try {
-        await mediaStorage.removeItem(`customBackgroundImage_${theme}`);
-        localStorage.removeItem(`customBackgroundImage_${theme}_exists`);
-      } catch (error) {
-        console.error('Error removing background media:', error);
-      }
+    // Replace the active theme's background object URL, revoking the previous one.
+    SET_CURRENT_BACKGROUND(state, { url, type }) {
+      const previous = state.currentBackgroundUrl;
+      state.currentBackgroundUrl = url || null;
+      state.currentBackgroundType = url ? type : null;
+      if (previous && previous !== url) revokeSoon(previous);
     },
   },
   actions: {
     // New unified theme action
-    setTheme({ commit, dispatch }, theme) {
+    async setTheme({ commit, dispatch }, theme) {
       commit('SET_THEME', theme);
-      // Apply background based on useCustomBackground setting
+      // Load the new theme's background blob (lazy — only the active theme is in memory).
+      await dispatch('loadCurrentThemeBackground');
       dispatch('applyCurrentThemeBackground');
     },
 
@@ -263,8 +286,8 @@ export default {
       dispatch('applyFont');
       dispatch('applyScale');
 
-      // Load background images from IndexedDB in background (non-blocking)
-      dispatch('loadBackgroundImages').then(() => {
+      // Lazy-load only the active theme's background (others stay on disk).
+      dispatch('loadCurrentThemeBackground').then(() => {
         dispatch('applyCurrentThemeBackground');
       });
     },
@@ -285,9 +308,16 @@ export default {
     toggleGreyscaleMode({ commit, state }) {
       commit('SET_GREYSCALE_MODE', !state.isGreyscaleMode);
     },
-    toggleUseCustomBackground({ commit, state, dispatch }) {
+    async toggleUseCustomBackground({ commit, state, dispatch }) {
       const newValue = !state.useCustomBackground;
       commit('SET_USE_CUSTOM_BACKGROUND', newValue);
+      // Only load the Blob into memory when the user actually wants the custom
+      // background shown; release it when they turn it off.
+      if (newValue) {
+        await dispatch('loadCurrentThemeBackground');
+      } else {
+        commit('SET_CURRENT_BACKGROUND', { url: null, type: null });
+      }
       dispatch('applyCurrentThemeBackground');
     },
     setFontFamily({ commit, dispatch }, fontFamily) {
@@ -383,34 +413,77 @@ export default {
     clearRateLimit({ commit }) {
       commit('CLEAR_RATE_LIMIT');
     },
-    // Custom background image actions
-    async setCustomBackgroundImage({ commit, dispatch }, { theme, imageDataUrl }) {
-      await commit('SET_CUSTOM_BACKGROUND_IMAGE', { theme, imageDataUrl });
-      dispatch('applyCurrentThemeBackground');
-    },
-    async removeCustomBackgroundImage({ commit, dispatch }, theme) {
-      await commit('REMOVE_CUSTOM_BACKGROUND_IMAGE', theme);
-      dispatch('applyCurrentThemeBackground');
-    },
-    // Load background images from IndexedDB on startup
-    async loadBackgroundImages({ state }) {
-      const themes = ['light', 'dark', 'cyberpunk', 'midnight', 'ember', 'nord', 'hacker', 'rose'];
+    // Custom background image actions. `file` may be a File/Blob (preferred)
+    // or a legacy data URL string; data URLs are converted to Blobs before
+    // hitting IndexedDB so we never persist base64 again.
+    async setCustomBackgroundImage({ commit, state, dispatch }, { theme, file, imageDataUrl }) {
+      let blob = file instanceof Blob ? file : null;
+      if (!blob && typeof imageDataUrl === 'string' && imageDataUrl.startsWith('data:')) {
+        try {
+          blob = await (await fetch(imageDataUrl)).blob();
+        } catch (error) {
+          console.error('Failed to decode data URL for background:', error);
+          return;
+        }
+      }
+      if (!blob) return;
 
-      // Load all themes in parallel instead of sequentially
-      await Promise.all(
-        themes
-          .filter((theme) => localStorage.getItem(`customBackgroundImage_${theme}_exists`))
-          .map(async (theme) => {
-            try {
-              const mediaDataUrl = await mediaStorage.getItem(`customBackgroundImage_${theme}`);
-              if (mediaDataUrl) {
-                state.customBackgroundImages[theme] = mediaDataUrl;
-              }
-            } catch (error) {
-              console.error(`Error loading background for ${theme}:`, error);
-            }
-          })
-      );
+      try {
+        await mediaStorage.setItem(mediaKeyFor(theme), blob);
+      } catch (error) {
+        console.error('Error storing background media:', error);
+        return;
+      }
+
+      commit('SET_HAS_CUSTOM_BACKGROUND', { theme, hasCustom: true });
+
+      if (theme === state.currentTheme) {
+        const url = URL.createObjectURL(blob);
+        commit('SET_CURRENT_BACKGROUND', { url, type: blobTypeKind(blob) });
+      }
+
+      dispatch('applyCurrentThemeBackground');
+    },
+    async removeCustomBackgroundImage({ commit, state, dispatch }, theme) {
+      try {
+        await mediaStorage.removeItem(mediaKeyFor(theme));
+      } catch (error) {
+        console.error('Error removing background media:', error);
+      }
+
+      commit('SET_HAS_CUSTOM_BACKGROUND', { theme, hasCustom: false });
+
+      if (theme === state.currentTheme) {
+        commit('SET_CURRENT_BACKGROUND', { url: null, type: null });
+      }
+
+      dispatch('applyCurrentThemeBackground');
+    },
+    // Load only the active theme's background from IndexedDB (lazy).
+    // Replaces the previous URL and revokes the old one to keep memory flat.
+    // Skips loading entirely when useCustomBackground is off — there's no
+    // point holding the Blob in memory if nothing displays it.
+    async loadCurrentThemeBackground({ commit, state }) {
+      const theme = state.currentTheme;
+      if (!state.useCustomBackground || !state.hasCustomBackground[theme]) {
+        commit('SET_CURRENT_BACKGROUND', { url: null, type: null });
+        return;
+      }
+
+      try {
+        const blob = await mediaStorage.getItem(mediaKeyFor(theme));
+        if (blob instanceof Blob) {
+          const url = URL.createObjectURL(blob);
+          commit('SET_CURRENT_BACKGROUND', { url, type: blobTypeKind(blob) });
+        } else {
+          // Flag said it existed but storage was empty/corrupt — clear the flag.
+          commit('SET_HAS_CUSTOM_BACKGROUND', { theme, hasCustom: false });
+          commit('SET_CURRENT_BACKGROUND', { url: null, type: null });
+        }
+      } catch (error) {
+        console.error(`Error loading background for ${theme}:`, error);
+        commit('SET_CURRENT_BACKGROUND', { url: null, type: null });
+      }
     },
     // Apply background for current theme based on useCustomBackground setting
     // Background rendering is handled by the #bg-layer in TerminalLayout.vue (reactive).
@@ -467,8 +540,10 @@ export default {
     bgOpacity: (state) => state.bgOpacity,
     bgBlur: (state) => state.bgBlur,
     // Custom background image getters
-    customBackgroundImages: (state) => state.customBackgroundImages,
-    currentThemeBackgroundImage: (state) => state.customBackgroundImages[state.currentTheme],
+    hasCustomBackground: (state) => state.hasCustomBackground,
+    currentThemeBackgroundImage: (state) => state.currentBackgroundUrl,
+    currentBackgroundType: (state) => state.currentBackgroundType,
+    isCurrentBackgroundVideo: (state) => state.currentBackgroundType === 'video',
     useCustomBackground: (state) => state.useCustomBackground,
     // Promo banner getter
     isPromoBannerClosed: (state) => state.isPromoBannerClosed,
