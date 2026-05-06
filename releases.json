@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.5.13",
+      "date": "May 6, 2026",
+      "title": "Skill & Goal Slash Commands, Universal Reasoning Toggle & Codex Stability - AGNT v0.5.13",
+      "type": "patch",
+      "features": [
+        { "name": "Type /skill or /goal in Any Chat to Attach a Skill or Goal to That Conversation — Annie Follows the Skill's Instructions and Goal Progress Streams Right Into the Chat With an Automatic Summary When It Finishes", "status": "new" },
+        { "name": "The Reasoning Toggle Now Works in Agent Chats and Unified Channels Too, Not Just the Main Chat — Your Setting Is Respected Everywhere", "status": "updated" },
+        { "name": "Codex Reasoning Models No Longer Lose Their Train of Thought Between Tool Calls — The Encrypted Thinking State Is Now Carried Across Each Step So Long Chains Stay Coherent", "status": "new" },
+        { "name": "The Goals Board Now Shows Done First, and Long Lists Scroll Sideways Instead of Squishing the Columns Together", "status": "updated" },
+        { "name": "Codex Connection Errors Now Tell You Exactly What to Do — Reconnect Your Account, Retry, or Switch Models — Instead of a Generic 'Check Your Connection' Message", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.12",
       "date": "May 5, 2026",
       "title": "Background Tasks Now Opt-In, Honest Completion Messages & Video Theme Backgrounds - AGNT v0.5.12",
