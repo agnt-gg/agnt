@@ -1,0 +1,766 @@
+{
+  "name": "telegram-toolkit",
+  "version": "1.2.0",
+  "description": "Telegram Bot API toolkit for AGNT - send messages/media and trigger workflows from incoming Telegram bot messages, commands, channel posts, and callback buttons.",
+  "author": "AGNT User",
+  "icon": "telegram",
+  "tools": [
+    {
+      "type": "telegram-api",
+      "entryPoint": "./telegram-api.js",
+      "schema": {
+        "title": "Telegram API",
+        "category": "action",
+        "type": "telegram-api",
+        "icon": "telegram",
+        "description": "Use Telegram Bot API from a single AGNT node. Choose an action to validate a bot, send messages/media, edit/delete messages, download files, or call any raw Bot API method.",
+        "authRequired": "apiKey",
+        "authProvider": "telegram",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "GET_ME",
+              "SEND_MESSAGE",
+              "SEND_MEDIA",
+              "EDIT_MESSAGE",
+              "DELETE_MESSAGE",
+              "DOWNLOAD_FILE",
+              "RAW_METHOD"
+            ],
+            "description": "Telegram operation to perform.",
+            "required": true,
+            "default": "SEND_MESSAGE"
+          },
+          "botToken": {
+            "type": "string",
+            "inputType": "password",
+            "description": "Optional fallback Telegram bot token from @BotFather. If omitted, AGNT uses the connected Telegram provider token from Settings → Connections.",
+            "required": false
+          },
+          "apiBaseUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional Bot API base URL. Use https://api.telegram.org by default, or a local Bot API server URL.",
+            "required": false,
+            "default": "https://api.telegram.org"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Include the full raw Telegram API response when available.",
+            "required": false,
+            "default": false
+          },
+          "chatId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Target chat ID, user ID, group/supergroup ID, or channel username like @mychannel.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_MEDIA",
+                "EDIT_MESSAGE",
+                "DELETE_MESSAGE"
+              ]
+            }
+          },
+          "text": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Message text for SEND_MESSAGE or new message text for EDIT_MESSAGE when editType=text. Telegram sendMessage supports up to 4096 characters after entity parsing.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "parseMode": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "none",
+              "HTML",
+              "MarkdownV2",
+              "Markdown"
+            ],
+            "description": "Optional parse mode for message text or media captions.",
+            "required": false,
+            "default": "none",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_MEDIA",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "disableNotification": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Send silently without notification sound.",
+            "required": false,
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_MEDIA"
+              ]
+            }
+          },
+          "protectContent": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Protect message/media content from forwarding/saving where supported.",
+            "required": false,
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_MEDIA"
+              ]
+            }
+          },
+          "disableLinkPreview": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Disable link previews for SEND_MESSAGE or EDIT_MESSAGE text edits.",
+            "required": false,
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "messageThreadId": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Optional forum topic/thread ID for supergroups.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_MEDIA"
+              ]
+            }
+          },
+          "replyToMessageId": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Optional message ID to reply to.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_MEDIA"
+              ]
+            }
+          },
+          "replyMarkupJson": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "Optional JSON reply_markup object, such as an inline_keyboard. For EDIT_MESSAGE with editType=reply_markup, this is required.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_MEDIA",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "linkPreviewOptionsJson": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "Optional JSON link_preview_options object. Overrides Disable Link Preview.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "entitiesJson": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "Optional JSON array of MessageEntity objects for SEND_MESSAGE or EDIT_MESSAGE text. If set, avoid parseMode.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "businessConnectionId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional Telegram Business connection ID for supported message operations.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_MEDIA",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "mediaType": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "photo",
+              "video",
+              "document",
+              "audio",
+              "voice",
+              "animation"
+            ],
+            "description": "Type of media to send.",
+            "required": false,
+            "default": "document",
+            "conditional": {
+              "field": "action",
+              "value": "SEND_MEDIA"
+            }
+          },
+          "mediaSourceType": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "url_or_file_id",
+              "local_file_path",
+              "base64"
+            ],
+            "description": "How to provide the media for SEND_MEDIA.",
+            "required": false,
+            "default": "url_or_file_id",
+            "conditional": {
+              "field": "action",
+              "value": "SEND_MEDIA"
+            }
+          },
+          "media": {
+            "type": "string",
+            "inputType": "text",
+            "description": "For SEND_MEDIA: HTTP(S) URL, existing Telegram file_id, or attach:// reference when mediaSourceType=url_or_file_id.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "SEND_MEDIA"
+            }
+          },
+          "filePath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "For SEND_MEDIA local uploads: local file path to upload from disk.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "SEND_MEDIA"
+            }
+          },
+          "fileData": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "For SEND_MEDIA base64 uploads: base64-encoded file data. Data URLs are also accepted.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "SEND_MEDIA"
+            }
+          },
+          "fileName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Filename for uploaded local/base64 media. Defaults to local basename for filePath uploads.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "SEND_MEDIA"
+            }
+          },
+          "mimeType": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional MIME type for local/base64 uploads. Guessed from filename if omitted.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "SEND_MEDIA"
+            }
+          },
+          "caption": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Caption for SEND_MEDIA, or new caption for EDIT_MESSAGE when editType=caption. Use an empty string to remove a caption.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MEDIA",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "captionEntitiesJson": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "Optional JSON array of MessageEntity objects for media captions.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MEDIA",
+                "EDIT_MESSAGE"
+              ]
+            }
+          },
+          "hasSpoiler": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Apply spoiler animation for photo/video/animation where supported.",
+            "required": false,
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "SEND_MEDIA"
+            }
+          },
+          "editType": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "text",
+              "caption",
+              "reply_markup"
+            ],
+            "description": "For EDIT_MESSAGE: what part of the message to edit.",
+            "required": false,
+            "default": "text",
+            "conditional": {
+              "field": "action",
+              "value": "EDIT_MESSAGE"
+            }
+          },
+          "messageId": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Message ID to edit or delete. Required for EDIT_MESSAGE unless inlineMessageId is set. Used by DELETE_MESSAGE if messageIds is empty.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "EDIT_MESSAGE",
+                "DELETE_MESSAGE"
+              ]
+            }
+          },
+          "inlineMessageId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "For EDIT_MESSAGE: inline message ID. Use instead of chatId/messageId for inline messages.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "EDIT_MESSAGE"
+            }
+          },
+          "messageIds": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "For DELETE_MESSAGE: optional comma/newline-separated list of message IDs. Overrides messageId when provided.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "DELETE_MESSAGE"
+            }
+          },
+          "fileId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "For DOWNLOAD_FILE: Telegram file_id to resolve/download.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "DOWNLOAD_FILE"
+            }
+          },
+          "savePath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "For DOWNLOAD_FILE: optional local path to save the downloaded file. Parent folders are created automatically.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "DOWNLOAD_FILE"
+            }
+          },
+          "includeDownloadUrl": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "For DOWNLOAD_FILE: return the real download URL. Warning: it contains the bot token. Off by default.",
+            "required": false,
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "DOWNLOAD_FILE"
+            }
+          },
+          "method": {
+            "type": "string",
+            "inputType": "text",
+            "description": "For RAW_METHOD: Bot API method name, e.g. getChat, sendPoll, createChatInviteLink.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "RAW_METHOD"
+            }
+          },
+          "payloadJson": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "For RAW_METHOD: JSON object payload for the Bot API method. Use {} or leave empty for no payload.",
+            "required": false,
+            "default": "{}",
+            "conditional": {
+              "field": "action",
+              "value": "RAW_METHOD"
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the selected Telegram operation succeeded."
+          },
+          "action": {
+            "type": "string",
+            "description": "Telegram action that was executed."
+          },
+          "bot": {
+            "type": "object",
+            "description": "Normalized bot identity for GET_ME."
+          },
+          "messageId": {
+            "type": "number",
+            "description": "Telegram message_id for message/media/edit operations when available."
+          },
+          "chatId": {
+            "type": "string",
+            "description": "Telegram chat ID for message/media/edit operations when available."
+          },
+          "date": {
+            "type": "number",
+            "description": "Unix timestamp from Telegram when available."
+          },
+          "upload": {
+            "type": "object",
+            "description": "Local/base64 upload metadata for SEND_MEDIA when applicable."
+          },
+          "deletedCount": {
+            "type": "number",
+            "description": "Number of successfully deleted messages for DELETE_MESSAGE."
+          },
+          "results": {
+            "type": "array",
+            "description": "Per-item results for batch-like operations such as DELETE_MESSAGE."
+          },
+          "file": {
+            "type": "object",
+            "description": "Telegram File object for DOWNLOAD_FILE."
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Telegram file_path returned by getFile."
+          },
+          "fileSize": {
+            "type": "number",
+            "description": "Telegram file_size when present."
+          },
+          "downloadUrl": {
+            "type": "string",
+            "description": "Real token-bearing download URL when includeDownloadUrl=true."
+          },
+          "downloadUrlMasked": {
+            "type": "string",
+            "description": "Masked download URL safe for logs."
+          },
+          "savedPath": {
+            "type": "string",
+            "description": "Local saved file path for DOWNLOAD_FILE when savePath is provided."
+          },
+          "result": {
+            "type": "object",
+            "description": "Telegram result field or normalized operation result."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Raw Telegram API response when includeRaw=true."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success=false."
+          }
+        }
+      }
+    },
+    {
+      "type": "receive-telegram-update",
+      "entryPoint": "./telegram-receiver.js",
+      "schema": {
+        "title": "Receive Telegram Update",
+        "category": "trigger",
+        "type": "receive-telegram-update",
+        "icon": "telegram",
+        "description": "Listen for incoming Telegram bot messages, commands, channel posts, and inline keyboard callback button clicks using long polling.",
+        "authRequired": "apiKey",
+        "authProvider": "telegram",
+        "parameters": {
+          "botToken": {
+            "type": "string",
+            "inputType": "password",
+            "description": "Optional fallback Telegram bot token from @BotFather. If omitted, AGNT uses the connected Telegram provider token from Settings → Connections.",
+            "required": false
+          },
+          "apiBaseUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional Bot API base URL. Use https://api.telegram.org by default, or a local Bot API server URL.",
+            "required": false,
+            "default": "https://api.telegram.org"
+          },
+          "updateTypes": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "messages_and_buttons",
+              "messages_only",
+              "commands_only",
+              "callbacks_only",
+              "channels",
+              "all_supported"
+            ],
+            "description": "Which Telegram updates should trigger the workflow. messages_and_buttons listens for messages, edited messages, and callback button clicks.",
+            "required": false,
+            "default": "messages_and_buttons"
+          },
+          "chatFilter": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional chat ID or @username to listen to. Leave empty for all chats. Multiple values can be comma-separated or newline-separated.",
+            "required": false
+          },
+          "commandFilter": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional command name such as start or summarize, without the slash. Multiple values can be comma-separated or newline-separated.",
+            "required": false
+          },
+          "ignoreBotMessages": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Ignore updates sent by bots when Telegram includes sender metadata.",
+            "required": false,
+            "default": true
+          },
+          "dropPendingUpdatesOnStart": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Start from fresh updates instead of replaying old queued Telegram updates when the workflow starts.",
+            "required": false,
+            "default": true
+          },
+          "deleteWebhookOnStart": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Delete any existing Telegram webhook before long polling. Enable this if Telegram reports a webhook conflict.",
+            "required": false,
+            "default": false
+          },
+          "pollTimeoutSeconds": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Telegram long-poll timeout in seconds. Higher values reduce API churn. Range: 1-50.",
+            "required": false,
+            "default": 25
+          },
+          "pollIntervalMs": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Delay between long-poll requests in milliseconds. Range: 0-60000.",
+            "required": false,
+            "default": 1000
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Maximum updates to fetch per poll. Telegram allows 1-100.",
+            "required": false,
+            "default": 100
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Include the full raw Telegram update object in raw/response outputs.",
+            "required": false,
+            "default": false
+          }
+        },
+        "outputs": {
+          "updateId": {
+            "type": "number",
+            "description": "Telegram update_id."
+          },
+          "updateType": {
+            "type": "string",
+            "description": "Telegram update type, such as message, edited_message, callback_query, or channel_post."
+          },
+          "chatId": {
+            "type": "string",
+            "description": "Telegram chat ID when available."
+          },
+          "chatType": {
+            "type": "string",
+            "description": "Telegram chat type: private, group, supergroup, or channel."
+          },
+          "chatTitle": {
+            "type": "string",
+            "description": "Chat title for groups, supergroups, and channels."
+          },
+          "chatUsername": {
+            "type": "string",
+            "description": "Chat username such as @channel when available."
+          },
+          "messageId": {
+            "type": "number",
+            "description": "Telegram message_id when available."
+          },
+          "messageThreadId": {
+            "type": "number",
+            "description": "Telegram forum topic/thread ID when available."
+          },
+          "fromId": {
+            "type": "string",
+            "description": "Sender user ID when available."
+          },
+          "fromUsername": {
+            "type": "string",
+            "description": "Sender username when available."
+          },
+          "fromFirstName": {
+            "type": "string",
+            "description": "Sender first name when available."
+          },
+          "fromLastName": {
+            "type": "string",
+            "description": "Sender last name when available."
+          },
+          "fromIsBot": {
+            "type": "boolean",
+            "description": "Whether the sender is a bot when available."
+          },
+          "text": {
+            "type": "string",
+            "description": "Message text when available."
+          },
+          "command": {
+            "type": "string",
+            "description": "Parsed bot command without slash, such as start or summarize."
+          },
+          "args": {
+            "type": "string",
+            "description": "Text following the parsed bot command."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Media caption when available."
+          },
+          "callbackQueryId": {
+            "type": "string",
+            "description": "Callback query ID for inline keyboard button clicks."
+          },
+          "callbackData": {
+            "type": "string",
+            "description": "Callback data payload for inline keyboard button clicks."
+          },
+          "callbackInlineMessageId": {
+            "type": "string",
+            "description": "Inline message ID for callback queries from inline messages."
+          },
+          "fileId": {
+            "type": "string",
+            "description": "Telegram file_id for photo/document/video/audio/voice/animation/sticker updates."
+          },
+          "fileUniqueId": {
+            "type": "string",
+            "description": "Telegram file_unique_id when available."
+          },
+          "fileType": {
+            "type": "string",
+            "description": "Detected file type such as photo, document, video, audio, voice, animation, or sticker."
+          },
+          "fileName": {
+            "type": "string",
+            "description": "File name when available."
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "MIME type when available."
+          },
+          "fileSize": {
+            "type": "number",
+            "description": "Telegram file size when available."
+          },
+          "date": {
+            "type": "number",
+            "description": "Unix message timestamp when available."
+          },
+          "entities": {
+            "type": "array",
+            "description": "Message entities array when available."
+          },
+          "captionEntities": {
+            "type": "array",
+            "description": "Caption entities array when available."
+          },
+          "pollId": {
+            "type": "string",
+            "description": "Poll ID for poll-related updates."
+          },
+          "businessConnectionId": {
+            "type": "string",
+            "description": "Telegram Business connection ID when available."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Raw Telegram update object when includeRaw=true."
+          },
+          "response": {
+            "type": "object",
+            "description": "Full trigger payload passed through for downstream nodes."
+          }
+        }
+      }
+    }
+  ]
+}

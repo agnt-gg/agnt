@@ -98,6 +98,42 @@
       ]
     },
     {
+      "name": "telegram-toolkit",
+      "displayName": "Telegram",
+      "icon": "telegram",
+      "version": "1.2.0",
+      "description": "Telegram Bot API toolkit for AGNT - send messages/media and trigger workflows from incoming Telegram bot messages, commands, channel posts, and callback buttons.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/telegram-toolkit.agnt",
+      "size": 13979,
+      "tags": [
+        "telegram",
+        "messaging",
+        "social",
+        "bot",
+        "notifications",
+        "trigger"
+      ],
+      "category": "social",
+      "tools": [
+        {
+          "type": "telegram-api",
+          "schema": {
+            "title": "Telegram API",
+            "description": "Use Telegram Bot API from a single AGNT node. Choose an action to validate bots, send messages/media, edit/delete messages, download files, or call any raw Bot API method."
+          }
+        },
+        {
+          "type": "receive-telegram-update",
+          "schema": {
+            "title": "Receive Telegram Update",
+            "description": "Listen for incoming Telegram bot messages, commands, channel posts, and inline keyboard callback button clicks using long polling."
+          }
+        }
+      ]
+    },
+    {
       "name": "notion-plugin",
       "displayName": "Notion",
       "icon": "notion",
