@@ -11,6 +11,7 @@
     @panel-action="handlePanelAction"
     @screen-change="handleScreenChange"
     @base-mounted="initializeScreen"
+    @command-action="handleCommandAction"
   >
     <template #default>
       <div class="automation-interface" :class="{ 'mobile-view': isMobile }">
@@ -53,24 +54,83 @@
           <div class="conversation-canvas" ref="conversationSpace">
             <div class="conversation-container">
               <TransitionGroup :name="bulkLoading ? '' : 'message'" tag="div" class="message-flow">
-                <MessageItem
-                  v-for="message in displayMessages"
-                  :key="message.id"
-                  :message="message"
-                  :status="getMessageStatus(message)"
-                  :runningTools="getRunningToolsForMessage(message)"
-                  :imageCache="imageCache"
-                  :dataCache="dataCache"
-                  :avatarUrl="
-                    message.agentIcon &&
-                    (message.agentIcon.startsWith('http') || message.agentIcon.startsWith('data:') || message.agentIcon.startsWith('/'))
-                      ? message.agentIcon
-                      : null
-                  "
-                  @toggle-tool="toggleToolCallExpansion"
-                  @provider-connected="handleProviderConnected"
-                  @edit-message="handleEditMessage"
-                />
+                <template v-for="message in displayMessages" :key="message.id">
+                  <!-- Inline skill pill: right-aligned to match user bubbles. -->
+                  <div v-if="message.kind === 'skill-pill'" class="inline-pill-row">
+                    <div
+                      class="inline-context-pill"
+                      :class="{ 'is-detached': message.detached, 'is-skill': true }"
+                    >
+                      <i :class="message.skill?.icon || 'fas fa-puzzle-piece'"></i>
+                      <span class="pill-label">
+                        <span v-if="message.detached">Skill detached: <b>{{ message.skill?.name }}</b></span>
+                        <span v-else>Skill attached: <b>{{ message.skill?.name }}</b></span>
+                      </span>
+                      <button
+                        v-if="!message.detached && currentActiveSkillId === message.skill?.id"
+                        type="button"
+                        class="pill-close"
+                        title="Detach skill"
+                        @click="handleCommandAction({ action: 'detach-skill' })"
+                      >
+                        <i class="fas fa-times"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Inline goal widget: right-aligned to match user bubbles. -->
+                  <div v-else-if="message.kind === 'goal-widget'" class="inline-pill-row">
+                    <div class="inline-goal-widget-wrap">
+                      <GoalProgressWidget
+                        :goalId="message.goalId"
+                        :goalTitle="message.goalTitle || 'Goal'"
+                        :taskCount="message.goalTaskCount || 0"
+                        :maxIterations="message.goalMaxIterations || 20"
+                      />
+                      <button
+                        v-if="currentActiveGoalId === message.goalId"
+                        type="button"
+                        class="pill-close inline-goal-detach"
+                        title="Detach goal"
+                        @click="handleCommandAction({ action: 'detach-goal' })"
+                      >
+                        <i class="fas fa-times"></i> Detach
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Inline goal trace event: small append-only card so the
+                       LLM and the user both see goal progress in chat. -->
+                  <div v-else-if="message.kind === 'goal-event'" class="inline-pill-row">
+                    <div class="goal-event-card" :class="`goal-event-${message.eventKind}`">
+                      <div class="goal-event-head">
+                        <i :class="goalEventIcon(message.eventKind)"></i>
+                        <span class="goal-event-kind">{{ goalEventLabel(message.eventKind) }}</span>
+                        <span v-if="message.goalTitle" class="goal-event-title">· {{ message.goalTitle }}</span>
+                      </div>
+                      <div v-if="message.summary" class="goal-event-summary">{{ message.summary }}</div>
+                      <div v-if="message.detail" class="goal-event-detail">{{ message.detail }}</div>
+                    </div>
+                  </div>
+
+                  <MessageItem
+                    v-else
+                    :message="message"
+                    :status="getMessageStatus(message)"
+                    :runningTools="getRunningToolsForMessage(message)"
+                    :imageCache="imageCache"
+                    :dataCache="dataCache"
+                    :avatarUrl="
+                      message.agentIcon &&
+                      (message.agentIcon.startsWith('http') || message.agentIcon.startsWith('data:') || message.agentIcon.startsWith('/'))
+                        ? message.agentIcon
+                        : null
+                    "
+                    @toggle-tool="toggleToolCallExpansion"
+                    @provider-connected="handleProviderConnected"
+                    @edit-message="handleEditMessage"
+                  />
+                </template>
               </TransitionGroup>
 
               <!-- Processing State -->
@@ -111,6 +171,7 @@ import ChatActions from './components/ChatActions.vue';
 import ContextMonitor from './components/ContextMonitor.vue';
 import SystemHealthPanel from './components/SystemHealthPanel.vue';
 import ActivityFeed from './components/ActivityFeed.vue';
+import GoalProgressWidget from './components/GoalProgressWidget.vue';
 import { useTutorial } from './useTutorial.js';
 import { useAppVersion } from '@/composables/useAppVersion.js';
 import { API_CONFIG, DEPLOYMENT_CONFIG } from '@/tt.config.js';
@@ -131,6 +192,7 @@ export default {
     ContextMonitor,
     SystemHealthPanel,
     ActivityFeed,
+    GoalProgressWidget,
     PopupTutorial,
     SimpleModal,
     ChatScrollControls,
@@ -505,8 +567,350 @@ export default {
       isMonitoringCollapsed.value = !isMonitoringCollapsed.value;
     };
 
+    // --- Active skill/goal context (persisted per conversation) ---
+    const activeSkill = computed(() => store.getters['chat/currentActiveSkill']);
+    const activeGoal = computed(() => store.getters['chat/currentActiveGoal']);
+    const currentActiveSkillId = computed(() => activeSkill.value?.id || null);
+    const currentActiveGoalId = computed(() => activeGoal.value?.id || null);
+    const goalCreateMode = computed(() => store.state.chat.goalCreateMode);
+
+    // Pretty labels + icons for inline goal-event cards
+    const goalEventLabel = (kind) => ({
+      task_completed: 'Task completed',
+      task_failed: 'Task failed',
+      verdict: 'Verdict',
+      loop_completed: 'Goal finished',
+      loop_error: 'Goal error',
+      iteration_start: 'Iteration',
+      iteration_end: 'Iteration end',
+      attached: 'Goal attached',
+    }[kind] || kind);
+
+    const goalEventIcon = (kind) => ({
+      task_completed: 'fas fa-check-circle',
+      task_failed: 'fas fa-times-circle',
+      verdict: 'fas fa-gavel',
+      loop_completed: 'fas fa-flag-checkered',
+      loop_error: 'fas fa-exclamation-triangle',
+      iteration_start: 'fas fa-rotate',
+      iteration_end: 'fas fa-rotate',
+      attached: 'fas fa-bullseye',
+    }[kind] || 'fas fa-bullseye');
+
+    // Helper: push an inline pill/widget into the conversation.
+    // Default role is 'user' so the LLM SEES the message (buildChatHistory
+    // only forwards user|assistant). The visible UI is decided by `kind`
+    // (skill-pill / goal-widget / goal-event) which the message-loop branches
+    // on. For pure-UI affordances that the LLM should NOT see, callers can
+    // override role to 'system'.
+    const pushInlineMessage = (msg) => {
+      const convId = store.state.chat.activeConversationId;
+      if (!convId) return;
+      store.commit('chat/SCOPED_ADD_MESSAGE', {
+        conversationId: convId,
+        message: { role: 'user', content: '', timestamp: Date.now(), ...msg },
+      });
+    };
+
+    // Fetch the full skill record if the cached object is missing instructions.
+    // Filesystem skills (`fs-*`) and very stale list cache can both have empty
+    // instructions; we re-fetch by id from /api/skills/:id to be sure.
+    const ensureSkillInstructions = async (skill) => {
+      if (skill?.instructions && skill.instructions.trim().length > 0) return skill;
+      if (!skill?.id) return skill;
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_CONFIG.BASE_URL}/skills/${skill.id}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return skill;
+        const data = await res.json();
+        if (data?.skill?.instructions) return { ...skill, ...data.skill };
+      } catch (e) {
+        console.warn('[Chat] Failed to fetch full skill record:', e);
+      }
+      return skill;
+    };
+
+    /**
+     * Handle slash-action items emitted from the command menu (skill/goal
+     * attach/detach/create/status). The menu has already cleared the trigger
+     * text from the input. We persist the binding AND drop a visible pill or
+     * widget into the conversation at the point of invocation.
+     */
+    const handleCommandAction = async (item) => {
+      if (!item || !item.action) return;
+      const convId = store.state.chat.activeConversationId;
+
+      switch (item.action) {
+        case 'attach-skill': {
+          const rawSkill = item.payload;
+          if (!rawSkill) break;
+
+          // Make sure we have the full SKILL.md instructions before we push
+          // it into the conversation. The picker's cached object can be sparse
+          // (especially for filesystem-discovered skills); re-fetch by id.
+          const skill = await ensureSkillInstructions(rawSkill);
+          await store.dispatch('chat/attachSkill', { conversationId: convId, skill });
+
+          // Push a real role:'user' message containing the full skill content.
+          // This is what the LLM will see in chat history — Annie now knows
+          // the skill exists and what its instructions are. Cache-friendly:
+          // the message is appended once and never mutated, so subsequent
+          // turns benefit from prefix caching of the entire skill block.
+          const instructions = (skill.instructions || '').trim();
+          const header = `[SKILL ACTIVATED: ${skill.name}]`;
+          const body = instructions
+            ? `The user just attached this skill via /skill. Treat the instructions below as authoritative for the rest of the conversation (or until they detach the skill). Follow them when relevant to the user's requests.\n\n--- ${skill.name} (skill instructions) ---\n${instructions}\n--- end of skill ---`
+            : `The user just attached this skill via /skill. Description: ${skill.description || '(no description)'}. ⚠️ The skill has no instructions content available — only its name and description are loaded.`;
+
+          pushInlineMessage({
+            id: `skill-pill-${skill.id}-${Date.now()}`,
+            role: 'user',
+            kind: 'skill-pill',
+            skill: { id: skill.id, name: skill.name, icon: skill.icon, description: skill.description },
+            content: `${header}\n${body}`,
+          });
+          break;
+        }
+
+        case 'detach-skill': {
+          const prev = activeSkill.value;
+          await store.dispatch('chat/detachSkill', { conversationId: convId });
+          if (prev) {
+            pushInlineMessage({
+              id: `skill-detach-${prev.id}-${Date.now()}`,
+              role: 'user',
+              kind: 'skill-pill',
+              detached: true,
+              skill: { id: prev.id, name: prev.name, icon: prev.icon },
+              content: `[SKILL DETACHED: ${prev.name}]\nThe user just detached this skill. Stop following its instructions for the remainder of the conversation.`,
+            });
+          }
+          break;
+        }
+
+        case 'attach-goal': {
+          const goal = item.payload;
+          if (!goal) break;
+          await store.dispatch('chat/attachGoal', { conversationId: convId, goal });
+
+          // Auto-start the goal if it's still in planning state. Existing
+          // executing/paused goals are left alone — the user may have paused
+          // intentionally. We use the AUTONOMOUS execution path so the full
+          // plan→execute→evaluate→replan AGI loop runs, which is what
+          // produces the goal:loop_completed / loop_error / verdict events
+          // our auto-fire and event-trace flows depend on. Plain
+          // `executeGoal` only runs tasks once with no loop, so the goal
+          // would sit dormant after first pass.
+          if (goal.status === 'planning') {
+            try {
+              await store.dispatch('goals/executeGoalAutonomous', {
+                goalId: goal.id,
+                maxIterations: goal.max_iterations || 20,
+              });
+            } catch (e) {
+              console.warn('[Chat] Failed to auto-execute attached goal:', e);
+            }
+          }
+
+          // Start polling so the widget shows live task progress
+          store.dispatch('goals/monitorGoalProgress', goal.id);
+          store.dispatch('goals/fetchGoalTaskProgress', goal.id);
+
+          const goalTitle = goal.title || goal.name || 'Goal';
+          const goalDesc = (goal.description || '').trim();
+          const goalContent =
+            `[GOAL ATTACHED: ${goalTitle}]\n` +
+            `Status: ${goal.status || 'unknown'}\n` +
+            (goalDesc ? `Description: ${goalDesc}\n` : '') +
+            `The user just attached this goal via /goal. Status updates and task results will be appended to the conversation as [goal-event] messages — read those for the latest state.`;
+
+          pushInlineMessage({
+            id: `goal-widget-${goal.id}-${Date.now()}`,
+            role: 'user',
+            kind: 'goal-widget',
+            goalId: goal.id,
+            goalTitle,
+            goalTaskCount: goal.task_count || 0,
+            goalMaxIterations: goal.max_iterations || 20,
+            content: goalContent,
+          });
+
+          // Force autosave so the OutputList sidebar can show the running
+          // indicator on this conversation (it keys off savedOutputId).
+          store.dispatch('chat/autosaveConversation', { debounce: false, conversationId: convId })
+            .catch((e) => console.warn('[Chat] attach-goal autosave failed:', e));
+          break;
+        }
+
+        case 'detach-goal': {
+          const prev = activeGoal.value;
+          await store.dispatch('chat/detachGoal', { conversationId: convId });
+          if (prev) {
+            pushInlineMessage({
+              id: `goal-detach-${prev.id}-${Date.now()}`,
+              role: 'user',
+              kind: 'skill-pill', // reuse the pill renderer; styling distinguishes via icon
+              detached: true,
+              skill: { id: prev.id, name: prev.title || prev.name || 'Goal', icon: 'fas fa-bullseye' },
+              content: `[GOAL DETACHED: ${prev.title || prev.name || 'Goal'}]\nThe user just detached this goal. No further status updates will be appended.`,
+            });
+          }
+          break;
+        }
+
+        case 'create-goal':
+          // Enter goal-create mode — the next user submit becomes the new
+          // goal's description, gets POSTed, then auto-attached and started.
+          store.commit('chat/SET_GOAL_CREATE_MODE', true);
+          baseScreenRef.value?.focusInput?.();
+          pushInlineMessage({
+            id: `goal-create-hint-${Date.now()}`,
+            role: 'assistant',
+            content: '🎯 **Goal create mode** — type a description for the new goal and press Enter. (Press Esc or send empty to cancel.)',
+            metadata: ['Goal'],
+          });
+          break;
+
+        case 'goal-status':
+          // Drop a fresh widget into the conversation as a status snapshot.
+          if (activeGoal.value) {
+            const g = activeGoal.value;
+            store.dispatch('goals/refreshGoalStatus', g.id).catch(() => {});
+            pushInlineMessage({
+              id: `goal-status-${g.id}-${Date.now()}`,
+              kind: 'goal-widget',
+              goalId: g.id,
+              goalTitle: g.title || g.name || 'Goal',
+              goalTaskCount: g.task_count || 0,
+              goalMaxIterations: g.max_iterations || 20,
+              content: `Goal status: ${g.title || g.name || 'Goal'}`,
+            });
+          }
+          break;
+      }
+    };
+
+    /**
+     * Shared create-and-start path used by both the inline single-shot form
+     * (`/goal research X` in one message) and the menu's "+ Create new goal"
+     * two-step flow. Posts the user's description as a user message, creates
+     * the goal, attaches it to the conversation, kicks off the autonomous
+     * AGI loop, and drops a live goal-widget message into chat.
+     */
+    const createAndStartGoal = async (description) => {
+      if (!description || !description.trim()) return;
+      const trimmed = description.trim();
+      const convId = store.state.chat.activeConversationId;
+
+      // Show the user's description as a normal user message for context.
+      store.commit('chat/SCOPED_ADD_MESSAGE', {
+        conversationId: convId,
+        message: {
+          id: generateMessageId(),
+          role: 'user',
+          content: trimmed,
+          timestamp: Date.now(),
+        },
+      });
+      clearInput();
+
+      try {
+        const newGoal = await store.dispatch('goals/createGoal', { text: trimmed });
+        if (!newGoal?.id) return;
+
+        await store.dispatch('chat/attachGoal', { conversationId: convId, goal: newGoal });
+
+        // Autonomous execution: full plan → execute → evaluate → replan loop.
+        // This is what produces the goal:iteration_* / loop_completed /
+        // loop_error events that the inline trace + auto-fire rely on.
+        try {
+          await store.dispatch('goals/executeGoalAutonomous', {
+            goalId: newGoal.id,
+            maxIterations: newGoal.max_iterations || 20,
+          });
+        } catch (e) {
+          console.warn('[Chat] Failed to auto-execute newly created goal:', e);
+        }
+
+        store.dispatch('goals/monitorGoalProgress', newGoal.id);
+        store.dispatch('goals/fetchGoalTaskProgress', newGoal.id);
+
+        const newGoalTitle = newGoal.title || trimmed;
+        const newGoalContent =
+          `[GOAL CREATED: ${newGoalTitle}]\n` +
+          `Status: ${newGoal.status || 'planning'}\n` +
+          `Description: ${trimmed}\n` +
+          `The user just created this goal via /goal in chat and it has been auto-started. Task results and verdicts will arrive as [goal-event] messages.`;
+
+        store.commit('chat/SCOPED_ADD_MESSAGE', {
+          conversationId: convId,
+          message: {
+            id: `goal-widget-${newGoal.id}-${Date.now()}`,
+            role: 'user',
+            content: newGoalContent,
+            timestamp: Date.now(),
+            kind: 'goal-widget',
+            goalId: newGoal.id,
+            goalTitle: newGoalTitle,
+            goalTaskCount: newGoal.task_count || 0,
+            goalMaxIterations: newGoal.max_iterations || 20,
+          },
+        });
+
+        // Force an immediate autosave so the conversation gets a
+        // savedOutputId. Without this, /goal creates a conversation that
+        // has no saved row, and `streamingOutputIds` (which the OutputList
+        // sidebar's running-dot relies on) can't mark anything because
+        // there's no content_output id to attach the indicator to.
+        // Normally the orchestrator's `conversation_started` event triggers
+        // autosave, but /goal doesn't go through the orchestrator path.
+        store.dispatch('chat/autosaveConversation', { debounce: false, conversationId: convId })
+          .catch((e) => console.warn('[Chat] /goal autosave failed:', e));
+      } catch (e) {
+        store.commit('chat/SCOPED_ADD_MESSAGE', {
+          conversationId: convId,
+          message: {
+            id: `goal-error-${Date.now()}`,
+            role: 'assistant',
+            content: `⚠️ Failed to create goal: ${e.message || e}`,
+            timestamp: Date.now(),
+            metadata: ['Error'],
+          },
+        });
+      }
+    };
+
     const handleUserInputSubmit = async (input, files = null, mentionedAgents = null) => {
-      if (!input || !input.trim()) return;
+      // Empty submit while in goal-create mode = cancel the mode silently.
+      // Other chat surfaces stay no-op on empty submits (existing behavior).
+      if (!input || !input.trim()) {
+        if (goalCreateMode.value) {
+          store.commit('chat/SET_GOAL_CREATE_MODE', false);
+        }
+        return;
+      }
+
+      // Single-shot inline form: "/goal <description>" in one message.
+      // Skips the menu/two-step entirely — the rest of the message after
+      // /goal becomes the goal description and we create+start immediately.
+      // Bare "/goal" (no description) falls through to the regular slash
+      // handler so the menu still opens for the two-step / picker flow.
+      const inlineGoalMatch = input.trim().match(/^\/goal\s+(.+)/is);
+      if (inlineGoalMatch && (!mentionedAgents || mentionedAgents.length === 0)) {
+        await createAndStartGoal(inlineGoalMatch[1]);
+        return;
+      }
+
+      // /goal create mode: the next message creates and attaches a new goal
+      // instead of being chatted. Set by selecting "+ Create new goal" in
+      // the /goal picker (the two-step path).
+      if (goalCreateMode.value) {
+        store.commit('chat/SET_GOAL_CREATE_MODE', false);
+        await createAndStartGoal(input);
+        return;
+      }
 
       // Mid-turn steer: a turn is already streaming. Don't start a new POST
       // (it'd race the in-flight one). Send the text via socket so the
@@ -1206,6 +1610,9 @@ export default {
           store.commit('chat/SCOPED_SET_SAVED_OUTPUT_ID', { conversationId: convId, id: contentId });
           store.commit('chat/SCOPED_SET_SAVED_OUTPUT_TITLE', { conversationId: convId, title: conversationData.title || null });
           store.commit('chat/SET_ACTIVE_CONVERSATION', convId);
+          // Restore the conversation's persisted skill/goal bindings so the
+          // chips reappear and the orchestrator system prompt picks them up.
+          store.dispatch('chat/loadConversationContext', convId).catch(() => {});
 
           // Also update legacy flat state for components that read it directly
           currentConversationId.value = convId;
@@ -1935,6 +2342,14 @@ export default {
       imageCache,
       dataCache,
       bulkLoading,
+      // Skill/goal context (per-conversation)
+      activeSkill,
+      activeGoal,
+      currentActiveSkillId,
+      currentActiveGoalId,
+      handleCommandAction,
+      goalEventLabel,
+      goalEventIcon,
     };
   },
 };
@@ -1952,6 +2367,185 @@ export default {
 
 .mobile-view :deep(.message-avatar) {
   display: none;
+}
+
+/* Force right-alignment regardless of whether the parent is flex-column.
+   .message-flow's align-self approach was unreliable, so wrap each pill
+   in a row-flex container with justify-content: flex-end. */
+.inline-pill-row {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin: 8px 0;
+}
+
+/* Inline skill/goal pills inserted into the conversation when the user
+   invokes /skill or /goal. Right-aligned via the row wrapper above. */
+.inline-context-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 5px 5px 12px;
+  border-radius: 999px;
+  font-size: 0.78em;
+  line-height: 1.2;
+  border: 1px solid rgba(160, 120, 255, 0.4);
+  background: rgba(160, 120, 255, 0.10);
+  color: #a078ff;
+  max-width: max-content;
+}
+
+.inline-context-pill.is-detached {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-med-navy, #888);
+}
+
+.inline-context-pill > i:first-child {
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+
+.inline-context-pill .pill-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.inline-context-pill .pill-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.inline-context-pill .pill-close:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--color-lightest);
+}
+
+.inline-context-pill .pill-close i {
+  font-size: 0.7em;
+}
+
+/* Inline goal-widget container — small detach link below the widget.
+   Right-aligned via the .inline-pill-row wrapper. */
+.inline-goal-widget-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 420px;
+}
+
+/* GoalProgressWidget has its own .margin: 1px 8px 8px from its scoped style;
+   neutralize horizontal margins so it sits flush with the right edge. */
+.inline-goal-widget-wrap :deep(.goal-progress-widget) {
+  margin: 0;
+}
+
+.inline-goal-widget-wrap .inline-goal-detach {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 0 0;
+  padding: 2px 8px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-med-navy, #888);
+  cursor: pointer;
+  font-size: 0.7em;
+  width: auto;
+  height: auto;
+}
+
+.inline-goal-widget-wrap .inline-goal-detach:hover {
+  color: var(--color-lightest);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.inline-goal-widget-wrap .inline-goal-detach i {
+  font-size: 0.85em;
+}
+
+/* Append-only goal trace event cards (kind=goal-event). One per task
+   completion / verdict / loop end. Right-aligned via .inline-pill-row. */
+.goal-event-card {
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.18);
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 11px;
+  color: var(--color-text-secondary, #aaa);
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.goal-event-card.goal-event-task_completed {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.goal-event-card.goal-event-task_failed,
+.goal-event-card.goal-event-loop_error {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.goal-event-card.goal-event-verdict {
+  border-color: rgba(0, 255, 136, 0.4);
+  background: rgba(0, 255, 136, 0.08);
+}
+
+.goal-event-card .goal-event-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--color-text-primary, #e0e0e0);
+}
+
+.goal-event-card .goal-event-kind {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 9px;
+}
+
+.goal-event-card .goal-event-title {
+  font-weight: 400;
+  color: var(--color-text-secondary, #888);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.goal-event-card .goal-event-summary {
+  color: var(--color-text-primary, #e0e0e0);
+  white-space: pre-wrap;
+}
+
+.goal-event-card .goal-event-detail {
+  color: var(--color-text-secondary, #888);
+  white-space: pre-wrap;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .monitoring-panel {
@@ -2024,7 +2618,7 @@ export default {
 .conversation-canvas {
   flex: 1;
   overflow-y: scroll !important;
-  padding: 48px 0px 32px;
+  padding: 48px 16px 32px 60px;
   scrollbar-width: thin !important;
 }
 

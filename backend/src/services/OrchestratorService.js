@@ -22,6 +22,8 @@ import conversationManager from './ConversationManager.js';
 import autonomousMessageService from './AutonomousMessageService.js';
 import UserModel from '../models/UserModel.js';
 import AgentModel from '../models/AgentModel.js';
+import SkillModel from '../models/SkillModel.js';
+import { buildSkillsContext } from './SkillService.js';
 import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled } from './unfirehose/UnfirehoseLogger.js';
 import { saveBase64Image } from './ImageStorage.js';
 
@@ -736,6 +738,11 @@ async function universalChatHandler(req, res, context = {}) {
     goalContext,
     codeId,
     codeContext,
+    skillId,
+    skillInstructions,
+    skillName,
+    skillDescription,
+    skillAllowedTools,
     reasoningValue: rawReasoningValue,
     reasoningEnabled: rawReasoningEnabled,
     enabledTools: rawEnabledTools,
@@ -1126,6 +1133,101 @@ async function universalChatHandler(req, res, context = {}) {
     // survive to be stored in conversationManager at end of turn.
     conversationContext.toolSchemas = toolSchemas;
     let systemPrompt = await config.buildSystemPrompt(conversationContext);
+
+    // Per-conversation skill injection (set via /skill in chat).
+    // Resolution order:
+    //   1) inline `skillInstructions` from the request body (covers
+    //      filesystem-discovered skills with synthetic `fs-*` ids that the
+    //      DB doesn't know about),
+    //   2) DB lookup by skillId,
+    //   3) filesystem discovery service for `fs-*` style ids.
+    console.log(
+      `[Skill Inject] Received: skillId=${skillId || 'none'}, skillName=${skillName || 'none'}, ` +
+      `inline.instructionsLen=${(skillInstructions || '').length}, inline.descLen=${(skillDescription || '').length}`
+    );
+
+    if (skillId || skillInstructions) {
+      try {
+        let activeSkill = null;
+        let resolutionPath = 'none';
+
+        // (1) Always try DB lookup first when an id is provided — backend has
+        //     source of truth, frontend cache can be stale or sparse.
+        if (skillId) {
+          try {
+            const dbSkill = await SkillModel.findById(skillId);
+            if (dbSkill && dbSkill.instructions) {
+              activeSkill = dbSkill;
+              resolutionPath = 'db';
+            }
+          } catch (e) {
+            console.warn(`[Skill Inject] DB lookup threw for ${skillId}:`, e.message);
+          }
+        }
+
+        // (2) Filesystem discovery for fs-* ids (or as fallback if DB missed).
+        if (!activeSkill && typeof skillId === 'string' && skillId.startsWith('fs-')) {
+          try {
+            const { default: SkillDiscoveryService } = await import('./SkillDiscoveryService.js');
+            if (SkillDiscoveryService.initialized) {
+              const slug = skillId.slice(3);
+              const fsSkill = SkillDiscoveryService.getSkillContent(slug) || SkillDiscoveryService.getSkill(slug);
+              if (fsSkill && fsSkill.instructions) {
+                activeSkill = {
+                  name: fsSkill.displayName || fsSkill.name || slug,
+                  description: fsSkill.description || '',
+                  instructions: fsSkill.instructions,
+                };
+                resolutionPath = 'filesystem';
+              } else {
+                console.warn(`[Skill Inject] Filesystem skill "${slug}" found but has empty instructions`);
+              }
+            } else {
+              console.warn(`[Skill Inject] SkillDiscoveryService not initialized; skipping fs lookup`);
+            }
+          } catch (e) {
+            console.warn(`[Skill Inject] Filesystem lookup failed for ${skillId}:`, e.message);
+          }
+        }
+
+        // (3) Final fallback: trust inline instructions sent by the client.
+        //     This covers transient cases (skill not yet persisted) and avoids
+        //     a hard fail if both lookups missed.
+        if (!activeSkill && skillInstructions && skillInstructions.trim().length > 0) {
+          activeSkill = {
+            name: skillName || 'skill',
+            description: skillDescription || '',
+            instructions: skillInstructions,
+            allowed_tools: skillAllowedTools || null,
+          };
+          resolutionPath = 'inline';
+        }
+
+        if (activeSkill && activeSkill.instructions && activeSkill.instructions.trim().length > 0) {
+          const skillBlock = buildSkillsContext([activeSkill]);
+          if (skillBlock) {
+            // Prepend (not append) so the skill instructions sit *before* the
+            // base system prompt's date/time/general guidance. Some prompts
+            // open with verbose date instructions that bias the LLM away from
+            // the skill if the skill block is buried at the end.
+            systemPrompt = `${skillBlock}\n\n${systemPrompt}`;
+            console.log(
+              `[Skill Inject] OK: prepended ${skillBlock.length}b skill block for "${activeSkill.name}" ` +
+              `via ${resolutionPath} (systemPrompt now ${systemPrompt.length}b, instructionsLen=${activeSkill.instructions.length})`
+            );
+          }
+        } else if (skillId && !activeSkill) {
+          console.warn(
+            `[Skill Inject] FAILED to resolve skillId "${skillId}" via DB/filesystem/inline. ` +
+            `inlineLen=${(skillInstructions || '').length}, fsCandidate=${skillId.startsWith?.('fs-') || false}`
+          );
+        } else if (activeSkill && !activeSkill.instructions?.trim()) {
+          console.warn(`[Skill Inject] Skill "${activeSkill.name}" resolved but has empty instructions; nothing to inject`);
+        }
+      } catch (e) {
+        console.warn(`[Skill Inject] Unexpected error for skillId ${skillId}:`, e.message);
+      }
+    }
 
     // Prepare messages - filter out any corrupted messages first, then clone
     messages = messageInput

@@ -301,7 +301,7 @@ export default {
       default: false,
     },
   },
-  emits: ['screen-change', 'panel-action', 'submit-input', 'base-mounted'],
+  emits: ['screen-change', 'panel-action', 'submit-input', 'base-mounted', 'command-action'],
   setup(props, { emit, expose }) {
     const store = useStore(); // Keep store access if needed for base actions
     const { screenId, showInput, disableInputInitially, useTutorialHook, terminalLines } = toRefs(props);
@@ -527,13 +527,23 @@ export default {
       isToolSelectorOpen.value = false;
     };
 
-    // --- Command Menu (@mentions, /commands, #references) ---
+    // --- Command Menu (@mentions, /commands, #references, /skill, /goal) ---
     const commandMenu = useCommandMenu(currentUserInput, {
       getAgents: () => store.state.agents.agents || [],
       getCommands: null, // uses defaults
       getHashtags: null, // uses defaults
+      getSkills: () => store.state.skills?.skills || [],
+      getGoals: () => {
+        // Only show non-terminal goals as attach candidates so the picker
+        // doesn't fill up with old completed/failed work.
+        const goals = store.state.goals?.goals || [];
+        return goals.filter((g) => !['completed', 'failed', 'stopped', 'validated'].includes(g.status));
+      },
+      hasActiveSkill: () => !!store.getters['chat/currentActiveSkill'],
+      hasActiveGoal: () => !!store.getters['chat/currentActiveGoal'],
       orchestratorAvatar: annieAvatar,
     });
+
 
     const commandMenuPosition = ref({ bottom: 0, left: 0, width: 400 });
 
@@ -594,7 +604,11 @@ export default {
       // Let the command menu handle keys first when open
       if (commandMenu.handleKeydown(event)) {
         // Check if a menu item was just selected via keyboard (Enter/Tab)
-        trackAgentMention(commandMenu.consumeLastSelected());
+        const picked = commandMenu.consumeLastSelected();
+        trackAgentMention(picked);
+        if (picked && picked.action) {
+          emit('command-action', picked);
+        }
         return;
       }
       // Default: Enter sends message
@@ -608,11 +622,25 @@ export default {
       commandMenu.select(item);
       trackAgentMention(item);
 
+      // Forward action-bearing items (skill/goal verbs) to the screen so it
+      // can attach/detach/create/show status.
+      if (item && item.action) {
+        emit('command-action', item);
+      }
+
       nextTick(() => {
         autoResizeTextarea();
         focusInput();
       });
     };
+
+    // Lazy-fetch skills/goals so the /skill and /goal pickers have data ready
+    // even before the user opens the relevant tabs. Both stores have built-in
+    // dedup + caching so re-firing here is safe.
+    if (typeof store.dispatch === 'function') {
+      try { store.dispatch('skills/fetchSkills'); } catch (e) { /* skills module may load on demand */ }
+      try { store.dispatch('goals/fetchGoals'); } catch (e) { /* same */ }
+    }
 
     const handlePaste = async (event) => {
       // Check if clipboard contains files
@@ -2026,6 +2054,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
 
 .base-screen-lines-output {
   margin-bottom: 16px; /* Add some space between lines and slot content */

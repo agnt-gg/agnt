@@ -456,6 +456,9 @@ export function useRealtimeSync() {
     // Goal task-level progress
     socket.on('goal:task_updated', (data) => {
       store.dispatch('goals/handleTaskUpdate', data);
+      // Append-only goal trace into any chat that has this goal bound.
+      // Chat-store decides whether to append (filters out task_started spam).
+      store.dispatch('chat/appendGoalEvent', { event: 'goal:task_updated', data });
     });
 
     // AGI Loop events - goal iteration progress
@@ -473,7 +476,16 @@ export function useRealtimeSync() {
       socket.on(event, (data) => {
         console.log(`[Realtime] ${event}:`, data);
         store.dispatch('goals/handleIterationEvent', { event, data });
+        store.dispatch('chat/appendGoalEvent', { event, data });
       });
+    });
+
+    // Goal terminal status — fold into the goal trace too so the verdict
+    // lands in the chat history regardless of which transport delivered it.
+    socket.on('goal:updated', (data) => {
+      if (data?.id && ['completed', 'validated', 'needs_review', 'failed', 'stopped'].includes(data?.status)) {
+        store.dispatch('chat/appendGoalEvent', { event: 'goal:updated', data });
+      }
     });
 
     // Experiment Events

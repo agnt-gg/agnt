@@ -84,6 +84,85 @@ const MAX_AGENT_CONVERSATIONS = 20; // LRU limit for agent conversation cache
 const MAX_CONVERSATIONS = 20; // LRU limit for concurrent conversation slots
 
 /**
+ * Build the rich completion prompt that gets injected when a goal terminates.
+ * Includes verdict, per-task outputs (truncated), and a strong instruction
+ * telling Annie to SUMMARIZE the work, not redo it. The trailing instruction
+ * is what prevents the LLM from re-executing the goal's task itself.
+ */
+function buildGoalCompletionPrompt(goal, eventKind, eventData, truncate) {
+  const title = goal.title || 'Goal';
+  const status = goal.status || 'finished';
+  const score = eventData.score != null ? Math.round(eventData.score)
+    : goal.evaluation?.scores?.overall != null ? Math.round(goal.evaluation.scores.overall)
+    : null;
+  const passed = eventData.passed != null ? !!eventData.passed
+    : goal.evaluation?.passed != null ? !!goal.evaluation.passed
+    : null;
+  const feedback = truncate(
+    eventData.feedback || goal.evaluation?.feedback || goal.evaluation?.recommendations?.join('; ') || '',
+    800,
+  );
+  const errorReason = eventKind === 'loop_error'
+    ? truncate(eventData.error || eventData.reason || 'unknown error', 600)
+    : null;
+
+  const tasks = Array.isArray(goal.tasks) ? goal.tasks : [];
+  const taskLines = tasks.map((t, i) => {
+    const tStatus = t.status || 'unknown';
+    const icon = tStatus === 'completed' ? '✓' : tStatus === 'failed' ? '✗' : tStatus === 'running' ? '…' : '○';
+    const agent = t.agent_name || t.agentName || '';
+    const agentPart = agent ? ` (agent: ${agent})` : '';
+    const outputStr = t.output != null
+      ? (typeof t.output === 'string' ? t.output : JSON.stringify(t.output))
+      : '';
+    const errStr = t.error || '';
+    const tail = errStr
+      ? ` — error: ${truncate(errStr, 300)}`
+      : outputStr
+      ? ` — output: ${truncate(outputStr, 400)}`
+      : '';
+    return `${i + 1}. ${icon} ${t.title || 'Task ' + (i + 1)}${agentPart} [${tStatus}]${tail}`;
+  });
+
+  // Roll up high-level tool usage if available on tasks
+  const toolUseCounts = {};
+  for (const t of tasks) {
+    const tools = t.tools_used || t.toolsUsed || (Array.isArray(t.required_tools) ? t.required_tools : []);
+    if (Array.isArray(tools)) {
+      for (const tool of tools) {
+        const name = typeof tool === 'string' ? tool : tool?.name;
+        if (name) toolUseCounts[name] = (toolUseCounts[name] || 0) + 1;
+      }
+    }
+  }
+  const toolSummary = Object.keys(toolUseCounts).length > 0
+    ? Object.entries(toolUseCounts).map(([n, c]) => `${n}×${c}`).join(', ')
+    : null;
+
+  const headerKind = eventKind === 'loop_error' ? 'GOAL ERRORED' : 'GOAL COMPLETED';
+  const lines = [
+    `[${headerKind}: ${title}]`,
+    `Final status: ${status}${score != null ? ` · score: ${score}/100` : ''}${passed != null ? ` · ${passed ? 'PASSED' : 'NEEDS REVIEW'}` : ''}`,
+    goal.description ? `Goal description: ${truncate(goal.description, 300)}` : null,
+    errorReason ? `Error: ${errorReason}` : null,
+    feedback ? `Verdict feedback: ${feedback}` : null,
+    '',
+    'Tasks executed:',
+    taskLines.length > 0 ? taskLines.join('\n') : '(no task records returned by API)',
+    toolSummary ? `\nTools used: ${toolSummary}` : null,
+    '',
+    'INSTRUCTIONS FOR ANNIE: The goal has finished executing. Read the task results above carefully and write a clear, well-structured summary for the user that explains:',
+    '  • What the goal was meant to accomplish',
+    '  • What each task produced (the actual outputs above)',
+    '  • The final verdict and score, and why it passed or needs review',
+    '  • Any concrete deliverables, artifacts, files, or links produced',
+    'IMPORTANT: Do NOT re-execute or re-attempt the goal — the work is already done. Just synthesize and explain. If a task output was truncated, mention that the user can see the full output in the goal trace.',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
+/**
  * Create an isolated state object for a single conversation.
  * Each conversation gets its own messages, streaming state, caches, etc.
  */
@@ -184,6 +263,14 @@ export default {
     conversations: {}, // { conversationId: ConversationState }
     activeConversationId: null, // ID of the conversation currently displayed in the UI
     savedMainConversationId: null, // Saved main conversation ID when switching to agent chat
+    // Per-conversation context bindings — the full skill/goal objects attached
+    // to each conversation. Persisted to backend via /api/conversations/:id/settings
+    // so reloading restores the chips and the orchestrator system prompt injection.
+    activeSkillByConv: {}, // { conversationId: skillObj }
+    activeGoalByConv: {},  // { conversationId: goalObj }
+    // /goal create flow flag: when true, the next submitted message creates a
+    // new goal (POST /api/goals) and auto-attaches it instead of being chatted.
+    goalCreateMode: false,
   },
   mutations: {
     SET_PAGE(state, page) {
@@ -873,6 +960,60 @@ export default {
         }
       }
     },
+
+    // ============================================
+    // SKILL/GOAL CONTEXT (per-conversation)
+    // ============================================
+
+    SET_ACTIVE_SKILL(state, { conversationId, skill }) {
+      if (!conversationId) return;
+      // Reassign object so Vue tracks the key change
+      if (skill) {
+        state.activeSkillByConv = { ...state.activeSkillByConv, [conversationId]: skill };
+      } else {
+        const next = { ...state.activeSkillByConv };
+        delete next[conversationId];
+        state.activeSkillByConv = next;
+      }
+    },
+
+    SET_ACTIVE_GOAL(state, { conversationId, goal }) {
+      if (!conversationId) return;
+      if (goal) {
+        state.activeGoalByConv = { ...state.activeGoalByConv, [conversationId]: goal };
+      } else {
+        const next = { ...state.activeGoalByConv };
+        delete next[conversationId];
+        state.activeGoalByConv = next;
+      }
+    },
+
+    SET_GOAL_CREATE_MODE(state, value) {
+      state.goalCreateMode = !!value;
+    },
+
+    /**
+     * On MIGRATE_CONVERSATION_ID we also need to move skill/goal bindings to
+     * the new id so the chips don't disappear when the temp- id flips to a
+     * server-assigned UUID at the start of streaming.
+     */
+    MIGRATE_CONTEXT_BINDINGS(state, { oldId, newId }) {
+      if (!oldId || !newId || oldId === newId) return;
+      if (state.activeSkillByConv[oldId]) {
+        const skill = state.activeSkillByConv[oldId];
+        const next = { ...state.activeSkillByConv };
+        delete next[oldId];
+        next[newId] = skill;
+        state.activeSkillByConv = next;
+      }
+      if (state.activeGoalByConv[oldId]) {
+        const goal = state.activeGoalByConv[oldId];
+        const next = { ...state.activeGoalByConv };
+        delete next[oldId];
+        next[newId] = goal;
+        state.activeGoalByConv = next;
+      }
+    },
   },
   getters: {
     formattedMessages(state) {
@@ -894,12 +1035,29 @@ export default {
         }
       });
     },
+    // Per-conversation "is this conv blocked by a running goal" check. The
+    // truth-source for goal status is the goals/goals store (real-time
+    // socket events keep it fresh) — activeGoalByConv only stores a snapshot
+    // taken at attach time, so we look up the LIVE status here instead of
+    // trusting the snapshot. A conversation with a goal in planning/
+    // executing/paused/replanning state counts as "active" so the UI can
+    // mirror the same indicator it shows for in-flight async tools.
+    isConvBlockedByGoal: (state, _getters, rootState) => (convId) => {
+      const bound = state.activeGoalByConv[convId];
+      if (!bound?.id) return false;
+      const live = (rootState?.goals?.goals || []).find((g) => g.id === bound.id);
+      const status = live?.status || bound.status;
+      return ['planning', 'executing', 'paused', 'replanning'].includes(status);
+    },
+
     // Combined streaming indicator - true if THIS tab or ANOTHER tab is streaming,
-    // or an async tool is still running after the LLM turn finished.
-    isAnyStreaming: (state) =>
+    // an async tool is still running after the LLM turn finished, OR a goal
+    // bound to the active conversation is currently running.
+    isAnyStreaming: (state, getters) =>
       state.isStreaming ||
       state.isRemoteStreaming ||
-      (state.activeAsyncTools && state.activeAsyncTools.size > 0),
+      (state.activeAsyncTools && state.activeAsyncTools.size > 0) ||
+      getters.isConvBlockedByGoal(state.activeConversationId),
     // Agent chat getters
     isAgentChat: (state) => !!state.currentAgentId,
     currentAgent: (state) => ({
@@ -910,25 +1068,41 @@ export default {
     hasAgentConversation: (state) => (agentId) => !!state.agentConversations[agentId],
     // Concurrent conversation getters
     activeConversation: (state) => state.conversations[state.activeConversationId] || null,
-    isAnyConversationStreaming: (state) =>
+    isAnyConversationStreaming: (state, getters) =>
       Object.values(state.conversations).some(
         (c) => c.isStreaming || (c.activeAsyncTools && c.activeAsyncTools.size > 0),
-      ),
-    streamingConversationIds: (state) =>
+      ) ||
+      Object.keys(state.activeGoalByConv).some((cid) => getters.isConvBlockedByGoal(cid)),
+    streamingConversationIds: (state, getters) =>
       Object.keys(state.conversations).filter((id) => {
         const c = state.conversations[id];
-        return c.isStreaming || (c.activeAsyncTools && c.activeAsyncTools.size > 0);
+        return (
+          c.isStreaming ||
+          (c.activeAsyncTools && c.activeAsyncTools.size > 0) ||
+          getters.isConvBlockedByGoal(id)
+        );
       }),
-    streamingOutputIds: (state) => {
+    streamingOutputIds: (state, getters) => {
       const ids = new Set();
-      for (const conv of Object.values(state.conversations)) {
-        const active = conv.isStreaming || (conv.activeAsyncTools && conv.activeAsyncTools.size > 0);
+      for (const [convId, conv] of Object.entries(state.conversations)) {
+        const active =
+          conv.isStreaming ||
+          (conv.activeAsyncTools && conv.activeAsyncTools.size > 0) ||
+          getters.isConvBlockedByGoal(convId);
         if (active && conv.savedOutputId) {
           ids.add(conv.savedOutputId);
         }
       }
       return ids;
     },
+    activeSkillForConversation: (state) => (conversationId) =>
+      conversationId ? state.activeSkillByConv[conversationId] || null : null,
+    activeGoalForConversation: (state) => (conversationId) =>
+      conversationId ? state.activeGoalByConv[conversationId] || null : null,
+    currentActiveSkill: (state) =>
+      state.activeConversationId ? state.activeSkillByConv[state.activeConversationId] || null : null,
+    currentActiveGoal: (state) =>
+      state.activeConversationId ? state.activeGoalByConv[state.activeConversationId] || null : null,
   },
   actions: {
     receiveNewMessage({ commit }, messageData) {
@@ -1046,6 +1220,32 @@ export default {
         // Resolve agentId from @ mention or existing conversation context
         const resolvedAgentId = mentionedAgent?.id || conv.agentId || null;
 
+        // Resolve per-conversation skill/goal bindings (set via /skill, /goal).
+        // These get sent on every turn so the orchestrator can prepend the
+        // skill instructions to the system prompt and load goal context.
+        // We also forward the full `instructions` text inline because
+        // filesystem-discovered skills carry synthetic ids (`fs-*`) that
+        // SkillModel.findById can't resolve — the backend uses the inline
+        // text when provided and falls back to a DB lookup otherwise.
+        const activeSkill = state.activeSkillByConv[convId] || null;
+        const activeGoal = state.activeGoalByConv[convId] || null;
+        const resolvedSkillId = activeSkill?.id || null;
+        const resolvedGoalId = activeGoal?.id || null;
+        const resolvedSkillInstructions = activeSkill?.instructions || null;
+        const resolvedSkillName = activeSkill?.name || activeSkill?.slug || null;
+        const resolvedSkillDescription = activeSkill?.description || null;
+        const resolvedSkillAllowedTools = activeSkill?.allowed_tools || activeSkill?.allowedTools || null;
+
+        if (activeSkill || activeGoal) {
+          console.log('[Chat] Sending request with bound context:', {
+            convId,
+            skillId: resolvedSkillId,
+            skillName: resolvedSkillName,
+            skillInstructionsLen: (resolvedSkillInstructions || '').length,
+            goalId: resolvedGoalId,
+          });
+        }
+
         // Use FormData if files are present, otherwise use JSON
         if (files && files.length > 0) {
           const formData = new FormData();
@@ -1064,6 +1264,29 @@ export default {
           }
           if (resolvedAgentId) {
             formData.append('agentId', resolvedAgentId);
+          }
+          if (resolvedSkillId) {
+            formData.append('skillId', resolvedSkillId);
+          }
+          if (resolvedSkillInstructions) {
+            formData.append('skillInstructions', resolvedSkillInstructions);
+          }
+          if (resolvedSkillName) {
+            formData.append('skillName', resolvedSkillName);
+          }
+          if (resolvedSkillDescription) {
+            formData.append('skillDescription', resolvedSkillDescription);
+          }
+          if (resolvedSkillAllowedTools) {
+            formData.append(
+              'skillAllowedTools',
+              typeof resolvedSkillAllowedTools === 'string'
+                ? resolvedSkillAllowedTools
+                : JSON.stringify(resolvedSkillAllowedTools),
+            );
+          }
+          if (resolvedGoalId) {
+            formData.append('goalId', resolvedGoalId);
           }
           // Send enabled tools — per-channel override wins, falls back to
           // legacy global key for users who haven't configured this chat yet.
@@ -1098,6 +1321,12 @@ export default {
             reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
             reasoningEnabled: effectiveReasoningEnabled || undefined,
             agentId: resolvedAgentId || undefined,
+            skillId: resolvedSkillId || undefined,
+            skillInstructions: resolvedSkillInstructions || undefined,
+            skillName: resolvedSkillName || undefined,
+            skillDescription: resolvedSkillDescription || undefined,
+            skillAllowedTools: resolvedSkillAllowedTools || undefined,
+            goalId: resolvedGoalId || undefined,
             // undefined → field omitted by JSON.stringify; array (incl. []) → preserved
             enabledTools: Array.isArray(channelToolsForJson) ? channelToolsForJson : undefined,
           });
@@ -1180,6 +1409,7 @@ export default {
                         const oldId = activeConvId;
                         if (oldId !== data.conversationId) {
                           commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
+                          commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
                           activeConvId = data.conversationId;
                         }
                       } else {
@@ -1827,6 +2057,7 @@ export default {
                       const oldId = activeConvId;
                       if (oldId !== data.conversationId) {
                         commit('MIGRATE_CONVERSATION_ID', { oldId, newId: data.conversationId });
+                        commit('MIGRATE_CONTEXT_BINDINGS', { oldId, newId: data.conversationId });
                         activeConvId = data.conversationId;
                       }
                     }
@@ -2148,6 +2379,330 @@ export default {
 
         default:
           console.warn('[Realtime Chat] Unknown event type:', type);
+      }
+    },
+
+    // ============================================
+    // SKILL/GOAL ATTACH/DETACH (per-conversation)
+    // ============================================
+
+    /**
+     * Attach a skill to the current conversation. Persists to backend so
+     * reloading restores the chip and the orchestrator system-prompt
+     * injection picks it back up.
+     */
+    async attachSkill({ commit, state }, { conversationId, skill }) {
+      const convId = conversationId || state.activeConversationId;
+      if (!convId || !skill) return;
+
+      commit('SET_ACTIVE_SKILL', { conversationId: convId, skill });
+
+      // Don't persist temp- ids — they get migrated to a server UUID once the
+      // first message starts streaming, and MIGRATE_CONTEXT_BINDINGS will
+      // carry the chip over. We persist on the next attach/detach call.
+      if (convId.startsWith('temp-')) return;
+
+      try {
+        const token = localStorage.getItem('token');
+        await fetch(`${API_CONFIG.BASE_URL}/conversations/${convId}/settings`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ activeSkillId: skill.id }),
+        });
+      } catch (e) {
+        console.warn('[Chat] Failed to persist active skill:', e);
+      }
+    },
+
+    async detachSkill({ commit, state }, { conversationId } = {}) {
+      const convId = conversationId || state.activeConversationId;
+      if (!convId) return;
+
+      commit('SET_ACTIVE_SKILL', { conversationId: convId, skill: null });
+
+      if (convId.startsWith('temp-')) return;
+
+      try {
+        const token = localStorage.getItem('token');
+        await fetch(`${API_CONFIG.BASE_URL}/conversations/${convId}/settings`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ activeSkillId: null }),
+        });
+      } catch (e) {
+        console.warn('[Chat] Failed to clear active skill:', e);
+      }
+    },
+
+    async attachGoal({ commit, state }, { conversationId, goal }) {
+      const convId = conversationId || state.activeConversationId;
+      if (!convId || !goal) return;
+
+      commit('SET_ACTIVE_GOAL', { conversationId: convId, goal });
+
+      if (convId.startsWith('temp-')) return;
+
+      try {
+        const token = localStorage.getItem('token');
+        await fetch(`${API_CONFIG.BASE_URL}/conversations/${convId}/settings`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ activeGoalId: goal.id }),
+        });
+      } catch (e) {
+        console.warn('[Chat] Failed to persist active goal:', e);
+      }
+    },
+
+    async detachGoal({ commit, state }, { conversationId } = {}) {
+      const convId = conversationId || state.activeConversationId;
+      if (!convId) return;
+
+      commit('SET_ACTIVE_GOAL', { conversationId: convId, goal: null });
+
+      if (convId.startsWith('temp-')) return;
+
+      try {
+        const token = localStorage.getItem('token');
+        await fetch(`${API_CONFIG.BASE_URL}/conversations/${convId}/settings`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ activeGoalId: null }),
+        });
+      } catch (e) {
+        console.warn('[Chat] Failed to clear active goal:', e);
+      }
+    },
+
+    /**
+     * Append-only goal trace events. Whenever a Socket.IO goal:* event fires
+     * (dispatched from useRealtimeSync), this action figures out which
+     * conversation(s) have that goal bound and appends a tagged user message
+     * so the LLM picks up the verdict/task results on the next turn — without
+     * mutating any prior message (cache-friendly).
+     *
+     * Filter intentionally skips noisy intermediate events (task_started,
+     * iteration_start/evaluate/replan/checkpoint). Defaults appended:
+     *   - task_updated (status=completed | failed)
+     *   - loop_completed   → verdict
+     *   - loop_error       → error
+     *   - updated          → terminal status marker (validated/needs_review/...)
+     */
+    async appendGoalEvent({ commit, state, rootState, dispatch }, { event, data }) {
+      if (!event || !data) return;
+      const goalId = data.goalId || data.id;
+      if (!goalId) return;
+
+      // Reverse-lookup: which conversation(s) have this goal bound?
+      const targetConvIds = Object.keys(state.activeGoalByConv).filter(
+        (convId) => state.activeGoalByConv[convId]?.id === goalId,
+      );
+      if (targetConvIds.length === 0) return;
+
+      // Decide eventKind + truncated payloads. Truncation caps:
+      //   task output: 400 chars
+      //   feedback / error: 600 chars
+      const truncate = (s, max) => {
+        if (s == null) return '';
+        const str = String(s);
+        if (str.length <= max) return str;
+        return str.slice(0, max) + ' [...]';
+      };
+
+      const goalTitle =
+        targetConvIds[0] && state.activeGoalByConv[targetConvIds[0]]?.title;
+      let eventKind = null;
+      let summary = '';
+      let detail = '';
+      let llmTag = '';
+
+      if (event === 'goal:task_updated') {
+        const status = data.status;
+        const title = data.title || `task ${(data.taskId || '').slice(0, 8)}`;
+        const agent = data.agentName ? ` (agent: ${data.agentName})` : '';
+
+        if (status === 'completed') {
+          eventKind = 'task_completed';
+          summary = `${title} completed${agent}`;
+          detail = truncate(data.output || data.result || '', 400);
+          llmTag = `[goal-event id=${goalId} kind=task_complete] task "${title}" completed${agent}${
+            detail ? `: "${detail}"` : ''
+          }`;
+        } else if (status === 'failed') {
+          eventKind = 'task_failed';
+          summary = `${title} failed${agent}`;
+          detail = truncate(data.error || data.output || '', 400);
+          llmTag = `[goal-event id=${goalId} kind=task_failed] task "${title}" failed${
+            detail ? `: ${detail}` : ''
+          }`;
+        } else {
+          // started/running/etc. — skip to avoid context spam.
+          return;
+        }
+      } else if (event === 'goal:loop_completed') {
+        eventKind = 'verdict';
+        const score = data.score != null ? Math.round(data.score) : null;
+        const passed = !!data.passed;
+        summary = `Verdict: score=${score ?? '?'}${passed ? ' (passed)' : ' (needs review)'}`;
+        detail = truncate(data.feedback || data.evaluationFeedback || '', 600);
+        // llmTag gets enriched below with the full goal trace before append
+        llmTag = `[goal-event id=${goalId} kind=verdict] score=${score ?? 'unknown'} passed=${passed}${
+          detail ? `. feedback: ${detail}` : ''
+        }`;
+      } else if (event === 'goal:loop_error') {
+        eventKind = 'loop_error';
+        const reason = data.error || data.reason || 'unknown error';
+        summary = `Goal error: ${truncate(reason, 200)}`;
+        detail = truncate(reason, 600);
+        llmTag = `[goal-event id=${goalId} kind=loop_error] ${truncate(reason, 600)}`;
+      } else if (event === 'goal:updated') {
+        const terminal = ['validated', 'completed', 'needs_review', 'failed', 'stopped'];
+        if (!terminal.includes(data.status)) return;
+        eventKind = 'loop_completed';
+        summary = `Goal ${data.status}`;
+        detail = '';
+        llmTag = `[goal-event id=${goalId} kind=finished] status=${data.status}`;
+      } else {
+        // Intermediate iteration events are intentionally not appended —
+        // the inline GoalProgressWidget already shows them live.
+        return;
+      }
+
+      const terminal = ['verdict', 'loop_completed', 'loop_error'].includes(eventKind);
+
+      // For TERMINAL events, enrich llmTag with the full goal trace —
+      // verdict + per-task outputs + tool-use summary + a strong instruction
+      // telling Annie to summarize the work, NOT redo it. Without this
+      // enrichment Annie sees only "score=X passed=true" and re-attempts
+      // the goal because she has no idea what was already accomplished.
+      if (terminal) {
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_CONFIG.BASE_URL}/goals/${goalId}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (res.ok) {
+            const fullData = await res.json();
+            const goal = fullData.goal || fullData;
+            llmTag = buildGoalCompletionPrompt(goal, eventKind, data, truncate);
+          }
+        } catch (e) {
+          console.warn('[Chat] Failed to fetch full goal for terminal event:', e);
+          // fall through to the sparse llmTag
+        }
+      }
+
+      // Push to every conversation that has this goal bound. Uses role='user'
+      // with a tagged content prefix so buildChatHistory's user|assistant
+      // filter passes it to the LLM, but Annie can recognize it as a goal
+      // event (vs. a real user turn) by the [goal-event ...] / [GOAL …] tag.
+      for (const convId of targetConvIds) {
+        commit('SCOPED_ADD_MESSAGE', {
+          conversationId: convId,
+          message: {
+            id: `goal-event-${goalId}-${event}-${data.taskId || data.iteration || Date.now()}`,
+            role: 'user',
+            content: llmTag,
+            timestamp: Date.now(),
+            kind: 'goal-event',
+            eventKind,
+            goalId,
+            goalTitle: goalTitle || undefined,
+            summary,
+            detail,
+          },
+        });
+      }
+
+      // Auto-fire Annie's response on terminal events.
+      if (!terminal) return;
+
+      const provider = rootState?.aiProvider?.selectedProvider;
+      const model = rootState?.aiProvider?.selectedModel;
+      if (!provider || !model) return;
+
+      const activeConvId = state.activeConversationId;
+      if (!targetConvIds.includes(activeConvId)) return;
+
+      const conv = state.conversations[activeConvId];
+      if (!conv || conv.isStreaming) return; // don't race an in-flight turn
+
+      // Use the enriched llmTag as the userInput. startStreamingConversation
+      // dedupes the trailing user message if it matches userInput, so we
+      // don't double-post — the LLM sees one rich goal-trace user turn and
+      // produces a summary. Defer one tick so the SCOPED_ADD_MESSAGE commit
+      // has fully settled before the dispatch reads conv.messages.
+      setTimeout(() => {
+        dispatch('startStreamingConversation', {
+          userInput: llmTag,
+          provider,
+          model,
+        }).catch((e) => console.warn('[Chat] Goal auto-fire failed:', e));
+      }, 0);
+    },
+
+    /**
+     * Restore skill/goal bindings for a conversation from the backend.
+     * Called when a saved conversation is opened so the chips reappear.
+     */
+    async loadConversationContext({ commit, rootState }, conversationId) {
+      if (!conversationId || conversationId.startsWith('temp-')) return;
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_CONFIG.BASE_URL}/conversations/${conversationId}/settings`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.activeSkillId) {
+          // Try resolving from the skills store first; fall back to API fetch.
+          const cachedSkill = (rootState.skills?.skills || []).find((s) => s.id === data.activeSkillId);
+          let skill = cachedSkill || null;
+          if (!skill) {
+            try {
+              const sRes = await fetch(`${API_CONFIG.BASE_URL}/skills/${data.activeSkillId}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+              if (sRes.ok) {
+                const sJson = await sRes.json();
+                skill = sJson.skill || null;
+              }
+            } catch (e) { /* ignore */ }
+          }
+          if (skill) commit('SET_ACTIVE_SKILL', { conversationId, skill });
+        }
+
+        if (data.activeGoalId) {
+          const cachedGoal = (rootState.goals?.goals || []).find((g) => g.id === data.activeGoalId);
+          let goal = cachedGoal || null;
+          if (!goal) {
+            try {
+              const gRes = await fetch(`${API_CONFIG.BASE_URL}/goals/${data.activeGoalId}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+              if (gRes.ok) {
+                const gJson = await gRes.json();
+                goal = gJson.goal || null;
+              }
+            } catch (e) { /* ignore */ }
+          }
+          if (goal) commit('SET_ACTIVE_GOAL', { conversationId, goal });
+        }
+      } catch (e) {
+        console.warn('[Chat] Failed to load conversation context:', e);
       }
     },
   },

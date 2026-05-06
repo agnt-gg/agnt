@@ -475,6 +475,23 @@ function createTables() {
       )`
       );
 
+      // Per-conversation context bindings (active skill, active goal, etc.).
+      // Kept separate from conversation_logs so the row can be created lazily
+      // when the user attaches a skill/goal *before* sending any message.
+      db.run(
+        `CREATE TABLE IF NOT EXISTS conversation_settings (
+        conversation_id TEXT PRIMARY KEY,
+        user_id TEXT,
+        active_skill_id TEXT,
+        active_goal_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`
+      );
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_conversation_settings_user_id ON conversation_settings(user_id)`);
+
       // Persist Codex CLI thread IDs so conversations can resume after restarts
       db.run(
         `CREATE TABLE IF NOT EXISTS codex_threads (

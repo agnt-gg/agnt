@@ -46,6 +46,7 @@ import GroupRoutes from './src/routes/GroupRoutes.js';
 import ImageRoutes from './src/routes/ImageRoutes.js';
 import LocalFileRoutes from './src/routes/LocalFileRoutes.js';
 import AdminClientVersionRoutes from './src/routes/AdminClientVersionRoutes.js';
+import ConversationSettingsRoutes from './src/routes/ConversationSettingsRoutes.js';
 import { warmupClientVersions } from './src/services/ai/clientVersions.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
@@ -185,6 +186,7 @@ app.use('/api/filesystem', FileSystemRoutes);
 app.use('/api/images', ImageRoutes);
 app.use('/api/local-file', LocalFileRoutes);
 app.use('/api/admin', AdminClientVersionRoutes);
+app.use('/api/conversations', ConversationSettingsRoutes);
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
 // Version endpoint - reads dynamically from package.json

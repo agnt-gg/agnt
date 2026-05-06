@@ -9,8 +9,12 @@ import { ref, computed, watch, nextTick } from 'vue';
  * @param {Function} options.getAgents - () => Array<{ id, name, description, avatar }>
  * @param {Function} options.getCommands - () => Array<{ id, name, description, icon }>
  * @param {Function} options.getHashtags - () => Array<{ id, name, description, icon }>
+ * @param {Function} options.getSkills - () => Array<{ id, name, description, icon, slug }>
+ * @param {Function} options.getGoals - () => Array<{ id, title, status }>
+ * @param {Function} options.hasActiveSkill - () => boolean (controls "Detach skill" item)
+ * @param {Function} options.hasActiveGoal - () => boolean (controls "Detach goal" item)
  */
-export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags, orchestratorAvatar } = {}) {
+export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags, getSkills, getGoals, hasActiveSkill, hasActiveGoal, orchestratorAvatar } = {}) {
   // --- State ---
   const isOpen = ref(false);
   const triggerChar = ref(null); // '@' | '/' | '#'
@@ -24,6 +28,8 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags, 
     { id: 'new-chat', name: 'New Chat', description: 'Start a new conversation', icon: 'fas fa-plus' },
     { id: 'clear', name: 'Clear Chat', description: 'Clear current conversation', icon: 'fas fa-eraser' },
     { id: 'export', name: 'Export Chat', description: 'Export conversation to file', icon: 'fas fa-download' },
+    { id: 'skill', name: 'Skill', description: 'Attach a skill to this conversation', icon: 'fas fa-puzzle-piece' },
+    { id: 'goal', name: 'Goal', description: 'Create, attach, or check a goal', icon: 'fas fa-bullseye' },
     { id: 'help', name: 'Help', description: 'Show available commands', icon: 'fas fa-question-circle' },
   ];
 
@@ -32,9 +38,25 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags, 
     { id: 'plugins', name: 'Plugins', description: 'Reference a plugin', icon: 'fas fa-puzzle-piece' },
   ];
 
+  // Detect /skill or /goal sub-mode from the active query: when the user has
+  // typed `/skill` or `/skill foo`, the menu pivots from listing commands to
+  // listing skills (or goal actions+items). Returns:
+  //   { mode: 'skill' | 'goal', filter: string }   when active
+  //   null                                          otherwise
+  const detectSlashSubMode = () => {
+    if (triggerChar.value !== '/') return null;
+    const q = (query.value || '').toLowerCase();
+    const skillMatch = /^skill(?:\s+(.*))?$/.exec(q);
+    if (skillMatch) return { mode: 'skill', filter: (skillMatch[1] || '').trim() };
+    const goalMatch = /^goal(?:\s+(.*))?$/.exec(q);
+    if (goalMatch) return { mode: 'goal', filter: (goalMatch[1] || '').trim() };
+    return null;
+  };
+
   // --- Computed items based on active trigger ---
   const items = computed(() => {
     let source = [];
+    let appliedFilter = null; // when set, slash-submode handles filtering itself
 
     if (triggerChar.value === '@') {
       const orchestrator = {
@@ -57,10 +79,91 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags, 
         })),
       ];
     } else if (triggerChar.value === '/') {
-      source = (getCommands ? getCommands() : defaultCommands()).map((c) => ({
-        ...c,
-        type: 'command',
-      }));
+      const subMode = detectSlashSubMode();
+
+      if (subMode?.mode === 'skill') {
+        // /skill picker: list available skills, with a Detach action at top
+        // when one is currently attached.
+        const skills = getSkills ? getSkills() : [];
+        const detachItem = hasActiveSkill && hasActiveSkill()
+          ? [{
+              id: '__detach_skill__',
+              name: 'Detach skill',
+              description: 'Remove the active skill from this conversation',
+              icon: 'fas fa-times-circle',
+              type: 'skill-action',
+              action: 'detach-skill',
+              subtype: 'detach',
+            }]
+          : [];
+        source = [
+          ...detachItem,
+          ...skills.map((s) => ({
+            id: s.id,
+            name: s.name,
+            description: s.description || '',
+            icon: s.icon || 'fas fa-puzzle-piece',
+            type: 'skill',
+            action: 'attach-skill',
+            payload: s,
+          })),
+        ];
+        appliedFilter = subMode.filter;
+      } else if (subMode?.mode === 'goal') {
+        // /goal picker: collapses create/attach/status/detach into one menu.
+        // Action items appear at the top; existing goals follow.
+        const goals = getGoals ? getGoals() : [];
+        const actions = [
+          {
+            id: '__create_goal__',
+            name: '+ Create new goal',
+            description: 'Type a description on the next line; submit to create',
+            icon: 'fas fa-plus-circle',
+            type: 'goal-action',
+            action: 'create-goal',
+            subtype: 'create',
+          },
+        ];
+        if (hasActiveGoal && hasActiveGoal()) {
+          actions.push({
+            id: '__goal_status__',
+            name: 'View status',
+            description: "Show this goal's current progress as a snapshot",
+            icon: 'fas fa-chart-line',
+            type: 'goal-action',
+            action: 'goal-status',
+            subtype: 'status',
+          });
+          actions.push({
+            id: '__detach_goal__',
+            name: 'Detach goal',
+            description: 'Remove the active goal from this conversation',
+            icon: 'fas fa-times-circle',
+            type: 'goal-action',
+            action: 'detach-goal',
+            subtype: 'detach',
+          });
+        }
+        source = [
+          ...actions,
+          ...goals.map((g) => ({
+            id: g.id,
+            name: g.title || g.name || `Goal ${String(g.id).slice(0, 8)}`,
+            description: g.status ? `${g.status}` : '',
+            icon: 'fas fa-bullseye',
+            type: 'goal',
+            action: 'attach-goal',
+            payload: g,
+            subtype: g.status,
+          })),
+        ];
+        appliedFilter = subMode.filter;
+      } else {
+        source = (getCommands ? getCommands() : defaultCommands()).map((c) => ({
+          ...c,
+          type: 'command',
+        }));
+      }
     } else if (triggerChar.value === '#') {
       source = (getHashtags ? getHashtags() : defaultHashtags()).map((h) => ({
         ...h,
@@ -68,12 +171,18 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags, 
       }));
     }
 
-    if (!query.value) return source;
+    // For sub-modes the filter is the text after the verb word; for normal
+    // triggers it's the entire query. Action items (create/detach/status)
+    // bypass the filter so they're always visible while filtering goals.
+    const filterStr = appliedFilter !== null ? appliedFilter : (query.value || '');
+    if (!filterStr) return source;
 
-    const q = query.value.toLowerCase();
-    return source.filter(
-      (item) => item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q),
-    );
+    const q = filterStr.toLowerCase();
+    return source.filter((item) => {
+      if (item.type === 'goal-action' || item.type === 'skill-action') return true;
+      return (item.name || '').toLowerCase().includes(q) ||
+        (item.description || '').toLowerCase().includes(q);
+    });
   });
 
   // Clamp selectedIndex when filtered list shrinks
@@ -172,8 +281,29 @@ export function useCommandMenu(inputRef, { getAgents, getCommands, getHashtags, 
     const before = value.slice(0, triggerIndex.value);
     const after = value.slice(triggerIndex.value + 1 + query.value.length);
 
-    if (item.type === 'command') {
-      // For commands, replace the whole trigger+query with /command
+    if (item.action) {
+      // Action items (skill/goal attach/detach/status/create) don't insert
+      // text — the parent handles them via consumeLastSelected. Strip the
+      // trigger+query from the input so the textarea is clean to receive
+      // the next thing the user types (e.g. a goal description).
+      // For "create-goal" we keep the trigger area cleared so the user can
+      // immediately type the new goal's description.
+      inputRef.value = before + after;
+    } else if (item.id === 'skill' || item.id === 'goal') {
+      // Picking the bare /skill or /goal command shouldn't insert text — it
+      // should pivot the menu into sub-mode. Re-open with the prefix typed.
+      inputRef.value = before + '/' + item.name + ' ' + after;
+      // Re-trigger detection so the menu pivots immediately. The caller
+      // typically calls textarea.focus() and re-runs handleInput, but we
+      // also bump the local state here so items refresh on the same tick.
+      triggerChar.value = '/';
+      // triggerIndex remains the position of '/'
+      query.value = item.name + ' ';
+      selectedIndex.value = 0;
+      lastSelectedItem.value = item;
+      // Don't close — sub-mode should appear with skills/goals listed
+      return item;
+    } else if (item.type === 'command') {
       inputRef.value = before + '/' + item.name + ' ' + after;
     } else {
       // For @agents and #hashtags, insert mention
