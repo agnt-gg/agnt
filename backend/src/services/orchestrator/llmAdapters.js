@@ -24,6 +24,34 @@ function parseApiErrorMessage(error) {
   return error?.message || 'Unknown error occurred';
 }
 
+function buildCodexErrorGuidance(error, model) {
+  const status = Number(error?.status || error?.response?.status || 0);
+  const message = String(error?.message || '').toLowerCase();
+
+  if (status === 401 || status === 403 || message.includes('unauthorized') || message.includes('forbidden')) {
+    return `This model (${model}) uses the Codex Responses API. The Codex OAuth authorization was rejected; reconnect your OAuth account or try a different model.`;
+  }
+
+  if (
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    status === 529 ||
+    message.includes('overloaded') ||
+    message.includes('temporarily unavailable')
+  ) {
+    return `This model (${model}) uses the Codex Responses API. The upstream Codex service is rate-limited, overloaded, or temporarily unavailable; retry later or try a different model.`;
+  }
+
+  if (status === 400) {
+    return `This model (${model}) uses the Codex Responses API. The request could not be accepted; try a different model or reduce the active tool/context surface.`;
+  }
+
+  return `This model (${model}) uses the Codex Responses API. Try again or switch models; reconnect OAuth only if provider status shows the Codex connection is expired.`;
+}
+
 /**
  * Returns true if a message is a user-role carrier of tool_result blocks.
  * Such messages must stay paired with the preceding assistant tool_use message —
@@ -3469,6 +3497,12 @@ class OpenAIResponsesAdapter extends BaseAdapter {
         };
       }
 
+      // Responses API stateless mode needs prior output items replayed
+      // verbatim-ish, especially encrypted reasoning items before tool results.
+      if (msg.role === 'assistant' && Array.isArray(msg._responsesOutputItems) && msg._responsesOutputItems.length > 0) {
+        return this._sanitizeResponsesOutputItemsForInput(msg._responsesOutputItems);
+      }
+
       // Handle assistant messages with tool calls
       if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
         const items = [];
@@ -3510,6 +3544,66 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     const flattenedInput = inputItems.flat();
 
     return { instructions, input: flattenedInput };
+  }
+
+  _sanitizeResponsesOutputItemsForInput(outputItems) {
+    if (!Array.isArray(outputItems)) return [];
+
+    return outputItems
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+
+        if (item.type === 'reasoning') {
+          return {
+            type: 'reasoning',
+            id: item.id,
+            summary: Array.isArray(item.summary) ? item.summary : [],
+            ...(item.encrypted_content ? { encrypted_content: item.encrypted_content } : {}),
+            ...(item.status ? { status: item.status } : {}),
+          };
+        }
+
+        if (item.type === 'function_call') {
+          return {
+            type: 'function_call',
+            call_id: item.call_id,
+            name: item.name || '',
+            arguments: typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments || {}),
+            ...(item.id ? { id: item.id } : {}),
+            ...(item.status ? { status: item.status } : {}),
+          };
+        }
+
+        if (item.type === 'message' && item.role === 'assistant') {
+          const content = Array.isArray(item.content)
+            ? item.content
+                .filter((part) => part && part.type === 'output_text')
+                .map((part) => ({
+                  type: 'output_text',
+                  text: part.text || '',
+                  ...(Array.isArray(part.annotations) ? { annotations: part.annotations } : {}),
+                }))
+            : [];
+
+          if (content.length === 0) return null;
+          return {
+            type: 'message',
+            role: 'assistant',
+            content,
+            ...(item.id ? { id: item.id } : {}),
+            ...(item.status ? { status: item.status } : {}),
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  _extractReplayableOutputItems(output) {
+    if (!Array.isArray(output)) return undefined;
+    const replayable = this._sanitizeResponsesOutputItemsForInput(output);
+    return replayable.length > 0 ? replayable : undefined;
   }
 
   /**
@@ -3628,6 +3722,10 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           store: false, // Don't store responses by default
         };
 
+        if (this.supportsReasoning()) {
+          requestParams.include = ['reasoning.encrypted_content'];
+        }
+
         // Add instructions if present
         if (instructions) {
           requestParams.instructions = instructions;
@@ -3662,6 +3760,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           role: 'assistant',
           content: textContent ?? null,
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+          _responsesOutputItems: this._extractReplayableOutputItems(response.output),
         };
 
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
@@ -3730,6 +3829,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       let accumulatedContent = '';
       let accumulatedToolCalls = [];
       let streamUsage = null;
+      let replayableOutputItems = undefined;
 
       try {
         const { instructions, input } = this._transformMessagesToInput(messages);
@@ -3741,6 +3841,10 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           stream: true,
           store: false,
         };
+
+        if (this.supportsReasoning()) {
+          requestParams.include = ['reasoning.encrypted_content'];
+        }
 
         if (instructions) {
           requestParams.instructions = instructions;
@@ -3827,6 +3931,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
               if (finalToolCalls.length > accumulatedToolCalls.length) {
                 accumulatedToolCalls = finalToolCalls;
               }
+              replayableOutputItems = this._extractReplayableOutputItems(event.response.output);
             }
             // Capture usage from completed response
             if (event.response && event.response.usage) {
@@ -3843,6 +3948,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           role: 'assistant',
           content: accumulatedContent ?? null,
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+          _responsesOutputItems: replayableOutputItems,
         };
 
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
@@ -3989,6 +4095,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     let accumulatedToolCalls = [];
     let responseId = null;
     let streamUsage = null;
+    let replayableOutputItems = undefined;
 
     for await (const event of stream) {
       if (abortSignal?.aborted) {
@@ -4035,6 +4142,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           if (finalToolCalls.length > accumulatedToolCalls.length) {
             accumulatedToolCalls = finalToolCalls;
           }
+          replayableOutputItems = this._extractReplayableOutputItems(event.response.output);
         }
         // Extract usage from completed response
         if (event.response && event.response.usage) {
@@ -4043,7 +4151,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       }
     }
 
-    return { accumulatedContent, accumulatedToolCalls, responseId, usage: streamUsage || undefined };
+    return { accumulatedContent, accumulatedToolCalls, responseId, usage: streamUsage || undefined, replayableOutputItems };
   }
 
   /**
@@ -4061,7 +4169,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         console.log(`[Codex Responses] Input items: ${params.input.length}, Tools: ${params.tools?.length || 0}`);
 
         const stream = await this.client.responses.create(params);
-        const { accumulatedContent, accumulatedToolCalls, responseId, usage } = await this._consumeStream(stream);
+        const { accumulatedContent, accumulatedToolCalls, responseId, usage, replayableOutputItems } = await this._consumeStream(stream);
 
         if (attempt > 0) {
           console.log(`Codex Responses call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
@@ -4071,6 +4179,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           role: 'assistant',
           content: accumulatedContent ?? null,
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+          _responsesOutputItems: replayableOutputItems,
         };
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(codexResponseMessage);
         if (wasEmpty) {
@@ -4098,7 +4207,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           return {
             responseMessage: {
               role: 'assistant',
-              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\nThis model (${this.model}) uses the Codex Responses API. Please check your OAuth connection or try a different model.`,
+              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\n${buildCodexErrorGuidance(error, this.model)}`,
               tool_calls: [],
             },
             toolCalls: [],
@@ -4142,7 +4251,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
         const abortSignal = context.abortSignal;
         const stream = await this.client.responses.create(params);
-        const { accumulatedContent, accumulatedToolCalls, usage } = await this._consumeStream(stream, onChunk, abortSignal);
+        const { accumulatedContent, accumulatedToolCalls, usage, replayableOutputItems } = await this._consumeStream(stream, onChunk, abortSignal);
 
         if (attempt > 0) {
           console.log(`Codex Responses streaming call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
@@ -4152,6 +4261,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           role: 'assistant',
           content: accumulatedContent ?? null,
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+          _responsesOutputItems: replayableOutputItems,
         };
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(codexStreamResponseMessage);
         if (wasEmpty) {
@@ -4178,7 +4288,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
           return {
             responseMessage: {
               role: 'assistant',
-              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\nThis model (${this.model}) uses the Codex Responses API. Please check your OAuth connection or try a different model.`,
+              content: `⚠️ **Codex Responses API Error:** ${userFriendlyError}\n\n${buildCodexErrorGuidance(error, this.model)}`,
               tool_calls: [],
             },
             toolCalls: [],
