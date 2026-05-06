@@ -395,6 +395,8 @@ export default {
       const resolvedProvider = provider || channelPM.provider;
       const resolvedModel = model || channelPM.model;
       const resolvedEnabledTools = resolveChannelEnabledTools(channelKey);
+      const resolvedReasoningValue = rootState.aiProvider?.reasoningValue || 'default';
+      const resolvedReasoningEnabled = rootState.aiProvider?.reasoningEnabled || false;
 
       try {
         await streamChat({
@@ -406,6 +408,8 @@ export default {
           pageContext,
           pageState,
           enabledTools: resolvedEnabledTools,
+          reasoningValue: resolvedReasoningValue,
+          reasoningEnabled: resolvedReasoningEnabled,
           signal: controller.signal,
           onEvent: (eventName, data) => handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEvent }),
         });

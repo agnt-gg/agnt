@@ -1951,7 +1951,10 @@ export default {
      * Start a streaming conversation with an agent.
      * Uses the agent-specific endpoint. Supports concurrent streams.
      */
-    async startAgentStreamingConversation({ commit, state, dispatch, rootState }, { agentId, userInput, files = [], provider, model }) {
+    async startAgentStreamingConversation(
+      { commit, state, dispatch, rootState },
+      { agentId, userInput, files = [], provider, model, reasoningValue, reasoningEnabled },
+    ) {
       let convId = state.activeConversationId || `agent-${agentId}-${Date.now()}`;
 
       const existingConv = state.conversations[convId];
@@ -1987,12 +1990,18 @@ export default {
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
+        const normalizedReasoningValue = typeof reasoningValue === 'string' && reasoningValue.trim()
+          ? reasoningValue.trim().toLowerCase()
+          : (rootState.aiProvider?.reasoningValue || 'default');
+        const effectiveReasoningEnabled = reasoningEnabled === true || rootState.aiProvider?.reasoningEnabled === true;
 
         const body = JSON.stringify({
           message: userInput,
           history: deduped,
           provider: provider,
           model: model,
+          reasoningValue: normalizedReasoningValue !== 'default' ? normalizedReasoningValue : undefined,
+          reasoningEnabled: effectiveReasoningEnabled || undefined,
         });
 
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/${agentId}/chat-stream`, {
