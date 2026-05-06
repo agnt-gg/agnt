@@ -1707,25 +1707,6 @@ IMPORTANT: The image data is already available in the system context. You don't 
       currentRound++;
       console.log(`[Tool Loop] Round ${currentRound}: Executing ${toolCalls.length} tool(s)`);
 
-      // Build the set of tool names being queued asynchronously this round.
-      // Used to reject sync duplicates of the same tool in the same batch —
-      // e.g. the LLM emits both an async file_operations (delayed) AND a sync
-      // file_operations (preview) for the same path, then concatenates the
-      // preview answer into the queueing-turn reply, producing duplicate
-      // output when the autonomous follow-up later delivers the real result.
-      // The prompt forbids this; this guard makes it impossible.
-      const asyncQueuedToolNames = new Set();
-      for (const tc of toolCalls) {
-        try {
-          const args = JSON.parse(tc.function.arguments);
-          if (args && args._executeAsync === true) {
-            asyncQueuedToolNames.add(tc.function.name);
-          }
-        } catch {
-          // Per-call parse error is reported separately downstream.
-        }
-      }
-
       // Per-user "Async tool execution" toggle. Default is OFF (experimental
       // opt-in). Strict-true check means any context that didn't go through
       // chatConfigs (and therefore lacks _frozenAsyncToolsEnabled) is treated
@@ -1735,6 +1716,45 @@ IMPORTANT: The image data is already available in the system context. You don't 
       // through anyway, force it to sync below.
       const asyncToolsGloballyDisabled =
         conversationContext._frozenAsyncToolsEnabled !== true;
+
+      // Build the set of (toolName + arg-fingerprint) being queued async this
+      // round. Used to reject the LLM emitting BOTH an async + sync version of
+      // the *same logical call* (same args) — which would dump a preview
+      // answer into the queueing reply and double-output when the autonomous
+      // follow-up later delivers the real result.
+      //
+      // Keyed on name + clean-args (control params stripped) so legitimately
+      // distinct parallel calls — three `generate_image` with different
+      // prompts, etc. — are NOT collapsed into a single fingerprint.
+      //
+      // Also skipped entirely when the global toggle is off: nothing will
+      // actually queue async, so the dedup must be a no-op (otherwise sync
+      // calls get rejected pointing at an async result that never arrives).
+      const stripAsyncControlParams = (rawArgs) => {
+        const a = { ...rawArgs };
+        delete a._executeAsync;
+        delete a._estimatedMinutes;
+        delete a._interval;
+        delete a._stopAfter;
+        delete a._duration;
+        delete a._delayFirst;
+        return a;
+      };
+      const asyncQueuedFingerprints = new Set();
+      if (!asyncToolsGloballyDisabled) {
+        for (const tc of toolCalls) {
+          try {
+            const args = JSON.parse(tc.function.arguments);
+            if (args && args._executeAsync === true) {
+              asyncQueuedFingerprints.add(
+                `${tc.function.name}::${JSON.stringify(stripAsyncControlParams(args))}`
+              );
+            }
+          } catch {
+            // Per-call parse error is reported separately downstream.
+          }
+        }
+      }
 
       const toolPromises = toolCalls.map(async (toolCall) => {
         const functionName = toolCall.function.name;
@@ -1797,13 +1817,19 @@ IMPORTANT: The image data is already available in the system context. You don't 
         const shouldExecuteAsync = llmRequestedAsync && !asyncToolsGloballyDisabled;
         const estimatedMinutes = functionArgs._estimatedMinutes || null;
 
-        // Reject sync duplicates of tools that are ALSO being queued async in
-        // this same batch. Without this, the LLM can ask for `file_operations`
-        // both async (delayed) and sync (preview) in one turn, then dump the
-        // preview answer into the queueing reply — producing duplicate output
-        // when the autonomous follow-up later delivers the real result.
+        // Reject sync duplicates of the SAME logical call (same name + same
+        // non-control args) that are ALSO being queued async in this batch.
+        // Without this, the LLM can ask for `file_operations` both async
+        // (delayed) and sync (preview) for the same path in one turn, then
+        // dump the preview answer into the queueing reply — producing
+        // duplicate output when the autonomous follow-up later delivers the
+        // real result. Fingerprint match on args ensures legitimately distinct
+        // parallel calls (e.g. three different `generate_image` prompts) are
+        // NOT collapsed.
+        const callFingerprint =
+          `${functionName}::${JSON.stringify(stripAsyncControlParams(functionArgs))}`;
         const isDuplicateSyncOfAsyncTool =
-          !shouldExecuteAsync && asyncQueuedToolNames.has(functionName);
+          !shouldExecuteAsync && asyncQueuedFingerprints.has(callFingerprint);
 
         // Pass raw args to AsyncToolQueue - it strips control params internally
         // For sync execution, strip them here
