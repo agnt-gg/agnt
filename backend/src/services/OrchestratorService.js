@@ -296,15 +296,22 @@ function safePushAssistantMessage(messages, responseMessage) {
 }
 
 /**
- * Inject the current date/time into the latest user message.
- * This keeps the system prompt 100% stable for prompt caching while
- * ensuring the LLM always knows the current date.
+ * Inject the current date into the latest user message.
+ *
+ * Cache-safe: only mutates the trailing user turn (already below Anthropic's
+ * cache breakpoint), system prompt stays frozen.
+ *
+ * Format intent: tiny + unobtrusive. The previous verbose `Date.toString()`
+ * prefix at the top of every user message biased the LLM toward
+ * time/date-themed responses. Now we use a compact ISO date footer so the
+ * model still has the info if asked, but the user's actual prompt sits at
+ * the very top of the message where it belongs.
  */
 function injectDateIntoLastUserMessage(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === 'user' && typeof messages[i].content === 'string') {
-      const dateStr = new Date().toString();
-      messages[i].content = `[Current date: ${dateStr}]\n\n${messages[i].content}`;
+      const isoDate = new Date().toISOString().slice(0, 10); // "2024-11-09"
+      messages[i].content = `${messages[i].content}\n\n<context date="${isoDate}" />`;
       return;
     }
   }
