@@ -303,14 +303,21 @@ export default {
       const goals = filteredGoals.value;
       return [
         {
-          id: 'planning',
-          // Review-rejected goals come back from the backend as `queued`; show them
-          // here so they stay visible even though the dedicated Queued column is gone.
-          title: 'Planning',
-          icon: 'fas fa-lightbulb',
-          color: 'var(--color-violet)',
-          statuses: ['planning', 'queued'],
-          goals: goals.filter((g) => g.status === 'planning' || g.status === 'queued'),
+          id: 'done',
+          title: 'Done',
+          icon: 'fas fa-check-circle',
+          color: 'var(--color-green)',
+          statuses: [...DONE_SUCCESS, ...DONE_FAILURE],
+          goals: goals.filter((g) => [...DONE_SUCCESS, ...DONE_FAILURE].includes(g.status)),
+          wipLimit: null,
+        },
+        {
+          id: 'review',
+          title: 'Needs Review',
+          icon: 'fas fa-exclamation-triangle',
+          color: 'var(--color-orange)',
+          statuses: ['needs_review'],
+          goals: goals.filter((g) => g.status === 'needs_review'),
           wipLimit: 10,
         },
         {
@@ -323,22 +330,15 @@ export default {
           wipLimit: 6,
         },
         {
-          id: 'review',
-          title: 'Needs Review',
-          icon: 'fas fa-exclamation-triangle',
-          color: 'var(--color-orange)',
-          statuses: ['needs_review'],
-          goals: goals.filter((g) => g.status === 'needs_review'),
+          id: 'planning',
+          // Review-rejected goals come back from the backend as `queued`; show them
+          // here so they stay visible even though the dedicated Queued column is gone.
+          title: 'Planning',
+          icon: 'fas fa-lightbulb',
+          color: 'var(--color-violet)',
+          statuses: ['planning', 'queued'],
+          goals: goals.filter((g) => g.status === 'planning' || g.status === 'queued'),
           wipLimit: 10,
-        },
-        {
-          id: 'done',
-          title: 'Done',
-          icon: 'fas fa-check-circle',
-          color: 'var(--color-green)',
-          statuses: [...DONE_SUCCESS, ...DONE_FAILURE],
-          goals: goals.filter((g) => [...DONE_SUCCESS, ...DONE_FAILURE].includes(g.status)),
-          wipLimit: null,
         },
       ];
     });
@@ -616,13 +616,18 @@ body[data-page='terminal-goals'] .scrollable-content {
   display: flex;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   gap: 12px;
   padding-bottom: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .kanban-column {
-  flex: 1 1 0;
+  flex: 1 1 220px;
   min-width: 220px;
+  flex-shrink: 0;
   background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
@@ -817,7 +822,7 @@ body[data-page='terminal-goals'] .scrollable-content {
 }
 
 .modal-container {
-  background: var(--color-darker-1);
+  background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   width: 560px;
