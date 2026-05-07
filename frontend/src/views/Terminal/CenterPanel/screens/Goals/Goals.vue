@@ -65,7 +65,6 @@
             <!-- Done column has sub-sections for success vs failure -->
             <template v-if="column.id === 'done'">
               <div class="column-content done-column-content" @click.self="deselectGoal">
-                <div v-if="doneSuccessGoals.length > 0" class="done-section-label"><i class="fas fa-check-circle"></i> Completed</div>
                 <div v-if="doneSuccessGoals.length > 0" class="done-sub-list">
                   <GoalCard
                     v-for="element in doneSuccessGoals"
@@ -303,6 +302,17 @@ export default {
       const goals = filteredGoals.value;
       return [
         {
+          id: 'planning',
+          // Review-rejected goals come back from the backend as `queued`; show them
+          // here so they stay visible even though the dedicated Queued column is gone.
+          title: 'Planning',
+          icon: 'fas fa-lightbulb',
+          color: 'var(--color-violet)',
+          statuses: ['planning', 'queued'],
+          goals: goals.filter((g) => g.status === 'planning' || g.status === 'queued'),
+          wipLimit: 10,
+        },
+        {
           id: 'done',
           title: 'Done',
           icon: 'fas fa-check-circle',
@@ -310,15 +320,6 @@ export default {
           statuses: [...DONE_SUCCESS, ...DONE_FAILURE],
           goals: goals.filter((g) => [...DONE_SUCCESS, ...DONE_FAILURE].includes(g.status)),
           wipLimit: null,
-        },
-        {
-          id: 'review',
-          title: 'Needs Review',
-          icon: 'fas fa-exclamation-triangle',
-          color: 'var(--color-orange)',
-          statuses: ['needs_review'],
-          goals: goals.filter((g) => g.status === 'needs_review'),
-          wipLimit: 10,
         },
         {
           id: 'active',
@@ -330,14 +331,12 @@ export default {
           wipLimit: 6,
         },
         {
-          id: 'planning',
-          // Review-rejected goals come back from the backend as `queued`; show them
-          // here so they stay visible even though the dedicated Queued column is gone.
-          title: 'Planning',
-          icon: 'fas fa-lightbulb',
-          color: 'var(--color-violet)',
-          statuses: ['planning', 'queued'],
-          goals: goals.filter((g) => g.status === 'planning' || g.status === 'queued'),
+          id: 'review',
+          title: 'Needs Review',
+          icon: 'fas fa-exclamation-triangle',
+          color: 'var(--color-orange)',
+          statuses: ['needs_review'],
+          goals: goals.filter((g) => g.status === 'needs_review'),
           wipLimit: 10,
         },
       ];
@@ -637,10 +636,6 @@ body[data-page='terminal-goals'] .scrollable-content {
   min-height: 0;
 }
 
-.kanban-column.done-column {
-  flex: 1.2 1 0;
-}
-
 .column-header {
   padding: 10px 14px;
   border-bottom: 1px solid var(--terminal-border-color);
@@ -672,8 +667,8 @@ body[data-page='terminal-goals'] .scrollable-content {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 16px;
   background: transparent;
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
@@ -734,6 +729,12 @@ body[data-page='terminal-goals'] .scrollable-content {
   flex-direction: column;
   gap: 10px;
   min-height: 60px;
+  scrollbar-width: none;
+}
+
+.column-content::-webkit-scrollbar,
+.done-column-content::-webkit-scrollbar {
+  display: none;
 }
 
 .done-column-content {
