@@ -528,18 +528,19 @@ Rules:
       if (!model) model = userSettings?.selectedModel;
     }
     if (!rawProvider) throw new Error('No AI provider configured');
+    if (!model) throw new Error('No AI model configured');
 
     // Normalize provider the same way the orchestrator does
     const providerConfig = getProviderConfig(rawProvider);
     const normalizedProvider = providerConfig ? providerConfig.key : rawProvider.toLowerCase();
 
-    // Validate that the model belongs to the resolved provider.
-    // If mismatched (e.g. stale DB default), pick the first available model.
-    const ProviderRegistry = await import('../ai/ProviderRegistry.js');
-    const providerModels = ProviderRegistry.getTextModels(normalizedProvider);
-    if (providerModels.length > 0 && !providerModels.includes(model)) {
-      model = providerModels[0];
-    }
+    // The user's selected model is authoritative. We previously force-swapped
+    // it to providerModels[0] when it wasn't in the static fallbackModels list,
+    // but that list is curated and goes stale — for example, an openai-codex
+    // user with selectedModel="gpt-5.5" was getting silently rewritten to
+    // "gpt-5.2-codex" (the lone fallback entry), and the ChatGPT backend was
+    // 400-ing because that model name no longer exists. If the user's model
+    // works for chat, it works for background services too.
 
     const client = await createLlmClient(normalizedProvider, userId);
     const adapter = await createLlmAdapter(normalizedProvider, client, model);
