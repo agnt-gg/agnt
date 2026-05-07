@@ -540,6 +540,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         store: false,
         stream: true,
         include: ['reasoning.encrypted_content'],
+        reasoning: { effort: 'medium', summary: 'auto' },
         text: { verbosity: 'medium' },
       });
 
@@ -982,6 +983,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
       store: false,
       stream: true,
       include: ['reasoning.encrypted_content'],
+      reasoning: { effort: 'medium', summary: 'auto' },
       text: { verbosity: 'medium' },
     });
 

@@ -3736,11 +3736,8 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           requestParams.tools = responsesTools;
         }
 
-        const reasoningConfig = this.supportsReasoning()
-          ? buildResponsesReasoningConfig(this.model, this.reasoningValue)
-          : null;
-        if (reasoningConfig) {
-          requestParams.reasoning = reasoningConfig;
+        if (this.supportsReasoning()) {
+          requestParams.reasoning = buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' };
         }
 
         console.log(`[OpenAI Responses] Calling model '${this.model}' with Responses API`);
@@ -3854,11 +3851,8 @@ class OpenAIResponsesAdapter extends BaseAdapter {
           requestParams.tools = responsesTools;
         }
 
-        const reasoningConfig = this.supportsReasoning()
-          ? buildResponsesReasoningConfig(this.model, this.reasoningValue)
-          : null;
-        if (reasoningConfig) {
-          requestParams.reasoning = reasoningConfig;
+        if (this.supportsReasoning()) {
+          requestParams.reasoning = buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' };
         }
 
         console.log(`[OpenAI Responses] Streaming call to model '${this.model}'`);
@@ -4058,14 +4052,13 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       include: ['reasoning.encrypted_content'],
     };
 
-    const reasoningConfig = this.supportsReasoning()
-      ? buildResponsesReasoningConfig(this.model, this.reasoningValue)
-      : null;
-    if (reasoningConfig) {
-      params.reasoning = {
-        ...reasoningConfig,
-        summary: 'auto',
-      };
+    // Codex backend rejects requests without reasoning.effort for gpt-5.x-codex
+    // models with a 400 (no body). When the user's reasoningValue is 'default'
+    // (or unset by background callers like InsightEngine), buildResponsesReasoningConfig
+    // returns null — fall back to the Codex CLI's documented default effort.
+    if (this.supportsReasoning()) {
+      const reasoningConfig = buildResponsesReasoningConfig(this.model, this.reasoningValue) || { effort: 'medium' };
+      params.reasoning = { ...reasoningConfig, summary: 'auto' };
     }
 
     // Add text verbosity control
