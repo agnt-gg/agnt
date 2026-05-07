@@ -1,13 +1,9 @@
 import { JSDOM } from 'jsdom';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import puppeteer from 'puppeteer-core';
 import { fileURLToPath } from 'url';
 import { URL } from 'url';
 import BaseAction from '../BaseAction.js';
 import { getBestChromePath, getChromeNotFoundMessage } from '../../../utils/chrome-detector.js';
-
-// Apply the stealth plugin to hide that we're using a headless browser
-puppeteer.use(StealthPlugin());
 
 class WebScrape extends BaseAction {
   static schema = {
@@ -118,7 +114,7 @@ async function scrape(url) {
 
   let browser;
   try {
-    // 2. Launch a headless browser instance using puppeteer-extra.
+    // 2. Launch a headless browser instance.
     console.log(`[Web Scrape] Launching browser from: ${chromePath}`);
     const launchOptions = {
       executablePath: chromePath,

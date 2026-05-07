@@ -19,13 +19,8 @@ async function scrape(url) {
     );
   }
 
-  // Dynamically import puppeteer (only loads if not in lite mode)
-  const puppeteerModule = await import('puppeteer-extra');
-  const puppeteer = puppeteerModule.default;
-  const StealthPlugin = (await import('puppeteer-extra-plugin-stealth')).default;
-
-  // Apply the stealth plugin to hide that we're using a headless browser
-  puppeteer.use(StealthPlugin());
+  // Dynamically import puppeteer-core (only loads if not in lite mode)
+  const puppeteer = (await import('puppeteer-core')).default;
 
   // Get the best available Chrome executable path
   const chromePath = getBestChromePath();
@@ -37,7 +32,7 @@ async function scrape(url) {
 
   let browser;
   try {
-    // 1. Launch a headless browser instance using puppeteer-extra.
+    // 1. Launch a headless browser instance.
     console.log(`[Web Scrape] Launching browser from: ${chromePath}`);
     browser = await puppeteer.launch({
       executablePath: chromePath,
