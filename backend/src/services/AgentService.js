@@ -22,6 +22,29 @@ import {
   ASYNC_EXECUTION_GUIDANCE,
 } from './orchestrator/system-prompts/orchestrator-chat.js';
 
+/**
+ * Fill missing agent.provider / agent.model from the user's selected settings.
+ * Never substitutes a hardcoded model name — if user settings are unavailable
+ * or empty, throws so the caller can surface a real error instead of writing
+ * an agent record paired to a model the user's provider cannot serve (e.g.
+ * Codex provider + claude/gpt-4 model name silently 4xx's later).
+ */
+async function applyUserDefaultProviderModel(agent, userId, label) {
+  if (agent.provider && agent.model) return;
+
+  const userSettings = await UserModel.getUserSettings(userId);
+  if (!agent.provider) agent.provider = userSettings?.selectedProvider;
+  if (!agent.model) agent.model = userSettings?.selectedModel;
+
+  if (!agent.provider || !agent.model) {
+    throw new Error(
+      `Cannot save ${label}: no provider/model on the agent record and no selected provider/model in user settings. ` +
+      `Configure a default provider and model in settings first.`
+    );
+  }
+  console.log(`Set default provider/model for ${label}: ${agent.provider}/${agent.model}`);
+}
+
 class AgentService {
   healthCheck(req, res) {
     res.header('Access-Control-Allow-Origin', '*');
@@ -45,47 +68,15 @@ class AgentService {
 
       if (isNewAgent) {
         agent.id = generateUUID();
-
-        // Set default provider and model from user settings if not provided
-        if (!agent.provider || !agent.model) {
-          try {
-            const userSettings = await UserModel.getUserSettings(userId);
-            if (!agent.provider) {
-              agent.provider = userSettings.selectedProvider || 'Anthropic';
-            }
-            if (!agent.model) {
-              agent.model = userSettings.selectedModel || 'claude-3-5-sonnet-20240620';
-            }
-            console.log(`Set default provider/model for new agent: ${agent.provider}/${agent.model}`);
-          } catch (settingsError) {
-            console.warn('Could not fetch user settings for agent defaults:', settingsError);
-            // Use hardcoded defaults if user settings fetch fails
-            agent.provider = agent.provider || 'Anthropic';
-            agent.model = agent.model || 'claude-3-5-sonnet-20240620';
-          }
-        }
+        // Default provider/model come from the user's settings — never a
+        // hardcoded model name, which silently breaks Codex users (whose
+        // OAuth client can't serve a non-Responses-API model) and any
+        // non-default provider setup.
+        await applyUserDefaultProviderModel(agent, userId, 'new agent');
       } else if (existingAgent.created_by !== userId) {
         agent.id = generateUUID();
         isNewAgent = true;
-
-        // Set default provider and model from user settings for cloned agent
-        if (!agent.provider || !agent.model) {
-          try {
-            const userSettings = await UserModel.getUserSettings(userId);
-            if (!agent.provider) {
-              agent.provider = userSettings.selectedProvider || 'openai';
-            }
-            if (!agent.model) {
-              agent.model = userSettings.selectedModel || 'gpt-4o-mini';
-            }
-            console.log(`Set default provider/model for cloned agent: ${agent.provider}/${agent.model}`);
-          } catch (settingsError) {
-            console.warn('Could not fetch user settings for cloned agent defaults:', settingsError);
-            // Use hardcoded defaults if user settings fetch fails
-            agent.provider = agent.provider || 'Anthropic';
-            agent.model = agent.model || 'claude-3-5-sonnet-20240620';
-          }
-        }
+        await applyUserDefaultProviderModel(agent, userId, 'cloned agent');
       }
 
       const result = await AgentModel.createOrUpdate(agent.id, agent, userId);

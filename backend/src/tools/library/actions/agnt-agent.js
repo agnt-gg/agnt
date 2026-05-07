@@ -90,22 +90,26 @@ class AgentTool extends BaseAction {
         return { success: false, error };
       }
 
-      // Resolve provider/model: agent config → user defaults
+      // Resolve provider/model: agent config → user settings. Never fall back
+      // to a hardcoded model name — that silently breaks Codex users (whose
+      // OAuth client can't serve a non-Responses-API model) and any non-default
+      // provider setup. If neither the agent record nor user settings have a
+      // model, surface the misconfig rather than guess.
       let provider = agentProvider;
       let model = agentModel;
 
       if (!provider || !model) {
         const UserModel = (await import('../../../models/UserModel.js')).default;
-        try {
-          const userSettings = await UserModel.getUserSettings(userId);
-          provider = provider || userSettings.selectedProvider || 'Anthropic';
-          model = model || userSettings.selectedModel || 'claude-3-5-sonnet-20240620';
-          console.log(`Using global provider/model for agent: ${provider}/${model}`);
-        } catch (settingsError) {
-          console.warn('Could not fetch user settings, using defaults:', settingsError);
-          provider = provider || 'Anthropic';
-          model = model || 'claude-3-5-sonnet-20240620';
+        const userSettings = await UserModel.getUserSettings(userId);
+        provider = provider || userSettings?.selectedProvider;
+        model = model || userSettings?.selectedModel;
+        if (!provider || !model) {
+          return {
+            success: false,
+            error: 'No provider/model configured for this agent and no selected provider/model in user settings. Configure defaults in settings or set them on the agent record.',
+          };
         }
+        console.log(`Using global provider/model for agent: ${provider}/${model}`);
       }
 
       const agentToolSchemas = agentContext.availableTools || [];

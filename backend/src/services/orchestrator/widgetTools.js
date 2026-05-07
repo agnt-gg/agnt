@@ -198,8 +198,16 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
             enhancedInstruction = `Current widget source code:\n${widgetState.source_code}\n\nInstruction: ${args.instruction}\n\nCompletely rewrite the widget according to the instruction.`;
           }
 
-          const client = await createLlmClient(context.provider || 'openai', userId);
-          const adapter = await createLlmAdapter(context.provider || 'openai', client, context.model || 'gpt-4');
+          // Provider/model must come from the conversation context (resolved
+          // upstream by the orchestrator from request → agent → user settings).
+          // Don't paper over a missing context with hardcoded 'openai'/'gpt-4'
+          // — that silently breaks Codex users (whose Codex OAuth client can't
+          // serve a non-Responses-API model) and other non-OpenAI providers.
+          if (!context?.provider || !context?.model) {
+            throw new Error('generate_widget requires context.provider and context.model (resolved by the orchestrator).');
+          }
+          const client = await createLlmClient(context.provider, userId);
+          const adapter = await createLlmAdapter(context.provider, client, context.model);
           const useTheme = args.useThemeStyles !== undefined ? args.useThemeStyles !== false : widgetState?.useThemeStyles !== false;
           const widgetGenPrompt = buildWidgetGenerationPrompt(enhancedInstruction, useTheme);
 
