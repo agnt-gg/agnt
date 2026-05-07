@@ -47,7 +47,28 @@
           @toggleHideEmpty="toggleHideEmptyCategories"
           @update:sortOrder="(v) => sortOrder = v"
           @create="handlePanelAction('navigate', 'WorkflowForgeScreen')"
-        />
+        >
+          <!-- PRD-057: small import/export buttons -->
+          <template #extra-buttons>
+            <Tooltip text="Import Workflow JSON" width="auto">
+              <button class="wm-btn" @click="triggerWorkflowImport">
+                <i class="fas fa-file-import"></i>
+              </button>
+            </Tooltip>
+            <Tooltip :text="selectedWorkflowId ? 'Export selected workflow' : 'Select a workflow to export'" width="auto">
+              <button class="wm-btn" :disabled="!selectedWorkflowId" @click="exportSelectedWorkflow">
+                <i class="fas fa-file-export"></i>
+              </button>
+            </Tooltip>
+            <input
+              ref="workflowImportInput"
+              type="file"
+              accept="application/json,.json"
+              style="display: none"
+              @change="handleWorkflowImportFile"
+            />
+          </template>
+        </ScreenToolbar>
 
         <!-- Tabs -->
         <div class="wm-tabs">
@@ -632,6 +653,75 @@ export default {
       searchQuery.value = query;
     };
 
+    // PRD-057: workflow import/export from the page toolbar
+    const workflowImportInput = ref(null);
+    const triggerWorkflowImport = () => {
+      workflowImportInput.value?.click();
+    };
+    const handleWorkflowImportFile = async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const envelope = JSON.parse(text);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/workflows/import`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ envelope }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        addLine(`Imported workflow ${data.workflowId}`, 'info');
+        if (Array.isArray(data.missingToolTypes) && data.missingToolTypes.length > 0) {
+          addLine(`Missing or unknown tool types: ${data.missingToolTypes.join(', ')}`, 'warn');
+        }
+        await store.dispatch('workflows/fetchWorkflows', { force: true });
+      } catch (e) {
+        console.error('Workflow import failed:', e);
+        addLine(`Workflow import error: ${e.message}`, 'error');
+      } finally {
+        if (workflowImportInput.value) workflowImportInput.value.value = '';
+      }
+    };
+    const exportSelectedWorkflow = async () => {
+      const id = selectedWorkflowId.value;
+      if (!id) return;
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/workflows/${id}/export`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        const envelope = await response.json();
+        const name = envelope?.payload?.name || 'workflow';
+        const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${String(name).replace(/\s+/g, '_')}.agnt-workflow.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        addLine(`Exported workflow "${name}"`, 'info');
+      } catch (e) {
+        console.error('Workflow export failed:', e);
+        addLine(`Workflow export error: ${e.message}`, 'error');
+      }
+    };
+
     const setLayout = (layout) => {
       currentLayout.value = layout;
     };
@@ -1131,6 +1221,11 @@ export default {
       onContentClick,
       handleWorkflowClick,
       handleWorkflowDoubleClick,
+      // PRD-057
+      workflowImportInput,
+      triggerWorkflowImport,
+      handleWorkflowImportFile,
+      exportSelectedWorkflow,
       getToolsDisplay,
       tableColumns,
       handleSearch,
@@ -1194,6 +1289,33 @@ export default {
   gap: 0;
   width: 100%;
   height: 100%;
+}
+
+/* PRD-057: toolbar slot buttons — match ScreenToolbar's .wm-btn styling.
+   ScreenToolbar's scoped styles don't apply to slot content rendered from
+   here, so we duplicate the style. */
+.wm-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s;
+  letter-spacing: 0.5px;
+}
+.wm-btn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--terminal-border-color);
+}
+.wm-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ── Category tabs ── */

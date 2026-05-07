@@ -64,6 +64,65 @@ async function buildPlugin(pluginName) {
   console.log(`📝 Description: ${manifest.description || 'No description'}`);
   console.log(`🔧 Tools: ${manifest.tools?.map((t) => t.type).join(', ') || 'None'}`);
 
+  // Validate tools array (different shape from ecosystem assets — uses
+  // `type` + `entryPoint` instead of `slug` + `definition`).
+  if (manifest.tools) {
+    if (!Array.isArray(manifest.tools)) {
+      console.error(`❌ manifest.tools must be an array`);
+      process.exit(1);
+    }
+    for (const tool of manifest.tools) {
+      if (!tool.type) {
+        console.error(`❌ tool entry missing required "type": ${JSON.stringify(tool)}`);
+        process.exit(1);
+      }
+      if (!tool.entryPoint) {
+        console.error(`❌ tool "${tool.type}" missing required "entryPoint"`);
+        process.exit(1);
+      }
+      const abs = path.join(pluginPath, tool.entryPoint.replace(/^\.\//, ''));
+      if (!fs.existsSync(abs)) {
+        console.error(`❌ tool "${tool.type}" references missing file: ${tool.entryPoint}`);
+        process.exit(1);
+      }
+      if (!tool.schema || typeof tool.schema !== 'object') {
+        console.warn(`⚠️  tool "${tool.type}" has no schema — install will still succeed but the orchestrator won't be able to surface it`);
+      }
+    }
+  }
+
+  // PRD-057: validate optional ecosystem-asset arrays
+  const validateAssetArray = (arr, kind, fileKey) => {
+    if (!arr) return;
+    if (!Array.isArray(arr)) {
+      console.error(`❌ manifest.${kind} must be an array`);
+      process.exit(1);
+    }
+    for (const entry of arr) {
+      if (!entry.slug) {
+        console.error(`❌ ${kind} entry missing required "slug": ${JSON.stringify(entry)}`);
+        process.exit(1);
+      }
+      const filePath = entry[fileKey];
+      if (!filePath) {
+        console.error(`❌ ${kind} entry "${entry.slug}" missing required "${fileKey}"`);
+        process.exit(1);
+      }
+      const abs = path.join(pluginPath, filePath.replace(/^\.\//, ''));
+      if (!fs.existsSync(abs)) {
+        console.error(`❌ ${kind} entry "${entry.slug}" references missing file: ${filePath}`);
+        process.exit(1);
+      }
+    }
+    if (arr.length > 0) {
+      console.log(`📦 ${kind[0].toUpperCase() + kind.slice(1)}: ${arr.map((e) => e.slug).join(', ')}`);
+    }
+  };
+  validateAssetArray(manifest.agents, 'agents', 'definition');
+  validateAssetArray(manifest.workflows, 'workflows', 'definition');
+  validateAssetArray(manifest.skills, 'skills', 'source');
+  validateAssetArray(manifest.widgets, 'widgets', 'definition');
+
   // Check if package.json exists (has dependencies)
   let hasDependencies = false;
   if (fs.existsSync(packageJsonPath)) {

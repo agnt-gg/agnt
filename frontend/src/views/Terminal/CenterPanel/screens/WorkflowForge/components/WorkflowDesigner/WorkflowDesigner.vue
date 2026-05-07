@@ -1007,47 +1007,63 @@ export default {
       }
     },
     async exportWorkflow() {
-      // Prepare the workflow data for export
-      const state = {
-        id: this.activeWorkflowId,
-        name: this.workflowName,
-        nodes: this.nodes.map((node) => ({
-          ...node,
-          parameters: { ...node.parameters },
-          outputs: { ...node.outputs },
-        })),
-        edges: this.edges,
-        zoomLevel: this.zoomLevel,
-        canvasOffsetX: this.$refs.canvas.canvasOffsetX,
-        canvasOffsetY: this.$refs.canvas.canvasOffsetY,
-        isTinyNodeMode: this.isTinyNodeMode,
-        isShareable: this.isShareable,
-        customTools: this.getCustomToolsUsedInWorkflow(),
-      };
+      // PRD-057: prefer the backend canonical export envelope when we have a
+      // saved workflow ID. Falls back to client-side serialization for unsaved
+      // workflows so users can still export drafts.
+      let envelope = null;
+      if (this.activeWorkflowId) {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch(`${API_CONFIG.BASE_URL}/workflows/${this.activeWorkflowId}/export`, {
+            credentials: 'include',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (response.ok) {
+            envelope = await response.json();
+          }
+        } catch (e) {
+          console.warn('Backend export failed, falling back to client-side:', e);
+        }
+      }
 
-      // Convert to JSON string
-      const workflowJson = JSON.stringify(state, null, 2);
+      if (!envelope) {
+        // Fallback: build the envelope client-side from current canvas state.
+        const state = {
+          name: this.workflowName,
+          description: '',
+          category: '',
+          nodes: this.nodes.map((node) => ({
+            ...node,
+            parameters: { ...node.parameters },
+            outputs: { ...node.outputs },
+          })),
+          edges: this.edges,
+          zoomLevel: this.zoomLevel,
+          canvasOffsetX: this.$refs.canvas.canvasOffsetX,
+          canvasOffsetY: this.$refs.canvas.canvasOffsetY,
+          isTinyNodeMode: this.isTinyNodeMode,
+          isShareable: this.isShareable,
+          customTools: this.getCustomToolsUsedInWorkflow(),
+        };
+        envelope = {
+          _format: 'agnt-workflow',
+          _version: '1.0',
+          payload: state,
+          exported_at: new Date().toISOString(),
+        };
+      }
 
-      // Create a Blob with the JSON data
-      const blob = new Blob([workflowJson], {
-        type: 'application/json',
-      });
-
-      // Create a download link
+      const workflowJson = JSON.stringify(envelope, null, 2);
+      const blob = new Blob([workflowJson], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${this.workflowName.replace(/\s+/g, '_')}_workflow.json`;
-
-      // Trigger the download
       document.body.appendChild(a);
       a.click();
-
-      // Clean up
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      // Show confirmation
       await this.showAlert(`Workflow "${this.workflowName}" exported successfully!`, {
         showCancel: false,
       });
@@ -1069,6 +1085,12 @@ export default {
           console.error('Failed to parse workflow JSON:', e);
           await this.showAlert('Invalid Workflow JSON', 'The provided JSON could not be parsed.', { showCancel: false });
           return;
+        }
+
+        // PRD-057: unwrap the canonical envelope (`{_format, _version, payload}`)
+        // if the user pasted a fresh export. Older exports were the raw object.
+        if (state && state._format === 'agnt-workflow' && state.payload) {
+          state = state.payload;
         }
 
         // Update the workflowName from the loaded state

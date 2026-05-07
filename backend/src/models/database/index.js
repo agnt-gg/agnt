@@ -892,6 +892,23 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_agent_id ON agent_memory(agent_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_memory_user_id ON agent_memory(user_id)`);
 
+      // PRD-057: installed_plugin_assets — registry tying ecosystem-plugin-installed
+      // assets (agents, workflows, skills, widgets) back to the plugin that owns them.
+      // Walked by uninstall (clean/purge/detach modes) and update (mod-flag respect).
+      db.run(`CREATE TABLE IF NOT EXISTS installed_plugin_assets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plugin_name TEXT NOT NULL,
+        plugin_version TEXT NOT NULL,
+        asset_type TEXT NOT NULL,
+        asset_slug TEXT NOT NULL,
+        local_id TEXT NOT NULL,
+        installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deprecated_at DATETIME,
+        UNIQUE (plugin_name, asset_type, asset_slug)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_plugin ON installed_plugin_assets(plugin_name)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_local ON installed_plugin_assets(asset_type, local_id)`);
+
       db.run(`CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id)`,
         (err) => {
           if (err) {
@@ -1126,6 +1143,29 @@ function runMigrations() {
           // (handles both fresh migrations and DBs where columns existed but were never populated)
           if (i === summaryColumns.length - 1) {
             backfillWorkflowSummaryColumns();
+
+            // PRD-057: Origin-tracking on existing ecosystem tables (2026-05-06)
+            // The `installed_plugin_assets` table itself is created in
+            // createTables() so it's guaranteed present before any code path
+            // queries it.
+            const ecosystemTables = ['agents', 'workflows', 'skills', 'widget_definitions'];
+            ecosystemTables.forEach((table) => {
+              db.run(`ALTER TABLE ${table} ADD COLUMN source_plugin TEXT`, (err) => {
+                if (err && !err.message.includes('duplicate column name')) {
+                  console.error(`Error adding source_plugin column to ${table}:`, err);
+                } else if (!err) {
+                  console.log(`✓ Added source_plugin column to ${table} table`);
+                }
+              });
+              db.run(`ALTER TABLE ${table} ADD COLUMN is_user_modified INTEGER NOT NULL DEFAULT 0`, (err) => {
+                if (err && !err.message.includes('duplicate column name')) {
+                  console.error(`Error adding is_user_modified column to ${table}:`, err);
+                } else if (!err) {
+                  console.log(`✓ Added is_user_modified column to ${table} table`);
+                }
+              });
+            });
+
             resolve();
           }
         });

@@ -56,6 +56,9 @@
       <button class="tab" :class="{ active: activeTab === 'builder' }" @click="activeTab = 'builder'">
         <i class="fas fa-magic"></i> Build Plugin
       </button>
+      <button class="tab" :class="{ active: activeTab === 'pack-studio' }" @click="activeTab = 'pack-studio'">
+        <i class="fas fa-box-open"></i> Pack Studio
+      </button>
       <button class="tab" :class="{ active: activeTab === 'publish' }" @click="activeTab = 'publish'">
         <i class="fas fa-cloud-upload-alt"></i> Publish
       </button>
@@ -201,6 +204,11 @@
       <PluginBuilder @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
     </div>
 
+    <!-- PRD-057: Pack Studio Tab — no-code ecosystem-pack composer -->
+    <div v-else-if="activeTab === 'pack-studio'" class="plugins-list">
+      <PackStudio @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
+    </div>
+
     <!-- Publish Tab -->
     <div v-else-if="activeTab === 'publish'" class="plugins-list">
       <div class="publish-section">
@@ -339,6 +347,7 @@ import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PluginBuilder from './PluginBuilder.vue';
+import PackStudio from './PackStudio.vue';
 import { API_CONFIG } from '@/tt.config.js';
 import { useLicense } from '@/composables/useLicense';
 
@@ -351,6 +360,7 @@ export default {
     SvgIcon,
     SimpleModal,
     PluginBuilder,
+    PackStudio,
   },
   emits: ['show-alert'],
   setup(props, { emit }) {
@@ -796,9 +806,20 @@ export default {
     }
 
     async function onPluginInstalled() {
+      // PRD-057: refresh every store the plugin could have touched. Tool-only
+      // plugins need tool/plugin refresh; ecosystem packs also drop new
+      // agents/workflows/skills/widgets in DB and we want those visible
+      // immediately on their respective pages.
       await refreshPlugins();
-      await store.dispatch('tools/refreshAllTools');
-      activeTab.value = 'installed';
+      await Promise.all([
+        store.dispatch('tools/refreshAllTools').catch(() => {}),
+        store.dispatch('agents/fetchAgents', { force: true }).catch(() => {}),
+        store.dispatch('workflows/fetchWorkflows', { force: true }).catch(() => {}),
+        store.dispatch('skills/fetchSkills').catch(() => {}),
+        store.dispatch('widgetDefinitions/fetchDefinitions').catch(() => {}),
+      ]);
+      // Stay on the current tab — switching to 'installed' is jarring when
+      // the user just built a pack and might want to keep iterating.
     }
 
     // Revenue calculation functions for paid plugins

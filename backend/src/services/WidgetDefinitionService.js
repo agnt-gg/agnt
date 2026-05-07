@@ -269,6 +269,15 @@ class WidgetDefinitionService {
         return res.status(404).json({ error: 'Widget definition not found' });
       }
 
+      // PRD-057: mark plugin-installed widgets as user-modified on UI updates
+      await new Promise((resolve) => {
+        db.run(
+          `UPDATE widget_definitions SET is_user_modified = 1 WHERE id = ? AND source_plugin IS NOT NULL`,
+          [widgetId],
+          () => resolve()
+        );
+      });
+
       await new Promise((resolve, reject) => {
         db.run(
           `UPDATE widget_definitions SET
@@ -544,6 +553,63 @@ class WidgetDefinitionService {
       releaseThumbnailBrowser();
     }
   }
+}
+
+/**
+ * PRD-057: Programmatic widget import — used by PluginAssetLoader.
+ * Creates a widget_definitions row, optionally stamping source_plugin.
+ *
+ * @param {object} envelope    parsed widget envelope ({ _format, _version, payload? } or flat fields)
+ * @param {string} userId      importing user id
+ * @param {object} [options]
+ * @param {string} [options.sourcePlugin]
+ * @returns {Promise<{ id: string }>}
+ */
+export async function importWidgetEnvelope(envelope, userId, options = {}) {
+  if (!envelope || envelope._format !== 'agnt-widget') {
+    throw new Error('Invalid widget envelope (_format must be "agnt-widget")');
+  }
+
+  // Support both flat envelopes (existing exportWidget format) and nested payload form
+  const data = envelope.payload || envelope;
+
+  const id = 'cw_' + uuidv4().replace(/-/g, '').slice(0, 12);
+
+  await new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO widget_definitions
+       (id, user_id, name, description, icon, category, widget_type, source_code, config, data_bindings, default_size, min_size, thumbnail)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        userId || 'anonymous',
+        data.name || 'Imported Widget',
+        data.description || '',
+        data.icon || 'fas fa-puzzle-piece',
+        data.category || 'custom',
+        data.widget_type || 'html',
+        data.source_code || '',
+        JSON.stringify(data.config || {}),
+        JSON.stringify(data.data_bindings || []),
+        JSON.stringify(data.default_size || { cols: 4, rows: 3 }),
+        JSON.stringify(data.min_size || { cols: 2, rows: 2 }),
+        data.thumbnail || null,
+      ],
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+
+  if (options.sourcePlugin) {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE widget_definitions SET source_plugin = ?, is_user_modified = 0 WHERE id = ?`,
+        [options.sourcePlugin, id],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+  }
+
+  return { id };
 }
 
 export default new WidgetDefinitionService();
