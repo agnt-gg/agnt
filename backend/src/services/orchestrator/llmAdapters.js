@@ -24,6 +24,36 @@ function parseApiErrorMessage(error) {
   return error?.message || 'Unknown error occurred';
 }
 
+/**
+ * Pull every diagnostic crumb the OpenAI SDK might attach to a Codex failure.
+ * Different SDK versions stash useful detail under different keys
+ * (`error.error`, `error.body`, `error.response.data`, raw `error.headers`, etc.).
+ * The default `error.message` for ChatGPT-backend rejections is often the
+ * useless "400 status code (no body)" — this helper hands the catch site
+ * something it can actually log.
+ */
+function describeCodexError(error) {
+  if (!error || typeof error !== 'object') return { summary: String(error) };
+  const out = {
+    status: error.status ?? error.response?.status ?? null,
+    code: error.code ?? null,
+    message: error.message ?? null,
+  };
+  if (error.error !== undefined) out.error = error.error;
+  if (error.body !== undefined) out.body = error.body;
+  if (error.response?.data !== undefined) out.responseData = error.response.data;
+  if (error.headers) {
+    const interesting = ['x-request-id', 'x-codex-request-id', 'cf-ray', 'content-type', 'retry-after'];
+    out.headers = {};
+    for (const h of interesting) {
+      const v = typeof error.headers.get === 'function' ? error.headers.get(h) : error.headers[h];
+      if (v) out.headers[h] = v;
+    }
+    if (Object.keys(out.headers).length === 0) delete out.headers;
+  }
+  return out;
+}
+
 function buildCodexErrorGuidance(error, model) {
   const status = Number(error?.status || error?.response?.status || 0);
   const message = String(error?.message || '').toLowerCase();
@@ -4025,6 +4055,11 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     super(client, model, options);
     // Codex reasoning models — match by prefix so new models work automatically
     this.reasoningModels = new Set();
+    // The ChatGPT backend hiccups (transient 5xx with the generic
+    // "An error occurred while processing your request" envelope) more often
+    // than api.openai.com. Give Codex more retry budget so a brief upstream
+    // blip doesn't surface to the user as a hard error.
+    this.maxRetries = 5;
   }
 
   /**
@@ -4033,6 +4068,31 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   supportsReasoning() {
     const m = this.model.toLowerCase();
     return m.startsWith('gpt-5') || /^o\d/.test(m);
+  }
+
+  /**
+   * Codex-specific retry detection. Beyond the parent's status-code and
+   * connection-code checks, treat the ChatGPT backend's generic-error envelope
+   * as retryable — those are upstream hiccups that clear on retry, but the
+   * SDK frequently throws them without `error.status` populated (mid-stream
+   * SSE errors), which means the parent's status-based check misses them and
+   * the user sees the wrapped error after a single attempt.
+   */
+  isRetryableError(error) {
+    if (super.isRetryableError(error)) return true;
+    const message = String(error?.message || '').toLowerCase();
+    if (
+      message.includes('an error occurred while processing your request') ||
+      message.includes('internal server error') ||
+      message.includes('bad gateway') ||
+      message.includes('service unavailable') ||
+      message.includes('gateway timeout') ||
+      message.includes('overloaded') ||
+      message.includes('temporarily unavailable')
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -4190,10 +4250,10 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         lastError = error;
 
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
-          console.error(`Codex Responses call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
-            status: error.status,
-            message: error.message,
-          });
+          console.error(
+            `Codex Responses call failed after ${attempt + 1} attempts, but NEVER STOPPING:`,
+            describeCodexError(error),
+          );
 
           const userFriendlyError = parseApiErrorMessage(error);
 
@@ -4271,10 +4331,10 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         lastError = error;
 
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
-          console.error(`Codex Responses streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`, {
-            status: error.status,
-            message: error.message,
-          });
+          console.error(
+            `Codex Responses streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`,
+            describeCodexError(error),
+          );
 
           const userFriendlyError = parseApiErrorMessage(error);
 
