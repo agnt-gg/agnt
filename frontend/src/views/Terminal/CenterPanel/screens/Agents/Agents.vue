@@ -40,7 +40,28 @@
           @toggleHideEmpty="toggleHideEmptyCategories"
           @update:sortOrder="(v) => (sortOrder = v)"
           @create="handlePanelAction('navigate', 'AgentForgeScreen')"
-        />
+        >
+          <!-- PRD-057: small import/export buttons -->
+          <template #extra-buttons>
+            <Tooltip text="Import Agent JSON" width="auto">
+              <button class="wm-btn" @click="triggerAgentImport">
+                <i class="fas fa-file-import"></i>
+              </button>
+            </Tooltip>
+            <Tooltip :text="selectedAgent ? `Export ${selectedAgent.name}` : 'Select an agent to export'" width="auto">
+              <button class="wm-btn" :disabled="!selectedAgent" @click="exportSelectedAgent">
+                <i class="fas fa-file-export"></i>
+              </button>
+            </Tooltip>
+            <input
+              ref="agentImportInput"
+              type="file"
+              accept="application/json,.json"
+              style="display: none"
+              @change="handleAgentImportFile"
+            />
+          </template>
+        </ScreenToolbar>
 
         <!-- Tabs -->
         <div class="wm-tabs">
@@ -487,6 +508,74 @@ export default {
 
     const handleSearch = (query) => {
       searchQuery.value = query;
+    };
+
+    // PRD-057: agent import/export from the page toolbar
+    const agentImportInput = ref(null);
+    const triggerAgentImport = () => {
+      agentImportInput.value?.click();
+    };
+    const handleAgentImportFile = async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const envelope = JSON.parse(text);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/agents/import`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ envelope }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        terminalLines.value.push(`[Agents] Imported agent ${data.agentId}`);
+        if (Array.isArray(data.missingRefs) && data.missingRefs.length > 0) {
+          terminalLines.value.push(`[Agents] Missing references: ${data.missingRefs.join(', ')}`);
+        }
+        await store.dispatch('agents/fetchAgents', { force: true });
+      } catch (e) {
+        console.error('Agent import failed:', e);
+        terminalLines.value.push(`[Agents] Import error: ${e.message}`);
+      } finally {
+        if (agentImportInput.value) agentImportInput.value.value = '';
+      }
+    };
+    const exportSelectedAgent = async () => {
+      const agent = selectedAgent.value;
+      if (!agent) return;
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/agents/${agent.id}/export`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        const envelope = await response.json();
+        const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(agent.name || 'agent').replace(/\s+/g, '_')}.agnt-agent.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        terminalLines.value.push(`[Agents] Exported "${agent.name}"`);
+      } catch (e) {
+        console.error('Agent export failed:', e);
+        terminalLines.value.push(`[Agents] Export error: ${e.message}`);
+      }
     };
 
     const onContentClick = (e) => {
@@ -1721,6 +1810,11 @@ export default {
       saveConfiguration,
       tableColumns,
       handleSearch,
+      // PRD-057
+      agentImportInput,
+      triggerAgentImport,
+      handleAgentImportFile,
+      exportSelectedAgent,
       currentLayout,
       selectedCategory,
       selectedMainCategory,
@@ -1882,6 +1976,33 @@ export default {
 .agents-panel.has-details.expanded :deep(.wm-header),
 .agents-panel.has-details.expanded .wm-tabs {
   display: none;
+}
+
+/* PRD-057: toolbar slot buttons — match ScreenToolbar's .wm-btn styling.
+   ScreenToolbar's scoped styles don't apply to slot content rendered from
+   here, so we duplicate the style. */
+.wm-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s;
+  letter-spacing: 0.5px;
+}
+.wm-btn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--terminal-border-color);
+}
+.wm-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ── Category tabs ── */

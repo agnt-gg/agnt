@@ -182,13 +182,34 @@ class PluginInstaller {
 
       console.log(`[PluginInstaller] Found ${agntFiles.length} bundled .agnt plugin files`);
 
+      // PRD-057: respect explicit user uninstalls. Without this list, any
+      // plugin a user removes via the UI silently reinstalls itself from the
+      // bundled .agnt on the next startup.
+      const userUninstalled = await this.getUserUninstalledList();
+
       let installedCount = 0;
       let skippedCount = 0;
       let failedCount = 0;
+      let userUninstalledCount = 0;
 
       for (const agntFile of agntFiles) {
         // Extract plugin name from filename (e.g., "discord-plugin.agnt" -> "discord-plugin")
         const pluginName = agntFile.replace('.agnt', '');
+
+        if (userUninstalled.includes(pluginName)) {
+          userUninstalledCount++;
+          console.log(`[PluginInstaller] Skipping ${pluginName}: user explicitly uninstalled`);
+          continue;
+        }
+
+        // Allow versioned snapshots (e.g. "finance-demo-pack-v1.1.0.agnt") to
+        // sit in plugin-builds/ without auto-installing as separate plugins —
+        // they exist for manual upgrade testing only.
+        if (/-v\d+(?:\.\d+)*$/.test(pluginName)) {
+          skippedCount++;
+          continue;
+        }
+
         const agntPath = path.join(this.bundledPluginsDir, agntFile);
         const pluginPath = path.join(this.pluginsDir, pluginName);
 
@@ -250,10 +271,52 @@ class PluginInstaller {
         }
       }
 
-      console.log(`[PluginInstaller] Bundled plugins: ${installedCount} installed, ${skippedCount} already existed, ${failedCount} failed`);
+      console.log(
+        `[PluginInstaller] Bundled plugins: ${installedCount} installed, ${skippedCount} already existed, ${failedCount} failed, ${userUninstalledCount} skipped (user-uninstalled)`
+      );
     } catch (error) {
       console.error('[PluginInstaller] Error installing bundled plugins:', error.message);
     }
+  }
+
+  /**
+   * PRD-057: Read the list of plugin names the user has explicitly uninstalled.
+   * Stored in registry.json as `userUninstalled: [pluginName, ...]`.
+   * Honored by installBundledPlugins so manually-removed plugins don't respawn.
+   */
+  async getUserUninstalledList() {
+    try {
+      const content = await fs.readFile(this.registryPath, 'utf-8');
+      const registry = JSON.parse(content);
+      return Array.isArray(registry?.userUninstalled) ? registry.userUninstalled : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async addUserUninstalled(pluginName) {
+    let registry = { plugins: [], userUninstalled: [] };
+    try {
+      const content = await fs.readFile(this.registryPath, 'utf-8');
+      registry = JSON.parse(content) || registry;
+    } catch {}
+    if (!Array.isArray(registry.plugins)) registry.plugins = [];
+    if (!Array.isArray(registry.userUninstalled)) registry.userUninstalled = [];
+    if (!registry.userUninstalled.includes(pluginName)) {
+      registry.userUninstalled.push(pluginName);
+    }
+    await fs.writeFile(this.registryPath, JSON.stringify(registry, null, 2));
+  }
+
+  async removeUserUninstalled(pluginName) {
+    let registry = { plugins: [], userUninstalled: [] };
+    try {
+      const content = await fs.readFile(this.registryPath, 'utf-8');
+      registry = JSON.parse(content) || registry;
+    } catch {}
+    if (!Array.isArray(registry.userUninstalled)) return;
+    registry.userUninstalled = registry.userUninstalled.filter((n) => n !== pluginName);
+    await fs.writeFile(this.registryPath, JSON.stringify(registry, null, 2));
   }
 
   /**
@@ -301,20 +364,53 @@ class PluginInstaller {
       // Read manifest to check for dependencies
       const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
 
-      // Check if plugin has tools defined
-      if (!manifest.tools || manifest.tools.length === 0) {
-        console.warn(`[PluginInstaller] ${pluginName}: No tools defined in manifest`);
+      // PRD-057: ecosystem plugins may have agents/workflows/skills/widgets
+      // and no tools. Accept either; reject only if NOTHING is declared.
+      const tools = Array.isArray(manifest.tools) ? manifest.tools : [];
+      const hasAnyAsset =
+        tools.length > 0 ||
+        (Array.isArray(manifest.agents) && manifest.agents.length > 0) ||
+        (Array.isArray(manifest.workflows) && manifest.workflows.length > 0) ||
+        (Array.isArray(manifest.skills) && manifest.skills.length > 0) ||
+        (Array.isArray(manifest.widgets) && manifest.widgets.length > 0);
+      if (!hasAnyAsset) {
+        console.warn(`[PluginInstaller] ${pluginName}: manifest declares no tools/agents/workflows/skills/widgets`);
         return false;
       }
 
       // Validate that all tool entry points exist
-      for (const tool of manifest.tools) {
+      for (const tool of tools) {
         if (tool.entryPoint) {
           const toolPath = path.join(pluginPath, tool.entryPoint);
           try {
             await fs.access(toolPath);
           } catch {
             console.warn(`[PluginInstaller] ${pluginName}: Missing tool file ${tool.entryPoint} for tool ${tool.type}`);
+            return false;
+          }
+        }
+      }
+
+      // PRD-057: validate that all asset definition files exist
+      const assetChecks = [
+        { arr: manifest.agents, key: 'definition', kind: 'agent' },
+        { arr: manifest.workflows, key: 'definition', kind: 'workflow' },
+        { arr: manifest.skills, key: 'source', kind: 'skill' },
+        { arr: manifest.widgets, key: 'definition', kind: 'widget' },
+      ];
+      for (const { arr, key, kind } of assetChecks) {
+        if (!Array.isArray(arr)) continue;
+        for (const entry of arr) {
+          const rel = entry?.[key];
+          if (!entry?.slug || !rel) {
+            console.warn(`[PluginInstaller] ${pluginName}: invalid ${kind} entry ${JSON.stringify(entry)}`);
+            return false;
+          }
+          const abs = path.join(pluginPath, rel.replace(/^\.\//, ''));
+          try {
+            await fs.access(abs);
+          } catch {
+            console.warn(`[PluginInstaller] ${pluginName}: missing ${kind} file ${rel} for slug ${entry.slug}`);
             return false;
           }
         }
@@ -424,6 +520,9 @@ class PluginInstaller {
 
       // Update registry
       await this.updateRegistry(pluginName, version, 'installed');
+      // PRD-057: clear any prior user-uninstall record — the user is
+      // explicitly bringing this plugin back.
+      await this.removeUserUninstalled(pluginName);
 
       console.log(`[PluginInstaller] ${pluginName} installed successfully!`);
       return { success: true, pluginName, version };
@@ -477,6 +576,9 @@ class PluginInstaller {
 
       // Update registry
       await this.updateRegistry(pluginName, 'local', 'installed');
+      // PRD-057: clear any prior user-uninstall record — the user is
+      // explicitly bringing this plugin back.
+      await this.removeUserUninstalled(pluginName);
 
       console.log(`[PluginInstaller] ${pluginName} installed from file!`);
       return { success: true, pluginName };
@@ -623,6 +725,9 @@ class PluginInstaller {
     try {
       await fs.rm(pluginPath, { recursive: true, force: true });
       await this.updateRegistry(pluginName, null, 'uninstalled');
+      // PRD-057: remember this was a deliberate user uninstall so the bundled
+      // .agnt doesn't auto-reinstall it on the next startup.
+      await this.addUserUninstalled(pluginName);
       console.log(`[PluginInstaller] Uninstalled: ${pluginName}`);
       return { success: true };
     } catch (error) {

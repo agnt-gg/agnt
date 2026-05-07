@@ -64,6 +64,11 @@
               <i class="fas fa-store"></i>
               Publish to Marketplace
             </BaseButton>
+            <!-- PRD-057: export agent as canonical envelope -->
+            <BaseButton @click="exportAgentJson" variant="secondary" full-width>
+              <i class="fas fa-file-export"></i>
+              Export JSON
+            </BaseButton>
           </div>
         </div>
       </div>
@@ -343,6 +348,37 @@ export default {
     const agentCategories = computed(() => store.getters['agents/agentCategories'] || []);
     const simpleModal = ref(null);
 
+    // PRD-057: export selected agent as canonical envelope JSON
+    const exportAgentJson = async () => {
+      const agent = props.selectedAgent;
+      if (!agent?.id) return;
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/agents/${agent.id}/export`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        const envelope = await response.json();
+        const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(agent.name || 'agent').replace(/\s+/g, '_')}.agnt-agent.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        emit('panel-action', 'show-feedback', { type: 'success', message: `Exported "${agent.name}"` });
+      } catch (e) {
+        console.error('Agent export failed:', e);
+        emit('panel-action', 'show-feedback', { type: 'error', message: `Export failed: ${e.message}` });
+      }
+    };
+
     // Check Stripe Connect status
     const checkStripeStatus = async () => {
       try {
@@ -521,6 +557,8 @@ export default {
       handleSetupStripe,
       handleOpenBilling,
       simpleModal,
+      // PRD-057
+      exportAgentJson,
     };
   },
 };
@@ -628,7 +666,20 @@ export default {
 .agent-actions {
   margin-top: 10px;
   display: flex;
+  flex-direction: column;
   gap: 8px;
+  min-width: 0;
+}
+
+.agent-actions :deep(button),
+.agent-actions :deep(.btn) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .agent-actions .BaseButton i {

@@ -5,6 +5,8 @@ import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import PluginInstaller from '../plugins/PluginInstaller.js';
 import PluginManager from '../plugins/PluginManager.js';
+import PluginAssetLoader from '../plugins/PluginAssetLoader.js';
+import { bundleSelection } from '../plugins/PluginBundler.js';
 import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
 import { reloadPluginTools as reloadOrchestratorPluginTools } from '../services/orchestrator/tools.js';
 import PluginGenerator, { bumpVersion, determineVersionBump } from '../services/PluginGenerator.js';
@@ -175,11 +177,29 @@ router.get('/installed/:name/source', authenticateToken, async (req, res) => {
       files['package.json'] = await fs.readFile(path.join(pluginPath, 'package.json'), 'utf-8');
     } catch {}
 
-    // Read other files
+    // Read top-level files
     const entries = await fs.readdir(pluginPath, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isFile() && !['manifest.json', 'package.json', 'package-lock.json'].includes(entry.name) && !entry.name.startsWith('.')) {
         files[entry.name] = await fs.readFile(path.join(pluginPath, entry.name), 'utf-8');
+      }
+    }
+
+    // PRD-057: also read ecosystem-asset subdirectories so the Plugin Builder
+    // can browse/edit bundled agents/workflows/skills/widgets/tools. Without
+    // this, ecosystem plugins look empty in the editor.
+    const assetDirs = ['agents', 'workflows', 'skills', 'widgets', 'tools'];
+    for (const dir of assetDirs) {
+      const dirPath = path.join(pluginPath, dir);
+      try {
+        const dirEntries = await fs.readdir(dirPath, { withFileTypes: true });
+        for (const e of dirEntries) {
+          if (!e.isFile() || e.name.startsWith('.')) continue;
+          const rel = `${dir}/${e.name}`;
+          files[rel] = await fs.readFile(path.join(dirPath, e.name), 'utf-8');
+        }
+      } catch {
+        // Directory doesn't exist for this plugin — skip silently
       }
     }
 
@@ -393,16 +413,30 @@ router.post('/install-file', async (req, res) => {
 });
 
 /**
- * DELETE /api/plugins/:name
- * Uninstall a plugin
+ * DELETE /api/plugins/:name?mode=clean|purge|detach
+ * PRD-057: Uninstall a plugin in one of three asset-handling modes.
+ *   - clean (default): preserve user-modified assets as orphans
+ *   - purge: delete all plugin-installed assets regardless of modification
+ *   - detach: keep all assets, just unregister the plugin
  */
 router.delete('/:name', async (req, res) => {
   try {
     const { name } = req.params;
+    const mode = (req.query.mode || 'clean').toString();
 
-    console.log(`[PluginRoutes] Uninstalling plugin: ${name}`);
+    console.log(`[PluginRoutes] Uninstalling plugin: ${name} (mode=${mode})`);
+
+    // Walk + clean up the ecosystem assets first
+    let assetResult = null;
+    try {
+      assetResult = await PluginAssetLoader.uninstallAssets(name, mode);
+    } catch (assetErr) {
+      console.error('[PluginRoutes] Asset uninstall error:', assetErr);
+      return res.status(400).json({ success: false, error: assetErr.message });
+    }
 
     const result = await PluginInstaller.uninstallPlugin(name);
+    if (assetResult) result.assetResult = assetResult;
 
     if (result.success) {
       // Reload all plugin processes and wait for completion
@@ -417,6 +451,39 @@ router.delete('/:name', async (req, res) => {
       success: false,
       error: error.message,
     });
+  }
+});
+
+/**
+ * GET /api/plugins/:name/assets
+ * PRD-057: Inspect what ecosystem assets a plugin currently owns. Useful for
+ * the uninstall confirmation modal so the user can see what will be deleted
+ * vs preserved.
+ */
+router.get('/:name/assets', authenticateToken, async (req, res) => {
+  try {
+    const { name } = req.params;
+    const db = (await import('../models/database/index.js')).default;
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT a.asset_type, a.asset_slug, a.local_id, a.installed_at, a.deprecated_at,
+                CASE a.asset_type
+                  WHEN 'agent' THEN (SELECT is_user_modified FROM agents WHERE id = a.local_id)
+                  WHEN 'workflow' THEN (SELECT is_user_modified FROM workflows WHERE id = a.local_id)
+                  WHEN 'skill' THEN (SELECT is_user_modified FROM skills WHERE id = a.local_id)
+                  WHEN 'widget' THEN (SELECT is_user_modified FROM widget_definitions WHERE id = a.local_id)
+                  WHEN 'tool' THEN 0
+                END AS is_user_modified
+         FROM installed_plugin_assets a WHERE plugin_name = ?
+         ORDER BY a.asset_type, a.asset_slug`,
+        [name],
+        (err, r) => (err ? reject(err) : resolve(r || []))
+      );
+    });
+    res.json({ success: true, assets: rows });
+  } catch (error) {
+    console.error('[PluginRoutes] /assets error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -705,9 +772,13 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
       // Write manifest.json
       await fs.writeFile(path.join(tempPluginDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-      // Write tool code files
+      // PRD-057: source endpoint can return ecosystem-asset paths like
+      // "agents/koder-kai.json", so ensure the parent dir exists before writing
+      // each file. Without this, a flat fs.writeFile fails with ENOENT.
       for (const [fileName, code] of Object.entries(toolCode)) {
-        await fs.writeFile(path.join(tempPluginDir, fileName), code);
+        const target = path.join(tempPluginDir, fileName);
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, code);
       }
 
       // Write package.json if provided
@@ -741,12 +812,22 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
       const filesToInclude = ['manifest.json'];
       if (packageJson) filesToInclude.push('package.json');
 
-      // Add all .js files
+      // Add top-level .js files
       const files = await fs.readdir(tempPluginDir);
       for (const file of files) {
         if (file.endsWith('.js')) {
           filesToInclude.push(file);
         }
+      }
+
+      // PRD-057: include ecosystem-asset directories so packs with agents,
+      // workflows, skills, widgets, or tools round-trip correctly through the
+      // regenerate → build flow.
+      for (const dir of ['agents', 'workflows', 'skills', 'widgets', 'tools']) {
+        try {
+          await fs.access(path.join(tempPluginDir, dir));
+          filesToInclude.push(dir);
+        } catch {}
       }
 
       // Add node_modules if exists
@@ -809,6 +890,162 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
       success: false,
       error: error.message,
     });
+  }
+});
+
+// ============================================================================
+// PRD-057: BUNDLE-AS-PLUGIN AUTHORING
+// ============================================================================
+
+/**
+ * POST /api/plugins/bundle-from-assets
+ * Body: {
+ *   pluginName: string,
+ *   version: string,
+ *   description?: string,
+ *   author?: string,
+ *   icon?: string,
+ *   selection: { agentIds?: [], workflowIds?: [], skillIds?: [], widgetIds?: [] },
+ *   install?: boolean   // if true, also install on this instance
+ * }
+ *
+ * Returns a base64 .agnt archive plus the generated manifest.
+ */
+router.post('/bundle-from-assets', authenticateToken, async (req, res) => {
+  try {
+    const { pluginName, version = '1.0.0', description, author, icon, selection = {}, install = false } = req.body || {};
+    if (!pluginName) {
+      return res.status(400).json({ success: false, error: 'pluginName is required' });
+    }
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(pluginName)) {
+      return res.status(400).json({ success: false, error: 'pluginName must be kebab-case (a-z, 0-9, hyphens)' });
+    }
+
+    const tempDir = path.join(PluginInstaller.tempDir, `bundle-${pluginName}-${Date.now()}`);
+    await fs.mkdir(tempDir, { recursive: true });
+
+    let archivePath;
+    try {
+      const { manifest } = await bundleSelection({
+        pluginName,
+        version,
+        description,
+        author,
+        icon,
+        selection,
+        outDir: tempDir,
+      });
+
+      // Write a minimal package.json so PluginInstaller's ensureModuleType is happy
+      await fs.writeFile(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify({ name: pluginName, version, type: 'module' }, null, 2)
+      );
+
+      // Build the .agnt tarball
+      const distDir = path.join(PluginInstaller.pluginsDir, '..', 'plugin-builds');
+      await fs.mkdir(distDir, { recursive: true });
+      archivePath = path.join(distDir, `${pluginName}.agnt`);
+
+      const filesToInclude = ['manifest.json', 'package.json'];
+      const entries = await fs.readdir(tempDir, { withFileTypes: true });
+      for (const e of entries) {
+        if (e.isDirectory() && ['agents', 'workflows', 'skills', 'widgets', 'tools'].includes(e.name)) {
+          filesToInclude.push(e.name);
+        }
+      }
+
+      const tar = await import('tar');
+      await tar.create(
+        { gzip: true, file: archivePath, cwd: tempDir, prefix: pluginName },
+        filesToInclude
+      );
+
+      const archiveBuf = await fs.readFile(archivePath);
+
+      let installResult = null;
+      let reloadResults = null;
+      if (install) {
+        installResult = await PluginInstaller.installFromFile(archivePath, pluginName);
+        if (installResult.success) {
+          reloadResults = await reloadAllPlugins();
+          installResult.reloadStatus = reloadResults;
+          broadcast(RealtimeEvents.PLUGIN_INSTALLED, {
+            name: pluginName,
+            version,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        manifest,
+        fileName: `${pluginName}.agnt`,
+        size: archiveBuf.length,
+        data: archiveBuf.toString('base64'),
+        installed: install ? !!installResult?.success : false,
+        installResult,
+      });
+    } finally {
+      // Clean up the temp build directory (keep the final .agnt in plugin-builds)
+      try { await fs.rm(tempDir, { recursive: true, force: true }); } catch {}
+    }
+  } catch (error) {
+    console.error('[PluginRoutes] bundle-from-assets error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/plugins/install-file/check-auth
+ * PRD-057: Inspect an .agnt archive's manifest and return the list of
+ * authProvider declarations across its tools so the install UI can prompt
+ * the user to configure missing providers before completing extraction.
+ *
+ * Body: { fileData: string (base64) }
+ */
+router.post('/install-file/check-auth', authenticateToken, async (req, res) => {
+  try {
+    const { fileData } = req.body || {};
+    if (!fileData) return res.status(400).json({ success: false, error: 'fileData is required' });
+
+    const tempPath = path.join(PluginInstaller.tempDir, `auth-check-${Date.now()}.agnt`);
+    await fs.mkdir(PluginInstaller.tempDir, { recursive: true });
+    await fs.writeFile(tempPath, Buffer.from(fileData, 'base64'));
+
+    // Extract just the manifest into a scratch directory and inspect it
+    const scratch = path.join(PluginInstaller.tempDir, `auth-check-${Date.now()}-extract`);
+    await fs.mkdir(scratch, { recursive: true });
+    try {
+      const tar = await import('tar');
+      await tar.extract({ file: tempPath, cwd: scratch, strip: 1 });
+      const manifestRaw = await fs.readFile(path.join(scratch, 'manifest.json'), 'utf-8');
+      const manifest = JSON.parse(manifestRaw);
+      const providers = new Set();
+      for (const tool of manifest.tools || []) {
+        if (tool?.schema?.authProvider) providers.add(tool.schema.authProvider);
+      }
+      res.json({
+        success: true,
+        pluginName: manifest.name,
+        version: manifest.version,
+        requiredAuthProviders: Array.from(providers),
+        assetCounts: {
+          tools: (manifest.tools || []).length,
+          agents: (manifest.agents || []).length,
+          workflows: (manifest.workflows || []).length,
+          skills: (manifest.skills || []).length,
+          widgets: (manifest.widgets || []).length,
+        },
+      });
+    } finally {
+      try { await fs.rm(scratch, { recursive: true, force: true }); } catch {}
+      try { await fs.unlink(tempPath); } catch {}
+    }
+  } catch (error) {
+    console.error('[PluginRoutes] check-auth error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

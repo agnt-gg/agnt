@@ -790,6 +790,7 @@ export default {
 </script>
 
 <style scoped>
+
 /* Main Layout */
 .agentforge-content {
   position: relative;

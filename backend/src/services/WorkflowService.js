@@ -2,9 +2,24 @@ import WorkflowModel from '../models/WorkflowModel.js';
 import WebhookModel from '../models/WebhookModel.js';
 import WorkflowProcessBridge from '../workflow/WorkflowProcessBridge.js';
 import generateUUID from '../utils/generateUUID.js';
+import db from '../models/database/index.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import PluginManager from '../plugins/PluginManager.js';
 import PluginInstaller from '../plugins/PluginInstaller.js';
+
+/**
+ * PRD-057: Flip is_user_modified flag for plugin-installed workflows.
+ * Called on every UI-originated UPDATE.
+ */
+async function markWorkflowUserModified(workflowId) {
+  await new Promise((resolve) => {
+    db.run(
+      `UPDATE workflows SET is_user_modified = 1 WHERE id = ? AND source_plugin IS NOT NULL`,
+      [workflowId],
+      () => resolve()
+    );
+  });
+}
 
 class WorkflowService {
   healthCheck(req, res) {
@@ -31,6 +46,11 @@ class WorkflowService {
 
       // Upsert the workflow changes
       await WorkflowModel.createOrUpdate(workflow.id, JSON.stringify(workflow), userId, workflow.isShareable);
+
+      // PRD-057: mark plugin-installed workflows as user-modified on UI saves
+      if (existingWorkflow) {
+        await markWorkflowUserModified(workflow.id);
+      }
 
       /**
        *  If the workflow was already active (listening/running/queued),
@@ -90,6 +110,9 @@ class WorkflowService {
     try {
       const workflowData = JSON.stringify(req.body.workflow);
       const result = await WorkflowModel.update(req.params.id, workflowData, req.user.userId);
+
+      // PRD-057: mark plugin-installed workflows as user-modified on UI updates
+      await markWorkflowUserModified(req.params.id);
 
       // If the workflow was already active, restart it with updated data
       try {

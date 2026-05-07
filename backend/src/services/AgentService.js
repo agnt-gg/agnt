@@ -3,6 +3,7 @@ import SkillModel from '../models/SkillModel.js';
 import SkillService, { buildSkillsContext, buildSkillCatalog, buildSkillActivationInstructions } from './SkillService.js';
 import SkillDiscoveryService from './SkillDiscoveryService.js';
 import UserModel from '../models/UserModel.js';
+import db from '../models/database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 
 import universalChatHandler from './OrchestratorService.js';
@@ -89,6 +90,18 @@ class AgentService {
       }
 
       const result = await AgentModel.createOrUpdate(agent.id, agent, userId);
+
+      // PRD-057: Flip is_user_modified flag for plugin-installed agents.
+      // Skipped for brand-new agents (no source_plugin yet, harmless either way).
+      if (!isNewAgent) {
+        await new Promise((resolve) => {
+          db.run(
+            `UPDATE agents SET is_user_modified = 1 WHERE id = ? AND source_plugin IS NOT NULL`,
+            [agent.id],
+            () => resolve()
+          );
+        });
+      }
 
       // Broadcast real-time update to user's connected clients (all tabs)
       broadcastToUser(userId, isNewAgent ? RealtimeEvents.AGENT_CREATED : RealtimeEvents.AGENT_UPDATED, {

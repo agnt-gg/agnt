@@ -1,6 +1,70 @@
 import SkillModel from '../models/SkillModel.js';
+import db from '../models/database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 import { parseSkillMd, serializeSkillMd, isValidSkillName, toKebabCase } from '../utils/skillValidation.js';
+
+/**
+ * PRD-057: Programmatic skill import from SKILL.md text.
+ * Shared by the SkillRoutes.importSkillMd HTTP handler and PluginAssetLoader.
+ *
+ * @param {string} content      raw SKILL.md text (frontmatter + body)
+ * @param {string} userId       importing user ID
+ * @param {object} [options]
+ * @param {string} [options.sourcePlugin]  plugin name when invoked by plugin loader
+ * @param {string} [options.slugOverride]  force a particular slug (for plugin-namespacing)
+ * @returns {Promise<{ id: string, slug: string, warnings: string[] }>}
+ */
+export async function importSkillFromMd(content, userId, options = {}) {
+  if (!content || typeof content !== 'string') {
+    throw new Error('importSkillFromMd requires SKILL.md text');
+  }
+  if (!userId) throw new Error('importSkillFromMd requires a userId');
+
+  const parsed = parseSkillMd(content);
+  if (parsed.errors.length > 0 && !parsed.frontmatter.name) {
+    throw new Error(`Invalid SKILL.md: ${parsed.errors.join('; ')}`);
+  }
+
+  const name = parsed.frontmatter.name;
+  if (!name) throw new Error('SKILL.md must include a "name" field in frontmatter');
+
+  const sanitizedName = (name || '').trim();
+  if (!sanitizedName) throw new Error('Skill name must contain at least one letter or number');
+
+  const description = parsed.frontmatter.description || '';
+  if (description.length > 1024) throw new Error('Description must be 1024 characters or less');
+
+  const displayName = parsed.frontmatter.displayName || sanitizedName;
+  const slug = options.slugOverride || sanitizedName;
+
+  const skillData = {
+    name: displayName,
+    slug,
+    description,
+    instructions: parsed.instructions || '',
+    category: parsed.frontmatter.category || 'general',
+    icon: parsed.frontmatter.icon || 'fas fa-puzzle-piece',
+    license: parsed.frontmatter.license || '',
+    compatibility: parsed.frontmatter.compatibility || '',
+    metadata: parsed.frontmatter.metadata || {},
+    allowedTools: parsed.frontmatter['allowed-tools'] || [],
+  };
+
+  const id = generateUUID();
+  await SkillModel.createOrUpdate(id, skillData, userId);
+
+  if (options.sourcePlugin) {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE skills SET source_plugin = ?, is_user_modified = 0 WHERE id = ?`,
+        [options.sourcePlugin, id],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+  }
+
+  return { id, slug, warnings: parsed.warnings || [] };
+}
 
 class SkillService {
   /**
@@ -164,6 +228,13 @@ You have the above skills assigned. Follow the instructions defined in each skil
       const existing = await SkillModel.findById(id);
       if (!existing) return res.status(404).json({ error: 'Skill not found' });
 
+      // PRD-057: mark plugin-installed skills as user-modified on UI updates
+      if (existing.source_plugin) {
+        await new Promise((resolve) => {
+          db.run(`UPDATE skills SET is_user_modified = 1 WHERE id = ?`, [id], () => resolve());
+        });
+      }
+
       if (skill.name) {
         const sanitizedName = SkillService.sanitizeName(skill.name);
         if (!sanitizedName) {
@@ -234,51 +305,12 @@ You have the above skills assigned. Follow the instructions defined in each skil
         return res.status(400).json({ error: 'Request body must contain SKILL.md content' });
       }
 
-      const parsed = parseSkillMd(content);
-
-      // Check for fatal errors
-      if (parsed.errors.length > 0 && !parsed.frontmatter.name) {
-        return res.status(400).json({ error: `Invalid SKILL.md: ${parsed.errors.join('; ')}` });
-      }
-
-      const name = parsed.frontmatter.name;
-      if (!name) {
-        return res.status(400).json({ error: 'SKILL.md must include a "name" field in frontmatter' });
-      }
-
-      const sanitizedName = SkillService.sanitizeName(name);
-      if (!sanitizedName) {
-        return res.status(400).json({ error: 'Skill name must contain at least one letter or number' });
-      }
-
-      const description = parsed.frontmatter.description || '';
-      if (description.length > 1024) {
-        return res.status(400).json({ error: 'Description must be 1024 characters or less' });
-      }
-
-      // Use displayName (from loose format) for a friendlier name, fallback to sanitizedName
-      const displayName = parsed.frontmatter.displayName || sanitizedName;
-
-      const skillData = {
-        name: displayName,
-        slug: sanitizedName, // kebab-case canonical name
-        description,
-        instructions: parsed.instructions || '',
-        category: parsed.frontmatter.category || 'general',
-        icon: parsed.frontmatter.icon || 'fas fa-puzzle-piece',
-        license: parsed.frontmatter.license || '',
-        compatibility: parsed.frontmatter.compatibility || '',
-        metadata: parsed.frontmatter.metadata || {},
-        allowedTools: parsed.frontmatter['allowed-tools'] || [],
-      };
-
-      const id = generateUUID();
-      await SkillModel.createOrUpdate(id, skillData, userId);
-      const created = await SkillModel.findById(id);
-      res.status(201).json({ skill: created, skillId: id, warnings: parsed.warnings });
+      const result = await importSkillFromMd(content, userId);
+      const created = await SkillModel.findById(result.id);
+      res.status(201).json({ skill: created, skillId: result.id, warnings: result.warnings });
     } catch (error) {
       console.error('Error importing skill:', error);
-      res.status(500).json({ error: 'Failed to import skill' });
+      res.status(400).json({ error: error.message || 'Failed to import skill' });
     }
   }
 

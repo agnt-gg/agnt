@@ -2,6 +2,8 @@ import express from 'express';
 import { authenticateToken } from './Middleware.js';
 import WorkflowService from '../services/WorkflowService.js';
 import WorkflowVersionService from '../services/WorkflowVersionService.js';
+import WorkflowModel from '../models/WorkflowModel.js';
+import { buildWorkflowEnvelope, parseWorkflowEnvelope, importWorkflow } from '../services/WorkflowImportService.js';
 
 // Set up new route
 const WorkflowRoutes = express.Router();
@@ -140,6 +142,41 @@ WorkflowRoutes.get('/:workflowId/versions/stats', authenticateToken, async (req,
   } catch (error) {
     console.error('[WorkflowVersionRoutes] Error getting version stats:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// PRD-057: WORKFLOW IMPORT / EXPORT
+// ============================================================================
+
+WorkflowRoutes.get('/:id/export', authenticateToken, async (req, res) => {
+  try {
+    const row = await WorkflowModel.findOne(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Workflow not found' });
+    if (!row.is_shareable && row.user_id !== req.user.userId) {
+      return res.status(403).json({ error: 'You do not have permission to export this workflow' });
+    }
+    const data = JSON.parse(row.workflow_data);
+    res.json(buildWorkflowEnvelope(data));
+  } catch (error) {
+    console.error('[WorkflowRoutes] export error:', error);
+    res.status(500).json({ error: 'Failed to export workflow', details: error.message });
+  }
+});
+
+WorkflowRoutes.post('/import', authenticateToken, async (req, res) => {
+  try {
+    const envelope = req.body?.envelope || req.body;
+    const payload = parseWorkflowEnvelope(envelope);
+    const result = await importWorkflow(payload, req.user.userId);
+    res.status(201).json({
+      success: true,
+      workflowId: result.id,
+      missingToolTypes: result.missingToolTypes,
+    });
+  } catch (error) {
+    console.error('[WorkflowRoutes] import error:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 

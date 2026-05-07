@@ -84,6 +84,10 @@
         <BaseButton v-if="!isMarketplaceWorkflow" class="action-button publish" @click="showPublishModal = true">
           <i class="fas fa-store"></i> Publish to Marketplace
         </BaseButton>
+        <!-- PRD-057: export workflow as canonical envelope -->
+        <BaseButton v-if="!isMarketplaceWorkflow" class="action-button" @click="exportWorkflowJson">
+          <i class="fas fa-file-export"></i> Export JSON
+        </BaseButton>
         <BaseButton class="action-button delete" @click="handleDeleteWorkflow"> <i class="fas fa-trash"></i> Delete Workflow </BaseButton>
       </div>
 
@@ -621,6 +625,38 @@ export default {
       localStorage.setItem('settings-initial-section', 'billing');
     };
 
+    // PRD-057: export selected workflow as canonical envelope JSON
+    const exportWorkflowJson = async () => {
+      const wf = selectedWorkflow.value;
+      if (!wf?.id) return;
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_CONFIG.BASE_URL}/workflows/${wf.id}/export`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        const envelope = await response.json();
+        const name = envelope?.payload?.name || wf.name || 'workflow';
+        const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${String(name).replace(/\s+/g, '_')}.agnt-workflow.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        emit('panel-action', 'show-feedback', { type: 'success', message: `Exported "${name}"` });
+      } catch (e) {
+        console.error('Workflow export failed:', e);
+        emit('panel-action', 'show-feedback', { type: 'error', message: `Export failed: ${e.message}` });
+      }
+    };
+
     return {
       selectedWorkflow,
       isWorkflowActive,
@@ -658,6 +694,8 @@ export default {
       handlePublishWorkflow,
       handleSetupStripe,
       handleOpenBilling,
+      // PRD-057
+      exportWorkflowJson,
       simpleModal,
     };
   },
@@ -939,6 +977,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .action-button {
@@ -953,6 +992,14 @@ h3 {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  /* PRD-057: prevent label overflow from bleeding past the panel edge */
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .action-button:hover {

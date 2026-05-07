@@ -2,6 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ToolConfig from '../tools/ToolConfig.js';
+import PluginAssetLoader from './PluginAssetLoader.js';
+import db from '../models/database/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -162,10 +164,29 @@ class PluginManager {
       const manifest = JSON.parse(manifestContent);
 
       // Validate manifest
-      if (!manifest.name || !manifest.tools || !Array.isArray(manifest.tools)) {
-        console.warn(`[PluginManager] Invalid manifest for plugin ${pluginName}`);
+      // PRD-057: ecosystem plugins may have agents/workflows/skills/widgets
+      // instead of (or in addition to) tools. Require name + at least one
+      // recognized asset array.
+      if (!manifest.name) {
+        console.warn(`[PluginManager] Invalid manifest for plugin ${pluginName}: missing name`);
         return;
       }
+      const hasAnyAsset =
+        (Array.isArray(manifest.tools) && manifest.tools.length > 0) ||
+        (Array.isArray(manifest.agents) && manifest.agents.length > 0) ||
+        (Array.isArray(manifest.workflows) && manifest.workflows.length > 0) ||
+        (Array.isArray(manifest.skills) && manifest.skills.length > 0) ||
+        (Array.isArray(manifest.widgets) && manifest.widgets.length > 0);
+      if (!hasAnyAsset) {
+        console.warn(`[PluginManager] Plugin ${pluginName} has no tools/agents/workflows/skills/widgets`);
+        return;
+      }
+      // Tool array is optional now, but if present must be an array
+      if (manifest.tools && !Array.isArray(manifest.tools)) {
+        console.warn(`[PluginManager] Plugin ${pluginName}: manifest.tools must be an array`);
+        return;
+      }
+      manifest.tools = manifest.tools || [];
 
       // Validate that all tool entry points exist
       for (const tool of manifest.tools) {
@@ -231,6 +252,66 @@ class PluginManager {
         }
       }
 
+      // PRD-057: install ecosystem assets (agents, workflows, skills, widgets, tools).
+      // Idempotent — re-running honors is_user_modified flags so we don't clobber
+      // user customizations between app restarts. Even tool-only plugins are
+      // walked so their tools land in installed_plugin_assets for the /assets
+      // endpoint and uninstall accounting.
+      const hasEcosystemAssets =
+        (Array.isArray(manifest.agents) && manifest.agents.length > 0) ||
+        (Array.isArray(manifest.workflows) && manifest.workflows.length > 0) ||
+        (Array.isArray(manifest.skills) && manifest.skills.length > 0) ||
+        (Array.isArray(manifest.widgets) && manifest.widgets.length > 0) ||
+        (Array.isArray(manifest.tools) && manifest.tools.length > 0);
+
+      if (hasEcosystemAssets) {
+        try {
+          // Bind plugin assets to the first user (single-user / family-shared model
+          // per CLAUDE.md). If multiple users exist they'll all see plugin assets
+          // because they were installed for the system, not bound to one user.
+          const owner = await new Promise((resolve, reject) => {
+            db.get(
+              'SELECT id FROM users ORDER BY created_at ASC LIMIT 1',
+              [],
+              (err, row) => (err ? reject(err) : resolve(row?.id || null))
+            );
+          });
+          if (owner) {
+            const summary = await PluginAssetLoader.installAssets(
+              pluginName,
+              manifest.version || '1.0.0',
+              manifest,
+              pluginPath,
+              owner
+            );
+            if (summary.noop) {
+              console.log(`[PluginManager] ${pluginName}: ecosystem assets already at v${manifest.version || '1.0.0'}`);
+            } else {
+              const counts = {
+                agents: summary.installed.agents.length,
+                workflows: summary.installed.workflows.length,
+                skills: summary.installed.skills.length,
+                widgets: summary.installed.widgets.length,
+                tools: summary.installed.tools?.length || 0,
+              };
+              console.log(
+                `[PluginManager] ${pluginName}: installed ${counts.agents} agents, ${counts.workflows} workflows, ${counts.skills} skills, ${counts.widgets} widgets, ${counts.tools} tools` +
+                (summary.skipped.length ? ` (${summary.skipped.length} user-modified, kept)` : '') +
+                (summary.deprecated.length ? ` (${summary.deprecated.length} deprecated)` : '')
+              );
+              if (summary.errors.length) {
+                console.warn(`[PluginManager] ${pluginName}: asset install errors:`, summary.errors);
+              }
+            }
+            this.plugins.get(pluginName).assetSummary = summary;
+          } else {
+            console.warn(`[PluginManager] ${pluginName}: no users in DB, skipping ecosystem-asset install`);
+          }
+        } catch (assetError) {
+          console.error(`[PluginManager] ${pluginName}: ecosystem asset install failed:`, assetError);
+        }
+      }
+
       console.log(`[PluginManager] Loaded plugin: ${pluginName} (${manifest.tools.length} tools)`);
     } catch (error) {
       if (error.code === 'ENOENT') {
@@ -252,6 +333,10 @@ class PluginManager {
         if (tool.schema) {
           schemas.push({
             ...tool.schema,
+            // Backfill `type` from the top-level manifest entry if the schema
+            // didn't include it. The orchestrator's toolRegistry depends on
+            // schema.type to derive the LLM function name.
+            type: tool.schema?.type || tool.type,
             _plugin: pluginName,
             _entryPoint: tool.entryPoint,
             // Include icon: tool-specific first, then plugin manifest, then fallback
