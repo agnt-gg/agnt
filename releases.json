@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "0.5.14",
+      "date": "May 7, 2026",
+      "title": "Pack Studio, Telegram Plugin & Codex Stability - AGNT v0.5.14",
+      "type": "patch",
+      "features": [
+        { "name": "New Pack Studio Lets You Bundle Your Agents, Workflows, Skills, Widgets, and Custom Tools Into One Shareable .agnt File With a Visual Two-Pane Composer", "status": "new" },
+        { "name": "New Telegram Toolkit Plugin Adds Bots, Messaging, Polls, File Sharing, and Group Management to Your Workflows", "status": "new" },
+        { "name": "Twitter Plugin Now Supports Quote Tweets, Retweets, Likes, Conversation Threads, Advanced Search, and Direct Tweet Lookup", "status": "updated" },
+        { "name": "Codex Now Auto-Retries Brief Network Hiccups Mid-Stream Instead of Failing on the First Stutter, and Shows the Real Backend Error When It Doesn't Recover", "status": "updated" },
+        { "name": "Connecting and Disconnecting Integrations Now Updates the Tile Instantly in Both the Connectors Page and the Health Sidebar — No More Page Refresh", "status": "bug" },
+        { "name": "AGNT No Longer Silently Swaps Your Chosen AI Model for a Stale Hardcoded Fallback in Widgets, Background Tasks, and Other Tools That Were Quietly Breaking on Codex", "status": "bug" },
+        { "name": "The Insight Engine Now Respects the Model You Picked Instead of Force-Switching to a Dead Fallback That Returned 400 on Every Call", "status": "bug" },
+        { "name": "Codex Reasoning Effort Is Now Set on Every Call So Long Sessions Stay Consistent in Quality", "status": "updated" },
+        { "name": "Custom Tools and Workflow LLM Nodes Now Route Through the Correct Codex Path Instead of Hitting the Wrong API", "status": "bug" },
+        { "name": "Web Scraping Works Again After Removing a Stale Browser-Stealth Library That Was Crashing Every Page Load", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.13",
       "date": "May 6, 2026",
       "title": "Skill & Goal Slash Commands, Universal Reasoning Toggle & Codex Stability - AGNT v0.5.13",
