@@ -20,6 +20,8 @@ import CodexCliSessionManager from '../ai/CodexCliSessionManager.js';
 import jwt from 'jsonwebtoken';
 import ParameterResolver from '../../workflow/ParameterResolver.js';
 import { saveBase64Image } from '../ImageStorage.js';
+import { createLlmClient } from '../ai/LlmService.js';
+import { createLlmAdapter } from './llmAdapters.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1835,14 +1837,10 @@ export const TOOLS = {
         },
       },
     },
-    execute: async ({ tool_id, input_parameters }, authToken, { openai }) => {
+    execute: async ({ tool_id, input_parameters }, authToken, context) => {
       console.log(`Tool call: execute_custom_agnt_tool with tool_id: "${tool_id}", parameters:`, input_parameters);
       if (!tool_id) {
         return JSON.stringify({ success: false, error: 'tool_id is required.' });
-      }
-      if (!input_parameters || typeof input_parameters !== 'object') {
-        // Allow empty input_parameters if the tool doesn't require any
-        // return JSON.stringify({ success: false, error: "input_parameters (object) is required." });
       }
 
       try {
@@ -1884,45 +1882,53 @@ export const TOOLS = {
 
         let promptTemplate = tool.parameters.instructions;
 
-        // Substitute input_parameters into the promptTemplate
-        // The prompt template uses {{variable_name}}
         for (const key in input_parameters) {
           const regex = new RegExp(`{{${key}}}`, 'g');
           promptTemplate = promptTemplate.replace(regex, input_parameters[key]);
         }
 
-        // Check for any remaining unsubstituted placeholders (optional, for debugging)
         const unsubstitutedMatch = promptTemplate.match(/{{(.*?)}}/);
         if (unsubstitutedMatch) {
           console.warn(
             `Warning: Unsubstituted placeholder found in prompt for tool ${tool_id}: ${unsubstitutedMatch[0]}. Parameters provided:`,
             input_parameters
           );
-          // Optionally, you could return an error or proceed
-          // For now, we'll proceed, the LLM might handle it or ignore it.
         }
 
-        // For now, execute using the orchestrator's default OpenAI client and model
-        // In the future, this could be extended to use tool.parameters.provider and tool.parameters.model
-        if (!openai) {
-          return JSON.stringify({ success: false, error: 'OpenAI client not available in orchestrator.' });
+        // Resolve provider/model: tool's own setting → conversation's resolved provider/model.
+        // The previous version called openai.chat.completions.create on whatever client was
+        // stuffed into context.openai by the orchestrator — for openai-codex users that was
+        // the Codex OAuth client pointed at chatgpt.com/backend-api/codex, which does not
+        // expose /chat/completions and rejects the call.
+        const provider = tool.parameters.provider || context?.normalizedProvider || context?.provider;
+        const model = tool.parameters.model || context?.model;
+        if (!provider || !model) {
+          return JSON.stringify({
+            success: false,
+            tool_id,
+            error: 'No provider/model available for custom tool execution. Configure tool.parameters.{provider,model} or ensure the conversation has a resolved provider/model.',
+          });
         }
 
-        // Add MathJax instruction for the LLM executing the custom tool
-        // const mathJaxInstruction = "IMPORTANT: If returning advanced math or chemical notation, ALWAYS INCLUDE DOUBLE DOLLAR SIGNS SPACE '$$ ' at the beginning and '$$' end of any MathJax advanced math notation. For example: '$$ \\sigma = \\sqrt{\\text{Var}(X)} $$'. For chemical formulas, use '$$\\ce{H2O}$$'.";
+        const llmClient = await createLlmClient(provider, context?.userId, { conversationId: context?.conversationId });
+        const adapter = await createLlmAdapter(provider, llmClient, model);
+        const { responseMessage } = await adapter.call(
+          [{ role: 'user', content: promptTemplate }],
+          [],
+        );
 
-        const messagesForToolExecution = [
-          // { role: "system", content: mathJaxInstruction }, // Removed from here
-          { role: 'user', content: promptTemplate },
-        ];
-
-        const llmResponse = await openai.chat.completions.create({
-          model: tool.parameters.model || 'gpt-4o-mini', // Use tool's model or orchestrator's default
-          messages: messagesForToolExecution,
-        });
-
-        const output = llmResponse.choices[0].message.content;
-        return JSON.stringify({ success: true, tool_id: tool_id, output: output });
+        let output;
+        if (typeof responseMessage?.content === 'string') {
+          output = responseMessage.content;
+        } else if (Array.isArray(responseMessage?.content)) {
+          output = responseMessage.content
+            .filter((b) => b && (b.type === 'text' || typeof b.text === 'string'))
+            .map((b) => b.text || '')
+            .join('');
+        } else {
+          output = '';
+        }
+        return JSON.stringify({ success: true, tool_id: tool_id, output });
       } catch (error) {
         console.error(`Error executing custom AGNT tool ${tool_id}:`, error);
         return JSON.stringify({ success: false, tool_id: tool_id, error: `Execution failed: ${error.message}` });

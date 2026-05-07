@@ -4658,11 +4658,18 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
 
     case 'openai-codex':
       // Codex models use the ChatGPT backend Responses API (different from standard OpenAI).
-      if (requiresResponsesApi(model)) {
-        console.log(`[LLM Adapter] Using CodexResponsesAdapter for codex model: ${model} (ChatGPT backend)`);
-        return new CodexResponsesAdapter(client, model, options);
+      // The Codex OAuth client points at chatgpt.com/backend-api/codex, which only
+      // exposes /responses — falling through to OpenAiLikeAdapter (which calls
+      // /chat/completions) silently produces 4xx/5xx errors. Surface the misconfig
+      // instead of papering over it.
+      if (!requiresResponsesApi(model)) {
+        throw new Error(
+          `openai-codex provider requires a Responses-API model (gpt-5* or o-series); got "${model}". ` +
+          `Pick a Codex-supported model in settings or switch providers.`
+        );
       }
-      return new OpenAiLikeAdapter(client, model, { provider: lowerCaseProvider });
+      console.log(`[LLM Adapter] Using CodexResponsesAdapter for codex model: ${model} (ChatGPT backend)`);
+      return new CodexResponsesAdapter(client, model, options);
 
     case 'deepseek':
     case 'grokai':

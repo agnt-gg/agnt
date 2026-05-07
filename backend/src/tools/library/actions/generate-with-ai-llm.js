@@ -62,16 +62,10 @@ const PROVIDER_CONFIG = {
     imageModels: ['dall-e-2', 'dall-e-3', 'gpt-image-1'],
   },
   'openai-codex': {
-    baseURL: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4.1',
-    supportsVision: true,
-    supportsImageGen: true,
-    supportsImageEdit: true,
-    imageModels: ['dall-e-3'],
-  },
-  'openai-codex': {
-    baseURL: 'codex-cli://local',
-    defaultModel: 'gpt-5-codex',
+    // Codex never goes through PROVIDER_CONFIG.baseURL — it must use
+    // createLlmClient + createLlmAdapter so the OAuth token, ChatGPT-Account-ID
+    // header, and CodexResponsesAdapter are all in play. baseURL/defaultModel
+    // are intentionally omitted so any callsite that tries to use them throws.
     supportsVision: true,
     supportsImageGen: false,
     supportsImageEdit: false,
@@ -479,6 +473,9 @@ class GenerateWithAiLlm extends BaseAction {
       case 'claude-code':
         response = await this.generateWithAnthropic({ ...params, prompt: fullPrompt });
         break;
+      case 'openai-codex':
+        response = await this.generateWithCodex({ ...params, prompt: fullPrompt });
+        break;
       case 'cerebras':
       case 'deepseek':
       case 'gemini':
@@ -489,7 +486,6 @@ class GenerateWithAiLlm extends BaseAction {
       case 'local':
       case 'minimax':
       case 'openai':
-      case 'openai-codex':
       case 'openrouter':
       case 'togetherai':
       case 'zai':
@@ -527,6 +523,9 @@ class GenerateWithAiLlm extends BaseAction {
       case 'claude-code':
         response = await this.generateWithAnthropic({ ...params, prompt, image });
         break;
+      case 'openai-codex':
+        response = await this.generateWithCodex({ ...params, prompt, image });
+        break;
       case 'deepseek':
       case 'gemini':
       case 'grokai':
@@ -536,7 +535,6 @@ class GenerateWithAiLlm extends BaseAction {
       case 'local':
       case 'minimax':
       case 'openai':
-      case 'openai-codex':
       case 'openrouter':
       case 'togetherai':
       case 'zai':
@@ -667,6 +665,44 @@ class GenerateWithAiLlm extends BaseAction {
       tokenCount: (response.usage.input_tokens || 0) + (response.usage.output_tokens || 0),
       inputTokens: response.usage.input_tokens || 0,
       outputTokens: response.usage.output_tokens || 0,
+    };
+  }
+
+  async generateWithCodex(params) {
+    // Codex uses OAuth + a custom ChatGPT backend (chatgpt.com/backend-api/codex)
+    // and only exposes /responses, not /chat/completions. Constructing a raw OpenAI
+    // SDK client here would miss the OAuth token, the ChatGPT-Account-ID header, and
+    // would call the wrong endpoint. Delegate to the same createLlmClient +
+    // createLlmAdapter path the orchestrator chat uses.
+    const provider = 'openai-codex';
+    if (!params.model) {
+      throw new Error('Codex provider requires an explicit model in the workflow node configuration (no defaultModel fallback).');
+    }
+    const client = await createLlmClient(provider, params.userId);
+    const adapter = await createLlmAdapter(provider, client, params.model);
+
+    const { responseMessage, usage } = await adapter.call(
+      [{ role: 'user', content: params.prompt }],
+      [],
+    );
+
+    let generatedText = '';
+    if (typeof responseMessage?.content === 'string') {
+      generatedText = responseMessage.content;
+    } else if (Array.isArray(responseMessage?.content)) {
+      generatedText = responseMessage.content
+        .filter((b) => b && (b.type === 'text' || b.type === 'output_text' || typeof b.text === 'string'))
+        .map((b) => b.text || '')
+        .join('');
+    }
+
+    const inputTokens = usage?.input_tokens || usage?.prompt_tokens || 0;
+    const outputTokens = usage?.output_tokens || usage?.completion_tokens || 0;
+    return {
+      generatedText,
+      tokenCount: inputTokens + outputTokens,
+      inputTokens,
+      outputTokens,
     };
   }
 
