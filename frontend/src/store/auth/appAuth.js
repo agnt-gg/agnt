@@ -243,7 +243,7 @@ const actions = {
     const result = await providerAuthService.connect(providerId, payload);
     if (result?.success) {
       await dispatch('fetchProviderStatus', providerId);
-      await dispatch('fetchConnectedApps');
+      await dispatch('fetchConnectedApps', { forceRefresh: true });
       dispatch('checkConnectionHealth');
     }
     return result;
@@ -255,7 +255,7 @@ const actions = {
       commit('SET_CLI_PROVIDER_STATUS', { providerId, status: { available: false, apiUsable: false, hint: 'Disconnected' } });
       commit('CLEAR_CODEX_DEVICE_SESSION');
       commit('CLEAR_CLAUDE_CODE_SETUP_SESSION');
-      await dispatch('fetchConnectedApps');
+      await dispatch('fetchConnectedApps', { forceRefresh: true });
       dispatch('checkConnectionHealth');
       return result;
     } catch (error) {
@@ -279,7 +279,7 @@ const actions = {
           providerId,
           status: { available: false, apiUsable: false, hint: 'Session expired. Please reconnect.' },
         });
-        await dispatch('fetchConnectedApps');
+        await dispatch('fetchConnectedApps', { forceRefresh: true });
         return { success: false, reauthRequired: true, error: data.error };
       }
       console.error(`Error refreshing ${providerId} token:`, error);
@@ -316,7 +316,7 @@ const actions = {
 
       if (lastStatus?.state === 'success') {
         await dispatch('fetchProviderStatus', providerId);
-        await dispatch('fetchConnectedApps');
+        await dispatch('fetchConnectedApps', { forceRefresh: true });
         commit('CLEAR_CODEX_DEVICE_SESSION');
         return lastStatus;
       }
@@ -354,7 +354,7 @@ const actions = {
     if (result?.success) {
       localStorage.removeItem('Claude-Code_models');
       await dispatch('fetchProviderStatus', 'claude-code');
-      await dispatch('fetchConnectedApps');
+      await dispatch('fetchConnectedApps', { forceRefresh: true });
     }
     return result;
   },
@@ -368,7 +368,7 @@ const actions = {
     try {
       const result = await providerAuthService.disconnect('claude-code');
       await dispatch('fetchProviderStatus', 'claude-code');
-      await dispatch('fetchConnectedApps');
+      await dispatch('fetchConnectedApps', { forceRefresh: true });
       commit('CLEAR_CLAUDE_CODE_SETUP_SESSION');
       return result;
     } catch (error) {
@@ -380,7 +380,7 @@ const actions = {
     try {
       const result = await providerAuthService.disconnect('gemini-cli');
       commit('SET_CLI_PROVIDER_STATUS', { providerId: 'gemini-cli', status: { available: false, apiUsable: false, hint: 'Disconnected' } });
-      await dispatch('fetchConnectedApps');
+      await dispatch('fetchConnectedApps', { forceRefresh: true });
       return result;
     } catch (error) {
       console.error('Error disconnecting Gemini CLI:', error);
@@ -448,7 +448,7 @@ const actions = {
       });
 
       // Refresh the connected apps list after deletion
-      await dispatch('fetchConnectedApps');
+      await dispatch('fetchConnectedApps', { forceRefresh: true });
       return { success: true, ...response.data };
     } catch (error) {
       console.error('Error deleting provider:', error);

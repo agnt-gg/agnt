@@ -24,12 +24,24 @@ export function useProviderConnection(modalRef) {
     return connectedApps.value.includes(normalized) || connectedApps.value.includes(providerId);
   };
 
-  const refreshHealth = async () => {
-    try {
-      await store.dispatch('appAuth/checkConnectionHealthStream');
-    } catch {
-      await store.dispatch('appAuth/checkConnectionHealth');
-    }
+  // In-flight dedupe so simultaneous triggers coalesce into a single refresh.
+  let refreshInFlight = null;
+  const refreshHealth = () => {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = (async () => {
+      try {
+        // forceRefresh bypasses the 1-min withFreshness cache (post-write refresh).
+        await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
+        try {
+          await store.dispatch('appAuth/checkConnectionHealthStream');
+        } catch {
+          await store.dispatch('appAuth/checkConnectionHealth');
+        }
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+    return refreshInFlight;
   };
 
   const showAlert = async (title, message) => {
@@ -472,28 +484,7 @@ export function useProviderConnection(modalRef) {
       const errorMessage = event.data.message || 'Authentication failed';
       await showAlert('Connection Error', `Failed to connect to ${providerName}: ${errorMessage}`);
     } else if (event.data.type === 'oauth-callback') {
-      const { code, state, provider } = event.data;
-      if (code && state) {
-        try {
-          const token = localStorage.getItem('token');
-          const response = await fetch(`${API_CONFIG.REMOTE_URL}/auth/callback`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, state }),
-          });
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-          const data = await response.json();
-          if (data.success) {
-            await refreshHealth();
-            await showAlert('Success', `Successfully connected to ${data.provider || provider}`);
-          } else {
-            throw new Error('OAuth completion failed');
-          }
-        } catch (error) {
-          console.error('Error completing OAuth:', error);
-          await showAlert('OAuth Error', `Failed to complete OAuth: ${error.message}`);
-        }
-      }
+      await refreshHealth();
     }
   };
 

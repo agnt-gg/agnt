@@ -1199,7 +1199,7 @@ export default {
             if (popup.closed) {
               clearInterval(checkPopup);
               // Refresh providers after popup closes
-              store.dispatch('appAuth/fetchConnectedApps');
+              store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
               store.dispatch('appAuth/fetchAllProviders');
             }
           }, 500);
@@ -1235,7 +1235,7 @@ export default {
         const data = await response.json();
         if (data.success) {
           // Refresh the connected apps list and health to update UI
-          await store.dispatch('appAuth/fetchConnectedApps');
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
           await store.dispatch('appAuth/fetchAllProviders');
           store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `Successfully disconnected from ${app.name}`);
@@ -1306,7 +1306,7 @@ export default {
         const result = await response.json();
         if (result.success) {
           app.connected = true;
-          await store.dispatch('appAuth/fetchConnectedApps');
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
           store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `API key for ${app.name} saved successfully!`);
         } else {
@@ -1329,7 +1329,7 @@ export default {
       try {
         const result = await store.dispatch(storeAction);
         if (result?.success) {
-          await store.dispatch('appAuth/fetchConnectedApps');
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
           store.dispatch('appAuth/checkConnectionHealth');
           await showAlert('Success', `Successfully disconnected from ${app.name}`);
           terminalLines.value.push(`[Disconnect] Successfully disconnected from ${app.name}`);
@@ -1403,7 +1403,7 @@ export default {
           if (status.status === 'success') {
             localStorage.removeItem('Gemini_models');
             localStorage.removeItem('Gemini-CLI_models');
-            await store.dispatch('appAuth/fetchConnectedApps');
+            await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
 
             const tierInfo = await providerAuthService.getStatus('gemini-cli').catch(() => ({}));
             const tierMsg = tierInfo.tier ? ` (Tier: ${tierInfo.tier})` : '';
@@ -1446,7 +1446,7 @@ export default {
           localStorage.removeItem('Gemini_models');
           localStorage.removeItem('Gemini-CLI_models');
           await showAlert('Success', 'Gemini CLI connected with API key.');
-          await store.dispatch('appAuth/fetchConnectedApps');
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
         } else {
           await showAlert('Connection Failed', respData.error || 'Failed to save API key.');
         }
@@ -1495,7 +1495,7 @@ export default {
 
         const result = await store.dispatch('appAuth/pollCodexDeviceAuth', { sessionId: session.sessionId });
         if (result?.state === 'success') {
-          await store.dispatch('appAuth/fetchConnectedApps');
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
           await showAlert('Success', 'OpenAI Codex connected successfully.');
           terminalLines.value.push('[Connect] OpenAI Codex connected via device login');
           nextTick(() => baseScreenRef.value?.scrollToBottom());
@@ -1546,7 +1546,7 @@ export default {
 
         if (exchangeResult.success) {
           localStorage.removeItem('Claude-Code_models');
-          await store.dispatch('appAuth/fetchConnectedApps');
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
           await showAlert('Success', 'Claude Code connected successfully.');
           terminalLines.value.push('[Connect] Claude Code connected via OAuth');
           nextTick(() => baseScreenRef.value?.scrollToBottom());
@@ -1573,7 +1573,7 @@ export default {
           const result = await store.dispatch('appAuth/connectClaudeCodeManual', token);
           if (result?.success) {
             await showAlert('Success', result.message || 'Claude Code connected successfully.');
-            await store.dispatch('appAuth/fetchConnectedApps');
+            await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
             terminalLines.value.push('[Connect] Claude Code connected via manual token');
             nextTick(() => baseScreenRef.value?.scrollToBottom());
           } else {
@@ -1684,7 +1684,7 @@ export default {
       nextTick(() => baseScreenRef.value?.scrollToBottom());
 
       // Load auth connections data and check health
-      store.dispatch('appAuth/fetchConnectedApps');
+      store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
       store.dispatch('appAuth/fetchAllProviders').then(() => {
         if (store.getters['appAuth/needsHealthCheck']) {
           refreshConnectionHealth();
@@ -2003,7 +2003,7 @@ export default {
         const data = await response.json();
         if (data.success) {
           // Refresh the connected apps list
-          await store.dispatch('appAuth/fetchConnectedApps');
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
           await store.dispatch('appAuth/fetchAllProviders');
 
           // Show success message
@@ -2028,17 +2028,14 @@ export default {
     function handleOAuthMessage(event) {
       // Handle legacy oauth-success message
       if (event.data && event.data.type === 'oauth-success') {
-        store.dispatch('appAuth/fetchConnectedApps');
+        store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
         showAlert('Success', 'OAuth connection successful!');
       }
-      // Handle new oauth-callback message from postMessage approach (for Electron)
+      // api.agnt.gg already exchanged the code server-side; just refresh state.
+      // forceRefresh bypasses the 1-min withFreshness cache (post-write refresh).
       else if (event.data && event.data.type === 'oauth-callback') {
-        console.log('OAuth callback received via postMessage:', event.data);
-        const { code, state, provider } = event.data;
-        if (code && state) {
-          // Complete the OAuth flow
-          completeOAuth(code, state, provider);
-        }
+        store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
+        store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
       }
     }
 
