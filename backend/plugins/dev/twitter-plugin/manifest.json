@@ -1,7 +1,7 @@
 {
   "name": "twitter-plugin",
-  "version": "1.0.0",
-  "description": "X (Twitter) integration plugin for AGNT - Post tweets, search, manage follows, and monitor mentions",
+  "version": "1.1.0",
+  "description": "X (Twitter) integration plugin for AGNT - Post, quote, reply, search, fetch tweets/conversations, manage follows, and monitor mentions.",
   "author": "AGNT",
   "icon": "twitter",
   "tools": [
@@ -13,7 +13,7 @@
         "category": "action",
         "type": "twitter-api",
         "icon": "twitter",
-        "description": "Interact with Twitter to post tweets, delete tweets, retrieve user tweets, search tweets, and fetch user profiles.",
+        "description": "Interact with Twitter to post, quote, reply, delete, retrieve tweets, search, manage follows, and fetch profiles/conversations.",
         "authRequired": "oauth",
         "authProvider": "twitter",
         "parameters": {
@@ -24,11 +24,19 @@
               "POST",
               "DELETE",
               "REPLY",
+              "QUOTE_TWEET",
               "LIKE",
+              "UNLIKE",
+              "RETWEET",
+              "UNRETWEET",
+              "GET_ME",
+              "GET_TWEET",
               "GET_TWEETS",
               "GET_TIMELINE",
               "SEARCH",
+              "ADVANCED_SEARCH",
               "GET_PROFILE",
+              "GET_CONVERSATION",
               "MONITOR_REPLIES",
               "CHECK_MENTIONS",
               "FOLLOW",
@@ -40,37 +48,59 @@
           "text": {
             "type": "string",
             "inputType": "textarea",
-            "description": "The content of the tweet or reply",
+            "description": "The content of the tweet, reply, or quote tweet",
             "conditional": {
               "field": "action",
-              "value": ["POST", "REPLY"]
+              "value": [
+                "POST",
+                "REPLY",
+                "QUOTE_TWEET"
+              ]
             }
           },
           "tweetId": {
             "type": "string",
             "inputType": "text",
-            "description": "The ID of the tweet to delete, reply to, like, or monitor replies for",
+            "description": "The tweet ID or X/Twitter URL to delete, reply to, like/unlike, quote, retweet/unretweet, fetch, or monitor replies for",
             "conditional": {
               "field": "action",
-              "value": ["DELETE", "REPLY", "LIKE", "MONITOR_REPLIES"]
+              "value": [
+                "DELETE",
+                "REPLY",
+                "QUOTE_TWEET",
+                "LIKE",
+                "UNLIKE",
+                "RETWEET",
+                "UNRETWEET",
+                "GET_TWEET",
+                "GET_CONVERSATION",
+                "MONITOR_REPLIES"
+              ]
             }
           },
           "userId": {
             "type": "string",
             "inputType": "text",
-            "description": "The user ID or username to fetch tweets, timeline, or profile",
+            "description": "The user ID, username, @handle, or profile URL to fetch tweets, timeline, or profile",
             "conditional": {
               "field": "action",
-              "value": ["GET_TWEETS", "GET_TIMELINE", "GET_PROFILE"]
+              "value": [
+                "GET_TWEETS",
+                "GET_TIMELINE",
+                "GET_PROFILE"
+              ]
             }
           },
           "targetUserId": {
             "type": "string",
             "inputType": "text",
-            "description": "The target user ID or username to follow or unfollow",
+            "description": "The target user ID, username, @handle, or profile URL to follow or unfollow",
             "conditional": {
               "field": "action",
-              "value": ["FOLLOW", "UNFOLLOW"]
+              "value": [
+                "FOLLOW",
+                "UNFOLLOW"
+              ]
             }
           },
           "userIds": {
@@ -89,7 +119,15 @@
             "default": 10,
             "conditional": {
               "field": "action",
-              "value": ["GET_TWEETS", "GET_TIMELINE", "SEARCH"]
+              "value": [
+                "GET_TWEETS",
+                "GET_TIMELINE",
+                "SEARCH",
+                "ADVANCED_SEARCH",
+                "GET_CONVERSATION",
+                "MONITOR_REPLIES",
+                "CHECK_MENTIONS"
+              ]
             }
           },
           "query": {
@@ -98,18 +136,144 @@
             "description": "The search query for finding tweets",
             "conditional": {
               "field": "action",
-              "value": "SEARCH"
+              "value": [
+                "SEARCH",
+                "ADVANCED_SEARCH"
+              ]
             }
           },
           "sortOrder": {
             "type": "string",
             "inputType": "select",
-            "options": ["RECENCY", "POPULARITY"],
+            "options": [
+              "RECENCY",
+              "POPULARITY"
+            ],
             "default": "RECENCY",
             "description": "How to sort the search results",
             "conditional": {
               "field": "action",
-              "value": "SEARCH"
+              "value": [
+                "SEARCH",
+                "ADVANCED_SEARCH"
+              ]
+            }
+          },
+          "conversationId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Conversation ID to fetch when using GET_CONVERSATION without a root tweet ID",
+            "conditional": {
+              "field": "action",
+              "value": "GET_CONVERSATION"
+            }
+          },
+          "startTime": {
+            "type": "string",
+            "inputType": "text",
+            "description": "ISO timestamp lower bound for ADVANCED_SEARCH",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "endTime": {
+            "type": "string",
+            "inputType": "text",
+            "description": "ISO timestamp upper bound for ADVANCED_SEARCH",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "sinceId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Return tweets newer than this tweet ID",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "untilId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Return tweets older than this tweet ID",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "fromUser": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Limit search to tweets from this username",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "toUser": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Limit search to tweets replying to this username",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "mentionsUser": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Limit search to tweets mentioning this username",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "excludeRetweets": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Exclude retweets in ADVANCED_SEARCH",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "excludeReplies": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Exclude replies in ADVANCED_SEARCH",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "onlyVerified": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Only include tweets from verified users in ADVANCED_SEARCH",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "minLikes": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Minimum likes for ADVANCED_SEARCH",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
+            }
+          },
+          "minRetweets": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Minimum retweets for ADVANCED_SEARCH",
+            "conditional": {
+              "field": "action",
+              "value": "ADVANCED_SEARCH"
             }
           }
         },
@@ -141,6 +305,38 @@
           "error": {
             "type": "string",
             "description": "Error message if the action failed"
+          },
+          "quoteTweetId": {
+            "type": "string",
+            "description": "The ID of the quote tweet"
+          },
+          "replyTweetId": {
+            "type": "string",
+            "description": "The ID of the reply tweet"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL of the created or fetched tweet where available"
+          },
+          "tweet": {
+            "type": "object",
+            "description": "Single fetched tweet with author/media/context"
+          },
+          "timeline": {
+            "type": "array",
+            "description": "Array of timeline tweets"
+          },
+          "replies": {
+            "type": "array",
+            "description": "Array of replies to a tweet"
+          },
+          "conversationId": {
+            "type": "string",
+            "description": "Conversation ID returned by GET_CONVERSATION"
+          },
+          "includes": {
+            "type": "object",
+            "description": "Expanded Twitter API objects such as users, tweets, and media"
           }
         }
       }

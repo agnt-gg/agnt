@@ -582,18 +582,20 @@
       "name": "twitter-plugin",
       "displayName": "X (Twitter)",
       "icon": "twitter",
-      "version": "1.0.0",
-      "description": "X (Twitter) integration plugin for AGNT - Post tweets, search, manage follows, and monitor mentions.",
+      "version": "1.1.0",
+      "description": "X (Twitter) integration plugin for AGNT - Post, quote, reply, search, fetch tweets/conversations, manage follows, and monitor mentions.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/twitter-plugin.agnt",
-      "size": 600000,
+      "size": 225110,
       "tags": [
         "twitter",
         "x",
         "social",
         "tweets",
-        "messaging"
+        "quote-tweets",
+        "messaging",
+        "automation"
       ],
       "category": "social",
       "tools": [
@@ -601,7 +603,7 @@
           "type": "twitter-api",
           "schema": {
             "title": "X (Twitter) API",
-            "description": "Interact with Twitter to post tweets, delete tweets, retrieve user tweets, search tweets, and fetch user profiles."
+            "description": "Interact with X/Twitter to post, reply, quote tweet, retweet, like/unlike, retrieve tweets/profiles/conversations, search, manage follows, and monitor mentions."
           }
         }
       ]

@@ -1,18 +1,22 @@
 import { Client } from 'twitter-api-sdk';
 
-
 /**
  * Twitter/X API Plugin Tool
  *
- * Post tweets, search, manage follows, and monitor mentions.
+ * Post tweets, quote tweets, search, manage follows, and monitor mentions.
  */
 class TwitterAPI {
   constructor() {
     this.name = 'twitter-api';
+    this.tweetFields = 'created_at,text,author_id,conversation_id,public_metrics,referenced_tweets,entities,attachments,lang,possibly_sensitive,reply_settings';
+    this.userFields = 'created_at,description,location,name,profile_image_url,protected,public_metrics,url,username,verified,verified_type';
+    this.mediaFields = 'type,url,preview_image_url,alt_text,public_metrics';
+    this.tweetExpansions = 'author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id';
   }
 
   async execute(params, inputData, workflowEngine) {
-    console.log('[TwitterPlugin] Executing with params:', JSON.stringify(params, null, 2));
+    console.log('[TwitterPlugin] Executing with params:', JSON.stringify(this.redactParams(params), null, 2));
+    this.normalizeParams(params);
     this.validateParams(params);
 
     try {
@@ -27,21 +31,46 @@ class TwitterAPI {
       switch (params.action.toUpperCase()) {
         case 'POST':
           response = await client.tweets.createTweet({ text: params.text });
-          return { success: true, tweetId: response.data.id };
+          return { success: true, tweetId: response.data.id, url: this.tweetUrl(response.data.id) };
 
         case 'DELETE':
           response = await client.tweets.deleteTweetById(params.tweetId);
-          return { success: true, deletedTweetId: params.tweetId };
+          return { success: true, deletedTweetId: params.tweetId, response };
 
         case 'REPLY':
           response = await client.tweets.createTweet({
             text: params.text,
             reply: { in_reply_to_tweet_id: params.tweetId },
           });
-          return { success: true, replyTweetId: response.data.id };
+          return { success: true, replyTweetId: response.data.id, repliedToTweetId: params.tweetId, url: this.tweetUrl(response.data.id) };
+
+        case 'QUOTE_TWEET':
+          response = await client.tweets.createTweet({
+            text: params.text,
+            quote_tweet_id: params.tweetId,
+          });
+          return { success: true, quoteTweetId: response.data.id, quotedTweetId: params.tweetId, url: this.tweetUrl(response.data.id) };
 
         case 'LIKE':
           return await this.likeTweet(client, accessToken, params);
+
+        case 'UNLIKE':
+          return await this.unlikeTweet(client, accessToken, params);
+
+        case 'RETWEET':
+          return await this.retweet(client, accessToken, params);
+
+        case 'UNRETWEET':
+          return await this.unretweet(client, accessToken, params);
+
+        case 'GET_ME':
+          return await this.getMe(client);
+
+        case 'GET_TWEET':
+          return await this.getTweet(client, params);
+
+        case 'GET_CONVERSATION':
+          return await this.getConversation(client, params);
 
         case 'GET_TIMELINE':
           return await this.getTimeline(client, params);
@@ -53,6 +82,7 @@ class TwitterAPI {
           return await this.getTweets(client, params);
 
         case 'SEARCH':
+        case 'ADVANCED_SEARCH':
           return await this.searchTweets(client, params);
 
         case 'MONITOR_REPLIES':
@@ -82,6 +112,124 @@ class TwitterAPI {
     }
   }
 
+  redactParams(params) {
+    const copy = { ...params };
+    if (copy.__auth) copy.__auth = { ...copy.__auth, token: copy.__auth.token ? '[REDACTED]' : undefined };
+    return copy;
+  }
+
+  normalizeParams(params) {
+    if (!params || typeof params !== 'object') return;
+    if (params.tweetId) params.tweetId = this.normalizeTweetId(params.tweetId);
+    if (params.userId) params.userId = this.normalizeUsername(params.userId);
+    if (params.targetUserId) params.targetUserId = this.normalizeUsername(params.targetUserId);
+    if (Array.isArray(params.userIds)) params.userIds = params.userIds.map((id) => this.normalizeUsername(id));
+  }
+
+  normalizeTweetId(value) {
+    const text = String(value || '').trim();
+    const match = text.match(/(?:twitter\.com|x\.com)\/[^/]+\/status(?:es)?\/(\d+)/i) || text.match(/^(\d+)$/);
+    if (!match) return text;
+    return match[1];
+  }
+
+  normalizeUsername(value) {
+    const text = String(value || '').trim();
+    const urlMatch = text.match(/(?:twitter\.com|x\.com)\/([^/?#]+)/i);
+    const username = (urlMatch ? urlMatch[1] : text).replace(/^@/, '').trim();
+    return username;
+  }
+
+  tweetUrl(tweetId, username = 'i') {
+    return `https://x.com/${username}/status/${tweetId}`;
+  }
+
+  requestedMax(params, fallback = 10, apiMinimum = 5) {
+    const requested = Math.max(1, Math.min(100, Number(params.maxResults || fallback)));
+    const apiMax = Math.max(apiMinimum, requested);
+    return { requested, apiMax };
+  }
+
+  async apiFetch(accessToken, url, options = {}) {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!response.ok) {
+      const detail = data?.detail || data?.title || data?.errors?.[0]?.message || response.statusText;
+      throw new Error(`Twitter API error ${response.status}: ${detail}`);
+    }
+
+    return data;
+  }
+
+  async resolveUser(client, identifier) {
+    const normalized = this.normalizeUsername(identifier);
+    const isNumericId = /^\d+$/.test(normalized);
+    const response = isNumericId
+      ? await client.users.findUserById(normalized, { 'user.fields': this.userFields })
+      : await client.users.findUserByUsername(normalized, { 'user.fields': this.userFields });
+
+    if (!response.data) {
+      throw new Error(`User not found: ${identifier}`);
+    }
+    return response.data;
+  }
+
+  enrichTweets(response) {
+    const users = response.includes?.users || [];
+    const tweetsById = new Map((response.includes?.tweets || []).map((tweet) => [tweet.id, tweet]));
+    const mediaByKey = new Map((response.includes?.media || []).map((media) => [media.media_key, media]));
+
+    return (response.data || []).map((tweet) => this.enrichTweet(tweet, users, tweetsById, mediaByKey));
+  }
+
+  enrichTweet(tweet, users = [], tweetsById = new Map(), mediaByKey = new Map()) {
+    const author = users.find((user) => user.id === tweet.author_id);
+    if (author) {
+      tweet.author = author;
+      tweet.author_username = author.username;
+      tweet.author_name = author.name;
+      tweet.url = this.tweetUrl(tweet.id, author.username);
+    } else {
+      tweet.url = this.tweetUrl(tweet.id);
+    }
+
+    if (tweet.referenced_tweets) {
+      tweet.referenced_tweets = tweet.referenced_tweets.map((ref) => ({
+        ...ref,
+        tweet: tweetsById.get(ref.id) || undefined,
+      }));
+    }
+
+    if (tweet.attachments?.media_keys) {
+      tweet.media = tweet.attachments.media_keys.map((key) => mediaByKey.get(key)).filter(Boolean);
+    }
+
+    return tweet;
+  }
+
+  async getMe(client) {
+    const response = await client.users.findMyUser({ 'user.fields': this.userFields });
+    if (!response.data) {
+      throw new Error('Unable to retrieve current user information');
+    }
+    return { success: true, userProfile: response.data };
+  }
+
   async likeTweet(client, accessToken, params) {
     const userResponse = await client.users.findMyUser();
     if (!userResponse.data) {
@@ -89,115 +237,184 @@ class TwitterAPI {
     }
 
     const url = `https://api.twitter.com/2/users/${userResponse.data.id}/likes`;
-    const likeResponse = await fetch(url, {
+    const data = await this.apiFetch(accessToken, url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ tweet_id: params.tweetId }),
     });
 
-    if (!likeResponse.ok) {
-      const errorData = await likeResponse.json();
-      throw new Error(`Twitter API error: ${errorData.title || likeResponse.statusText}`);
-    }
-
-    return { success: true, likedTweetId: params.tweetId };
+    return { success: true, likedTweetId: params.tweetId, response: data };
   }
 
-  async getTimeline(client, params) {
-    const userResponse = await client.users.findUserByUsername(params.userId);
+  async unlikeTweet(client, accessToken, params) {
+    const userResponse = await client.users.findMyUser();
     if (!userResponse.data) {
-      throw new Error(`User not found: ${params.userId}`);
+      throw new Error('Unable to retrieve current user information');
     }
 
-    const response = await client.tweets.usersIdTimeline(userResponse.data.id, {
-      max_results: params.maxResults || 10,
-      'tweet.fields': 'created_at,text',
+    const url = `https://api.twitter.com/2/users/${userResponse.data.id}/likes/${params.tweetId}`;
+    const data = await this.apiFetch(accessToken, url, { method: 'DELETE' });
+
+    return { success: true, unlikedTweetId: params.tweetId, response: data };
+  }
+
+  async retweet(client, accessToken, params) {
+    const userResponse = await client.users.findMyUser();
+    if (!userResponse.data) {
+      throw new Error('Unable to retrieve current user information');
+    }
+
+    const url = `https://api.twitter.com/2/users/${userResponse.data.id}/retweets`;
+    const data = await this.apiFetch(accessToken, url, {
+      method: 'POST',
+      body: JSON.stringify({ tweet_id: params.tweetId }),
     });
 
-    return { success: true, timeline: response.data };
+    return { success: true, retweetedTweetId: params.tweetId, response: data };
   }
 
-  async getProfile(client, params) {
-    const response = await client.users.findUserByUsername(params.userId, {
-      'user.fields': ['description', 'name', 'profile_image_url', 'public_metrics'],
+  async unretweet(client, accessToken, params) {
+    const userResponse = await client.users.findMyUser();
+    if (!userResponse.data) {
+      throw new Error('Unable to retrieve current user information');
+    }
+
+    const url = `https://api.twitter.com/2/users/${userResponse.data.id}/retweets/${params.tweetId}`;
+    const data = await this.apiFetch(accessToken, url, { method: 'DELETE' });
+
+    return { success: true, unretweetedTweetId: params.tweetId, response: data };
+  }
+
+  async getTweet(client, params) {
+    const response = await client.tweets.findTweetById(params.tweetId, {
+      'tweet.fields': this.tweetFields,
+      expansions: this.tweetExpansions,
+      'user.fields': this.userFields,
+      'media.fields': this.mediaFields,
     });
 
     if (!response.data) {
-      throw new Error(`User not found: ${params.userId}`);
+      throw new Error(`Tweet not found: ${params.tweetId}`);
     }
 
-    return { success: true, userProfile: response.data };
+    const tweet = this.enrichTweet(
+      response.data,
+      response.includes?.users || [],
+      new Map((response.includes?.tweets || []).map((t) => [t.id, t])),
+      new Map((response.includes?.media || []).map((m) => [m.media_key, m]))
+    );
+
+    return { success: true, tweet, includes: response.includes || {} };
+  }
+
+  async getConversation(client, params) {
+    let conversationId = params.conversationId || params.tweetId;
+    let rootTweet;
+
+    if (params.tweetId) {
+      const root = await this.getTweet(client, params);
+      rootTweet = root.tweet;
+      conversationId = rootTweet.conversation_id || params.tweetId;
+    }
+
+    const { requested, apiMax } = this.requestedMax(params, 50, 10);
+    const response = await client.tweets.tweetsRecentSearch({
+      query: `conversation_id:${conversationId}`,
+      max_results: apiMax,
+      'tweet.fields': this.tweetFields,
+      expansions: this.tweetExpansions,
+      'user.fields': this.userFields,
+      'media.fields': this.mediaFields,
+    });
+
+    const tweets = this.enrichTweets(response).slice(0, requested);
+    return { success: true, conversationId, rootTweet, tweets, includes: response.includes || {} };
+  }
+
+  async getTimeline(client, params) {
+    const user = await this.resolveUser(client, params.userId);
+    const { requested, apiMax } = this.requestedMax(params, 10, 5);
+
+    const response = await client.tweets.usersIdTimeline(user.id, {
+      max_results: apiMax,
+      'tweet.fields': this.tweetFields,
+      expansions: this.tweetExpansions,
+      'user.fields': this.userFields,
+      'media.fields': this.mediaFields,
+    });
+
+    return { success: true, user, timeline: this.enrichTweets(response).slice(0, requested), includes: response.includes || {} };
+  }
+
+  async getProfile(client, params) {
+    const user = await this.resolveUser(client, params.userId);
+    return { success: true, userProfile: user };
   }
 
   async getTweets(client, params) {
-    const userResponse = await client.users.findUserByUsername(params.userId);
-    if (!userResponse.data) {
-      throw new Error(`User not found: ${params.userId}`);
-    }
+    const user = await this.resolveUser(client, params.userId);
+    const { requested, apiMax } = this.requestedMax(params, 10, 5);
 
-    const response = await client.tweets.usersIdTweets(userResponse.data.id, {
-      max_results: params.maxResults || 10,
-      'tweet.fields': 'created_at,text',
+    const response = await client.tweets.usersIdTweets(user.id, {
+      max_results: apiMax,
+      'tweet.fields': this.tweetFields,
+      expansions: this.tweetExpansions,
+      'user.fields': this.userFields,
+      'media.fields': this.mediaFields,
     });
 
-    return { success: true, tweets: response.data };
+    return { success: true, user, tweets: this.enrichTweets(response).slice(0, requested), includes: response.includes || {} };
+  }
+
+  buildSearchQuery(params) {
+    let query = params.query;
+    if (params.fromUser) query += ` from:${this.normalizeUsername(params.fromUser)}`;
+    if (params.toUser) query += ` to:${this.normalizeUsername(params.toUser)}`;
+    if (params.mentionsUser) query += ` @${this.normalizeUsername(params.mentionsUser)}`;
+    if (params.excludeRetweets) query += ' -is:retweet';
+    if (params.excludeReplies) query += ' -is:reply';
+    if (params.onlyVerified) query += ' is:verified';
+    if (params.minLikes) query += ` min_faves:${Number(params.minLikes)}`;
+    if (params.minRetweets) query += ` min_retweets:${Number(params.minRetweets)}`;
+    return query.trim();
   }
 
   async searchTweets(client, params) {
-    const maxResults = Math.max(10, Math.min(100, params.maxResults || 10));
+    const { requested, apiMax } = this.requestedMax(params, 10, 10);
+    const options = {
+      query: this.buildSearchQuery(params),
+      max_results: apiMax,
+      'tweet.fields': this.tweetFields,
+      expansions: this.tweetExpansions,
+      'user.fields': this.userFields,
+      'media.fields': this.mediaFields,
+    };
 
-    const response = await client.tweets.tweetsRecentSearch({
-      query: params.query,
-      max_results: maxResults,
-      'tweet.fields': 'created_at,text,author_id,public_metrics',
-      expansions: 'author_id',
-      'user.fields': 'username,name',
-    });
+    if (params.sortOrder) options.sort_order = String(params.sortOrder).toLowerCase();
+    if (params.startTime) options.start_time = params.startTime;
+    if (params.endTime) options.end_time = params.endTime;
+    if (params.sinceId) options.since_id = params.sinceId;
+    if (params.untilId) options.until_id = params.untilId;
 
-    let tweets = response.data || [];
-    const users = response.includes?.users || [];
+    const response = await client.tweets.tweetsRecentSearch(options);
+    const tweets = this.enrichTweets(response).slice(0, requested);
 
-    tweets = tweets.map((tweet) => {
-      if (tweet.author_id) {
-        const author = users.find((user) => user.id === tweet.author_id);
-        if (author) {
-          tweet.author_username = author.username;
-          tweet.author_name = author.name;
-        }
-      }
-      return tweet;
-    });
-
-    return { success: true, searchResults: tweets };
+    return { success: true, query: options.query, searchResults: tweets, includes: response.includes || {} };
   }
 
   async monitorReplies(client, params) {
+    const { requested, apiMax } = this.requestedMax(params, 20, 10);
     const response = await client.tweets.tweetsRecentSearch({
       query: `conversation_id:${params.tweetId}`,
-      max_results: params.maxResults || 20,
-      'tweet.fields': 'created_at,text,author_id,referenced_tweets',
-      expansions: 'author_id',
-      'user.fields': 'username,name',
+      max_results: apiMax,
+      'tweet.fields': this.tweetFields,
+      expansions: this.tweetExpansions,
+      'user.fields': this.userFields,
+      'media.fields': this.mediaFields,
     });
 
-    let replies = (response.data || []).filter((tweet) =>
-      tweet.referenced_tweets?.some((ref) => ref.id === params.tweetId && ref.type === 'replied_to')
-    );
-
-    const users = response.includes?.users || [];
-    replies = replies.map((reply) => {
-      if (reply.author_id) {
-        const author = users.find((user) => user.id === reply.author_id);
-        if (author) {
-          reply.author_username = author.username;
-          reply.author_name = author.name;
-        }
-      }
-      return reply;
-    });
+    const replies = this.enrichTweets(response)
+      .filter((tweet) => tweet.referenced_tweets?.some((ref) => ref.id === params.tweetId && ref.type === 'replied_to'))
+      .slice(0, requested);
 
     return { success: true, replies };
   }
@@ -208,30 +425,18 @@ class TwitterAPI {
       throw new Error('Unable to retrieve current user information');
     }
 
-    const targetUserResponse = await client.users.findUserByUsername(params.targetUserId);
-    if (!targetUserResponse.data) {
-      throw new Error(`Target user not found: ${params.targetUserId}`);
-    }
-
+    const targetUser = await this.resolveUser(client, params.targetUserId);
     const url = `https://api.twitter.com/2/users/${currentUserResponse.data.id}/following`;
-    const followResponse = await fetch(url, {
+    const data = await this.apiFetch(accessToken, url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ target_user_id: targetUserResponse.data.id }),
+      body: JSON.stringify({ target_user_id: targetUser.id }),
     });
-
-    if (!followResponse.ok) {
-      const errorData = await followResponse.json();
-      throw new Error(`Twitter API error: ${errorData.title || followResponse.statusText}`);
-    }
 
     return {
       success: true,
-      followedUserId: targetUserResponse.data.id,
-      followedUsername: params.targetUserId,
+      followedUserId: targetUser.id,
+      followedUsername: targetUser.username,
+      response: data,
     };
   }
 
@@ -241,29 +446,15 @@ class TwitterAPI {
       throw new Error('Unable to retrieve current user information');
     }
 
-    const targetUserResponse = await client.users.findUserByUsername(params.targetUserId);
-    if (!targetUserResponse.data) {
-      throw new Error(`Target user not found: ${params.targetUserId}`);
-    }
-
-    const url = `https://api.twitter.com/2/users/${currentUserResponse.data.id}/following/${targetUserResponse.data.id}`;
-    const unfollowResponse = await fetch(url, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!unfollowResponse.ok) {
-      const errorData = await unfollowResponse.json();
-      throw new Error(`Twitter API error: ${errorData.title || unfollowResponse.statusText}`);
-    }
+    const targetUser = await this.resolveUser(client, params.targetUserId);
+    const url = `https://api.twitter.com/2/users/${currentUserResponse.data.id}/following/${targetUser.id}`;
+    const data = await this.apiFetch(accessToken, url, { method: 'DELETE' });
 
     return {
       success: true,
-      unfollowedUserId: targetUserResponse.data.id,
-      unfollowedUsername: params.targetUserId,
+      unfollowedUserId: targetUser.id,
+      unfollowedUsername: targetUser.username,
+      response: data,
     };
   }
 
@@ -278,28 +469,10 @@ class TwitterAPI {
 
     for (const targetUserId of params.userIds) {
       try {
-        const targetUserResponse = await client.users.findUserByUsername(targetUserId);
-        if (!targetUserResponse.data) {
-          errors.push({ userId: targetUserId, error: 'User not found' });
-          continue;
-        }
-
-        const url = `https://api.twitter.com/2/users/${currentUserResponse.data.id}/following/${targetUserResponse.data.id}`;
-        const unfollowResponse = await fetch(url, {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (unfollowResponse.ok) {
-          results.push({ userId: targetUserId, success: true });
-        } else {
-          const errorData = await unfollowResponse.json();
-          errors.push({ userId: targetUserId, error: errorData.title || 'Unknown error' });
-        }
-
+        const targetUser = await this.resolveUser(client, targetUserId);
+        const url = `https://api.twitter.com/2/users/${currentUserResponse.data.id}/following/${targetUser.id}`;
+        const data = await this.apiFetch(accessToken, url, { method: 'DELETE' });
+        results.push({ userId: targetUser.id, username: targetUser.username, success: true, response: data });
         await new Promise((resolve) => setTimeout(resolve, 1000));
       } catch (error) {
         errors.push({ userId: targetUserId, error: error.message });
@@ -324,29 +497,16 @@ class TwitterAPI {
       throw new Error('Unable to retrieve current user information');
     }
 
+    const { requested, apiMax } = this.requestedMax(params, 10, 5);
     const response = await client.tweets.usersIdMentions(userResponse.data.id, {
-      max_results: params.maxResults || 10,
-      'tweet.fields': 'created_at,text,author_id,public_metrics',
-      expansions: 'author_id',
-      'user.fields': 'username,name,profile_image_url',
+      max_results: apiMax,
+      'tweet.fields': this.tweetFields,
+      expansions: this.tweetExpansions,
+      'user.fields': this.userFields,
+      'media.fields': this.mediaFields,
     });
 
-    let mentions = response.data || [];
-    const users = response.includes?.users || [];
-
-    mentions = mentions.map((mention) => {
-      if (mention.author_id) {
-        const author = users.find((user) => user.id === mention.author_id);
-        if (author) {
-          mention.author_username = author.username;
-          mention.author_name = author.name;
-          mention.author_profile_image_url = author.profile_image_url;
-        }
-      }
-      return mention;
-    });
-
-    return { success: true, mentions };
+    return { success: true, mentions: this.enrichTweets(response).slice(0, requested), includes: response.includes || {} };
   }
 
   validateParams(params) {
@@ -363,29 +523,44 @@ class TwitterAPI {
         break;
       case 'DELETE':
       case 'LIKE':
+      case 'UNLIKE':
+      case 'RETWEET':
+      case 'UNRETWEET':
+      case 'GET_TWEET':
       case 'MONITOR_REPLIES':
         if (!params.tweetId) throw new Error('Tweet ID is required');
+        break;
+      case 'QUOTE_TWEET':
+        if (!params.tweetId) throw new Error('Tweet ID to quote is required');
+        if (!params.text) throw new Error('Quote tweet text is required');
+        if (params.text.length > 280) throw new Error('Quote tweet text must be 280 characters or less');
         break;
       case 'REPLY':
         if (!params.tweetId) throw new Error('Tweet ID is required');
         if (!params.text) throw new Error('Reply text is required');
+        if (params.text.length > 280) throw new Error('Reply text must be 280 characters or less');
         break;
       case 'GET_TIMELINE':
       case 'GET_PROFILE':
       case 'GET_TWEETS':
-        if (!params.userId) throw new Error('Username is required');
+        if (!params.userId) throw new Error('Username or user ID is required');
+        break;
+      case 'GET_CONVERSATION':
+        if (!params.tweetId && !params.conversationId) throw new Error('Tweet ID or conversation ID is required');
         break;
       case 'SEARCH':
+      case 'ADVANCED_SEARCH':
         if (!params.query) throw new Error('Search query is required');
         break;
       case 'FOLLOW':
       case 'UNFOLLOW':
-        if (!params.targetUserId) throw new Error('Target username is required');
+        if (!params.targetUserId) throw new Error('Target username or user ID is required');
         break;
       case 'BULK_UNFOLLOW':
         if (!params.userIds || !Array.isArray(params.userIds) || params.userIds.length === 0) {
           throw new Error('userIds must be a non-empty array');
         }
+        if (params.userIds.length > 100) throw new Error('Bulk unfollow supports at most 100 users per run');
         break;
     }
   }
