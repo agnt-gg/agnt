@@ -1716,13 +1716,16 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
     }
   }
 
-  async generateCompletion(prompt, provider = 'openai', model = 'gpt-4') {
+  async generateCompletion(prompt, provider, model) {
     try {
       this._lastCompletionUsage = null;
 
-      if (!provider) {
-        provider = 'anthropic';
-        model = 'claude-3-5-sonnet-20240620';
+      // Provider/model must be resolved upstream by the caller (request body →
+      // agent config → user settings). Don't paper over a missing provider with
+      // 'openai'/'gpt-4' — that silently breaks Codex users and any non-OpenAI
+      // setup. If the caller hasn't resolved them, that's their bug to surface.
+      if (!provider || !model) {
+        throw new Error('generateCompletion requires explicit provider and model (resolved from user settings or caller config).');
       }
 
       const _providerConfig = getProviderConfig(provider);
