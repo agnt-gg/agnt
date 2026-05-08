@@ -29,6 +29,27 @@ describe('contextManager', () => {
     expect(estimateMessagesTokens(large)).toBeGreaterThan(estimateMessagesTokens(small) + 20_000);
   });
 
+  it('counts Codex Responses replay payloads when estimating message tokens', () => {
+    const small = [{ role: 'assistant', content: '', _responsesOutputItems: [] }];
+    const large = [
+      {
+        role: 'assistant',
+        content: '',
+        _responsesOutputItems: [
+          {
+            id: 'rs_large',
+            type: 'reasoning',
+            summary: [],
+            encrypted_content: 'x'.repeat(100_000),
+            status: 'completed',
+          },
+        ],
+      },
+    ];
+
+    expect(estimateMessagesTokens(large)).toBeGreaterThan(estimateMessagesTokens(small) + 20_000);
+  });
+
   it('compresses oversized histories and keeps the summary in conversation messages', () => {
     const hugePayload = 'x'.repeat(700_000);
     const messages = [

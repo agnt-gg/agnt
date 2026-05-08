@@ -4054,6 +4054,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   constructor(client, model, options = {}) {
     super(client, model, options);
     // Codex reasoning models — match by prefix so new models work automatically
+    this.provider = options.provider || 'openai-codex';
     this.reasoningModels = new Set();
     // The ChatGPT backend hiccups (transient 5xx with the generic
     // "An error occurred while processing your request" envelope) more often
@@ -4093,6 +4094,39 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       return true;
     }
     return false;
+  }
+
+  isTokenLimitError(error) {
+    const message = [
+      error?.message,
+      error?.error?.message,
+      error?.response?.data?.error?.message,
+      error?.cause?.message,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return (
+      message.includes('context window') ||
+      message.includes('input exceeds') ||
+      message.includes('reduce the length') ||
+      message.includes('context length') ||
+      message.includes('token limit') ||
+      message.includes('too long')
+    );
+  }
+
+  _manageCodexContext(messages, tools, reason) {
+    const contextResult = manageContext(messages, this.model, tools, this.provider);
+    if (contextResult.wasManaged && contextResult.managedTokens < contextResult.originalTokens) {
+      console.log(
+        `[Codex Responses] Context ${reason}: ` +
+        `${contextResult.originalTokens} -> ${contextResult.managedTokens} tokens ` +
+        `(request ${contextResult.totalRequestTokens}/${contextResult.tokenLimit})`,
+      );
+    }
+    return contextResult;
   }
 
   /**
@@ -4213,10 +4247,11 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    */
   async call(messages, tools) {
     let lastError;
+    let currentMessages = this._manageCodexContext(messages, tools, 'preflight').messages;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const params = this._buildCodexParams(messages, tools);
+        const params = this._buildCodexParams(currentMessages, tools);
 
         console.log(`[Codex Responses] Calling model '${this.model}' via ChatGPT backend (streaming internally)`);
         console.log(`[Codex Responses] Input items: ${params.input.length}, Tools: ${params.tools?.length || 0}`);
@@ -4249,7 +4284,17 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       } catch (error) {
         lastError = error;
 
-        if (attempt === this.maxRetries || !this.isRetryableError(error)) {
+        if (this.isTokenLimitError(error)) {
+          console.warn(`[Codex Responses] Token/context limit error detected, reducing context (attempt ${attempt + 1})`);
+          const contextResult = this._manageCodexContext(currentMessages, tools, 'retry');
+          if (contextResult.wasManaged && contextResult.managedTokens < contextResult.originalTokens) {
+            currentMessages = contextResult.messages;
+            attempt--;
+            continue;
+          }
+        }
+
+        if (attempt === this.maxRetries || !this.isRetryableError(error) || this.isTokenLimitError(error)) {
           console.error(
             `Codex Responses call failed after ${attempt + 1} attempts, but NEVER STOPPING:`,
             describeCodexError(error),
@@ -4295,10 +4340,11 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
+    let currentMessages = this._manageCodexContext(messages, tools, 'stream preflight').messages;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const params = this._buildCodexParams(messages, tools);
+        const params = this._buildCodexParams(currentMessages, tools);
 
         console.log(`[Codex Responses] Streaming call to model '${this.model}' via ChatGPT backend`);
 
@@ -4330,7 +4376,17 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       } catch (error) {
         lastError = error;
 
-        if (attempt === this.maxRetries || !this.isRetryableError(error)) {
+        if (this.isTokenLimitError(error)) {
+          console.warn(`[Codex Responses] Token/context limit error detected during stream, reducing context (attempt ${attempt + 1})`);
+          const contextResult = this._manageCodexContext(currentMessages, tools, 'stream retry');
+          if (contextResult.wasManaged && contextResult.managedTokens < contextResult.originalTokens) {
+            currentMessages = contextResult.messages;
+            attempt--;
+            continue;
+          }
+        }
+
+        if (attempt === this.maxRetries || !this.isRetryableError(error) || this.isTokenLimitError(error)) {
           console.error(
             `Codex Responses streaming call failed after ${attempt + 1} attempts, but NEVER STOPPING:`,
             describeCodexError(error),

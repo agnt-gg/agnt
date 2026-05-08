@@ -200,6 +200,7 @@ function estimateMessagesTokens(messages) {
     // to context management even though providers count them in the request.
     messageTokens += estimateSerializedTokens(message.tool_calls);
     messageTokens += estimateSerializedTokens(message.function_call);
+    messageTokens += estimateSerializedTokens(message._responsesOutputItems);
     messageTokens += estimateTokens(message.reasoning_content || '');
 
     // Add overhead for role, name, tool_call_id, and provider framing.

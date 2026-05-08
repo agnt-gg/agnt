@@ -122,6 +122,51 @@ describe('CodexResponsesAdapter', () => {
     expect(result.responseMessage.content).not.toContain('Please check your OAuth connection');
     expect(result.responseMessage.content).not.toContain('reconnect your OAuth account');
   });
+
+  it('compresses oversized Codex replay history before streaming requests', async () => {
+    let capturedParams;
+    const client = {
+      responses: {
+        create: async (params) => {
+          capturedParams = params;
+          return streamFrom([
+            { type: 'response.output_text.delta', delta: 'OK' },
+            { type: 'response.completed', response: { id: 'resp_context', output: [], usage: {} } },
+          ]);
+        },
+      },
+    };
+    const adapter = await createLlmAdapter('openai-codex', client, 'gpt-5.5');
+    const hugeReplay = 'x'.repeat(1_300_000);
+
+    await adapter.callStream(
+      [
+        { role: 'system', content: 'System prompt' },
+        { role: 'user', content: 'Earlier research step' },
+        {
+          role: 'assistant',
+          content: '',
+          _responsesOutputItems: [
+            {
+              id: 'rs_huge',
+              type: 'reasoning',
+              summary: [],
+              encrypted_content: hugeReplay,
+              status: 'completed',
+            },
+          ],
+        },
+        { role: 'user', content: 'Continue with a concise answer' },
+      ],
+      [],
+      () => {},
+    );
+
+    const serializedParams = JSON.stringify(capturedParams);
+    expect(serializedParams).not.toContain(hugeReplay);
+    expect(serializedParams.length).toBeLessThan(100_000);
+    expect(capturedParams.input.some((item) => item.type === 'message' && item.content?.[0]?.text?.includes('Previous conversation'))).toBe(true);
+  });
 });
 
 describe('OpenAIResponsesAdapter', () => {
