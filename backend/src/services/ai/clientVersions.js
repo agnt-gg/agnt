@@ -17,10 +17,13 @@
 
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
+import pathManager from '../../utils/PathManager.js';
 
-const CACHE_DIR = path.join(process.env.AGNT_HOME || os.homedir(), '.agnt', 'data');
-const CACHE_FILE = path.join(CACHE_DIR, 'client-versions.json');
+// Client-version cache is a small (~1 KB) JSON file. Lives at the rootDir
+// (parent on Electron, collapsed elsewhere) so it sits alongside other
+// config-style files like mcp.json. See PRD-060 for resolver semantics.
+const CACHE_FILE = pathManager.getPath('client-versions.json');
+const CACHE_DIR = path.dirname(CACHE_FILE);
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const FETCH_TIMEOUT_MS = 5000;
 

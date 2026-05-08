@@ -1,22 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import pathManager from '../utils/PathManager.js';
 
-// Resolve the data directory using the same cascade as models/database/index.js
-const resolveDataDir = () => {
-  if (process.env.NODE_ENV === 'production' && fs.existsSync('/app/data')) {
-    return '/app/data';
-  }
-  if (process.env.USER_DATA_PATH) {
-    return path.join(process.env.USER_DATA_PATH, 'Data');
-  }
-  const devPath = path.resolve(process.cwd(), 'data');
-  if (process.env.NODE_ENV !== 'production' || process.cwd().includes('backend')) {
-    return devPath;
-  }
-  return path.join(process.env.HOME || process.env.USERPROFILE, '.agnt', 'data');
-};
-
-const IMAGES_DIR = path.join(resolveDataDir(), 'images');
+// Images live beside the DB and uploads at the canonical AGNT data root.
+// See PRD-060 for resolver semantics.
+const IMAGES_DIR = path.join(pathManager.getDataDir(), 'images');
 
 let dirReady = false;
 const ensureDir = () => {

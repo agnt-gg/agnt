@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import pathManager from '../utils/PathManager.js';
 
 const execAsync = promisify(exec);
 const __filename = fileURLToPath(import.meta.url);
@@ -18,11 +19,12 @@ async function getTransformersPipeline() {
     const { pipeline, env } = await import('@xenova/transformers');
 
     if (!_envConfigured) {
-      // Configure transformers.js cache directory to a writable location
-      // This is required for Electron ASAR builds where node_modules is read-only
-      const cacheDir = process.env.USER_DATA_PATH
-        ? path.join(process.env.USER_DATA_PATH, 'transformers-cache')
-        : path.join(os.homedir(), '.cache', 'transformers');
+      // Configure transformers.js cache directory to a writable location.
+      // This is required for Electron ASAR builds where node_modules is read-only.
+      // Uses getPath() (rootDir) so Electron preserves the historical
+      // %APPDATA%/AGNT/transformers-cache location — not the /Data subfolder.
+      // Avoids forcing a re-download of speech models after upgrading to PRD-060.
+      const cacheDir = pathManager.getPath('transformers-cache');
 
       // Ensure cache directory exists
       if (!fs.existsSync(cacheDir)) {

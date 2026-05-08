@@ -26,6 +26,7 @@ import SkillModel from '../models/SkillModel.js';
 import { buildSkillsContext } from './SkillService.js';
 import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled } from './unfirehose/UnfirehoseLogger.js';
 import { saveBase64Image } from './ImageStorage.js';
+import pathManager from '../utils/PathManager.js';
 
 // Synthetic tool_result injected when the stream is aborted mid tool-run.
 // Without this, the next turn replays a message list with tool_use blocks that
@@ -589,20 +590,9 @@ function offloadLargeData(toolResult, toolCallId, conversationContext, threshold
  * ANY tool can be run async by the LLM adding: _executeAsync: true, _estimatedMinutes: N
  */
 
-// Mirrors ImageStorage.js's data-dir cascade so uploads land in the same root.
-const resolveUploadsDir = () => {
-  let dataDir;
-  if (process.env.NODE_ENV === 'production' && fs.existsSync('/app/data')) {
-    dataDir = '/app/data';
-  } else if (process.env.USER_DATA_PATH) {
-    dataDir = path.join(process.env.USER_DATA_PATH, 'Data');
-  } else if (process.env.NODE_ENV !== 'production' || process.cwd().includes('backend')) {
-    dataDir = path.resolve(process.cwd(), 'data');
-  } else {
-    dataDir = path.join(process.env.HOME || process.env.USERPROFILE, '.agnt', 'data');
-  }
-  return path.join(dataDir, 'uploads');
-};
+// Uploads land beside the DB and images at the canonical AGNT data root.
+// See PRD-060 for resolver semantics.
+const resolveUploadsDir = () => path.join(pathManager.getDataDir(), 'uploads');
 
 const sanitizeFilename = (name) => {
   const base = path.basename(String(name || 'file'));

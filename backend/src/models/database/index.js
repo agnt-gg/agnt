@@ -1,84 +1,94 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import WebhookModel from '../WebhookModel.js';
+import pathManager from '../../utils/PathManager.js';
 
-// Get user data path - prioritize USER_DATA_PATH env var (set by Electron)
-const getUserDataPath = () => {
-  // 1. Docker: Use /app/data if it exists (mounted volume)
-  if (process.env.NODE_ENV === 'production' && fs.existsSync('/app/data')) {
-    console.log('Using Docker volume for database: /app/data');
-    return '/app/data';
-  }
+// Canonical data dir comes from PathManager (see PRD-060). PathManager itself
+// already creates the directory and falls back to a temp dir on failure.
+let dbDir = pathManager.getDataDir();
 
-  // 2. Electron: Use USER_DATA_PATH env var (ASAR-compatible)
-  if (process.env.USER_DATA_PATH) {
-    const userPath = path.join(process.env.USER_DATA_PATH, 'Data');
-    console.log('Using USER_DATA_PATH for database:', userPath);
-    return userPath;
-  }
-
-  // 3. Development: Use ./data in project root
-  const devPath = path.resolve(process.cwd(), 'data');
-  if (process.env.NODE_ENV !== 'production' || process.cwd().includes('backend')) {
-    console.log('Using development data directory:', devPath);
-    return devPath;
-  }
-
-  // 4. User home fallback (self-hosted, non-Docker)
-  // Unified path across all platforms for consistency and Hybrid Mode support
-  const newPath = path.join(process.env.HOME || process.env.USERPROFILE, '.agnt', 'data');
-
-  // Old platform-specific locations (for migration)
-  const oldPaths = {
-    darwin: path.join(process.env.HOME, 'Library', 'Application Support', 'AGNT', 'Data'),
-    win32: path.join(process.env.APPDATA || process.env.USERPROFILE, 'AGNT', 'Data'),
-    linux: path.join(process.env.HOME, '.config', 'AGNT', 'Data')
-  };
-
-  const oldPath = oldPaths[process.platform];
-
-  // Auto-migrate from old location if it exists and new location doesn't
-  if (oldPath && fs.existsSync(oldPath) && !fs.existsSync(newPath)) {
-    try {
-      console.log(`Migrating data from ${oldPath} to ${newPath}...`);
-      fs.mkdirSync(path.dirname(newPath), { recursive: true });
-      fs.cpSync(oldPath, newPath, { recursive: true });
-      console.log('✓ Data migration completed successfully');
-    } catch (error) {
-      console.error('Migration failed:', error);
-      console.log('Falling back to old location:', oldPath);
-      return oldPath;
-    }
-  }
-
-  console.log('Using user home directory for database:', newPath);
-  return newPath;
-};
-
-// Ensure database directory exists with error handling
-let dbDir = getUserDataPath();
+// Verify write permissions at the resolved location. If it's read-only for
+// some reason, fall back to a Documents/HOME-relative directory so the app
+// can still boot.
 try {
-  if (!fs.existsSync(dbDir)) {
-    console.log('Creating directory:', dbDir);
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
-  // Test write permissions
   const testFile = path.join(dbDir, '.test');
   fs.writeFileSync(testFile, 'test');
   fs.unlinkSync(testFile);
-  console.log('Successfully verified write permissions to:', dbDir);
 } catch (error) {
   console.error('Error with primary directory:', error);
-  // Fallback to user's Documents folder on Mac
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' && process.env.HOME) {
     dbDir = path.join(process.env.HOME, 'Documents', 'AGNT_Data');
   } else {
-    dbDir = path.join(process.env.HOME || process.env.USERPROFILE, 'AGNT_Data');
+    dbDir = path.join(process.env.HOME || process.env.USERPROFILE || os.tmpdir(), 'AGNT_Data');
   }
   console.log('Falling back to:', dbDir);
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
+  }
+}
+
+// One-time migration shim (PRD-060 §6.3). If a legacy or buggy install left
+// agnt.db at a non-canonical location and the canonical path has no DB yet,
+// copy it (plus WAL/SHM sidecars) into place. Copy-not-move keeps the legacy
+// file around for manual recovery if anything goes wrong.
+const buildLegacyLocations = () => {
+  const locs = [];
+  const home = os.homedir();
+  if (process.platform === 'win32') {
+    // Benny's bug: false /app/data hit on Windows resolved to C:\app\data
+    locs.push('C:\\app\\data');
+    if (process.env.APPDATA) {
+      locs.push(path.join(process.env.APPDATA, 'AGNT', 'Data'));
+    }
+    // System-wide installs and Electron localappdata variants
+    if (process.env.PROGRAMDATA) {
+      locs.push(path.join(process.env.PROGRAMDATA, 'AGNT', 'Data'));
+    }
+    if (process.env.LOCALAPPDATA) {
+      locs.push(path.join(process.env.LOCALAPPDATA, 'AGNT', 'Data'));
+    }
+    // Pre-PRD-060 emergency fallbacks (see prior database/index.js fallback paths)
+    if (process.env.USERPROFILE) {
+      locs.push(path.join(process.env.USERPROFILE, 'Documents', 'AGNT_Data'));
+      locs.push(path.join(process.env.USERPROFILE, 'AGNT_Data'));
+    }
+  }
+  if (process.platform === 'darwin' && home) {
+    locs.push(path.join(home, 'Library', 'Application Support', 'AGNT', 'Data'));
+    // Pre-PRD-060 macOS fallback
+    locs.push(path.join(home, 'Documents', 'AGNT_Data'));
+  }
+  if (process.platform === 'linux' && home) {
+    locs.push(path.join(home, '.config', 'AGNT', 'Data'));
+    // Pre-PRD-060 linux fallback
+    locs.push(path.join(home, 'AGNT_Data'));
+  }
+  return locs.filter((p) => p && p !== dbDir);
+};
+
+const targetDbForMigration = path.join(dbDir, 'agnt.db');
+if (!fs.existsSync(targetDbForMigration)) {
+  for (const legacy of buildLegacyLocations()) {
+    const legacyDb = path.join(legacy, 'agnt.db');
+    if (fs.existsSync(legacyDb)) {
+      try {
+        console.warn(`📦 AGNT migrating orphaned DB from ${legacy} → ${dbDir}`);
+        fs.mkdirSync(dbDir, { recursive: true });
+        fs.copyFileSync(legacyDb, targetDbForMigration);
+        for (const ext of ['-wal', '-shm']) {
+          const src = legacyDb + ext;
+          if (fs.existsSync(src)) {
+            fs.copyFileSync(src, targetDbForMigration + ext);
+          }
+        }
+        console.log('✓ Data migration completed successfully');
+      } catch (error) {
+        console.error('Migration failed:', error);
+      }
+      break; // only migrate from one source
+    }
   }
 }
 
