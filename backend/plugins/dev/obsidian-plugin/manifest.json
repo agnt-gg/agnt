@@ -1,0 +1,329 @@
+{
+  "name": "obsidian-plugin",
+  "version": "1.0.3",
+  "description": "Comprehensive Obsidian Local REST API integration for AGNT. Read, write, patch, search, open notes, manage periodic notes, list tags, and execute Obsidian commands using the canonical AGNT obsidian API-key provider.",
+  "author": "AGNT",
+  "icon": "obsidian",
+  "homepage": "https://github.com/coddingtonbear/obsidian-local-rest-api",
+  "license": "MIT",
+  "tools": [
+    {
+      "type": "obsidian-api",
+      "entryPoint": "./obsidian-api-v101.js",
+      "schema": {
+        "title": "Obsidian API",
+        "category": "action",
+        "type": "obsidian-api",
+        "icon": "obsidian",
+        "description": "Control Obsidian through the Local REST API. Supports vault files, active file, search, periodic notes, tags, commands, and opening notes. Auth uses AGNT providerId 'obsidian'.",
+        "documentation": "https://coddingtonbear.github.io/obsidian-local-rest-api/",
+        "authRequired": "apiKey",
+        "authProvider": "obsidian",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "CHECK_STATUS",
+              "LIST_FILES",
+              "READ_NOTE",
+              "CREATE_OR_REPLACE_NOTE",
+              "APPEND_TO_NOTE",
+              "PATCH_NOTE",
+              "DELETE_NOTE",
+              "OPEN_NOTE",
+              "GET_ACTIVE_FILE",
+              "REPLACE_ACTIVE_FILE",
+              "APPEND_ACTIVE_FILE",
+              "PATCH_ACTIVE_FILE",
+              "DELETE_ACTIVE_FILE",
+              "SEARCH_SIMPLE",
+              "SEARCH_DQL",
+              "SEARCH_JSONLOGIC",
+              "GET_PERIODIC_NOTE",
+              "CREATE_OR_REPLACE_PERIODIC_NOTE",
+              "APPEND_PERIODIC_NOTE",
+              "PATCH_PERIODIC_NOTE",
+              "DELETE_PERIODIC_NOTE",
+              "LIST_TAGS",
+              "LIST_COMMANDS",
+              "EXECUTE_COMMAND",
+              "GET_OPENAPI_SPEC",
+              "GET_CERTIFICATE"
+            ],
+            "default": "CHECK_STATUS",
+            "description": "The Obsidian Local REST API operation to perform."
+          },
+          "baseUrl": {
+            "type": "string",
+            "inputType": "text",
+            "default": "https://127.0.0.1:27124",
+            "description": "Obsidian Local REST API base URL. Default is https://127.0.0.1:27124."
+          },
+          "path": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Vault-relative path, e.g. Projects/AGNT.md. For LIST_FILES, leave blank for root or provide a folder path.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "LIST_FILES",
+                "READ_NOTE",
+                "CREATE_OR_REPLACE_NOTE",
+                "APPEND_TO_NOTE",
+                "PATCH_NOTE",
+                "DELETE_NOTE",
+                "OPEN_NOTE"
+              ]
+            }
+          },
+          "content": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Markdown/text content to write, append, patch, or search payload for relevant actions.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "CREATE_OR_REPLACE_NOTE",
+                "APPEND_TO_NOTE",
+                "PATCH_NOTE",
+                "REPLACE_ACTIVE_FILE",
+                "APPEND_ACTIVE_FILE",
+                "PATCH_ACTIVE_FILE",
+                "CREATE_OR_REPLACE_PERIODIC_NOTE",
+                "APPEND_PERIODIC_NOTE",
+                "PATCH_PERIODIC_NOTE"
+              ]
+            }
+          },
+          "query": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Search query. For SEARCH_SIMPLE, plain text. For SEARCH_DQL, Dataview DQL. For SEARCH_JSONLOGIC, valid JSONLogic JSON.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEARCH_SIMPLE",
+                "SEARCH_DQL",
+                "SEARCH_JSONLOGIC"
+              ]
+            }
+          },
+          "operation": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "append",
+              "prepend",
+              "replace"
+            ],
+            "default": "append",
+            "description": "Patch operation for PATCH_* actions.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "PATCH_NOTE",
+                "PATCH_ACTIVE_FILE",
+                "PATCH_PERIODIC_NOTE"
+              ]
+            }
+          },
+          "targetType": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "",
+              "heading",
+              "block",
+              "frontmatter"
+            ],
+            "default": "",
+            "description": "Optional surgical target type for READ_NOTE and PATCH_* actions. Use heading, block, or frontmatter.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "READ_NOTE",
+                "PATCH_NOTE",
+                "PATCH_ACTIVE_FILE",
+                "PATCH_PERIODIC_NOTE"
+              ]
+            }
+          },
+          "target": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Target heading name, block reference, or frontmatter field when targetType is set.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "READ_NOTE",
+                "PATCH_NOTE",
+                "PATCH_ACTIVE_FILE",
+                "PATCH_PERIODIC_NOTE"
+              ]
+            }
+          },
+          "period": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "daily",
+              "weekly",
+              "monthly",
+              "quarterly",
+              "yearly"
+            ],
+            "default": "daily",
+            "description": "Periodic note type.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "GET_PERIODIC_NOTE",
+                "CREATE_OR_REPLACE_PERIODIC_NOTE",
+                "APPEND_PERIODIC_NOTE",
+                "PATCH_PERIODIC_NOTE",
+                "DELETE_PERIODIC_NOTE"
+              ]
+            }
+          },
+          "year": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional year for dated periodic note endpoint. Provide year, month, and day together.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "GET_PERIODIC_NOTE",
+                "CREATE_OR_REPLACE_PERIODIC_NOTE",
+                "APPEND_PERIODIC_NOTE",
+                "PATCH_PERIODIC_NOTE",
+                "DELETE_PERIODIC_NOTE"
+              ]
+            }
+          },
+          "month": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional month for dated periodic note endpoint. Provide year, month, and day together.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "GET_PERIODIC_NOTE",
+                "CREATE_OR_REPLACE_PERIODIC_NOTE",
+                "APPEND_PERIODIC_NOTE",
+                "PATCH_PERIODIC_NOTE",
+                "DELETE_PERIODIC_NOTE"
+              ]
+            }
+          },
+          "day": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional day for dated periodic note endpoint. Provide year, month, and day together.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "GET_PERIODIC_NOTE",
+                "CREATE_OR_REPLACE_PERIODIC_NOTE",
+                "APPEND_PERIODIC_NOTE",
+                "PATCH_PERIODIC_NOTE",
+                "DELETE_PERIODIC_NOTE"
+              ]
+            }
+          },
+          "commandId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Obsidian command ID for EXECUTE_COMMAND. Use LIST_COMMANDS first to discover command IDs.",
+            "conditional": {
+              "field": "action",
+              "value": "EXECUTE_COMMAND"
+            }
+          },
+          "contentType": {
+            "type": "string",
+            "inputType": "text",
+            "default": "text/markdown",
+            "description": "Content-Type for write/patch actions. Use text/markdown for markdown patches, or application/json for table/frontmatter JSON patches."
+          },
+          "timeoutMs": {
+            "type": "number",
+            "inputType": "number",
+            "default": 30000,
+            "description": "HTTP timeout in milliseconds."
+          },
+          "allowSelfSignedLocalhostCert": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": true,
+            "description": "Allow Obsidian Local REST API's self-signed HTTPS certificate for localhost/loopback URLs only."
+          },
+          "createTargetIfMissing": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "description": "For PATCH_* actions: create the target if it does not already exist."
+          },
+          "applyIfContentPreexists": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "description": "For PATCH_* actions: apply patch even if patch data already exists in the target."
+          },
+          "trimTargetWhitespace": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "description": "For PATCH_* actions: trim target whitespace before applying the operation."
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation succeeded."
+          },
+          "action": {
+            "type": "string",
+            "description": "Action executed."
+          },
+          "status": {
+            "type": "number",
+            "description": "HTTP status code from Obsidian Local REST API."
+          },
+          "path": {
+            "type": "string",
+            "description": "Vault path used for file actions."
+          },
+          "content": {
+            "type": "string",
+            "description": "Text/Markdown response content."
+          },
+          "data": {
+            "type": "object",
+            "description": "Parsed response data when available."
+          },
+          "results": {
+            "type": "array",
+            "description": "Search results when applicable."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags returned by LIST_TAGS."
+          },
+          "commands": {
+            "type": "array",
+            "description": "Commands returned by LIST_COMMANDS."
+          },
+          "commandId": {
+            "type": "string",
+            "description": "Command ID executed by EXECUTE_COMMAND."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if success is false."
+          }
+        }
+      }
+    }
+  ]
+}

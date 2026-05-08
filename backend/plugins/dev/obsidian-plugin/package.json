@@ -1,0 +1,8 @@
+{
+  "name": "obsidian-plugin",
+  "version": "1.0.3",
+  "description": "Comprehensive AGNT plugin for Obsidian Local REST API using the canonical AGNT obsidian API-key provider.",
+  "type": "module",
+  "main": "obsidian-api.js",
+  "dependencies": {}
+}

@@ -162,6 +162,35 @@
       ]
     },
     {
+      "name": "obsidian-plugin",
+      "displayName": "Obsidian",
+      "icon": "obsidian",
+      "version": "1.0.3",
+      "description": "Comprehensive Obsidian Local REST API integration for AGNT. Read, write, patch, search, open notes, manage periodic notes, list tags, and execute Obsidian commands.",
+      "author": "AGNT",
+      "homepage": "https://github.com/coddingtonbear/obsidian-local-rest-api",
+      "downloadUrl": "file://marketplace-default/obsidian-plugin.agnt",
+      "size": 7150,
+      "tags": [
+        "obsidian",
+        "notes",
+        "markdown",
+        "productivity",
+        "knowledge-base",
+        "vault"
+      ],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "obsidian-api",
+          "schema": {
+            "title": "Obsidian API",
+            "description": "Control Obsidian through the Local REST API. Supports vault files, active file, search, periodic notes, tags, commands, and opening notes."
+          }
+        }
+      ]
+    },
+    {
       "name": "google-sheets-plugin",
       "displayName": "Google Sheets",
       "icon": "table",
