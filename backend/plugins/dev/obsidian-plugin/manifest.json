@@ -9,7 +9,7 @@
   "tools": [
     {
       "type": "obsidian-api",
-      "entryPoint": "./obsidian-api-v101.js",
+      "entryPoint": "./obsidian-api.js",
       "schema": {
         "title": "Obsidian API",
         "category": "action",
