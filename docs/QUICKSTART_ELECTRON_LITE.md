@@ -88,32 +88,44 @@ npm run build:lite
 
 ## Data Location
 
-All data stored in home directory (unified across all platforms):
+Electron stores data under the OS user-data directory. The backend logs the resolved path on startup (look for `📁 AGNT data:`).
 
 **Windows:**
 ```
-C:\Users\YourName\.agnt\data\agnt.db
-C:\Users\YourName\.agnt\plugins\installed\
-C:\Users\YourName\.agnt\logs\
+%APPDATA%\AGNT\Data\agnt.db
+%APPDATA%\AGNT\Data\plugins\installed\
+%APPDATA%\AGNT\Data\images\
+%APPDATA%\AGNT\Data\uploads\
 
-Or using environment variable: %USERPROFILE%\.agnt\data\
+Sibling files at the parent (%APPDATA%\AGNT\):
+  mcp.json, code-settings.json, projects\, _logs\, transformers-cache\
+
+Resolves to: C:\Users\YourName\AppData\Roaming\AGNT\Data\
 ```
 
 **macOS:**
 ```
-~/.agnt/data/agnt.db
-~/.agnt/plugins/installed/
-~/.agnt/logs/
+~/Library/Application Support/AGNT/Data/agnt.db
+~/Library/Application Support/AGNT/Data/plugins/installed/
+~/Library/Application Support/AGNT/Data/images/
+~/Library/Application Support/AGNT/Data/uploads/
+
+Sibling files at the parent:
+  mcp.json, code-settings.json, projects/, _logs/, transformers-cache/
 ```
 
 **GNU/Linux:**
 ```
-~/.agnt/data/agnt.db
-~/.agnt/plugins/installed/
-~/.agnt/logs/
+~/.config/AGNT/Data/agnt.db
+~/.config/AGNT/Data/plugins/installed/
+~/.config/AGNT/Data/images/
+~/.config/AGNT/Data/uploads/
+
+Sibling files at the parent:
+  mcp.json, code-settings.json, projects/, _logs/, transformers-cache/
 ```
 
-**Note:** Unified path across all platforms ensures Hybrid Mode (Docker + Electron) can share the same data.
+**Note:** Electron uses two folders (config-style files at the parent, runtime data under `Data/`) for historical reasons. Direct-clone (`npm start`) and Docker collapse both into a single folder under `~/.agnt/data/` and `/app/data/` respectively. To share a single database between Electron and Docker, see [QUICKSTART_HYBRID.md](./QUICKSTART_HYBRID.md).
 
 ## Features Available
 

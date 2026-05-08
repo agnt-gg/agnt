@@ -511,6 +511,34 @@ Configure AGNT by setting these environment variables:
 | `WEBHOOK_URL` | Webhook endpoint URL | `http://localhost:3001` |
 | `FRONTEND_URL` | Frontend URL | `http://localhost:5173` |
 | `AGNT_LITE_MODE` | Disable browser automation features (Lite version) | `false` |
+| `AGNT_HOME` | Override the data directory location (see Data Directory below) | unset |
+| `USER_DATA_PATH` | Used by `docker-compose.yml` to point at the in-container mount | `/app/data` |
+
+### Data Directory
+
+AGNT picks a writable data directory at startup using a four-tier cascade. The backend logs the resolved path on boot:
+
+```
+📁 AGNT data: /app/data (source: docker)
+```
+
+Resolution order:
+
+| Tier | Trigger | Path |
+|---|---|---|
+| 1. Docker | Linux container with `/app/data` mounted (skipped on native Windows) | `/app/data` |
+| 2. Electron | `USER_DATA_PATH` env var (set automatically by Electron's `main.js`) | `<USER_DATA_PATH>/Data` |
+| 3. AGNT_HOME | `AGNT_HOME` env var set | `${AGNT_HOME}/.agnt/data` |
+| 4. Default | None of the above | `${HOME}/.agnt/data` (or `%USERPROFILE%\.agnt\data` on Windows) |
+| 5. Fallback | `os.homedir()` returned empty | `<cwd>/data` |
+
+**For self-hosters this means:**
+- **Docker users on a single-user host:** no config needed — `${HOME}/.agnt/data` on the host is bind-mounted to `/app/data` in the container automatically by `docker-compose.yml`.
+- **Docker users with multi-user hosts or shared workspaces:** set `AGNT_HOME` to the absolute path of the user account that should own the data (e.g., `AGNT_HOME=/home/teamuser docker-compose up -d`).
+- **Docker users on Linux Snap-installed Docker:** must set `AGNT_HOME` with an absolute path to avoid Snap's home directory isolation (e.g., `AGNT_HOME=/home/yourname docker-compose up -d`).
+- **Direct-clone users (`npm start`):** no config needed — defaults to `~/.agnt/data`. Override with `AGNT_HOME` if you want a non-standard location.
+
+The migration shim copies an existing database from common legacy locations (older AGNT installs, system-wide installs in `%PROGRAMDATA%`, the buggy `C:\app\data` Windows fallback, etc.) into the canonical location on first launch — only when the canonical location is empty. See PRD-060 for the full list.
 
 ### Lite Mode Configuration
 

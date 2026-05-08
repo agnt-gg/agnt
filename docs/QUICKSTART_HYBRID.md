@@ -137,15 +137,73 @@ Just open: `http://SERVER_IP:3333`
 
 **Server (Docker):**
 ```
-~/.agnt/data/agnt.db          # Shared database
-~/.agnt/plugins/installed/    # Shared plugins
+~/.agnt/data/agnt.db          # Shared database (host bind-mount)
+~/.agnt/data/plugins/installed/    # Shared plugins
 ~/.agnt/logs/                 # Server logs
 ```
 
-**Clients (Electron):**
-- No local data stored
-- All data on server
-- Client just displays UI
+Inside the container these mount at `/app/data/...`. The host path comes from `${AGNT_HOME:-$HOME}/.agnt/data` per `docker-compose.yml`.
+
+**Clients (Electron, when used purely as a UI for a remote backend):**
+- No local data stored — all data lives on the Docker server
+- Client just displays the UI
+
+## Sharing data between Docker and a *local* Electron install (single-machine hybrid)
+
+If you're running both Docker and the Electron desktop app on the same machine and want them to share one database (instead of running Electron purely as a remote UI), they don't share by default — Docker writes to `~/.agnt/data/` on the host while Electron writes to `%APPDATA%\AGNT\Data\` (Win) / `~/Library/Application Support/AGNT/Data/` (Mac) / `~/.config/AGNT/Data/` (Linux).
+
+**Recommended:** point Docker's bind-mount at Electron's data folder.
+
+**Windows:**
+```yaml
+# In docker-compose.yml, replace:
+#   - ${AGNT_HOME:-$HOME}/.agnt/data:/app/data
+# with:
+volumes:
+  - ${APPDATA}/AGNT/Data:/app/data
+  - ${APPDATA}/AGNT/logs:/app/logs
+```
+
+Or with `docker run`:
+```powershell
+docker run -d `
+  --name agnt `
+  -p 3333:3333 `
+  -v "${env:APPDATA}\AGNT\Data:/app/data" `
+  -e SQLITE_WAL_MODE=true `
+  ghcr.io/agnt-gg/agnt:latest
+```
+
+**macOS:**
+```yaml
+volumes:
+  - ${HOME}/Library/Application Support/AGNT/Data:/app/data
+```
+
+**GNU/Linux:**
+```yaml
+volumes:
+  - ${HOME}/.config/AGNT/Data:/app/data
+```
+
+After starting, both apps log the resolved data path on boot:
+```
+# Electron (one possible output):
+📁 AGNT root: /home/you/.config/AGNT
+📁 AGNT data: /home/you/.config/AGNT/Data (source: electron)
+
+# Docker:
+📁 AGNT data: /app/data (source: docker)
+```
+
+If both lines reference the same on-disk file, sharing is wired up.
+
+> **Important: don't run Electron and Docker against the same DB simultaneously.** SQLite WAL mode (already enabled in `docker-compose.yml`) supports multi-process access on a single host, but two unrelated runtimes hammering the same file can cause `SQLITE_BUSY` storms. Stop one before starting the other:
+>
+> ```bash
+> docker compose down       # before opening Electron
+> docker compose up -d      # after closing Electron
+> ```
 
 ## Real-Time Sync
 

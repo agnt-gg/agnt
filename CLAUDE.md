@@ -239,6 +239,15 @@ Only create commits when requested by the user. If unclear, ask first.
 - **Error Handling**: Always wrap async routes in try-catch
 - **Logging**: Use `console.log` for important events (structured logs preferred)
 
+### Path Resolution (PRD-060)
+
+All "where does this file live" decisions go through `backend/src/utils/PathManager.js`. Never roll your own cascade with `process.env.USER_DATA_PATH || process.cwd()` — it drifts. Two accessors, picked by file type:
+
+- **`PathManager.getPath(...parts)`** — joins the **rootDir** (parent dir on Electron, collapsed elsewhere). Use for config-style files: `mcp.json`, `code-settings.json`, `projects/`, `_logs/`, `cookies.txt`, schema caches, embeddings, `transformers-cache/`, `client-versions.json`. This is what most existing call sites use; preserves historical Electron locations at `%APPDATA%\AGNT\<file>`.
+- **`PathManager.getDataDir()` / `getDataPath(...parts)`** — joins the **dataDir** (`Data/` subfolder on Electron, collapsed elsewhere). Use for runtime data: `agnt.db` (+ WAL/SHM), `images/`, `uploads/`. Lands at `%APPDATA%\AGNT\Data\<file>` on Electron.
+
+The split exists because Electron has historically used two folders. Docker, AGNT_HOME, homedir, and cwd modes collapse `rootDir === dataDir` so the distinction is invisible there. If you're unsure which to use, look at what existing files of the same kind use — and prefer `getPath()` unless the file is one of the runtime-data exceptions above.
+
 ### Frontend (Vue.js)
 
 - **Composition API**: Prefer over Options API for new code

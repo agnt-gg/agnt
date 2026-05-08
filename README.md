@@ -493,27 +493,36 @@ Before running Docker, set up your environment file:
 cp .env.example .env
 ```
 
-**Optional variables for Docker:**
+**Optional variables:**
 
 ```env
-# Docker data directory (where persistent data is stored)
-# Usually not needed - defaults to $HOME/.agnt/ which works on most systems
-# Only set this if using Docker snap on Linux or want a custom location
+# Override the default data location. Most users never need this — direct-clone
+# and Docker both pick a sensible default automatically (see "Data Directory
+# Structure" below).
 # AGNT_HOME=/home/youruser
 
-# App path for plugins (required for Docker)
-APP_PATH=/app
+# Docker only — set automatically by docker-compose.yml. Uncomment if running
+# bare `docker run` outside compose:
+# APP_PATH=/app
 ```
 
 **Data Directory Structure:**
 
-Your data is stored at `~/.agnt/`:
+AGNT picks a data directory based on how it's running:
 
-- SQLite database: `~/.agnt/data/agnt.db`
-- Plugins: `~/.agnt/data/plugins/`
-- Logs: `~/.agnt/logs/`
+| How you run AGNT | Data directory |
+|---|---|
+| Electron desktop (Windows) | `%APPDATA%\AGNT\Data\` (e.g., `C:\Users\YourName\AppData\Roaming\AGNT\Data\`) |
+| Electron desktop (macOS) | `~/Library/Application Support/AGNT/Data/` |
+| Electron desktop (Linux) | `~/.config/AGNT/Data/` |
+| Docker | `/app/data` inside the container, bind-mounted from `${AGNT_HOME:-$HOME}/.agnt/data` on the host |
+| Direct clone (`npm start`) | `~/.agnt/data/` (override with `AGNT_HOME=...`) |
 
-> **Note for Docker snap users (Linux):** If you installed Docker via snap, you must set `AGNT_HOME` with an absolute path (e.g., `AGNT_HOME=/home/username docker-compose up -d`) to avoid snap's home directory isolation issues.
+The SQLite database lives at `<data-dir>/agnt.db` and plugins at `<data-dir>/plugins/installed/`. Logs land at `<data-dir>/_logs/` (Electron / direct-clone) or `${AGNT_HOME:-$HOME}/.agnt/logs/` (Docker).
+
+> **Electron note:** Some files (like `mcp.json`, `code-settings.json`, `projects/`, `_logs/`) live one level up at `%APPDATA%\AGNT\` (parent of `Data\`). The split is historical; the resolver preserves it. Direct-clone and Docker collapse both into a single folder.
+
+> **Docker snap users (Linux):** If you installed Docker via snap, set `AGNT_HOME` with an absolute path (e.g., `AGNT_HOME=/home/username docker-compose up -d`) to avoid snap's home directory isolation issues.
 
 **Security secrets (change in production):**
 
@@ -750,7 +759,7 @@ node build-plugin.js my-awesome-plugin
 # → produces my-awesome-plugin.agnt
 ```
 
-Install via the AGNT UI → Marketplace → Install from file, or drop the `.agnt` file into `~/.agnt/data/plugins/`. Plugins hot-reload — no restart needed.
+Install via the AGNT UI → Marketplace → Install from file, or drop the `.agnt` file into `<data-dir>/plugins/installed/` (where `<data-dir>` is the location for your run mode — see the Data Directory Structure table above). Plugins hot-reload — no restart needed.
 
 📚 See the full [Plugin Development Guide](backend/plugins/README.md).
 
@@ -812,11 +821,17 @@ See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md) for setup details.
 
 ## 🔑 Data & Privacy
 
-Your data lives in `~/.agnt/`:
+Your data lives in a per-platform directory (see the Data Directory Structure table earlier):
 
-- `~/.agnt/data/agnt.db` — SQLite database (agents, workflows, goals, insights, skills, traces, versions)
-- `~/.agnt/data/plugins/` — Installed plugins
-- `~/.agnt/logs/` — Application logs
+- `<data-dir>/agnt.db` — SQLite database (agents, workflows, goals, insights, skills, traces, versions)
+- `<data-dir>/plugins/installed/` — Installed plugins
+- `<data-dir>/_logs/` (Electron / direct-clone) or `${AGNT_HOME:-$HOME}/.agnt/logs/` (Docker) — Application logs
+
+On startup the backend logs the resolved path so you always know where to look:
+
+```
+📁 AGNT data: C:\Users\YourName\AppData\Roaming\AGNT\Data (source: electron)
+```
 
 **Nothing is uploaded** unless you explicitly publish a marketplace item or call an AI provider. API keys are stored locally in SQLite or the filesystem — never committed, never transmitted except to the provider you configured.
 
