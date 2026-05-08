@@ -5,17 +5,19 @@ import WebhookModel from '../WebhookModel.js';
 
 // Get user data path - prioritize USER_DATA_PATH env var (set by Electron)
 const getUserDataPath = () => {
-  // 1. Docker: Use /app/data if it exists (mounted volume)
-  if (process.env.NODE_ENV === 'production' && fs.existsSync('/app/data')) {
-    console.log('Using Docker volume for database: /app/data');
-    return '/app/data';
-  }
-
-  // 2. Electron: Use USER_DATA_PATH env var (ASAR-compatible)
+  // 1. Electron: Use USER_DATA_PATH env var (ASAR-compatible)
   if (process.env.USER_DATA_PATH) {
     const userPath = path.join(process.env.USER_DATA_PATH, 'Data');
     console.log('Using USER_DATA_PATH for database:', userPath);
     return userPath;
+  }
+
+  // 2. Docker: Use /app/data if it exists (mounted volume)
+  // On Windows, /app/data can resolve to C:\app\data, so only take this branch
+  // when USER_DATA_PATH is absent.
+  if (process.env.NODE_ENV === 'production' && fs.existsSync('/app/data')) {
+    console.log('Using Docker volume for database: /app/data');
+    return '/app/data';
   }
 
   // 3. Development: Use ./data in project root
