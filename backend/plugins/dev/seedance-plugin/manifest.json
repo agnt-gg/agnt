@@ -1,7 +1,7 @@
 {
   "name": "seedance-plugin",
-  "version": "1.0.0",
-  "description": "Generate cinematic AI video clips (5-20s) using ByteDance Seedance 2.0 via OpenRouter. Supports text-to-video, first/last-frame image conditioning, and native audio-video joint generation.",
+  "version": "1.1.0",
+  "description": "Generate cinematic AI video clips (5-20s) using ByteDance Seedance 2.0 via OpenRouter. Supports text-to-video, first/last-frame image conditioning, native audio-video joint generation, and multimodal reference inputs (up to 9 reference images, 3 reference videos, 3 reference audio clips).",
   "author": "AGNT",
   "icon": "seedance",
   "homepage": "https://openrouter.ai/bytedance/seedance-2.0",
@@ -15,7 +15,7 @@
         "category": "action",
         "type": "seedance-api",
         "icon": "seedance",
-        "description": "Generate 5-20s cinematic AI video clips using ByteDance Seedance 2.0 via OpenRouter. Pair with the Remotion plugin to add branded motion graphics, logos, and captions.",
+        "description": "Generate 5-20s cinematic AI video clips using ByteDance Seedance 2.0 via OpenRouter. Pair with the Remotion plugin to add branded motion graphics, logos, and captions. v1.1 adds multimodal reference inputs: up to 9 reference images, 3 reference videos, and 3 reference audio clips for style/motion/rhythm continuity across scenes.",
         "documentation": "https://openrouter.ai/bytedance/seedance-2.0",
         "authRequired": "apiKey",
         "authProvider": "openrouter",
@@ -24,7 +24,7 @@
             "type": "string",
             "inputType": "textarea",
             "required": true,
-            "description": "Cinematic shot description. Formula: [camera] [subject] [action] [environment] [lighting] [style]. Example: 'Slow dolly-in on a chrome robot hand assembling a glowing cube, volumetric fog, cinematic teal-orange lighting, anamorphic lens flare, 35mm film grain'"
+            "description": "Cinematic shot description. Formula: [camera] [subject] [action] [environment] [lighting] [style]. When references are supplied, address them with [Image1]/[Video1]/[Audio1] or @Image1/@Video1/@Audio1. Example: 'Slow dolly-in on a chrome robot hand assembling a glowing cube. Use [Video1] for camera rhythm. Use [Audio1] for percussion. Use [Image1] for color palette.'"
           },
           "duration": {
             "type": "number",
@@ -64,7 +64,7 @@
           "firstFrameUrl": {
             "type": "string",
             "inputType": "text",
-            "description": "Optional: URL of first-frame reference image (image-to-video mode)"
+            "description": "Optional: URL of first-frame reference image (image-to-video mode). Combine with referenceVideoUrls/referenceAudioUrls for continuity + style memory."
           },
           "lastFrameUrl": {
             "type": "string",
@@ -74,6 +74,45 @@
               "field": "firstFrameUrl",
               "operator": "notEmpty"
             }
+          },
+          "referenceImageUrls": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Optional: newline- or comma-separated public image URLs to use as style/composition references. Up to 9. Address them in the prompt as [Image1], [Image2], ... or @Image1, @Image2, ..."
+          },
+          "referenceVideoUrls": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Optional: newline- or comma-separated public MP4/MOV URLs (e.g. prior Seedance clips) to use as motion/camera-rhythm references. Up to 3. Address them as [Video1], [Video2], ... or @Video1, @Video2, ..."
+          },
+          "referenceAudioUrls": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Optional: newline- or comma-separated public MP3/WAV URLs to use as rhythm/sound-design references. Up to 3. Cannot be used alone — pair with at least one image, video, first frame, or last frame reference. Address them as [Audio1], [Audio2], ... or @Audio1, @Audio2, ..."
+          },
+          "referencePayloadMode": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["auto", "openrouter-normalized", "provider-lists", "content-array", "raw-only"],
+            "default": "auto",
+            "description": "Advanced: payload shape used to submit references. 'auto' tries openrouter-normalized first, then provider-lists if the provider rejects unknown reference fields (only retries on pre-job validation errors). 'raw-only' sends only core params plus rawPassthroughJson."
+          },
+          "rawPassthroughJson": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "Advanced: a JSON object merged into the OpenRouter request body AFTER reference fields. Wins on key conflicts. Use to test new provider-specific fields without rebuilding the plugin. Must be a JSON object (not an array or scalar)."
+          },
+          "seed": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Optional: reproducibility seed (passed through if accepted by provider)."
+          },
+          "includeDebugRequest": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["No", "Yes"],
+            "default": "No",
+            "description": "Advanced: return a redacted summary of the actual request body (auth removed, signed URLs shortened) for debugging unknown-field errors."
           },
           "filename": {
             "type": "string",
@@ -121,6 +160,30 @@
           "model": {
             "type": "string",
             "description": "Model used (bytedance/seedance-2.0 or bytedance/seedance-2.0-fast)"
+          },
+          "contentUrl": {
+            "type": "string",
+            "description": "Provider content URL when reported in the completed job payload (typically signed; may expire). Suitable for immediate chained reference-video reuse."
+          },
+          "unsignedUrl": {
+            "type": "string",
+            "description": "First unsigned/public provider URL when reported. Often the cleanest URL to feed back into the next call's referenceVideoUrls."
+          },
+          "pollUrl": {
+            "type": "string",
+            "description": "Polling URL used for the job (debugging / advanced reuse)."
+          },
+          "referenceSummary": {
+            "type": "object",
+            "description": "Counts and URL basenames for the references that were actually submitted, plus any prompt-mention warnings."
+          },
+          "requestShape": {
+            "type": "string",
+            "description": "Payload mode used for the submitted request: openrouter-normalized | provider-lists | content-array | raw-only."
+          },
+          "debugRequest": {
+            "type": "object",
+            "description": "Redacted request body — only populated when includeDebugRequest=Yes. Auth headers removed, signed URLs shortened."
           },
           "error": {
             "type": "string",

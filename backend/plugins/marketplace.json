@@ -915,12 +915,12 @@
       "name": "seedance-plugin",
       "displayName": "Seedance 2.0",
       "icon": "bytedance",
-      "version": "1.0.0",
-      "description": "Generate cinematic AI video clips (5-20s) using ByteDance Seedance 2.0 via OpenRouter. Supports text-to-video, first/last-frame image conditioning, and native audio-video joint generation.",
+      "version": "1.1.0",
+      "description": "Generate cinematic AI video clips (5-20s) using ByteDance Seedance 2.0 via OpenRouter. Supports text-to-video, first/last-frame image conditioning, native audio-video joint generation, and multimodal reference inputs (up to 9 reference images, 3 reference videos, 3 reference audio clips for cross-scene continuity and style memory).",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/seedance-plugin.agnt",
-      "size": 803786,
+      "size": 810563,
       "tags": [
         "ai",
         "video",
@@ -929,7 +929,11 @@
         "openrouter",
         "generative",
         "text-to-video",
-        "image-to-video"
+        "image-to-video",
+        "reference-video",
+        "reference-audio",
+        "multimodal",
+        "native-audio"
       ],
       "category": "ai",
       "tools": [
@@ -937,7 +941,7 @@
           "type": "seedance-api",
           "schema": {
             "title": "Seedance 2.0 Video",
-            "description": "Generate 5-20s cinematic AI video clips using ByteDance Seedance 2.0 via OpenRouter. Pair with the Remotion plugin to add branded motion graphics, logos, and captions."
+            "description": "Generate 5-20s cinematic AI video clips using ByteDance Seedance 2.0 via OpenRouter. v1.1 adds multimodal reference inputs: pass prior clips, reference audio, and style images for cross-scene continuity. Pair with Remotion for branded motion graphics, logos, and captions."
           }
         }
       ]

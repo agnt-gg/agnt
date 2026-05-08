@@ -1,7 +1,7 @@
 {
   "name": "agnt-seedance-plugin",
-  "version": "1.0.0",
-  "description": "ByteDance Seedance 2.0 video generation plugin for AGNT",
+  "version": "1.1.0",
+  "description": "ByteDance Seedance 2.0 video generation plugin for AGNT — text/image/video/audio multimodal reference inputs",
   "type": "module",
   "main": "seedance-api.js",
   "dependencies": {
