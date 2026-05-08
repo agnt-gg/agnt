@@ -476,13 +476,15 @@ class GenerateWithAiLlm extends BaseAction {
       case 'openai-codex':
         response = await this.generateWithCodex({ ...params, prompt: fullPrompt });
         break;
+      case 'kimi-code':
+        response = await this.generateWithKimiCode({ ...params, prompt: fullPrompt });
+        break;
       case 'cerebras':
       case 'deepseek':
       case 'gemini':
       case 'grokai':
       case 'groq':
       case 'kimi':
-      case 'kimi-code':
       case 'local':
       case 'minimax':
       case 'openai':
@@ -526,12 +528,14 @@ class GenerateWithAiLlm extends BaseAction {
       case 'openai-codex':
         response = await this.generateWithCodex({ ...params, prompt, image });
         break;
+      case 'kimi-code':
+        response = await this.generateWithKimiCode({ ...params, prompt, image });
+        break;
       case 'deepseek':
       case 'gemini':
       case 'grokai':
       case 'groq':
       case 'kimi':
-      case 'kimi-code':
       case 'local':
       case 'minimax':
       case 'openai':
@@ -680,6 +684,44 @@ class GenerateWithAiLlm extends BaseAction {
     }
     const client = await createLlmClient(provider, params.userId);
     const adapter = await createLlmAdapter(provider, client, params.model);
+
+    const { responseMessage, usage } = await adapter.call(
+      [{ role: 'user', content: params.prompt }],
+      [],
+    );
+
+    let generatedText = '';
+    if (typeof responseMessage?.content === 'string') {
+      generatedText = responseMessage.content;
+    } else if (Array.isArray(responseMessage?.content)) {
+      generatedText = responseMessage.content
+        .filter((b) => b && (b.type === 'text' || b.type === 'output_text' || typeof b.text === 'string'))
+        .map((b) => b.text || '')
+        .join('');
+    }
+
+    const inputTokens = usage?.input_tokens || usage?.prompt_tokens || 0;
+    const outputTokens = usage?.output_tokens || usage?.completion_tokens || 0;
+    return {
+      generatedText,
+      tokenCount: inputTokens + outputTokens,
+      inputTokens,
+      outputTokens,
+    };
+  }
+
+  async generateWithKimiCode(params) {
+    // Kimi Code uses a custom baseURL (api.kimi.com/coding/v1) plus a User-Agent
+    // header that spoofs kimi-cli, and requires developer→user role mapping.
+    // Constructing a raw OpenAI SDK client here would silently default to
+    // api.openai.com and surface a misleading "Incorrect API key" 401. Delegate
+    // to createLlmClient + createLlmAdapter so the canonical providerConfigs
+    // entry (baseURL, dynamic UA, mapDeveloperRole, Moonshot schema fixes) is
+    // applied — same pattern as the claude-code and openai-codex paths.
+    const provider = 'kimi-code';
+    const client = await createLlmClient(provider, params.userId);
+    const model = params.model || 'kimi-for-coding';
+    const adapter = await createLlmAdapter(provider, client, model);
 
     const { responseMessage, usage } = await adapter.call(
       [{ role: 'user', content: params.prompt }],
