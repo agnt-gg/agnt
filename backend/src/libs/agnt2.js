@@ -600,10 +600,19 @@ class AuthModule {
     const response = await this.client.get(`/auth/connected`);
     return response.data;
   }
+  _getUserIdFromToken() {
+    try {
+      const payload = JSON.parse(Buffer.from(this.apiKey.split('.')[1], 'base64url').toString('utf8'));
+      return payload.id || payload.userId || payload.sub || null;
+    } catch {
+      return null;
+    }
+  }
   async getValidToken(providerId) {
-    // Assuming backend's /auth/valid-token uses req.user.id from the bearer token
-    // and providerId from query param.
-    const response = await this.client.get(`/auth/valid-token?providerId=${providerId}`);
+    const params = new URLSearchParams({ providerId });
+    const userId = this._getUserIdFromToken();
+    if (userId) params.set('userId', userId);
+    const response = await this.client.get(`/auth/valid-token?${params.toString()}`);
     return response.data; // Expected: { access_token: "..." }
   }
 }

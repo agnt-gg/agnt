@@ -2577,6 +2577,43 @@ export const TOOLS = {
       const agnt = new AGNT(userApiKey); // Uses user's JWT token instead of hardcoded AGNT_API_KEY
 
       try {
+        const getAuthenticatedUserId = () => {
+          try {
+            const decoded = jwt.decode(userApiKey);
+            return decoded?.id || decoded?.userId || decoded?.user_id || decoded?.sub || null;
+          } catch {
+            return null;
+          }
+        };
+
+        const getProviderCandidates = (providerId) => {
+          const raw = String(providerId || '').trim();
+          const normalized = raw.toLowerCase();
+          const aliases = {
+            obsidian: ['obsidian', 'obsidian-local-rest-api'],
+            'obsidian-local-rest-api': ['obsidian-local-rest-api', 'obsidian'],
+          };
+          return [...new Set([raw, normalized, ...(aliases[normalized] || [])].filter(Boolean))];
+        };
+
+        const getLocalApiKey = async (providerId) => {
+          const userId = getAuthenticatedUserId();
+          if (!userId || !providerId) return null;
+
+          for (const candidate of getProviderCandidates(providerId)) {
+            try {
+              const apiKey = await AuthManager._getApiKey(userId, candidate);
+              if (apiKey) {
+                return { providerId: candidate, apiKey };
+              }
+            } catch (error) {
+              console.error(`Local API key lookup failed for ${candidate}:`, error.message);
+            }
+          }
+
+          return null;
+        };
+
         let result;
         switch (operation) {
           case 'list_providers':
@@ -2622,6 +2659,18 @@ export const TOOLS = {
             if (!provider_id) {
               return JSON.stringify({ success: false, error: "provider_id is required for 'retrieve_api_key'." });
             }
+            {
+              const localApiKey = await getLocalApiKey(provider_id);
+              if (localApiKey) {
+                result = {
+                  success: true,
+                  apiKey: localApiKey.apiKey,
+                  provider_id: localApiKey.providerId,
+                  source: 'local_api_keys',
+                };
+                break;
+              }
+            }
             result = await agnt.auth.retrieveApiKey(provider_id);
             break;
           case 'connect_provider':
@@ -2642,6 +2691,18 @@ export const TOOLS = {
           case 'get_valid_token':
             if (!provider_id) {
               return JSON.stringify({ success: false, error: "provider_id is required for 'get_valid_token'." });
+            }
+            {
+              const localApiKey = await getLocalApiKey(provider_id);
+              if (localApiKey) {
+                result = {
+                  access_token: localApiKey.apiKey,
+                  token_type: 'api_key',
+                  provider_id: localApiKey.providerId,
+                  source: 'local_api_keys',
+                };
+                break;
+              }
             }
             result = await agnt.auth.getValidToken(provider_id); // Returns { access_token: "..." }
             break;

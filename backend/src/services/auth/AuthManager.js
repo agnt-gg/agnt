@@ -30,8 +30,24 @@ class AuthManager {
     this._scheduleTokenRefresh(userId, providerId, tokens);
     return tokens;
   }
-  // LOCAL VERSION THAT USES REMOTE AUTH SERVICE
+  // LOCAL VERSION THAT USES LOCAL API-KEY STORAGE FIRST, THEN REMOTE AUTH SERVICE
   async getValidAccessToken(userId, providerId) {
+    try {
+      // API-key providers stored through /auth/apikeys/:providerId live in the
+      // local api_keys table. Prefer that local value so desktop-only providers
+      // such as Obsidian Local REST API do not have to exist in the remote OAuth
+      // provider registry.
+      const localApiKey = await this._getApiKey(userId, providerId);
+      if (localApiKey) {
+        console.log(`Using local API key for ${providerId}`);
+        return localApiKey;
+      }
+    } catch (localError) {
+      console.error(`Error retrieving local API key for ${providerId}:`, localError.message);
+      // Continue to the remote token proxy so OAuth providers are not blocked by
+      // a local api_keys lookup/decryption issue.
+    }
+
     try {
       const response = await axios.get(`${this.remoteUrl}/auth/valid-token`, {
         params: { userId, providerId },
@@ -610,7 +626,6 @@ async function checkGoogleHealth(token) {
 
 async function checkTwitterHealth(token) {
   try {
-    console.log('Checking Twitter health with token:', token);
     const response = await axios.get('https://api.twitter.com/2/users/me', {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -624,8 +639,16 @@ async function checkTwitterHealth(token) {
       },
     };
   } catch (error) {
-    console.error('Twitter token validation failed:', error);
-    throw new Error('Twitter token validation failed');
+    const status = error.response?.status;
+    const data = error.response?.data || {};
+    const type = data.type || null;
+    const title = data.title || null;
+    const detail = data.detail || data.errors?.[0]?.message || null;
+    console.error('Twitter token validation failed:', { status, type, title, detail });
+    if (status === 403 && (type?.includes('client-forbidden') || title === 'Client Forbidden')) {
+      throw new Error('Twitter token validation failed: X API client forbidden; the AGNT X app lacks required API access/enrollment.');
+    }
+    throw new Error(`Twitter token validation failed${status ? `: HTTP ${status}` : ''}${title ? ` ${title}` : ''}`);
   }
 }
 
