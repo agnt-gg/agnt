@@ -26,6 +26,7 @@ import GoalRoutes from './src/routes/GoalRoutes.js';
 import LayoutRoutes from './src/routes/LayoutRoutes.js';
 import OrchestratorRoutes from './src/routes/OrchestratorRoutes.js';
 import ToolsRoutes from './src/routes/ToolsRoutes.js';
+import ToolSchemaRoutes from './src/routes/ToolSchemaRoutes.js';
 import ModelRoutes from './src/routes/ModelRoutes.js';
 import CustomProviderRoutes from './src/routes/CustomProviderRoutes.js';
 import MCPRoutes from './src/routes/MCPRoutes.js';
@@ -165,6 +166,7 @@ app.use('/api/goals', GoalRoutes);
 app.use('/api/layouts', LayoutRoutes);
 app.use('/api/orchestrator', OrchestratorRoutes);
 app.use('/api/tools', ToolsRoutes);
+app.use('/api/tool-schemas', ToolSchemaRoutes);
 app.use('/api/models', ModelRoutes); // Generic models endpoint for all providers
 app.use('/api/openrouter', ModelRoutes); // Legacy support for OpenRouter
 app.use('/api/custom-providers', CustomProviderRoutes);
