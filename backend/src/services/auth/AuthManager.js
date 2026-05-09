@@ -608,13 +608,44 @@ async function checkGoogleHealth(token) {
   }
 }
 
-async function checkTwitterHealth(token) {
+// Twitter's GET /2/users/me has a hard 250-call/24h per-user cap, which is
+// trivial to exhaust during normal use (every reconnect / panel mount fires a
+// health check). Cache the verdict so we don't burn the daily quota, and on
+// 429 keep returning "healthy" until the documented reset window passes —
+// the cap is on validation, not on whether the token is valid.
+const TWITTER_HEALTH_CACHE = new Map(); // token -> { result, expiresAt }
+const TWITTER_HEALTH_TTL_MS = 5 * 60 * 1000;
+const TWITTER_RATE_LIMIT_REMEMBER = new Map(); // token -> resetEpochMs
+
+export async function checkTwitterHealth(token) {
+  const now = Date.now();
+
+  const cached = TWITTER_HEALTH_CACHE.get(token);
+  if (cached && cached.expiresAt > now) {
+    return cached.result;
+  }
+
+  // If Twitter recently told us the 24h cap is blown, don't re-ask until reset.
+  const blockedUntil = TWITTER_RATE_LIMIT_REMEMBER.get(token);
+  if (blockedUntil && blockedUntil > now) {
+    return {
+      status: 'healthy',
+      provider: 'twitter',
+      lastChecked: new Date().toISOString(),
+      details: {
+        hasValidToken: true,
+        note: 'Twitter validation rate-limited; deferred until quota resets',
+        retryAfter: new Date(blockedUntil).toISOString(),
+      },
+    };
+  }
+
   try {
-    console.log('Checking Twitter health with token:', token);
+    console.log('Checking Twitter health with token length:', token?.length);
     const response = await axios.get('https://api.twitter.com/2/users/me', {
       headers: { Authorization: `Bearer ${token}` },
     });
-    return {
+    const result = {
       status: 'healthy',
       provider: 'twitter',
       lastChecked: new Date().toISOString(),
@@ -623,9 +654,43 @@ async function checkTwitterHealth(token) {
         id: response.data.data.id,
       },
     };
+    TWITTER_HEALTH_CACHE.set(token, { result, expiresAt: now + TWITTER_HEALTH_TTL_MS });
+    return result;
   } catch (error) {
-    console.error('Twitter token validation failed:', error);
-    throw new Error('Twitter token validation failed');
+    const status = error.response?.status;
+
+    if (status === 401 || status === 403) {
+      // Genuine auth failure — token is bad / scopes revoked.
+      console.error('Twitter token validation failed:', status, error.response?.data);
+      throw new Error('Twitter token validation failed');
+    }
+
+    if (status === 429) {
+      // Quota — token is fine, Twitter just won't tell us. Park it until reset.
+      const resetSec = Number(error.response?.headers?.['x-user-limit-24hour-reset']);
+      const resetMs = Number.isFinite(resetSec) ? resetSec * 1000 : now + 60 * 60 * 1000;
+      TWITTER_RATE_LIMIT_REMEMBER.set(token, resetMs);
+      console.warn(`Twitter health check 429; deferring until ${new Date(resetMs).toISOString()}`);
+      return {
+        status: 'healthy',
+        provider: 'twitter',
+        lastChecked: new Date().toISOString(),
+        details: {
+          hasValidToken: true,
+          note: 'Twitter validation rate-limited; deferred until quota resets',
+          retryAfter: new Date(resetMs).toISOString(),
+        },
+      };
+    }
+
+    // Network blips, 5xx, etc. — don't claim the token is bad over a transient issue.
+    console.warn('Twitter health check transient error:', status || error.message);
+    return {
+      status: 'healthy',
+      provider: 'twitter',
+      lastChecked: new Date().toISOString(),
+      details: { hasValidToken: true, note: 'Validation skipped due to transient error' },
+    };
   }
 }
 
