@@ -2025,17 +2025,28 @@ export default {
       }
     }
 
-    function handleOAuthMessage(event) {
+    async function handleOAuthMessage(event) {
       // Handle legacy oauth-success message
       if (event.data && event.data.type === 'oauth-success') {
         store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
         showAlert('Success', 'OAuth connection successful!');
       }
-      // api.agnt.gg already exchanged the code server-side; just refresh state.
-      // forceRefresh bypasses the 1-min withFreshness cache (post-write refresh).
+      // Electron path: api.agnt.gg's callback page postMessages the raw `code`
+      // back here; the opener has to POST it to /auth/callback to mint tokens.
+      // (Browser/dev mode does the exchange in-popup via OAuthCallback.vue.)
       else if (event.data && event.data.type === 'oauth-callback') {
-        store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-        store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
+        const { code, state, provider } = event.data;
+        try {
+          const result = await providerAuthService.completeRemoteOAuthCallback({ code, state });
+          if (!result?.success) throw new Error(result?.error || 'OAuth completion failed');
+          await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
+          await store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
+        } catch (error) {
+          console.error('Error completing OAuth:', error);
+          terminalLines.value.push(`[OAuth] Failed to complete OAuth: ${error.message}`);
+          nextTick(() => baseScreenRef.value?.scrollToBottom());
+          await showAlert('Connection Error', `Failed to connect to ${provider || 'the service'}: ${error.message}`);
+        }
       }
     }
 

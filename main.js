@@ -467,85 +467,72 @@ function createWindow() {
   // Open DevTools for debugging.
   // mainWindow.webContents.openDevTools();
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.setWindowOpenHandler(({ url, features }) => {
-      console.log('Window open requested:', { url, features });
+  // Register popup-window handling exactly once. Previously this lived inside
+  // a `did-finish-load` callback, which fires on every navigation/reload —
+  // each fire stacked another `did-create-window` listener, so popup events
+  // were being logged (and handled) multiple times per real event.
+  mainWindow.webContents.setWindowOpenHandler(({ url, features }) => {
+    console.log('Window open requested:', { url, features });
 
-      // Check if this is a popup window (OAuth windows have specific features like width/height)
-      // Features string will contain things like "width=600,height=700,toolbar=no"
-      const isPopup = features.includes('width=') && features.includes('height=');
+    // Check if this is a popup window (OAuth windows have specific features like width/height)
+    // Features string will contain things like "width=600,height=700,toolbar=no"
+    const isPopup = features.includes('width=') && features.includes('height=');
 
-      if (isPopup) {
-        console.log('Opening OAuth popup in Electron window');
-        // This is likely an OAuth popup - open in Electron window so callbacks work
-        return {
-          action: 'allow',
-          overrideBrowserWindowOptions: {
-            width: 600,
-            height: 700,
-            webPreferences: {
-              contextIsolation: true,
-              nodeIntegration: false,
-              preload: path.join(__dirname, 'preload.js'),
-              webSecurity: true,
-            },
-            autoHideMenuBar: true,
-            show: true,
+    if (isPopup) {
+      console.log('Opening OAuth popup in Electron window');
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 600,
+          height: 700,
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            preload: path.join(__dirname, 'preload.js'),
+            webSecurity: true,
           },
-          outlivesOpener: true,
-        };
-      }
+          autoHideMenuBar: true,
+          show: true,
+        },
+        outlivesOpener: true,
+      };
+    }
 
-      // For regular links (not popups), open in external browser
-      console.log('Opening link in external browser:', url);
-      import('electron').then(({ shell }) => {
-        shell.openExternal(url);
-      });
-      return { action: 'deny' };
+    // For regular links (not popups), open in external browser
+    console.log('Opening link in external browser:', url);
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('did-create-window', (childWindow) => {
+    console.log('Child window created');
+
+    childWindow.webContents.on('will-redirect', (event, url) => {
+      console.log('Popup will redirect to:', url);
+      if (url.includes('localhost') && (url.includes('/oauth-callback') || url.includes('/oauth/callback'))) {
+        console.log('OAuth callback redirect to localhost detected');
+      }
     });
 
-    // Also set up handler for new windows created by popups
-    mainWindow.webContents.on('did-create-window', (childWindow) => {
-      console.log('Child window created');
+    childWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+      console.log('Popup navigating to:', navigationUrl);
+      if (navigationUrl.includes('localhost') && (navigationUrl.includes('/oauth-callback') || navigationUrl.includes('/oauth/callback'))) {
+        console.log('OAuth callback to localhost detected in popup, allowing navigation');
+      } else if (navigationUrl.includes('/oauth-callback') || navigationUrl.includes('/oauth/callback')) {
+        console.log('OAuth callback detected in popup');
+      }
+    });
 
-      // Intercept redirects - this is crucial for OAuth callbacks
-      // When api.agnt.gg redirects to localhost:3333/oauth-callback, we need to handle it
-      childWindow.webContents.on('will-redirect', (event, url) => {
-        console.log('Popup will redirect to:', url);
+    childWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+      console.error('Popup failed to load:', { errorCode, errorDescription, validatedURL });
+      if (validatedURL && validatedURL.includes('localhost') && (validatedURL.includes('/oauth-callback') || validatedURL.includes('/oauth/callback'))) {
+        console.log('Failed to load localhost OAuth callback, attempting to load directly');
+        childWindow.loadURL(validatedURL);
+      }
+    });
 
-        // If redirecting to localhost OAuth callback, log for debugging
-        if (url.includes('localhost') && (url.includes('/oauth-callback') || url.includes('/oauth/callback'))) {
-          console.log('OAuth callback redirect to localhost detected');
-        }
-      });
-
-      // Set up navigation handler for the popup window
-      childWindow.webContents.on('will-navigate', (event, navigationUrl) => {
-        console.log('Popup navigating to:', navigationUrl);
-
-        // Check if this is an OAuth callback URL to localhost
-        if (navigationUrl.includes('localhost') && (navigationUrl.includes('/oauth-callback') || navigationUrl.includes('/oauth/callback'))) {
-          console.log('OAuth callback to localhost detected in popup, allowing navigation');
-        }
-        // Check if this is an OAuth callback URL (might be on api.agnt.gg due to redirect issues)
-        else if (navigationUrl.includes('/oauth-callback') || navigationUrl.includes('/oauth/callback')) {
-          console.log('OAuth callback detected in popup');
-        }
-      });
-
-      childWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-        console.error('Popup failed to load:', { errorCode, errorDescription, validatedURL });
-
-        // If the load failed because of a redirect to localhost, try to handle it
-        if (validatedURL && validatedURL.includes('localhost') && (validatedURL.includes('/oauth-callback') || validatedURL.includes('/oauth/callback'))) {
-          console.log('Failed to load localhost OAuth callback, attempting to load directly');
-          childWindow.loadURL(validatedURL);
-        }
-      });
-
-      childWindow.webContents.on('did-finish-load', () => {
-        console.log('Popup finished loading:', childWindow.webContents.getURL());
-      });
+    childWindow.webContents.on('did-finish-load', () => {
+      console.log('Popup finished loading:', childWindow.webContents.getURL());
     });
   });
 

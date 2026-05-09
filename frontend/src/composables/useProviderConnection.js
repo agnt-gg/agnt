@@ -484,7 +484,18 @@ export function useProviderConnection(modalRef) {
       const errorMessage = event.data.message || 'Authentication failed';
       await showAlert('Connection Error', `Failed to connect to ${providerName}: ${errorMessage}`);
     } else if (event.data.type === 'oauth-callback') {
-      await refreshHealth();
+      // api.agnt.gg's Electron callback page postMessages the raw `code`;
+      // the opener has to POST it to /auth/callback to actually mint tokens.
+      const { code, state, provider } = event.data;
+      try {
+        const result = await providerAuthService.completeRemoteOAuthCallback({ code, state });
+        if (!result?.success) throw new Error(result?.error || 'OAuth completion failed');
+        await refreshHealth();
+      } catch (err) {
+        console.error('OAuth code exchange failed:', err);
+        const providerName = provider || 'the service';
+        await showAlert('Connection Error', `Failed to connect to ${providerName}: ${err.message}`);
+      }
     }
   };
 

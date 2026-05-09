@@ -794,9 +794,19 @@ export default {
         const errorMessage = event.data.message || 'Authentication failed';
         await showAlert('Connection Error', `Failed to connect to ${providerName}: ${errorMessage}`);
       }
-      // api.agnt.gg already exchanged the code server-side; just refresh health.
+      // Electron path: api.agnt.gg's callback page postMessages the raw `code`
+      // back here; the opener has to POST it to /auth/callback to mint tokens.
+      // (Browser/dev mode does the exchange in-popup via OAuthCallback.vue.)
       else if (event.data.type === 'oauth-callback') {
-        await refreshHealth();
+        const { code, state, provider } = event.data;
+        try {
+          const result = await providerAuthService.completeRemoteOAuthCallback({ code, state });
+          if (!result?.success) throw new Error(result?.error || 'OAuth completion failed');
+          await refreshHealth();
+        } catch (error) {
+          console.error('Error completing OAuth:', error);
+          await showAlert('Connection Error', `Failed to connect to ${provider || 'the service'}: ${error.message}`);
+        }
       }
     };
 
