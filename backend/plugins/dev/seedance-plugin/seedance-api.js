@@ -34,6 +34,19 @@ class SeedanceAPI {
     this.MAX_TOTAL_REFERENCES = 12;
   }
 
+  // OpenRouter app-attribution headers (https://openrouter.ai/docs/app-attribution)
+  // so all AGNT instances aggregate under one app on OpenRouter leaderboards.
+  _orHeaders(apiKey, extra = {}) {
+    return {
+      Authorization: `Bearer ${apiKey}`,
+      'HTTP-Referer': process.env.OPENROUTER_APP_REFERER || 'https://agnt.gg',
+      'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
+      'X-OpenRouter-Categories':
+        process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',
+      ...extra,
+    };
+  }
+
   // ───────────────────────────────────────────────────────────────────
   // Helpers
   // ───────────────────────────────────────────────────────────────────
@@ -320,7 +333,7 @@ class SeedanceAPI {
   async getVideoModelCapabilities(apiKey, model) {
     try {
       const res = await axios.get(this.MODELS_URL, {
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers: this._orHeaders(apiKey),
         timeout: 5000,
       });
       const all = res.data?.data || res.data?.models || res.data || [];
@@ -352,12 +365,7 @@ class SeedanceAPI {
       try {
         const submit = await this._withRetry(() =>
           axios.post(this.API_BASE, body, {
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-              'HTTP-Referer': 'https://agnt.gg',
-              'X-Title': 'AGNT Seedance Plugin',
-            },
+            headers: this._orHeaders(apiKey, { 'Content-Type': 'application/json' }),
           })
         );
         return { submit, body, requestShape };
@@ -486,7 +494,7 @@ class SeedanceAPI {
         await new Promise((r) => setTimeout(r, this.POLL_INTERVAL_MS));
 
         const poll = await axios.get(pollUrl, {
-          headers: { Authorization: `Bearer ${apiKey}` },
+          headers: this._orHeaders(apiKey),
         });
         lastStatus = poll.data.status;
         console.log(`[SeedancePlugin] Job ${jobId} status: ${lastStatus}`);
@@ -502,7 +510,7 @@ class SeedanceAPI {
 
           // ─── 4. Download video bytes ─────────────────────────
           const videoRes = await axios.get(downloadUrl, {
-            headers: { Authorization: `Bearer ${apiKey}` },
+            headers: this._orHeaders(apiKey),
             responseType: 'arraybuffer',
           });
           const videoBuffer = Buffer.from(videoRes.data);

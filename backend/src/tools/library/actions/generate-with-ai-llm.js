@@ -7,6 +7,7 @@ import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
+import { getProviderConfig } from '../../../services/ai/providerConfigs.js';
 
 const PROVIDER_CONFIG = {
   deepseek: {
@@ -751,9 +752,12 @@ class GenerateWithAiLlm extends BaseAction {
   async generateWithOpenAiLike(params) {
     const providerKey = params.provider.toLowerCase();
     const providerInfo = PROVIDER_CONFIG[providerKey] || PROVIDER_CONFIG.default;
+    const sharedConfig = getProviderConfig(providerKey);
+    const defaultHeaders = sharedConfig?.sdkOptions?.defaultHeaders;
     const openai = new OpenAI({
       apiKey: params.apiKey,
       baseURL: providerInfo.baseURL,
+      ...(defaultHeaders ? { defaultHeaders } : {}),
     });
 
     // Handle image data for vision models

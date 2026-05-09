@@ -349,6 +349,9 @@ const PROVIDER_CONFIGS = [
   },
 
   // ─────────────────────────── OPENROUTER ───────────────────────────
+  // App attribution headers per https://openrouter.ai/docs/app-attribution.
+  // Sent on every OpenRouter request (chat/completions AND model listing) so
+  // all AGNT instances aggregate under one app on OpenRouter leaderboards.
   {
     key: 'openrouter',
     name: 'OpenRouter',
@@ -357,9 +360,17 @@ const PROVIDER_CONFIGS = [
     authScheme: 'bearer',
     sdkOptions: {
       defaultHeaders: {
-        'HTTP-Referer': process.env.SITE_URL || 'http://localhost:3333',
-        'X-Title': process.env.SITE_NAME || 'TaskTitan',
+        'HTTP-Referer': process.env.OPENROUTER_APP_REFERER || 'https://agnt.gg',
+        'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
+        'X-OpenRouter-Categories':
+          process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',
       },
+    },
+    fetchHeaders: {
+      'HTTP-Referer': process.env.OPENROUTER_APP_REFERER || 'https://agnt.gg',
+      'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
+      'X-OpenRouter-Categories':
+        process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',
     },
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
