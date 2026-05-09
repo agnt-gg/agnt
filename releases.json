@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "0.5.15",
+      "date": "May 9, 2026",
+      "title": "Obsidian Plugin, Seedance Multimodal Inputs & OAuth Recovery - AGNT v0.5.15",
+      "type": "patch",
+      "features": [
+        { "name": "New Obsidian Plugin Lets Annie and Workflows Read, Write, Search, Patch, and Daily-Note Your Obsidian Vault, Plus Run Obsidian Commands Like the Command Palette", "status": "new" },
+        { "name": "Seedance Video Tool Now Accepts Up to 9 Reference Images, 3 Reference Videos, and 3 Audio Clips Per Generation, So You Can Feed In Examples and Shot Direction", "status": "updated" },
+        { "name": "Seedance Output Now Returns the Polling Link and Both the Direct and Signed Content URLs So You Can Chain Clips Across Scenes Without Re-Uploading", "status": "updated" },
+        { "name": "Every AGNT Instance Now Identifies Itself as AGNT on OpenRouter's Public Leaderboards Instead of Each One Looking Like an Anonymous Client", "status": "new" },
+        { "name": "AGNT Now Automatically Imports Your Database From Older Install Locations the First Time It Boots, So You Don't Have to Move Files Manually After Upgrading", "status": "new" },
+        { "name": "AGNT No Longer Mistakes a Stray C:\\app\\data Folder on Windows for a Docker Mount and Reads or Writes to the Wrong Spot", "status": "bug" },
+        { "name": "Twitter, GitHub, Slack, Notion, and Dropbox OAuth Logins Now Actually Save Your Token in the Desktop App After Recent Versions Were Silently Closing the Popup With Nothing Stored", "status": "bug" },
+        { "name": "Twitter Token Status No Longer Shows \"Validation Failed\" After You Hit Twitter's Daily Health-Check Limit, and Health Refreshes Now Cache for Five Minutes So They Don't Burn That Quota in the First Place", "status": "bug" },
+        { "name": "Kimi Coder API Keys No Longer Get Sent to OpenAI by Mistake When Used Inside Workflow AI Nodes — They Now Hit Kimi's Real Endpoint With the Right Settings", "status": "bug" },
+        { "name": "Tool Schema API Endpoints Under /api/tool-schemas/* Now Respond Properly Instead of Returning 404 — The Router Was Documented but Never Wired Up at the Server Level (Thanks @namle0251-blip for the Report)", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.14",
       "date": "May 7, 2026",
       "title": "Pack Studio, Telegram Plugin & Codex Stability - AGNT v0.5.14",
