@@ -13,7 +13,7 @@
         { "name": "AGNT Now Automatically Imports Your Database From Older Install Locations the First Time It Boots, So You Don't Have to Move Files Manually After Upgrading", "status": "new" },
         { "name": "AGNT No Longer Mistakes a Stray C:\\app\\data Folder on Windows for a Docker Mount and Reads or Writes to the Wrong Spot", "status": "bug" },
         { "name": "Twitter, GitHub, Slack, Notion, and Dropbox OAuth Logins Now Actually Save Your Token in the Desktop App After Recent Versions Were Silently Closing the Popup With Nothing Stored", "status": "bug" },
-        { "name": "Twitter Token Status No Longer Shows \"Validation Failed\" After You Hit Twitter's Daily Health-Check Limit, and Health Refreshes Now Cache for Five Minutes So They Don't Burn That Quota in the First Place", "status": "bug" },
+        { "name": "Twitter Token Status No Longer Shows \"Validation Failed\" After You Hit Twitter's Daily Health-Check Limit, and Health Refreshes Now Cache for Five Minutes So They Don't Burn That Quota in the First Place (Thanks @namle0251-blip for Catching the Token Logging Leak and Misleading Error Message)", "status": "bug" },
         { "name": "Kimi Coder API Keys No Longer Get Sent to OpenAI by Mistake When Used Inside Workflow AI Nodes — They Now Hit Kimi's Real Endpoint With the Right Settings", "status": "bug" },
         { "name": "Tool Schema API Endpoints Under /api/tool-schemas/* Now Respond Properly Instead of Returning 404 — The Router Was Documented but Never Wired Up at the Server Level (Thanks @namle0251-blip for the Report)", "status": "bug" }
       ],
