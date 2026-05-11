@@ -57,14 +57,15 @@
                 <template v-for="message in displayMessages" :key="message.id">
                   <!-- Inline skill pill: right-aligned to match user bubbles. -->
                   <div v-if="message.kind === 'skill-pill'" class="inline-pill-row">
-                    <div
-                      class="inline-context-pill"
-                      :class="{ 'is-detached': message.detached, 'is-skill': true }"
-                    >
+                    <div class="inline-context-pill" :class="{ 'is-detached': message.detached, 'is-skill': true }">
                       <i :class="message.skill?.icon || 'fas fa-puzzle-piece'"></i>
                       <span class="pill-label">
-                        <span v-if="message.detached">Skill detached: <b>{{ message.skill?.name }}</b></span>
-                        <span v-else>Skill attached: <b>{{ message.skill?.name }}</b></span>
+                        <span v-if="message.detached"
+                          >Skill detached: <b>{{ message.skill?.name }}</b></span
+                        >
+                        <span v-else
+                          >Skill attached: <b>{{ message.skill?.name }}</b></span
+                        >
                       </span>
                       <button
                         v-if="!message.detached && currentActiveSkillId === message.skill?.id"
@@ -575,27 +576,29 @@ export default {
     const goalCreateMode = computed(() => store.state.chat.goalCreateMode);
 
     // Pretty labels + icons for inline goal-event cards
-    const goalEventLabel = (kind) => ({
-      task_completed: 'Task completed',
-      task_failed: 'Task failed',
-      verdict: 'Verdict',
-      loop_completed: 'Goal finished',
-      loop_error: 'Goal error',
-      iteration_start: 'Iteration',
-      iteration_end: 'Iteration end',
-      attached: 'Goal attached',
-    }[kind] || kind);
+    const goalEventLabel = (kind) =>
+      ({
+        task_completed: 'Task completed',
+        task_failed: 'Task failed',
+        verdict: 'Verdict',
+        loop_completed: 'Goal finished',
+        loop_error: 'Goal error',
+        iteration_start: 'Iteration',
+        iteration_end: 'Iteration end',
+        attached: 'Goal attached',
+      })[kind] || kind;
 
-    const goalEventIcon = (kind) => ({
-      task_completed: 'fas fa-check-circle',
-      task_failed: 'fas fa-times-circle',
-      verdict: 'fas fa-gavel',
-      loop_completed: 'fas fa-flag-checkered',
-      loop_error: 'fas fa-exclamation-triangle',
-      iteration_start: 'fas fa-rotate',
-      iteration_end: 'fas fa-rotate',
-      attached: 'fas fa-bullseye',
-    }[kind] || 'fas fa-bullseye');
+    const goalEventIcon = (kind) =>
+      ({
+        task_completed: 'fas fa-check-circle',
+        task_failed: 'fas fa-times-circle',
+        verdict: 'fas fa-gavel',
+        loop_completed: 'fas fa-flag-checkered',
+        loop_error: 'fas fa-exclamation-triangle',
+        iteration_start: 'fas fa-rotate',
+        iteration_end: 'fas fa-rotate',
+        attached: 'fas fa-bullseye',
+      })[kind] || 'fas fa-bullseye';
 
     // Helper: push an inline pill/widget into the conversation.
     // Default role is 'user' so the LLM SEES the message (buildChatHistory
@@ -739,7 +742,8 @@ export default {
 
           // Force autosave so the OutputList sidebar can show the running
           // indicator on this conversation (it keys off savedOutputId).
-          store.dispatch('chat/autosaveConversation', { debounce: false, conversationId: convId })
+          store
+            .dispatch('chat/autosaveConversation', { debounce: false, conversationId: convId })
             .catch((e) => console.warn('[Chat] attach-goal autosave failed:', e));
           break;
         }
@@ -866,7 +870,8 @@ export default {
         // there's no content_output id to attach the indicator to.
         // Normally the orchestrator's `conversation_started` event triggers
         // autosave, but /goal doesn't go through the orchestrator path.
-        store.dispatch('chat/autosaveConversation', { debounce: false, conversationId: convId })
+        store
+          .dispatch('chat/autosaveConversation', { debounce: false, conversationId: convId })
           .catch((e) => console.warn('[Chat] /goal autosave failed:', e));
       } catch (e) {
         store.commit('chat/SCOPED_ADD_MESSAGE', {
@@ -1406,17 +1411,13 @@ export default {
       if (document.querySelector('.modal-overlay')) return;
 
       const active = document.activeElement;
-      const isEditable =
-        !!active &&
-        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+      const isEditable = !!active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
 
       // Don't steal keys when a non-chat input is focused (e.g. a search box
       // teleported to body, or a popover field). The chat textarea inside
       // .input-container / .chat-input-container is still fair game for
       // PageUp/PageDown.
-      const insideModalInput =
-        isEditable &&
-        !active.closest?.('.input-container, .chat-input-container, .automation-interface');
+      const insideModalInput = isEditable && !active.closest?.('.input-container, .chat-input-container, .automation-interface');
       if (insideModalInput) return;
 
       // Home/End have native cursor-movement semantics inside any editable
@@ -1427,20 +1428,32 @@ export default {
 
       if (event.key === 'PageUp') {
         event.preventDefault();
-        try { el.scrollBy({ top: -page, behavior: 'smooth' }); }
-        catch (e) { el.scrollTop = Math.max(0, el.scrollTop - page); }
+        try {
+          el.scrollBy({ top: -page, behavior: 'smooth' });
+        } catch (e) {
+          el.scrollTop = Math.max(0, el.scrollTop - page);
+        }
       } else if (event.key === 'PageDown') {
         event.preventDefault();
-        try { el.scrollBy({ top: page, behavior: 'smooth' }); }
-        catch (e) { el.scrollTop = el.scrollTop + page; }
+        try {
+          el.scrollBy({ top: page, behavior: 'smooth' });
+        } catch (e) {
+          el.scrollTop = el.scrollTop + page;
+        }
       } else if (event.key === 'Home') {
         event.preventDefault();
-        try { el.scrollTo({ top: 0, behavior: 'smooth' }); }
-        catch (e) { el.scrollTop = 0; }
+        try {
+          el.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e) {
+          el.scrollTop = 0;
+        }
       } else if (event.key === 'End') {
         event.preventDefault();
-        try { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }
-        catch (e) { el.scrollTop = el.scrollHeight; }
+        try {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        } catch (e) {
+          el.scrollTop = el.scrollHeight;
+        }
       }
     };
 
@@ -2224,11 +2237,7 @@ export default {
     watch(
       () => {
         const c = store.state.chat;
-        return (
-          c.isStreaming ||
-          c.isRemoteStreaming ||
-          (c.activeAsyncTools && c.activeAsyncTools.size > 0)
-        );
+        return c.isStreaming || c.isRemoteStreaming || (c.activeAsyncTools && c.activeAsyncTools.size > 0);
       },
       (streaming) => {
         isProcessing.value = streaming;
@@ -2390,7 +2399,7 @@ export default {
   font-size: 0.78em;
   line-height: 1.2;
   border: 1px solid rgba(160, 120, 255, 0.4);
-  background: rgba(160, 120, 255, 0.10);
+  background: rgba(160, 120, 255, 0.1);
   color: #a078ff;
   max-width: max-content;
 }
@@ -2618,7 +2627,7 @@ export default {
 .conversation-canvas {
   flex: 1;
   overflow-y: scroll !important;
-  padding: 48px 16px 32px 60px;
+  padding: 48px 16px 32px 16px;
   scrollbar-width: thin !important;
 }
 
@@ -2650,7 +2659,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-left: -44px;
+  margin-left: -56px;
   min-width: 0;
 }
 
@@ -2679,6 +2688,12 @@ export default {
 .chat-screen-wrapper :deep(.scrollable-content) {
   padding: 8px;
 } */
+
+@media (max-width: 1780px) {
+  .message-flow {
+    margin-left: 0;
+  }
+}
 
 @media (max-width: 768px) {
   .conversation-canvas {
