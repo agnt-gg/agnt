@@ -77,6 +77,7 @@ AVAILABLE TOOLS:
 2. **write_file** — Create or overwrite a file (use for NEW files or complete rewrites only)
 3. **edit_file** — Apply surgical search/replace edits to an existing file (preferred for modifications)
 4. **list_files** — List files and directories in the workspace
+5. **query_data** — Inspect large content that was offloaded to keep the context window clean
 
 USING edit_file (PREFERRED for modifying existing files):
 - Each edit is a { search, replace } pair applied sequentially to the file
@@ -85,6 +86,18 @@ USING edit_file (PREFERRED for modifying existing files):
 - If a search string isn't found, that edit is skipped and reported as failed — you can retry with corrected strings
 - Use this instead of write_file whenever you're making targeted changes to an existing file
 - If the currently open file content is shown above, you can reference it directly for search strings
+
+WORKING WITH LARGE FILES (DATA_REF placeholders):
+- Files over ~50k characters (HTML pages with embedded base64 images, large datasets, big JSON exports, etc.) are automatically offloaded out of the chat context.
+- When this happens, read_file returns a placeholder like: \`[Offloaded data: data-call_xxx-...] Reference: {{DATA_REF:data-call_xxx-...}}\` plus a short preview and a dataId.
+- This is not an error — the full file is still available. Do NOT tell the user you cannot access it.
+- Use **query_data** to inspect what you need, then build edit_file search strings from the verbatim slices it returns:
+  - \`query_data({ operation: "stats", dataId })\` — see the structure and size
+  - \`query_data({ operation: "slice", dataId, startLine, endLine })\` — get a verbatim line range
+  - \`query_data({ operation: "search", dataId, query })\` — find specific text with surrounding context
+  - \`query_data({ operation: "json_path", dataId, query: "key.path" })\` — extract a JSON field
+- Typical edit workflow for a large file: read_file (returns DATA_REF) → query_data search/slice to retrieve the verbatim chunk you need → edit_file with that chunk as the search string and your edit as the replace string.
+- The query_data result is the literal bytes from the file; you can paste any returned line directly into edit_file as a search string.
 
 PREVIEW CAPABILITIES:
 The preview panel automatically renders these file types:

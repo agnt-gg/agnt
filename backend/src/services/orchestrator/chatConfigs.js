@@ -267,7 +267,7 @@ const SIDEBAR_SPECIALTY = {
   workflow: ['update_workflow', 'revert_workflow', 'list_workflow_versions', 'create_checkpoint', 'get_available_tool_node_types', 'get_node_type_schema', 'start_workflow', 'stop_workflow', 'get_agnt_api', 'mcp_client'],
   tool: ['generate_tool_update', 'save_tool', 'load_tool', 'delete_tool', 'list_tools', 'run_tool', 'get_agnt_api', 'mcp_client'],
   widget: ['edit_widget_code', 'generate_widget', 'update_widget_config', 'save_widget', 'load_widget', 'get_agnt_api', 'mcp_client'],
-  artifact: ['read_file', 'write_file', 'edit_file', 'list_files', 'get_agnt_api', 'mcp_client'],
+  artifact: ['read_file', 'write_file', 'edit_file', 'list_files', 'query_data', 'get_agnt_api', 'mcp_client'],
 };
 
 function detectSidebarSpecialty(context) {

@@ -202,6 +202,16 @@ function estimateMessagesTokens(messages) {
     messageTokens += estimateSerializedTokens(message.function_call);
     messageTokens += estimateTokens(message.reasoning_content || '');
 
+    // Codex / OpenAI Responses adapters stash replayable output items
+    // (encrypted reasoning blobs, function calls, assistant messages) on each
+    // assistant message and replay them verbatim to the provider on the next
+    // turn. They were previously invisible to context management even though
+    // Codex counts every byte against the input window — so the preflight
+    // saw, e.g., 60k while Codex saw 250k and rejected with
+    // "input exceeds the context window". Count them now so manageContext
+    // can shed whole oldest turns (Strategy 3) before the request fails.
+    messageTokens += estimateSerializedTokens(message._responsesOutputItems);
+
     // Add overhead for role, name, tool_call_id, and provider framing.
     messageTokens += MESSAGE_OVERHEAD_TOKENS;
     if (message.name) messageTokens += estimateTokens(message.name);

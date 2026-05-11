@@ -4060,6 +4060,70 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     // than api.openai.com. Give Codex more retry budget so a brief upstream
     // blip doesn't surface to the user as a hard error.
     this.maxRetries = 5;
+    // Bounded shrink budget for context-window recovery. Each shrink drops
+    // one whole oldest turn (assistant + paired tool results, together with
+    // its replayable _responsesOutputItems blob). 8 turns is enough to
+    // recover from the deepest realistic overrun while preventing runaway
+    // loops on a misclassified error.
+    this.maxContextShrinkRetries = 8;
+  }
+
+  /**
+   * Detect Codex / Responses API rejections caused by the input exceeding
+   * the model's context window. The ChatGPT backend phrases this several
+   * ways depending on whether the rejection comes from quota checking,
+   * pre-flight token estimation, or the model itself.
+   */
+  _isContextWindowError(error) {
+    if (!error) return false;
+    const message = String(error?.message || error?.error?.message || '').toLowerCase();
+    if (!message) return false;
+    return (
+      message.includes('exceeds the context window') ||
+      message.includes('exceeds context window') ||
+      message.includes('context_length_exceeded') ||
+      message.includes('context length exceeded') ||
+      message.includes('maximum context length') ||
+      message.includes('input is too long') ||
+      message.includes('input too long')
+    );
+  }
+
+  /**
+   * Return a new messages array with the oldest non-system atomic turn
+   * removed. An assistant message with tool_calls + its following role:'tool'
+   * messages form one atomic turn that must stay together (or be dropped
+   * together) so tool_call_ids never orphan their results — and so the
+   * encrypted reasoning blob in _responsesOutputItems is dropped alongside
+   * its own turn, never re-stitched into a stranger's context (which would
+   * violate the Codex protocol).
+   *
+   * Returns the input unchanged when only system + a single remaining
+   * non-system unit exist — there is no safe further shrink.
+   */
+  _dropOldestTurn(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) return messages;
+
+    const firstNonSystemIdx = messages.findIndex((m) => m && m.role !== 'system');
+    if (firstNonSystemIdx === -1) return messages;
+
+    const head = messages[firstNonSystemIdx];
+    let unitEnd = firstNonSystemIdx + 1;
+    if (head.role === 'assistant' && Array.isArray(head.tool_calls) && head.tool_calls.length > 0) {
+      while (unitEnd < messages.length && messages[unitEnd]?.role === 'tool') {
+        unitEnd++;
+      }
+    }
+
+    // Refuse to drop the only remaining non-system unit
+    const tail = messages.slice(unitEnd);
+    const hasNonSystemAfter = tail.some((m) => m && m.role !== 'system');
+    if (!hasNonSystemAfter) return messages;
+
+    return [
+      ...messages.slice(0, firstNonSystemIdx),
+      ...messages.slice(unitEnd),
+    ];
   }
 
   /**
@@ -4213,10 +4277,12 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    */
   async call(messages, tools) {
     let lastError;
+    let workingMessages = messages;
+    let shrinkAttempts = 0;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const params = this._buildCodexParams(messages, tools);
+        const params = this._buildCodexParams(workingMessages, tools);
 
         console.log(`[Codex Responses] Calling model '${this.model}' via ChatGPT backend (streaming internally)`);
         console.log(`[Codex Responses] Input items: ${params.input.length}, Tools: ${params.tools?.length || 0}`);
@@ -4248,6 +4314,27 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         };
       } catch (error) {
         lastError = error;
+
+        // Context-window overrun: shed the oldest atomic turn (which drops
+        // its _responsesOutputItems blob with it — protocol safe; we never
+        // touch encrypted_content internals) and retry without consuming
+        // the transient-error retry budget or waiting on backoff.
+        if (shrinkAttempts < this.maxContextShrinkRetries && this._isContextWindowError(error)) {
+          const shrunk = this._dropOldestTurn(workingMessages);
+          if (shrunk.length < workingMessages.length) {
+            console.warn(
+              `[Codex Responses] Input exceeds context window; shed oldest turn ` +
+              `(${workingMessages.length} -> ${shrunk.length} messages), ` +
+              `retrying (shrink ${shrinkAttempts + 1}/${this.maxContextShrinkRetries})`
+            );
+            workingMessages = shrunk;
+            shrinkAttempts++;
+            attempt--; // do not consume the transient-error retry budget
+            continue;
+          }
+          // Cannot shrink further — fall through to normal error handling
+          console.warn('[Codex Responses] Context-window error but no more turns to shed');
+        }
 
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           console.error(
@@ -4295,10 +4382,12 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
+    let workingMessages = messages;
+    let shrinkAttempts = 0;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const params = this._buildCodexParams(messages, tools);
+        const params = this._buildCodexParams(workingMessages, tools);
 
         console.log(`[Codex Responses] Streaming call to model '${this.model}' via ChatGPT backend`);
 
@@ -4329,6 +4418,27 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         };
       } catch (error) {
         lastError = error;
+
+        // Context-window overrun: shed the oldest atomic turn (which drops
+        // its _responsesOutputItems blob with it — protocol safe; we never
+        // touch encrypted_content internals) and retry without consuming
+        // the transient-error retry budget or waiting on backoff.
+        if (shrinkAttempts < this.maxContextShrinkRetries && this._isContextWindowError(error)) {
+          const shrunk = this._dropOldestTurn(workingMessages);
+          if (shrunk.length < workingMessages.length) {
+            console.warn(
+              `[Codex Responses Stream] Input exceeds context window; shed oldest turn ` +
+              `(${workingMessages.length} -> ${shrunk.length} messages), ` +
+              `retrying (shrink ${shrinkAttempts + 1}/${this.maxContextShrinkRetries})`
+            );
+            workingMessages = shrunk;
+            shrinkAttempts++;
+            attempt--; // do not consume the transient-error retry budget
+            continue;
+          }
+          // Cannot shrink further — fall through to normal error handling
+          console.warn('[Codex Responses Stream] Context-window error but no more turns to shed');
+        }
 
         if (attempt === this.maxRetries || !this.isRetryableError(error)) {
           console.error(

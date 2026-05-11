@@ -585,6 +585,92 @@ function offloadLargeData(toolResult, toolCallId, conversationContext, threshold
 }
 
 /**
+ * Retroactively compact the message history by offloading any tool message
+ * whose content exceeds a size threshold. Catches bloat that bypassed the
+ * per-tool offload pass — e.g. tool results from chat surfaces that skipped
+ * offloading (artifact chat), tool results produced before the offload
+ * system existed, or fields below the per-field threshold whose aggregate
+ * is still large.
+ *
+ * Compaction reuses offloadLargeData when the tool message content is
+ * JSON-shaped (it can recurse into fields and offload only the large
+ * substrings, preserving structural keys). For non-JSON tool content that
+ * is still huge, it falls back to a whole-message offload using the same
+ * preservedContent/dataRefSummaries store query_data already understands.
+ *
+ * Messages that already contain a {{DATA_REF}} marker are skipped — they
+ * have already been compacted in a prior pass.
+ *
+ * @param {Array} messages - Conversation messages array
+ * @param {object} conversationContext - Conversation context (mutated)
+ * @param {number} threshold - Character threshold for compaction
+ * @returns {{ messages: Array, compactedCount: number, compactedBytes: number }}
+ */
+function compactMessageHistory(messages, conversationContext, threshold = 50000) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { messages, compactedCount: 0, compactedBytes: 0 };
+  }
+
+  let compactedCount = 0;
+  let compactedBytes = 0;
+
+  const compacted = messages.map((msg, idx) => {
+    if (!msg || msg.role !== 'tool') return msg;
+    const content = typeof msg.content === 'string' ? msg.content : '';
+    if (content.length <= threshold) return msg;
+    // Already-compacted messages carry the marker — leave them alone.
+    if (content.includes('{{DATA_REF:')) return msg;
+
+    const callId = msg.tool_call_id || `historical-${idx}-${Date.now()}`;
+
+    // Path A: try structural offload on JSON-shaped content. This preserves
+    // the surrounding tool-result envelope (success flags, paths, etc.) and
+    // only offloads the large string fields nested inside.
+    const { modifiedResult, offloadedData } = offloadLargeData(content, callId, conversationContext, threshold);
+    if (offloadedData.length > 0 && typeof modifiedResult === 'string' && modifiedResult.length < content.length) {
+      compactedCount++;
+      compactedBytes += content.length - modifiedResult.length;
+      console.log(
+        `[History Compact] Offloaded tool message (${content.length} -> ${modifiedResult.length} chars, ` +
+        `${offloadedData.length} field${offloadedData.length === 1 ? '' : 's'}, call_id=${callId})`
+      );
+      return { ...msg, content: modifiedResult };
+    }
+
+    // Path B: non-JSON or unstructured content. Offload the whole message
+    // body as a single opaque blob into the same preserved store, then
+    // replace the content with a placeholder + summary the LLM can route
+    // through query_data.
+    const dataId = `data-${callId}-historical-${idx}`;
+    if (!conversationContext.preservedContent) conversationContext.preservedContent = {};
+    if (!conversationContext.dataRefSummaries) conversationContext.dataRefSummaries = {};
+    conversationContext.preservedContent[dataId] = content;
+    const summary = generateDataSummary(content, dataId);
+    conversationContext.dataRefSummaries[dataId] = summary;
+
+    const placeholderLines = [
+      `[Offloaded historical data: ${dataId}] (${summary.type}, ${summary.size} chars, ${summary.lineCount} lines)`,
+    ];
+    if (summary.preview) {
+      placeholderLines.push(`Preview: ${summary.preview.substring(0, 300).replace(/\n/g, ' ')}`);
+    }
+    placeholderLines.push(`[Use query_data tool with dataId="${dataId}" to search/extract]`);
+    placeholderLines.push(`Reference: {{DATA_REF:${dataId}}}`);
+    const placeholder = placeholderLines.join('\n');
+
+    compactedCount++;
+    compactedBytes += content.length - placeholder.length;
+    console.log(
+      `[History Compact] Offloaded tool message as opaque blob ` +
+      `(${content.length} -> ${placeholder.length} chars, dataId=${dataId})`
+    );
+    return { ...msg, content: placeholder };
+  });
+
+  return { messages: compacted, compactedCount, compactedBytes };
+}
+
+/**
  * REMOVED: isAsyncTool() function
  * Async execution is now determined by the _executeAsync parameter in tool arguments
  * ANY tool can be run async by the LLM adding: _executeAsync: true, _estimatedMinutes: N
@@ -1401,6 +1487,20 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // Inject current date into the latest user message (keeps system prompt stable for caching)
     injectDateIntoLastUserMessage(messages);
 
+    // Retroactively compact any bloated tool messages in the history before
+    // counting tokens. Catches bloat from per-tool paths that skipped
+    // offloading (e.g. artifact chat) or from conversations that pre-date
+    // the offload system. Offloaded bytes go into preservedContent so the
+    // LLM can still retrieve them via the query_data tool.
+    const compactedHistory = compactMessageHistory(messages, conversationContext);
+    if (compactedHistory.compactedCount > 0) {
+      console.log(
+        `[History Compact] Reduced ${compactedHistory.compactedCount} tool message(s) ` +
+        `by ${compactedHistory.compactedBytes} chars before context management`
+      );
+      messages = compactedHistory.messages;
+    }
+
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
 
@@ -1977,17 +2077,17 @@ IMPORTANT: The image data is already available in the system context. You don't 
             });
           }
 
-          // Offload large data to prevent context window overflow
-          // Skip for artifact chat — the LLM needs full file content for edit_file search strings
-          const skipOffload = chatType === 'artifact';
-          const { modifiedResult: dataOffloadedResult, offloadedData } = skipOffload
-            ? { modifiedResult: functionResponseContent, offloadedData: [] }
-            : offloadLargeData(
-              functionResponseContent,
-              toolCall.id,
-              conversationContext,
-              50000 // 50000 character threshold - only very large content gets offloaded
-            );
+          // Offload large data to prevent context window overflow.
+          // The artifact-chat skip was removed in favor of teaching Annie
+          // to use query_data + slice/search to retrieve the verbatim
+          // strings she needs for edit_file. The system prompt explains
+          // the workflow; the artifact specialty now includes query_data.
+          const { modifiedResult: dataOffloadedResult, offloadedData } = offloadLargeData(
+            functionResponseContent,
+            toolCall.id,
+            conversationContext,
+            50000 // 50000 character threshold - only very large content gets offloaded
+          );
           if (offloadedData.length > 0) {
             console.log(`[Data Offload] Offloaded ${offloadedData.length} large data field(s) from ${functionName} tool result`);
 
@@ -2018,11 +2118,13 @@ IMPORTANT: The image data is already available in the system context. You don't 
             });
           }
 
-          // Hard cap on tool result size to prevent context window overflow
-          // Even after data offloading, some tools return massive results with many sub-50k fields
-          // Skip for artifact chat — LLM needs full file content for accurate edits
+          // Hard cap on tool result size to prevent context window overflow.
+          // Even after data offloading, some tools return massive results
+          // with many sub-50k fields whose aggregate is enormous. The
+          // artifact-chat carve-out was removed alongside the offload skip;
+          // huge file reads now route through query_data instead.
           const MAX_TOOL_RESULT_CHARS = 100000; // ~28k tokens
-          if (!skipOffload && functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
+          if (functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
             const originalSize = functionResponseContent.length;
             console.log(`[Context Protection] Tool ${functionName} result too large (${originalSize} chars), truncating to ${MAX_TOOL_RESULT_CHARS}`);
 
@@ -2268,17 +2370,53 @@ IMPORTANT: The image data is already available in the system context. You don't 
         }
       }
 
+      // Retroactively compact bloated tool messages from earlier rounds
+      // before re-counting tokens. (See universal-chat entry point for
+      // the longer rationale.) Within a tool loop this is the layer that
+      // rescues the conversation if a tool result in *this* round dumped
+      // more bytes than the per-tool offload caught.
+      const loopCompacted = compactMessageHistory(messages, conversationContext);
+      if (loopCompacted.compactedCount > 0) {
+        console.log(
+          `[History Compact] Tool loop reduced ${loopCompacted.compactedCount} ` +
+          `tool message(s) by ${loopCompacted.compactedBytes} chars`
+        );
+        messages = loopCompacted.messages;
+      }
+
       // Apply context management before next LLM call — but only if critically close
       // to the limit. Within a single turn's tool loop, the message prefix should stay
       // stable to preserve prompt cache hits. Between turns, the prefix changes anyway.
+      //
+      // The gate must be compared against the ORIGINAL request size, not
+      // the managed one — otherwise a successful reduction (e.g.,
+      // 390k → 127k) appears "below the gate" in its managed form and we
+      // throw the reduction away, sending the original 390k to the
+      // provider, which rejects it. The original utilization tells us
+      // whether management was genuinely needed.
+      //
+      // Codex Responses (chatgpt.com/backend-api/codex/responses) sends
+      // store: false stateless requests with no prompt cache to preserve;
+      // it also replays encrypted reasoning blobs every turn that count
+      // against the window. Never revert reductions for Codex.
       let loopContextResult = manageContext(messages, model, finalToolSchemas, normalizedProvider);
-      const utilization = loopContextResult.contextWindow > 0
-        ? (loopContextResult.totalRequestTokens / loopContextResult.contextWindow)
+      const cacheGate = 0.95;
+      const originalRequestTokens = loopContextResult.originalTokens + loopContextResult.toolTokens;
+      const originalUtilization = loopContextResult.contextWindow > 0
+        ? (originalRequestTokens / loopContextResult.contextWindow)
         : 0;
-      if (utilization < 0.95 && loopContextResult.wasManaged) {
-        // Skip context management — utilization is below 95%, preserve cache
-        console.log(`[Cache] Skipping context management in tool loop to preserve cache (utilization: ${(utilization * 100).toFixed(1)}%)`);
+      const canRevert = normalizedProvider !== 'openai-codex'
+        && originalUtilization < cacheGate
+        && loopContextResult.wasManaged;
+      if (canRevert) {
+        // Original already fit comfortably; reduction was minor truncation.
+        // Revert to preserve the cache prefix for the next turn.
+        console.log(`[Cache] Skipping context management in tool loop to preserve cache (original utilization: ${(originalUtilization * 100).toFixed(1)}%, gate: ${(cacheGate * 100).toFixed(0)}%)`);
         loopContextResult = { ...loopContextResult, wasManaged: false, messages };
+      } else if (loopContextResult.wasManaged) {
+        // Reduction was required to fit the window; sacrifice cache for
+        // correctness. (For Codex, also: no cache exists to preserve.)
+        console.log(`[Cache] Keeping context-managed messages (original utilization: ${(originalUtilization * 100).toFixed(1)}%, provider: ${normalizedProvider})`);
       }
       if (loopContextResult.wasManaged) {
         console.log(`[Tool Loop] Context managed: ${loopContextResult.originalTokens} -> ${loopContextResult.managedTokens} tokens`);
@@ -2411,6 +2549,14 @@ IMPORTANT: The image data is already available in the system context. You don't 
           content: '[System: Your previous response contained only tool calls with no text. Please provide a brief summary of what you found/did based on the tool results above.]',
         });
 
+        const followUpCompacted = compactMessageHistory(messages, conversationContext);
+        if (followUpCompacted.compactedCount > 0) {
+          console.log(
+            `[History Compact] Follow-up reduced ${followUpCompacted.compactedCount} ` +
+            `tool message(s) by ${followUpCompacted.compactedBytes} chars`
+          );
+          messages = followUpCompacted.messages;
+        }
         const followUpContext = manageContext(messages, model, finalToolSchemas, normalizedProvider);
         if (followUpContext.wasManaged) {
           messages = followUpContext.messages;
