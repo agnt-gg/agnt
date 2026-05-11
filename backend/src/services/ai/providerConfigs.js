@@ -66,8 +66,14 @@ const PROVIDER_CONFIGS = [
     codexModelFetch: true,
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
+      // gpt-5.2-codex / 5.3-codex / 5.5 accept input_image via the Codex
+      // backend's Responses endpoint. Without this declaration the orchestrator
+      // and adapter would silently drop uploaded images for Codex sessions.
+      // https://openai.com/index/introducing-gpt-5-2-codex/
+      vision: { supportsStreaming: true },
     },
     fallbackModels: ['gpt-5.2-codex'],
+    fallbackVisionModels: ['gpt-5.2-codex'],
     compat: {},
     sdkOptions: {},
   },
@@ -303,16 +309,21 @@ const PROVIDER_CONFIGS = [
     authScheme: 'bearer',
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
+      // Llama-4 (Scout & Maverick) on Groq are natively multimodal and accept
+      // image_url in chat completions. https://console.groq.com/docs/vision
+      vision: { supportsStreaming: true },
     },
     recommendedModels: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'],
-    fallbackModels: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'qwen/qwen3-32b', 'meta-llama/llama-4-scout-17b-16e-instruct'],
+    fallbackModels: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'qwen/qwen3-32b', 'meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'],
+    fallbackVisionModels: ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'],
     modelMetadata: {
       'openai/gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.15, outputCostPer1M: 0.6, supportsVision: false, supportsTools: true, reasoning: false },
       'openai/gpt-oss-20b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.075, outputCostPer1M: 0.3, supportsVision: false, supportsTools: true, reasoning: false },
       'llama-3.3-70b-versatile': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.59, outputCostPer1M: 0.79, supportsVision: false, supportsTools: true, reasoning: false },
       'llama-3.1-8b-instant': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.05, outputCostPer1M: 0.08, supportsVision: false, supportsTools: true, reasoning: false },
       'qwen/qwen3-32b': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.29, outputCostPer1M: 0.59, supportsVision: false, supportsTools: true, reasoning: false },
-      'meta-llama/llama-4-scout-17b-16e-instruct': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.11, outputCostPer1M: 0.34, supportsVision: false, supportsTools: true, reasoning: false },
+      'meta-llama/llama-4-scout-17b-16e-instruct': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.11, outputCostPer1M: 0.34, supportsVision: true, supportsTools: true, reasoning: false },
+      'meta-llama/llama-4-maverick-17b-128e-instruct': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0.20, outputCostPer1M: 0.60, supportsVision: true, supportsTools: true, reasoning: false },
     },
     modelTransform: (raw) => ({
       id: raw.id,
@@ -419,6 +430,9 @@ const PROVIDER_CONFIGS = [
     responseDataPath: 'root',
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
+      // Llama-4 Scout & Maverick on Together accept image_url via chat completions.
+      // https://docs.together.ai/docs/llama4-quickstart
+      vision: { supportsStreaming: true },
     },
     recommendedModels: ['deepseek-ai/DeepSeek-V3', 'moonshotai/Kimi-K2.5'],
     fallbackModels: [
@@ -427,6 +441,12 @@ const PROVIDER_CONFIGS = [
       'MiniMaxAI/MiniMax-M2.5',
       'Qwen/Qwen3-235B-A22B-Thinking-2507',
       'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+      'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
+      'meta-llama/Llama-4-Scout-17B-16E-Instruct',
+    ],
+    fallbackVisionModels: [
+      'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
+      'meta-llama/Llama-4-Scout-17B-16E-Instruct',
     ],
     modelMetadata: {
       'deepseek-ai/DeepSeek-V3': { contextWindow: 131072, maxOutputTokens: 16384, inputCostPer1M: 0.30, outputCostPer1M: 0.88, supportsVision: false, supportsTools: true, reasoning: false },
@@ -452,14 +472,19 @@ const PROVIDER_CONFIGS = [
     authScheme: 'bearer',
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
+      // Llama-4 Scout on Cerebras inherits Llama-4's native multimodality.
+      // https://www.cerebras.ai/press-release/llama4PR
+      vision: { supportsStreaming: true },
     },
     recommendedModels: ['llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507'],
-    fallbackModels: ['llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507', 'gpt-oss-120b', 'zai-glm-4.7'],
+    fallbackModels: ['llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507', 'gpt-oss-120b', 'zai-glm-4.7', 'llama-4-scout-17b-16e-instruct'],
+    fallbackVisionModels: ['llama-4-scout-17b-16e-instruct'],
     modelMetadata: {
       'gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.35, outputCostPer1M: 0.75, supportsVision: false, supportsTools: true, reasoning: false },
       'llama3.1-8b': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.1, outputCostPer1M: 0.1, supportsVision: false, supportsTools: true, reasoning: false },
       'qwen-3-235b-a22b-instruct-2507': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.6, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: false },
       'zai-glm-4.7': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 2.25, outputCostPer1M: 2.75, supportsVision: false, supportsTools: true, reasoning: false },
+      'llama-4-scout-17b-16e-instruct': { contextWindow: 262144, maxOutputTokens: 32768, inputCostPer1M: 0.65, outputCostPer1M: 0.85, supportsVision: true, supportsTools: true, reasoning: false },
     },
     compat: {},
     sdkOptions: { warmTCPConnection: false },
@@ -1042,14 +1067,51 @@ function inferVariantModelMetadata(providerKey, modelId) {
 
   if (lowerProvider === 'openai-codex') {
     if (lowerModel.endsWith('-codex')) {
-      return getModelMetadata('openai', modelId.slice(0, -6));
+      const stripped = modelId.slice(0, -6);
+      const direct = getModelMetadata('openai', stripped);
+      if (direct) return direct;
+      // gpt-5.3-codex → no gpt-5.3 entry yet; fall through to generic gpt-5.x below
+      return inferGenericGpt5Metadata(stripped);
     }
     if (lowerModel.endsWith('-codex-max')) {
-      return getModelMetadata('openai', modelId.slice(0, -10));
+      const stripped = modelId.slice(0, -10);
+      const direct = getModelMetadata('openai', stripped);
+      if (direct) return direct;
+      return inferGenericGpt5Metadata(stripped);
     }
+    // Plain Codex models like 'gpt-5.5' (no -codex suffix) — handled by next branch.
+  }
+
+  // Generic gpt-5.x inference for OpenAI / Codex when an exact metadata
+  // entry isn't present. New OpenAI gpt-5.x releases (5.3, 5.4, 5.5, …) all
+  // ship with vision + tools per OpenAI's docs; without this, supportsVision
+  // returns false and the orchestrator silently force-routes to analyze_image
+  // instead of letting the model see the image directly.
+  if (lowerProvider === 'openai' || lowerProvider === 'openai-codex') {
+    const generic = inferGenericGpt5Metadata(modelId);
+    if (generic) return generic;
   }
 
   return null;
+}
+
+function inferGenericGpt5Metadata(modelId) {
+  const m = String(modelId || '').toLowerCase();
+  // Match gpt-5, gpt-5.x, gpt-5.x.y — but NOT gpt-50, gpt-500, etc.
+  if (!/^gpt-5(?:\.\d+)*(?:-[a-z0-9]+)*$/.test(m)) return null;
+  // Suffixed minis/nanos already exist in metadata; only fill the gap for
+  // un-suffixed versioned models we haven't enumerated yet.
+  const isMini = m.endsWith('-mini') || m.endsWith('-nano');
+  return {
+    contextWindow: 400000,
+    maxOutputTokens: 128000,
+    inputCostPer1M: isMini ? 0.25 : 1.25,
+    outputCostPer1M: isMini ? 2.0 : 10.0,
+    supportsVision: true,
+    supportsTools: true,
+    reasoning: true,
+    inferred: true,
+  };
 }
 
 /**

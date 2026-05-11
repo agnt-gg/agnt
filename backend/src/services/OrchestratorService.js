@@ -685,6 +685,31 @@ const sanitizeFilename = (name) => {
   return base.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 200) || 'file';
 };
 
+// Anthropic (and most vision APIs) sniff the actual bytes and reject when the
+// declared media_type doesn't match. Browsers derive File.type from the OS
+// extension association, not from the bytes — so a JPEG saved with a .png
+// extension propagates as image/png all the way to the API and 400s.
+// This sniffer reads the leading bytes and returns the true media_type, or
+// null when the format isn't one Anthropic/OpenAI/Gemini accept inline.
+function detectImageMediaType(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+  ) return 'image/png';
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  // GIF: "GIF8"
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return 'image/gif';
+  // WebP: "RIFF"...."WEBP"
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+  ) return 'image/webp';
+  return null;
+}
+
 /**
  * Process uploaded files: persist to disk so tools that take a filesystem
  * path can use them, AND extract text / base64 for inline LLM context.
@@ -710,7 +735,15 @@ async function processUploadedFiles(files, conversationId) {
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const fileBuffer = file.buffer;
-    const fileType = file.mimetype;
+    const declaredType = file.mimetype;
+    // For images, trust magic bytes over the browser-declared mimetype.
+    // Falls back to declaredType for non-image saves.
+    const sniffedImageType = declaredType.startsWith('image/') ? detectImageMediaType(fileBuffer) : null;
+    const isImage = declaredType.startsWith('image/') || !!sniffedImageType;
+    const fileType = sniffedImageType || declaredType;
+    if (sniffedImageType && sniffedImageType !== declaredType) {
+      console.warn(`[Upload] Image media type mismatch for ${file.originalname}: declared=${declaredType}, actual=${sniffedImageType} (using sniffed)`);
+    }
     let textContent = '';
 
     // Save the buffer to disk under a sanitized name; collisions get an index prefix.
@@ -731,15 +764,22 @@ async function processUploadedFiles(files, conversationId) {
       console.error(`[Upload] Failed to save file ${file.originalname}:`, err.message);
     }
 
-    if (fileType.startsWith('image/')) {
-      // Handle images - store for vision models
-      // DO NOT add placeholder text to fileContext - images are handled separately
+    if (isImage) {
+      // Handle images - store for vision models.
+      // unsupported=true marks formats no inline-vision API accepts (BMP, SVG, HEIC, AVIF, …)
+      // so adapters can skip injection cleanly instead of 400-ing.
+      const supported = sniffedImageType !== null;
       imageData.push({
         type: fileType,
         data: fileBuffer.toString('base64'),
         filename: file.originalname,
+        unsupported: !supported,
       });
-      console.log(`[Vision] Prepared image for vision model: ${file.originalname} (${fileType})`);
+      if (supported) {
+        console.log(`[Vision] Prepared image for vision model: ${file.originalname} (${fileType})`);
+      } else {
+        console.warn(`[Vision] Image ${file.originalname} (declared ${declaredType}) is not a format supported inline by vision APIs; will be skipped at injection.`);
+      }
       continue; // Skip adding to fileContext
     } else {
       // Process text-based files
@@ -1197,15 +1237,18 @@ async function universalChatHandler(req, res, context = {}) {
     // Get tool schemas for this chat type
     const toolSchemas = await config.getToolSchemas(conversationContext);
 
-    // CRITICAL: Check if model supports vision when images are uploaded
+    // CRITICAL: Check if model supports vision when images are uploaded.
+    // supportsVision() uses getModelMetadata's variant fallback chain so
+    // codex variants (gpt-5.2-codex → gpt-5.2, gpt-5.5, etc.) are correctly
+    // recognized as vision-capable even though the openai-codex provider has
+    // no static modelMetadata of its own.
     let modelSupportsVision = false;
     if (imageData.length > 0) {
       const ProviderRegistry = await import('./ai/ProviderRegistry.js');
-      const visionModels = ProviderRegistry.getVisionModels(normalizedProvider);
-      modelSupportsVision = visionModels.includes(model);
+      modelSupportsVision = ProviderRegistry.supportsVision(normalizedProvider, model);
 
       if (!modelSupportsVision) {
-        console.warn(`[Vision Check] Model '${model}' does not support vision, but ${imageData.length} image(s) were uploaded.`);
+        console.warn(`[Vision Check] Model '${model}' (provider '${normalizedProvider}') does not support vision, but ${imageData.length} image(s) were uploaded.`);
         console.warn(`[Vision Check] Will inject system message to force analyze_image tool use.`);
       }
     }

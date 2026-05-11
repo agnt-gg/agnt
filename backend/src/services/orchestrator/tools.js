@@ -3161,7 +3161,7 @@ export const TOOLS = {
       function: {
         name: 'analyze_image',
         description:
-          'Analyze images using vision-capable AI models. Supports detailed image analysis, object detection, text extraction (OCR), and answering questions about images. Use this tool when the user asks you to analyze, describe, or extract information from images.',
+          'Analyze images using the user\'s currently selected vision-capable AI model. Supports detailed image analysis, object detection, text extraction (OCR), and answering questions about images. The provider and model are determined by the user\'s chat selection — DO NOT pass provider or model parameters; they will be ignored.',
         parameters: {
           type: 'object',
           properties: {
@@ -3174,17 +3174,6 @@ export const TOOLS = {
               type: 'string',
               description:
                 'Question or instruction about the image. Examples: "What objects are in this image?", "Extract all text from this image", "Describe this image in detail", "What is the main subject of this photo?"',
-            },
-            provider: {
-              type: 'string',
-              enum: ['openai', 'openai-codex', 'gemini', 'grokai'],
-              description:
-                "AI provider to use for vision analysis. Options: 'openai' or 'openai-codex' (OpenAI), 'gemini' (Google), 'grokai' (Grok). If not specified, defaults to 'openai'.",
-            },
-            model: {
-              type: 'string',
-              description:
-                "Specific vision model to use. OpenAI: 'gpt-4.1'. Gemini: 'gemini-3-pro-preview'. Grok: 'grok-4-1-fast-reasoning'. If not specified, uses provider's default vision model.",
             },
             maxTokens: {
               type: 'number',
@@ -3201,21 +3190,47 @@ export const TOOLS = {
         },
       },
     },
-    execute: async ({ image, prompt, provider = 'openai', model, maxTokens = 4096, temperature = 0 }, authToken, context) => {
-      console.log(`Tool call: analyze_image with provider: ${provider}, prompt: "${prompt.substring(0, 50)}..."`);
+    execute: async ({ image, prompt, maxTokens = 4096, temperature = 0, ...rest }, authToken, context) => {
+      // ALWAYS use the session's provider/model. The LLM is not allowed to
+      // override — earlier versions exposed `provider`/`model` in the schema
+      // and the model would hallucinate (e.g. provider:"openai" model:"gpt-4o-mini")
+      // even when the user's session was Codex. Schema no longer accepts
+      // those keys; if they leak through (older agents, replayed history) we
+      // log and ignore them.
+      if (rest && (rest.provider || rest.model)) {
+        console.warn(`[analyze_image] Ignoring LLM-supplied provider/model (provider=${rest.provider}, model=${rest.model}); session defaults are authoritative.`);
+      }
+
+      const resolvedProvider = (context?.provider && String(context.provider).trim())
+        || (context?.normalizedProvider && String(context.normalizedProvider).trim())
+        || null;
+      const resolvedModel = (context?.model && String(context.model).trim()) || null;
+
+      console.log(`Tool call: analyze_image with session provider: ${resolvedProvider || '(none)'}, model: ${resolvedModel || '(none)'}, prompt: "${prompt?.substring(0, 50) || ''}..."`);
 
       if (!prompt) {
         return JSON.stringify({ success: false, error: 'Prompt is required to specify what to analyze in the image.' });
       }
 
+      if (!resolvedProvider || !resolvedModel) {
+        return JSON.stringify({
+          success: false,
+          error: 'analyze_image requires the chat session to have a selected provider and model. None were found in context.',
+        });
+      }
+
       try {
-        // Validate provider
-        const normalizedProvider = provider.toLowerCase();
-        const supportedProviders = ['openai', 'openai-codex', 'gemini', 'grokai'];
+        const normalizedProvider = resolvedProvider.toLowerCase();
+        // Providers `generate-with-ai-llm.handleVision` knows how to dispatch.
+        const supportedProviders = [
+          'openai', 'openai-codex', 'anthropic', 'claude-code',
+          'gemini', 'grokai', 'groq', 'deepseek', 'kimi', 'kimi-code',
+          'openrouter', 'togetherai', 'zai', 'minimax', 'local',
+        ];
         if (!supportedProviders.includes(normalizedProvider)) {
           return JSON.stringify({
             success: false,
-            error: `Provider '${provider}' is not supported for image analysis. Supported providers: ${supportedProviders.join(', ')}`,
+            error: `Your active provider '${normalizedProvider}' is not supported for image analysis. Switch to a vision-capable provider in your chat settings.`,
           });
         }
 
@@ -3293,14 +3308,11 @@ export const TOOLS = {
           });
         }
 
-        // Get default vision models per provider
-        const defaultVisionModels = {
-          openai: 'gpt-4.1',
-          gemini: 'gemini-3-pro-preview',
-          grokai: 'grok-4-1-fast-reasoning',
-        };
-
-        const selectedModel = model || defaultVisionModels[normalizedProvider];
+        // Use the user's session model exactly as-is. We don't substitute
+        // alternatives behind their back — that previously sent gpt-5.2 calls
+        // with `max_tokens` (Responses API requires `max_completion_tokens`)
+        // and obscured the real fix (switch model in chat settings).
+        const selectedModel = resolvedModel;
 
         // Import and execute the generate-with-ai-llm tool
         const generateWithAiLlm = await import('../../tools/library/actions/generate-with-ai-llm.js');

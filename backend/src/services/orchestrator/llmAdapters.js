@@ -561,9 +561,9 @@ Please carefully check the tool schema and ensure all parameters match the expec
       // Extract provider from context or determine from adapter
       const provider = context.provider || 'openai'; // Default to openai for OpenAiLikeAdapter
 
-      // Check if this model supports vision
-      const visionModels = ProviderRegistry.getVisionModels(provider);
-      const supportsVision = visionModels.includes(this.model);
+      // Check if this model supports vision (uses metadata variant fallback so e.g.
+      // openrouter passthroughs and llama-4 on groq/cerebras resolve correctly).
+      const supportsVision = ProviderRegistry.supportsVision(provider, this.model);
 
       if (supportsVision) {
         // Deep clone to avoid mutating original messages
@@ -1600,9 +1600,9 @@ Please carefully check the tool schema and ensure all parameters match the expec
     if (context.imageData && context.imageData.length > 0) {
       const provider = context.provider || 'anthropic';
 
-      // Check if this model supports vision
-      const visionModels = ProviderRegistry.getVisionModels(provider);
-      const supportsVision = visionModels.includes(this.model);
+      // Check if this model supports vision (uses metadata variant fallback so
+      // claude-code routing through Anthropic adapter resolves to anthropic metadata).
+      const supportsVision = ProviderRegistry.supportsVision(provider, this.model);
 
       if (supportsVision) {
         currentMessages = JSON.parse(JSON.stringify(messages)); // Deep clone
@@ -1620,7 +1620,26 @@ Please carefully check the tool schema and ensure all parameters match the expec
               text: typeof originalContent === 'string' ? originalContent : JSON.stringify(originalContent),
             },
           ];
+          // Anthropic hard limits: 5 MB per image (base64-decoded), JPEG/PNG/GIF/WebP only.
+          // Skip-and-narrate so the model can apologize accurately instead of 400-ing.
+          // https://platform.claude.com/docs/en/build-with-claude/vision
+          const ANTHROPIC_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+          const ANTHROPIC_SUPPORTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+          const skipNotes = [];
+          let injectedCount = 0;
           context.imageData.forEach((img) => {
+            const name = img.filename || 'image';
+            if (img.unsupported || !ANTHROPIC_SUPPORTED_TYPES.has(img.type)) {
+              skipNotes.push(`[Image "${name}" (${img.type}) was not sent: Claude only accepts JPEG/PNG/GIF/WebP.]`);
+              return;
+            }
+            // base64 length * 3/4 ≈ decoded byte count (close enough; padding noise is < 3 bytes)
+            const decodedBytes = Math.floor((img.data?.length || 0) * 3 / 4);
+            if (decodedBytes > ANTHROPIC_MAX_IMAGE_BYTES) {
+              const mb = (decodedBytes / 1024 / 1024).toFixed(2);
+              skipNotes.push(`[Image "${name}" was not sent: ${mb} MB exceeds Claude's 5 MB per-image limit. Please resize it under 5 MB.]`);
+              return;
+            }
             contentBlocks.push({
               type: 'image',
               source: {
@@ -1629,9 +1648,15 @@ Please carefully check the tool schema and ensure all parameters match the expec
                 data: img.data,
               },
             });
+            injectedCount++;
           });
+          if (skipNotes.length > 0) {
+            // Surface skip reasons inline so the model can explain them to the user.
+            contentBlocks[0].text = `${contentBlocks[0].text}\n\n${skipNotes.join('\n')}`;
+            console.warn(`[Anthropic Vision] Skipped ${skipNotes.length} image(s); see notes appended to user message.`);
+          }
           currentMessages[targetIdx].content = contentBlocks;
-          console.log(`[Anthropic Vision] Added ${context.imageData.length} image(s) to user message at index ${targetIdx}`);
+          console.log(`[Anthropic Vision] Added ${injectedCount}/${context.imageData.length} image(s) to user message at index ${targetIdx}`);
         } else {
           console.warn('[Anthropic Vision] No injectable user message found (all user messages carry tool_result blocks); skipping image injection to avoid orphaning tool_use IDs.');
         }
@@ -3186,9 +3211,9 @@ class GeminiAdapter extends BaseAdapter {
       // Extract provider from context or use 'gemini' for GeminiAdapter
       const provider = context.provider || 'gemini';
 
-      // Check if this model supports vision
-      const visionModels = ProviderRegistry.getVisionModels(provider);
-      const supportsVision = visionModels.includes(this.model);
+      // Check if this model supports vision (uses metadata variant fallback so
+      // gemini-cli routing through Gemini adapter resolves to gemini metadata).
+      const supportsVision = ProviderRegistry.supportsVision(provider, this.model);
 
       if (supportsVision) {
         currentMessages = JSON.parse(JSON.stringify(messages)); // Deep clone
@@ -3507,9 +3532,15 @@ class OpenAIResponsesAdapter extends BaseAdapter {
   }
 
   /**
-   * Transform OpenAI Chat Completions messages to Responses API input format
+   * Transform OpenAI Chat Completions messages to Responses API input format.
+   * When imageData is provided, append input_image blocks to the last
+   * injectable user message so vision-capable models (gpt-5.x, gpt-4o, o-series,
+   * gpt-5.x-codex) can actually see uploaded images. Without this the
+   * Responses API call would silently drop them — the parent chat-completions
+   * adapter has its own image injection but this code path bypassed it.
+   * https://developers.openai.com/api/docs/guides/images-vision
    */
-  _transformMessagesToInput(messages) {
+  _transformMessagesToInput(messages, imageData = null) {
     // Extract system message as instructions
     const systemMessage = messages.find((m) => m.role === 'system');
     const instructions = systemMessage?.content || '';
@@ -3572,6 +3603,41 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 
     // Flatten any nested arrays (from assistant messages with tool calls)
     const flattenedInput = inputItems.flat();
+
+    // Inject input_image blocks into the last user message when imageData is present.
+    // Match the chat-completions adapter's "skip tool_result carriers" behavior so we
+    // don't clobber a tool_result-bearing user item.
+    if (Array.isArray(imageData) && imageData.length > 0) {
+      let targetIdx = -1;
+      for (let i = flattenedInput.length - 1; i >= 0; i--) {
+        const item = flattenedInput[i];
+        if (item && item.type === 'message' && item.role === 'user') {
+          targetIdx = i;
+          break;
+        }
+      }
+      if (targetIdx !== -1) {
+        const targetItem = flattenedInput[targetIdx];
+        const newContent = Array.isArray(targetItem.content) ? [...targetItem.content] : [];
+        let appended = 0;
+        imageData.forEach((img) => {
+          if (img.unsupported || !img.type || !img.data) return;
+          newContent.push({
+            type: 'input_image',
+            image_url: `data:${img.type};base64,${img.data}`,
+          });
+          appended++;
+        });
+        if (appended > 0) {
+          flattenedInput[targetIdx] = { ...targetItem, content: newContent };
+          console.log(`[OpenAI Responses Vision] Added ${appended}/${imageData.length} input_image block(s) to last user message`);
+        } else {
+          console.warn('[OpenAI Responses Vision] All images marked unsupported or empty; nothing injected.');
+        }
+      } else {
+        console.warn('[OpenAI Responses Vision] No injectable user message found; skipping image injection.');
+      }
+    }
 
     return { instructions, input: flattenedInput };
   }
@@ -3859,7 +3925,18 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       let replayableOutputItems = undefined;
 
       try {
-        const { instructions, input } = this._transformMessagesToInput(messages);
+        // Gate vision injection on the model's vision capability; non-vision models
+        // shouldn't receive input_image blocks (Responses API will 400).
+        // supportsVision() uses getModelMetadata's variant fallback so future
+        // gpt-5.x / o-series models work without manual list maintenance.
+        const visionOk = ProviderRegistry.supportsVision('openai', this.model);
+        const imageDataForInput = (Array.isArray(context.imageData) && context.imageData.length > 0 && visionOk)
+          ? context.imageData
+          : null;
+        if (Array.isArray(context.imageData) && context.imageData.length > 0 && !visionOk) {
+          console.warn(`[Vision Check] OpenAI model '${this.model}' does not support vision; ignoring ${context.imageData.length} image(s).`);
+        }
+        const { instructions, input } = this._transformMessagesToInput(messages, imageDataForInput);
         const responsesTools = this._transformToolsToResponses(tools);
 
         const requestParams = {
@@ -4162,9 +4239,22 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   /**
    * Build Codex-specific request parameters.
    * Always includes `stream: true` because the ChatGPT backend rejects non-streaming requests.
+   * imageData (when provided) is forwarded into the parent transform so vision
+   * models like gpt-5.2-codex see uploaded images via input_image blocks.
    */
-  _buildCodexParams(messages, tools) {
-    const { instructions, input } = this._transformMessagesToInput(messages);
+  _buildCodexParams(messages, tools, imageData = null) {
+    // Codex models (gpt-5.x-codex, gpt-5.5, etc.) inherit OpenAI's vision
+    // capability via getModelMetadata's variant fallback chain. Use
+    // supportsVision() so we don't have to manually enumerate every Codex
+    // model in providerConfigs.fallbackVisionModels.
+    const visionOk = ProviderRegistry.supportsVision('openai-codex', this.model);
+    const imageDataForInput = (Array.isArray(imageData) && imageData.length > 0 && visionOk)
+      ? imageData
+      : null;
+    if (Array.isArray(imageData) && imageData.length > 0 && !visionOk) {
+      console.warn(`[Vision Check] Codex model '${this.model}' is not vision-capable per metadata; ignoring ${imageData.length} image(s).`);
+    }
+    const { instructions, input } = this._transformMessagesToInput(messages, imageDataForInput);
     const responsesTools = this._transformToolsToResponses(tools);
 
     const params = {
@@ -4387,7 +4477,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const params = this._buildCodexParams(workingMessages, tools);
+        const params = this._buildCodexParams(workingMessages, tools, context.imageData);
 
         console.log(`[Codex Responses] Streaming call to model '${this.model}' via ChatGPT backend`);
 

@@ -7,7 +7,7 @@
  */
 
 import fetch from 'node-fetch';
-import { buildProviderCapabilities, getProviderConfig, getAllProviderConfigs } from './providerConfigs.js';
+import { buildProviderCapabilities, getProviderConfig, getAllProviderConfigs, getModelMetadata } from './providerConfigs.js';
 
 // Cache for dynamically fetched models
 const modelCache = new Map();
@@ -83,6 +83,28 @@ export function getVisionModels(provider) {
   const normalizedProvider = provider.toLowerCase();
   const caps = PROVIDER_CAPABILITIES[normalizedProvider];
   return caps?.vision?.models || [];
+}
+
+/**
+ * Authoritative per-model vision capability check. Prefer this over
+ * `getVisionModels(provider).includes(model)` — it uses getModelMetadata's
+ * richer fallback chain (parent provider via PROVIDER_METADATA_FALLBACK,
+ * variant inference like gpt-5.2-codex → gpt-5.2, dynamic pricing cache,
+ * cross-provider lookup), so it correctly reports e.g. gpt-5.5 / gpt-5.3-codex
+ * as vision-capable even when the codex provider's static fallbackVisionModels
+ * list doesn't enumerate them.
+ *
+ * Returns true when the model resolves to metadata with supportsVision: true,
+ * OR (as a safety net for providers that maintain a curated list but no
+ * per-model metadata, e.g. small open-source providers) when the model
+ * appears in the provider's vision model list.
+ */
+export function supportsVision(provider, model) {
+  if (!provider || !model) return false;
+  const meta = getModelMetadata(provider, model);
+  if (meta && meta.supportsVision === true) return true;
+  // Safety net: curated list with no metadata
+  return getVisionModels(provider).includes(model);
 }
 
 /**
@@ -223,6 +245,7 @@ export default {
   isValidImageModelDynamic,
   getTextModels,
   getVisionModels,
+  supportsVision,
   getImageGenProvidersDescription,
   fetchProviderModels,
   getImageGenModels,
