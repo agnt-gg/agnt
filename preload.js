@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('electron', {
   openDownloadPage: () => ipcRenderer.send('open-download-page'),
   openExternalUrl: (url) => ipcRenderer.send('open-external-url', url),
 
+  // OS file manager bridge — used by the artifacts file tree right-click menu.
+  // Renderer code should guard on `window.electron?.revealInFolder` so the menu
+  // entries can be hidden in non-Electron contexts (web/Docker).
+  revealInFolder: (fullPath) => ipcRenderer.send('shell:show-item-in-folder', fullPath),
+  openPath: (fullPath) => ipcRenderer.send('shell:open-path', fullPath),
+
   // Listen for update notifications from main process
   onUpdateAvailable: (callback) => {
     ipcRenderer.on('update-available', (event, updateInfo) => callback(updateInfo));

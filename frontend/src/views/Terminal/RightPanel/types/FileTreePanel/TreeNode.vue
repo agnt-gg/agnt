@@ -9,7 +9,7 @@
       }"
       draggable="true"
       @click="handleClick"
-      @contextmenu.prevent="showContextMenu"
+      @contextmenu.prevent.stop="handleContextMenu"
       @dragstart="onDragStart"
       @dragenter="onDragEnter"
       @dragover="onDragOver"
@@ -33,24 +33,6 @@
       <span v-else class="item-name">{{ item.name }}</span>
     </div>
 
-    <!-- Context menu -->
-    <Teleport to="body">
-      <div v-if="contextMenuVisible" class="tree-context-menu" :style="{ top: contextMenuY + 'px', left: contextMenuX + 'px' }">
-        <div class="ctx-item" @click.stop="copyPath">
-          <i :class="copyFlash ? 'fas fa-check' : 'fas fa-copy'"></i>
-          {{ copyFlash ? 'Copied!' : 'Copy Path' }}
-        </div>
-        <div class="ctx-divider"></div>
-        <div class="ctx-item" @click="startRename"><i class="fas fa-pen"></i> Rename</div>
-        <div class="ctx-item ctx-danger" @click="requestDelete"><i class="fas fa-trash"></i> Delete</div>
-        <template v-if="item.type === 'directory'">
-          <div class="ctx-divider"></div>
-          <div class="ctx-item" @click="newFileInDir"><i class="fas fa-file"></i> New File</div>
-          <div class="ctx-item" @click="newFolderInDir"><i class="fas fa-folder"></i> New Folder</div>
-        </template>
-      </div>
-    </Teleport>
-
     <!-- Recursive children for expanded directories -->
     <div v-if="item.type === 'directory' && isExpanded" class="tree-children">
       <div v-if="!children || children.length === 0" class="empty-dir">
@@ -64,20 +46,19 @@
         :children-map="childrenMap"
         :active-dir="activeDir"
         :workspace-root="workspaceRoot"
+        :rename-request="renameRequest"
         @toggle-dir="$emit('toggle-dir', $event)"
         @select-file="$emit('select-file', $event)"
         @rename-item="$emit('rename-item', $event)"
-        @delete-item="$emit('delete-item', $event)"
         @move-item="$emit('move-item', $event)"
-        @new-file-in-dir="$emit('new-file-in-dir', $event)"
-        @new-folder-in-dir="$emit('new-folder-in-dir', $event)"
+        @open-context-menu="$emit('open-context-menu', $event)"
       />
     </div>
   </div>
 </template>
 
 <script>
-import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue';
+import { computed, ref, nextTick, watch } from 'vue';
 
 const EXTENSION_ICONS = {
   js: 'fab fa-js-square',
@@ -109,8 +90,12 @@ export default {
     childrenMap: { type: Object, required: true },
     activeDir: { type: String, default: '' },
     workspaceRoot: { type: String, default: '' },
+    // Rename signal from the parent's lifted context menu. Shape: { path, ts }.
+    // When path matches this node's item.path, the node enters inline rename
+    // mode. The `ts` field ensures the same path can be retriggered.
+    renameRequest: { type: Object, default: null },
   },
-  emits: ['toggle-dir', 'select-file', 'rename-item', 'delete-item', 'move-item', 'new-file-in-dir', 'new-folder-in-dir'],
+  emits: ['toggle-dir', 'select-file', 'rename-item', 'move-item', 'open-context-menu'],
   setup(props, { emit }) {
     const isExpanded = computed(() => !!props.expandedDirs[props.item.path]);
     const children = computed(() => props.childrenMap[props.item.path] || []);
@@ -119,24 +104,10 @@ export default {
       return EXTENSION_ICONS[ext] || 'fas fa-file';
     });
 
-    // ── Context Menu ──
-    const contextMenuVisible = ref(false);
-    const contextMenuX = ref(0);
-    const contextMenuY = ref(0);
-
-    const showContextMenu = (e) => {
-      contextMenuX.value = e.clientX;
-      contextMenuY.value = e.clientY;
-      contextMenuVisible.value = true;
+    // ── Context Menu (just forwards the request — the menu UI lives in the parent) ──
+    const handleContextMenu = (e) => {
+      emit('open-context-menu', { item: props.item, x: e.clientX, y: e.clientY });
     };
-
-    const hideContextMenu = () => {
-      contextMenuVisible.value = false;
-    };
-
-    const onDocumentClick = () => hideContextMenu();
-    onMounted(() => document.addEventListener('click', onDocumentClick));
-    onUnmounted(() => document.removeEventListener('click', onDocumentClick));
 
     // ── Inline Rename ──
     const isRenaming = ref(false);
@@ -144,7 +115,6 @@ export default {
     const renameInputRef = ref(null);
 
     const startRename = () => {
-      hideContextMenu();
       renameValue.value = props.item.name;
       isRenaming.value = true;
       nextTick(() => {
@@ -162,6 +132,17 @@ export default {
       });
     };
 
+    // React to rename signals from the lifted menu. Each new `renameRequest`
+    // object is a fresh reference, so the watcher fires even for the same path
+    // being retriggered.
+    watch(
+      () => props.renameRequest,
+      (req) => {
+        if (!req || req.path !== props.item.path) return;
+        if (!isRenaming.value) startRename();
+      },
+    );
+
     const commitRename = () => {
       if (!isRenaming.value) return;
       const newName = renameValue.value.trim();
@@ -176,70 +157,6 @@ export default {
 
     const cancelRename = () => {
       isRenaming.value = false;
-    };
-
-    // ── Delete ──
-    const requestDelete = () => {
-      hideContextMenu();
-      emit('delete-item', { path: props.item.path, name: props.item.name, type: props.item.type });
-    };
-
-    // ── Copy Path ──
-    // Briefly flips the menu item to "Copied!" before the document-click handler
-    // closes the menu, so the user gets a visual confirmation.
-    const copyFlash = ref(false);
-    const copyPath = async () => {
-      const relPath = props.item.path || '';
-      const root = props.workspaceRoot || '';
-      // Detect OS-style separator from the workspace root so the joined path
-      // matches what the user's filesystem actually expects (Windows uses `\`).
-      const isWindows = root.includes('\\');
-      const sep = isWindows ? '\\' : '/';
-      let path;
-      if (!root) {
-        path = relPath;
-      } else {
-        // Normalize the relative path's separators to match the root's, then strip
-        // any leading separator before joining so we don't end up with a double.
-        const normalizedRel = isWindows ? relPath.replace(/\//g, '\\') : relPath.replace(/\\/g, '/');
-        const trimmedRoot = root.replace(/[\\/]+$/, '');
-        const trimmedRel = normalizedRel.replace(/^[\\/]+/, '');
-        path = trimmedRel ? `${trimmedRoot}${sep}${trimmedRel}` : trimmedRoot;
-      }
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(path);
-        } else {
-          // Fallback for contexts without the async clipboard API
-          const ta = document.createElement('textarea');
-          ta.value = path;
-          ta.style.position = 'fixed';
-          ta.style.opacity = '0';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-        }
-        copyFlash.value = true;
-        setTimeout(() => {
-          copyFlash.value = false;
-          hideContextMenu();
-        }, 600);
-      } catch (e) {
-        console.error('[TreeNode] Copy path failed:', e);
-        hideContextMenu();
-      }
-    };
-
-    // ── New File/Folder in Directory ──
-    const newFileInDir = () => {
-      hideContextMenu();
-      emit('new-file-in-dir', props.item.path);
-    };
-
-    const newFolderInDir = () => {
-      hideContextMenu();
-      emit('new-folder-in-dir', props.item.path);
     };
 
     // ── Drag & Drop ──
@@ -305,26 +222,13 @@ export default {
       children,
       fileIcon,
       handleClick,
-      // Context menu
-      contextMenuVisible,
-      contextMenuX,
-      contextMenuY,
-      showContextMenu,
+      handleContextMenu,
       // Rename
       isRenaming,
       renameValue,
       renameInputRef,
-      startRename,
       commitRename,
       cancelRename,
-      // Delete
-      requestDelete,
-      // Copy path
-      copyPath,
-      copyFlash,
-      // New in dir
-      newFileInDir,
-      newFolderInDir,
       // Drag & drop
       isDragOver,
       onDragStart,
@@ -414,52 +318,5 @@ export default {
   color: var(--color-text-muted);
   opacity: 0.5;
   font-style: italic;
-}
-</style>
-
-<!-- Context menu styles (unscoped so Teleport works) -->
-<style>
-.tree-context-menu {
-  position: fixed;
-  z-index: 9999;
-  background: var(--color-popup);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
-  padding: 4px 0;
-  min-width: 150px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  font-size: 12px;
-}
-
-.ctx-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all 0.1s;
-}
-
-.ctx-item:hover {
-  background: rgba(var(--primary-rgb), 0.1);
-  color: var(--color-text);
-}
-
-.ctx-item.ctx-danger:hover {
-  background: rgba(255, 80, 80, 0.12);
-  color: var(--color-red);
-}
-
-.ctx-item i {
-  width: 14px;
-  text-align: center;
-  font-size: 11px;
-}
-
-.ctx-divider {
-  height: 1px;
-  background: var(--terminal-border-color);
-  margin: 4px 0;
 }
 </style>

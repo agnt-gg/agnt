@@ -198,6 +198,34 @@ ipcMain.on('open-external-url', (event, url) => {
     console.error('[Electron] Invalid URL passed to open-external-url:', url);
   }
 });
+
+// Reveal a file or folder in the OS file manager (Explorer / Finder / Files).
+// Used by the artifacts file tree right-click menu.
+ipcMain.on('shell:show-item-in-folder', (event, fullPath) => {
+  if (typeof fullPath !== 'string' || !fullPath) {
+    console.error('[Electron] shell:show-item-in-folder: invalid path:', fullPath);
+    return;
+  }
+  shell.showItemInFolder(fullPath);
+});
+
+// Open a folder directly in the OS file manager. For files, prefer
+// shell:show-item-in-folder — openPath on a file would launch it in its
+// associated app, which isn't what the menu action implies.
+ipcMain.on('shell:open-path', async (event, fullPath) => {
+  if (typeof fullPath !== 'string' || !fullPath) {
+    console.error('[Electron] shell:open-path: invalid path:', fullPath);
+    return;
+  }
+  try {
+    const errorMessage = await shell.openPath(fullPath);
+    if (errorMessage) {
+      console.error('[Electron] shell:open-path failed:', errorMessage);
+    }
+  } catch (err) {
+    console.error('[Electron] shell:open-path threw:', err);
+  }
+});
 // ============================================================================
 
 // Function to start the bundled backend executable

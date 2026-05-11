@@ -60,13 +60,12 @@
         :children-map="childrenMap"
         :active-dir="activeDir"
         :workspace-root="workspaceRoot"
+        :rename-request="renameRequest"
         @toggle-dir="handleDirClick"
         @select-file="handleFileClick"
         @rename-item="renameItem"
-        @delete-item="deleteItem"
         @move-item="moveItem"
-        @new-file-in-dir="showNewFileInput"
-        @new-folder-in-dir="showNewFolderInput"
+        @open-context-menu="openContextMenu"
       />
     </div>
     <div v-else class="loading-state">
@@ -88,6 +87,42 @@
             <button class="delete-confirm-btn" @click="confirmDelete">Delete</button>
           </div>
         </div>
+      </div>
+    </Teleport>
+
+    <!-- Singleton right-click context menu for the file tree. Lifted here so
+         there is one menu instance for the whole tree — fixes the bug where
+         right-clicking different nodes used to stack their per-node menus. -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenu.visible"
+        class="tree-context-menu"
+        :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+      >
+        <div class="ctx-item" @click.stop="onMenuCopyPath">
+          <i :class="contextMenu.copyFlash ? 'fas fa-check' : 'fas fa-copy'"></i>
+          {{ contextMenu.copyFlash ? 'Copied!' : 'Copy Path' }}
+        </div>
+        <template v-if="canRevealInShell && contextMenu.item">
+          <div
+            v-if="contextMenu.item.type === 'directory'"
+            class="ctx-item"
+            @click.stop="onMenuOpenFolder"
+          >
+            <i class="fas fa-folder-open"></i> {{ openFolderLabel }}
+          </div>
+          <div v-else class="ctx-item" @click.stop="onMenuReveal">
+            <i class="fas fa-folder-open"></i> {{ revealLabel }}
+          </div>
+        </template>
+        <div class="ctx-divider"></div>
+        <div class="ctx-item" @click.stop="onMenuRename"><i class="fas fa-pen"></i> Rename</div>
+        <div class="ctx-item ctx-danger" @click.stop="onMenuDelete"><i class="fas fa-trash"></i> Delete</div>
+        <template v-if="contextMenu.item && contextMenu.item.type === 'directory'">
+          <div class="ctx-divider"></div>
+          <div class="ctx-item" @click.stop="onMenuNewFile"><i class="fas fa-file"></i> New File</div>
+          <div class="ctx-item" @click.stop="onMenuNewFolder"><i class="fas fa-folder"></i> New Folder</div>
+        </template>
       </div>
     </Teleport>
 
@@ -164,6 +199,146 @@ export default {
       error: '',
       saving: false,
     });
+
+    // ── Context menu (singleton for the whole tree) ──
+    // Holding state here instead of inside each TreeNode is what makes right-
+    // clicking a different node automatically replace the open menu instead of
+    // stacking a new one on top.
+    const contextMenu = reactive({
+      visible: false,
+      x: 0,
+      y: 0,
+      item: null,
+      copyFlash: false,
+    });
+
+    // Rename signal handed down to TreeNodes. Setting this to a fresh object
+    // tells the matching TreeNode to enter its inline-rename mode.
+    const renameRequest = ref(null);
+
+    // Pick a platform-appropriate label for the reveal/open menu items. On
+    // Linux there's no canonical file manager name, so use VS Code's phrasing.
+    const platform = (() => {
+      if (typeof navigator === 'undefined') return 'other';
+      const p = navigator.platform || '';
+      if (/win/i.test(p)) return 'win';
+      if (/mac/i.test(p)) return 'mac';
+      return 'linux';
+    })();
+    const revealLabel =
+      platform === 'win' ? 'Reveal in File Explorer' : platform === 'mac' ? 'Reveal in Finder' : 'Open Containing Folder';
+    const openFolderLabel =
+      platform === 'win' ? 'Open in File Explorer' : platform === 'mac' ? 'Open in Finder' : 'Open Folder';
+
+    // Shell bridge only exists in the Electron renderer. Hide reveal/open
+    // entries when running via the web/Docker variant where there's no local
+    // shell to invoke.
+    const canRevealInShell = typeof window !== 'undefined' && !!window.electron?.revealInFolder;
+
+    // Workspace-relative → absolute path. Mirrors the separator handling from
+    // the previous TreeNode.copyPath so Windows paths come out with backslashes.
+    const toAbsolutePath = (relPath) => {
+      const root = workspaceRoot.value || '';
+      const rel = relPath || '';
+      if (!root) return rel;
+      const isWindows = root.includes('\\');
+      const sep = isWindows ? '\\' : '/';
+      const normalizedRel = isWindows ? rel.replace(/\//g, '\\') : rel.replace(/\\/g, '/');
+      const trimmedRoot = root.replace(/[\\/]+$/, '');
+      const trimmedRel = normalizedRel.replace(/^[\\/]+/, '');
+      return trimmedRel ? `${trimmedRoot}${sep}${trimmedRel}` : trimmedRoot;
+    };
+
+    const openContextMenu = ({ item, x, y }) => {
+      contextMenu.visible = true;
+      contextMenu.x = x;
+      contextMenu.y = y;
+      contextMenu.item = item;
+      contextMenu.copyFlash = false;
+    };
+
+    const closeContextMenu = () => {
+      contextMenu.visible = false;
+      contextMenu.item = null;
+      contextMenu.copyFlash = false;
+    };
+
+    const onMenuCopyPath = async () => {
+      if (!contextMenu.item) return;
+      const path = toAbsolutePath(contextMenu.item.path);
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(path);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = path;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        contextMenu.copyFlash = true;
+        setTimeout(closeContextMenu, 600);
+      } catch (e) {
+        console.error('[FileTreePanel] Copy path failed:', e);
+        closeContextMenu();
+      }
+    };
+
+    const onMenuReveal = () => {
+      if (!contextMenu.item || !canRevealInShell) return closeContextMenu();
+      const abs = toAbsolutePath(contextMenu.item.path);
+      if (abs) window.electron.revealInFolder(abs);
+      closeContextMenu();
+    };
+
+    const onMenuOpenFolder = () => {
+      if (!contextMenu.item || contextMenu.item.type !== 'directory' || !canRevealInShell) {
+        return closeContextMenu();
+      }
+      const abs = toAbsolutePath(contextMenu.item.path);
+      if (abs) window.electron.openPath(abs);
+      closeContextMenu();
+    };
+
+    const onMenuRename = () => {
+      if (!contextMenu.item) return;
+      renameRequest.value = { path: contextMenu.item.path, ts: Date.now() };
+      closeContextMenu();
+    };
+
+    const onMenuDelete = () => {
+      if (!contextMenu.item) return;
+      const { path, name, type } = contextMenu.item;
+      closeContextMenu();
+      deleteItem({ path, name, type });
+    };
+
+    const onMenuNewFile = () => {
+      if (!contextMenu.item || contextMenu.item.type !== 'directory') return;
+      const dir = contextMenu.item.path;
+      closeContextMenu();
+      showNewFileInput(dir);
+    };
+
+    const onMenuNewFolder = () => {
+      if (!contextMenu.item || contextMenu.item.type !== 'directory') return;
+      const dir = contextMenu.item.path;
+      closeContextMenu();
+      showNewFolderInput(dir);
+    };
+
+    const onDocumentClick = () => {
+      // Menu items use @click.stop, so this only fires for clicks outside the
+      // menu — which is exactly when we want to dismiss it.
+      if (contextMenu.visible) closeContextMenu();
+    };
+
+    const onDocumentKeydown = (e) => {
+      if (e.key === 'Escape' && contextMenu.visible) closeContextMenu();
+    };
 
     const fetchRootTree = async () => {
       loading.value = true;
@@ -489,10 +664,14 @@ export default {
       fetchRootTree();
       loadWorkspaceRoot();
       window.addEventListener('code-file-written', handleFileWritten);
+      document.addEventListener('click', onDocumentClick);
+      document.addEventListener('keydown', onDocumentKeydown);
     });
 
     onUnmounted(() => {
       window.removeEventListener('code-file-written', handleFileWritten);
+      document.removeEventListener('click', onDocumentClick);
+      document.removeEventListener('keydown', onDocumentKeydown);
     });
 
     return {
@@ -526,6 +705,20 @@ export default {
       resetToDefault,
       cancelSettings,
       refreshTree,
+      // Context menu
+      contextMenu,
+      renameRequest,
+      revealLabel,
+      openFolderLabel,
+      canRevealInShell,
+      openContextMenu,
+      onMenuCopyPath,
+      onMenuReveal,
+      onMenuOpenFolder,
+      onMenuRename,
+      onMenuDelete,
+      onMenuNewFile,
+      onMenuNewFolder,
     };
   },
 };
@@ -856,5 +1049,52 @@ export default {
 .settings-save-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+</style>
+
+<!-- Context menu styles are unscoped so the Teleport target (body) can see them. -->
+<style>
+.tree-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--color-popup);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 150px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+}
+
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.ctx-item:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--color-text);
+}
+
+.ctx-item.ctx-danger:hover {
+  background: rgba(255, 80, 80, 0.12);
+  color: var(--color-red);
+}
+
+.ctx-item i {
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+}
+
+.ctx-divider {
+  height: 1px;
+  background: var(--terminal-border-color);
+  margin: 4px 0;
 }
 </style>
