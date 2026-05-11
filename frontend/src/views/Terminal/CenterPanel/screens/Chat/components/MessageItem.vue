@@ -1562,6 +1562,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       // (e.g. ../images/x.jpg) against that file's directory — same behavior
       // as the artifacts preview iframe, just inline in the chat.
       const inlineBaseDir = getBaseDirFromToolCalls();
+      // Pre-rewrite file:// URLs to /api/local-file/... BEFORE DOMPurify runs.
+      // Doing it post-sanitize via the afterSanitizeAttributes hook was unreliable:
+      // DOMPurify 3.x's URI validation strips file:-prefixed src/href on certain
+      // elements (notably <iframe>) regardless of ALLOWED_URI_REGEXP, so the hook
+      // never saw the value to rewrite it. Pre-rewriting matches the Artifacts /
+      // CustomWidget renderer pattern (Artifacts.vue:1446, CustomWidgetRenderer.vue:181)
+      // and means DOMPurify only ever sees http:// URLs it's happy with.
+      const preRewritten = rewriteLocalFileURLsInHTML(html, inlineBaseDir ? { baseDir: inlineBaseDir } : undefined);
       // Use DOMPurify hook to add target="_blank" and rel="noopener noreferrer" to all anchor tags
       DOMPurify.addHook('afterSanitizeAttributes', (node) => {
         // Set all elements owning target to target=_blank
@@ -1569,17 +1577,13 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           node.setAttribute('target', '_blank');
           node.setAttribute('rel', 'noopener noreferrer');
         }
-        // Rewrite file:// URLs to a backend path-based route that streams the
-        // file over HTTP. Path-based (not query-string) is critical for iframes:
-        // relative URLs inside the served HTML resolve against the iframe's base
-        // URL, so ../videos/foo.mp4 inside a slide's HTML needs to resolve to a
-        // real filesystem path, not a dropped query string.
+        // Relative asset paths (e.g. ../images/x.jpg) only resolve if the message
+        // has a known base dir from a prior read tool call. file:// rewriting is
+        // handled in the pre-rewrite pass above.
         for (const attr of ['src', 'href', 'poster']) {
           const val = node.getAttribute && node.getAttribute(attr);
           if (!val) continue;
-          if (/^file:\/\//i.test(val)) {
-            node.setAttribute(attr, fileUrlToLocalFileUrl(val));
-          } else if (inlineBaseDir && !isAlreadyResolvedURL(val)) {
+          if (inlineBaseDir && !isAlreadyResolvedURL(val)) {
             node.setAttribute(attr, resolveRelativeAssetURL(val, inlineBaseDir));
           }
         }
@@ -1604,7 +1608,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         }
       });
 
-      const sanitized = DOMPurify.sanitize(html, {
+      const sanitized = DOMPurify.sanitize(preRewritten, {
         ALLOWED_TAGS: [
           'div',
           'span',

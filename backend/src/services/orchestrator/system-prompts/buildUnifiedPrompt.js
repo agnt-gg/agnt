@@ -5,6 +5,7 @@ import {
   CRITICAL_TOOL_CALL_REQUIREMENTS,
   IMAGE_ANALYSIS_CAPABILITIES,
   IMAGE_GENERATION_CAPABILITIES,
+  LOCAL_FILE_RENDERING,
   RESPONSE_FORMATTING,
   CRITICAL_IMAGE_REFERENCE_FORMATTING,
   IMPORTANT_GUIDELINES,
@@ -120,6 +121,11 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   if (has('analyze_image')) parts.push(IMAGE_ANALYSIS_CAPABILITIES);
   if (has('generate_image')) parts.push(IMAGE_GENERATION_CAPABILITIES);
   parts.push(RESPONSE_FORMATTING);
+  // Local file rendering applies to every surface: any tool (generation, plugin,
+  // MCP, file_operations, etc.) can return an absolute path the LLM needs to
+  // embed. The frontend rewrites file:/// → /api/local-file/... so <img>,
+  // <video>, <iframe>, <audio> all just work. Cheap to include unconditionally.
+  parts.push(LOCAL_FILE_RENDERING);
   if (has('generate_image')) parts.push(CRITICAL_IMAGE_REFERENCE_FORMATTING);
   // IMPORTANT_GUIDELINES is almost entirely about web_search / web_scrape /
   // execute_javascript_code / file_operations / agnt_tools — skip the block
