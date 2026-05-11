@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.5.16",
+      "date": "May 11, 2026",
+      "title": "Universal Vision, Reveal in Folder & Codex Long-Chat Stability - AGNT v0.5.16",
+      "type": "patch",
+      "features": [
+        { "name": "Codex and the Newer GPT-5 Models Can Now See Images You Upload Directly in Chat Instead of Quietly Dropping Them", "status": "new" },
+        { "name": "Image Uploads Now Work Natively on Groq, Cerebras, and Together AI When You're Using a Llama 4 Model", "status": "new" },
+        { "name": "Image Analysis Now Always Uses the Provider and Model You've Selected Instead of Defaulting to OpenAI Behind Your Back", "status": "updated" },
+        { "name": "Right-Click Any File or Folder in the File Tree to Reveal It in Windows Explorer, Mac Finder, or Your Linux File Manager — Plus Multiple Right-Clicks No Longer Stack Up Duplicate Menus", "status": "new" },
+        { "name": "Long Codex Chats Now Auto-Recover When They Overflow the Model's Context Window Instead of Failing, and Big Artifact Files No Longer Blow Out Your Token Budget (Thanks @namle0251-blip for the Diagnosis and PR)", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.15",
       "date": "May 9, 2026",
       "title": "Obsidian Plugin, Seedance Multimodal Inputs & OAuth Recovery - AGNT v0.5.15",
