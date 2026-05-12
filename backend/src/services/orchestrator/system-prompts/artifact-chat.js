@@ -15,15 +15,28 @@ export async function getCodeSystemContent(context = {}) {
     workspaceRootDisplay = await getWorkspaceRootPath();
   } catch { /* use default */ }
 
-  // Build workspace file listing
+  // Build workspace file listing.
+  // Capped + collapsed in listWorkspaceFiles() so a huge workspace
+  // (video frames, node_modules, etc.) cannot blow the context budget.
+  // Annie should call `list_files` to drill into any collapsed dir.
   let workspaceSection = '';
   try {
-    const files = await listWorkspaceFiles();
-    if (files.length > 0) {
-      const tree = files
-        .map((f) => `  ${f.type === 'directory' ? '📁' : '📄'} ${f.path}`)
-        .join('\n');
-      workspaceSection = `\n\nWORKSPACE FILES (${workspaceRootDisplay}):\n${tree}`;
+    const { items, truncated, collapsedDirs } = await listWorkspaceFiles();
+    if (items.length > 0) {
+      const lines = items.map((f) => {
+        if (f.type === 'directory' && f.collapsed) {
+          const n = f.childCount ?? 0;
+          return `  📁 ${f.path}/  (${n} entries — use list_files to explore)`;
+        }
+        return `  ${f.type === 'directory' ? '📁' : '📄'} ${f.path}`;
+      });
+      const truncNote = truncated
+        ? `\n\n(Listing capped at ${items.length} entries. Call list_files with a path to drill into any folder.)`
+        : '';
+      const collapsedNote = collapsedDirs.length > 0
+        ? `\n\nCollapsed directories (use list_files to explore): ${collapsedDirs.join(', ')}`
+        : '';
+      workspaceSection = `\n\nWORKSPACE FILES (${workspaceRootDisplay}):\n${lines.join('\n')}${truncNote}${collapsedNote}`;
     } else {
       workspaceSection = '\n\nWORKSPACE: Empty — no files or folders yet.';
     }

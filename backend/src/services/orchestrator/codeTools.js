@@ -300,34 +300,86 @@ export async function executeCodeFunction(name, args) {
   return JSON.stringify(result);
 }
 
+// Heavy / generated dirs we never recurse into for the system prompt.
+// Annie can still drill into them via the `list_files` tool.
+const WORKSPACE_PROMPT_IGNORE = new Set([
+  'node_modules', '.git', '.svn', '.hg',
+  'dist', 'build', 'out', '.next', '.nuxt', '.cache',
+  'target', 'bin', 'obj',
+  '__pycache__', '.venv', 'venv', 'env',
+  '.pytest_cache', '.mypy_cache', '.tox',
+  'frames', 'extracted_frames',
+  'coverage', '.nyc_output',
+  '.idea', '.vscode',
+  'tmp', 'temp',
+]);
+
 /**
- * List all files in the workspace (for system prompt context)
+ * List workspace files for the system prompt.
+ *
+ * Bounded recursion: stops at maxDepth and stops once items.length hits
+ * maxEntries. Heavy generated dirs (node_modules, frames, dist, etc.) are
+ * collapsed to a single entry with a child-count instead of being walked
+ * — without this, a video-pipeline workspace can dump 200k+ tokens of
+ * paths into the prompt and trigger emergency context truncation.
+ *
+ * Returns { items, truncated, collapsedDirs }. `items` keeps the legacy
+ * shape ({ name, type, path }), with optional { collapsed, childCount }
+ * on directories that were not walked.
  */
-export async function listWorkspaceFiles() {
+export async function listWorkspaceFiles({ maxEntries = 500, maxDepth = 3 } = {}) {
   const WORKSPACE_ROOT = await getWorkspaceRoot();
   await fs.mkdir(WORKSPACE_ROOT, { recursive: true });
 
   const items = [];
+  const collapsedDirs = [];
+  let truncated = false;
 
-  async function walk(relDir) {
-    const absDir = path.resolve(WORKSPACE_ROOT, relDir);
+  async function countChildren(absDir) {
     try {
-      const entries = await fs.readdir(absDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.name.startsWith('.')) continue;
-        const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-          items.push({ name: entry.name, type: 'directory', path: relPath });
-          await walk(relPath);
-        } else {
-          items.push({ name: entry.name, type: 'file', path: relPath });
+      const entries = await fs.readdir(absDir);
+      return entries.filter((n) => !n.startsWith('.')).length;
+    } catch { return 0; }
+  }
+
+  async function walk(relDir, depth) {
+    if (truncated) return;
+    const absDir = path.resolve(WORKSPACE_ROOT, relDir);
+    let entries;
+    try {
+      entries = await fs.readdir(absDir, { withFileTypes: true });
+    } catch { return; }
+
+    // Directories first, then files; alphabetical within each group.
+    entries.sort((a, b) => {
+      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    for (const entry of entries) {
+      if (truncated) return;
+      if (entry.name.startsWith('.')) continue;
+      if (items.length >= maxEntries) { truncated = true; return; }
+
+      const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
+
+      if (entry.isDirectory()) {
+        const isIgnored = WORKSPACE_PROMPT_IGNORE.has(entry.name);
+        const atDepthCap = depth + 1 > maxDepth;
+        if (isIgnored || atDepthCap) {
+          const childCount = await countChildren(path.resolve(WORKSPACE_ROOT, relPath));
+          items.push({ name: entry.name, type: 'directory', path: relPath, collapsed: true, childCount });
+          collapsedDirs.push(relPath);
+          continue;
         }
+        items.push({ name: entry.name, type: 'directory', path: relPath });
+        await walk(relPath, depth + 1);
+      } else {
+        items.push({ name: entry.name, type: 'file', path: relPath });
       }
-    } catch (err) {
-      // directory doesn't exist or can't be read
     }
   }
 
-  await walk('');
-  return items;
+  await walk('', 0);
+  return { items, truncated, collapsedDirs };
 }
