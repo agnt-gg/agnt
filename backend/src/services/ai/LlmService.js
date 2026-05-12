@@ -282,21 +282,35 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
     });
   }
 
-  // Claude Code — uses Anthropic API with OAuth Bearer auth
-  // Injects a custom fetch that computes the cch hash on outgoing request
-  // bodies, replacing the cch=00000 placeholder with the real xxHash64 value.
+  // Claude Code — uses Anthropic API with OAuth Bearer auth.
+  // The custom fetch does two things on every outgoing request:
+  //   1. Replace the cch=00000 placeholder with the real xxHash64 hash.
+  //   2. Re-read the current OAuth token from ClaudeCodeAuthManager and
+  //      overwrite the Authorization header. The SDK bakes `authToken` into
+  //      the client at construction, so without this a mid-session refresh
+  //      would leave a long tool loop sending the old Bearer token and 401.
   if (lowerCaseProvider === 'claude-code') {
-    const oauthToken = await ClaudeCodeAuthManager.getAccessToken();
-    if (!oauthToken) {
+    const initialToken = await ClaudeCodeAuthManager.getAccessToken();
+    if (!initialToken) {
       throw new Error('Claude Code is not connected. Use setup-token or paste a token to connect.');
     }
     const config = getProviderConfig('claude-code');
     const sdkOptions = await _resolveDynamicSdkOptions('claude-code', config?.sdkOptions);
+    const cchFetch = createCchFetch();
+    const claudeCodeFetch = async (url, init) => {
+      const token = await ClaudeCodeAuthManager.getAccessToken();
+      if (token) {
+        const headers = new Headers(init?.headers || {});
+        headers.set('Authorization', `Bearer ${token}`);
+        init = { ...init, headers };
+      }
+      return cchFetch(url, init);
+    };
     return new Anthropic({
       apiKey: null,
-      authToken: oauthToken,
+      authToken: initialToken,
       ...sdkOptions,
-      fetch: createCchFetch(),
+      fetch: claudeCodeFetch,
     });
   }
 
