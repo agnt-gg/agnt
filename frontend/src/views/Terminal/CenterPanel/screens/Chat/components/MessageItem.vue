@@ -1577,6 +1577,17 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           node.setAttribute('target', '_blank');
           node.setAttribute('rel', 'noopener noreferrer');
         }
+        // Force muted on autoplay <video>/<audio>. Inside Electron the window
+        // already has user activation, so an unmuted autoplay element would
+        // blast audio the instant the message renders. Setting both the attr
+        // and the DOM property because Chromium reads the property at play().
+        if (node.tagName === 'VIDEO' || node.tagName === 'AUDIO') {
+          if (node.hasAttribute('autoplay')) {
+            node.setAttribute('muted', '');
+            node.muted = true;
+            if (node.tagName === 'VIDEO') node.setAttribute('playsinline', '');
+          }
+        }
         // Relative asset paths (e.g. ../images/x.jpg) only resolve if the message
         // has a known base dir from a prior read tool call. file:// rewriting is
         // handled in the pre-rewrite pass above.
