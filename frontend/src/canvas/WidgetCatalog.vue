@@ -333,6 +333,10 @@ export default {
   font-size: 18px;
   color: var(--color-text-muted, #556);
   margin-bottom: 6px;
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .wc-card.wc-active .wc-card-icon {
@@ -352,6 +356,11 @@ export default {
   font-size: 10px;
   color: var(--color-text-muted, #445);
   margin-bottom: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .wc-card-size {
