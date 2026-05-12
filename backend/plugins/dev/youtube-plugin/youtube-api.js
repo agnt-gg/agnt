@@ -57,7 +57,7 @@ class YouTubeAPI {
           result = await this.getPlaylistItems(youtube, params);
           break;
         case 'GET_TRANSCRIPTION':
-          result = await this.getTranscription(youtube, params, userId);
+          result = await this.getTranscription(youtube, params, workflowEngine?.userId);
           break;
         case 'GET_VIDEO_DETAILS':
           result = await this.getVideoDetails(youtube, params);
@@ -511,10 +511,9 @@ class YouTubeAPI {
       try {
         console.log('[YouTubePlugin] TIER 2: Attempting yt-dlp caption extraction...');
 
-        // Import YouTubeCaptionExtractor dynamically
-        const YouTubeCaptionExtractorModule = await import(
-          '../../../src/utils/youtube-caption-extractor.js'
-        );
+        // Import YouTubeCaptionExtractor dynamically via APP_PATH so the
+        // import resolves from the app bundle, not the plugin's install dir.
+        const YouTubeCaptionExtractorModule = await import(`file://${path.join(APP_PATH, 'backend/src/utils/youtube-caption-extractor.js').replace(/\\/g, '/')}`);
         const YouTubeCaptionExtractor = YouTubeCaptionExtractorModule.default;
 
         const extractor = new YouTubeCaptionExtractor();
@@ -562,10 +561,9 @@ class YouTubeAPI {
       try {
         console.log('[YouTubePlugin] TIER 3: Attempting OpenAI Whisper transcription...');
 
-        // Import utilities dynamically
-        const YouTubeCaptionExtractorModule = await import(
-          '../../../src/utils/youtube-caption-extractor.js'
-        );
+        // Import utilities dynamically via APP_PATH so they resolve from the
+        // app bundle, not the plugin's install dir.
+        const YouTubeCaptionExtractorModule = await import(`file://${path.join(APP_PATH, 'backend/src/utils/youtube-caption-extractor.js').replace(/\\/g, '/')}`);
         const YouTubeCaptionExtractor = YouTubeCaptionExtractorModule.default;
 
         const WhisperTranscriberModule = await import(`file://${path.join(APP_PATH, 'backend/src/utils/whisper-transcriber.js').replace(/\\/g, '/')}`);
