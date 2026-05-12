@@ -409,33 +409,8 @@ export default {
           if (chatChangedSource) {
             chatChangedSource = false;
             const active = store.getters['widgetDefinitions/activeDefinition'];
-            const captureType = form.widget_type;
-            const captureSource = form.source_code;
-            if (
-              active?.id &&
-              (captureType === 'html' || captureType === 'markdown') &&
-              captureSource?.trim()
-            ) {
-              const widgetId = active.id;
-              captureWidgetThumbnail(captureSource, captureType)
-                .then((thumbnail) => {
-                  if (!thumbnail) return;
-                  const current = store.getters['widgetDefinitions/activeDefinition'];
-                  if (!current || current.id !== widgetId) return;
-                  return fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${widgetId}`, {
-                    method: 'PUT',
-                    headers: getAuthHeaders(),
-                    body: JSON.stringify({ thumbnail }),
-                  }).then((r) => {
-                    if (r.ok) {
-                      store.commit('widgetDefinitions/UPDATE_DEFINITION', {
-                        id: widgetId,
-                        updates: { thumbnail },
-                      });
-                    }
-                  });
-                })
-                .catch(() => {});
+            if (active?.id) {
+              scheduleBackgroundThumbnail(active.id, form.source_code, form.widget_type);
             }
           }
           break;
@@ -530,6 +505,54 @@ export default {
       return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
     }
 
+    // Background thumbnail coalescer. Each autosave (and chat-driven update)
+    // wants to refresh the widget's thumbnail, but Puppeteer captures take
+    // multiple seconds — letting them stack up under rapid typing both burns
+    // server resources and surfaces a navigation race in the backend
+    // (Execution context destroyed). Allow at most one capture per widget
+    // in flight; if another request comes in while one is running, latch the
+    // latest payload and re-fire exactly once when the current capture finishes.
+    const _bgCaptureInFlight = new Map();   // widgetId → true
+    const _bgCapturePending = new Map();    // widgetId → { sourceCode, widgetType }
+
+    function scheduleBackgroundThumbnail(widgetId, sourceCode, widgetType) {
+      if (!widgetId || !sourceCode) return;
+      if (widgetType !== 'html' && widgetType !== 'markdown') return;
+
+      if (_bgCaptureInFlight.get(widgetId)) {
+        _bgCapturePending.set(widgetId, { sourceCode, widgetType });
+        return;
+      }
+      _bgCaptureInFlight.set(widgetId, true);
+
+      captureWidgetThumbnail(sourceCode, widgetType)
+        .then(async (thumbnail) => {
+          if (!thumbnail) return;
+          const current = store.getters['widgetDefinitions/activeDefinition'];
+          if (!current || current.id !== widgetId) return;
+          const r = await fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${widgetId}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ thumbnail }),
+          }).catch(() => null);
+          if (r && r.ok) {
+            store.commit('widgetDefinitions/UPDATE_DEFINITION', {
+              id: widgetId,
+              updates: { thumbnail },
+            });
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          _bgCaptureInFlight.delete(widgetId);
+          const next = _bgCapturePending.get(widgetId);
+          if (next) {
+            _bgCapturePending.delete(widgetId);
+            scheduleBackgroundThumbnail(widgetId, next.sourceCode, next.widgetType);
+          }
+        });
+    }
+
     async function doAutosave() {
       const existing = store.getters['widgetDefinitions/activeDefinition'];
       if (!existing) return; // only autosave existing widgets
@@ -579,27 +602,9 @@ export default {
         }
       }, 3000);
 
-      // Capture thumbnail in background — completely decoupled from the save
-      captureWidgetThumbnail(payload.source_code, payload.widget_type)
-        .then((thumbnail) => {
-          if (!thumbnail) return;
-          const current = store.getters['widgetDefinitions/activeDefinition'];
-          if (!current || current.id !== widgetId) return;
-          // Update thumbnail separately
-          fetch(`${API_CONFIG.BASE_URL}/widget-definitions/${widgetId}`, {
-            method: 'PUT',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ thumbnail }),
-          }).then((r) => {
-            if (r.ok) {
-              store.commit('widgetDefinitions/UPDATE_DEFINITION', {
-                id: widgetId,
-                updates: { thumbnail },
-              });
-            }
-          }).catch(() => {});
-        })
-        .catch(() => {});
+      // Capture thumbnail in background — completely decoupled from the save.
+      // Coalesces so rapid autosaves don't stack up captures.
+      scheduleBackgroundThumbnail(widgetId, payload.source_code, payload.widget_type);
     }
 
     function scheduleAutosave() {

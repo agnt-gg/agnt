@@ -498,24 +498,40 @@ class WidgetDefinitionService {
       // Auto-dismiss any alert/confirm/prompt dialogs
       page.on('dialog', (dialog) => dialog.dismiss().catch(() => {}));
 
-      // Navigate to a lightweight endpoint to establish the localhost origin
+      // Navigate to a lightweight endpoint to establish the localhost origin.
+      // Use 'domcontentloaded' rather than 'load' so we don't wait on subresources
+      // we don't care about, and keep the timeout shorter — under autosave load
+      // the same backend handles many concurrent captures, so a long timeout
+      // here just means a stale navigation is still in flight when we evaluate.
       const port = process.env.PORT || 3333;
       try {
         await page.goto(`http://localhost:${port}/api/health`, {
-          waitUntil: 'load',
-          timeout: 8000,
+          waitUntil: 'domcontentloaded',
+          timeout: 5000,
         });
       } catch {
         // Origin is likely established even on timeout — continue
       }
 
-      // Inject ALL of localStorage (same keys/values as the real app)
+      // Inject ALL of localStorage (same keys/values as the real app).
+      // Retry on "Execution context was destroyed" — that error means a
+      // still-in-flight navigation completed mid-evaluate, which can happen
+      // when /api/health was slow under load and goto silently timed out above.
       if (storageData && typeof storageData === 'object') {
-        await page.evaluate((data) => {
-          for (const [key, value] of Object.entries(data)) {
-            localStorage.setItem(key, value);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            await page.evaluate((data) => {
+              for (const [key, value] of Object.entries(data)) {
+                try { localStorage.setItem(key, value); } catch {}
+              }
+            }, storageData);
+            break;
+          } catch (err) {
+            const racy = /Execution context was destroyed|Target closed|Most likely the page has been closed/i.test(err?.message || '');
+            if (!racy || attempt === 2) throw err;
+            await new Promise((r) => setTimeout(r, 200));
           }
-        }, storageData);
+        }
       }
 
       // Load the widget HTML. Race with a fallback timer so complex widgets
