@@ -2806,6 +2806,7 @@ class GeminiAdapter extends BaseAdapter {
         if (msg.content) {
           parts.push({ text: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) });
         }
+        let missingSigCount = 0;
         for (const tc of msg.tool_calls) {
           let args = {};
           try {
@@ -2813,7 +2814,29 @@ class GeminiAdapter extends BaseAdapter {
           } catch {
             args = {};
           }
-          parts.push({ functionCall: { name: tc.function?.name || 'unknown', args } });
+          const fcPart = { functionCall: { name: tc.function?.name || 'unknown', args } };
+          // Reattach thought signature so Gemini 2.5+ thinking models accept multi-tool-call turns (Refs agnt-gg/agnt#35).
+          // SDK expects camelCase `thoughtSignature` — snake_case is dropped during serialization.
+          const signature = tc._thoughtSignature || msg._geminiThoughtSignature;
+          if (signature) {
+            fcPart.thoughtSignature = signature;
+          } else {
+            missingSigCount++;
+          }
+          parts.push(fcPart);
+        }
+        // TEMP DIAGNOSTIC for issue #35 — always log on thinking models so we can see exactly
+        // which functionCall parts are going back to Gemini with/without signatures.
+        if (isThinkingModel) {
+          const perCall = msg.tool_calls.map((tc, i) => {
+            const ownSig = tc._thoughtSignature ? 'own' : '-';
+            const fallback = !tc._thoughtSignature && msg._geminiThoughtSignature ? 'fallback' : '-';
+            return `${i}:${tc.function?.name || '?'}[${ownSig}/${fallback}]`;
+          }).join(' | ');
+          console.log(`[Gemini Rebuild #35] msgIdx=${msgIndex} sigs ${perCall} (missingFinal=${missingSigCount}, msg._gts=${msg._geminiThoughtSignature ? 'present' : 'absent'})`);
+        }
+        if (missingSigCount > 0 && isThinkingModel) {
+          console.warn(`[Gemini] Rebuilding assistant turn with ${missingSigCount}/${msg.tool_calls.length} functionCall part(s) lacking thought_signature — Gemini will reject this on thinking models. Check Gemini Stream warnings from the prior turn.`);
         }
         return { role, parts };
       }
@@ -2842,12 +2865,23 @@ class GeminiAdapter extends BaseAdapter {
               return part;
             }
 
+            // Handle function calls — preserve thoughtSignature for Gemini 2.5+ thinking models (Refs agnt-gg/agnt#35)
+            // SDK expects camelCase outgoing; snake_case is silently dropped.
+            if (part.functionCall) {
+              const fcPart = { functionCall: part.functionCall };
+              const signature = part.thoughtSignature || part.thought_signature;
+              if (signature) {
+                fcPart.thoughtSignature = signature;
+              }
+              return fcPart;
+            }
+
             // Handle text parts with type field
             if (part.type === 'text') {
               const textPart = { text: part.text || '' };
-              // Preserve thought signature if present
+              // Preserve thought signature if present (camelCase — SDK drops snake_case)
               if (part.thoughtSignature) {
-                textPart.thought_signature = part.thoughtSignature;
+                textPart.thoughtSignature = part.thoughtSignature;
               }
               return textPart;
             }
@@ -2881,13 +2915,13 @@ class GeminiAdapter extends BaseAdapter {
       } else if (typeof msg.content === 'string') {
         const textPart = { text: msg.content || '' };
 
-        // For thinking models, add thought signature to ALL text parts (not just user messages)
+        // For thinking models, add thought signature to ALL text parts (camelCase — SDK drops snake_case)
         if (isThinkingModel) {
-          textPart.thought_signature = '';
+          textPart.thoughtSignature = '';
         }
         // Preserve thought signature from previous model responses
         if (msg._geminiThoughtSignature) {
-          textPart.thought_signature = msg._geminiThoughtSignature;
+          textPart.thoughtSignature = msg._geminiThoughtSignature;
         }
 
         parts = [textPart];
@@ -2897,13 +2931,13 @@ class GeminiAdapter extends BaseAdapter {
         if (textBlock) {
           const textPart = { text: textBlock.text };
 
-          // For thinking models, add thought signature to ALL text parts (not just user messages)
+          // For thinking models, add thought signature to ALL text parts (camelCase — SDK drops snake_case)
           if (isThinkingModel) {
-            textPart.thought_signature = '';
+            textPart.thoughtSignature = '';
           }
           // Preserve thought signature from previous responses
           if (msg._geminiThoughtSignature) {
-            textPart.thought_signature = msg._geminiThoughtSignature;
+            textPart.thoughtSignature = msg._geminiThoughtSignature;
           }
 
           parts = [textPart];
@@ -3026,6 +3060,40 @@ class GeminiAdapter extends BaseAdapter {
   _extractToolCalls(response) {
     const toolCalls = [];
 
+    // Prefer walking candidates.parts so we can capture per-call thoughtSignature.
+    // Required for Gemini 2.5+ thinking models on multi-tool-call turns (Refs agnt-gg/agnt#35).
+    const parts = response?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts)) {
+      let index = 0;
+      let pending = null;
+      for (const part of parts) {
+        if (!part) continue;
+        const partSig = part.thoughtSignature || part.thought_signature || null;
+        if (!part.functionCall) {
+          if (partSig) pending = partSig;
+          continue;
+        }
+        const fc = part.functionCall;
+        const toolCall = {
+          id: `gemini-tool-${Date.now()}-${index}`,
+          type: 'function',
+          function: {
+            name: fc.name,
+            arguments: JSON.stringify(fc.args || {}),
+          },
+        };
+        const sig = partSig || pending;
+        if (sig) {
+          toolCall._thoughtSignature = sig;
+          pending = null;
+        }
+        toolCalls.push(toolCall);
+        index += 1;
+      }
+      return toolCalls;
+    }
+
+    // Fallback to flat array shape if candidates structure isn't present
     if (response.functionCalls && Array.isArray(response.functionCalls)) {
       response.functionCalls.forEach((fc, index) => {
         toolCalls.push({
@@ -3249,6 +3317,11 @@ class GeminiAdapter extends BaseAdapter {
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
       let accumulatedToolCalls = [];
+      let firstTextThoughtSignature = null;
+      // Signatures observed on non-functionCall parts (e.g. preceding thought parts) waiting
+      // to be paired with the next functionCall. Required because Gemini streaming sometimes
+      // delivers thoughtSignature on a sibling/prior chunk rather than on the functionCall part itself.
+      const pendingSignatures = [];
 
       try {
         const { systemMessage, geminiMessages } = this._transformToGemini(currentMessages);
@@ -3302,8 +3375,62 @@ class GeminiAdapter extends BaseAdapter {
             }
           }
 
-          // Check for function calls in the chunk
-          if (chunk.functionCalls && Array.isArray(chunk.functionCalls)) {
+          // Walk candidate parts so we capture per-call thoughtSignature for thinking models (Refs agnt-gg/agnt#35)
+          const chunkParts = chunk?.candidates?.[0]?.content?.parts;
+          if (Array.isArray(chunkParts) && chunkParts.length > 0) {
+            // TEMP DIAGNOSTIC for issue #35 — dump raw chunk parts so we can confirm whether
+            // the SDK is actually delivering thoughtSignature in streaming chunks. Remove once verified.
+            const sigSummary = chunkParts.map((p, i) => {
+              if (!p) return `${i}:null`;
+              const kind = p.functionCall ? 'fc' : (p.text !== undefined ? 'text' : (p.thought ? 'thought' : 'other'));
+              const sig = p.thoughtSignature || p.thought_signature;
+              return `${i}:${kind}${sig ? '+sig(' + String(sig).substring(0, 12) + '...)' : ''}`;
+            }).join(' | ');
+            console.log(`[Gemini Stream DEBUG #35] chunk parts: ${sigSummary}`);
+          }
+          if (Array.isArray(chunkParts)) {
+            for (const part of chunkParts) {
+              if (!part) continue;
+              const partSig = part.thoughtSignature || part.thought_signature || null;
+
+              if (part.functionCall) {
+                const fc = part.functionCall;
+                const index = accumulatedToolCalls.length;
+                const toolCall = {
+                  id: `gemini-tool-${Date.now()}-${index}`,
+                  type: 'function',
+                  function: {
+                    name: fc.name,
+                    arguments: JSON.stringify(fc.args || {}),
+                  },
+                };
+                // Prefer signature on this part, else drain a pending signature from earlier parts/chunks
+                const sig = partSig || pendingSignatures.shift() || null;
+                if (sig) {
+                  toolCall._thoughtSignature = sig;
+                }
+                accumulatedToolCalls.push(toolCall);
+
+                if (onChunk) {
+                  onChunk({
+                    type: 'tool_call_delta',
+                    index: index,
+                    toolCall: toolCall,
+                  });
+                }
+                continue;
+              }
+
+              // Non-functionCall part: stash any signature for the next functionCall to consume.
+              if (partSig) {
+                if (firstTextThoughtSignature === null && part.text !== undefined) {
+                  firstTextThoughtSignature = partSig;
+                }
+                pendingSignatures.push(partSig);
+              }
+            }
+          } else if (chunk.functionCalls && Array.isArray(chunk.functionCalls)) {
+            // Fallback: flat array shape (no signature info available)
             chunk.functionCalls.forEach((fc, index) => {
               const toolCall = {
                 id: `gemini-tool-${Date.now()}-${index}`,
@@ -3344,10 +3471,27 @@ class GeminiAdapter extends BaseAdapter {
           console.log(`Gemini streaming call succeeded on attempt ${attempt + 1}/${this.maxRetries + 1}`);
         }
 
+        // Backfill: if any tool call still lacks _thoughtSignature, drain remaining pending
+        // signatures and finally fall back to firstTextThoughtSignature (Refs agnt-gg/agnt#35).
+        // Gemini rejects round-tripped functionCall parts that lack thought_signature on thinking
+        // models, so we'd rather attach a shared signature than send a bare part.
+        const fallbackSig = firstTextThoughtSignature || null;
+        let missingSigCount = 0;
+        for (const tc of accumulatedToolCalls) {
+          if (!tc._thoughtSignature) {
+            tc._thoughtSignature = pendingSignatures.shift() || fallbackSig || null;
+            if (!tc._thoughtSignature) missingSigCount++;
+          }
+        }
+        if (missingSigCount > 0) {
+          console.warn(`[Gemini Stream] ${missingSigCount}/${accumulatedToolCalls.length} tool call(s) have no thought_signature — multi-tool turns on thinking models may 400 on next round`);
+        }
+
         const responseMessage = {
           role: 'assistant',
           content: accumulatedContent ?? null,
           tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+          _geminiThoughtSignature: firstTextThoughtSignature,
         };
 
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
