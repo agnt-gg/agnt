@@ -390,8 +390,10 @@ class PluginManager {
     // Construct the full path to the tool module
     const toolPath = path.join(pluginData.path, toolDef.entryPoint);
 
-    // Convert to file:// URL for dynamic import on Windows
-    const toolUrl = `file:///${toolPath.replace(/\\/g, '/')}`;
+    // Convert to file:// URL for dynamic import on Windows.
+    // Cache-bust query param forces Node's ESM registry to re-import on reload —
+    // without it, edits to plugin files require a process restart to take effect.
+    const toolUrl = `file:///${toolPath.replace(/\\/g, '/')}?v=${Date.now()}`;
 
     try {
       console.log(`[PluginManager] Loading tool ${toolType} from ${toolPath}`);
@@ -429,7 +431,7 @@ class PluginManager {
     try {
       // Construct the full path to the trigger module
       const triggerPath = path.join(pluginPath, entryPoint);
-      const triggerUrl = `file:///${triggerPath.replace(/\\/g, '/')}`;
+      const triggerUrl = `file:///${triggerPath.replace(/\\/g, '/')}?v=${Date.now()}`;
 
       console.log(`[PluginManager] Registering plugin trigger: ${toolType}`);
 
