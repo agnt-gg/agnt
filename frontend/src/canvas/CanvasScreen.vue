@@ -275,14 +275,14 @@ const SETTINGS_SECTIONS = [
   { id: 'marketplace', icon: 'fas fa-store', label: 'Marketplace', screens: [{ screen: 'MarketplaceScreen', label: 'MARKETPLACE' }] },
   {
     id: 'widgets',
-    icon: 'fas fa-puzzle-piece',
+    icon: 'fas fa-shapes',
     label: 'Widgets',
     screens: [
       { screen: 'WidgetManagerScreen', label: 'MY WIDGETS' },
       { screen: 'WidgetForgeScreen', label: 'WIDGET FORGE' },
     ],
   },
-  { id: 'connect', icon: 'fas fa-key', label: 'Connectors', screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTORS' }] },
+  { id: 'connect', icon: 'fas fa-puzzle-piece', label: 'Connectors', screens: [{ screen: 'ConnectorsScreen', label: 'CONNECTORS' }] },
   { id: 'settings', icon: 'fas fa-cog', label: 'Settings', screens: [{ screen: 'SettingsScreen', label: 'SETTINGS' }] },
 ];
 
