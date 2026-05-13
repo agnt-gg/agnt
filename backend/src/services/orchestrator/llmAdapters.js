@@ -4377,40 +4377,69 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   }
 
   /**
-   * Return a new messages array with the oldest non-system atomic turn
-   * removed. An assistant message with tool_calls + its following role:'tool'
-   * messages form one atomic turn that must stay together (or be dropped
-   * together) so tool_call_ids never orphan their results — and so the
-   * encrypted reasoning blob in _responsesOutputItems is dropped alongside
-   * its own turn, never re-stitched into a stranger's context (which would
-   * violate the Codex protocol).
+   * Return a new messages array with the oldest droppable atomic turn removed.
    *
-   * Returns the input unchanged when only system + a single remaining
-   * non-system unit exist — there is no safe further shrink.
+   * An assistant message with tool_calls + its following role:'tool' messages
+   * form one atomic turn that must stay together (or be dropped together) so
+   * tool_call_ids never orphan their results — and so the encrypted reasoning
+   * blob in _responsesOutputItems is dropped alongside its own turn, never
+   * re-stitched into a stranger's context (which would violate the Codex
+   * protocol).
+   *
+   * The most recent user message is pinned: it is the question the assistant
+   * is currently answering, and dropping it makes any follow-up reply
+   * incoherent (Annie ends up with no idea what she was asked, so she falls
+   * back to greeting the user from the system-prompt page context). The
+   * scanner skips that pinned unit and keeps searching for an older,
+   * droppable one — and gives up rather than dropping it.
+   *
+   * Returns the input unchanged when no droppable older turn exists.
    */
   _dropOldestTurn(messages) {
     if (!Array.isArray(messages) || messages.length === 0) return messages;
 
-    const firstNonSystemIdx = messages.findIndex((m) => m && m.role !== 'system');
-    if (firstNonSystemIdx === -1) return messages;
-
-    const head = messages[firstNonSystemIdx];
-    let unitEnd = firstNonSystemIdx + 1;
-    if (head.role === 'assistant' && Array.isArray(head.tool_calls) && head.tool_calls.length > 0) {
-      while (unitEnd < messages.length && messages[unitEnd]?.role === 'tool') {
-        unitEnd++;
-      }
+    // Find the index of the most recent user message — this is the turn we
+    // refuse to shed even if it is the oldest remaining non-system unit.
+    let pinnedUserIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === 'user') { pinnedUserIdx = i; break; }
     }
 
-    // Refuse to drop the only remaining non-system unit
-    const tail = messages.slice(unitEnd);
-    const hasNonSystemAfter = tail.some((m) => m && m.role !== 'system');
-    if (!hasNonSystemAfter) return messages;
+    let cursor = 0;
+    while (cursor < messages.length) {
+      const firstNonSystemIdx = messages.findIndex(
+        (m, i) => i >= cursor && m && m.role !== 'system',
+      );
+      if (firstNonSystemIdx === -1) return messages;
 
-    return [
-      ...messages.slice(0, firstNonSystemIdx),
-      ...messages.slice(unitEnd),
-    ];
+      const head = messages[firstNonSystemIdx];
+      let unitEnd = firstNonSystemIdx + 1;
+      if (head.role === 'assistant' && Array.isArray(head.tool_calls) && head.tool_calls.length > 0) {
+        while (unitEnd < messages.length && messages[unitEnd]?.role === 'tool') {
+          unitEnd++;
+        }
+      }
+
+      // Skip the pinned user message and continue scanning for an older
+      // droppable unit. Without this, in a fresh chat where [system, user, …]
+      // is over budget, the shedder ate the user's question on retry #2.
+      if (firstNonSystemIdx === pinnedUserIdx) {
+        cursor = unitEnd;
+        continue;
+      }
+
+      // Refuse to drop if doing so would leave no non-system content at all.
+      const remaining = [
+        ...messages.slice(0, firstNonSystemIdx),
+        ...messages.slice(unitEnd),
+      ];
+      const hasNonSystemAfter = remaining.some((m) => m && m.role !== 'system');
+      if (!hasNonSystemAfter) return messages;
+
+      return remaining;
+    }
+
+    return messages;
   }
 
   /**
