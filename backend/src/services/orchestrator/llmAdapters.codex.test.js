@@ -122,6 +122,117 @@ describe('CodexResponsesAdapter', () => {
     expect(result.responseMessage.content).not.toContain('Please check your OAuth connection');
     expect(result.responseMessage.content).not.toContain('reconnect your OAuth account');
   });
+
+  it('sheds oversized replayed Codex output before sending the request', async () => {
+    let capturedParams;
+    const hugeArguments = JSON.stringify({ code: 'x'.repeat(520_000) });
+    const client = {
+      responses: {
+        create: async (params) => {
+          capturedParams = params;
+          return streamFrom([
+            {
+              type: 'response.completed',
+              response: {
+                id: 'resp_trimmed',
+                output: [
+                  {
+                    type: 'message',
+                    role: 'assistant',
+                    content: [{ type: 'output_text', text: 'trimmed ok' }],
+                  },
+                ],
+              },
+            },
+          ]);
+        },
+      },
+    };
+
+    const adapter = await createLlmAdapter('openai-codex', client, 'gpt-5.5');
+    await adapter.callStream(
+      [
+        { role: 'system', content: 'System prompt' },
+        { role: 'user', content: 'Old request' },
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'call_huge',
+              type: 'function',
+              function: { name: 'execute_javascript_code', arguments: hugeArguments },
+            },
+          ],
+          _responsesOutputItems: [
+            {
+              type: 'function_call',
+              call_id: 'call_huge',
+              name: 'execute_javascript_code',
+              arguments: hugeArguments,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          tool_call_id: 'call_huge',
+          name: 'execute_javascript_code',
+          content: '{"success":true,"stdout":"ok"}',
+        },
+        { role: 'user', content: 'Current request' },
+      ],
+      [{ type: 'function', function: { name: 'execute_javascript_code', parameters: { type: 'object' } } }],
+      () => {},
+    );
+
+    expect(capturedParams.input).toHaveLength(1);
+    expect(capturedParams.input[0]).toMatchObject({
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: 'Current request' }],
+    });
+  });
+
+  it('retries Codex streams that fail with terminated', async () => {
+    let attempts = 0;
+    const client = {
+      responses: {
+        create: async () => {
+          attempts++;
+          if (attempts === 1) {
+            throw new Error('terminated');
+          }
+          return streamFrom([
+            {
+              type: 'response.output_text.delta',
+              delta: 'retry ok',
+            },
+            {
+              type: 'response.completed',
+              response: {
+                id: 'resp_retry',
+                output: [
+                  {
+                    type: 'message',
+                    role: 'assistant',
+                    content: [{ type: 'output_text', text: 'retry ok' }],
+                  },
+                ],
+              },
+            },
+          ]);
+        },
+      },
+    };
+
+    const adapter = await createLlmAdapter('openai-codex', client, 'gpt-5.5');
+    adapter.baseDelay = 1;
+
+    const result = await adapter.callStream([{ role: 'user', content: 'hi' }], [], () => {});
+
+    expect(attempts).toBe(2);
+    expect(result.responseMessage.content).toBe('retry ok');
+  });
 });
 
 describe('OpenAIResponsesAdapter', () => {

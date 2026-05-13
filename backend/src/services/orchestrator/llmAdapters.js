@@ -4289,6 +4289,72 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     this.maxContextShrinkRetries = 8;
   }
 
+  _getCodexContextWindow() {
+    const meta = getModelMetadata('openai-codex', this.model);
+    if (meta?.contextWindow) return meta.contextWindow;
+    if (/^gpt-5/i.test(this.model)) return 400_000;
+    return 128_000;
+  }
+
+  _getCodexPreflightInputBudget() {
+    // The ChatGPT Codex backend counts Responses framing, tool schemas, and
+    // encrypted reasoning replay much higher than our message estimator. Keep
+    // a large response/reasoning reserve and a conservative serialized-payload
+    // margin so oversized stateless replay is shed before the stream starts.
+    const contextWindow = this._getCodexContextWindow();
+    const outputReserve = Math.min(96_000, Math.floor(contextWindow * 0.25));
+    return Math.max(16_000, Math.floor((contextWindow - outputReserve) * 0.86));
+  }
+
+  _estimateCodexRequestTokens(params) {
+    if (!params) return 0;
+    let serialized;
+    try {
+      serialized = JSON.stringify(params);
+    } catch {
+      serialized = String(params);
+    }
+
+    // This intentionally overestimates compared with normal prose tokenizers.
+    // Codex replay payloads contain JSON, base64-ish encrypted blobs, and
+    // escaped function arguments, and production logs showed ~2x undercounts
+    // when using the shared chars/3.5 estimator.
+    return Math.ceil(serialized.length / 1.6);
+  }
+
+  _buildCodexParamsWithinBudget(messages, tools, imageData = null, logPrefix = 'Codex Responses') {
+    let workingMessages = messages;
+    let params = this._buildCodexParams(workingMessages, tools, imageData);
+    const budget = this._getCodexPreflightInputBudget();
+    let estimatedTokens = this._estimateCodexRequestTokens(params);
+    let shrinkAttempts = 0;
+
+    while (estimatedTokens > budget && shrinkAttempts < this.maxContextShrinkRetries) {
+      const shrunk = this._dropOldestTurn(workingMessages);
+      if (shrunk.length === workingMessages.length) break;
+
+      console.warn(
+        `[${logPrefix} Preflight] Serialized request estimate ${estimatedTokens} exceeds budget ${budget}; ` +
+        `shed oldest turn (${workingMessages.length} -> ${shrunk.length} messages), ` +
+        `retrying build (shrink ${shrinkAttempts + 1}/${this.maxContextShrinkRetries})`
+      );
+
+      workingMessages = shrunk;
+      params = this._buildCodexParams(workingMessages, tools, imageData);
+      estimatedTokens = this._estimateCodexRequestTokens(params);
+      shrinkAttempts++;
+    }
+
+    if (estimatedTokens > budget) {
+      console.warn(
+        `[${logPrefix} Preflight] Serialized request estimate ${estimatedTokens} still exceeds budget ${budget}; ` +
+        'sending smallest safe message set available'
+      );
+    }
+
+    return { params, workingMessages, estimatedTokens, budget, shrinkAttempts };
+  }
+
   /**
    * Detect Codex / Responses API rejections caused by the input exceeding
    * the model's context window. The ChatGPT backend phrases this several
@@ -4368,6 +4434,9 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     const message = String(error?.message || '').toLowerCase();
     if (
       message.includes('an error occurred while processing your request') ||
+      message.includes('terminated') ||
+      message.includes('premature close') ||
+      message.includes('aborted') ||
       message.includes('internal server error') ||
       message.includes('bad gateway') ||
       message.includes('service unavailable') ||
@@ -4516,7 +4585,9 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const params = this._buildCodexParams(workingMessages, tools);
+        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, null, 'Codex Responses');
+        const params = preflight.params;
+        workingMessages = preflight.workingMessages;
 
         console.log(`[Codex Responses] Calling model '${this.model}' via ChatGPT backend (streaming internally)`);
         console.log(`[Codex Responses] Input items: ${params.input.length}, Tools: ${params.tools?.length || 0}`);
@@ -4621,7 +4692,9 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const params = this._buildCodexParams(workingMessages, tools, context.imageData);
+        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, context.imageData, 'Codex Responses Stream');
+        const params = preflight.params;
+        workingMessages = preflight.workingMessages;
 
         console.log(`[Codex Responses] Streaming call to model '${this.model}' via ChatGPT backend`);
 
