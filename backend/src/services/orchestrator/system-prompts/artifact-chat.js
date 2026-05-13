@@ -1,12 +1,13 @@
 import { listWorkspaceFiles, getWorkspaceRootPath } from '../codeTools.js';
 
-// The currently open file is re-injected into the system prompt on every turn.
-// Cap the inline dump so a large artifact (HTML with embedded card data, big
-// JSON, etc.) cannot blow the input budget — Annie can still pull the full
-// content on demand via read_file / query_data, both of which already have
-// DATA_REF offload built in for files over ~50k chars.
-const MAX_INLINE_OPEN_FILE_CHARS = 32_000;
-const OPEN_FILE_PREVIEW_CHARS = 4_000;
+// Mirror the Widget Forge pattern: show the LLM a small fixed-size head
+// preview of the currently open file and stop there. edit_file already
+// resolves search/replace pairs against the canonical file on disk, so the
+// LLM does not need to "see" the full content to write valid edits — it
+// only needs enough structural context to write unique search strings, plus
+// the path. Keeping this flat means the artifact-chat system prompt is the
+// same size whether the open file is 4 KB or 4 MB.
+const OPEN_FILE_HEAD_CHARS = 16_000;
 
 /**
  * System prompt for code chat context
@@ -55,16 +56,12 @@ export async function getCodeSystemContent(context = {}) {
   let fileSection = '';
   if (openFilePath && openFileContent) {
     const contentLength = openFileContent.length;
-    if (contentLength > MAX_INLINE_OPEN_FILE_CHARS) {
-      // Dumping the whole file every turn at this size silently inflates the
-      // input by tens of thousands of tokens and trips Codex preflight shedding
-      // (which drops the user's most recent message). Show a head preview so
-      // Annie still has structural context, and tell her to read_file for the rest.
-      const preview = openFileContent.slice(0, OPEN_FILE_PREVIEW_CHARS);
-      fileSection = `\n\nCURRENTLY OPEN FILE:\nPath: ${openFilePath}\nSize: ${contentLength.toLocaleString()} characters (too large to inline — only the first ${OPEN_FILE_PREVIEW_CHARS.toLocaleString()} chars are shown below). Call read_file with this path for the full content; use query_data on the returned DATA_REF to slice/search if needed.\n\`\`\`\n${preview}\n…[${(contentLength - OPEN_FILE_PREVIEW_CHARS).toLocaleString()} more characters — call read_file to see them]\n\`\`\``;
-    } else {
-      fileSection = `\n\nCURRENTLY OPEN FILE:\nPath: ${openFilePath}\n\`\`\`\n${openFileContent}\n\`\`\``;
-    }
+    const truncated = contentLength > OPEN_FILE_HEAD_CHARS;
+    const preview = truncated ? openFileContent.slice(0, OPEN_FILE_HEAD_CHARS) : openFileContent;
+    const tail = truncated
+      ? `\n…[truncated — file is ${contentLength.toLocaleString()} chars total. The FULL file lives on disk; edit_file resolves search/replace pairs against the canonical file, NOT against this preview. Issue edits directly using unique search strings — do not call read_file/query_data on this file to "see more".]`
+      : '';
+    fileSection = `\n\nCURRENTLY OPEN FILE:\nPath: ${openFilePath}\n\`\`\`\n${preview}${tail}\n\`\`\``;
   } else if (openFilePath) {
     fileSection = `\n\nCURRENTLY OPEN FILE: ${openFilePath} (content not provided)`;
   }
@@ -118,17 +115,12 @@ USING edit_file (PREFERRED for modifying existing files):
 - Use this instead of write_file whenever you're making targeted changes to an existing file
 - If the currently open file content is shown above, you can reference it directly for search strings
 
-WORKING WITH LARGE FILES (DATA_REF placeholders):
-- Files over ~50k characters (HTML pages with embedded base64 images, large datasets, big JSON exports, etc.) are automatically offloaded out of the chat context.
-- When this happens, read_file returns a placeholder like: \`[Offloaded data: data-call_xxx-...] Reference: {{DATA_REF:data-call_xxx-...}}\` plus a short preview and a dataId.
-- This is not an error — the full file is still available. Do NOT tell the user you cannot access it.
-- Use **query_data** to inspect what you need, then build edit_file search strings from the verbatim slices it returns:
-  - \`query_data({ operation: "stats", dataId })\` — see the structure and size
-  - \`query_data({ operation: "slice", dataId, startLine, endLine })\` — get a verbatim line range
-  - \`query_data({ operation: "search", dataId, query })\` — find specific text with surrounding context
-  - \`query_data({ operation: "json_path", dataId, query: "key.path" })\` — extract a JSON field
-- Typical edit workflow for a large file: read_file (returns DATA_REF) → query_data search/slice to retrieve the verbatim chunk you need → edit_file with that chunk as the search string and your edit as the replace string.
-- The query_data result is the literal bytes from the file; you can paste any returned line directly into edit_file as a search string.
+EDITING THE CURRENTLY OPEN FILE:
+- The preview shown above is a fixed-size head slice (~16k chars). If the file is longer, the rest exists on disk — you cannot see it in the prompt, but edit_file CAN.
+- edit_file resolves your { search, replace } pairs against the canonical full file on disk, NOT against the preview. You can target any string you know to exist in the file (a unique CSS class, function name, marker comment, specific JSON key, etc.) — visible in the preview or not.
+- DO NOT call read_file or query_data on the currently open file just to "see more of it" or to "verify" it before editing. That wastes a turn and burns tokens — edit_file will tell you immediately if a search string did not match, and you can refine and retry.
+- If an edit_file call reports a search string was not found, retry with a more specific search string (more surrounding context, or a uniquely-named identifier) — do NOT fall back to read_file just because one search missed.
+- read_file and query_data are for OTHER files in the workspace, not the one you are currently editing. Use them when the user asks about a different file or when you legitimately need to inspect something you have no other way to see.
 
 PREVIEW CAPABILITIES:
 The preview panel automatically renders these file types:
