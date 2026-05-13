@@ -1,5 +1,13 @@
 import { listWorkspaceFiles, getWorkspaceRootPath } from '../codeTools.js';
 
+// The currently open file is re-injected into the system prompt on every turn.
+// Cap the inline dump so a large artifact (HTML with embedded card data, big
+// JSON, etc.) cannot blow the input budget — Annie can still pull the full
+// content on demand via read_file / query_data, both of which already have
+// DATA_REF offload built in for files over ~50k chars.
+const MAX_INLINE_OPEN_FILE_CHARS = 32_000;
+const OPEN_FILE_PREVIEW_CHARS = 4_000;
+
 /**
  * System prompt for code chat context
  */
@@ -46,7 +54,17 @@ export async function getCodeSystemContent(context = {}) {
 
   let fileSection = '';
   if (openFilePath && openFileContent) {
-    fileSection = `\n\nCURRENTLY OPEN FILE:\nPath: ${openFilePath}\n\`\`\`\n${openFileContent}\n\`\`\``;
+    const contentLength = openFileContent.length;
+    if (contentLength > MAX_INLINE_OPEN_FILE_CHARS) {
+      // Dumping the whole file every turn at this size silently inflates the
+      // input by tens of thousands of tokens and trips Codex preflight shedding
+      // (which drops the user's most recent message). Show a head preview so
+      // Annie still has structural context, and tell her to read_file for the rest.
+      const preview = openFileContent.slice(0, OPEN_FILE_PREVIEW_CHARS);
+      fileSection = `\n\nCURRENTLY OPEN FILE:\nPath: ${openFilePath}\nSize: ${contentLength.toLocaleString()} characters (too large to inline — only the first ${OPEN_FILE_PREVIEW_CHARS.toLocaleString()} chars are shown below). Call read_file with this path for the full content; use query_data on the returned DATA_REF to slice/search if needed.\n\`\`\`\n${preview}\n…[${(contentLength - OPEN_FILE_PREVIEW_CHARS).toLocaleString()} more characters — call read_file to see them]\n\`\`\``;
+    } else {
+      fileSection = `\n\nCURRENTLY OPEN FILE:\nPath: ${openFilePath}\n\`\`\`\n${openFileContent}\n\`\`\``;
+    }
   } else if (openFilePath) {
     fileSection = `\n\nCURRENTLY OPEN FILE: ${openFilePath} (content not provided)`;
   }
