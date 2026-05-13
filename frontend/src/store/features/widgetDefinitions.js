@@ -28,6 +28,7 @@ const state = {
   isLoading: false,
   activeDefinitionId: null,
   forgeResetKey: 0,
+  pendingFormPrefill: null,
 };
 
 const getters = {
@@ -36,6 +37,7 @@ const getters = {
   isLoading: (state) => state.isLoading,
   activeDefinition: (state) => state.definitions.find((d) => d.id === state.activeDefinitionId) || null,
   forgeResetKey: (state) => state.forgeResetKey,
+  pendingFormPrefill: (state) => state.pendingFormPrefill,
   getDefinitionById: (state) => (id) => state.definitions.find((d) => d.id === id) || null,
 
   definitionsByCategory: (state) => (category) => {
@@ -75,6 +77,10 @@ const mutations = {
 
   INCREMENT_FORGE_RESET_KEY(state) {
     state.forgeResetKey++;
+  },
+
+  SET_PENDING_FORM_PREFILL(state, prefill) {
+    state.pendingFormPrefill = prefill;
   },
 
   ADD_DEFINITION(state, definition) {

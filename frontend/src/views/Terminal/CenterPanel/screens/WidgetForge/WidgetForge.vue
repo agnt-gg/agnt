@@ -301,6 +301,16 @@ export default {
         activePanel.value = 'config';
         selectedTemplate.value = null;
         previewKey.value++;
+
+        // Apply a one-shot prefill (e.g., from "Create Widget from File" in
+        // Artifacts) and clear it so subsequent fresh-Forge entries reset cleanly.
+        const prefill = store.getters['widgetDefinitions/pendingFormPrefill'];
+        if (prefill) {
+          Object.assign(form, prefill);
+          if (prefill.config) configJson.value = JSON.stringify(prefill.config, null, 2);
+          store.commit('widgetDefinitions/SET_PENDING_FORM_PREFILL', null);
+          previewKey.value++;
+        }
       }
     }
 

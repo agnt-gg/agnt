@@ -108,6 +108,11 @@
                     <span v-if="consoleErrorCount > 0" class="ce-console-badge">{{ consoleErrorCount > 99 ? '99+' : consoleErrorCount }}</span>
                   </button>
                 </Tooltip>
+                <Tooltip text="Create Widget from this file" v-if="isHtmlFile">
+                  <button class="ce-preview-btn" @click="createWidgetFromFile" :disabled="!activeTab">
+                    <i class="fas fa-cube"></i>
+                  </button>
+                </Tooltip>
                 <Tooltip text="Share to AGNT Creations" v-if="isHtmlFile">
                   <button class="ce-preview-btn" @click="openShareModal" :disabled="isSharing">
                     <i class="fas fa-share-alt"></i>
@@ -691,7 +696,7 @@ export default {
   name: 'ArtifactsScreen',
   components: { BaseScreen, Codemirror, Tooltip, draggable },
   emits: ['screen-change'],
-  setup() {
+  setup(_, { emit }) {
     const baseScreenRef = ref(null);
     const bodyRef = ref(null);
     const previewFrame = ref(null);
@@ -801,6 +806,22 @@ export default {
       }
       return '';
     });
+
+    const createWidgetFromFile = () => {
+      if (!activeTab.value) return;
+      const baseName = (activeTab.value.name || '').replace(/\.[^.]+$/, '');
+      const name = baseName
+        ? baseName.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+        : 'New Widget';
+      store.dispatch('widgetDefinitions/setActiveDefinition', null);
+      store.commit('widgetDefinitions/SET_PENDING_FORM_PREFILL', {
+        name,
+        source_code: activeTab.value.content || '',
+        widget_type: 'html',
+      });
+      store.commit('widgetDefinitions/INCREMENT_FORGE_RESET_KEY');
+      emit('screen-change', 'WidgetForgeScreen');
+    };
 
     const openShareModal = () => {
       shareTitle.value = activeTab.value?.name || 'My Creation';
@@ -2117,6 +2138,7 @@ export default {
       shareLinkInput,
       shareEmbedInput,
       openShareModal,
+      createWidgetFromFile,
       closeShareModal,
       submitShare,
       retryShare,
