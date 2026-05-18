@@ -308,6 +308,10 @@ class McpClientAction extends BaseAction {
       };
     }
 
+    if (serverConfig.timeoutMs != null) {
+      clientOptions.transportOptions.requestTimeoutMs = serverConfig.timeoutMs;
+    }
+
     const client = new MCPClient(clientOptions);
 
     try {
@@ -424,6 +428,10 @@ class McpClientAction extends BaseAction {
         cwd: serverConfig.stdio.cwd,
         env: serverConfig.stdio.env || {},
       };
+    }
+
+    if (serverConfig.timeoutMs != null) {
+      clientOptions.transportOptions.requestTimeoutMs = serverConfig.timeoutMs;
     }
 
     // Check if we already have an active client for this server

@@ -10,7 +10,12 @@ class MCPClient {
   constructor(options = {}) {
     this.transport = null;
     this.transportType = options.transport || 'http';
-    this.transportOptions = options.transportOptions || {};
+    this.transportOptions = { ...(options.transportOptions || {}) };
+    // Allow callers to set requestTimeoutMs at the top level for convenience;
+    // transport-level option still wins if explicitly set.
+    if (options.requestTimeoutMs != null && this.transportOptions.requestTimeoutMs == null) {
+      this.transportOptions.requestTimeoutMs = options.requestTimeoutMs;
+    }
     this.clientName = options.clientName || 'mcp-client';
     this.clientVersion = options.clientVersion || '1.0.0';
     this.roots = options.roots || [];

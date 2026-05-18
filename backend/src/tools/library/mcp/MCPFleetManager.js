@@ -102,6 +102,10 @@ class MCPFleetManager {
       throw new Error(`Unknown transport type: ${transport}`);
     }
 
+    if (desc.timeoutMs != null) {
+      options.transportOptions.requestTimeoutMs = desc.timeoutMs;
+    }
+
     const client = new MCPClient(options);
     const init = await client.initialize();
 

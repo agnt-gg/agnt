@@ -1,6 +1,15 @@
 import fetch from 'node-fetch';
 import * as EventSource from 'eventsource';
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+function resolveRequestTimeoutMs(optionValue) {
+  if (Number.isFinite(optionValue) && optionValue > 0) return optionValue;
+  const envValue = Number(process.env.MCP_REQUEST_TIMEOUT_MS);
+  if (Number.isFinite(envValue) && envValue > 0) return envValue;
+  return DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
 /**
  * HTTP/SSE Transport for MCP
  * Handles communication via HTTP POST and Server-Sent Events
@@ -10,6 +19,7 @@ class HTTPTransport {
     this.endpoint = options.endpoint;
     this.headers = options.headers || {};
     this.openBackgroundGetStream = options.openBackgroundGetStream !== false;
+    this.requestTimeoutMs = resolveRequestTimeoutMs(options.requestTimeoutMs);
     this.sse = null;
     this.connectionId = null;
     this.messageHandlers = new Map();
@@ -192,7 +202,7 @@ class HTTPTransport {
       const timeout = setTimeout(() => {
         this.messageHandlers.delete(requestId);
         reject(new Error(`Timeout waiting for response to ${message.method}`));
-      }, 30000);
+      }, this.requestTimeoutMs);
 
       this.messageHandlers.set(requestId, {
         resolve: (data) => {

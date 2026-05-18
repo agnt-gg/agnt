@@ -1,6 +1,15 @@
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+function resolveRequestTimeoutMs(optionValue) {
+  if (Number.isFinite(optionValue) && optionValue > 0) return optionValue;
+  const envValue = Number(process.env.MCP_REQUEST_TIMEOUT_MS);
+  if (Number.isFinite(envValue) && envValue > 0) return envValue;
+  return DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
 /**
  * STDIO Transport for MCP
  * Handles communication via stdin/stdout with a spawned process
@@ -11,6 +20,7 @@ class STDIOTransport {
     this.args = options.args || [];
     this.cwd = options.cwd;
     this.env = options.env || {};
+    this.requestTimeoutMs = resolveRequestTimeoutMs(options.requestTimeoutMs);
     this.process = null;
     this.readline = null;
     this.messageHandlers = new Map();
@@ -154,7 +164,7 @@ class STDIOTransport {
       const timeout = setTimeout(() => {
         this.messageHandlers.delete(requestId);
         reject(new Error(`Timeout waiting for response to ${message.method}`));
-      }, 30000);
+      }, this.requestTimeoutMs);
 
       this.messageHandlers.set(requestId, {
         resolve: (data) => {

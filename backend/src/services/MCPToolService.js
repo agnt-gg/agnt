@@ -49,10 +49,20 @@ import MCPClient from '../tools/library/mcp/MCPClient.js';
 import PathManager from '../utils/PathManager.js';
 
 const TOOL_NAME_PREFIX = 'mcp__';
-// Lowered from 8s to 3s. A healthy MCP server initializes in <500ms; the
-// extra time only helps *dead* servers that are going to fail anyway.
-const INITIALIZE_TIMEOUT_MS = 3000;
-const LIST_TOOLS_TIMEOUT_MS = 3000;
+// A healthy already-cached MCP server initializes in <500ms — but `npx -y
+// thing@latest` on first run can spend 10-20s downloading the package before
+// the actual process even starts. With a short cutoff those slow-first-run
+// servers were getting cached with `tools: []`, which is why they showed up
+// in the chat selector with no tools while the live MCP page (which bypasses
+// the cache and re-spawns) saw them fine. Parallel refresh means the total
+// boot wait is capped at the slowest server, not the sum, so we can afford
+// to be generous here. Env override available for both.
+function resolveTimeoutMs(envName, fallback) {
+  const v = Number(process.env[envName]);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+}
+const INITIALIZE_TIMEOUT_MS = resolveTimeoutMs('MCP_INITIALIZE_TIMEOUT_MS', 30000);
+const LIST_TOOLS_TIMEOUT_MS = resolveTimeoutMs('MCP_LIST_TOOLS_TIMEOUT_MS', 30000);
 
 const SCHEMA_CACHE_FILE = PathManager.getPath('mcp-schema-cache.json');
 const SCHEMA_CACHE_VERSION = 1;
@@ -131,10 +141,11 @@ class MCPToolService {
 
     for (const entry of entries) {
       const { serverConfig, tools } = entry || {};
-      if (!serverConfig || !Array.isArray(tools) || tools.length === 0) continue;
+      if (!serverConfig) continue;
+      const toolList = Array.isArray(tools) ? tools : [];
 
       const categoryTools = [];
-      for (const t of tools) {
+      for (const t of toolList) {
         if (!t || !t.name) continue;
         const mcpName = `${TOOL_NAME_PREFIX}${sanitize(serverConfig.name)}__${sanitize(t.name)}`;
         if (byMcpName.has(mcpName)) continue; // dedupe colliding sanitized names
@@ -154,15 +165,21 @@ class MCPToolService {
         byMcpName.set(mcpName, { server: serverConfig, originalToolName: t.name });
       }
 
-      if (categoryTools.length > 0) {
-        categories.push({
-          id: `mcp:${serverConfig.name}`,
-          name: serverConfig.name,
-          description: `${serverConfig.transport} • ${categoryTools.length} tool${categoryTools.length === 1 ? '' : 's'}`,
-          locked: false,
-          tools: categoryTools,
-        });
-      }
+      // Emit a category for EVERY configured server, even if it has zero tools,
+      // so the chat selector lists it (otherwise servers that failed discovery
+      // silently disappear from the UI). Schemas stay filtered — empty
+      // categories contribute no tool functions to the LLM toolset.
+      const hasTools = categoryTools.length > 0;
+      categories.push({
+        id: `mcp:${serverConfig.name}`,
+        name: serverConfig.name,
+        description: hasTools
+          ? `${serverConfig.transport} • ${categoryTools.length} tool${categoryTools.length === 1 ? '' : 's'}`
+          : `${serverConfig.transport} • no tools discovered`,
+        locked: false,
+        empty: !hasTools,
+        tools: categoryTools,
+      });
     }
 
     return { schemas, categories, byMcpName, cachedAt, hasFile: true };
@@ -322,6 +339,9 @@ class MCPToolService {
       };
     } else {
       throw new Error(`Unknown MCP transport: ${serverConfig.transport}`);
+    }
+    if (serverConfig.timeoutMs != null) {
+      opts.transportOptions.requestTimeoutMs = serverConfig.timeoutMs;
     }
     return new MCPClient(opts);
   }

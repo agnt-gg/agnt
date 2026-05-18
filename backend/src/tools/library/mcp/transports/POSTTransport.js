@@ -1,5 +1,14 @@
 import fetch from 'node-fetch';
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+function resolveRequestTimeoutMs(optionValue) {
+  if (Number.isFinite(optionValue) && optionValue > 0) return optionValue;
+  const envValue = Number(process.env.MCP_REQUEST_TIMEOUT_MS);
+  if (Number.isFinite(envValue) && envValue > 0) return envValue;
+  return DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
 /**
  * POST-only HTTP Transport for MCP
  * For servers that don't support SSE (like GitHub Copilot MCP)
@@ -9,6 +18,7 @@ class POSTTransport {
   constructor(options = {}) {
     this.endpoint = options.endpoint;
     this.headers = options.headers || {};
+    this.requestTimeoutMs = resolveRequestTimeoutMs(options.requestTimeoutMs);
     this.sessionId = null;
     this.connected = false;
     this.requestCounter = 0;
@@ -45,11 +55,14 @@ class POSTTransport {
     console.log(`[POSTTransport] Request headers:`, JSON.stringify(headers, null, 2));
     console.log(`[POSTTransport] Request body:`, JSON.stringify(message, null, 2));
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     try {
       const response = await fetch(this.endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(message),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -63,8 +76,15 @@ class POSTTransport {
 
       return data;
     } catch (err) {
+      if (err.name === 'AbortError') {
+        const timeoutErr = new Error(`Timeout waiting for response to ${message.method}`);
+        console.error(`[POSTTransport] ${timeoutErr.message}`);
+        throw timeoutErr;
+      }
       console.error(`[POSTTransport] Error sending ${message.method}:`, err.message);
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
   }
 

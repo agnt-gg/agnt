@@ -193,6 +193,11 @@ class MCPService {
         transportType = 'stdio';
       }
 
+      const perServerTimeout = server.timeoutMs ?? server.transport.timeoutMs;
+      if (perServerTimeout != null) {
+        transportOptions.requestTimeoutMs = perServerTimeout;
+      }
+
       const client = new MCPClient({
         transport: transportType,
         transportOptions,
