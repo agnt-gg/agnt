@@ -27,94 +27,102 @@ const handleError = (error) => {
   });
 };
 
-process.on('message', (message) => {
-  const { code, inputData = {}, workflowContext = {} } = message;
+// Only wire up the child runtime when actually forked by execute-javascript.js.
+// ToolRegistry scans utilities/ and dynamic-imports every .js file to extract
+// schemas — without this guard, the setTimeout below would fire inside the
+// backend and call process.exit(0). `process.send` alone isn't sufficient
+// because the backend itself is forked from main.js with an IPC channel, so
+// we use an explicit env var set by the parent at fork time.
+if (process.env.AGNT_JS_EXECUTOR_CHILD === '1') {
+  process.on('message', (message) => {
+    const { code, inputData = {}, workflowContext = {} } = message;
 
-  const sandbox = {
-    console: {
-      log: (...args) => console.log('Script log:', ...args),
-      error: (...args) => console.error('Script error:', ...args),
-    },
-    context: {
-      ...(workflowContext.DB || {}),
-      resolveTemplate: (template) => {
-        return template.replace(/{{(.*?)}}/g, (match, p1) => {
-          return inputData[p1.trim()] || null;
-        });
+    const sandbox = {
+      console: {
+        log: (...args) => console.log('Script log:', ...args),
+        error: (...args) => console.error('Script error:', ...args),
       },
-    },
-    workflowContext,
-    inputData,
-    fetch,
-    btoa: (data) => Buffer.from(data).toString('base64'),
-    atob: (data) => Buffer.from(data, 'base64').toString(),
-    Blob,
-    TextEncoder,
-    TextDecoder,
-    FileReader: class FileReader {
-      constructor() {
-        this.onload = null;
-      }
-      readAsText(blob) {
-        blob.text().then((text) => {
-          if (this.onload) this.onload({ target: { result: text } });
+      context: {
+        ...(workflowContext.DB || {}),
+        resolveTemplate: (template) => {
+          return template.replace(/{{(.*?)}}/g, (match, p1) => {
+            return inputData[p1.trim()] || null;
+          });
+        },
+      },
+      workflowContext,
+      inputData,
+      fetch,
+      btoa: (data) => Buffer.from(data).toString('base64'),
+      atob: (data) => Buffer.from(data, 'base64').toString(),
+      Blob,
+      TextEncoder,
+      TextDecoder,
+      FileReader: class FileReader {
+        constructor() {
+          this.onload = null;
+        }
+        readAsText(blob) {
+          blob.text().then((text) => {
+            if (this.onload) this.onload({ target: { result: text } });
+          });
+        }
+        readAsArrayBuffer(blob) {
+          blob.arrayBuffer().then((buffer) => {
+            if (this.onload) this.onload({ target: { result: buffer } });
+          });
+        }
+      },
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+      URL,
+      URLSearchParams,
+      Uint8Array,
+      ArrayBuffer,
+      crypto,
+      AuthManager,
+    };
+
+    const wrappedCode = `
+      (async () => {
+        try {
+          ${code}
+        } catch (error) {
+          throw new Error('Execution Error: ' + (error.message || String(error)));
+        }
+      })()
+    `;
+
+    // node:vm `timeout` only stops the synchronous portion of the script. Once
+    // code hits an `await`, that timer no longer applies — the outer 58s
+    // setTimeout below catches runaway async chains.
+    let scriptResult;
+    try {
+      const ctx = vm.createContext(sandbox);
+      scriptResult = vm.runInContext(wrappedCode, ctx, { timeout: 55000 });
+    } catch (err) {
+      handleError(err);
+      return;
+    }
+
+    Promise.resolve(scriptResult)
+      .then((result) => {
+        sendResult({
+          success: true,
+          result: result,
+          error: null,
         });
-      }
-      readAsArrayBuffer(blob) {
-        blob.arrayBuffer().then((buffer) => {
-          if (this.onload) this.onload({ target: { result: buffer } });
-        });
-      }
-    },
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-    URL,
-    URLSearchParams,
-    Uint8Array,
-    ArrayBuffer,
-    crypto,
-    AuthManager,
-  };
+      })
+      .catch(handleError);
+  });
 
-  const wrappedCode = `
-    (async () => {
-      try {
-        ${code}
-      } catch (error) {
-        throw new Error('Execution Error: ' + (error.message || String(error)));
-      }
-    })()
-  `;
+  process.on('uncaughtException', handleError);
+  process.on('unhandledRejection', handleError);
+  process.on('disconnect', () => process.exit());
 
-  // node:vm `timeout` only stops the synchronous portion of the script. Once
-  // code hits an `await`, that timer no longer applies — the outer 58s
-  // setTimeout below catches runaway async chains.
-  let scriptResult;
-  try {
-    const ctx = vm.createContext(sandbox);
-    scriptResult = vm.runInContext(wrappedCode, ctx, { timeout: 55000 });
-  } catch (err) {
-    handleError(err);
-    return;
-  }
-
-  Promise.resolve(scriptResult)
-    .then((result) => {
-      sendResult({
-        success: true,
-        result: result,
-        error: null,
-      });
-    })
-    .catch(handleError);
-});
-
-process.on('uncaughtException', handleError);
-process.on('unhandledRejection', handleError);
-process.on('disconnect', () => process.exit());
-
-setTimeout(() => {
-  handleError(new Error('Execution timed out'));
-}, 58000);
+  setTimeout(() => {
+    handleError(new Error('Execution timed out'));
+  }, 58000);
+}

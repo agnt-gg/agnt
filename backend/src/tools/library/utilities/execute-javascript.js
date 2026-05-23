@@ -43,7 +43,9 @@ class ExecuteJavaScript extends BaseAction {
     console.log('Executing JavaScript code:', params.code);
 
     return new Promise((resolve) => {
-      const child = fork(path.join(__dirname, 'execute-javascript-child.js'));
+      const child = fork(path.join(__dirname, 'execute-javascript-child.js'), [], {
+        env: { ...process.env, AGNT_JS_EXECUTOR_CHILD: '1' },
+      });
 
       let hasResolved = false;
 
