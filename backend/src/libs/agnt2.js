@@ -560,22 +560,23 @@ class AuthModule {
     const response = await this.client.get(`/auth/providers`);
     return response.data;
   }
-  // async createProvider(data) {
-  //   const response = await this.client.post(`/auth/providers`, data);
-  //   return response.data;
-  // }
-  // async updateProvider(providerId, data) {
-  //   const response = await this.client.put(`/auth/providers/${providerId}`, data);
-  //   return response.data;
-  // }
-  // async deleteProvider(providerId) {
-  //   const response = await this.client.delete(`/auth/providers/${providerId}`);
-  //   return response.data;
-  // }
-  // async getProvider(providerId) {
-  //   const response = await this.client.get(`/auth/providers/${providerId}`);
-  //   return response.data;
-  // }
+  // Provider CRUD — body fields must be camelCase (connectionType, authUrl, tokenUrl, providerCode, isGlobal, etc.).
+  async createProvider(data) {
+    const response = await this.client.post(`/auth/providers`, data);
+    return response.data;
+  }
+  async updateProvider(providerId, data) {
+    const response = await this.client.put(`/auth/providers/${providerId}`, data);
+    return response.data;
+  }
+  async deleteProvider(providerId) {
+    const response = await this.client.delete(`/auth/providers/${providerId}`);
+    return response.data;
+  }
+  async getProvider(providerId) {
+    const response = await this.client.get(`/auth/providers/${providerId}`);
+    return response.data;
+  }
   async storeApiKey(providerId, apiKeyString) {
     const response = await this.client.post(`/auth/apikeys/${providerId}`, { apiKey: apiKeyString });
     return response.data;
