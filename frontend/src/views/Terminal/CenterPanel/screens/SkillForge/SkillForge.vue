@@ -800,6 +800,10 @@ onMounted(() => {
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
   padding: 14px;
+  transition: background 0.2s, border-color 0.2s;
+}
+.eval-card:hover {
+  background: rgba(var(--green-rgb), 0.03);
 }
 .eval-card.kept { border-left: 3px solid var(--color-green); }
 .eval-card.discarded { border-left: 3px solid var(--color-red, #ff4d4f); }

@@ -1000,7 +1000,6 @@ h3 {
 
 .task-card {
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-green);
   border-radius: 6px;
   padding: 12px;
   transition: all 0.2s ease;
@@ -1008,28 +1007,6 @@ h3 {
 
 .task-card:hover {
   background: rgba(0, 0, 0, 0.1);
-}
-
-.task-card.executing,
-.task-card.running {
-  border-left-color: var(--color-blue);
-}
-.task-card.completed {
-  border-left-color: var(--color-green);
-}
-.task-card.failed,
-.task-card.error {
-  border-left-color: var(--color-red);
-}
-.task-card.paused {
-  border-left-color: var(--color-yellow);
-}
-.task-card.stopped {
-  border-left-color: var(--color-text-muted);
-}
-.task-card.pending,
-.task-card.queued {
-  border-left-color: var(--color-grey);
 }
 
 .task-header {

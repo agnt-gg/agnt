@@ -1653,8 +1653,7 @@ body[data-page='terminal-artifacts'] .scrollable-content > * {
   justify-content: flex-start;
   align-items: center;
   scrollbar-width: thin !important;
-  /* scrollbar-color: var(--color-green) var(--color-dark-navy); */
-  scrollbar-color: var(--color-duller-navy) transparent;
+  scrollbar-color: var(--terminal-border-color) transparent;
 }
 
 .main-panel.centered-content .scrollable-content {

@@ -939,7 +939,7 @@ onMounted(() => {
 .skill-card {
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.18));
+  background: rgba(0, 0, 0, 0.15);
   border: 1px solid var(--terminal-border-color);
   border-radius: 10px;
   padding: 14px;
@@ -961,7 +961,7 @@ onMounted(() => {
 }
 .skill-card:hover {
   border-color: rgba(var(--green-rgb), 0.4);
-  background: linear-gradient(180deg, rgba(var(--green-rgb), 0.04), rgba(0, 0, 0, 0.25));
+  background: rgba(var(--green-rgb), 0.03);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }

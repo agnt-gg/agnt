@@ -137,8 +137,6 @@ export default {
 }
 .card-item.selected {
   background: rgba(var(--green-rgb), 0.15);
-  border-left: 3px solid var(--color-primary);
-  padding-left: 11px;
 }
 .card-status {
   position: absolute;
@@ -227,42 +225,6 @@ export default {
 }
 .status-indicator.inactive {
   color: var(--color-text-muted);
-}
-
-/* Status-based left border colors */
-.card-item.active,
-.card-item.running {
-  border-left: 3px solid var(--color-green);
-  padding-left: 11px;
-}
-.card-item.listening {
-  border-left: 3px solid var(--color-blue);
-  padding-left: 11px;
-}
-.card-item.failed,
-.card-item.error,
-.card-item.locked {
-  border-left: 3px solid var(--color-red);
-  padding-left: 11px;
-}
-.card-item.completed {
-  border-left: 3px solid var(--color-blue);
-  padding-left: 11px;
-}
-.card-item.stopped {
-  border-left: 3px solid var(--color-text-muted);
-  padding-left: 11px;
-}
-.card-item.inactive {
-  border-left: 3px solid var(--color-text-muted);
-  padding-left: 11px;
-}
-.card-item.queued,
-.card-item.waiting,
-.card-item.new,
-.card-item.available {
-  border-left: 3px solid var(--color-yellow);
-  padding-left: 11px;
 }
 
 /* Tool icons styling */

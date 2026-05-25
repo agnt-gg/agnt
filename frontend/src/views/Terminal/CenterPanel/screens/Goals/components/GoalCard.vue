@@ -4,8 +4,6 @@
     :class="[goal.status, agingClass, { selected: isSelected }]"
     @click="$emit('click', goal)"
   >
-    <div class="card-status-bar" :class="goal.status"></div>
-
     <div class="card-body">
       <div class="card-meta-row">
         <span class="goal-id">G-{{ goal.id.slice(0, 8) }}</span>
@@ -243,23 +241,6 @@ export default {
     0 0 0 1px rgba(var(--green-rgb, 25, 239, 131), 0.25),
     0 4px 20px rgba(var(--green-rgb, 25, 239, 131), 0.12);
 }
-
-.card-status-bar {
-  height: 3px;
-  width: 100%;
-  background: var(--color-text-muted);
-  opacity: 0.5;
-}
-.card-status-bar.executing { background: var(--color-green); opacity: 1; }
-.card-status-bar.paused { background: var(--color-yellow); opacity: 1; }
-.card-status-bar.completed,
-.card-status-bar.validated { background: var(--color-green); opacity: 1; }
-.card-status-bar.failed,
-.card-status-bar.error,
-.card-status-bar.stopped { background: var(--color-red); opacity: 1; }
-.card-status-bar.needs_review { background: var(--color-orange); opacity: 1; }
-.card-status-bar.planning { background: var(--color-violet); opacity: 1; }
-.card-status-bar.queued { background: var(--color-indigo); opacity: 1; }
 
 .card-body {
   padding: 12px;

@@ -2237,33 +2237,6 @@ ${execution.log}
   border-color: var(--color-blue);
 }
 
-.execution-card.running,
-.execution-card.started,
-.execution-card.executing {
-  border-left: 3px solid var(--color-blue);
-}
-
-.execution-card.completed {
-  border-left: 3px solid var(--color-green);
-}
-
-.execution-card.validated {
-  border-left: 3px solid var(--color-green);
-}
-
-.execution-card.needs_review {
-  border-left: 3px solid var(--color-yellow);
-}
-
-.execution-card.failed,
-.execution-card.error {
-  border-left: 3px solid var(--color-red);
-}
-
-.execution-card.stopped {
-  border-left: 3px solid var(--color-text-muted);
-}
-
 .execution-header {
   display: flex;
   justify-content: space-between;

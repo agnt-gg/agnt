@@ -144,7 +144,6 @@ export default {
 .agent-card {
   background: rgba(var(--green-rgb), 0.05);
   border: 1px solid rgba(var(--green-rgb), 0.15);
-  border-left: 3px solid var(--color-green);
   border-radius: 4px;
   padding: 10px 12px;
   display: flex;

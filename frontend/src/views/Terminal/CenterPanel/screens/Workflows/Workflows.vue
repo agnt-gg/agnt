@@ -1418,8 +1418,6 @@ export default {
 
 .table-row.selected {
   background: rgba(var(--green-rgb), 0.15);
-  border-left: 3px solid var(--color-green);
-  padding-left: 5px;
 }
 
 .table-row:not(.selected):hover {
@@ -1746,44 +1744,18 @@ export default {
   border: 1px solid var(--terminal-border-color);
   padding: 12px;
   border-radius: 16px;
-  border-left: 3px solid var(--color-primary);
   width: calc(50% - 4px);
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.workflow-card.listening {
-  border-left: 3px solid var(--color-blue);
-}
-
-.workflow-card.running {
-  border-left: 3px solid var(--color-green);
-}
-
 .workflow-card.stopped {
   color: var(--color-text-muted);
-  border-left: 3px solid var(--color-text-muted);
-}
-
-.workflow-card.error,
-.workflow-card.failed {
-  border-left: 3px solid var(--color-red);
-}
-
-.table-row.listening {
-  border-left: 3px solid var(--color-blue);
-  padding-left: 5px;
 }
 
 .table-row.listening .col-status {
   color: var(--color-blue);
-}
-
-.table-row.active,
-.table-row.running {
-  border-left: 3px solid var(--color-green);
-  padding-left: 5px;
 }
 
 .table-row.active .col-status,
@@ -1796,19 +1768,8 @@ export default {
   color: var(--color-red);
 }
 
-.table-row.stopped {
-  border-left: 3px solid var(--color-text-muted);
-  padding-left: 5px;
-}
-
 .table-row.stopped .col-status {
   color: var(--color-text-muted);
-}
-
-.table-row.error,
-.table-row.failed {
-  border-left: 3px solid var(--color-red);
-  padding-left: 5px;
 }
 
 /* IF USING FULL WIDTH LAST HANGING CHADS */

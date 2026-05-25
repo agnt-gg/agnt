@@ -1923,7 +1923,6 @@ body.dark .results-info {
   flex-direction: column;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-green);
   border-radius: 12px;
   overflow: hidden;
   box-sizing: border-box;
@@ -1948,7 +1947,6 @@ body.dark .results-info {
 
 .workflow-card.installed {
   border-color: #a89a3f1c;
-  border-left-color: var(--color-yellow);
 }
 
 .workflow-card.selected.installed {

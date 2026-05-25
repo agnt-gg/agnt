@@ -1065,26 +1065,9 @@ export default {
   padding: 10px 14px;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-blue);
   border-radius: 8px;
   transition: all 0.15s;
   cursor: pointer;
-}
-
-.wm-list-row.tool-system {
-  border-left-color: var(--color-blue);
-}
-
-.wm-list-row.tool-pro {
-  border-left-color: var(--color-yellow);
-}
-
-.wm-list-row.tool-custom {
-  border-left-color: var(--color-green);
-}
-
-.wm-list-row.tool-plugin {
-  border-left-color: var(--color-violet);
 }
 
 .wm-list-row:hover {
@@ -1500,27 +1483,10 @@ export default {
   border: 1px solid var(--terminal-border-color);
   padding: 12px;
   border-radius: 16px;
-  border-left: 3px solid var(--color-primary);
   width: calc(50% - 4px);
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s ease;
-}
-
-.tool-card.tool-system {
-  border-left: 3px solid var(--color-blue);
-}
-
-.tool-card.tool-pro {
-  border-left: 3px solid var(--color-yellow);
-}
-
-.tool-card.tool-custom {
-  border-left: 3px solid var(--color-green);
-}
-
-.tool-card.tool-plugin {
-  border-left: 3px solid var(--color-violet);
 }
 
 .tool-card.last-odd {
@@ -1771,7 +1737,6 @@ export default {
   border: 1px solid var(--terminal-border-color);
   padding: 12px;
   border-radius: 16px;
-  border-left: 3px solid var(--color-primary);
   width: calc(50% - 4px);
   box-sizing: border-box;
   cursor: pointer;

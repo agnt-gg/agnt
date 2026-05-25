@@ -980,7 +980,6 @@ export default {
 .action-card {
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-primary);
   border-radius: 12px;
   overflow: visible;
   transition: all 0.2s ease;

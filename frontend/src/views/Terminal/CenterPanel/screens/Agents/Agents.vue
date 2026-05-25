@@ -18,7 +18,7 @@
     @base-mounted="initializeScreen"
   >
     <template #default="{ terminalLines }">
-      <div class="agents-panel" :class="{ 'has-details': selectedAgent, expanded: isDetailsExpanded }" @click="onContentClick">
+      <div class="agents-panel" :class="{ 'has-details': selectedAgent && agentTab !== 'marketplace', expanded: isDetailsExpanded }" @click="onContentClick">
         <!-- Header bar -->
         <ScreenToolbar
           title="AGENTS"
@@ -2302,7 +2302,6 @@ export default {
   border: 1px solid var(--terminal-border-color);
   padding: 12px;
   border-radius: 16px;
-  border-left: 3px solid var(--color-primary);
   width: calc(50% - 4px);
   box-sizing: border-box;
   cursor: pointer;
@@ -2319,13 +2318,8 @@ export default {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.agent-card.active {
-  border-left: 3px solid var(--color-green);
-}
-
 .agent-card:not(.active) {
   color: var(--color-text-muted);
-  border-left: 3px solid var(--color-text-muted);
 }
 
 .agent-card.selected {

@@ -306,8 +306,6 @@ template-fields {
   padding: 0 0 16px 0;
   width: 100%;
   width: -webkit-fill-available;
-  height: 100%;
-  overflow-y: scroll;
   background: transparent;
 }
 
@@ -323,7 +321,7 @@ template-fields {
 }
 
 .full-width {
-  width: calc(100% - 4px);
+  width: 100%;
 }
 
 /* Two Column Row Layout */
@@ -346,7 +344,6 @@ template-fields {
 .parameters-card {
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-primary);
   border-radius: 12px;
   overflow: visible;
   transition: all 0.2s ease;

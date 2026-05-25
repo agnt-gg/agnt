@@ -442,7 +442,6 @@ export default {
   padding: 10px 14px;
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
-  border-left: 3px solid var(--color-blue);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
@@ -452,45 +451,11 @@ export default {
 .table-row:hover {
   background: rgba(var(--green-rgb), 0.06);
   border-color: rgba(var(--green-rgb), 0.2);
-  border-left-color: var(--color-green);
 }
 
 .table-row.selected {
   background: rgba(var(--green-rgb), 0.1);
   border-color: rgba(var(--green-rgb), 0.25);
-  border-left: 3px solid var(--color-green);
-}
-
-/* Status-based left border colors */
-.table-row.active,
-.table-row.running {
-  border-left-color: var(--color-green);
-}
-
-.table-row.listening {
-  border-left-color: var(--color-blue);
-}
-
-.table-row.failed,
-.table-row.error {
-  border-left-color: var(--color-red);
-}
-
-.table-row.completed {
-  border-left-color: var(--color-blue);
-}
-
-.table-row.stopped {
-  border-left-color: var(--color-text-muted);
-}
-
-.table-row.queued,
-.table-row.waiting {
-  border-left-color: var(--color-yellow);
-}
-
-.table-row.inactive {
-  border-left-color: var(--color-text-muted);
 }
 
 /* ── Cells ── */

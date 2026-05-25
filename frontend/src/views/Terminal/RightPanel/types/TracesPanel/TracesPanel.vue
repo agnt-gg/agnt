@@ -1514,49 +1514,9 @@ ${execution.log}
   transition: all 0.2s ease;
 }
 
-.node-card {
-  border-left: 3px solid var(--color-green);
-}
-
-.node-card.has-error {
-  border-left-color: var(--color-red);
-}
-
 .node-card:hover {
   background: var(--color-darker-1);
   /* border-color: rgba(var(--green-rgb), 0.3); */
-}
-
-/* Task Card Specific Styles */
-.task-card {
-  border-left: 3px solid var(--color-green);
-}
-
-.task-card.executing,
-.task-card.running,
-.task-card.started {
-  border-left-color: var(--color-blue);
-}
-
-.task-card.completed {
-  border-left-color: var(--color-green);
-}
-
-.task-card.failed,
-.task-card.error {
-  border-left-color: var(--color-red);
-}
-
-.task-card.paused {
-  border-left-color: var(--color-yellow);
-}
-
-.task-card.stopped {
-  border-left-color: var(--color-text-muted);
-}
-
-.task-card.pending {
-  border-left-color: var(--color-grey);
 }
 
 .task-agent-info {
