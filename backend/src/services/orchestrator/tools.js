@@ -184,7 +184,7 @@ export const TOOLS = {
         },
       },
     },
-    execute: async ({ command, cwd = '.' }) => {
+    execute: async ({ command, cwd = '.' }, authToken) => {
       if (!command) {
         return JSON.stringify({ success: false, error: 'Command is required.' });
       }
@@ -229,6 +229,13 @@ export const TOOLS = {
           env.NODE_PATH = env.NODE_PATH
             ? workspaceNodeModules + path.delimiter + env.NODE_PATH
             : workspaceNodeModules;
+        }
+        if (authToken) {
+          let token = authToken;
+          if (token.toLowerCase().startsWith('bearer ')) {
+            token = token.substring(7);
+          }
+          env.AGNT_AUTH_TOKEN = token;
         }
 
         // Use shell: true for convenience, which allows using shell syntax like '&&', '|', etc.
@@ -1344,7 +1351,16 @@ export const TOOLS = {
 
           console.log(`Attempting to execute: command='${commandToRun}', args='${JSON.stringify(finalSpawnArgs)}', original file='${filePath}'`);
 
-          const childProcess = spawn(commandToRun, finalSpawnArgs, { timeout: 60000 });
+          const childEnv = { ...process.env };
+          if (authToken) {
+            let token = authToken;
+            if (token.toLowerCase().startsWith('bearer ')) {
+              token = token.substring(7);
+            }
+            childEnv.AGNT_AUTH_TOKEN = token;
+          }
+
+          const childProcess = spawn(commandToRun, finalSpawnArgs, { timeout: 60000, env: childEnv });
           let stdout = '';
           let stderr = '';
           let timedOut = false;
