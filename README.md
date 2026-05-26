@@ -2,54 +2,368 @@
   <img src="https://agnt.gg/_assets/images/agnt-banner.png" alt="AGNT Hero Banner" width="100%">
 </p>
 
+<h1 align="center">AGNT</h1>
+
 <p align="center">
-  <strong>The Complete AI Agent Operating System</strong>
+  <strong>The local-first agent operating system for workflows, goals, memory, plugins, subagents, evals, and self-improving AI work.</strong>
 </p>
 
 <p align="center">
-  <em>Build agents • Design workflows • Set goals • Evolve skills • Extend with plugins • Own your data</em>
+  <em>Chat when you need judgment. Use workflows when you need repeatability. Set goals when you want AGNT to keep working. Delegate when work should happen in parallel.</em>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AGNT-AI%20Agents-blueviolet?style=for-the-badge&logo=robot&logoColor=white" alt="AGNT AI Agents">
+  <img src="https://img.shields.io/badge/AGNT-Agent%20OS-blueviolet?style=for-the-badge&logo=robot&logoColor=white" alt="AGNT Agent OS">
   <img src="https://img.shields.io/badge/Electron-Desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron Desktop">
   <img src="https://img.shields.io/badge/Vue.js-Frontend-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white" alt="Vue.js Frontend">
-  <img src="https://img.shields.io/badge/Node.js-Backend-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js Backend">
+  <img src="https://img.shields.io/badge/Express-Local%20Backend-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express Local Backend">
+  <img src="https://img.shields.io/badge/SQLite-Local%20Data-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite Local Data">
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.5.16-blue.svg?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/electron-33.0.2-47848F.svg?style=flat-square&logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg?style=flat-square&logo=node.js" alt="Node">
-  <img src="https://img.shields.io/badge/license-Custom-orange.svg?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome">
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Docker%20Build-passing-brightgreen?style=flat-square&logo=docker" alt="Docker Build">
-  <img src="https://img.shields.io/badge/Electron%20Build-passing-brightgreen?style=flat-square&logo=electron" alt="Electron Build">
-  <img src="https://img.shields.io/badge/Docker%20Full-~1.5GB-blue?style=flat-square&logo=docker" alt="Docker Full Size">
-  <img src="https://img.shields.io/badge/Docker%20Lite-~715MB-blue?style=flat-square&logo=docker" alt="Docker Lite Size">
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/AI%20Providers-15+-blueviolet?style=flat-square" alt="15+ AI Providers">
   <img src="https://img.shields.io/badge/Built--in%20Tools-60+-green?style=flat-square" alt="60+ Tools">
   <img src="https://img.shields.io/badge/Plugin%20Templates-25+-orange?style=flat-square" alt="25+ Plugin Templates">
   <img src="https://img.shields.io/badge/MCP-Supported-4FC08D?style=flat-square" alt="MCP Supported">
-  <img src="https://img.shields.io/badge/Self--Hosted-First-blue?style=flat-square" alt="Self-Hosted First">
+  <img src="https://img.shields.io/badge/Self--Hosted-First-blue?style=flat-square" alt="Self Hosted First">
 </p>
 
 <p align="center">
-  <a href="https://agnt.gg">🌐 Website</a> •
-  <a href="#-the-complete-feature-set">✨ Features</a> •
-  <a href="#-installation">📦 Install</a> •
-  <a href="#-quick-start">🏃 Quick Start</a> •
-  <a href="docs/_API-DOCUMENTATION.md">📚 API Docs</a> •
-  <a href="#-plugin-development">🔌 Plugins</a> •
+  <a href="https://agnt.gg">🌐 Website</a> ·
+  <a href="#-what-is-agnt">🧠 What is AGNT?</a> ·
+  <a href="#-the-runtime-model">🧩 Runtime model</a> ·
+  <a href="#-complete-feature-map">✨ Features</a> ·
+  <a href="#-installation">📦 Install</a> ·
+  <a href="docs/_API-DOCUMENTATION.md">📚 API Docs</a> ·
+  <a href="#-plugin-development">🔌 Plugins</a> ·
   <a href="https://discord.gg/agnt">💬 Discord</a>
 </p>
+
+---
+
+## 🧠 What is AGNT?
+
+AGNT is a **local-first agent operating system**: a desktop app and self-hostable backend for building, running, evaluating, and evolving AI work.
+
+It brings agents, workflows, goals, tools, memory, plugins, evals, traces, messaging, and APIs into one local workspace.
+
+That is the product: **AI work becomes durable, inspectable, repeatable, and improvable.**
+
+---
+
+## ⚡ The short version
+
+AGNT gives you:
+
+- 🤖 **Agents** — memory, tools, skills, providers, and streaming chat.
+- 🧩 **Workflows** — 60+ nodes, triggers, branches, checkpoints, and nesting.
+- 🎯 **Goals** — plan, execute, evaluate, re-plan, pause, resume, and revert.
+- 👥 **Subagents** — delegate across agents, workflows, async tools, MCP, plugins, APIs, and parallel branches.
+- 📣 **Event automation** — Telegram, Discord, Slack, email, Gmail, webhooks, schedules, Zapier, and custom APIs.
+- 🧠 **Memory + insights** — facts, preferences, corrections, bottlenecks, patterns, and tool choices.
+- 🧬 **SkillForge** — turn execution traces into better reusable skills.
+- 🔌 **Plugins** — `.agnt` packages with tools, triggers, widgets, hot reload, and marketplace distribution.
+- 🛠️ **Local API** — port `3333` for agents, workflows, goals, tools, files, plugins, MCP, skills, insights, and executions.
+- ⚡ **Real-time UX** — SSE streams and Socket.IO updates.
+- 🗄️ **Local-first storage** — SQLite plus filesystem data you control.
+- 🧠 **Provider freedom** — OpenAI, Anthropic, Gemini, Grok, Groq, Cerebras, DeepSeek, OpenRouter, Together, Kimi, MiniMax, Z.AI, local CLI auth, and custom endpoints.
+- 🖥️ **Run anywhere** — desktop, Docker, headless server, VPS, homelab, Raspberry Pi, local files, CLIs, browser automation, MCP, and custom APIs.
+
+---
+
+## ⚡ Quick start
+
+```bash
+git clone https://github.com/agnt-gg/agnt.git
+cd agnt
+
+npm install
+cd frontend && npm install && cd ..
+
+npm start
+```
+
+For development with frontend hot reload:
+
+```bash
+# Terminal 1
+cd frontend
+npm run dev
+
+# Terminal 2
+npm start
+```
+
+The local backend runs on:
+
+```text
+http://localhost:3333
+```
+
+---
+
+## 🧭 Choose your install path
+
+| You want to... | Use this |
+|---|---|
+| Try AGNT locally | `npm install` then `npm start` |
+| Develop the UI/backend | Vite dev server + Electron/backend |
+| Run AGNT as a local server | Build frontend, then `npm start` |
+| Self-host on a VPS, homelab, or Raspberry Pi | Docker Lite |
+| Use browser automation | Docker Full |
+| Build plugins | Clone repo + `backend/plugins/dev` templates |
+| Script AGNT from other tools | Local API at `http://localhost:3333/api` |
+
+Most developers should start with the Quick start above, then use Docker or headless mode once they know how they want to run AGNT.
+
+---
+
+## ✅ Does AGNT fit your use case?
+
+Use AGNT if your work needs:
+
+- 📥 events that trigger AI work
+- 🔁 repeatable automations
+- 🎯 long-running objectives
+- 👥 delegated work across agents, tools, APIs, and workflows
+- 🧠 memory across runs
+- 📜 inspectable traces, costs, outputs, and decisions
+- 🔌 custom tools, plugins, MCP, or provider auth
+- 🖥️ local or self-hosted ownership
+
+Probably not if you only need:
+
+- 💬 a hosted chatbot
+- 🧪 a prompt playground
+- ☁️ a SaaS-only automation tool
+- 🏢 public multi-tenant hosting for unrelated organizations
+- 🪄 a zero-config cloud product with no local data, APIs, plugins, or providers
+
+---
+
+## 🆚 How AGNT compares
+
+AGNT overlaps with agent frameworks, workflow tools, plugin ecosystems, and self-improving skill systems. Its strength is the union.
+
+| If you are comparing AGNT to... | The difference |
+|---|---|
+| **Hermes Agent** | Hermes is a narrower autonomous-agent framework. AGNT can run the same single-agent style of work, then go further: multi-agent systems, visual workflows, long-running goals, plugins, evals, traces, dashboards, provider management, APIs, messaging triggers, custom tools, local memory, and local-first persistence. |
+| **OpenClaw** | OpenClaw focuses on CLI-driven tool use. AGNT includes tool use, then adds a desktop app, local backend, visual workflows, goals, plugins, evals, dashboards, provider management, messaging triggers, MCP, custom APIs, and persistent local state. |
+| **n8n / Zapier** | AGNT has visual automation, but also persistent agents, memory, goals, SkillForge, MCP, provider auth, local traces, custom APIs, and plugin-native AI execution. |
+| **LangChain / AutoGen / CrewAI** | AGNT is not just a framework. It includes the desktop UI, local backend, workflow canvas, goals, plugins, storage, dashboards, and runtime APIs. |
+| **OpenWebUI / chat apps** | AGNT has chat, but chat is only one execution mode. Workflows, goals, tools, plugins, memory, and evals are first-class. |
+| **Claude Code / coding agents** | AGNT can work with local projects and tools, but also orchestrates workflows, messaging triggers, custom APIs, dashboards, skills, and long-running goals. |
+
+Other tools cover fragments of the stack. **AGNT is the full local-first agent operating system.**
+
+---
+
+## 📦 Installation
+
+### ✅ Prerequisites
+
+- Node.js 18+
+- npm 9+
+- Git
+
+### 🚀 Quick install from source
+
+```bash
+git clone https://github.com/agnt-gg/agnt.git
+cd agnt
+
+npm install
+cd frontend && npm install && cd ..
+
+npm start
+```
+
+### 🧑‍💻 Development mode
+
+```bash
+# Terminal 1: frontend dev server with Vite HMR
+cd frontend
+npm run dev
+
+# Terminal 2: Electron app and backend on port 3333
+npm start
+```
+
+### 🏭 Production mode
+
+```bash
+cd frontend && npm run build && cd ..
+npm start
+```
+
+## 🐳 Docker install
+
+Use Docker for an isolated self-hosted deployment.
+
+> **Docker snap users on Linux:** If you installed Docker via snap, set `AGNT_HOME` with an absolute path, for example `AGNT_HOME=/home/username docker compose up -d`, to avoid snap home directory isolation issues.
+
+> **Updating an existing Docker deployment:** `docker compose up -d` alone does not always fetch a newer image when the tag already exists locally. Run `docker compose pull` first, or use `docker compose up -d --pull always`.
+
+### 📥 Pull pre-built images from GHCR
+
+```bash
+# Full image with browser automation, about 1.5GB
+docker run -d \
+  --name agnt-full \
+  -p 3333:3333 \
+  -v agnt-data:/app/data \
+  ghcr.io/agnt-gg/agnt:latest
+
+# Visit http://localhost:3333
+```
+
+```bash
+# Lite image without browser automation, about 715MB
+docker run -d \
+  --name agnt-lite \
+  -p 3333:3333 \
+  -v agnt-data:/app/data \
+  ghcr.io/agnt-gg/agnt:lite
+
+# Visit http://localhost:3333
+```
+
+Available tags:
+
+- `latest` / `full`: latest Full variant with browser automation
+- `lite`: latest Lite variant without browser automation
+- `v0.5.16` / `v0.5.16-full`: specific Full version
+- `v0.5.16-lite`: specific Lite version
+
+### 🏗️ Build Docker images from source
+
+```bash
+git clone https://github.com/agnt-gg/agnt.git
+cd agnt
+
+# Full version
+docker-compose up -d
+
+# Lite version
+docker-compose -f docker-compose.lite.yml up -d
+
+# Run both variants side by side
+docker-compose -f docker-compose.both.yml up -d
+
+# Or use the Makefile
+make run-both
+```
+
+### 🧪 Docker variants
+
+- 🔋 **Full**: includes Chromium support for web scraping and browser automation.
+- 🪶 **Lite**: smaller image without browser automation.
+- 🚀 **Both**: useful for testing Full and Lite side by side.
+
+📖 See [Self-Hosting Guide](docs/SELF_HOSTING.md) for complete Docker setup.
+
+---
+
+## 📥 Desktop binaries
+
+Pre-built desktop downloads are available for Windows, macOS, and GNU/Linux.
+
+<p align="center">
+  <a href="https://agnt.gg/downloads/">
+    <img src="https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows">
+  </a>
+  <a href="https://agnt.gg/downloads/">
+    <img src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS">
+  </a>
+  <a href="https://agnt.gg/downloads/">
+    <img src="https://img.shields.io/badge/Download-GNU/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download for GNU/Linux">
+  </a>
+</p>
+
+---
+
+### 🖥️ Headless / $5 VPS / Raspberry Pi mode
+
+AGNT can run without the Electron desktop shell. In headless mode the Express backend serves the built Vue frontend and the local API from port `3333`, so you can run AGNT on a homelab box, a Raspberry Pi, a small cloud VM, or a low-cost VPS.
+
+For a typical $5 VPS or Raspberry Pi, use the Lite Docker image unless you need browser automation. Lite keeps agents, workflows, goals, plugins, providers, API integrations, file processing, image processing, and email automation, but omits bundled Chromium/Puppeteer/Playwright browser automation to reduce disk and memory use.
+
+Recommended small-server targets:
+
+| Target                     | Recommendation                                             |
+| -------------------------- | ---------------------------------------------------------- |
+| $5 VPS                     | 1-2 vCPU, 1-2GB RAM, Ubuntu 22.04/24.04, Lite image        |
+| Raspberry Pi 5             | 8GB RAM recommended, 64-bit OS, Lite image                 |
+| Raspberry Pi 4             | 4GB minimum, 8GB preferred, 64-bit OS, Lite image          |
+| Mini PC / NUC / old laptop | Lite or Full depending on RAM and browser automation needs |
+
+For Raspberry Pi, use a **64-bit OS** such as Raspberry Pi OS 64-bit or Ubuntu Server arm64. SSD storage is strongly preferred over a microSD card for always-on use. The Docker images are intended for multi-arch publishing; use `ghcr.io/agnt-gg/agnt:lite` on ARM64 devices when available.
+
+```bash
+# On a fresh Ubuntu VPS, homelab server, or Raspberry Pi OS 64-bit install
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Create persistent data directories
+mkdir -p ~/.agnt/data ~/.agnt/logs/lite
+
+# Generate production secrets
+export JWT_SECRET=$(openssl rand -base64 32)
+export SESSION_SECRET=$(openssl rand -base64 32)
+export ENCRYPTION_KEY=$(openssl rand -base64 32)
+
+# Run AGNT Lite headlessly on port 3333
+docker run -d \
+  --name agnt \
+  --restart unless-stopped \
+  -p 3333:3333 \
+  -e NODE_ENV=production \
+  -e AGNT_LITE_MODE=true \
+  -e JWT_SECRET="$JWT_SECRET" \
+  -e SESSION_SECRET="$SESSION_SECRET" \
+  -e ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+  -v "$HOME/.agnt/data:/app/data" \
+  -v "$HOME/.agnt/logs/lite:/app/logs" \
+  ghcr.io/agnt-gg/agnt:lite
+```
+
+Then open:
+
+```text
+http://YOUR_SERVER_IP:3333
+```
+
+For public internet deployments, put AGNT behind HTTPS with a reverse proxy, Cloudflare Tunnel, Tailscale, or another access layer you control. Do not leave production secrets as `CHANGE_ME_IN_PRODUCTION`.
+
+If you need browser automation, use the Full image instead:
+
+```bash
+docker run -d \
+  --name agnt \
+  --restart unless-stopped \
+  -p 3333:3333 \
+  -v "$HOME/.agnt/data:/app/data" \
+  -v "$HOME/.agnt/logs/full:/app/logs" \
+  ghcr.io/agnt-gg/agnt:latest
+```
+
+The Full image is larger and is better suited to a VPS, mini PC, or Pi with more RAM and swap. On very small machines, add swap or use Lite.
+
+You can also run headless from source:
+
+```bash
+git clone https://github.com/agnt-gg/agnt.git
+cd agnt
+npm install
+cd frontend && npm install && npm run build && cd ..
+PORT=3333 npm run dev
+```
+
+`npm run dev` starts `node backend/server.js`; if `frontend/dist` exists, the backend serves the web UI as well as the API.
 
 ---
 
@@ -70,7 +384,7 @@
 
 ---
 
-## ⭐ Star History
+## ⭐ Star history
 
 <p align="center">
   <a href="https://star-history.com/#agnt-gg/agnt&Date">
@@ -80,643 +394,402 @@
 
 ---
 
-## 🧠 What Is AGNT?
+## 🧩 The runtime model
 
-AGNT is a **local-first AI agent operating system** that bundles everything you need to build, run, and improve autonomous AI agents into a single desktop application (or self-hosted Docker container).
+AGNT is built around three execution modes.
 
-Unlike thin chat wrappers or stateless workflow builders, AGNT gives you:
+| Mode          | Use it when                                                         | What AGNT provides                                                                                       |
+| ------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Agents**    | You need judgment, language, reasoning, tool use, or collaboration. | Persistent chat, memory, tools, skills, streaming, traces, token and cost accounting.                    |
+| **Workflows** | You need repeatable automation.                                     | A visual DAG engine, triggers, 60+ nodes, checkpoints, versioning, nested workflows, live status.        |
+| **Goals**     | You need an objective pursued over time.                            | Planning, task decomposition, execution, evaluation, re-planning, pause/resume/revert, golden standards. |
 
-- **Persistent agents** with memory, skills, and goals that survive across sessions
-- **A visual workflow designer** with version control, checkpoints, and real-time execution
-- **An autonomous AGI loop** that executes → evaluates → re-plans until goals are met
-- **A self-improving skill system** (SkillForge) that evolves agent instructions from execution traces
-- **A full marketplace & plugin system** for installing, building, and publishing extensions
-- **Customizable dashboards** with user-created HTML/JS widgets
-- **A sandboxed code editor**, **MCP server integration**, **speech transcription**, **email triggers**, **webhooks**, and **15+ AI providers** including local CLI tools (Claude Code, Codex, Gemini CLI)
+The three modes are designed to feed each other.
 
-Your data, agents, and history stay on your machine. SQLite under the hood. No cloud lock-in.
+A chat can delegate to a tool. A workflow can call an agent. A goal can run tasks, evaluate results, and use the traces to improve a skill. A plugin can add new capabilities to every layer. A dashboard can display the outputs. The local API can drive it all from outside the UI.
 
 ---
 
-## 👥 Who Is This For?
+## 👥 Delegation graphs: AGNT's subagent model
 
-**AGNT is local-first and designed for:**
+AGNT supports subagent-style delegation natively.
 
-- ✅ **Single users** — Run on your personal computer
-- ✅ **Families** — Share a backend across household devices
-- ✅ **Small teams** — 2–10 people sharing a workspace
+A delegated workstream in AGNT can be:
 
-**NOT designed for:**
+- another AGNT agent
+- a goal task assigned to a specialized agent
+- a workflow branch running in parallel
+- a nested workflow
+- an async background tool run
+- a plugin tool
+- an MCP tool
+- a Telegram, Discord, Slack, email, webhook, or scheduled trigger
+- a custom API call
+- a human approval step
+- an evaluation step
 
-- ❌ Multi-tenant SaaS (isolating hundreds of unrelated users)
-- ❌ Public hosting (each org should self-host their own instance)
-- ❌ Large enterprises (50+ concurrent users)
+Example:
 
-AGNT uses SQLite and real-time broadcast sync. Perfect for trusted groups sharing a workspace, not for isolating thousands of separate organizations.
+```text
+Goal: launch a product announcement
+  ├─ Research agent gathers source material
+  ├─ Copy agent drafts messaging
+  ├─ Design workflow creates visuals
+  ├─ Engineering agent edits files
+  ├─ QA agent reviews output
+  ├─ Evaluation node scores the result
+  └─ SkillForge extracts reusable lessons
+```
 
----
+AGNT does not stop at spawning workers. Every workstream can have durable execution records, local database state, tool-call traces, token and cost accounting, retries, pause/resume/revert, human approval gates, memory extraction, skill evolution, plugin access, dashboard visibility, and API access.
 
-## 🎯 Why AGNT?
-
-<table>
-<tr>
-<td width="50%">
-
-### 🚀 **Zero to Agent in Minutes**
-
-No complex setup. No coding required. Just install, connect your AI provider, and start building intelligent agents.
-
-### 🔗 **Connect Everything**
-
-15+ AI providers, 60+ built-in tools, webhooks, MCP servers, and a plugin marketplace. If it has an API, AGNT can connect to it.
-
-### 🎨 **Visual-First Design**
-
-Drag-and-drop workflow designer that makes complex automation accessible to everyone.
-
-</td>
-<td width="50%">
-
-### 🔌 **Infinitely Extensible**
-
-Build custom plugins with our VSCode-style distribution system. Share with the community or keep them private.
-
-### 🎯 **Goal-Oriented AI**
-
-Set objectives and let your agents work autonomously towards them with an AGI loop, world-state tracking, and built-in evaluation.
-
-### 🖥️ **True Desktop Power**
-
-Native desktop app with full system access. No browser limitations. Your data stays on your machine.
-
-</td>
-</tr>
-</table>
+That is the difference between a single autonomous agent and an agent operating system.
 
 ---
 
-## 🆚 How AGNT Compares
+## 🎯 Why AGNT exists
 
-AGNT overlaps with a handful of other open-source agent projects, but the feature footprint is very different. Here's a side-by-side against two of the closest alternatives:
+AI agents fail when they are trapped in disposable chats.
 
-| Capability                              | **AGNT**                                         | **OpenClaw**                        | **Hermes Agent**          |
-| --------------------------------------- | ------------------------------------------------ | ----------------------------------- | ------------------------- |
-| **Core philosophy**                     | Full agent OS + evolution engine                 | Broad reactive tool use             | Self-improving skill loop |
-| **Architecture**                        | Local backend + Remote API, 37+ route categories | Open-source CLI-installed framework | Open-source framework     |
-| **Computer-use / desktop control**      | Via tools + MCP                                  | ✅ Native core strength             | Limited                   |
-| **Workflows (node graph)**              | ✅ Full DAG engine                               | ❌ Tool-chain only                  | ⚠️ Basic                  |
-| **Skill creation from experience**      | ✅ SkillForge (automated from traces)            | ❌                                  | ✅ Core feature           |
-| **Skill versioning + numeric score**    | ✅ SES (Skill Evolution Score)                   | ❌                                  | ⚠️ Unversioned            |
-| **Insight extraction (8 categories)**   | ✅ Unified engine                                | ❌                                  | ⚠️ Partial                |
-| **A/B testing / eval datasets**         | ✅ `/api/experiments`                            | ❌                                  | ❌                        |
-| **Per-agent memory**                    | ✅ Facts/preferences/corrections                 | ❌                                  | ✅ User modeling          |
-| **Token + cost accounting**             | ✅ Per-goal, per-task                            | ❌                                  | ❌                        |
-| **Custom dashboard widgets**            | ✅ HTML/JS with AI builder                       | ❌                                  | ❌                        |
-| **Plugin marketplace**                  | ✅ Local + remote                                | ✅ ClawHub                          | ⚠️ Small                  |
-| **MCP protocol**                        | ✅                                               | ✅                                  | ✅                        |
-| **Model-agnostic**                      | ✅                                               | ✅                                  | ✅                        |
-| **Multi-agent coordination**            | ✅ Via orchestrator + goals                      | ✅                                  | ✅                        |
-| **Voice (TTS/STT)**                     | ✅ Native                                        | ⚠️ Via tools                        | ✅ Native                 |
-| **Email-driven automation**             | ✅ Native listener                               | ⚠️ Chat only                        | ❌                        |
-| **Chat platforms (WhatsApp/Slack/etc)** | Via tools/MCP                                    | ✅ Native strength                  | ⚠️                        |
-| **Self-hostable**                       | ✅                                               | ✅                                  | ✅                        |
-| **Setup complexity**                    | Moderate                                         | Low (one-liner CLI)                 | Moderate                  |
-| **Community size**                      | Growing                                          | 200k+ GitHub stars                  | Smaller                   |
+They need durable state, trusted tools, repeatable workflows, memory, evaluation, provider access, human approval, plugins, and a runtime that can keep working after the chat ends.
 
-**Where AGNT wins:** end-to-end self-improvement (SkillForge + SES + experiments + insights), visual workflow DAG, custom dashboards, goal-oriented AGI loop, token/cost accounting per task.
+AGNT supplies that runtime.
 
-**Where OpenClaw wins:** native desktop/computer-use, mature chat-platform bridges, huge community, zero-setup CLI install.
+### 🏠 Local-first by design
 
-**Where Hermes Agent wins:** minimal surface area focused tightly on the skill-loop pattern.
+Agents, workflows, goals, skills, traces, insights, provider settings, plugins, and dashboards live under your AGNT data directory unless you explicitly publish, sync, or call an external service.
 
-Pick AGNT if you want **one workspace that builds, runs, evaluates, and evolves your agents** — not a single capability.
+### 🧬 Extensible and self-improving
+
+AGNT can install, build, AI-generate, hot reload, share, or keep private agents, workflows, tools, widgets, plugins, skills, evals, marketplace items, and MCP servers.
+
+Every run can become reusable signal:
+
+```text
+messages + tool calls + costs + errors + outputs + evals → insights → memory → skills
+```
 
 ---
 
-## ✨ The Complete Feature Set
+## 🧱 Core building blocks
 
-<table>
-<tr>
-<th>Category</th>
-<th>What You Get</th>
-</tr>
-
-<tr>
-<td><strong>🤖 Agent System</strong></td>
-<td>Multi-provider agents • Persistent memory • Assignable skills • Real-time streaming chat • Agent Forge (AI-generated agents) • Tool call tracing • Per-agent token/cost accounting</td>
-</tr>
-
-<tr>
-<td><strong>🔧 Workflow Designer</strong></td>
-<td>Drag-and-drop canvas • 60+ native nodes • Version control with checkpoints • Revert & compare • Live AI-assisted editing • Dependency analysis • Webhook/timer/email/schedule triggers</td>
-</tr>
-
-<tr>
-<td><strong>🎯 Goal System</strong></td>
-<td>Task planning & decomposition • Token/cost tracking • Pause/resume/revert • Golden standard snapshots • LLM-as-judge evaluation with scoring • Needs-review approval flow</td>
-</tr>
-
-<tr>
-<td><strong>🧬 AGI Loop</strong></td>
-<td>Autonomous execute → evaluate → re-plan cycles • World-state snapshots per iteration • Revert to any iteration • Real-time progress broadcast • Configurable max iterations</td>
-</tr>
-
-<tr>
-<td><strong>🌱 Evolution Engine</strong></td>
-<td>Automatic insight extraction from every execution • Agent memory learning (facts, preferences, corrections) • Prompt refinement • Tool-preference detection • Bottleneck & error-pattern analysis</td>
-</tr>
-
-<tr>
-<td><strong>⚡ SkillForge</strong></td>
-<td>Trace analyzer extracts patterns & anti-patterns • Automatic skill evolution with Skill Evolution Score (SES) • Version lineage • Skill leaderboard • A/B experiments • Eval datasets (manual, synthetic, history, golden) • Train/test/validation splits</td>
-</tr>
-
-<tr>
-<td><strong>📚 Skills</strong></td>
-<td>Reusable instruction sets assignable to agents • Per-skill tool allowlists • Import/export as <code>.SKILL.md</code> with YAML frontmatter • Categories & icons</td>
-</tr>
-
-<tr>
-<td><strong>🧪 Experiments</strong></td>
-<td>A/B tests • Benchmarks • Regression tests • Auto-generated datasets from goal history, golden standards, or synthetic LLM generation • Scored runs with per-task metrics</td>
-</tr>
-
-<tr>
-<td><strong>🔌 Plugin System</strong></td>
-<td>VSCode-style <code>.agnt</code> packages • 25+ ready-to-build plugin templates (Discord, Slack, Gmail, GitHub, Notion, Stripe, Twitter, YouTube, Dropbox, etc.) • Hot reload • AI Plugin Generator • Bundled dependencies • Marketplace install/purchase/publish</td>
-</tr>
-
-<tr>
-<td><strong>📊 Custom Dashboards</strong></td>
-<td>Per-user layout pages • Grid-based widget placement • User-created HTML/JS widgets • Widget Forge (AI generator) • Import/export widgets • Data bindings to live workflow outputs • Shareable &amp; publishable</td>
-</tr>
-
-<tr>
-<td><strong>💻 Code Editor</strong></td>
-<td>Sandboxed workspace filesystem • Read/write/delete/tree • Code Chat with specialized prompts • Path-traversal protection</td>
-</tr>
-
-<tr>
-<td><strong>🔗 MCP Integration</strong></td>
-<td>Add arbitrary MCP servers • Test connections • Discover capabilities (tools, resources, prompts) • NPM search for MCP packages • Popular-server discovery</td>
-</tr>
-
-<tr>
-<td><strong>🎙️ Speech & Audio</strong></td>
-<td>Whisper transcription for agent voice input • Text-to-speech output node • Audio preview widgets</td>
-</tr>
-
-<tr>
-<td><strong>📧 Email Automation</strong></td>
-<td><code>receive-email</code> workflow triggers with auto-provisioned inboxes (<code>workflow-xxx@agnt.gg</code>) • Send emails from workflows • Email polling &amp; confirmation</td>
-</tr>
-
-<tr>
-<td><strong>🪝 Webhooks</strong></td>
-<td>Per-workflow webhook endpoints with secrets • Zapier trigger/action integration • External service callbacks</td>
-</tr>
-
-<tr>
-<td><strong>📈 Observability</strong></td>
-<td>Full execution traces (messages, tool calls, tokens, cost) • Per-agent activity dashboards • Async tool queue (pending/running/failed/cancelled) • Connection health monitoring across all providers</td>
-</tr>
-
-<tr>
-<td><strong>⚡ Real-time Everything</strong></td>
-<td>Socket.IO broadcast to all connected clients • SSE streams for chat, tool forge, workflow generation • Live workflow edits propagate instantly • Real-time health updates via SSE</td>
-</tr>
-
-<tr>
-<td><strong>🏪 Marketplace</strong></td>
-<td>Browse & install community plugins, agents, workflows, tools, and widgets • Featured items • Reviews & ratings • Publish your own • Stripe Connect earnings • Referral system • Lifetime promo purchases</td>
-</tr>
-
-</table>
+- 🤖 **Agents** — persistent AI workers.
+- 🧩 **Workflows** — visual DAG automations.
+- 🎯 **Goals** — autonomous objectives.
+- 🧠 **Skills** — reusable instructions.
+- 🔌 **Plugins** — packaged extensions.
+- 📊 **Widgets** — custom dashboards.
+- 🧪 **Experiments** — eval and benchmark runs.
+- 💡 **Insights** — extracted lessons and memory.
+- 🌐 **MCP servers** — external tool providers.
 
 ---
 
-## 🛠️ The Forge System
+## 🛠️ The Forge system
 
-AGNT ships with six AI-powered generators — describe what you want, get a working artifact:
+Create core assets with AI:
 
-| Forge              | What It Builds                                                  |
-| ------------------ | --------------------------------------------------------------- |
-| **Agent Forge**    | Generate a configured agent from a natural-language description |
-| **Workflow Forge** | Generate complete workflow graphs (nodes + edges + parameters)  |
-| **Tool Forge**     | Generate custom tool implementations with streaming preview     |
-| **Widget Forge**   | Generate dashboard widgets (HTML/JS) via widget chat            |
-| **Plugin Forge**   | Describe an integration → get a scaffolded `.agnt` plugin       |
-| **Skill Forge**    | Extract reusable skills from successful goal executions         |
+- 🤖 **Agent Forge** — agents from natural language
+- 🧩 **Workflow Forge** — complete workflow graphs
+- 🛠️ **Tool Forge** — custom tools
+- 📊 **Widget Forge** — HTML/CSS/JS dashboards
+- 🔌 **Plugin Forge** — scaffolded `.agnt` plugins
+- 🧬 **SkillForge** — skills from execution traces
 
----
-
-## 📦 Built-in Tool Library (60+ Nodes)
-
-### 🎬 Triggers (7)
-
-`google-sheets-new-row` • `receive-discord-message` • `receive-slack-message` • `zapier-trigger` • `receive-email` • `trigger-timer` (schedule) • `webhook-listener`
-
-### ⚙️ Actions (27+)
-
-**Communication:** Discord • Slack • Gmail • Send Email • Twitter/X • Zapier
-
-**Productivity:** Notion • Google Drive • Google Sheets • Google Slides • Dropbox • GitHub
-
-**Content & Media:** Firecrawl • Unsplash • YouTube • Web Scrape • Web Search • Text-to-Speech
-
-**Commerce:** Stripe Invoice
-
-**AI & Automation:** `generate-with-ai-llm` (multi-provider LLM call) • `ai-browser-use` (visual browser automation) • `agnt-agent` (delegate to an agent) • `agnt-api` (call AGNT's own APIs) • `mcp-client` (call any MCP tool) • `custom-api` (generic HTTP) • `slop-connector` • `unturf-ai`
-
-### 🧮 Utilities (10)
-
-`execute-javascript` (sandboxed + child process) • `execute-python` • `database-operation` (SQLite CRUD) • `data-transformer` • `file-system-operation` • `counter` • `random-number` • `label` • `hello-world`
-
-### 🎛️ Control Flow (4)
-
-`delay` • `for-loop` • `parallel-execution` • `run-workflow` (nested workflows)
-
-### 📺 Display Widgets (8)
-
-`audio-preview` (with Perlin visualizer) • `chart-preview` • `code-preview` • `html-preview` • `image-preview` • `markdown-preview` • `media-preview` • `pdf-preview`
-
-> Plus everything you install from the **marketplace** or build yourself via the plugin system.
+AGNT is not just where agents run. It is where the workspace helps build itself.
 
 ---
 
-## 🤖 Supported AI Providers (15+)
+## ✨ Feature map
 
-AGNT's provider layer is pluggable. Built-in support:
+- 🧠 **Memory and learning** — facts, preferences, corrections, insights, SkillForge, datasets, and experiments.
+- 🧩 **Automation** — visual workflows, triggers, branches, nested workflows, timers, webhooks, and messaging.
+- 🎯 **Autonomy** — goals, planning, evaluation, rollback, AGI loop, and review states.
+- 🔌 **Extensibility** — plugins, tools, widgets, MCP, custom APIs, and marketplace assets.
+- 📜 **Observability** — traces, tool calls, node events, costs, queues, and provider health.
+- 🖥️ **Runtime** — desktop, local API, Docker, headless mode, VPS, homelab, and Raspberry Pi.
+- 💻 **Workspace** — files, code editor, browser automation, media, speech, and dashboards.
 
-| Provider          | Models                                    | Auth Method                            |
-| ----------------- | ----------------------------------------- | -------------------------------------- |
-| **OpenAI**        | GPT-4o, GPT-4 Turbo, GPT-3.5, o1, o3      | API Key                                |
-| **Anthropic**     | Claude 4, Claude 3.5 Sonnet, 3 Opus/Haiku | API Key                                |
-| **Google Gemini** | Gemini 1.5/2.0 Pro, Flash, Ultra          | API Key                                |
-| **Grok AI**       | Grok-1, Grok-2                            | API Key                                |
-| **Groq**          | Llama 3/4, Mixtral (fast inference)       | API Key                                |
-| **Cerebras**      | Ultra-fast inference models               | API Key                                |
-| **DeepSeek**      | DeepSeek Coder, DeepSeek Chat             | API Key                                |
-| **OpenRouter**    | 100+ routed models                        | API Key                                |
-| **Together AI**   | Open source models                        | API Key                                |
-| **Kimi**          | Kimi models (incl. Kimi Code)             | API Key                                |
-| **MiniMax**       | MiniMax models                            | API Key                                |
-| **Z-AI**          | Z-AI models                               | API Key                                |
-| **Claude Code**   | Claude via local CLI auth                 | OAuth PKCE / token                     |
-| **OpenAI Codex**  | Codex via local CLI auth                  | Device auth                            |
-| **Gemini CLI**    | Gemini via local CLI auth                 | OAuth loopback / API key / GCP project |
-| **Custom**        | Any OpenAI-compatible endpoint            | Configurable                           |
+---
 
-**Connection health** is monitored across all providers in real time, with cached status plus live-check endpoints for dashboard badges and failure alerts.
+## 📦 Built-in tool library
+
+AGNT ships with 60+ workflow nodes and tool actions before plugins.
+
+### 🎬 Triggers
+
+`google-sheets-new-row` · `receive-discord-message` · `receive-slack-message` · `zapier-trigger` · `receive-email` · `trigger-timer` · `webhook-listener`
+
+### ⚙️ Actions
+
+**Communication:** Discord, Slack, Gmail, Send Email, Twitter/X, Zapier.
+
+**Productivity:** Notion, Google Drive, Google Sheets, Google Slides, Dropbox, GitHub.
+
+**Content and media:** Firecrawl, Unsplash, YouTube, Web Scrape, Web Search, Text-to-Speech.
+
+**Commerce:** Stripe Invoice.
+
+**AI and automation:** multi-provider LLM generation, browser automation, AGNT agent delegation, AGNT API calls, MCP client calls, custom HTTP APIs, Slop Connector, Unturf AI.
+
+### 🧮 Utilities
+
+`execute-javascript` · `execute-python` · `database-operation` · `data-transformer` · `file-system-operation` · `counter` · `random-number` · `label` · `hello-world`
+
+### 🎛️ Control flow
+
+`delay` · `for-loop` · `parallel-execution` · `run-workflow`
+
+### 📺 Display widgets
+
+`audio-preview` · `chart-preview` · `code-preview` · `html-preview` · `image-preview` · `markdown-preview` · `media-preview` · `pdf-preview`
+
+Everything installed from the marketplace or built as a plugin extends this library.
+
+---
+
+## 🤖 Supported AI providers
+
+AGNT uses a pluggable provider layer.
+
+| Provider          | Example model families                           | Auth method                            |
+| ----------------- | ------------------------------------------------ | -------------------------------------- |
+| **OpenAI**        | GPT-4o, GPT-4 Turbo, GPT-3.5, o1, o3             | API key                                |
+| **Anthropic**     | Claude 4, Claude 3.5 Sonnet, Claude 3 Opus/Haiku | API key                                |
+| **Google Gemini** | Gemini 1.5/2.0 Pro, Flash, Ultra                 | API key                                |
+| **Grok AI**       | Grok-1, Grok-2                                   | API key                                |
+| **Groq**          | Llama, Mixtral, fast inference models            | API key                                |
+| **Cerebras**      | Ultra-fast inference models                      | API key                                |
+| **DeepSeek**      | DeepSeek Coder, DeepSeek Chat                    | API key                                |
+| **OpenRouter**    | 100+ routed models                               | API key                                |
+| **Together AI**   | Open source model families                       | API key                                |
+| **Kimi**          | Kimi models, including Kimi Code                 | API key                                |
+| **MiniMax**       | MiniMax models                                   | API key                                |
+| **Z.AI**          | Z.AI models                                      | API key                                |
+| **Claude Code**   | Claude through local CLI auth                    | OAuth PKCE / token                     |
+| **OpenAI Codex**  | Codex through local CLI auth                     | Device auth                            |
+| **Gemini CLI**    | Gemini through local CLI auth                    | OAuth loopback / API key / GCP project |
+| **Custom**        | Any OpenAI-compatible endpoint                   | Configurable                           |
+
+Connection health is monitored in real time with cached status and live checks for dashboards and alerts.
 
 ---
 
 ## 🏗️ Architecture
 
-```
+AGNT is a desktop shell, a Vue application, and a local Express runtime backed by SQLite and the filesystem.
+
+```text
 ┌──────────────────────────────────────────────────────────────┐
-│              Electron Shell (Windows / macOS / Linux)         │
-│    Native menus • Auto-update • IPC bridge • Deep links       │
+│              Electron Shell: Windows / macOS / Linux          │
+│    Native menus · auto-update · IPC bridge · deep links        │
 └──────────────────────────────────────────────────────────────┘
                               ↕ IPC
 ┌──────────────────────────────────────────────────────────────┐
-│                  Vue.js 3 Frontend (Vite)                     │
-│  Terminal UI • Workflow Canvas • Forges • Marketplace • Chat  │
+│                  Vue 3 Frontend: Vite                         │
+│  Terminal UI · Workflow Canvas · Forges · Marketplace · Chat   │
 └──────────────────────────────────────────────────────────────┘
                               ↕ HTTP / SSE / WebSocket
 ┌──────────────────────────────────────────────────────────────┐
-│                  Express Backend (port 3333)                  │
+│                  Express Backend: port 3333                   │
 ├──────────────────────────────────────────────────────────────┤
-│  Orchestrator  │  Workflow Engine │  Goal Engine / AGI Loop   │
-│  Agent Runtime │  SkillForge      │  Evolution Engine         │
-│  Plugin Loader │  MCP Client      │  Provider Auth Dispatcher │
-│  Async Tools   │  Email Listener  │  Webhook Dispatcher       │
-│  Filesystem    │  Speech (Whisper)│  Version Service          │
+│  Agent Runtime   │ Workflow Engine │ Goal Engine / AGI Loop   │
+│  Orchestrator    │ SkillForge      │ Evolution Engine         │
+│  Plugin Loader   │ MCP Client      │ Provider Auth Dispatcher │
+│  Async Tools     │ Email Listener  │ Webhook Dispatcher       │
+│  Filesystem      │ Speech Service  │ Version Service          │
 ├──────────────────────────────────────────────────────────────┤
-│       SQLite  (agents • workflows • goals • insights          │
-│        memories • skills • versions • executions • traces)    │
+│  SQLite: agents · workflows · goals · memories · skills       │
+│  insights · versions · executions · traces · providers        │
 └──────────────────────────────────────────────────────────────┘
 ```
 
+### 🔌 Local API surface
+
+The backend mounts a broad local API. Important route families include:
+
+| Prefix                                                                | Responsibility                                              |
+| --------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `/api/agents`                                                         | Agent CRUD, chat, runtime surfaces.                         |
+| `/api/orchestrator`                                                   | Universal chat/orchestration streams.                       |
+| `/api/workflows`                                                      | Workflow CRUD, start/stop/status.                           |
+| `/api/executions`                                                     | Workflow execution records.                                 |
+| `/api/goals`                                                          | Goals, autonomous execution, evaluation.                    |
+| `/api/tools` and `/api/tool-schemas`                                  | Tool discovery, schemas, execution metadata.                |
+| `/api/providers` and `/api/models`                                    | Provider auth, connected apps, model metadata.              |
+| `/api/plugins`                                                        | Plugin install, uninstall, reload, local marketplace flows. |
+| `/api/mcp`                                                            | MCP server management and capability discovery.             |
+| `/api/skills`, `/api/skillforge`, `/api/experiments`, `/api/insights` | Skill, evolution, evaluation, and learning systems.         |
+| `/api/filesystem`, `/api/images`, `/api/local-file`, `/api/speech`    | Local media and system services.                            |
+| `/api/webhooks`, `/api/email-listeners`                               | External triggers.                                          |
+| `/api/stream`                                                         | Stream engine endpoints.                                    |
+
+The result is simple: what the UI can do, other local tools can often script.
+
 ---
 
-## 📦 Installation
+## 👥 Who AGNT is for
 
-### Prerequisites
+AGNT is built for trusted local workspaces.
 
-<p align="left">
-  <img src="https://img.shields.io/badge/Node.js-v18+-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js v18+">
-  <img src="https://img.shields.io/badge/npm-v9+-CB3837?style=flat-square&logo=npm&logoColor=white" alt="npm v9+">
-  <img src="https://img.shields.io/badge/Git-Required-F05032?style=flat-square&logo=git&logoColor=white" alt="Git Required">
-</p>
+Good fits:
 
-### Quick Install
+- ✅ single users running AGNT on a personal machine
+- ✅ families sharing a backend across household devices
+- ✅ small teams of 2 to 10 people sharing one workspace
+- ✅ developers who want a local agent backend they can inspect and extend
+- ✅ automation builders who need visual workflows plus AI judgment
+- ✅ power users who want durable agents instead of throwaway chats
 
-```bash
-# Clone the repository
-git clone https://github.com/agnt-gg/agnt.git
-cd agnt
+Bad fits:
 
-# Install dependencies
-npm install
-cd frontend && npm install && cd ..
+- ❌ public multi-tenant SaaS
+- ❌ hosting unrelated organizations on one shared instance
+- ❌ large enterprises with 50+ concurrent users
+- ❌ zero-trust tenant isolation requirements
 
-# Start the application
-npm start
-```
+AGNT uses SQLite and real-time broadcast sync. It is excellent for a trusted workspace. It is not designed to isolate thousands of unrelated organizations.
 
-### 🐳 Docker Install (Self-Hosting)
+---
 
-Use Docker for an isolated, production-ready deployment.
+## 🗂️ Data directory structure
 
-#### Option A: Pull Pre-built Images from GHCR (Recommended)
+AGNT chooses a data directory based on how it is running.
 
-```bash
-# Full version with browser automation (~1.5GB) - Port 3333
-docker run -d \
-  --name agnt-full \
-  -p 3333:3333 \
-  -v agnt-data:/app/data \
-  ghcr.io/agnt-gg/agnt:latest
+| Run mode                      | Data directory                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------- |
+| Electron desktop on Windows   | `%APPDATA%\AGNT\Data\`                                                                  |
+| Electron desktop on macOS     | `~/Library/Application Support/AGNT/Data/`                                              |
+| Electron desktop on Linux     | `~/.config/AGNT/Data/`                                                                  |
+| Docker                        | `/app/data` inside the container, usually mounted from `${AGNT_HOME:-$HOME}/.agnt/data` |
+| Direct clone with `npm start` | `~/.agnt/data/`, override with `AGNT_HOME`                                              |
 
-# Access at http://localhost:3333
-```
+Important paths:
 
-```bash
-# Lite version without browser automation (~715MB) - Port 3333
-docker run -d \
-  --name agnt-lite \
-  -p 3333:3333 \
-  -v agnt-data:/app/data \
-  ghcr.io/agnt-gg/agnt:lite
+- `<data-dir>/agnt.db`: SQLite database.
+- `<data-dir>/plugins/installed/`: installed plugins.
+- `<data-dir>/_logs/`: logs for Electron and direct clone.
+- `${AGNT_HOME:-$HOME}/.agnt/logs/`: Docker logs.
 
-# Access at http://localhost:3333
-```
+Electron keeps a few historical files one level up at `%APPDATA%\AGNT\`, including `mcp.json`, `code-settings.json`, `projects/`, and `_logs/`.
 
-**Available tags:**
+---
 
-- `latest` / `full` — Latest Full variant with browser automation
-- `lite` — Latest Lite variant without browser automation
-- `v0.5.16` / `v0.5.16-full` — Specific version (Full)
-- `v0.5.16-lite` — Specific version (Lite)
+## 🔐 Environment and secrets
 
-#### Option B: Build from Source (Advanced)
+Copy the example environment file before running Docker or production setups.
 
 ```bash
-# Clone the repository
-git clone https://github.com/agnt-gg/agnt.git
-cd agnt
-
-# Option 1: Full version with browser automation (~1.5GB) - Port 3333
-docker-compose up -d
-# Access at http://localhost:3333
-
-# Option 2: Lite version without browser automation (~715MB) - Port 3333
-docker-compose -f docker-compose.lite.yml up -d
-# Access at http://localhost:3333
-
-# Option 3: Run both versions simultaneously
-docker-compose -f docker-compose.both.yml up -d
-# Full: http://localhost:33333
-# Lite: http://localhost:3333
-
-# Or use the Makefile
-make run-both
-```
-
-#### Environment Configuration
-
-Before running Docker, set up your environment file:
-
-```bash
-# Copy the example environment file
 cp .env.example .env
 ```
 
-**Optional variables:**
+Optional location overrides:
 
 ```env
-# Override the default data location. Most users never need this — direct-clone
-# and Docker both pick a sensible default automatically (see "Data Directory
-# Structure" below).
+# Override default data location
 # AGNT_HOME=/home/youruser
 
-# Docker only — set automatically by docker-compose.yml. Uncomment if running
-# bare `docker run` outside compose:
+# Docker only, normally set by docker-compose.yml
 # APP_PATH=/app
 ```
 
-**Data Directory Structure:**
-
-AGNT picks a data directory based on how it's running:
-
-| How you run AGNT | Data directory |
-|---|---|
-| Electron desktop (Windows) | `%APPDATA%\AGNT\Data\` (e.g., `C:\Users\YourName\AppData\Roaming\AGNT\Data\`) |
-| Electron desktop (macOS) | `~/Library/Application Support/AGNT/Data/` |
-| Electron desktop (Linux) | `~/.config/AGNT/Data/` |
-| Docker | `/app/data` inside the container, bind-mounted from `${AGNT_HOME:-$HOME}/.agnt/data` on the host |
-| Direct clone (`npm start`) | `~/.agnt/data/` (override with `AGNT_HOME=...`) |
-
-The SQLite database lives at `<data-dir>/agnt.db` and plugins at `<data-dir>/plugins/installed/`. Logs land at `<data-dir>/_logs/` (Electron / direct-clone) or `${AGNT_HOME:-$HOME}/.agnt/logs/` (Docker).
-
-> **Electron note:** Some files (like `mcp.json`, `code-settings.json`, `projects/`, `_logs/`) live one level up at `%APPDATA%\AGNT\` (parent of `Data\`). The split is historical; the resolver preserves it. Direct-clone and Docker collapse both into a single folder.
-
-> **Docker snap users (Linux):** If you installed Docker via snap, set `AGNT_HOME` with an absolute path (e.g., `AGNT_HOME=/home/username docker-compose up -d`) to avoid snap's home directory isolation issues.
-
-**Security secrets (change in production):**
+Production secrets should be changed.
 
 ```env
-# Generate with: openssl rand -base64 32
 JWT_SECRET=your-random-jwt-secret
 SESSION_SECRET=your-random-session-secret
 ENCRYPTION_KEY=your-random-encryption-key
 ```
 
-See `.env.example` for all available configuration options including AI provider API keys, OAuth settings, and plugin configuration.
+Generate secure values with:
 
-**Docker variants available:**
+```bash
+openssl rand -base64 32
+```
 
-- 🔋 **Full** (~1.5GB): Includes Chromium for web scraping & browser automation (Port **3333**)
-- 🪶 **Lite** (~715MB): Smaller image without browser features, ~52% smaller (Port **3333**)
-- 🚀 **Both**: Run full and lite versions side-by-side for testing
-
-**Desktop installers available:**
-
-- 💻 **Electron Full** (~348MB AppImage / ~253MB DEB): Portable desktop app with browser automation
-- 📦 **Electron Lite** (~344MB AppImage / ~251MB DEB): Lightweight desktop app, no browser automation
-
-📖 See the [Self-Hosting Guide](docs/SELF_HOSTING.md) for complete Docker setup, networking, and configuration.
-
-### 📥 Pre-built Desktop Binaries
-
-See all desktop downloads [here](https://agnt.gg/downloads/) for Windows, Mac, & Linux.
-
-<p align="center">
-  <a href="https://agnt.gg/downloads/">
-    <img src="https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows">
-  </a>
-  <a href="https://agnt.gg/downloads/">
-    <img src="https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS">
-  </a>
-  <a href="https://agnt.gg/downloads/">
-    <img src="https://img.shields.io/badge/Download-GNU/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download for GNU/Linux">
-  </a>
-</p>
+See `.env.example` for provider keys, OAuth settings, and plugin configuration.
 
 ---
 
-## 🏃 Quick Start
-
-### Development Mode (recommended for iteration)
+## 🏗️ Building for distribution
 
 ```bash
-# Terminal 1: Start the frontend dev server (Vite HMR)
-cd frontend
-npm run dev
-
-# Terminal 2: Start the Electron app (backend on port 3333)
-npm start
-```
-
-### Production Mode
-
-```bash
-# Build the frontend once
-cd frontend && npm run build && cd ..
-
-# Run the app (loads from frontend/dist)
-npm start
-```
-
----
-
-## 🏗️ Building for Distribution
-
-Create distributable packages for your platform:
-
-```bash
-# Build for current platform
+# Current platform
 npm run build
 
-# Build for specific platforms
-npm run build:win      # Windows (NSIS installer)
-npm run build:mac      # macOS (DMG + ZIP, x64 + ARM64)
-npm run build:linux    # GNU/Linux (AppImage, DEB, RPM)
+# Platform-specific builds
+npm run build:win
+npm run build:mac
+npm run build:linux
 
-# Build for all platforms
+# All platforms
 npm run build:all
 ```
 
-### 🪶 Lite Mode — Smaller Desktop Builds
-
-Build **AGNT Lite** variants that exclude browser automation libraries:
+### 🪶 Lite desktop builds
 
 ```bash
-# Build Lite variant (no browser automation)
 npm run build:lite
-npm run build:lite:win      # Windows
-npm run build:lite:mac      # macOS
-npm run build:lite:linux    # GNU/Linux
+npm run build:lite:win
+npm run build:lite:mac
+npm run build:lite:linux
 
-# Build BOTH Full and Lite (recommended)
+# Build Full and Lite
 npm run build:both
 npm run build:both:win
 npm run build:both:mac
 npm run build:both:linux
 ```
 
-**Lite Mode removes:**
+Lite mode removes browser automation source code. Agents, workflows, API integrations, plugins, image processing, and email automation still work.
 
-- ❌ Puppeteer/Playwright browser automation
-- ❌ Web scraping tools
-- ❌ Screenshot capture via browser
-
-**Everything else works:**
-
-- ✅ AI agents and workflows
-- ✅ All API integrations
-- ✅ Plugins, image processing, email automation
-
-📖 See [Electron Lite Mode Guide](docs/ELECTRON_LITE_MODE.md) for details.
-
-Build outputs are saved to the `dist/` directory:
-
-### Build Artifacts
-
-| Platform  | Full                               | Lite                               | Savings |
-| --------- | ---------------------------------- | ---------------------------------- | ------- |
-| GNU/Linux | AppImage (348MB), DEB (253MB), RPM | AppImage (344MB), DEB (251MB), RPM | ~4MB    |
-| Windows   | AGNT-0.5.16-win-x64.exe            | AGNT-Lite-0.5.16-win-x64.exe       | ~4MB    |
-| macOS     | AGNT-0.5.16-mac-{arch}.dmg         | AGNT-Lite-0.5.16-mac-{arch}.dmg    | ~4MB    |
-
-> **Note:** Chromium browser binaries are already excluded from all builds. Lite removes browser automation source code (~16MB uncompressed, ~2-4MB compressed).
+📖 See [Electron Lite Mode Guide](docs/ELECTRON_LITE_MODE.md).
 
 ---
 
-## 🚢 Releasing a New Version
+## 🚢 Releasing a new version
 
-AGNT uses tag-driven releases: pushing a version tag triggers CI to build and publish multi-arch Docker images (`Full` + `Lite`) to `ghcr.io/agnt-gg/agnt`. Everyday commits to `main` do **not** rebuild images — keeping CI cheap and releases deliberate.
-
-### Quick release commands
+AGNT uses tag-driven releases. Pushing a version tag triggers CI to build and publish multi-arch Docker images to `ghcr.io/agnt-gg/agnt`.
 
 ```bash
-# Bug fix / hotfix (0.5.16 → 0.5.17)
+# Patch release, for example 0.5.16 to 0.5.17
 npm run release:patch
 
-# New feature (0.5.16 → 0.6.0)
+# Minor release, for example 0.5.16 to 0.6.0
 npm run release:minor
 
-# Breaking change (0.5.16 → 1.0.0)
+# Major release, for example 0.5.16 to 1.0.0
 npm run release:major
 ```
 
-Each command:
+Each command updates `package.json`, creates a commit, creates an annotated version tag, and pushes the commit plus tag.
 
-1. Runs `npm version <bump>` — updates `package.json`, creates a commit, creates an annotated `v{version}` tag
-2. Runs `git push --follow-tags` — pushes both the commit and the tag
+Before releasing, commit all code changes. `npm version` requires a clean working tree.
 
-Before releasing, **commit all code changes first** (`npm version` requires a clean working tree).
-
-### What happens on tag push
-
-1. `.github/workflows/docker-build.yml` triggers
-2. Builds multi-arch (`linux/amd64` + `linux/arm64`) images for both variants
-3. Publishes to `ghcr.io/agnt-gg/agnt` with tags:
-   - `:latest`, `:full`, `:{version}`, `:{version}-full`, `:{major}.{minor}`, `:sha-{short}` (Full variant)
-   - `:lite`, `:{version}-lite`, `:{major}.{minor}-lite`, `:sha-lite-{short}` (Lite variant)
-4. Typical build time: ~15 minutes (both variants in parallel, GHA layer cache warm)
-
-### End-user update flow
-
-After the CI run completes, Docker users pull the update with:
+Docker users update with:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-> **Note:** `docker compose up -d` alone does **not** fetch new images if the tag already exists locally. Always run `pull` first, or use `docker compose up -d --pull always`.
-
-### Manual trigger (no version bump)
-
-If you ever need to rebuild the current version without bumping (e.g. to re-run CI after fixing the workflow), use the `workflow_dispatch` trigger from the GitHub Actions UI.
+If you track mutable tags such as `latest`, pull before restarting so Docker checks GHCR for the newest image.
 
 ---
 
-## 🔌 Plugin Development
+## 🔌 Plugin development
 
-AGNT plugins are distributed as `.agnt` packages (ZIP archives with manifest + code + bundled deps). 25+ reference templates live in `backend/plugins/dev/` (Discord, Slack, Gmail, GitHub, Notion, Stripe, Twitter, YouTube, Dropbox, Google Drive/Sheets/Slides, OpenWeatherMap, Plaid, Firecrawl, Unsplash, Calculator, Dice Roller, and more).
+AGNT plugins are `.agnt` packages: ZIP archives with a manifest, code, bundled dependencies, and optional assets. They can add tools, triggers, widgets, integrations, and workflow nodes.
 
-### Minimal Plugin
+Reference templates live in `backend/plugins/dev/`, including Discord, Slack, Gmail, GitHub, Notion, Stripe, Twitter/X, YouTube, Dropbox, Google Drive, Google Sheets, Google Slides, OpenWeatherMap, Plaid, Firecrawl, Unsplash, Calculator, Dice Roller, and more.
 
-**`manifest.json`:**
+### 📄 Minimal plugin manifest
 
 ```json
 {
   "name": "my-awesome-plugin",
   "version": "1.0.0",
-  "description": "Does something awesome",
+  "description": "Does something useful inside AGNT",
   "author": "Your Name",
   "tools": [
     {
@@ -725,9 +798,12 @@ AGNT plugins are distributed as `.agnt` packages (ZIP archives with manifest + c
       "schema": {
         "title": "Awesome Tool",
         "category": "action",
-        "description": "Performs awesome operations",
+        "description": "Performs an operation",
         "parameters": {
-          "input": { "type": "string", "description": "Input value" }
+          "input": {
+            "type": "string",
+            "description": "Input value"
+          }
         }
       }
     }
@@ -735,7 +811,7 @@ AGNT plugins are distributed as `.agnt` packages (ZIP archives with manifest + c
 }
 ```
 
-**`awesome-tool.js`:**
+### 🧩 Minimal tool implementation
 
 ```javascript
 class AwesomeTool {
@@ -751,49 +827,49 @@ class AwesomeTool {
 export default new AwesomeTool();
 ```
 
-### Build & Install
+### 🛠️ Build and install
 
 ```bash
 cd backend/plugins
 node build-plugin.js my-awesome-plugin
-# → produces my-awesome-plugin.agnt
 ```
 
-Install via the AGNT UI → Marketplace → Install from file, or drop the `.agnt` file into `<data-dir>/plugins/installed/` (where `<data-dir>` is the location for your run mode — see the Data Directory Structure table above). Plugins hot-reload — no restart needed.
+The build produces `my-awesome-plugin.agnt`.
 
-📚 See the full [Plugin Development Guide](backend/plugins/README.md).
+Install through the AGNT UI under Marketplace, or place the package in `<data-dir>/plugins/installed/`. Plugins hot reload without restarting the app.
+
+📚 See [Plugin Development Guide](backend/plugins/README.md).
 
 ---
 
-## 🗂️ Project Structure
+## 🗂️ Project structure
 
-```
-agnt-pro/
+```text
+agnt/
 ├── 📄 main.js                 # Electron main process
 ├── 📄 preload.js              # IPC bridge
 ├── 📄 package.json            # Root config
 │
-├── 📁 backend/                # Express.js backend
-│   ├── 📄 server.js           # Entry point
+├── 📁 backend/                # Express backend
+│   ├── 📄 server.js           # Backend entry point
 │   └── 📁 src/
 │       ├── 📁 routes/         # 30+ REST route modules
 │       ├── 📁 services/       # Business logic
-│       ├── 📁 orchestrator/   # Chat + tool orchestrator
-│       ├── 📁 workflow/       # Workflow engine
-│       ├── 📁 evolution/      # Insights + SkillForge
-│       ├── 📁 tools/library/  # Built-in tool nodes
-│       ├── 📁 plugins/        # Plugin loader & dev templates
-│       ├── 📁 stream/         # SSE + Socket.IO
-│       └── 📁 models/         # SQLite schema & models
+│       ├── 📁 orchestrator/   # Chat, tool orchestration, LLM adapters
+│       ├── 📁 workflow/       # Workflow engine and process bridge
+│       ├── 📁 evolution/      # Insights and SkillForge
+│       ├── 📁 tools/library/  # Built-in workflow/tool nodes
+│       ├── 📁 plugins/        # Plugin loader and dev templates
+│       ├── 📁 stream/         # SSE and Socket.IO support
+│       └── 📁 models/         # SQLite schema and models
 │
-├── 📁 frontend/               # Vue.js 3 app
+├── 📁 frontend/               # Vue 3 frontend
 │   └── 📁 src/
 │       ├── 📁 views/Terminal/ # Main terminal UI
-│       │   ├── CenterPanel/   # Agents, Workflows, Chat, Dashboard, Settings
-│       │   ├── LeftPanel/     # Context panels (ChatPanel, ForgePanels)
-│       │   └── RightPanel/    # Context panels (Marketplace, Settings, etc.)
-│       ├── 📁 store/          # Vuex
-│       └── 📁 services/       # API clients
+│       ├── 📁 store/          # Vuex state modules
+│       ├── 📁 services/       # API clients
+│       ├── 📁 canvas/         # Workflow and widget canvas code
+│       └── 📁 components/     # Shared components
 │
 ├── 📁 build/                  # Electron builder resources
 ├── 📁 docs/                   # Documentation
@@ -806,90 +882,70 @@ agnt-pro/
 ## 🧪 Testing
 
 ```bash
-# Run the full E2E suite
+# Full E2E suite
 npm run test:e2e
 
-# Specific tests
+# Specific suites
 npx playwright test tests/e2e/agents.spec.js
 npx playwright test tests/e2e/workflows.spec.js
 npx playwright test tests/e2e/plugins.spec.js
 ```
 
-See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md) for setup details.
+📖 See [Testing Instructions](docs/_TESTS_INSTRUCTIONS.md).
 
 ---
 
-## 🔑 Data & Privacy
+## 🔑 Data and privacy
 
-Your data lives in a per-platform directory (see the Data Directory Structure table earlier):
+AGNT is local-first.
 
-- `<data-dir>/agnt.db` — SQLite database (agents, workflows, goals, insights, skills, traces, versions)
-- `<data-dir>/plugins/installed/` — Installed plugins
-- `<data-dir>/_logs/` (Electron / direct-clone) or `${AGNT_HOME:-$HOME}/.agnt/logs/` (Docker) — Application logs
+Your agents, workflows, goals, skills, traces, insights, executions, provider settings, plugin installs, and dashboard assets live under your AGNT data directory. API keys are stored locally in SQLite or the filesystem. They are sent only to the providers you configure.
 
-On startup the backend logs the resolved path so you always know where to look:
+Nothing is uploaded unless you explicitly publish a marketplace item, use a remote provider, call an external API, or configure a service that requires network access.
 
+On startup, AGNT logs the resolved data path:
+
+```text
+📁 📁 AGNT data: C:\Users\YourName\AppData\Roaming\AGNT\Data (source: electron)
 ```
-📁 AGNT data: C:\Users\YourName\AppData\Roaming\AGNT\Data (source: electron)
-```
-
-**Nothing is uploaded** unless you explicitly publish a marketplace item or call an AI provider. API keys are stored locally in SQLite or the filesystem — never committed, never transmitted except to the provider you configured.
 
 ---
 
 ## 📖 Documentation
 
-| Document                                                      | Description                                  |
-| ------------------------------------------------------------- | -------------------------------------------- |
-| [📚 API Documentation](docs/_API-DOCUMENTATION.md)            | Complete REST API reference (local + remote) |
-| [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)          | Detailed build guide                         |
-| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup                     |
-| [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                 | Docker deployment & hosting                  |
-| [🪶 Docker Lite Mode](docs/LITE_MODE.md)                      | Docker without browser automation            |
-| [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)           | Desktop builds without browser automation    |
-| [🔌 Plugin Development](backend/plugins/README.md)            | Creating custom plugins                      |
-| [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)             | Native module rebuilding                     |
-| [🚀 CI/CD Pipelines](docs/CI_CD.md)                           | GitHub Actions workflows                     |
-| [🧪 Testing Instructions](docs/_TESTS_INSTRUCTIONS.md)        | E2E test setup                               |
+| Document                                                      | Description                                |
+| ------------------------------------------------------------- | ------------------------------------------ |
+| [📚 API Documentation](docs/_API-DOCUMENTATION.md)            | Local and remote REST API reference.       |
+| [🔨 Build Instructions](docs/_BUILD-INSTRUCTIONS.md)          | Detailed build guide.                      |
+| [🐧 GNU/Linux Build Guide](docs/_LINUX-BUILD-INSTRUCTIONS.md) | GNU/Linux-specific setup.                  |
+| [🐳 Self-Hosting Guide](docs/SELF_HOSTING.md)                 | Docker deployment and hosting.             |
+| [🪶 Docker Lite Mode](docs/LITE_MODE.md)                      | Docker without browser automation.         |
+| [🪶 Electron Lite Mode](docs/ELECTRON_LITE_MODE.md)           | Desktop builds without browser automation. |
+| [🔌 Plugin Development](backend/plugins/README.md)            | Creating custom plugins.                   |
+| [🔧 Rebuild Guide](docs/_REBUILD-INSTRUCTIONS.md)             | Native module rebuilding.                  |
+| [🚀 CI/CD Pipelines](docs/CI_CD.md)                           | GitHub Actions workflows.                  |
+| [🧪 Testing Instructions](docs/_TESTS_INSTRUCTIONS.md)        | E2E test setup.                            |
 
 ---
 
 ## 🤝 Contributing
 
-<p align="center">
-  <img src="https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=for-the-badge" alt="Contributions Welcome">
-  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge" alt="PRs Welcome">
-</p>
+Contributions are welcome.
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'feat: add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b feature/amazing-feature`.
+3. Commit your changes: `git commit -m 'feat: add amazing feature'`.
+4. Push the branch: `git push origin feature/amazing-feature`.
+5. Open a Pull Request.
 
-### Development Guidelines
+Guidelines:
 
-- Follow the existing code style (ES modules, async/await, composition API on the frontend)
-- Write tests for new features
-- Update documentation as needed
-- Keep commits atomic and descriptive
-
----
-
-## 📊 Project Stats
-
-<p align="center">
-  <img src="https://img.shields.io/github/stars/agnt-gg/agnt?style=social" alt="GitHub Stars">
-  <img src="https://img.shields.io/github/forks/agnt-gg/agnt?style=social" alt="GitHub Forks">
-  <img src="https://img.shields.io/github/watchers/agnt-gg/agnt?style=social" alt="GitHub Watchers">
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/github/issues/agnt-gg/agnt?style=flat-square" alt="GitHub Issues">
-  <img src="https://img.shields.io/github/issues-pr/agnt-gg/agnt?style=flat-square" alt="GitHub PRs">
-  <img src="https://img.shields.io/github/last-commit/agnt-gg/agnt?style=flat-square" alt="Last Commit">
-  <img src="https://img.shields.io/github/commit-activity/m/agnt-gg/agnt?style=flat-square" alt="Commit Activity">
-</p>
+- Follow existing code style.
+- Use ES modules and async/await on the backend.
+- Use Vue Composition API patterns on the frontend where appropriate.
+- Write tests for new behavior.
+- Update docs when the surface changes.
+- Keep commits atomic and descriptive.
 
 ---
 
@@ -913,12 +969,12 @@ This project is licensed under a Custom License. See [LICENSE.md](./LICENSE.md) 
   </a>
 </p>
 
-- Desktop shell by [Electron](https://www.electronjs.org/)
-- Frontend powered by [Vue.js](https://vuejs.org/)
-- Backend by [Express.js](https://expressjs.com/)
-- Real-time transport via [Socket.IO](https://socket.io/)
-- Audio transcription via [Whisper](https://openai.com/research/whisper)
-- Plugin format inspired by VSCode & Figma extension models
+- Desktop shell by [Electron](https://www.electronjs.org/).
+- Frontend powered by [Vue.js](https://vuejs.org/).
+- Backend by [Express.js](https://expressjs.com/).
+- Real-time transport via [Socket.IO](https://socket.io/).
+- Audio transcription via [Whisper](https://openai.com/research/whisper).
+- Plugin format inspired by VS Code and Figma extension models.
 
 ---
 
