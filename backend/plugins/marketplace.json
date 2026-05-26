@@ -1007,6 +1007,43 @@
           }
         }
       ]
+    },
+    {
+      "name": "calendly-plugin",
+      "displayName": "Calendly",
+      "icon": "calendly",
+      "version": "1.1.0",
+      "description": "Calendly scheduling automation for AGNT: list event types, fetch availability, create scheduling links, book invitees, cancel events, and trigger workflows on new bookings.",
+      "author": "AGNT",
+      "homepage": "https://developer.calendly.com",
+      "downloadUrl": "file://marketplace-default/calendly-plugin.agnt",
+      "size": 944715,
+      "tags": [
+        "calendly",
+        "scheduling",
+        "calendar",
+        "meetings",
+        "booking",
+        "productivity",
+        "trigger"
+      ],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "calendly-api",
+          "schema": {
+            "title": "Calendly API",
+            "description": "Use Calendly with AGNT workflows via a Calendly Personal Access Token. Get current user, list event types, fetch available times, create single-use scheduling links, book invitees, list scheduled events, and cancel events."
+          }
+        },
+        {
+          "type": "receive-calendly-booking",
+          "schema": {
+            "title": "New Calendly Booking",
+            "description": "Poll Calendly for newly-created upcoming scheduled events and trigger the workflow when a new booking is detected."
+          }
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,374 @@
+{
+  "name": "calendly-plugin",
+  "version": "1.1.0",
+  "description": "Calendly scheduling automation for AGNT: actions plus a trigger for new Calendly bookings.",
+  "author": "AGNT",
+  "icon": "calendly",
+  "homepage": "https://developer.calendly.com",
+  "license": "MIT",
+  "tools": [
+    {
+      "type": "calendly-api",
+      "entryPoint": "./calendly-api.js",
+      "schema": {
+        "title": "Calendly API",
+        "category": "action",
+        "type": "calendly-api",
+        "icon": "calendly",
+        "description": "Use Calendly with AGNT workflows via a Calendly Personal Access Token stored as the calendly auth provider.",
+        "documentation": "https://developer.calendly.com/api-docs",
+        "authRequired": "apiKey",
+        "authProvider": "calendly",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "required": true,
+            "default": "GET_CURRENT_USER",
+            "options": [
+              "GET_CURRENT_USER",
+              "LIST_EVENT_TYPES",
+              "GET_AVAILABLE_TIMES",
+              "CREATE_SCHEDULING_LINK",
+              "BOOK_INVITEE",
+              "LIST_SCHEDULED_EVENTS",
+              "CANCEL_EVENT"
+            ],
+            "description": "The Calendly operation to perform."
+          },
+          "userUri": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Calendly user URI. Required for some list operations unless organizationUri is provided. Example: https://api.calendly.com/users/USER_UUID"
+          },
+          "organizationUri": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Calendly organization URI. Example: https://api.calendly.com/organizations/ORG_UUID"
+          },
+          "eventTypeUri": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Calendly event type URI or UUID. Required for availability, scheduling links, and booking."
+          },
+          "scheduledEventUri": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Calendly scheduled event URI or UUID. Required for cancellation."
+          },
+          "startTime": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "ISO 8601 start time. For availability/listing, use the start of the search window. For booking, use the selected meeting start time in UTC ending with Z."
+          },
+          "endTime": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "ISO 8601 end time for availability or event listing windows. Calendly available-times supports a maximum 7-day window per request."
+          },
+          "timezone": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "default": "UTC",
+            "description": "Timezone for invitee or display, e.g. America/New_York or UTC."
+          },
+          "inviteeName": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Invitee full name. Required for BOOK_INVITEE."
+          },
+          "inviteeEmail": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Invitee email address. Required for BOOK_INVITEE."
+          },
+          "eventGuests": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "description": "Optional comma-separated guest email list, or JSON array of guest emails."
+          },
+          "questionsAndAnswersJson": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "description": "Optional JSON array for Calendly invitee questions and answers."
+          },
+          "trackingJson": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "description": "Optional JSON object for Calendly tracking fields."
+          },
+          "locationJson": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "description": "Optional JSON object for Calendly invitee location."
+          },
+          "reason": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "description": "Cancellation reason for CANCEL_EVENT."
+          },
+          "confirmBooking": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "required": false,
+            "default": false,
+            "description": "Required safety confirmation for BOOK_INVITEE because it creates a real Calendly booking."
+          },
+          "confirmCancellation": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "required": false,
+            "default": false,
+            "description": "Required safety confirmation for CANCEL_EVENT because it cancels a real Calendly event."
+          },
+          "status": {
+            "type": "string",
+            "inputType": "select",
+            "required": false,
+            "default": "active",
+            "options": [
+              "active",
+              "canceled"
+            ],
+            "description": "Scheduled event status for LIST_SCHEDULED_EVENTS."
+          },
+          "sort": {
+            "type": "string",
+            "inputType": "select",
+            "required": false,
+            "default": "start_time:asc",
+            "options": [
+              "start_time:asc",
+              "start_time:desc"
+            ],
+            "description": "Sort order for LIST_SCHEDULED_EVENTS."
+          },
+          "count": {
+            "type": "number",
+            "inputType": "number",
+            "required": false,
+            "default": 20,
+            "description": "Maximum number of results to return where supported."
+          },
+          "singleUseLinkMaxEventCount": {
+            "type": "number",
+            "inputType": "number",
+            "required": false,
+            "default": 1,
+            "description": "Maximum event count for CREATE_SCHEDULING_LINK. Calendly single-use links normally use 1."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "required": false,
+            "default": false,
+            "description": "Include the raw Calendly API response in the output."
+          }
+        }
+      }
+    },
+    {
+      "type": "receive-calendly-booking",
+      "entryPoint": "./calendly-booking-trigger.js",
+      "schema": {
+        "title": "New Calendly Booking",
+        "category": "trigger",
+        "type": "receive-calendly-booking",
+        "icon": "calendly",
+        "description": "Poll Calendly for newly-created upcoming scheduled events and trigger the workflow when a new booking is detected.",
+        "documentation": "https://developer.calendly.com/api-docs",
+        "authRequired": "oauth",
+        "authProvider": "calendly",
+        "parameters": {
+          "scope": {
+            "type": "string",
+            "inputType": "select",
+            "required": false,
+            "default": "user",
+            "options": [
+              "user",
+              "organization"
+            ],
+            "description": "Listen for bookings for the connected user or the whole Calendly organization. Organization mode may require admin permissions."
+          },
+          "userUri": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional Calendly user URI or UUID. If omitted, the connected user is used."
+          },
+          "organizationUri": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "description": "Optional Calendly organization URI or UUID. If omitted, the connected user current organization is used."
+          },
+          "eventTypeUri": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "description": "Optional event type URI/UUID filter. Use commas or new lines for multiple event types."
+          },
+          "pollIntervalMs": {
+            "type": "number",
+            "inputType": "number",
+            "required": false,
+            "default": 60000,
+            "description": "Polling interval in milliseconds. Minimum 10000. Default 60000."
+          },
+          "lookAheadDays": {
+            "type": "number",
+            "inputType": "number",
+            "required": false,
+            "default": 30,
+            "description": "How far ahead to scan for upcoming booked events. Default 30 days."
+          },
+          "count": {
+            "type": "number",
+            "inputType": "number",
+            "required": false,
+            "default": 100,
+            "description": "Maximum scheduled events to fetch per poll, 1-100."
+          },
+          "includeInvitees": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "required": false,
+            "default": true,
+            "description": "Fetch invitee details for each new scheduled event."
+          },
+          "dropExistingOnStart": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "required": false,
+            "default": true,
+            "description": "Ignore already-existing events when the workflow starts, and only fire for future newly-seen bookings."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "required": false,
+            "default": false,
+            "description": "Include raw Calendly API payloads in the trigger output."
+          }
+        },
+        "outputs": {
+          "event": {
+            "type": "string",
+            "description": "Trigger event name, invitee.created."
+          },
+          "triggerType": {
+            "type": "string",
+            "description": "Internal trigger type, calendly.new_booking."
+          },
+          "bookingUri": {
+            "type": "string",
+            "description": "Primary booking URI, invitee URI when available."
+          },
+          "inviteeUri": {
+            "type": "string",
+            "description": "Calendly invitee URI when invitee details are available."
+          },
+          "inviteeUuid": {
+            "type": "string",
+            "description": "Calendly invitee UUID."
+          },
+          "scheduledEventUri": {
+            "type": "string",
+            "description": "Calendly scheduled event URI."
+          },
+          "scheduledEventUuid": {
+            "type": "string",
+            "description": "Calendly scheduled event UUID."
+          },
+          "eventTypeUri": {
+            "type": "string",
+            "description": "Calendly event type URI."
+          },
+          "eventTypeUuid": {
+            "type": "string",
+            "description": "Calendly event type UUID."
+          },
+          "eventName": {
+            "type": "string",
+            "description": "Scheduled event name."
+          },
+          "eventStatus": {
+            "type": "string",
+            "description": "Scheduled event status."
+          },
+          "inviteeName": {
+            "type": "string",
+            "description": "Invitee name."
+          },
+          "inviteeEmail": {
+            "type": "string",
+            "description": "Invitee email."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Invitee or event timezone."
+          },
+          "startTime": {
+            "type": "string",
+            "description": "Scheduled event start time."
+          },
+          "endTime": {
+            "type": "string",
+            "description": "Scheduled event end time."
+          },
+          "location": {
+            "type": "object",
+            "description": "Calendly event location object."
+          },
+          "cancelUrl": {
+            "type": "string",
+            "description": "Invitee cancellation URL when available."
+          },
+          "rescheduleUrl": {
+            "type": "string",
+            "description": "Invitee reschedule URL when available."
+          },
+          "questionsAndAnswers": {
+            "type": "array",
+            "description": "Invitee questions and answers."
+          },
+          "tracking": {
+            "type": "object",
+            "description": "Calendly tracking fields."
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "Creation timestamp."
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "Update timestamp."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Raw Calendly API payloads when includeRaw is enabled."
+          },
+          "response": {
+            "type": "object",
+            "description": "Complete normalized trigger payload."
+          }
+        }
+      }
+    }
+  ]
+}
