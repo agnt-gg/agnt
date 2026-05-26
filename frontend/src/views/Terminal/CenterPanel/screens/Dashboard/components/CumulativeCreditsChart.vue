@@ -373,7 +373,8 @@ export default {
       });
     };
 
-    // Watch chartData and force re-render when it changes
+    // Watch chartData and force re-render when it changes.
+    // No deep:true — the computed returns fresh arrays each run, so identity-watch suffices.
     watch(
       () => chartData.value,
       () => {
@@ -383,7 +384,6 @@ export default {
           });
         }
       },
-      { deep: true },
     );
 
     // Watch for loading completion - render chart once data arrives

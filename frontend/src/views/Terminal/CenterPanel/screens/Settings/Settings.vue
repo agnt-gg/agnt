@@ -299,7 +299,7 @@ export default {
           store.dispatch('userStats/fetchReferralBalance'),
           store.dispatch('userStats/fetchReferralTree'),
           store.dispatch('userStats/fetchStats'),
-          store.dispatch('userStats/fetchCreditsActivity', { activityDays: 90 }),
+          store.dispatch('userStats/fetchSecondsAutomated90Day'),
           store.dispatch('goals/fetchGoals'),
           store.dispatch('agents/fetchAgents'),
           store.dispatch('workflows/fetchWorkflows'),

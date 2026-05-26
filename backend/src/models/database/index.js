@@ -337,6 +337,7 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_id ON workflow_executions(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_status ON workflow_executions(user_id, status)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_workflow_id ON workflow_executions(workflow_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_workflow_executions_user_start ON workflow_executions(user_id, start_time)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS node_executions (
         id TEXT PRIMARY KEY,
@@ -596,6 +597,7 @@ function createTables() {
       // Index for faster agent execution lookups
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_id ON agent_executions(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_agent_id ON agent_executions(agent_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_agent_executions_user_start ON agent_executions(user_id, start_time)`);
 
       db.run(`CREATE TABLE IF NOT EXISTS agent_tool_executions (
         id TEXT PRIMARY KEY,

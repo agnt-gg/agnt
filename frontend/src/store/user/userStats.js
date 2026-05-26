@@ -120,6 +120,9 @@ export default {
     totalCustomTools: 0,
     totalSecondsAutomated: 0, // Add lifetime total seconds
     totalExecutions: 0, // Add total executions from API
+    // 90-day cumulative credits total, used by AGNT score. Lives in its own slot
+    // so it never collides with the user's chart range selection in creditsActivity.
+    secondsAutomated90Day: 0,
     gameProgress: 2, // Initialize with 2% progress
     agentActivity: {
       labels: [],
@@ -280,6 +283,9 @@ export default {
         state.creditsActivity.lastFetchTime = lastFetchTime;
       }
       state.creditsActivity.isLoading = isLoading;
+    },
+    SET_SECONDS_AUTOMATED_90_DAY(state, total) {
+      state.secondsAutomated90Day = total;
     },
     SET_GAME_PROGRESS(state, progress) {
       state.gameProgress = progress;
@@ -503,12 +509,12 @@ export default {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - activityDays);
 
-        // Add request timeout
+        // Request timeout scales with window: 15s floor, ~150ms per day (≈55s for 365)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
           controller.abort();
           activeTimeouts.delete(timeoutId);
-        }, 8000); // 8 second timeout
+        }, Math.max(15000, activityDays * 150));
         activeTimeouts.add(timeoutId);
 
         const response = await axios.post(
@@ -542,8 +548,8 @@ export default {
         } else {
           console.error('Error fetching agent activity:', error);
         }
-        // Set cache timestamp on failure to prevent rapid retry loops
-        commit('SET_AGENT_ACTIVITY_META', { isLoading: false, lastFetchTime: Date.now() });
+        // Don't stamp lastFetchTime on failure — that would lock out same-range retries for 60s
+        commit('SET_AGENT_ACTIVITY_META', { isLoading: false });
       }
     },
 
@@ -611,12 +617,12 @@ export default {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - activityDays);
 
-        // Add request timeout
+        // Request timeout scales with window: 15s floor, ~150ms per day (≈55s for 365)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
           controller.abort();
           activeTimeouts.delete(timeoutId);
-        }, 8000); // 8 second timeout
+        }, Math.max(15000, activityDays * 150));
         activeTimeouts.add(timeoutId);
 
         const response = await axios.post(
@@ -667,8 +673,55 @@ export default {
         } else {
           console.error('Error fetching credits activity:', error);
         }
-        // Set cache timestamp on failure to prevent rapid retry loops
-        commit('SET_CREDITS_ACTIVITY_META', { isLoading: false, lastFetchTime: Date.now() });
+        // Don't stamp lastFetchTime on failure — that would lock out same-range retries for 60s
+        commit('SET_CREDITS_ACTIVITY_META', { isLoading: false });
+      }
+    },
+
+    // Fetches the 90-day cumulative credits total for the AGNT score.
+    // Writes only to state.secondsAutomated90Day — never touches creditsActivity,
+    // so the dashboard chart's range selection is not affected.
+    async fetchSecondsAutomated90Day({ commit }) {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No auth token found');
+
+        const activityDays = 90;
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + 1);
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - activityDays);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+          activeTimeouts.delete(timeoutId);
+        }, Math.max(15000, activityDays * 150));
+        activeTimeouts.add(timeoutId);
+
+        const response = await axios.post(
+          `${API_CONFIG.BASE_URL}/executions/activity`,
+          {
+            startDate: toLocalDateString(startDate),
+            endDate: toLocalDateString(endDate),
+          },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          }
+        );
+
+        clearTimeout(timeoutId);
+        activeTimeouts.delete(timeoutId);
+
+        const total = (response.data || []).reduce((sum, row) => sum + (row.credits_used || 0), 0);
+        commit('SET_SECONDS_AUTOMATED_90_DAY', total);
+      } catch (error) {
+        if (axios.isCancel(error)) {
+          console.warn('[UserStats] Request canceled for fetchSecondsAutomated90Day');
+        } else {
+          console.error('Error fetching 90-day seconds automated:', error);
+        }
       }
     },
 
@@ -989,15 +1042,15 @@ export default {
         integrationHealthRate: totalAvailableApps > 0 ? Math.round((connectedAppsCount / totalAvailableApps) * 100) : 0,
       });
 
-      // Use the 90-day cumulative total from creditsActivity (already fetched for the chart)
-      // This is the LAST value in the cumulative data array
-      const totalSecondsAutomated = state.creditsActivity.data.length > 0 ? state.creditsActivity.data[state.creditsActivity.data.length - 1] : 0;
+      // Read the 90-day cumulative total from its dedicated slot.
+      // This is populated by fetchSecondsAutomated90Day and is independent of
+      // whatever date range the dashboard chart happens to be showing.
+      const totalSecondsAutomated = state.secondsAutomated90Day;
 
       console.log('🔍 SECONDS AUTOMATED DEBUG:', {
         totalSecondsAutomated,
         calculatedScore: (totalSecondsAutomated / 1000) * 100,
-        source: '90-day cumulative from creditsActivity chart data',
-        activityDays: state.creditsActivity.activityDays,
+        source: 'state.secondsAutomated90Day (dedicated 90-day fetch)',
       });
 
       // --- PRODUCTIVITY SCORE ---
