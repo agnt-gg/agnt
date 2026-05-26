@@ -603,7 +603,7 @@ function waitForBackend(callback) {
     port: parseInt(port),
     path: '/api/health',
     method: 'GET',
-    timeout: 5000, // 5 second timeout per request
+    timeout: 30000, // 30s per request — backend may block the event loop during plugin/skill init
   };
 
   let isBackendReady = false;
@@ -646,11 +646,10 @@ function waitForBackend(callback) {
     });
 
     req.on('timeout', () => {
+      // Just destroy — the resulting 'error' event handles the retry, so this
+      // doesn't double-fire (was causing back-to-back "timed out" / "socket
+      // hang up" retry pairs).
       req.destroy();
-      retryCount++;
-      const delay = getRetryDelay();
-      console.log(`Backend request timed out. Retry ${retryCount} in ${delay}ms`);
-      setTimeout(attempt, delay);
     });
 
     req.end();
