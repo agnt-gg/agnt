@@ -39,6 +39,8 @@
         </div>
       </div>
     </Teleport>
+
+    <SimpleModal ref="simpleModal" />
   </div>
 </template>
 
@@ -47,10 +49,11 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { getDefaultLayout } from './defaultLayouts.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
 export default {
   name: 'PageSwitcher',
-  components: { Tooltip },
+  components: { Tooltip, SimpleModal },
   emits: ['page-changed'],
   setup(props, { emit }) {
     const store = useStore();
@@ -65,14 +68,20 @@ export default {
     });
 
     const contextMenu = ref({ show: false, x: 0, y: 0, page: null });
+    const simpleModal = ref(null);
 
     function switchPage(pageId) {
       store.dispatch('widgetLayout/setActivePage', pageId);
       emit('page-changed', pageId);
     }
 
-    function promptAddPage() {
-      const name = prompt('Page name:');
+    async function promptAddPage() {
+      const name = await simpleModal.value?.showModal({
+        isPrompt: true,
+        title: 'New Page',
+        placeholder: 'Page name',
+        confirmText: 'Create',
+      });
       if (name && name.trim()) {
         store.dispatch('widgetLayout/addPage', {
           name: name.trim(),
@@ -89,33 +98,54 @@ export default {
       contextMenu.value.show = false;
     }
 
-    function promptRename() {
+    async function promptRename() {
       const page = contextMenu.value.page;
+      closeContextMenu();
       if (!page) return;
-      const name = prompt('Page name:', page.name);
+      const name = await simpleModal.value?.showModal({
+        isPrompt: true,
+        title: 'Rename Page',
+        placeholder: 'Page name',
+        defaultValue: page.name,
+        confirmText: 'Rename',
+      });
       if (name && name.trim()) {
         store.dispatch('widgetLayout/renamePage', { pageId: page.id, name: name.trim() });
       }
-      closeContextMenu();
     }
 
-    function promptResetLayout() {
+    async function promptResetLayout() {
       const page = contextMenu.value.page;
+      closeContextMenu();
       if (!page) return;
-      if (confirm('Reset this page to its default layout?')) {
+      const confirmed = await simpleModal.value?.showModal({
+        title: 'Reset Layout?',
+        message: 'Reset this page to its default layout?',
+        confirmText: 'Reset',
+        cancelText: 'Cancel',
+        showCancel: true,
+      });
+      if (confirmed) {
         const defaultWidgets = page.route ? getDefaultLayout(page.route) : [];
         store.dispatch('widgetLayout/resetPageToDefault', { pageId: page.id, defaultWidgets });
       }
-      closeContextMenu();
     }
 
-    function confirmDelete() {
+    async function confirmDelete() {
       const page = contextMenu.value.page;
+      closeContextMenu();
       if (!page) return;
-      if (confirm(`Delete page "${page.name}"?`)) {
+      const confirmed = await simpleModal.value?.showModal({
+        title: 'Delete Page?',
+        message: `Delete page "${page.name}"?`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        showCancel: true,
+        confirmClass: 'btn-danger',
+      });
+      if (confirmed) {
         store.dispatch('widgetLayout/deletePage', page.id);
       }
-      closeContextMenu();
     }
 
     function onDocClick() {
@@ -129,6 +159,7 @@ export default {
       customPages,
       activePageId,
       contextMenu,
+      simpleModal,
       switchPage,
       promptAddPage,
       openContextMenu,

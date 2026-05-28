@@ -204,6 +204,8 @@
         @close="isGlobalProviderSelectorOpen = false"
       />
     </Teleport>
+
+    <SimpleModal ref="simpleModal" />
   </div>
 </template>
 
@@ -214,6 +216,7 @@ import WidgetCanvas from './WidgetCanvas.vue';
 import WidgetCatalog from './WidgetCatalog.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import ChatProviderSelector from '@/views/Terminal/CenterPanel/screens/Chat/components/ChatProviderSelector.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { getDefaultLayout } from './defaultLayouts.js';
 import { useElectron, electronUtils } from '@/composables/useElectron';
 
@@ -293,7 +296,7 @@ const SECTION_ROUTES = new Set(ALL_SECTIONS.flatMap((s) => s.screens.map((t) => 
 
 export default {
   name: 'CanvasScreen',
-  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector },
+  components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal },
   props: {
     screenName: { type: String, default: 'ChatScreen' },
   },
@@ -304,6 +307,7 @@ export default {
     const showCatalog = ref(false);
     const clock = ref('00:00:00');
     const modalInputRef = ref(null);
+    const simpleModal = ref(null);
     let clockTimer = null;
 
     // Window controls
@@ -488,12 +492,13 @@ export default {
       const page = ctxMenu.value.page;
       closeCtx();
       if (!page) return;
-      const ok = await showModal({
-        type: 'confirm',
-        title: 'Reset Layout',
+      const ok = await simpleModal.value?.showModal({
+        title: 'Reset Layout?',
         message: `Reset "${page.name}" to its default layout? All widget positions will be lost.`,
-        okLabel: 'Reset',
-        danger: true,
+        confirmText: 'Reset',
+        cancelText: 'Cancel',
+        showCancel: true,
+        confirmClass: 'btn-danger',
       });
       if (ok) {
         const dw = page.route ? getDefaultLayout(page.route) : [];
@@ -505,12 +510,13 @@ export default {
       const page = ctxMenu.value.page;
       closeCtx();
       if (!page) return;
-      const ok = await showModal({
-        type: 'confirm',
-        title: 'Delete Page',
+      const ok = await simpleModal.value?.showModal({
+        title: 'Delete Page?',
         message: `Delete "${page.name}"? This cannot be undone.`,
-        okLabel: 'Delete',
-        danger: true,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        showCancel: true,
+        confirmClass: 'btn-danger',
       });
       if (ok) {
         store.dispatch('widgetLayout/deletePage', page.id);
@@ -540,10 +546,20 @@ export default {
       emit('screen-change', section.screens[0].screen);
     }
 
-    function resetCurrentPage() {
-      if (!activePage.value) return;
-      const dw = activePage.value.route ? getDefaultLayout(activePage.value.route) : [];
-      store.dispatch('widgetLayout/resetPageToDefault', { pageId: activePage.value.id, defaultWidgets: dw });
+    async function resetCurrentPage() {
+      const page = activePage.value;
+      if (!page) return;
+      const ok = await simpleModal.value?.showModal({
+        title: 'Reset Layout?',
+        message: `Reset "${page.name}" to its default layout? All widget positions will be lost.`,
+        confirmText: 'Reset',
+        cancelText: 'Cancel',
+        showCancel: true,
+        confirmClass: 'btn-danger',
+      });
+      if (!ok) return;
+      const dw = page.route ? getDefaultLayout(page.route) : [];
+      store.dispatch('widgetLayout/resetPageToDefault', { pageId: page.id, defaultWidgets: dw });
     }
 
     // Ensure a page exists for the current screen (synchronous for instant render)
@@ -613,6 +629,7 @@ export default {
       openContextMenu,
       modal,
       modalInputRef,
+      simpleModal,
       PAGE_ICONS,
       submitModal,
       cancelModal,

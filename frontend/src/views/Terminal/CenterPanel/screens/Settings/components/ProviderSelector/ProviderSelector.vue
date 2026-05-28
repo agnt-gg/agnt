@@ -134,6 +134,8 @@
 
     <!-- Custom Provider Dialog -->
     <CustomProviderDialog :is-open="isDialogOpen" :edit-provider="editingProvider" @close="closeDialog" @saved="handleProviderSaved" />
+
+    <SimpleModal ref="simpleModal" />
   </div>
 </template>
 
@@ -148,6 +150,7 @@ import { getToolSupportWarning } from '@/store/app/toolSupport.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import RefreshModelsButton from '@/components/common/RefreshModelsButton.vue';
 import ReasoningControl from '@/components/common/ReasoningControl.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import { DEPLOYMENT_CONFIG } from '@/tt.config.js';
 
 export default {
@@ -158,10 +161,12 @@ export default {
     Tooltip,
     RefreshModelsButton,
     ReasoningControl,
+    SimpleModal,
   },
   setup() {
     const providerSelect = ref(null);
     const modelSelect = ref(null);
+    const simpleModal = ref(null);
     const store = useStore();
     const isLocalServerRunning = ref(false);
     const isDialogOpen = ref(false);
@@ -538,9 +543,15 @@ export default {
       if (!currentProvider) return;
 
       // Confirm deletion
-      if (!confirm(`Are you sure you want to delete "${currentProvider.provider_name}"?`)) {
-        return;
-      }
+      const confirmed = await simpleModal.value?.showModal({
+        title: 'Delete Provider?',
+        message: `Are you sure you want to delete "${currentProvider.provider_name}"?`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        showCancel: true,
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
 
       try {
         await store.dispatch('aiProvider/deleteCustomProvider', selectedProvider.value);
@@ -565,7 +576,12 @@ export default {
         }
       } catch (error) {
         console.error('Failed to delete custom provider:', error);
-        alert('Failed to delete custom provider: ' + error.message);
+        await simpleModal.value?.showModal({
+          title: 'Delete Failed',
+          message: 'Failed to delete custom provider: ' + error.message,
+          confirmText: 'OK',
+          showCancel: false,
+        });
       }
     };
 
@@ -592,6 +608,7 @@ export default {
       handleModelSelected,
       providerSelect,
       modelSelect,
+      simpleModal,
       isDialogOpen,
       editingProvider,
       openCustomProviderDialog,

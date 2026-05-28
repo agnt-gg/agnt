@@ -197,6 +197,8 @@
           </div>
         </div>
       </Teleport>
+
+      <SimpleModal ref="simpleModal" />
     </template>
   </BaseScreen>
 </template>
@@ -208,6 +210,7 @@ import BaseScreen from '../../BaseScreen.vue';
 import GoalCard from './components/GoalCard.vue';
 import GoalsToolbar from './components/GoalsToolbar.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
 // Status sets shared across column filtering
 const DONE_SUCCESS = ['completed', 'validated'];
@@ -220,6 +223,7 @@ export default {
     GoalCard,
     GoalsToolbar,
     Tooltip,
+    SimpleModal,
   },
   emits: ['screen-change'],
   setup(props, { emit }) {
@@ -227,6 +231,7 @@ export default {
     const playSound = inject('playSound', () => {});
     const baseScreenRef = ref(null);
     const toolbarRef = ref(null);
+    const simpleModal = ref(null);
     const terminalLines = ref([]);
     const selectedGoalId = ref(null);
 
@@ -407,7 +412,15 @@ export default {
     };
 
     const deleteGoal = async (goal) => {
-      if (!confirm(`Are you sure you want to delete goal "${goal.title}"?`)) return;
+      const confirmed = await simpleModal.value?.showModal({
+        title: 'Delete Goal?',
+        message: `Are you sure you want to delete goal "${goal.title}"?`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        showCancel: true,
+        confirmClass: 'btn-danger',
+      });
+      if (!confirmed) return;
       try {
         await store.dispatch('goals/deleteGoal', goal.id);
         terminalLines.value.push(`Deleted goal: ${goal.title}`);
@@ -560,6 +573,7 @@ export default {
     return {
       baseScreenRef,
       toolbarRef,
+      simpleModal,
       terminalLines,
       columns,
       doneSuccessGoals,
