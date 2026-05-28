@@ -15,6 +15,9 @@ backend/plugins/installed/
 # AGNT
 .agnt/
 
+# Local git worktrees
+.worktrees/
+
 # Build outputs
 dist/
 out/
