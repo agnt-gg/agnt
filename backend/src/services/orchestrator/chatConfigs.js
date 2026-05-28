@@ -5,6 +5,11 @@ import { buildUnifiedSystemPrompt } from './system-prompts/buildUnifiedPrompt.js
 export const AGENT_DEFAULT_TOOLS = new Set([
   'discover_tools',
   'web_search',
+  // Memory recall — default-on for every saved agent chat. Toggleable from
+  // the per-channel tool selector if the user wants to opt out.
+  'recall',
+  'list_recent',
+  'get_trace',
 ]);
 
 const CHAT_OVERRIDES = {
@@ -262,12 +267,19 @@ function isUniversalToolName(name) {
 // mcp_client is a universal capability — every sidebar chat needs awareness
 // of MCP servers regardless of its specialty. Including it in every list so
 // the strict-scoping introduced in v0.5.7 doesn't accidentally hide it.
+// Memory recall tools — default-on for every sidebar chat. They're not
+// "specialty" in the page-specific sense (the page works without them) but
+// they're useful enough across surfaces that we include them in the default
+// tool list so first-open chats have them. The frontend treats them as
+// regular toggleable tools — users can turn them off per-channel.
+const MEMORY_DEFAULTS = ['recall', 'list_recent', 'get_trace'];
+
 const SIDEBAR_SPECIALTY = {
-  agent: ['generate_agent', 'modify_agent', 'save_agent', 'load_agent', 'delete_agent', 'list_agents', 'run_agent', 'get_agnt_api', 'mcp_client'],
-  workflow: ['update_workflow', 'revert_workflow', 'list_workflow_versions', 'create_checkpoint', 'get_available_tool_node_types', 'get_node_type_schema', 'start_workflow', 'stop_workflow', 'get_agnt_api', 'mcp_client'],
-  tool: ['generate_tool_update', 'save_tool', 'load_tool', 'delete_tool', 'list_tools', 'run_tool', 'get_agnt_api', 'mcp_client'],
-  widget: ['edit_widget_code', 'generate_widget', 'update_widget_config', 'save_widget', 'load_widget', 'get_agnt_api', 'mcp_client'],
-  artifact: ['read_file', 'write_file', 'edit_file', 'list_files', 'query_data', 'get_agnt_api', 'mcp_client'],
+  agent: ['generate_agent', 'modify_agent', 'save_agent', 'load_agent', 'delete_agent', 'list_agents', 'run_agent', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
+  workflow: ['update_workflow', 'revert_workflow', 'list_workflow_versions', 'create_checkpoint', 'get_available_tool_node_types', 'get_node_type_schema', 'start_workflow', 'stop_workflow', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
+  tool: ['generate_tool_update', 'save_tool', 'load_tool', 'delete_tool', 'list_tools', 'run_tool', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
+  widget: ['edit_widget_code', 'generate_widget', 'update_widget_config', 'save_widget', 'load_widget', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
+  artifact: ['read_file', 'write_file', 'edit_file', 'list_files', 'query_data', 'get_agnt_api', 'mcp_client', ...MEMORY_DEFAULTS],
 };
 
 function detectSidebarSpecialty(context) {

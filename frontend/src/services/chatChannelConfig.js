@@ -28,6 +28,17 @@ const STORAGE_KEY = 'agnt_chat_channel_configs';
 // mcp_client is included in every sidebar default — MCP awareness is a
 // universal capability. v0.5.7 added strict whitelist enforcement; without
 // adding mcp_client here it would be hidden from every sidebar chat.
+// "Remember anything" memory layer — these three tools are default-ON for
+// every chat surface, but the user can opt out per-channel via the tool
+// selector. Mirrors the backend's AGENT_DEFAULT_TOOLS / SIDEBAR_SPECIALTY
+// inclusion of these names: when a channel has no saved enabledTools yet,
+// these get checked alongside the specialty set on first open.
+export const UNIVERSAL_DEFAULT_ON_TOOLS = [
+  'recall',
+  'list_recent',
+  'get_trace',
+];
+
 const SIDEBAR_DEFAULTS = {
   agent: [
     'generate_agent',
@@ -107,6 +118,7 @@ export function getDefaultEnabledTools(channelKey) {
 export function getSpecialtyToolNames(channelKey) {
   return getDefaultEnabledTools(channelKey);
 }
+
 
 function readAll() {
   try {
@@ -194,17 +206,25 @@ export function resolveChannelEnabledTools(channelKey) {
 
   const cfg = getChannelConfig(channelKey);
   if (cfg && Array.isArray(cfg.enabledTools)) {
+    // Saved channel — specialty is the only forced inclusion (it's locked
+    // in the UI). Saved enabledTools reflects the user's per-channel toggle
+    // state including whether they opted out of memory tools; respect it
+    // exactly without re-injecting any defaults.
     if (specialty.length > 0) {
       return Array.from(new Set([...specialty, ...cfg.enabledTools]));
     }
     return cfg.enabledTools;
   }
 
-  // No save yet for this channel.
-  if (specialty.length > 0) return specialty;
+  // No save yet for this channel — first open.
+  if (specialty.length > 0) {
+    // Sidebar chat: specialty (locked) + memory defaults (toggleable but
+    // checked-on by default).
+    return Array.from(new Set([...specialty, ...UNIVERSAL_DEFAULT_ON_TOOLS]));
+  }
 
-  // Channel has no specialty set (orchestrator / unknown) — fall back to
-  // legacy global list, otherwise let the backend pick its own default.
+  // Orchestrator / unknown — fall back to legacy global list, otherwise
+  // let the backend pick its own default (DEFAULT_TOOLS includes memory).
   try {
     const legacy = localStorage.getItem('agnt_enabled_tools');
     if (legacy) {

@@ -481,6 +481,47 @@ MCP server tools are exposed as first-class tools with namespaced names of the f
 
 If a user asks something an MCP tool can do (e.g., a Notion search, a Linear issue lookup, a Sentry incident query), prefer the matching \`mcp__\` tool over a manual API call. The legacy \`mcp_client\` tool is still available for low-level operations (introspecting server capabilities, calling tools by raw name) but you shouldn't normally need it.`;
 
+export const MEMORY_RECALL_GUIDANCE = `MEMORY & HISTORY RECALL (BUILT-IN — ALWAYS AVAILABLE):
+
+You have persistent, searchable memory of everything the user has done in AGNT: past conversations, agent/orchestrator runs (with prompts, responses, tool calls, errors), generated content outputs, extracted insights, agent-memory facts, and workflow version history. Use it. Do NOT fall back to execute_javascript_code, execute_shell_command, get_agnt_api, or filesystem probing for history questions — those are slow, expensive, and miss data the memory layer already indexes.
+
+WHEN TO USE THESE TOOLS:
+Call them whenever the user asks about the past or wants you to find something previously discussed/built/produced. Trigger phrases include — but aren't limited to:
+- "remember when…", "do you remember…", "did we ever…"
+- "what did you/we do last week / yesterday / earlier / before"
+- "find that conversation about…", "search my history for…"
+- "show me the trace / execution / run where…"
+- "where did we leave off on X", "what's the status of Y"
+
+THE THREE TOOLS (all numeric params are INTEGERS — emit as 30, not 30.0):
+
+1. \`list_recent\` — "What happened recently?" Date-bounded summary, no keyword. Default for vague time-based questions like "what did you do last week".
+   Parameters: \`days\` (integer, default 7), \`kind\` (optional, one of conversations | executions | outputs | insights | memory | versions), \`limit\` (integer, default 100, max 500).
+   Example call: \`{ "days": 7, "limit": 50 }\`
+   Example response row: \`{ "kind": "execution", "id": "<uuid>", "timestamp": "<ISO timestamp>", "title": "Orchestrator run · completed", "snippet": "<first ~80 chars of the user's prompt>", "meta": { "execution_id": "<uuid>", "conversation_id": "<uuid>", "status": "completed" } }\`
+
+2. \`recall\` — Keyword search across all six sources, ranked by relevance (BM25, lower score = better). Use when the user mentions a topic ("the API integration", "the dashboard redesign", "that bug we hit yesterday", "last quarter's report"). Tokens are AND-ed and prefix-matched, so a single keyword like \`"deploy"\` also catches \`"deployment"\` and \`"deploys"\`.
+   Parameters: \`query\` (string, optional — if absent behaves like \`list_recent\` over the date range), \`since\` (ISO-8601 string, optional), \`until\` (ISO-8601 string, optional), \`sources\` (array of strings, optional, defaults to all six), \`limit\` (integer, default 50, max 200).
+   Example calls:
+     \`{ "query": "<keyword the user mentioned>", "limit": 20 }\`
+     \`{ "query": "<topic>", "since": "<ISO date>", "sources": ["conversations","memory"], "limit": 10 }\`
+
+3. \`get_trace\` — Full detail for one agent/orchestrator run: the user's exact prompt, your exact final response, every tool call with input/output/error, timestamps, tokens, cost. Use this to reconstruct exactly what happened in a specific run.
+   Parameters: \`execution_id\` (string, REQUIRED) — get it from a \`recall\`/\`list_recent\` result row where \`kind === "execution"\`; it lives at \`result.meta.execution_id\`.
+   Example call: \`{ "execution_id": "9acd74bc-34e5-4f25-bde2-1aef13965318" }\`
+
+RECOMMENDED WORKFLOW:
+1. Match the question to the right tool: vague-recent → \`list_recent\`; topic/keyword → \`recall\`; specific run → \`get_trace\`.
+2. If \`recall\` / \`list_recent\` returns execution rows that look relevant, follow up with \`get_trace\` on the top 1-3 to read the actual prompt/response/tool calls before summarizing — don't guess what happened from the snippet alone.
+3. Summarize back to the user with concrete citations: timestamp, kind, a short snippet, and (for executions) the trace id. Citation template:
+   - "On <YYYY-MM-DD> you asked me to <short paraphrase of the user's prompt>. I produced <artifact(s)> (trace <first-8-chars-of-execution_id>…, conversation <first-8-chars-of-conversation_id>…)."
+
+WHAT NOT TO DO:
+- Don't say "I don't have access to your history" or "I can't see what we did last week" — you can. Call \`list_recent\` or \`recall\` first.
+- Don't reach for \`execute_javascript_code\` to fetch from \`/api/executions/agents/list\` — that's what these tools already do, faster and safer.
+- Don't truncate the trace_id when citing; either show the full UUID or the first 8 chars + ellipsis. The user may want to paste it back at you.
+- Don't pass non-integer values (e.g. \`30.5\`) where \`days\` or \`limit\` is expected — those params are integer-typed.`;
+
 export const CRITICAL_TOOL_RESPONSE_RULES = `CRITICAL TOOL RESPONSE RULES (MUST FOLLOW):
 ⚠️ AFTER CALLING ANY TOOL, YOU **MUST** PROVIDE A TEXT RESPONSE ⚠️
 

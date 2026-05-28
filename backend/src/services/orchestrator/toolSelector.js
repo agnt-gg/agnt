@@ -28,6 +28,13 @@ export const DEFAULT_TOOLS = new Set([
   'database_operation',
   'web_search',
   'web_scrape',
+  // "Remember anything" memory layer — must be available on every chat
+  // surface so the assistant can answer "what did we do last week?",
+  // "find that earlier conversation about X", etc. without falling back
+  // to ad-hoc execute_javascript probes.
+  'recall',
+  'list_recent',
+  'get_trace',
 ]);
 
 /**
@@ -141,6 +148,9 @@ export const TOOL_GROUPS = {
   memory: [
     'save_agent_memory',
     'get_agent_memories',
+    'recall',
+    'list_recent',
+    'get_trace',
   ],
 };
 
@@ -160,7 +170,7 @@ export const GROUP_TRIGGERS = {
   goal_management: /\b(goal|task|tasks|progress|evaluate|golden\s*standard)\b/i,
   media: /\b(image|photo|picture|vision|draw|dall[\s-]?e|generate\s+(?:a\s+)?(?:photo|picture|image)|analyze\s+(?:this\s+)?(?:image|photo|picture)|screenshot|ocr)\b/i,
   email: /\b(email|e-mail|mail|compose|smtp|send\s+(?:a\s+)?(?:message|letter))\b/i,
-  memory: /\b(remember|memory|recall|forget|memorize)\b/i,
+  memory: /\b(remember|memory|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|history|trace|traces|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
 };
 
 /**
@@ -178,7 +188,7 @@ export const GROUP_DESCRIPTIONS = {
   goal_management: 'Create, execute, monitor, evaluate, and manage goals and goal tasks',
   media: 'Image analysis (vision/OCR) and image generation (DALL-E, Gemini, Grok)',
   email: 'Send emails via SMTP',
-  memory: 'Save and retrieve agent memories across conversations',
+  memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
 };
 
 /**

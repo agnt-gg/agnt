@@ -11,6 +11,7 @@ import {
   IMPORTANT_GUIDELINES,
   CHART_CHEATSHEET,
   MCP_TOOL_USE_RULES,
+  MEMORY_RECALL_GUIDANCE,
   CRITICAL_TOOL_RESPONSE_RULES,
 } from './orchestrator-chat.js';
 import { ASYNC_EXECUTION_GUIDANCE } from './async-execution.js';
@@ -115,6 +116,14 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
 
   if (skillsCatalogSection) parts.push(skillsCatalogSection);
   if (memorySection) parts.push(memorySection);
+
+  // "Remember anything" recall layer — recall/list_recent/get_trace are in
+  // DEFAULT_TOOLS and UNIVERSAL_TOOLS, so they're on every chat surface.
+  // Gate on has('recall') anyway so the guidance disappears cleanly if a
+  // future channel ever turns them off.
+  if (has('recall') || has('list_recent') || has('get_trace')) {
+    parts.push(MEMORY_RECALL_GUIDANCE);
+  }
 
   // Gate the long capability descriptions on whether the underlying tool
   // is actually available for this channel.

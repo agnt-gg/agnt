@@ -22,6 +22,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Group Routes](#group-routes)
 - [Layout Routes](#layout-routes)
 - [MCP Routes](#mcp-routes)
+- [Memory Routes](#memory-routes)
 - [Model Routes](#model-routes)
 - [NPM Routes](#npm-routes)
 - [Orchestrator Routes](#orchestrator-routes)
@@ -2128,6 +2129,137 @@ The unified evolution system extracts actionable insights from agent chats, goal
   "deleted": true
 }
 ```
+
+---
+
+## Memory Routes
+
+Base path: `/api/memory`
+
+Hybrid full-text search across the user's persistent history — the "remember anything" layer. Backed by SQLite FTS5 virtual tables that shadow `conversation_logs`, `agent_executions`, `content_outputs`, `insights`, `agent_memory`, and `workflow_versions`. Triggers keep the indexes in sync; the source tables remain the system of record.
+
+The same surface is also exposed to the chat orchestrator as the `recall`, `list_recent`, and `get_trace` tools.
+
+### Search
+
+**GET** `/search`
+
+- **Authentication**: Required
+- **Description**: Hybrid keyword + date-range search across all (or a subset of) memory sources. When `q` is provided, results are ranked by BM25 relevance; when omitted, the endpoint falls back to time-ordered recent rows (same shape as `/recent`).
+- **Query Parameters**:
+  - `q` (string, optional): Keyword(s). Tokens are sanitized (alphanumeric + `-_` only), prefix-matched, and AND-ed. e.g. `q=pokemon mew` matches both terms with prefix expansion.
+    - **Alias**: `query` is accepted as a synonym for `q`. If both are sent, `q` wins.
+  - `since` (ISO-8601, optional): Lower bound on the source's timestamp column (e.g. `2026-05-19T00:00:00Z`).
+  - `until` (ISO-8601, optional): Upper bound.
+  - `sources` (CSV, optional): Subset of `conversations,executions,outputs,insights,memory,versions`. Omit to search all.
+  - `limit` (integer, optional): Max results to return. Default 50, cap 200.
+- **Example**: `GET /api/memory/search?q=pokemon&since=2026-05-19T00:00:00Z&sources=conversations,outputs&limit=20`
+- **Response**:
+
+```json
+{
+  "success": true,
+  "count": 12,
+  "results": [
+    {
+      "kind": "conversation",
+      "id": "conversation-uuid",
+      "timestamp": "2026-05-24T19:23:00Z",
+      "title": "make a pokemon red mew starter save",
+      "snippet": "...generated «pokemon» starter screenshots...",
+      "score": -7.42,
+      "meta": { "conversation_id": "conversation-uuid", "row_id": 4221 }
+    },
+    {
+      "kind": "execution",
+      "id": "execution-uuid",
+      "timestamp": "2026-05-24T19:24:11Z",
+      "title": "Orchestrator run · completed",
+      "snippet": "...wrote ascii_screen.py for «pokemon»...",
+      "score": -6.91,
+      "meta": {
+        "execution_id": "execution-uuid",
+        "conversation_id": "conversation-uuid",
+        "agent_id": null,
+        "agent_name": "Orchestrator",
+        "status": "completed",
+        "provider": "OpenAI-Codex",
+        "model": "gpt-5.5",
+        "end_time": "2026-05-24T19:25:03Z"
+      }
+    }
+  ]
+}
+```
+
+Each result row is normalized to `{ kind, id, timestamp, title, snippet, score?, meta }`. `kind` is one of `conversation | execution | output | insight | memory | version`. `score` is BM25 (lower = more relevant) and is only present when `q` was provided. `meta` carries kind-specific identifiers — most importantly `meta.execution_id`, which you can pass to `/trace/:id` for the full trace.
+
+### Recent
+
+**GET** `/recent`
+
+- **Authentication**: Required
+- **Description**: Time-bounded "what happened recently?" lookup without a keyword. Useful for "what did you do last week" style questions where the user wants a chronological summary, not a search.
+- **Query Parameters**:
+  - `days` (integer, optional): Days back from now. Default 7. Minimum 1.
+  - `kind` (string, optional): Restrict to a single source: `conversations | executions | outputs | insights | memory | versions`. Omit to include all.
+  - `limit` (integer, optional): Max results to return. Default 100, cap 500.
+- **Example**: `GET /api/memory/recent?days=7&kind=executions&limit=50`
+- **Response**: Same shape as `/search`, but rows are sorted by `timestamp DESC` and have no `score` field.
+
+### Get Trace Detail
+
+**GET** `/trace/:executionId`
+
+- **Authentication**: Required
+- **Description**: Full detail for a single `agent_executions` row plus its `agent_tool_executions` children. Convenience wrapper around `GET /api/executions/agents/:id` that additionally parses each tool call's `input` / `output` JSON.
+- **Parameters**:
+  - `executionId` (path): The `agent_executions.id` UUID. Most easily obtained from `result.meta.execution_id` on a `/search` or `/recent` result.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "trace": {
+    "id": "execution-uuid",
+    "agentId": null,
+    "agentName": "Orchestrator",
+    "conversationId": "conversation-uuid",
+    "userId": "user-uuid",
+    "status": "completed",
+    "startTime": "2026-05-24T19:24:11Z",
+    "endTime": "2026-05-24T19:25:03Z",
+    "initialPrompt": "make a pokemon red mew starter save",
+    "finalResponse": "Created the starter save and saved screenshots to ...",
+    "provider": "OpenAI-Codex",
+    "model": "gpt-5.5",
+    "totalTokens": 66319,
+    "estimatedCost": 0.0906,
+    "toolExecutions": [
+      {
+        "id": "tool-exec-uuid",
+        "tool_name": "execute_shell_command",
+        "start_time": "2026-05-24T19:24:14Z",
+        "end_time": "2026-05-24T19:24:15Z",
+        "status": "completed",
+        "input": { "command": "node inspect_save.py", "cwd": "." },
+        "output": { "success": true, "stdout": "..." },
+        "error": null,
+        "credits_used": 0.12
+      }
+    ]
+  }
+}
+```
+
+If the trace doesn't exist (or belongs to a different user), responds `404 { success: false, error: "Trace not found" }`.
+
+### Implementation Notes
+
+- FTS5 indexes are created on first boot via `setupFullTextSearch()` in `backend/src/models/database/fts.js`. Existing rows are backfilled once; thereafter `AFTER INSERT / UPDATE / DELETE` triggers keep the FTS tables in sync with their source.
+- Keyword sanitization strips everything but `[a-zA-Z0-9_-]`, then appends `*` to each surviving token for prefix expansion. This is both safe (no FTS5 syntax injection) and forgiving (`pokemon` matches `pokemons`, `pokemon-red`).
+- All queries are scoped to `req.user.userId` — there is no cross-user visibility. `workflow_versions` doesn't store `user_id` directly, so the versions source joins through `workflows.user_id` for scoping.
+- Wrong-method requests (e.g. `POST /api/memory/search`) respond `405` with `{ success: false, error: "Method POST not allowed. Use GET ..." }` and an `Allow: GET` header — never an HTML error page.
 
 ---
 

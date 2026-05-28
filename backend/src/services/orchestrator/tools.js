@@ -3874,6 +3874,171 @@ export const TOOLS = {
       }
     },
   },
+
+  recall: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'recall',
+        description:
+          'Hybrid full-text search across the user\'s persistent history: conversations, agent/orchestrator runs, generated content outputs, extracted insights, agent memory, and workflow versions. Use this whenever the user asks "what did you do", "find that earlier conversation", "search my history", "did we ever build X", etc. Results are ranked by relevance (BM25). Returns up to `limit` rows with kind, id, timestamp, title, snippet, and a `meta` object containing IDs you can pass to `get_trace` for full detail.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Keyword(s) to search for. Tokens are AND-ed and prefix-matched (e.g. "pokemon" matches "pokémon-red"). If omitted, returns the most recent rows in the date range.',
+            },
+            since: {
+              type: 'string',
+              description: 'ISO-8601 lower bound (inclusive). e.g. "2026-05-19T00:00:00Z". Optional.',
+            },
+            until: {
+              type: 'string',
+              description: 'ISO-8601 upper bound (inclusive). Optional.',
+            },
+            sources: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: ['conversations', 'executions', 'outputs', 'insights', 'memory', 'versions'],
+              },
+              description: 'Subset of sources to search. Omit to search all.',
+            },
+            limit: {
+              type: 'integer',
+              description: 'Max results to return (default 50, max 200).',
+            },
+          },
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      try {
+        const { query, since, until, sources, limit } = args || {};
+        let userId = context?.userId;
+        if (!userId && authToken) {
+          try {
+            const decoded = jwt.decode(authToken.replace('Bearer ', ''));
+            userId = decoded?.id || decoded?.userId || decoded?.user_id || decoded?.sub || null;
+          } catch (_) { /* ignore */ }
+        }
+        if (!userId) return JSON.stringify({ success: false, error: 'User context required for recall' });
+
+        const MemorySearchService = (await import('../MemorySearchService.js')).default;
+        const results = await MemorySearchService.search({
+          userId,
+          q: query,
+          since,
+          until,
+          sources,
+          limit: Math.min(parseInt(limit, 10) || 50, 200),
+        });
+        return JSON.stringify({ success: true, count: results.length, results });
+      } catch (error) {
+        console.error('[recall] Error:', error);
+        return JSON.stringify({ success: false, error: error.message });
+      }
+    },
+  },
+
+  list_recent: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'list_recent',
+        description:
+          'List the most recent rows from the user\'s history without a keyword filter. Use this for "what did you do last week" or "show me my recent activity" questions where the user is asking for a date-bounded summary, not a search. Returns conversations, executions, outputs, insights, memories, and workflow versions interleaved by timestamp DESC. Each row has the same shape as `recall`.',
+        parameters: {
+          type: 'object',
+          properties: {
+            days: {
+              type: 'integer',
+              description: 'Number of days back from now to include (default 7).',
+            },
+            kind: {
+              type: 'string',
+              enum: ['conversations', 'executions', 'outputs', 'insights', 'memory', 'versions'],
+              description: 'Optional: limit to a single source kind. Omit to include all.',
+            },
+            limit: {
+              type: 'integer',
+              description: 'Max results to return (default 100, max 500).',
+            },
+          },
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      try {
+        const { days, kind, limit } = args || {};
+        let userId = context?.userId;
+        if (!userId && authToken) {
+          try {
+            const decoded = jwt.decode(authToken.replace('Bearer ', ''));
+            userId = decoded?.id || decoded?.userId || decoded?.user_id || decoded?.sub || null;
+          } catch (_) { /* ignore */ }
+        }
+        if (!userId) return JSON.stringify({ success: false, error: 'User context required for list_recent' });
+
+        const MemorySearchService = (await import('../MemorySearchService.js')).default;
+        const results = await MemorySearchService.listRecent({
+          userId,
+          days: Math.max(parseInt(days, 10) || 7, 1),
+          kind: kind || undefined,
+          limit: Math.min(parseInt(limit, 10) || 100, 500),
+        });
+        return JSON.stringify({ success: true, count: results.length, results });
+      } catch (error) {
+        console.error('[list_recent] Error:', error);
+        return JSON.stringify({ success: false, error: error.message });
+      }
+    },
+  },
+
+  get_trace: {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'get_trace',
+        description:
+          'Fetch full detail for a single agent/orchestrator run: the user\'s prompt, your final response, every tool call with its input/output/error, timestamps, token usage, and cost. Pass the `execution_id` you got back from `recall` or `list_recent` (it lives in result.meta.execution_id for kind=execution). Use this to reconstruct exactly what happened in a past run.',
+        parameters: {
+          type: 'object',
+          properties: {
+            execution_id: {
+              type: 'string',
+              description: 'The agent_executions row id (UUID).',
+            },
+          },
+          required: ['execution_id'],
+        },
+      },
+    },
+    execute: async (args, authToken, context) => {
+      try {
+        const { execution_id } = args || {};
+        if (!execution_id) return JSON.stringify({ success: false, error: 'execution_id is required' });
+
+        let userId = context?.userId;
+        if (!userId && authToken) {
+          try {
+            const decoded = jwt.decode(authToken.replace('Bearer ', ''));
+            userId = decoded?.id || decoded?.userId || decoded?.user_id || decoded?.sub || null;
+          } catch (_) { /* ignore */ }
+        }
+        if (!userId) return JSON.stringify({ success: false, error: 'User context required for get_trace' });
+
+        const MemorySearchService = (await import('../MemorySearchService.js')).default;
+        const trace = await MemorySearchService.getTrace({ executionId: execution_id, userId });
+        if (!trace) return JSON.stringify({ success: false, error: 'Trace not found' });
+        return JSON.stringify({ success: true, trace });
+      } catch (error) {
+        console.error('[get_trace] Error:', error);
+        return JSON.stringify({ success: false, error: error.message });
+      }
+    },
+  },
 };
 
 
@@ -4033,13 +4198,31 @@ function validateToolArguments(toolName, args, schema) {
       }
     }
 
-    // Check parameter types
+    // Check parameter types.
+    //
+    // JSON Schema distinguishes `integer` and `number`, but JavaScript only
+    // has one numeric type — `typeof 20` is `'number'`. Naive string equality
+    // therefore rejects every well-formed integer the LLM emits (JSON has no
+    // way to mark `20` as "the integer 20" vs "the number 20"). Treat an
+    // integer-typed schema as satisfied by any JS number whose value is an
+    // integer; non-integer floats (20.5) still fail correctly.
+    //
+    // Likewise accept JSON Schema's `array` keyword regardless of how the
+    // surrounding type-tagging shakes out (already handled above via the
+    // explicit Array.isArray check).
     for (const [paramName, paramValue] of Object.entries(args)) {
       if (properties[paramName]) {
         const expectedType = properties[paramName].type;
         const actualType = Array.isArray(paramValue) ? 'array' : typeof paramValue;
 
-        if (expectedType && actualType !== expectedType && paramValue !== null && paramValue !== undefined) {
+        if (!expectedType || paramValue === null || paramValue === undefined) continue;
+
+        let matches = actualType === expectedType;
+        if (!matches && expectedType === 'integer' && actualType === 'number') {
+          matches = Number.isInteger(paramValue);
+        }
+
+        if (!matches) {
           invalidParams.push({
             param: paramName,
             expected: expectedType,

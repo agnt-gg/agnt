@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import WebhookModel from '../WebhookModel.js';
 import pathManager from '../../utils/PathManager.js';
+import { setupFullTextSearch } from './fts.js';
 
 // Canonical data dir comes from PathManager (see PRD-060). PathManager itself
 // already creates the directory and falls back to a temp dir on failure.
@@ -1226,6 +1227,14 @@ const dbReady = createTables()
   })
   .then(() => {
     console.log('All migrations completed successfully');
+  })
+  .then(async () => {
+    // Set up FTS5 search indexes (memory layer) before announcing readiness.
+    try {
+      await setupFullTextSearch(db);
+    } catch (error) {
+      console.error('Error setting up full-text search:', error);
+    }
   })
   .then(async () => {
     console.log('Database initialization complete');

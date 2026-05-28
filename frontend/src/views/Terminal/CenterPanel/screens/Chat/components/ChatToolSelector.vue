@@ -118,7 +118,7 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { API_CONFIG } from '@/../user.config.js';
-import { getChannelConfig, setChannelEnabledTools, getDefaultEnabledTools, getSpecialtyToolNames } from '@/services/chatChannelConfig.js';
+import { getChannelConfig, setChannelEnabledTools, getDefaultEnabledTools, getSpecialtyToolNames, UNIVERSAL_DEFAULT_ON_TOOLS } from '@/services/chatChannelConfig.js';
 
 // Legacy global keys, kept as a fallback for any chat without a channelKey
 // (and for backwards compatibility with users who never visited a per-channel
@@ -149,17 +149,28 @@ export default {
       return new Set(getSpecialtyToolNames(props.channelKey) || []);
     });
     var hasSpecialty = computed(function () { return specialtyNames.value.size > 0; });
+
     var isLocked = function (name) { return specialtyNames.value.has(name); };
+
+    // Memory recall tools — default-on for every chat on FIRST open, but
+    // toggleable (no lock). Once the user saves a per-channel selection,
+    // their choices stick — we do NOT re-inject these into already-saved
+    // sets, so unchecking sticks across sessions.
+    var universalDefaultOnNames = new Set(UNIVERSAL_DEFAULT_ON_TOOLS);
 
     // Backend returns Built In + Plugins. For sidebar chats with a specialty
     // set, we split Built In into Specialty (locked) + System Tools, leaving
     // Plugins alone. Orchestrator and any channel without specialty keep the
     // backend's original two-bucket layout.
+    //
+    // Memory recall tools (recall / list_recent / get_trace) are default-ON
+    // for every chat on first open (see fetchTools / readSavedEnabled) but
+    // are TOGGLEABLE — they live in System Tools (sidebar) or Built In
+    // (orchestrator) and the user can opt out per channel. They are NOT
+    // pulled into a separate group.
+    //
     // Canonical order in the dropdown:
     //   Specialty Tools (locked) → System Built In Tools → Plugins → MCP
-    // Specialty/System are split out of the backend's `builtin` bucket only
-    // when this channel has a specialty set (sidebar chats); the
-    // orchestrator skips that split and keeps the backend's order.
     var reorganizeCategories = function (raw) {
       var builtIn = raw.find(function (c) { return c.id === 'builtin'; });
       var plugins = raw.find(function (c) { return c.id === 'plugins'; });
@@ -276,19 +287,20 @@ export default {
 
         var savedEnabled = readSavedEnabled();
         if (savedEnabled) {
-          // Channel has a saved list — keep just those names enabled. Then
-          // unconditionally union in the specialty set so locked tools are
-          // never displayed as off (and never sent as off).
+          // Channel has a saved list — keep just those names enabled. Specialty
+          // is always unioned in (it's locked in the UI). Memory defaults are
+          // NOT re-unioned: if the user explicitly unchecked them, that choice
+          // must stick.
           var savedSet = new Set(savedEnabled);
           specialtyNames.value.forEach(function (n) { savedSet.add(n); });
           enabledTools.value = new Set([...allNames].filter(function (n) {
             return savedSet.has(n);
           }));
         } else if (hasSpecialty.value) {
-          // First open in a sidebar chat — only specialty tools are enabled.
-          // The user opts in to System / Plugins per chat from the selector.
+          // First open in a sidebar chat — specialty (locked) + universal
+          // default-on memory tools enabled. Memory tools are toggleable.
           enabledTools.value = new Set([...allNames].filter(function (n) {
-            return specialtyNames.value.has(n);
+            return specialtyNames.value.has(n) || universalDefaultOnNames.has(n);
           }));
         } else {
           // First open in a non-sidebar channel (orchestrator) — all on.
@@ -687,6 +699,8 @@ export default {
   font-size: 0.85em;
   font-weight: 600;
   color: var(--color-light-med-navy);
+  /* Keep hyphenated category names on a single line. */
+  white-space: nowrap;
 }
 
 .section-badge {
@@ -790,6 +804,8 @@ export default {
   flex: 1;
   font-weight: 500;
   opacity: 0.95;
+  /* Same hyphen-wrap fix — MCP server names contain dashes. */
+  white-space: nowrap;
 }
 
 .cat-description.sub {
@@ -838,6 +854,11 @@ export default {
 .tool-name {
   color: var(--color-light-med-navy);
   font-family: var(--font-family-mono);
+  /* Hyphenated tool names (e.g. "chrome-devtools-mcp") must NOT break at
+     each hyphen. white-space: nowrap is the minimal, safe fix — anything
+     more (flex/min-width/overflow) interacts with the parent flex layout
+     and can collapse the name to zero width. */
+  white-space: nowrap;
 }
 
 /* Toggle switch — matches ChatProviderSelector */
