@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "0.5.17",
+      "date": "May 28, 2026",
+      "title": "Remember Anything Recall, Calendly Plugin & Codex Long-Chat Recovery - AGNT v0.5.17",
+      "type": "patch",
+      "features": [
+        { "name": "AGNT Now Remembers Anything You've Ever Said in Any Chat and Quietly Surfaces the Relevant Bits Back to Annie So She Doesn't Lose Your Context Between Sessions", "status": "new" },
+        { "name": "New Calendly Plugin Lets Annie and Workflows Book Meetings, Manage Events, and Trigger Off Every New Booking on Your Calendar", "status": "new" },
+        { "name": "New 'Create Widget From File' Button in Artifacts Turns Any Open File Into a Dashboard Widget Without Leaving the Editor", "status": "new" },
+        { "name": "All the Confirm, Alert, and Prompt Popups Across the App Now Use AGNT's Themed Modal Instead of the Browser's Plain White Box That Ignored Your Theme", "status": "updated" },
+        { "name": "Long Codex Chats Now Survive Mid-Stream Drops by Checking Your Token Budget Up Front, Retrying When the Stream Cuts Out, and Keeping Your Latest Message Pinned When Older Turns Have to Be Trimmed", "status": "updated" },
+        { "name": "Claude Code Sessions No Longer Sign You Out Halfway Through a Chat — the Newest Login Token Is Used on Every Request So Refreshes Just Work", "status": "bug" },
+        { "name": "The MCP Server Picker Now Shows Every Server You've Configured Instead of Quietly Hiding Some, and Slow Servers Get More Time to Respond Before Being Cut Off", "status": "updated" },
+        { "name": "Plugin Hot Reload Now Actually Loads Your New Code After a Rebuild Instead of Silently Running the Old Cached Version", "status": "bug" },
+        { "name": "Gemini Models Now Keep Their Thinking State Between Tool Calls So Multi-Step Reasoning Chains Stay Coherent Instead of Resetting Each Turn", "status": "bug" },
+        { "name": "The Dashboard Credits Chart Loads Much Faster and Stops Snapping Back to a Different Time Range Every Time You Open Settings", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.16",
       "date": "May 11, 2026",
       "title": "Universal Vision, Reveal in Folder & Codex Long-Chat Stability - AGNT v0.5.16",
@@ -544,6 +563,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-04-24T12:00:00Z"
+    "lastUpdated": "2026-05-28T12:00:00Z"
   }
 }

@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.5.16-blue.svg?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.17-blue.svg?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg?style=flat-square&logo=node.js" alt="Node">
   <img src="https://img.shields.io/badge/AI%20Providers-15+-blueviolet?style=flat-square" alt="15+ AI Providers">
@@ -235,8 +235,8 @@ Available tags:
 
 - `latest` / `full`: latest Full variant with browser automation
 - `lite`: latest Lite variant without browser automation
-- `v0.5.16` / `v0.5.16-full`: specific Full version
-- `v0.5.16-lite`: specific Lite version
+- `v0.5.17` / `v0.5.17-full`: specific Full version
+- `v0.5.17-lite`: specific Lite version
 
 ### 🏗️ Build Docker images from source
 
@@ -752,13 +752,13 @@ Lite mode removes browser automation source code. Agents, workflows, API integra
 AGNT uses tag-driven releases. Pushing a version tag triggers CI to build and publish multi-arch Docker images to `ghcr.io/agnt-gg/agnt`.
 
 ```bash
-# Patch release, for example 0.5.16 to 0.5.17
+# Patch release, for example 0.5.17 to 0.5.18
 npm run release:patch
 
-# Minor release, for example 0.5.16 to 0.6.0
+# Minor release, for example 0.5.17 to 0.6.0
 npm run release:minor
 
-# Major release, for example 0.5.16 to 1.0.0
+# Major release, for example 0.5.17 to 1.0.0
 npm run release:major
 ```
 
