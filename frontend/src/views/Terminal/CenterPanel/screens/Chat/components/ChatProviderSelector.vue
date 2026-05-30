@@ -593,7 +593,7 @@ export default {
 }
 
 .provider-dropdown {
-  margin-top: -60px;
+  margin-top: -202px;
   margin-left: -156px;
   background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
