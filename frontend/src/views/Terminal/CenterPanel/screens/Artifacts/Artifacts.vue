@@ -132,8 +132,40 @@
                 sandbox="allow-scripts allow-same-origin"
               ></iframe>
               <div v-else-if="isMarkdownFile && activeTab" ref="markdownPreviewRef" class="ce-markdown-preview" v-html="renderedMarkdown"></div>
-              <div v-else-if="isImageFile && activeTab" class="ce-media-preview">
-                <img :src="rawFileUrl" :alt="activeTab.name" />
+              <div
+                v-else-if="isImageFile && activeTab"
+                ref="imagePreviewRef"
+                class="ce-media-preview ce-image-preview"
+                @wheel="onImageWheel"
+                @mousedown="onImagePointerDown"
+                @contextmenu.prevent
+                @dblclick="resetImageZoom"
+              >
+                <img
+                  :src="rawFileUrl"
+                  :alt="activeTab.name"
+                  :style="imageTransformStyle"
+                  :class="{ 'is-panning': isPanningImage }"
+                  draggable="false"
+                />
+                <div class="ce-image-zoom-toolbar" @mousedown.stop @dblclick.stop>
+                  <Tooltip text="Zoom out">
+                    <button class="ce-preview-btn" @click="zoomOutImage" :disabled="imageZoom <= MIN_IMG_ZOOM">
+                      <i class="fas fa-search-minus"></i>
+                    </button>
+                  </Tooltip>
+                  <span class="ce-image-zoom-level">{{ Math.round(imageZoom * 100) }}%</span>
+                  <Tooltip text="Zoom in">
+                    <button class="ce-preview-btn" @click="zoomInImage" :disabled="imageZoom >= MAX_IMG_ZOOM">
+                      <i class="fas fa-search-plus"></i>
+                    </button>
+                  </Tooltip>
+                  <Tooltip text="Reset zoom">
+                    <button class="ce-preview-btn" @click="resetImageZoom">
+                      <i class="fas fa-compress-arrows-alt"></i>
+                    </button>
+                  </Tooltip>
+                </div>
               </div>
               <div v-else-if="isVideoFile && activeTab" class="ce-media-preview">
                 <video :src="rawFileUrl" controls />
@@ -1565,6 +1597,110 @@ export default {
       }),
     );
 
+    // ── Image preview zoom + pan ─────────────────────────────
+    const MIN_IMG_ZOOM = 0.1;
+    const MAX_IMG_ZOOM = 10;
+    const ZOOM_STEP = 1.25;
+    const imagePreviewRef = ref(null);
+    const imageZoom = ref(1);
+    const imagePanX = ref(0);
+    const imagePanY = ref(0);
+    const isPanningImage = ref(false);
+
+    const imageTransformStyle = computed(() => ({
+      transform: `translate(${imagePanX.value}px, ${imagePanY.value}px) scale(${imageZoom.value})`,
+      cursor: imageZoom.value > 1 ? (isPanningImage.value ? 'grabbing' : 'grab') : 'default',
+    }));
+
+    const clampZoom = (z) => Math.min(MAX_IMG_ZOOM, Math.max(MIN_IMG_ZOOM, z));
+
+    const resetImageZoom = () => {
+      imageZoom.value = 1;
+      imagePanX.value = 0;
+      imagePanY.value = 0;
+    };
+
+    // Zoom anchored to a specific container-relative point (cx, cy from center)
+    const zoomAtPoint = (factor, cx = 0, cy = 0) => {
+      const oldZoom = imageZoom.value;
+      const newZoom = clampZoom(oldZoom * factor);
+      if (newZoom === oldZoom) return;
+      const ratio = newZoom / oldZoom;
+      imagePanX.value = cx - (cx - imagePanX.value) * ratio;
+      imagePanY.value = cy - (cy - imagePanY.value) * ratio;
+      imageZoom.value = newZoom;
+      if (newZoom <= 1) {
+        imagePanX.value = 0;
+        imagePanY.value = 0;
+      }
+    };
+
+    const zoomInImage = () => zoomAtPoint(ZOOM_STEP);
+    const zoomOutImage = () => zoomAtPoint(1 / ZOOM_STEP);
+
+    const getContainerPoint = (clientX, clientY) => {
+      const container = imagePreviewRef.value;
+      if (!container) return { cx: 0, cy: 0 };
+      const rect = container.getBoundingClientRect();
+      return {
+        cx: clientX - (rect.left + rect.width / 2),
+        cy: clientY - (rect.top + rect.height / 2),
+      };
+    };
+
+    const onImageWheel = (e) => {
+      if (!imagePreviewRef.value) return;
+      e.preventDefault();
+      const { cx, cy } = getContainerPoint(e.clientX, e.clientY);
+      zoomAtPoint(e.deltaY < 0 ? 1.15 : 1 / 1.15, cx, cy);
+    };
+
+    // Unified pointer handler: distinguishes click (zoom) from drag (pan)
+    const PAN_THRESHOLD_PX = 4;
+    let pointerStart = null;
+    const onImagePointerMove = (e) => {
+      if (!pointerStart) return;
+      if (!isPanningImage.value) {
+        const dx = e.clientX - pointerStart.clientX;
+        const dy = e.clientY - pointerStart.clientY;
+        if (dx * dx + dy * dy < PAN_THRESHOLD_PX * PAN_THRESHOLD_PX) return;
+        // Only left-button drags pan; right-button drags stay treated as a click
+        if (pointerStart.button !== 0 || imageZoom.value <= 1) return;
+        isPanningImage.value = true;
+      }
+      imagePanX.value = e.clientX - pointerStart.panOriginX;
+      imagePanY.value = e.clientY - pointerStart.panOriginY;
+    };
+    const onImagePointerUp = (e) => {
+      document.removeEventListener('mousemove', onImagePointerMove);
+      document.removeEventListener('mouseup', onImagePointerUp);
+      const start = pointerStart;
+      pointerStart = null;
+      const wasPanning = isPanningImage.value;
+      isPanningImage.value = false;
+      if (!start || wasPanning) return;
+      // Treat as a click: left = zoom in, right = zoom out, anchored at cursor
+      const { cx, cy } = getContainerPoint(e.clientX, e.clientY);
+      if (start.button === 0) zoomAtPoint(ZOOM_STEP, cx, cy);
+      else if (start.button === 2) zoomAtPoint(1 / ZOOM_STEP, cx, cy);
+    };
+    const onImagePointerDown = (e) => {
+      if (e.button !== 0 && e.button !== 2) return;
+      e.preventDefault();
+      pointerStart = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        button: e.button,
+        panOriginX: e.clientX - imagePanX.value,
+        panOriginY: e.clientY - imagePanY.value,
+      };
+      document.addEventListener('mousemove', onImagePointerMove);
+      document.addEventListener('mouseup', onImagePointerUp);
+    };
+
+    // Reset zoom whenever the active image changes
+    watch(activeTabPath, () => resetImageZoom());
+
     // ── Chart/Viz rendering for markdown preview ─────────────
     const destroyVizInstances = () => {
       chartInstances.value.forEach((inst) => {
@@ -2092,6 +2228,17 @@ export default {
       isHtmlFile,
       isMarkdownFile,
       isImageFile,
+      imagePreviewRef,
+      imageZoom,
+      isPanningImage,
+      imageTransformStyle,
+      MIN_IMG_ZOOM,
+      MAX_IMG_ZOOM,
+      zoomInImage,
+      zoomOutImage,
+      resetImageZoom,
+      onImageWheel,
+      onImagePointerDown,
       isVideoFile,
       isAudioFile,
       isPdfFile,
@@ -2753,6 +2900,55 @@ export default {
   max-height: 100%;
   object-fit: contain;
   border-radius: 4px;
+}
+
+.ce-image-preview {
+  position: relative;
+  overflow: hidden;
+}
+
+.ce-image-preview img {
+  transform-origin: center center;
+  transition: transform 80ms ease-out;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+}
+
+.ce-image-preview img.is-panning {
+  transition: none;
+}
+
+.ce-image-zoom-toolbar {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0.6;
+  transition: opacity 120ms ease-out;
+  z-index: 2;
+}
+
+.ce-image-preview:hover .ce-image-zoom-toolbar {
+  opacity: 1;
+}
+
+.ce-image-zoom-level {
+  color: var(--color-text);
+  font-size: 12px;
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
 .ce-media-preview video {
