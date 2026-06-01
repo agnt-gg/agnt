@@ -21,12 +21,14 @@
           :countLabel="activeView === 'skills' ? 'skills' : 'evolved skills'"
           searchPlaceholder="Search skills..."
           :searchQuery="searchQuery"
+          :sortOrder="sortOrder"
           :currentLayout="'grid'"
           :layoutOptions="[]"
           :showCollapseToggle="false"
           :showHideEmpty="false"
           :createLabel="activeView === 'skills' ? 'New Skill' : ''"
           @update:searchQuery="(v) => (searchQuery = v)"
+          @update:sortOrder="(v) => (sortOrder = v)"
           @create="openCreateModal"
         >
           <template v-if="activeView === 'skills'" #extra-buttons>
@@ -68,15 +70,25 @@
               <div class="card-header">
                 <span class="card-icon"><i :class="skill.icon || 'fas fa-puzzle-piece'"></i></span>
                 <div class="card-title-block">
-                  <span class="card-name">{{ skill.name }}</span>
-                  <span class="card-category">{{ skill.category || 'general' }}</span>
+                  <span class="card-name">{{ toTitleCase(skill.name) }}</span>
+                  <span class="card-category">
+                    {{ skill.category || 'general' }}
+                    <span v-if="skill.is_filesystem" class="source-badge filesystem"
+                      ><i class="fas fa-folder"></i> filesystem</span
+                    >
+                  </span>
                 </div>
                 <div class="card-actions">
-                  <Tooltip text="Edit"
-                    ><button class="card-btn edit" @click.stop="openEditModal(skill)"><i class="fas fa-pen"></i></button
-                  ></Tooltip>
-                  <Tooltip text="Delete"
-                    ><button class="card-btn delete" @click.stop="confirmDelete(skill)"><i class="fas fa-trash"></i></button
+                  <template v-if="!skill.is_filesystem">
+                    <Tooltip text="Edit"
+                      ><button class="card-btn edit" @click.stop="openEditModal(skill)"><i class="fas fa-pen"></i></button
+                    ></Tooltip>
+                    <Tooltip text="Delete"
+                      ><button class="card-btn delete" @click.stop="confirmDelete(skill)"><i class="fas fa-trash"></i></button
+                    ></Tooltip>
+                  </template>
+                  <Tooltip v-else text="Filesystem skill — edit on disk"
+                    ><span class="card-btn readonly"><i class="fas fa-lock"></i></span
                   ></Tooltip>
                 </div>
               </div>
@@ -485,6 +497,7 @@ const importFileInput = ref(null);
 
 const terminalLines = ref(['Skills initialized.']);
 const searchQuery = ref('');
+const sortOrder = ref('az');
 const activeView = ref('skills');
 const selectedSkill = ref(null);
 const selectedCategory = ref(null);
@@ -538,7 +551,11 @@ const panelProps = computed(() => {
   if (activeView.value === 'discovered') {
     return { selectedSkill: discoveredSkillForPanel.value, isDiscovered: true };
   }
-  return { selectedSkill: selectedSkill.value, isDiscovered: false };
+  return {
+    selectedSkill: selectedSkill.value,
+    isDiscovered: false,
+    isReadonly: !!selectedSkill.value?.is_filesystem,
+  };
 });
 const leftPanelProps = computed(() => ({ allSkills: allSkills.value, selectedSkill: selectedSkill.value }));
 
@@ -546,6 +563,15 @@ const categoryOptions = computed(() => {
   const cats = store.getters['skills/skillCategories'] || [];
   return cats.map((cat) => ({ value: cat, label: cat.charAt(0).toUpperCase() + cat.slice(1) }));
 });
+
+const sortByName = (list, key = 'name') => {
+  const sorted = [...list].sort((a, b) => {
+    const an = (a?.[key] || '').toLowerCase();
+    const bn = (b?.[key] || '').toLowerCase();
+    return sortOrder.value === 'az' ? an.localeCompare(bn) : bn.localeCompare(an);
+  });
+  return sorted;
+};
 
 const filteredSkills = computed(() => {
   let result = allSkills.value;
@@ -555,13 +581,15 @@ const filteredSkills = computed(() => {
     result = result.filter(
       (s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q),
     );
-  return result;
+  return sortByName(result);
 });
 
 const filteredDiscoveredSkills = computed(() => {
   const q = searchQuery.value.toLowerCase();
-  if (!q) return discoveredSkills.value;
-  return discoveredSkills.value.filter((s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q));
+  const base = q
+    ? discoveredSkills.value.filter((s) => s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q))
+    : discoveredSkills.value;
+  return sortByName(base);
 });
 
 // SkillForge data
@@ -576,8 +604,10 @@ const eligibleGoals = computed(() => store.getters['skillforge/eligibleGoals']);
 
 const filteredLeaderboard = computed(() => {
   const q = searchQuery.value.toLowerCase();
-  if (!q) return leaderboard.value;
-  return leaderboard.value.filter((s) => s.skill_name?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q));
+  const base = q
+    ? leaderboard.value.filter((s) => s.skill_name?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q))
+    : leaderboard.value;
+  return sortByName(base, 'skill_name');
 });
 
 const filteredGoals = computed(() => {
@@ -1127,6 +1157,21 @@ onMounted(() => {
 .source-badge.user {
   background: rgba(100, 149, 237, 0.1);
   color: #6495ed;
+}
+.source-badge.filesystem {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  margin-left: 6px;
+}
+.card-btn.readonly {
+  cursor: default;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-btn.readonly:hover {
+  color: var(--color-text-muted);
 }
 .trust-badge {
   font-size: 0.65em;

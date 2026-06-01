@@ -4,7 +4,7 @@
     <div v-if="selectedSkill" class="panel-section selected-skill-section">
       <div class="selected-skill-header">
         <h2>{{ isDiscovered ? 'Discovered Skill' : 'Selected Skill Details' }}</h2>
-        <Tooltip v-if="!isDiscovered" text="Edit Skill" width="auto">
+        <Tooltip v-if="!isDiscovered && !isReadonly" text="Edit Skill" width="auto">
           <span class="edit-button-panel" @click="handleEdit">
             <i class="fas fa-edit"></i>
           </span>
@@ -15,7 +15,7 @@
         <div class="skill-details">
           <div class="detail-row main-detail">
             <span class="label"><i :class="selectedSkill.icon || 'fas fa-puzzle-piece'"></i> Name:</span>
-            <span class="value name">{{ selectedSkill.name }}</span>
+            <span class="value name">{{ formatSkillName(selectedSkill.name) }}</span>
           </div>
           <div class="detail-row">
             <span class="label"><i class="fas fa-tag"></i> Category:</span>
@@ -56,10 +56,13 @@
               <i class="fas fa-file-export"></i>
               Export SKILL.md
             </BaseButton>
-            <BaseButton @click="handleDelete" variant="danger" full-width>
+            <BaseButton v-if="!isReadonly" @click="handleDelete" variant="danger" full-width>
               <i class="fas fa-trash"></i>
               Delete Skill
             </BaseButton>
+            <p v-else class="readonly-note">
+              <i class="fas fa-lock"></i> This skill lives on disk. Edit or remove it at its source directory.
+            </p>
           </template>
         </div>
       </div>
@@ -96,6 +99,10 @@ export default {
       type: Boolean,
       default: false,
     },
+    isReadonly: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ['panel-action'],
   setup(props, { emit }) {
@@ -106,6 +113,16 @@ export default {
         month: 'short',
         day: 'numeric',
       });
+    };
+
+    const formatSkillName = (name) => {
+      if (!name) return '';
+      // Slug names (hyphen-separated) get title-cased; already-spaced names pass through
+      if (!name.includes('-')) return name;
+      return name
+        .split('-')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
     };
 
     const formatAllowedTools = (tools) => {
@@ -146,6 +163,7 @@ export default {
 
     return {
       formatDate,
+      formatSkillName,
       formatAllowedTools,
       handleEdit,
       handleExport,
@@ -164,6 +182,21 @@ export default {
   height: 100%;
   overflow-y: auto;
   min-height: 0;
+}
+
+.readonly-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--color-text-muted);
+  font-size: 0.8em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.readonly-note i {
+  color: #f59e0b;
 }
 
 .panel-section {
