@@ -54,6 +54,23 @@ That is the product: **AI work becomes durable, inspectable, repeatable, and imp
 
 ---
 
+## 🖼️ Screenshots
+
+<p align="center">
+  <img src="https://agnt.gg/_assets/images/dashboard-1.png" alt="Dashboard" width="45%">
+  <img src="https://agnt.gg/_assets/images/multi-agent-1.png" alt="Agents" width="45%">
+</p>
+<p align="center">
+  <img src="https://agnt.gg/_assets/images/unlimited-canvas-1.png" alt="Workflow Canvas" width="45%">
+  <img src="https://agnt.gg/_assets/images/asset-marketplace-1.png" alt="Marketplace" width="45%">
+</p>
+<p align="center">
+  <img src="https://agnt.gg/_assets/images/chat-ui-md-1.png" alt="Agent Chat" width="45%">
+  <img src="https://agnt.gg/_assets/images/agent-workflow-1.png" alt="Workflow Designer" width="45%">
+</p>
+
+---
+
 ## ⚡ The short version
 
 AGNT gives you:
@@ -107,15 +124,15 @@ http://localhost:3333
 
 ## 🧭 Choose your install path
 
-| You want to... | Use this |
-|---|---|
-| Try AGNT locally | `npm install` then `npm start` |
-| Develop the UI/backend | Vite dev server + Electron/backend |
-| Run AGNT as a local server | Build frontend, then `npm start` |
-| Self-host on a VPS, homelab, or Raspberry Pi | Docker Lite |
-| Use browser automation | Docker Full |
-| Build plugins | Clone repo + `backend/plugins/dev` templates |
-| Script AGNT from other tools | Local API at `http://localhost:3333/api` |
+| You want to...                               | Use this                                     |
+| -------------------------------------------- | -------------------------------------------- |
+| Try AGNT locally                             | `npm install` then `npm start`               |
+| Develop the UI/backend                       | Vite dev server + Electron/backend           |
+| Run AGNT as a local server                   | Build frontend, then `npm start`             |
+| Self-host on a VPS, homelab, or Raspberry Pi | Docker Lite                                  |
+| Use browser automation                       | Docker Full                                  |
+| Build plugins                                | Clone repo + `backend/plugins/dev` templates |
+| Script AGNT from other tools                 | Local API at `http://localhost:3333/api`     |
 
 Most developers should start with the Quick start above, then use Docker or headless mode once they know how they want to run AGNT.
 
@@ -148,14 +165,14 @@ Probably not if you only need:
 
 AGNT overlaps with agent frameworks, workflow tools, plugin ecosystems, and self-improving skill systems. Its strength is the union.
 
-| If you are comparing AGNT to... | The difference |
-|---|---|
-| **Hermes Agent** | Hermes is a narrower autonomous-agent framework. AGNT can run the same single-agent style of work, then go further: multi-agent systems, visual workflows, long-running goals, plugins, evals, traces, dashboards, provider management, APIs, messaging triggers, custom tools, local memory, and local-first persistence. |
-| **OpenClaw** | OpenClaw focuses on CLI-driven tool use. AGNT includes tool use, then adds a desktop app, local backend, visual workflows, goals, plugins, evals, dashboards, provider management, messaging triggers, MCP, custom APIs, and persistent local state. |
-| **n8n / Zapier** | AGNT has visual automation, but also persistent agents, memory, goals, SkillForge, MCP, provider auth, local traces, custom APIs, and plugin-native AI execution. |
-| **LangChain / AutoGen / CrewAI** | AGNT is not just a framework. It includes the desktop UI, local backend, workflow canvas, goals, plugins, storage, dashboards, and runtime APIs. |
-| **OpenWebUI / chat apps** | AGNT has chat, but chat is only one execution mode. Workflows, goals, tools, plugins, memory, and evals are first-class. |
-| **Claude Code / coding agents** | AGNT can work with local projects and tools, but also orchestrates workflows, messaging triggers, custom APIs, dashboards, skills, and long-running goals. |
+| If you are comparing AGNT to...  | The difference                                                                                                                                                                                                                                                                                                             |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Hermes Agent**                 | Hermes is a narrower autonomous-agent framework. AGNT can run the same single-agent style of work, then go further: multi-agent systems, visual workflows, long-running goals, plugins, evals, traces, dashboards, provider management, APIs, messaging triggers, custom tools, local memory, and local-first persistence. |
+| **OpenClaw**                     | OpenClaw focuses on CLI-driven tool use. AGNT includes tool use, then adds a desktop app, local backend, visual workflows, goals, plugins, evals, dashboards, provider management, messaging triggers, MCP, custom APIs, and persistent local state.                                                                       |
+| **n8n / Zapier**                 | AGNT has visual automation, but also persistent agents, memory, goals, SkillForge, MCP, provider auth, local traces, custom APIs, and plugin-native AI execution.                                                                                                                                                          |
+| **LangChain / AutoGen / CrewAI** | AGNT is not just a framework. It includes the desktop UI, local backend, workflow canvas, goals, plugins, storage, dashboards, and runtime APIs.                                                                                                                                                                           |
+| **OpenWebUI / chat apps**        | AGNT has chat, but chat is only one execution mode. Workflows, goals, tools, plugins, memory, and evals are first-class.                                                                                                                                                                                                   |
+| **Claude Code / coding agents**  | AGNT can work with local projects and tools, but also orchestrates workflows, messaging triggers, custom APIs, dashboards, skills, and long-running goals.                                                                                                                                                                 |
 
 Other tools cover fragments of the stack. **AGNT is the full local-first agent operating system.**
 
@@ -364,23 +381,6 @@ PORT=3333 npm run dev
 ```
 
 `npm run dev` starts `node backend/server.js`; if `frontend/dist` exists, the backend serves the web UI as well as the API.
-
----
-
-## 🖼️ Screenshots
-
-<p align="center">
-  <img src="https://agnt.gg/_assets/images/dashboard-1.png" alt="Dashboard" width="45%">
-  <img src="https://agnt.gg/_assets/images/multi-agent-1.png" alt="Agents" width="45%">
-</p>
-<p align="center">
-  <img src="https://agnt.gg/_assets/images/unlimited-canvas-1.png" alt="Workflow Canvas" width="45%">
-  <img src="https://agnt.gg/_assets/images/asset-marketplace-1.png" alt="Marketplace" width="45%">
-</p>
-<p align="center">
-  <img src="https://agnt.gg/_assets/images/chat-ui-md-1.png" alt="Agent Chat" width="45%">
-  <img src="https://agnt.gg/_assets/images/agent-workflow-1.png" alt="Workflow Designer" width="45%">
-</p>
 
 ---
 
