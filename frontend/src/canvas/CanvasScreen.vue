@@ -70,7 +70,7 @@
     <!-- ── MAIN AREA (sidebar + dashboard) ── -->
     <div class="cv-main-area">
       <!-- Sidebar: section icons -->
-      <div v-if="isAuthenticated" class="cv-sidebar">
+      <div v-if="isAuthenticated" class="cv-sidebar" :class="{ expanded: isSidebarExpanded }">
         <!-- Main sections (top) -->
         <div class="cv-sb-pages">
           <Tooltip v-for="section in mainSections" :key="section.id" :text="section.label" position="right" width="auto">
@@ -80,6 +80,9 @@
               @click="navigateToSection(section)"
             >
               <i :class="section.icon"></i>
+              <span class="cv-sb-label" v-marquee>
+                <span class="cv-sb-label-inner">{{ section.label }}</span>
+              </span>
             </button>
           </Tooltip>
         </div>
@@ -94,13 +97,21 @@
               @contextmenu.prevent="openContextMenu($event, page)"
             >
               <i :class="page.icon || 'fas fa-th'"></i>
+              <span class="cv-sb-label" v-marquee>
+                <span class="cv-sb-label-inner">{{ page.name }}</span>
+              </span>
             </button>
           </Tooltip>
         </div>
 
         <!-- Add page button -->
         <Tooltip text="Add page" position="right" width="auto">
-          <button class="cv-sb-add" @click="startAddPage">+</button>
+          <button class="cv-sb-add" @click="startAddPage">
+            <span class="cv-sb-add-icon">+</span>
+            <span class="cv-sb-label" v-marquee>
+              <span class="cv-sb-label-inner">New page</span>
+            </span>
+          </button>
         </Tooltip>
 
         <!-- Separator -->
@@ -115,9 +126,26 @@
               @click="navigateToSection(section)"
             >
               <i :class="section.icon"></i>
+              <span class="cv-sb-label" v-marquee>
+                <span class="cv-sb-label-inner">{{ section.label }}</span>
+              </span>
             </button>
           </Tooltip>
         </div>
+
+        <!-- Collapse / expand toggle -->
+        <Tooltip :text="isSidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'" position="right" width="auto">
+          <button
+            class="cv-sb-toggle"
+            @click="toggleSidebar"
+            :aria-label="isSidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'"
+          >
+            <i class="fas" :class="isSidebarExpanded ? 'fa-angle-double-left' : 'fa-angle-double-right'"></i>
+            <span class="cv-sb-label" v-marquee>
+              <span class="cv-sb-label-inner">Collapse</span>
+            </span>
+          </button>
+        </Tooltip>
       </div>
 
       <!-- Main content area -->
@@ -294,9 +322,45 @@ const ALL_SECTIONS = [...MAIN_SECTIONS, ...SETTINGS_SECTIONS];
 // Set of all screen names that belong to a section (used to identify custom pages)
 const SECTION_ROUTES = new Set(ALL_SECTIONS.flatMap((s) => s.screens.map((t) => t.screen)));
 
+// Directive: when the label text overflows its container, expose the
+// overflow amount via a CSS variable so a hover animation can scroll it.
+const marqueeDirective = {
+  mounted(el) {
+    const recalc = () => {
+      const inner = el.querySelector('.cv-sb-label-inner');
+      if (!inner) return;
+      const containerWidth = el.clientWidth;
+      if (containerWidth === 0) return; // hidden (sidebar collapsed)
+      const contentWidth = inner.scrollWidth;
+      const overflow = contentWidth - containerWidth;
+      if (overflow > 0) {
+        el.style.setProperty('--marquee-distance', `-${overflow + 8}px`);
+        el.classList.add('cv-sb-overflow');
+      } else {
+        el.classList.remove('cv-sb-overflow');
+        el.style.removeProperty('--marquee-distance');
+      }
+    };
+    el._marqueeRecalc = recalc;
+    el._marqueeRO = new ResizeObserver(() => requestAnimationFrame(recalc));
+    el._marqueeRO.observe(el);
+    requestAnimationFrame(recalc);
+  },
+  updated(el) {
+    if (el._marqueeRecalc) requestAnimationFrame(el._marqueeRecalc);
+  },
+  beforeUnmount(el) {
+    if (el._marqueeRO) {
+      el._marqueeRO.disconnect();
+      el._marqueeRO = null;
+    }
+  },
+};
+
 export default {
   name: 'CanvasScreen',
   components: { WidgetCanvas, WidgetCatalog, Tooltip, ChatProviderSelector, SimpleModal },
+  directives: { marquee: marqueeDirective },
   props: {
     screenName: { type: String, default: 'ChatScreen' },
   },
@@ -309,6 +373,24 @@ export default {
     const modalInputRef = ref(null);
     const simpleModal = ref(null);
     let clockTimer = null;
+
+    // Sidebar collapse/expand state (persisted to localStorage, expanded by default)
+    const SIDEBAR_STORAGE_KEY = 'agnt:canvasSidebar:expanded';
+    const isSidebarExpanded = ref(true);
+    try {
+      const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (stored !== null) isSidebarExpanded.value = stored === 'true';
+    } catch (e) {
+      isSidebarExpanded.value = true;
+    }
+    function toggleSidebar() {
+      isSidebarExpanded.value = !isSidebarExpanded.value;
+      try {
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(isSidebarExpanded.value));
+      } catch (e) {
+        // ignore storage failures
+      }
+    }
 
     // Window controls
     const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -648,6 +730,8 @@ export default {
       isGlobalProviderSelectorOpen,
       globalSelectorStyle,
       toggleGlobalProviderSelector,
+      isSidebarExpanded,
+      toggleSidebar,
     };
   },
 };
@@ -919,6 +1003,14 @@ export default {
   padding: 6px 0;
   gap: 2px;
   user-select: none;
+  transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease;
+}
+
+.cv-sidebar.expanded {
+  width: 120px;
+  min-width: 120px;
+  align-items: stretch;
+  padding: 6px 6px;
 }
 
 .cv-sb-pages {
@@ -978,6 +1070,68 @@ export default {
   flex-shrink: 0;
 }
 
+.cv-sb-page i {
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Label hidden by default - shown when sidebar is expanded */
+.cv-sb-label {
+  display: none;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-left: 10px;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+  --marquee-distance: 0px;
+}
+
+.cv-sidebar.expanded .cv-sb-label {
+  display: inline-block;
+}
+
+.cv-sb-label-inner {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+/* Marquee animation - only runs when label overflows AND the row is hovered */
+.cv-sb-page:hover .cv-sb-label.cv-sb-overflow .cv-sb-label-inner,
+.cv-sb-add:hover .cv-sb-label.cv-sb-overflow .cv-sb-label-inner,
+.cv-sb-toggle:hover .cv-sb-label.cv-sb-overflow .cv-sb-label-inner {
+  animation: cv-sb-marquee 4s linear infinite;
+}
+
+@keyframes cv-sb-marquee {
+  0%, 15% {
+    transform: translateX(0);
+  }
+  55%, 70% {
+    transform: translateX(var(--marquee-distance, 0px));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.cv-sidebar.expanded .cv-sb-page,
+.cv-sidebar.expanded .cv-sb-add,
+.cv-sidebar.expanded .cv-sb-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 10px;
+}
+
+/* When expanded, make tooltip-container span full width so the row is clickable end-to-end */
+.cv-sidebar.expanded :deep(.tooltip-container) {
+  width: 100%;
+}
+
 .cv-sb-page:hover {
   color: var(--color-text);
   border-color: var(--color-dull-navy);
@@ -1012,6 +1166,44 @@ export default {
 .cv-sb-add:hover {
   color: var(--color-green);
   border-color: rgba(var(--green-rgb), 0.3);
+}
+
+.cv-sb-add-icon {
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* Collapse / expand toggle button */
+.cv-sb-toggle {
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-muted, #445);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.cv-sb-toggle:hover {
+  color: var(--color-text);
+  border-color: var(--color-dull-navy);
+  background: var(--color-darker-0);
+}
+
+.cv-sb-toggle i {
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 /* ═══════════════════ DASHBOARD ═══════════════════ */
