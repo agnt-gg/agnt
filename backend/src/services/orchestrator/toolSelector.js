@@ -31,10 +31,14 @@ export const DEFAULT_TOOLS = new Set([
   // "Remember anything" memory layer — must be available on every chat
   // surface so the assistant can answer "what did we do last week?",
   // "find that earlier conversation about X", etc. without falling back
-  // to ad-hoc execute_javascript probes.
+  // to ad-hoc execute_javascript probes. Write-side tools are promoted
+  // alongside the reads so the assistant can persist facts/preferences
+  // any turn without waiting on a keyword to load the `memory` group.
   'recall',
   'list_recent',
   'get_trace',
+  'save_agent_memory',
+  'get_agent_memories',
 ]);
 
 /**

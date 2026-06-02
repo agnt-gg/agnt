@@ -111,8 +111,10 @@ InsightRoutes.post('/rollup', authenticateToken, async (req, res) => {
 InsightRoutes.get('/memory', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const memories = await AgentMemoryModel.findByUserId(userId);
-    res.json({ success: true, memories });
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 5000, 50000));
+    const sort = req.query.sort === 'relevance' ? 'relevance' : 'recent';
+    const memories = await AgentMemoryModel.findByUserId(userId, { limit, sort });
+    res.json({ success: true, memories, count: memories.length });
   } catch (error) {
     console.error('[Insight Route] All memories error:', error);
     res.status(500).json({ error: 'Failed to fetch all memories' });
