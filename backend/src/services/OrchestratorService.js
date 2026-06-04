@@ -1569,7 +1569,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
 
     if (contextResult.wasManaged) {
       console.log(`Context automatically managed: ${contextResult.originalTokens} -> ${contextResult.managedTokens} tokens`);
-      messages = contextResult.messages;
+      // Do NOT reassign `messages` here. `messages` is the canonical chat
+      // ledger that gets persisted to conversation_logs.full_history in the
+      // finally block. The trimmed copy is for the provider call only and
+      // is already read directly from contextResult.messages below.
       sendEvent('context_managed', {
         originalTokens: contextResult.originalTokens,
         managedTokens: contextResult.managedTokens,
@@ -2463,7 +2466,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
       }
       if (loopContextResult.wasManaged) {
         console.log(`[Tool Loop] Context managed: ${loopContextResult.originalTokens} -> ${loopContextResult.managedTokens} tokens`);
-        messages = loopContextResult.messages;
+        // Do NOT reassign `messages` — the next adapter call below reads
+        // loopContextResult.messages directly, and `messages` must stay
+        // intact so the full ledger is persisted to full_history.
         sendEvent('context_managed', {
           originalTokens: loopContextResult.originalTokens,
           managedTokens: loopContextResult.managedTokens,
@@ -2601,9 +2606,9 @@ IMPORTANT: The image data is already available in the system context. You don't 
           messages = followUpCompacted.messages;
         }
         const followUpContext = manageContext(messages, model, finalToolSchemas, normalizedProvider);
-        if (followUpContext.wasManaged) {
-          messages = followUpContext.messages;
-        }
+        // Do NOT reassign `messages` — the adapter call below reads
+        // followUpContext.messages directly; `messages` must stay intact
+        // for full_history persistence.
         const followUpResponse = await adapter.callStream(
           followUpContext.messages,
           [], // No tools - force a text-only response
