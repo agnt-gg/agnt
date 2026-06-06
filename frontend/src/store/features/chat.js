@@ -9,7 +9,6 @@ import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
 // uses for sidebar chats.
 const ORCHESTRATOR_CHANNEL_KEY = 'orchestrator:default';
 
-const MAX_MESSAGES = 100; // Limit messages to prevent memory leaks
 const MAX_TOOL_RESULT_CHARS = 2000; // Cap tool results in history to avoid huge payloads
 
 /**
@@ -332,11 +331,6 @@ export default {
     ADD_MESSAGE(state, message) {
       if (message && message.role && message.content !== undefined) {
         state.messages.push(message);
-
-        // Prevent memory leak by limiting message history
-        if (state.messages.length > MAX_MESSAGES) {
-          state.messages.splice(0, state.messages.length - MAX_MESSAGES);
-        }
       } else {
         console.error('Invalid message format pushed to store:', message);
       }
@@ -346,10 +340,6 @@ export default {
       state.messages = messages.filter(
         (msg) => msg && msg.role && msg.content !== undefined
       );
-      // Trim to max if needed
-      if (state.messages.length > MAX_MESSAGES) {
-        state.messages.splice(0, state.messages.length - MAX_MESSAGES);
-      }
     },
     SET_SAVED_OUTPUT_TITLE(state, title) {
       state.savedOutputTitle = title;
@@ -562,12 +552,6 @@ export default {
     RECEIVE_MESSAGE(state, { id, sender, content, timestamp }) {
       const message = new Message(id, sender, content, timestamp);
       state.mainChatWindow.receiveMessage(message);
-
-      // Prevent memory leak by limiting ChatWindow message history
-      if (state.mainChatWindow.messages.size > MAX_MESSAGES) {
-        const oldestKey = state.mainChatWindow.messages.keys().next().value;
-        state.mainChatWindow.messages.delete(oldestKey);
-      }
     },
     CREATE_THREAD(state, messageId) {
       state.mainChatWindow.createThread(messageId);
@@ -740,9 +724,6 @@ export default {
       if (!conv) return;
       if (message && message.role && message.content !== undefined) {
         conv.messages.push(message);
-        if (conv.messages.length > MAX_MESSAGES) {
-          conv.messages.splice(0, conv.messages.length - MAX_MESSAGES);
-        }
       }
       // Mirror is by reference, so no extra sync needed for messages array
     },
@@ -751,9 +732,6 @@ export default {
       const conv = state.conversations[conversationId];
       if (!conv) return;
       conv.messages = messages.filter(msg => msg && msg.role && msg.content !== undefined);
-      if (conv.messages.length > MAX_MESSAGES) {
-        conv.messages.splice(0, conv.messages.length - MAX_MESSAGES);
-      }
       if (state.activeConversationId === conversationId) {
         state.messages = conv.messages;
       }
