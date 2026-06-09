@@ -3,10 +3,9 @@ import path from 'path';
 
 const DEFAULT_MAX_OUTPUT_BYTES = 200_000;
 const DEFAULT_TIMEOUT_MS = 1000 * 60 * 60 * 2;
-const RUN_ACTIONS = new Set(['RUN', 'WARMUP']);
-const VALUE_FLAGS = new Map([
+const LEASE_VALUE_FLAGS = new Map([
   ['provider', '--provider'],
-  ['leaseId', '--id'],
+  ['profile', '--profile'],
   ['ttl', '--ttl'],
   ['idleTimeout', '--idle-timeout'],
   ['className', '--class'],
@@ -15,19 +14,56 @@ const VALUE_FLAGS = new Map([
   ['machineType', '--type'],
   ['market', '--market'],
   ['slug', '--slug'],
-  ['stopAfter', '--stop-after'],
-  ['envFromProfile', '--env-from-profile'],
+  ['target', '--target'],
+  ['windowsMode', '--windows-mode'],
+  ['network', '--network'],
 ]);
 
-const BOOLEAN_FLAGS = new Map([
+const RUN_VALUE_FLAGS = new Map([
+  ['leaseId', '--id'],
+  ['stopAfter', '--stop-after'],
+  ['label', '--label'],
+  ['leaseOutput', '--lease-output'],
+  ['envFromProfile', '--env-from-profile'],
+  ['script', '--script'],
+  ['freshPr', '--fresh-pr'],
+  ['preflightTools', '--preflight-tools'],
+  ['junit', '--junit'],
+  ['emitProof', '--emit-proof'],
+]);
+
+const LEASE_BOOLEAN_FLAGS = new Map([
   ['keep', '--keep'],
+  ['reclaim', '--reclaim'],
+  ['desktop', '--desktop'],
+  ['browser', '--browser'],
+  ['code', '--code'],
+  ['tailscale', '--tailscale'],
+  ['debug', '--debug'],
+]);
+
+const RUN_BOOLEAN_FLAGS = new Map([
   ['keepOnFailure', '--keep-on-failure'],
   ['fullResync', '--full-resync'],
   ['noSync', '--no-sync'],
   ['noHydrate', '--no-hydrate'],
+  ['checksum', '--checksum'],
+  ['forceSyncLarge', '--force-sync-large'],
   ['preflight', '--preflight'],
-  ['debug', '--debug'],
   ['resultsAuto', '--results-auto'],
+  ['applyLocalPatch', '--apply-local-patch'],
+  ['scriptStdin', '--script-stdin'],
+]);
+
+const INIT_VALUE_FLAGS = new Map([
+  ['configPath', '--config'],
+  ['workflowPath', '--workflow'],
+  ['skillPath', '--skill'],
+]);
+
+const INIT_BOOLEAN_FLAGS = new Map([
+  ['detect', '--detect'],
+  ['force', '--force'],
 ]);
 
 function truthy(value) {
@@ -121,6 +157,45 @@ export function normalizeAllowEnv(value) {
     .filter(Boolean);
 }
 
+function appendMappedFlags(args, flagMap, params) {
+  for (const [key, flag] of flagMap) {
+    const value = compact(params[key]);
+    if (value !== undefined) {
+      args.push(flag, String(value));
+    }
+  }
+}
+
+function appendMappedBooleans(args, flagMap, params) {
+  for (const [key, flag] of flagMap) {
+    if (truthy(params[key])) {
+      args.push(flag);
+    }
+  }
+}
+
+function appendRepeatable(args, flag, value) {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',').map((item) => item.trim())
+      : [];
+
+  for (const item of values) {
+    if (item) {
+      args.push(flag, String(item));
+    }
+  }
+}
+
+function appendExtraArgs(args, value) {
+  const extraArgs = parseCommandLine(value);
+  if (extraArgs.includes('--')) {
+    throw new Error('extraArgs must not include --; command separation is managed by the Crabbox tool');
+  }
+  args.push(...extraArgs);
+}
+
 export function buildCrabboxArgs(params = {}) {
   const action = (params.action || 'RUN').toUpperCase();
   const args = [];
@@ -141,8 +216,23 @@ export function buildCrabboxArgs(params = {}) {
     case 'STOP':
       args.push('stop');
       break;
+    case 'INSPECT':
+      args.push('inspect');
+      break;
     case 'DOCTOR':
       args.push('doctor');
+      break;
+    case 'SYNC_PLAN':
+      args.push('sync-plan');
+      break;
+    case 'INIT':
+      args.push('init');
+      break;
+    case 'JOB_LIST':
+      args.push('job', 'list');
+      break;
+    case 'JOB_RUN':
+      args.push('job', 'run');
       break;
     case 'VERSION':
       args.push('--version');
@@ -151,20 +241,14 @@ export function buildCrabboxArgs(params = {}) {
       throw new Error(`Unsupported Crabbox action: ${params.action}`);
   }
 
-  if (RUN_ACTIONS.has(action)) {
-    for (const [key, flag] of VALUE_FLAGS) {
-      const value = compact(params[key]);
-      if (value !== undefined) {
-        args.push(flag, String(value));
-      }
-    }
+  if (action === 'RUN' || action === 'WARMUP') {
+    appendMappedFlags(args, LEASE_VALUE_FLAGS, params);
+    appendMappedBooleans(args, LEASE_BOOLEAN_FLAGS, params);
+  }
 
-    for (const [key, flag] of BOOLEAN_FLAGS) {
-      if (truthy(params[key])) {
-        args.push(flag);
-      }
-    }
-
+  if (action === 'RUN') {
+    appendMappedFlags(args, RUN_VALUE_FLAGS, params);
+    appendMappedBooleans(args, RUN_BOOLEAN_FLAGS, params);
     if (params.timingJson !== false && params.timingJson !== 'false') {
       args.push('--timing-json');
     }
@@ -172,6 +256,18 @@ export function buildCrabboxArgs(params = {}) {
     for (const envName of normalizeAllowEnv(params.allowEnv)) {
       args.push('--allow-env', envName);
     }
+
+    appendRepeatable(args, '--artifact-glob', params.artifactGlob);
+    appendRepeatable(args, '--require-artifact', params.requireArtifact);
+    appendRepeatable(args, '--download', params.download);
+  }
+
+  if (action === 'WARMUP' && params.timingJson !== false && params.timingJson !== 'false') {
+    args.push('--timing-json');
+  }
+
+  if (action === 'RUN' || action === 'WARMUP') {
+    appendExtraArgs(args, params.extraArgs);
   }
 
   if (action === 'STATUS') {
@@ -196,11 +292,39 @@ export function buildCrabboxArgs(params = {}) {
     args.push(String(id));
   }
 
+  if (action === 'INSPECT') {
+    const id = compact(params.leaseId || params.id);
+    if (!id) throw new Error('leaseId is required for Crabbox inspect');
+    args.push('--id', String(id));
+  }
+
   if (action === 'DOCTOR') {
     const provider = compact(params.provider);
     if (provider) {
       args.push('--provider', String(provider));
     }
+  }
+
+  if (action === 'INIT') {
+    appendMappedFlags(args, INIT_VALUE_FLAGS, params);
+    appendMappedBooleans(args, INIT_BOOLEAN_FLAGS, params);
+  }
+
+  if (action === 'JOB_RUN') {
+    const id = compact(params.leaseId || params.id);
+    const jobName = compact(params.jobName);
+    if (id) args.push('--id', String(id));
+    if (truthy(params.noHydrate)) args.push('--no-hydrate');
+    if (truthy(params.githubRunner)) args.push('--github-runner');
+    if (truthy(params.dryRun)) args.push('--dry-run');
+    if (compact(params.stop)) args.push('--stop', String(compact(params.stop)));
+    appendExtraArgs(args, params.extraArgs);
+    if (!jobName) throw new Error('jobName is required for Crabbox job run');
+    args.push(String(jobName));
+  }
+
+  if (['STATUS', 'INSPECT', 'LIST', 'DOCTOR', 'SYNC_PLAN', 'INIT', 'JOB_LIST'].includes(action)) {
+    appendExtraArgs(args, params.extraArgs);
   }
 
   if (action === 'RUN') {

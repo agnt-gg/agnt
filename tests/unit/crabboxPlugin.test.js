@@ -77,8 +77,76 @@ describe('Crabbox plugin arg builder', () => {
     assert.deepEqual(args, ['run', '--shell', '--', 'npm install && npm test']);
   });
 
+  it('keeps warmup flags scoped to lease creation', () => {
+    const args = buildCrabboxArgs({
+      action: 'WARMUP',
+      provider: 'aws',
+      className: 'beast',
+      stopAfter: 'always',
+      envFromProfile: '.env',
+      noSync: true,
+      keepOnFailure: true,
+    });
+
+    assert.deepEqual(args, ['warmup', '--provider', 'aws', '--class', 'beast', '--timing-json']);
+  });
+
+  it('builds Crabbox init with detected job generation', () => {
+    const args = buildCrabboxArgs({
+      action: 'INIT',
+      detect: true,
+      configPath: '.crabbox.yaml',
+      workflowPath: '.github/workflows/crabbox.yml',
+      skillPath: '.agents/skills/crabbox/SKILL.md',
+    });
+
+    assert.deepEqual(args, [
+      'init',
+      '--config',
+      '.crabbox.yaml',
+      '--workflow',
+      '.github/workflows/crabbox.yml',
+      '--skill',
+      '.agents/skills/crabbox/SKILL.md',
+      '--detect',
+    ]);
+  });
+
+  it('builds Crabbox job run with dry-run and stop overrides', () => {
+    const args = buildCrabboxArgs({
+      action: 'JOB_RUN',
+      jobName: 'detected',
+      leaseId: 'swift-crab',
+      dryRun: true,
+      noHydrate: true,
+      stop: 'never',
+    });
+
+    assert.deepEqual(args, ['job', 'run', '--id', 'swift-crab', '--no-hydrate', '--dry-run', '--stop', 'never', 'detected']);
+  });
+
+  it('applies advanced args to inspection-style commands', () => {
+    const args = buildCrabboxArgs({
+      action: 'SYNC_PLAN',
+      extraArgs: '--limit 5',
+    });
+
+    assert.deepEqual(args, ['sync-plan', '--limit', '5']);
+  });
+
+  it('rejects extra args that try to own command separation', () => {
+    assert.throws(
+      () => buildCrabboxArgs({ action: 'RUN', command: 'npm test', extraArgs: '-- --whoops' }),
+      /extraArgs must not include --/
+    );
+  });
+
   it('requires a lease id for stop', () => {
     assert.throws(() => buildCrabboxArgs({ action: 'STOP' }), /leaseId is required/);
+  });
+
+  it('requires a job name for job run', () => {
+    assert.throws(() => buildCrabboxArgs({ action: 'JOB_RUN' }), /jobName is required/);
   });
 });
 

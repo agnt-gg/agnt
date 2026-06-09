@@ -13,13 +13,13 @@
         "category": "action",
         "type": "crabbox",
         "icon": "terminal",
-        "description": "Run OpenClaw Crabbox commands from AGNT workflows: lease a remote box, sync the repo, run commands, inspect status, list leases, stop leases, and run doctor checks.",
+        "description": "Run OpenClaw Crabbox commands from AGNT workflows: initialize repo config, run named jobs, lease a remote box, sync the repo, run commands, inspect/list/stop leases, and run doctor checks.",
         "parameters": {
           "action": {
             "type": "string",
             "inputType": "select",
             "description": "Crabbox action to execute",
-            "options": ["RUN", "WARMUP", "STATUS", "LIST", "STOP", "DOCTOR", "VERSION"],
+            "options": ["RUN", "WARMUP", "JOB_RUN", "JOB_LIST", "INIT", "SYNC_PLAN", "STATUS", "INSPECT", "LIST", "STOP", "DOCTOR", "VERSION"],
             "default": "RUN"
           },
           "command": {
@@ -62,8 +62,28 @@
           "leaseId": {
             "type": "string",
             "inputType": "text",
-            "description": "Lease id or slug for reuse, status, or stop.",
+            "description": "Lease id or slug for reuse, status, inspect, stop, or job run.",
             "required": false
+          },
+          "jobName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Named Crabbox job to run from `.crabbox.yaml`.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "JOB_RUN"
+            }
+          },
+          "profile": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Crabbox profile name.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
           },
           "ttl": {
             "type": "string",
@@ -89,6 +109,7 @@
             "type": "string",
             "inputType": "text",
             "description": "Crabbox machine class.",
+            "required": false,
             "conditional": {
               "field": "action",
               "value": ["RUN", "WARMUP"]
@@ -108,6 +129,40 @@
             "type": "string",
             "inputType": "text",
             "description": "Friendly lease slug for a new lease.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "target": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Target operating system.",
+            "options": ["linux", "macos", "windows"],
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "windowsMode": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Windows target mode.",
+            "options": ["normal", "wsl2"],
+            "required": false,
+            "conditional": {
+              "field": "target",
+              "value": "windows"
+            }
+          },
+          "network": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Crabbox SSH network path.",
+            "options": ["auto", "tailscale", "public"],
+            "required": false,
             "conditional": {
               "field": "action",
               "value": ["RUN", "WARMUP"]
@@ -126,11 +181,21 @@
           "keep": {
             "type": "boolean",
             "inputType": "checkbox",
-            "description": "Keep a newly acquired lease after a run.",
+            "description": "Keep a newly acquired lease. `warmup` keeps leases by default.",
             "default": false,
             "conditional": {
               "field": "action",
-              "value": "RUN"
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "reclaim": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Reclaim an existing lease claim for this repository.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
             }
           },
           "keepOnFailure": {
@@ -170,7 +235,7 @@
             "default": false,
             "conditional": {
               "field": "action",
-              "value": "RUN"
+              "value": ["RUN", "JOB_RUN"]
             }
           },
           "preflight": {
@@ -207,13 +272,128 @@
             "type": "string",
             "inputType": "text",
             "description": "Comma-separated env names to forward with Crabbox `--allow-env`.",
-            "required": false
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
           },
           "envFromProfile": {
             "type": "string",
             "inputType": "text",
             "description": "Profile file to load env values from with Crabbox `--env-from-profile`.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "label": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Human-readable Crabbox run label.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "preflightTools": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated Crabbox preflight tools, for example `default,docker`.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "extraArgs": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Advanced Crabbox CLI flags inserted before the command separator. Do not include `--`.",
             "required": false
+          },
+          "detect": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Use `crabbox init --detect` to detect repo checks and write a job.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "INIT"
+            }
+          },
+          "force": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Use `crabbox init --force` to overwrite generated files.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "INIT"
+            }
+          },
+          "configPath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Custom path for `crabbox init --config`.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "INIT"
+            }
+          },
+          "workflowPath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Custom path for `crabbox init --workflow`.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "INIT"
+            }
+          },
+          "skillPath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Custom path for `crabbox init --skill`.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "INIT"
+            }
+          },
+          "dryRun": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Preview the expanded Crabbox job without leasing.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "JOB_RUN"
+            }
+          },
+          "githubRunner": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Hydrate a job through a GitHub self-hosted runner.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "JOB_RUN"
+            }
+          },
+          "stop": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Override Crabbox job stop policy.",
+            "options": ["auto", "always", "success", "failure", "never"],
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "JOB_RUN"
+            }
           },
           "wait": {
             "type": "boolean",
