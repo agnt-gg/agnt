@@ -1116,10 +1116,12 @@ class AnthropicAdapter extends BaseAdapter {
     this.baseDelay = 1000; // 1 second
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
 
-    // Model-specific max output token limits (from Anthropic docs)
-    // https://docs.anthropic.com/en/docs/about-claude/models
+    // Model-specific max output token limits (synchronous Messages API).
+    // Source: https://platform.claude.com/docs/en/docs/about-claude/models/overview
+    // Note: Opus 4.6+, Sonnet 4.6, Fable 5, Mythos 5 support 300k via the
+    // `output-300k-2026-03-24` beta header — not enabled here.
     this.modelMaxTokens = {
-      // Legacy Claude 3 models
+      // Legacy Claude 3
       'claude-3-haiku-20240307': 4096,
       'claude-3-sonnet-20240229': 4096,
       'claude-3-opus-20240229': 4096,
@@ -1127,64 +1129,99 @@ class AnthropicAdapter extends BaseAdapter {
       'claude-3-5-sonnet-20240620': 8192,
       'claude-3-5-sonnet-20241022': 8192,
       'claude-3-7-sonnet-20250219': 64000,
-      // Claude 4 models
+      // Claude 4 (deprecated)
       'claude-sonnet-4-20250514': 64000,
       'claude-sonnet-4-0': 64000,
       'claude-opus-4-20250514': 32000,
       'claude-opus-4-0': 32000,
       'claude-opus-4-1-20250805': 32000,
       'claude-opus-4-1': 32000,
-      // Claude 4.5 models
+      // Claude 4.5
       'claude-sonnet-4-5-20250929': 64000,
       'claude-sonnet-4-5': 64000,
       'claude-haiku-4-5-20251001': 64000,
       'claude-haiku-4-5': 64000,
       'claude-opus-4-5-20251101': 64000,
       'claude-opus-4-5': 64000,
+      // Claude 4.6 / 4.7 / 4.8
+      'claude-opus-4-6': 128000,
+      'claude-sonnet-4-6': 64000,
+      'claude-opus-4-7': 128000,
+      'claude-opus-4-8': 128000,
+      // Claude Fable 5 / Mythos 5 (June 2026)
+      'claude-fable-5': 128000,
+      'claude-mythos-5': 128000,
+      'claude-mythos-preview': 128000,
     };
   }
 
   /**
-   * Get the maximum output tokens for the current model
-   * @returns {number} Max tokens for the model
+   * Get the maximum output tokens for the current model.
+   * Ordered most-specific-first to avoid mis-classifying newer variants
+   * (e.g. `opus-4-6` must not fall into the generic `opus-4` legacy bucket).
    */
   _getMaxTokensForModel() {
-    // Check for exact match first
     if (this.modelMaxTokens[this.model]) {
       return this.modelMaxTokens[this.model];
     }
 
-    // Check for partial matches (e.g., model aliases or variations)
-    const modelLower = this.model.toLowerCase();
+    const m = this.model.toLowerCase();
 
-    // Claude 4.5 models (newest, highest limits)
-    if (modelLower.includes('4-5') || modelLower.includes('4.5')) {
+    // Fable / Mythos family (any version) — 128k
+    if (m.includes('fable') || m.includes('mythos')) {
+      return 128000;
+    }
+
+    // Generation 5+ (future flagships: opus-5, sonnet-5, haiku-5, opus-10, …) — 128k
+    if (/(opus|sonnet|haiku)-([5-9]|\d{2,})(\b|-|$)/.test(m)) {
+      return 128000;
+    }
+
+    // Opus 4.6+ (Opus 4.6 / 4.7 / 4.8 / 4.9 / 4.10 …) — 128k extended output
+    if (/opus-4-([6-9]|\d{2,})/.test(m)) {
+      return 128000;
+    }
+
+    // Opus 4.2 – 4.5 — 64k
+    if (/opus-4-[2-5]/.test(m)) {
       return 64000;
     }
 
-    // Claude 4 Opus models
-    if (modelLower.includes('opus-4') || modelLower.includes('opus4')) {
+    // Opus 4.0 / 4.1 (deprecated) — 32k. Matches `opus-4`, `opus-4-0`, `opus-4-1`.
+    if (/opus-4(-[01])?(\b|-|$)/.test(m)) {
       return 32000;
     }
 
-    // Claude 4 Sonnet or Claude 3.7 models
-    if (modelLower.includes('sonnet-4') || modelLower.includes('sonnet4') || modelLower.includes('3-7') || modelLower.includes('3.7')) {
+    // Sonnet 4.x — 64k (covers 4.0 / 4.5 / 4.6 / future 4.x)
+    if (/sonnet-4/.test(m)) {
       return 64000;
     }
 
-    // Claude 3.5 models
-    if (modelLower.includes('3-5') || modelLower.includes('3.5')) {
+    // Haiku 4.x — 64k
+    if (/haiku-4/.test(m)) {
+      return 64000;
+    }
+
+    // Claude 3.7 — 64k
+    if (m.includes('3-7') || m.includes('3.7')) {
+      return 64000;
+    }
+
+    // Claude 3.5 — 8k
+    if (m.includes('3-5') || m.includes('3.5')) {
       return 8192;
     }
 
-    // Claude 3 Haiku (legacy) - most restrictive
-    if (modelLower.includes('haiku') && modelLower.includes('3') && !modelLower.includes('3-5') && !modelLower.includes('3.5')) {
+    // Claude 3.x legacy — 4k
+    if (/claude-3(-|$)/.test(m)) {
       return 4096;
     }
 
-    // Default to 4096 for unknown models (safe fallback)
-    console.warn(`[Anthropic] Unknown model '${this.model}', using safe default max_tokens: 4096`);
-    return 4096;
+    // Unknown model — assume current flagship ceiling (128k). Anthropic's API
+    // requires max_tokens, so we can't omit it; defaulting low would silently
+    // truncate long responses from new models we haven't catalogued yet.
+    console.warn(`[Anthropic] Unknown model '${this.model}', defaulting max_tokens to 128000 (current flagship ceiling)`);
+    return 128000;
   }
 
   /**

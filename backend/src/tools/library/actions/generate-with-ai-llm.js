@@ -7,7 +7,7 @@ import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../../../services/ai/providerConfigs.js';
+import { getProviderConfig, resolveMaxOutputTokens } from '../../../services/ai/providerConfigs.js';
 
 const PROVIDER_CONFIG = {
   deepseek: {
@@ -658,9 +658,10 @@ class GenerateWithAiLlm extends BaseAction {
       });
     }
 
+    const anthropicModel = params.model || 'claude-3-5-sonnet-20241022';
     const response = await anthropic.messages.create({
-      model: params.model || 'claude-3-5-sonnet-20241022',
-      max_tokens: Number(params.maxTokens) || 4096,
+      model: anthropicModel,
+      max_tokens: Number(params.maxTokens) || resolveMaxOutputTokens('anthropic', anthropicModel),
       temperature: Number(params.temperature) || 0,
       messages,
     });
@@ -781,8 +782,8 @@ class GenerateWithAiLlm extends BaseAction {
     }
 
     const messages = [{ role: 'user', content: messageContent }];
-    const maxTokens = Number(params.maxTokens) || 4096;
     const currentModel = params.model || providerInfo.defaultModel;
+    const maxTokens = Number(params.maxTokens) || resolveMaxOutputTokens(providerKey, currentModel);
     // Include "gpt-4o-mini" in the mini models list
     const isMiniModel = ['o1-mini', 'o3-mini', 'gpt-4o-mini'].includes(currentModel) && providerKey === 'openai';
 
@@ -926,7 +927,7 @@ class GenerateWithAiLlm extends BaseAction {
         temperature: 1,
         topP: 0.95,
         topK: 40,
-        maxOutputTokens: 8192,
+        maxOutputTokens: resolveMaxOutputTokens('gemini', modelName),
         responseMimeType: 'text/plain',
       };
 

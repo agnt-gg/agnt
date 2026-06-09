@@ -104,19 +104,34 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
-    fallbackModels: [
+    recommendedModels: [
+      'claude-fable-5',
+      'claude-opus-4-8',
       'claude-opus-4-7',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
+      'claude-haiku-4-5-20251001',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-5-20250929',
+    ],
+    fallbackModels: [
+      'claude-fable-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
       'claude-haiku-4-5-20251001',
+      'claude-opus-4-5-20251101',
+      'claude-sonnet-4-5-20250929',
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
+    fallbackVisionModels: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelMetadata: {
+      'claude-fable-5': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-mythos-5': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-mythos-preview': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-opus-4-8': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-7': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-6': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-sonnet-4-6': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: true },
@@ -170,18 +185,29 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
-    fallbackModels: [
+    recommendedModels: [
+      'claude-fable-5',
+      'claude-opus-4-8',
       'claude-opus-4-7',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
+      'claude-haiku-4-5-20251001',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-5-20250929',
+    ],
+    fallbackModels: [
+      'claude-fable-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
       'claude-haiku-4-5-20251001',
+      'claude-opus-4-5-20251101',
+      'claude-sonnet-4-5-20250929',
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
+    fallbackVisionModels: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelTransform: (raw) => ({
       id: raw.id,
       name: raw.display_name || raw.id,
@@ -1255,6 +1281,43 @@ export function getModelMetadata(providerKey, modelId) {
   }
 
   return null;
+}
+
+/**
+ * Resolve the right `max_tokens` value to send for a (provider, model) request.
+ *
+ * Looks up the model's documented max output from the metadata table. If the
+ * model is unknown (a brand-new release we haven't catalogued yet), falls back
+ * to a provider-specific ceiling that won't silently truncate long responses.
+ * The defaults are deliberately high — a clear API error on an oversize value
+ * is always better than a 4k/8k silent cut-off.
+ *
+ * Anthropic's API REQUIRES `max_tokens`, so callers should always pass the
+ * result through. OpenAI-compatible providers may pass it or omit it; passing
+ * the documented max is fine.
+ *
+ * @param {string} providerKey - e.g. 'anthropic', 'openai', 'gemini'
+ * @param {string} modelId
+ * @param {number} [fallback] - explicit fallback for truly unknown providers
+ * @returns {number}
+ */
+export function resolveMaxOutputTokens(providerKey, modelId, fallback) {
+  const meta = getModelMetadata(providerKey, modelId);
+  if (meta?.maxOutputTokens) return meta.maxOutputTokens;
+
+  const key = (providerKey || '').toLowerCase();
+  // Anthropic — current flagship ceiling (Fable 5 / Opus 4.6-4.8 = 128k)
+  if (key === 'anthropic' || key === 'claude-code') return 128000;
+  // OpenAI — gpt-5.x flagship ceiling
+  if (key === 'openai' || key === 'openai-codex') return 128000;
+  // Gemini — current 2.5/3.x ceiling
+  if (key === 'gemini') return 65536;
+  // xAI Grok 4.x — 131k
+  if (key === 'grokai' || key === 'xai') return 131072;
+  // Groq / Cerebras / TogetherAI / OpenRouter — varies widely; 64k is a sane ceiling
+  if (['groq', 'cerebras', 'togetherai', 'openrouter', 'deepseek'].includes(key)) return 65536;
+
+  return fallback ?? 65536;
 }
 
 /**
