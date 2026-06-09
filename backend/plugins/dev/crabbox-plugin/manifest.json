@@ -1,0 +1,258 @@
+{
+  "name": "crabbox-plugin",
+  "version": "1.0.0",
+  "description": "OpenClaw Crabbox support for remote command execution and E2E proof collection",
+  "author": "AGNT",
+  "icon": "terminal",
+  "tools": [
+    {
+      "type": "crabbox",
+      "entryPoint": "./crabbox-api.js",
+      "schema": {
+        "title": "Crabbox",
+        "category": "action",
+        "type": "crabbox",
+        "icon": "terminal",
+        "description": "Run OpenClaw Crabbox commands from AGNT workflows: lease a remote box, sync the repo, run commands, inspect status, list leases, stop leases, and run doctor checks.",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Crabbox action to execute",
+            "options": ["RUN", "WARMUP", "STATUS", "LIST", "STOP", "DOCTOR", "VERSION"],
+            "default": "RUN"
+          },
+          "command": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Command to run remotely after `crabbox run --`. Required for RUN.",
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "shell": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Pass the remote command through Crabbox `--shell` for pipelines or multi-statement scripts.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "workingDirectory": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Local repository path to sync from. Defaults to the AGNT process working directory.",
+            "required": false
+          },
+          "binary": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Crabbox binary path. Defaults to CRABBOX_BIN or `crabbox` on PATH.",
+            "required": false
+          },
+          "provider": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional Crabbox provider such as aws, hetzner, azure, gcp, ssh, or local-container.",
+            "required": false
+          },
+          "leaseId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Lease id or slug for reuse, status, or stop.",
+            "required": false
+          },
+          "ttl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Maximum lease lifetime, for example 90m or 2h.",
+            "default": "90m",
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "idleTimeout": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Idle timeout, for example 30m or 90m.",
+            "default": "30m",
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "className": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Crabbox machine class.",
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "arch": {
+            "type": "string",
+            "inputType": "select",
+            "description": "CPU architecture.",
+            "options": ["amd64", "arm64"],
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "slug": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Friendly lease slug for a new lease.",
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "stopAfter": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Crabbox cleanup policy for runs.",
+            "options": ["success", "always", "failure", "never"],
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "keep": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Keep a newly acquired lease after a run.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "keepOnFailure": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Keep a failed one-shot lease for debugging.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "fullResync": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Force a full resync of the remote workdir.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "noSync": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Skip local checkout sync for this run.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "noHydrate": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Skip Crabbox Actions hydration.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "preflight": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Run Crabbox preflight diagnostics before the command.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "RUN"
+            }
+          },
+          "debug": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Enable Crabbox debug output.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "timingJson": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Request Crabbox final timing JSON and parse provider/lease proof.",
+            "default": true,
+            "conditional": {
+              "field": "action",
+              "value": ["RUN", "WARMUP"]
+            }
+          },
+          "allowEnv": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated env names to forward with Crabbox `--allow-env`.",
+            "required": false
+          },
+          "envFromProfile": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Profile file to load env values from with Crabbox `--env-from-profile`.",
+            "required": false
+          },
+          "wait": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Wait for status to settle.",
+            "default": false,
+            "conditional": {
+              "field": "action",
+              "value": "STATUS"
+            }
+          },
+          "timeoutMs": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Local timeout for the Crabbox process in milliseconds.",
+            "default": 7200000
+          },
+          "maxOutputBytes": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Maximum stdout and stderr bytes retained in the AGNT tool result.",
+            "default": 200000
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the Crabbox command exited successfully"
+          },
+          "result": {
+            "type": "object",
+            "description": "Crabbox command result including args, stdout/stderr, timing JSON, provider, leaseId, runId, and exitCode"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the Crabbox command failed"
+          }
+        }
+      }
+    }
+  ]
+}
