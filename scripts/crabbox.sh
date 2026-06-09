@@ -87,7 +87,7 @@ if [[ -n "${CRABBOX_ALLOW_ENV:-}" ]]; then
 fi
 
 if [[ "${CRABBOX_SHELL:-}" == "1" ]]; then
-  args+=(--shell -- "CI=${CI:-1} $*")
+  args+=(--shell -- "export CI=${CI:-1}; $*")
 else
   args+=(-- env "CI=${CI:-1}" "$@")
 fi
