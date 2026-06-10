@@ -2,7 +2,9 @@ import { spawn } from 'child_process';
 import path from 'path';
 
 const DEFAULT_MAX_OUTPUT_BYTES = 200_000;
-const DEFAULT_TIMEOUT_MS = 1000 * 60 * 60 * 2;
+const DEFAULT_TIMEOUT_MS = 1000 * 60 * 15;
+const KILL_GRACE_MS = 10_000;
+const LEASE_STOP_TIMEOUT_MS = 60_000;
 const LEASE_VALUE_FLAGS = new Map([
   ['provider', '--provider'],
   ['profile', '--profile'],
@@ -67,7 +69,11 @@ const INIT_BOOLEAN_FLAGS = new Map([
 ]);
 
 function truthy(value) {
-  return value === true || value === 'true' || value === '1' || value === 1;
+  return value === true || value === 'true' || value === '1' || value === 1 || value === 'Yes' || value === 'yes';
+}
+
+function explicitlyDisabled(value) {
+  return value === false || value === 'false' || value === '0' || value === 0 || value === 'No' || value === 'no';
 }
 
 function compact(value) {
@@ -249,7 +255,7 @@ export function buildCrabboxArgs(params = {}) {
   if (action === 'RUN') {
     appendMappedFlags(args, RUN_VALUE_FLAGS, params);
     appendMappedBooleans(args, RUN_BOOLEAN_FLAGS, params);
-    if (params.timingJson !== false && params.timingJson !== 'false') {
+    if (!explicitlyDisabled(params.timingJson)) {
       args.push('--timing-json');
     }
 
@@ -262,7 +268,7 @@ export function buildCrabboxArgs(params = {}) {
     appendRepeatable(args, '--download', params.download);
   }
 
-  if (action === 'WARMUP' && params.timingJson !== false && params.timingJson !== 'false') {
+  if (action === 'WARMUP' && !explicitlyDisabled(params.timingJson)) {
     args.push('--timing-json');
   }
 
@@ -401,32 +407,60 @@ export function resolveWorkingDirectory(workingDirectory) {
   return path.resolve(requested);
 }
 
+// Minimal allowlist: the server env holds API keys and session secrets that the
+// Crabbox CLI must never see. Only PATH/HOME (binary + CLI config resolution)
+// and explicit CRABBOX_* settings cross the boundary.
+export function buildChildEnv(token, env = process.env) {
+  const childEnv = {};
+  for (const key of ['PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP']) {
+    if (env[key] !== undefined) childEnv[key] = env[key];
+  }
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith('CRABBOX_')) childEnv[key] = value;
+  }
+  if (token) {
+    childEnv.CRABBOX_TOKEN = token;
+  }
+  return childEnv;
+}
+
 class CrabboxPlugin {
   constructor() {
     this.name = 'crabbox';
   }
 
-  async execute(params = {}) {
-    console.log('[CrabboxPlugin] Executing with params:', JSON.stringify({ ...params, command: params.command }, null, 2));
+  async execute(params = {}, inputData, workflowEngine) {
+    const { __auth, ...loggableParams } = params;
+    console.log('[CrabboxPlugin] Executing with params:', JSON.stringify(loggableParams, null, 2));
 
     try {
-      const binary = compact(params.binary) || process.env.CRABBOX_BIN || 'crabbox';
+      const token = __auth?.token;
+      if (!token) {
+        throw new Error(
+          'No valid Crabbox credential found. Connect Crabbox (API key) in Settings → Integrations. ' +
+            'The Crabbox node never uses the server\'s ambient CLI login.'
+        );
+      }
+
+      const binary = process.env.CRABBOX_BIN || 'crabbox';
       const args = buildCrabboxArgs(params);
       const cwd = resolveWorkingDirectory(params.workingDirectory);
+      const env = buildChildEnv(token);
       const timeoutMs = Number(params.timeoutMs || DEFAULT_TIMEOUT_MS);
       const maxOutputBytes = Number(params.maxOutputBytes || DEFAULT_MAX_OUTPUT_BYTES);
       const { stdout, stderr, exitCode, signal, timedOut } = await this.runProcess(binary, args, {
         cwd,
+        env,
         timeoutMs,
         maxOutputBytes,
       });
       const parsed = parseCrabboxOutput(stdout, stderr);
+      const leaseCleanup = await this.cleanupLease({ params, parsed, binary, cwd, env, timedOut, signal });
 
       return {
         success: exitCode === 0 && !timedOut,
         result: {
           action: (params.action || 'RUN').toUpperCase(),
-          binary,
           args,
           cwd,
           stdout,
@@ -434,6 +468,7 @@ class CrabboxPlugin {
           exitCode,
           signal,
           timedOut,
+          leaseCleanup,
           ...parsed,
         },
         error: exitCode === 0 && !timedOut ? null : this.formatError(exitCode, signal, timedOut, stderr),
@@ -448,21 +483,52 @@ class CrabboxPlugin {
     }
   }
 
-  runProcess(binary, args, { cwd, timeoutMs, maxOutputBytes }) {
+  // A timed-out or signal-killed local CLI never gets to release its remote
+  // lease, which keeps billing on the broker side. Stop it explicitly unless
+  // the user asked to keep it.
+  async cleanupLease({ params, parsed, binary, cwd, env, timedOut, signal }) {
+    const action = (params.action || 'RUN').toUpperCase();
+    if (!timedOut && !signal) return null;
+    if (!['RUN', 'WARMUP'].includes(action)) return null;
+    if (!parsed.leaseId) return { attempted: false, reason: 'no lease id found in output' };
+    if (truthy(params.keep) || truthy(params.keepOnFailure)) {
+      return { attempted: false, reason: `lease ${parsed.leaseId} kept on request` };
+    }
+
+    console.warn(`[CrabboxPlugin] Run interrupted; stopping remote lease ${parsed.leaseId}`);
+    try {
+      const stop = await this.runProcess(binary, ['stop', parsed.leaseId], {
+        cwd,
+        env,
+        timeoutMs: LEASE_STOP_TIMEOUT_MS,
+        maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
+      });
+      return { attempted: true, leaseId: parsed.leaseId, stopped: stop.exitCode === 0 && !stop.timedOut };
+    } catch (error) {
+      console.error(`[CrabboxPlugin] Failed to stop lease ${parsed.leaseId}:`, error.message);
+      return { attempted: true, leaseId: parsed.leaseId, stopped: false, error: error.message };
+    }
+  }
+
+  runProcess(binary, args, { cwd, env, timeoutMs, maxOutputBytes }) {
     return new Promise((resolve, reject) => {
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      let killTimer = null;
 
       const child = spawn(binary, args, {
         cwd,
-        env: process.env,
+        env,
         shell: false,
       });
 
       const timer = setTimeout(() => {
         timedOut = true;
         child.kill('SIGTERM');
+        killTimer = setTimeout(() => {
+          child.kill('SIGKILL');
+        }, KILL_GRACE_MS);
       }, timeoutMs);
 
       child.stdout?.on('data', (chunk) => {
@@ -479,6 +545,7 @@ class CrabboxPlugin {
 
       child.on('error', (error) => {
         clearTimeout(timer);
+        clearTimeout(killTimer);
         if (error.code === 'ENOENT') {
           reject(new Error(`Crabbox binary not found: ${binary}. Install from https://crabbox.sh or set CRABBOX_BIN.`));
           return;
@@ -488,6 +555,7 @@ class CrabboxPlugin {
 
       child.on('close', (exitCode, signal) => {
         clearTimeout(timer);
+        clearTimeout(killTimer);
         resolve({ stdout, stderr, exitCode, signal, timedOut });
       });
     });

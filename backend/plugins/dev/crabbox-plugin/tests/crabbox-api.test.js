@@ -2,11 +2,12 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
 import {
+  buildChildEnv,
   buildCrabboxArgs,
   normalizeAllowEnv,
   parseCommandLine,
   parseCrabboxOutput,
-} from '../../backend/plugins/dev/crabbox-plugin/crabbox-api.js';
+} from '../crabbox-api.js';
 
 describe('Crabbox plugin command parsing', () => {
   it('parses quoted argv commands without using a local shell', () => {
@@ -38,8 +39,8 @@ describe('Crabbox plugin arg builder', () => {
     const args = buildCrabboxArgs({
       action: 'RUN',
       provider: 'aws',
-      ttl: '120m',
-      idleTimeout: '60m',
+      ttl: '90m',
+      idleTimeout: '30m',
       command: 'npm run test:e2e',
       allowEnv: 'OPENAI_API_KEY,ANTHROPIC_API_KEY',
       preflight: true,
@@ -50,9 +51,9 @@ describe('Crabbox plugin arg builder', () => {
       '--provider',
       'aws',
       '--ttl',
-      '120m',
+      '90m',
       '--idle-timeout',
-      '60m',
+      '30m',
       '--preflight',
       '--timing-json',
       '--allow-env',
@@ -64,6 +65,18 @@ describe('Crabbox plugin arg builder', () => {
       'run',
       'test:e2e',
     ]);
+  });
+
+  it('accepts Yes/No select values for boolean toggles', () => {
+    const args = buildCrabboxArgs({
+      action: 'RUN',
+      shell: 'Yes',
+      preflight: 'No',
+      timingJson: 'No',
+      command: 'npm install && npm test',
+    });
+
+    assert.deepEqual(args, ['run', '--shell', '--', 'npm install && npm test']);
   });
 
   it('builds a shell run when explicitly requested', () => {
@@ -147,6 +160,32 @@ describe('Crabbox plugin arg builder', () => {
 
   it('requires a job name for job run', () => {
     assert.throws(() => buildCrabboxArgs({ action: 'JOB_RUN' }), /jobName is required/);
+  });
+});
+
+describe('Crabbox plugin child environment', () => {
+  it('never passes server secrets to the CLI', () => {
+    const env = buildChildEnv('tok_123', {
+      PATH: '/usr/bin',
+      HOME: '/home/agnt',
+      OPENAI_API_KEY: 'sk-secret',
+      AWS_SECRET_ACCESS_KEY: 'aws-secret',
+      CRABBOX_BIN: '/opt/crabbox',
+      CRABBOX_DEBUG: '1',
+    });
+
+    assert.deepEqual(env, {
+      PATH: '/usr/bin',
+      HOME: '/home/agnt',
+      CRABBOX_BIN: '/opt/crabbox',
+      CRABBOX_DEBUG: '1',
+      CRABBOX_TOKEN: 'tok_123',
+    });
+  });
+
+  it('omits the token entry when no credential is supplied', () => {
+    const env = buildChildEnv(null, { PATH: '/usr/bin' });
+    assert.deepEqual(env, { PATH: '/usr/bin' });
   });
 });
 

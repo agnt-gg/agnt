@@ -97,7 +97,6 @@ build/
 
 # Plugin builds (will be generated in container)
 backend/plugins/plugin-builds/*.agnt
-!backend/plugins/plugin-builds/crabbox-plugin.agnt
 backend/plugins/dev/*/node_modules/
 backend/plugins/installed/
 

@@ -2,7 +2,7 @@
   "name": "crabbox-plugin",
   "version": "1.0.0",
   "description": "OpenClaw Crabbox support for remote command execution and E2E proof collection",
-  "author": "AGNT",
+  "author": "Yossi Eliaz",
   "icon": "terminal",
   "tools": [
     {
@@ -14,12 +14,27 @@
         "type": "crabbox",
         "icon": "terminal",
         "description": "Run OpenClaw Crabbox commands from AGNT workflows: initialize repo config, run named jobs, lease a remote box, sync the repo, run commands, inspect/list/stop leases, and run doctor checks.",
+        "authRequired": "apiKey",
+        "authProvider": "crabbox",
         "parameters": {
           "action": {
             "type": "string",
             "inputType": "select",
             "description": "Crabbox action to execute",
-            "options": ["RUN", "WARMUP", "JOB_RUN", "JOB_LIST", "INIT", "SYNC_PLAN", "STATUS", "INSPECT", "LIST", "STOP", "DOCTOR", "VERSION"],
+            "options": [
+              "RUN",
+              "WARMUP",
+              "JOB_RUN",
+              "JOB_LIST",
+              "INIT",
+              "SYNC_PLAN",
+              "STATUS",
+              "INSPECT",
+              "LIST",
+              "STOP",
+              "DOCTOR",
+              "VERSION"
+            ],
             "default": "RUN"
           },
           "command": {
@@ -32,25 +47,23 @@
             }
           },
           "shell": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Pass the remote command through Crabbox `--shell` for pipelines or multi-statement scripts.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "workingDirectory": {
             "type": "string",
             "inputType": "text",
             "description": "Local repository path to sync from. Defaults to the AGNT process working directory.",
-            "required": false
-          },
-          "binary": {
-            "type": "string",
-            "inputType": "text",
-            "description": "Crabbox binary path. Defaults to CRABBOX_BIN or `crabbox` on PATH.",
             "required": false
           },
           "provider": {
@@ -82,7 +95,10 @@
             "required": false,
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
             }
           },
           "ttl": {
@@ -92,7 +108,10 @@
             "default": "90m",
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
             }
           },
           "idleTimeout": {
@@ -102,7 +121,10 @@
             "default": "30m",
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
             }
           },
           "className": {
@@ -112,17 +134,26 @@
             "required": false,
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
             }
           },
           "arch": {
             "type": "string",
             "inputType": "select",
             "description": "CPU architecture.",
-            "options": ["amd64", "arm64"],
+            "options": [
+              "amd64",
+              "arm64"
+            ],
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
             }
           },
           "slug": {
@@ -132,25 +163,38 @@
             "required": false,
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
             }
           },
           "target": {
             "type": "string",
             "inputType": "select",
             "description": "Target operating system.",
-            "options": ["linux", "macos", "windows"],
+            "options": [
+              "linux",
+              "macos",
+              "windows"
+            ],
             "required": false,
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
             }
           },
           "windowsMode": {
             "type": "string",
             "inputType": "select",
             "description": "Windows target mode.",
-            "options": ["normal", "wsl2"],
+            "options": [
+              "normal",
+              "wsl2"
+            ],
             "required": false,
             "conditional": {
               "field": "target",
@@ -161,112 +205,175 @@
             "type": "string",
             "inputType": "select",
             "description": "Crabbox SSH network path.",
-            "options": ["auto", "tailscale", "public"],
+            "options": [
+              "auto",
+              "tailscale",
+              "public"
+            ],
             "required": false,
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
             }
           },
           "stopAfter": {
             "type": "string",
             "inputType": "select",
             "description": "Crabbox cleanup policy for runs.",
-            "options": ["success", "always", "failure", "never"],
+            "options": [
+              "success",
+              "always",
+              "failure",
+              "never"
+            ],
             "conditional": {
               "field": "action",
               "value": "RUN"
             }
           },
           "keep": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Keep a newly acquired lease. `warmup` keeps leases by default.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
-            }
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "reclaim": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Reclaim an existing lease claim for this repository.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
-            }
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "keepOnFailure": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Keep a failed one-shot lease for debugging.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "fullResync": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Force a full resync of the remote workdir.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "noSync": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Skip local checkout sync for this run.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "noHydrate": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Skip Crabbox Actions hydration.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
-              "value": ["RUN", "JOB_RUN"]
-            }
+              "value": [
+                "RUN",
+                "JOB_RUN"
+              ]
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "preflight": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Run Crabbox preflight diagnostics before the command.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "debug": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Enable Crabbox debug output.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
-            }
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "timingJson": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Request Crabbox final timing JSON and parse provider/lease proof.",
-            "default": true,
+            "default": "Yes",
             "conditional": {
               "field": "action",
-              "value": ["RUN", "WARMUP"]
-            }
+              "value": [
+                "RUN",
+                "WARMUP"
+              ]
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "allowEnv": {
             "type": "string",
@@ -315,24 +422,32 @@
             "required": false
           },
           "detect": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Use `crabbox init --detect` to detect repo checks and write a job.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "INIT"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "force": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Use `crabbox init --force` to overwrite generated files.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "INIT"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "configPath": {
             "type": "string",
@@ -365,30 +480,44 @@
             }
           },
           "dryRun": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Preview the expanded Crabbox job without leasing.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "JOB_RUN"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "githubRunner": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Hydrate a job through a GitHub self-hosted runner.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "JOB_RUN"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "stop": {
             "type": "string",
             "inputType": "select",
             "description": "Override Crabbox job stop policy.",
-            "options": ["auto", "always", "success", "failure", "never"],
+            "options": [
+              "auto",
+              "always",
+              "success",
+              "failure",
+              "never"
+            ],
             "required": false,
             "conditional": {
               "field": "action",
@@ -396,20 +525,24 @@
             }
           },
           "wait": {
-            "type": "boolean",
-            "inputType": "checkbox",
+            "type": "string",
+            "inputType": "select",
             "description": "Wait for status to settle.",
-            "default": false,
+            "default": "No",
             "conditional": {
               "field": "action",
               "value": "STATUS"
-            }
+            },
+            "options": [
+              "Yes",
+              "No"
+            ]
           },
           "timeoutMs": {
             "type": "number",
             "inputType": "number",
-            "description": "Local timeout for the Crabbox process in milliseconds.",
-            "default": 7200000
+            "description": "Local timeout for the Crabbox process in milliseconds. Defaults to 15 minutes.",
+            "default": 900000
           },
           "maxOutputBytes": {
             "type": "number",
