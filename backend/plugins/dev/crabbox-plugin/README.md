@@ -36,9 +36,12 @@ user runs as themselves rather than as the server.
 
 The Crabbox CLI is spawned with a minimal environment allowlist (`PATH`,
 `HOME`, `USERPROFILE`, temp dirs, and explicit `CRABBOX_*` variables) — it does
-not inherit the AGNT server environment. To forward specific variables to the
-*remote* machine, use the `allowEnv` or `envFromProfile` parameters, which map
-to Crabbox `--allow-env` / `--env-from-profile`.
+not inherit the AGNT server environment, so workflow inputs cannot exfiltrate
+server secrets. This also bounds `allowEnv` (Crabbox `--allow-env`): the CLI
+can only forward variables that exist in its own minimal environment, i.e.
+`CRABBOX_*` ones. To send other values to the *remote* machine, use
+`envFromProfile` (Crabbox `--env-from-profile`), which reads from a profile
+file rather than the server environment.
 
 ## Actions
 
