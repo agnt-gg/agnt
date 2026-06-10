@@ -50,15 +50,15 @@
             "type": "string",
             "inputType": "select",
             "description": "Pass the remote command through Crabbox `--shell` for pipelines or multi-statement scripts.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "workingDirectory": {
             "type": "string",
@@ -238,6 +238,10 @@
             "type": "string",
             "inputType": "select",
             "description": "Keep a newly acquired lease. `warmup` keeps leases by default.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
@@ -245,16 +249,16 @@
                 "RUN",
                 "WARMUP"
               ]
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "reclaim": {
             "type": "string",
             "inputType": "select",
             "description": "Reclaim an existing lease claim for this repository.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
@@ -262,58 +266,58 @@
                 "RUN",
                 "WARMUP"
               ]
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "keepOnFailure": {
             "type": "string",
             "inputType": "select",
             "description": "Keep a failed one-shot lease for debugging.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "fullResync": {
             "type": "string",
             "inputType": "select",
             "description": "Force a full resync of the remote workdir.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "noSync": {
             "type": "string",
             "inputType": "select",
             "description": "Skip local checkout sync for this run.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "noHydrate": {
             "type": "string",
             "inputType": "select",
             "description": "Skip Crabbox Actions hydration.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
@@ -321,30 +325,30 @@
                 "RUN",
                 "JOB_RUN"
               ]
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "preflight": {
             "type": "string",
             "inputType": "select",
             "description": "Run Crabbox preflight diagnostics before the command.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "RUN"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "debug": {
             "type": "string",
             "inputType": "select",
             "description": "Enable Crabbox debug output.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
@@ -352,16 +356,16 @@
                 "RUN",
                 "WARMUP"
               ]
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "timingJson": {
             "type": "string",
             "inputType": "select",
             "description": "Request Crabbox final timing JSON and parse provider/lease proof.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "Yes",
             "conditional": {
               "field": "action",
@@ -369,11 +373,7 @@
                 "RUN",
                 "WARMUP"
               ]
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "allowEnv": {
             "type": "string",
@@ -425,29 +425,29 @@
             "type": "string",
             "inputType": "select",
             "description": "Use `crabbox init --detect` to detect repo checks and write a job.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "INIT"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "force": {
             "type": "string",
             "inputType": "select",
             "description": "Use `crabbox init --force` to overwrite generated files.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "INIT"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "configPath": {
             "type": "string",
@@ -483,29 +483,29 @@
             "type": "string",
             "inputType": "select",
             "description": "Preview the expanded Crabbox job without leasing.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "JOB_RUN"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "githubRunner": {
             "type": "string",
             "inputType": "select",
             "description": "Hydrate a job through a GitHub self-hosted runner.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "JOB_RUN"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "stop": {
             "type": "string",
@@ -528,15 +528,15 @@
             "type": "string",
             "inputType": "select",
             "description": "Wait for status to settle.",
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "No",
             "conditional": {
               "field": "action",
               "value": "STATUS"
-            },
-            "options": [
-              "Yes",
-              "No"
-            ]
+            }
           },
           "timeoutMs": {
             "type": "number",
