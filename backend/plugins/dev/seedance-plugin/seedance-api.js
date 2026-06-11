@@ -36,10 +36,16 @@ class SeedanceAPI {
 
   // OpenRouter app-attribution headers (https://openrouter.ai/docs/app-attribution)
   // so all AGNT instances aggregate under one app on OpenRouter leaderboards.
+  // Send BOTH `X-Title` and `X-OpenRouter-Title` with the same value — OpenRouter
+  // accepts both names and the docs are unclear which one currently drives the
+  // rankings UI. The plugin must send the SAME title as providerConfigs.js so
+  // seedance video traffic and chat traffic aggregate under a single "AGNT"
+  // entry rather than splitting into a separate "AGNT Seedance Plugin" app.
   _orHeaders(apiKey, extra = {}) {
     return {
       Authorization: `Bearer ${apiKey}`,
       'HTTP-Referer': process.env.OPENROUTER_APP_REFERER || 'https://agnt.gg',
+      'X-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
       'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
       'X-OpenRouter-Categories':
         process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',

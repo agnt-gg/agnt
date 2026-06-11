@@ -401,9 +401,15 @@ const PROVIDER_CONFIGS = [
     baseURL: 'https://openrouter.ai/api/v1',
     sdkType: 'openai',
     authScheme: 'bearer',
+    // Send BOTH `X-Title` (legacy backward-compat) and `X-OpenRouter-Title`
+    // (newer name). OpenRouter's docs are inconsistent about which one
+    // currently controls the rankings/analytics title; sending both costs
+    // nothing and guarantees the app shows as "AGNT" (or $OPENROUTER_APP_TITLE)
+    // regardless of which header OpenRouter actually reads.
     sdkOptions: {
       defaultHeaders: {
         'HTTP-Referer': process.env.OPENROUTER_APP_REFERER || 'https://agnt.gg',
+        'X-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
         'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
         'X-OpenRouter-Categories':
           process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',
@@ -411,6 +417,7 @@ const PROVIDER_CONFIGS = [
     },
     fetchHeaders: {
       'HTTP-Referer': process.env.OPENROUTER_APP_REFERER || 'https://agnt.gg',
+      'X-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
       'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
       'X-OpenRouter-Categories':
         process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',
