@@ -1704,9 +1704,13 @@ Please carefully check the tool schema and ensure all parameters match the expec
       }
     }
 
+    // Labeled so the in-catch `continue streamingAttemptLoop` below skips the
+    // inner pause_turn-resume `while` and restarts the whole attempt cleanly.
+    streamingAttemptLoop:
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
       let accumulatedToolCalls = [];
+      let accumulatedThinking = '';
       let contentBlocks = [];
       let anthropicUsage = {
         input_tokens: 0,
@@ -1716,6 +1720,18 @@ Please carefully check the tool schema and ensure all parameters match the expec
         cache_creation_5m_input_tokens: 0,
         cache_creation_1h_input_tokens: 0,
       };
+      // Anthropic's documented stop_reason values: end_turn, max_tokens,
+      // stop_sequence, tool_use, pause_turn, refusal. We capture the last one
+      // we see on message_delta so we can: (a) auto-resume on pause_turn, and
+      // (b) log it on empty responses for diagnostic visibility. See PRD-082.
+      let anthropicStopReason = null;
+      // Offset added to every event.index so that a resumed stream (after
+      // pause_turn) appends its blocks to the same accumulator instead of
+      // overwriting blocks from the previous segment. Bumped to
+      // contentBlocks.length before each resume.
+      let blockIndexOffset = 0;
+      let resumeCount = 0;
+      const MAX_PAUSE_TURN_RESUMES = 3;
 
       try {
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
@@ -1832,11 +1848,20 @@ Please carefully check the tool schema and ensure all parameters match the expec
           requestParams.output_config = reasoningConfig.outputConfig;
         }
 
-        const stream = await this.client.messages.stream(requestParams);
-
-        // Handle streaming events with error recovery
+        // Outer loop: handles `stop_reason: pause_turn` resumes. Anthropic emits
+        // pause_turn on long agentic turns (typically big context + lots of
+        // tools) to ask the client to re-invoke with the partial assistant
+        // content appended; the model resumes the same turn. See PRD-082.
         let streamParseError = null;
-        try {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          // Reset the per-segment stop_reason so we only ever read the one
+          // emitted by the segment we're about to consume.
+          anthropicStopReason = null;
+          const stream = await this.client.messages.stream(requestParams);
+
+          // Handle streaming events with error recovery
+          try {
           for await (const event of stream) {
             if (abortSignal?.aborted) {
               stream.abort?.();
@@ -1873,28 +1898,65 @@ Please carefully check the tool schema and ensure all parameters match the expec
             if (event.type === 'message_delta' && event.usage) {
               anthropicUsage.output_tokens = event.usage.output_tokens || 0;
             }
+            // Capture stop_reason from message_delta. `pause_turn` is used by
+            // Anthropic on long agentic turns to ask the client to resume; we
+            // handle it explicitly below. All other values are logged on empty
+            // responses (PRD-082 diagnostic) so we can tell end_turn vs refusal
+            // vs max_tokens at a glance.
+            if (event.type === 'message_delta' && event.delta?.stop_reason) {
+              anthropicStopReason = event.delta.stop_reason;
+            }
 
-            // Handle content block start
+            // Handle content block start.
+            // CRITICAL: Use indexed assignment, not push(). Anthropic streams emit a
+            // sequential `index` per content block. Fable 5 and Mythos 5 have
+            // adaptive thinking ALWAYS ON — every stream begins with an index-0
+            // `thinking` block regardless of request params. Older code only
+            // initialized text/tool_use blocks via push(), silently skipping the
+            // thinking slot, so the array fell one ahead of the event indices:
+            // `input_json_delta` for tool_use(index=2) looked up contentBlocks[2]
+            // which was undefined, the tool's argument JSON got dropped, and the
+            // assistant emitted an orphan tool_use with empty args — hence "0 tool
+            // calls" and [sanitizeOrphanToolCalls] warnings on Fable.
+            //
+            // Opus 4.6 / 4.7 / 4.8 / Sonnet 4.6 also support adaptive thinking but
+            // only emit a thinking block when our adapter passes `thinking: {type:
+            // 'adaptive'}`. They worked fine pre-fix because we never enabled it.
+            // With those models now recognized by supportsAnthropicAdaptiveThinking,
+            // the indexed-assignment fix protects them too once a user turns on
+            // a non-default reasoning effort.
             if (event.type === 'content_block_start') {
               const block = event.content_block;
+              // blockIndexOffset is 0 on the first segment of a stream, and
+              // bumped to contentBlocks.length before each pause_turn resume,
+              // so resumed segments append rather than overwrite.
+              const idx = blockIndexOffset + event.index;
               if (block.type === 'text') {
-                // Initialize text block
-                contentBlocks.push({ type: 'text', text: '' });
+                contentBlocks[idx] = { type: 'text', text: '' };
               } else if (block.type === 'tool_use') {
-                // Initialize tool use block
-                contentBlocks.push({
+                contentBlocks[idx] = {
                   type: 'tool_use',
                   id: block.id,
                   name: block.name,
                   input: {},
-                });
+                };
+              } else if (block.type === 'thinking') {
+                // Preserve thinking blocks so the cryptographic signature flows back
+                // into the conversation history; Anthropic verifies it on the follow-up
+                // call when the same assistant message is replayed with tool_results.
+                contentBlocks[idx] = { type: 'thinking', thinking: '', signature: '' };
+              } else if (block.type === 'redacted_thinking') {
+                contentBlocks[idx] = { type: 'redacted_thinking', data: block.data || '' };
+              } else {
+                // Future-proof: store unknown block types as-is so indices stay aligned.
+                contentBlocks[idx] = { ...block };
               }
             }
 
-            // Handle content block delta (streaming text or tool input)
+            // Handle content block delta (streaming text, tool input, or thinking)
             if (event.type === 'content_block_delta') {
               const delta = event.delta;
-              const index = event.index;
+              const index = blockIndexOffset + event.index;
 
               if (delta.type === 'text_delta') {
                 // Accumulate text content
@@ -1927,12 +1989,37 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
                   // Don't try to parse until we have the complete JSON (on content_block_stop)
                 }
+              } else if (delta.type === 'thinking_delta') {
+                // Fable 5 / Mythos 5 (always-on adaptive thinking) and any
+                // model with `output_config.effort` set spend tokens here
+                // BEFORE emitting any text. Without forwarding these deltas
+                // to onChunk, the UI sees dead silence for the whole thinking
+                // phase and the response feels like it's batching rather than
+                // streaming. The orchestrator translates `type: 'reasoning'`
+                // into a `reasoning_delta` SSE event — same path the OpenAI
+                // adapter (line ~708) uses for o-series reasoning tokens.
+                const thinkingDelta = delta.thinking || '';
+                accumulatedThinking += thinkingDelta;
+                if (contentBlocks[index] && contentBlocks[index].type === 'thinking') {
+                  contentBlocks[index].thinking += thinkingDelta;
+                }
+                if (onChunk) {
+                  onChunk({
+                    type: 'reasoning',
+                    delta: thinkingDelta,
+                    accumulated: accumulatedThinking,
+                  });
+                }
+              } else if (delta.type === 'signature_delta') {
+                if (contentBlocks[index] && contentBlocks[index].type === 'thinking') {
+                  contentBlocks[index].signature += (delta.signature || '');
+                }
               }
             }
 
             // Handle content block stop
             if (event.type === 'content_block_stop') {
-              const index = event.index;
+              const index = blockIndexOffset + event.index;
               const block = contentBlocks[index];
 
               if (block && block.type === 'tool_use') {
@@ -2021,7 +2108,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
               );
               const delay = this.calculateDelay(attempt);
               await this.sleep(delay);
-              continue; // Retry the call
+              // Skip the pause_turn resume loop and restart the whole attempt.
+              continue streamingAttemptLoop;
             }
           }
 
@@ -2034,6 +2122,41 @@ Please carefully check the tool schema and ensure all parameters match the expec
             `[Anthropic] Continuing with ${accumulatedContent.length} chars content and ${accumulatedToolCalls.length} tool calls after stream error`,
           );
         }
+
+          // pause_turn auto-resume. Append the partial assistant content
+          // (thinking blocks + signatures + any text/tool_use so far) to the
+          // request's messages and re-stream. The model picks up where it
+          // left off. Hard-capped at MAX_PAUSE_TURN_RESUMES to prevent
+          // runaway. See PRD-082.
+          if (
+            anthropicStopReason === 'pause_turn' &&
+            resumeCount < MAX_PAUSE_TURN_RESUMES &&
+            contentBlocks.length > 0
+          ) {
+            resumeCount++;
+            const partialAssistant = {
+              role: 'assistant',
+              content: contentBlocks.map((block) => {
+                if (block && block.type === 'tool_use') {
+                  const { _inputJsonString, ...clean } = block;
+                  return clean;
+                }
+                return { ...block };
+              }).filter(Boolean),
+            };
+            requestParams.messages = [...requestParams.messages, partialAssistant];
+            blockIndexOffset = contentBlocks.length;
+            console.log(
+              `[Anthropic Stream] pause_turn detected — resuming (${resumeCount}/${MAX_PAUSE_TURN_RESUMES}), ` +
+              `${contentBlocks.length} block(s) carried forward, offset=${blockIndexOffset}`,
+            );
+            continue; // re-enter the pause_turn resume while loop
+          }
+
+          // Any other stop_reason (end_turn, max_tokens, tool_use, refusal,
+          // null) means this segment is the final one — exit the resume loop.
+          break;
+        } // end of pause_turn resume while loop
 
         // Log successful retry if this wasn't the first attempt
         if (attempt > 0) {
@@ -2062,6 +2185,27 @@ Please carefully check the tool schema and ensure all parameters match the expec
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
         if (wasEmpty) {
           console.warn('[Anthropic Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+          // Phase 1 diagnostic — PRD-082. On empty responses, log the data we
+          // need to disambiguate root cause without restarting the chat:
+          //   stop_reason         — end_turn vs pause_turn vs refusal vs max_tokens
+          //   block tally         — was the response all thinking? truly nothing?
+          //   thinkingSigLen      — did we capture a full signature?
+          //   resumeCount         — did we already exhaust pause_turn resumes?
+          const blockSummary = contentBlocks.reduce((acc, b) => {
+            if (!b) return acc;
+            acc[b.type] = (acc[b.type] || 0) + 1;
+            return acc;
+          }, {});
+          const thinkingBlock = contentBlocks.find((b) => b?.type === 'thinking');
+          console.warn(
+            `[Anthropic Stream] Empty response detail — model=${this.model} ` +
+            `provider=${this.provider} ` +
+            `stop_reason=${anthropicStopReason || 'null'} ` +
+            `blocks=${JSON.stringify(blockSummary)} ` +
+            `thinkingSigLen=${(thinkingBlock?.signature || '').length} ` +
+            `output_tokens=${anthropicUsage.output_tokens || 0} ` +
+            `resumeCount=${resumeCount}/${MAX_PAUSE_TURN_RESUMES}`,
+          );
         }
 
         return {
@@ -4924,6 +5068,9 @@ function buildResponsesReasoningConfig(model, reasoningValue) {
 function supportsAnthropicAdaptiveThinking(model) {
   const lower = String(model || '').toLowerCase();
   return (
+    lower.startsWith('claude-fable-') ||
+    lower.startsWith('claude-mythos-') ||
+    lower.startsWith('claude-opus-4-8') ||
     lower.startsWith('claude-opus-4-7') ||
     lower.startsWith('claude-opus-4-6') ||
     lower.startsWith('claude-sonnet-4-6')
@@ -4934,14 +5081,33 @@ function buildAnthropicReasoningConfig(model, reasoningValue) {
   if (!supportsAnthropicAdaptiveThinking(model)) return null;
 
   const normalized = normalizeReasoningValue(reasoningValue);
-  if (normalized === 'default') return null;
+  const lower = String(model || '').toLowerCase();
+
+  // PRD-082: Fable 5 and Mythos 5 have always-on adaptive thinking, but unlike
+  // Opus 4.8 (where Anthropic's server-side default is documented as `effort:
+  // 'high'`) the docs are silent on Fable/Mythos's default. Empirically, when
+  // we send no output_config we get tiny 4-6 token responses with everything
+  // consumed by thinking. Pin 'default' to 'high' for these models so the
+  // model has the budget to actually emit text/tool_use after thinking.
+  const isAlwaysOnThinkingModel =
+    lower.startsWith('claude-fable-') || lower.startsWith('claude-mythos-');
+
+  if (normalized === 'default') {
+    if (!isAlwaysOnThinkingModel) return null;
+    return { thinking: { type: 'adaptive' }, outputConfig: { effort: 'high' } };
+  }
   if (normalized === 'off') {
     return { thinking: { type: 'disabled' } };
   }
 
   const effort = normalized === 'on' ? 'high' : normalized;
-  const lower = String(model || '').toLowerCase();
-  const allowed = lower.startsWith('claude-opus-4-7')
+  // Opus 4.7 and the Fable/Mythos/Opus-4.8 generation expose an `xhigh` ("Max") tier.
+  const supportsXHigh =
+    lower.startsWith('claude-opus-4-7') ||
+    lower.startsWith('claude-opus-4-8') ||
+    lower.startsWith('claude-fable-') ||
+    lower.startsWith('claude-mythos-');
+  const allowed = supportsXHigh
     ? new Set(['low', 'medium', 'high', 'xhigh'])
     : new Set(['low', 'medium', 'high']);
 

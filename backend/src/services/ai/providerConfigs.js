@@ -168,6 +168,12 @@ const PROVIDER_CONFIGS = [
     },
     sdkOptions: {
       defaultHeaders: {
+        // TODO(PRD-082): All beta tokens here are from 2024-2025; Fable 5 /
+        // Mythos 5 shipped June 2026 with always-on adaptive thinking. If
+        // Phase 1 diagnostic logs show `stop_reason=end_turn + blocks={} +
+        // tiny output_tokens`, refresh this header with the current 2026
+        // beta tokens documented at platform.claude.com (and/or mirrored in
+        // the Claude Code GitHub source).
         'anthropic-beta':
           'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31,extended-cache-ttl-2025-04-11',
         'user-agent': 'claude-cli/2.1.2 (external, cli)',
@@ -983,6 +989,9 @@ function isOpenAIResponsesReasoningModel(modelId) {
 function isAnthropicAdaptiveThinkingModel(modelId) {
   const lower = String(modelId || '').toLowerCase();
   return (
+    lower.startsWith('claude-fable-') ||
+    lower.startsWith('claude-mythos-') ||
+    lower.startsWith('claude-opus-4-8') ||
     lower.startsWith('claude-opus-4-7') ||
     lower.startsWith('claude-opus-4-6') ||
     lower.startsWith('claude-sonnet-4-6')
@@ -1507,7 +1516,12 @@ export function getReasoningControl(providerKey, modelId) {
       { value: 'high', label: 'High' },
     ];
 
-    if (lowerModel.startsWith('claude-opus-4-7')) {
+    if (
+      lowerModel.startsWith('claude-opus-4-7') ||
+      lowerModel.startsWith('claude-opus-4-8') ||
+      lowerModel.startsWith('claude-fable-') ||
+      lowerModel.startsWith('claude-mythos-')
+    ) {
       options.push({ value: 'xhigh', label: 'Max' });
     }
 
