@@ -1,10 +1,20 @@
 import { spawn } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 
 const DEFAULT_MAX_OUTPUT_BYTES = 200_000;
+const MAX_OUTPUT_BYTES_CAP = 5_000_000;
 const DEFAULT_TIMEOUT_MS = 1000 * 60 * 15;
+const MAX_TIMEOUT_MS = 1000 * 60 * 60;
+const MIN_TIMEOUT_MS = 1000;
 const KILL_GRACE_MS = 10_000;
+const STREAM_FLUSH_GRACE_MS = 2_000;
 const LEASE_STOP_TIMEOUT_MS = 60_000;
+
+// Lease ids and job names are passed to the CLI as bare positionals, so a
+// value starting with '-' would be parsed as a flag (e.g. `stop --all`).
+const POSITIONAL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 const LEASE_VALUE_FLAGS = new Map([
   ['provider', '--provider'],
   ['profile', '--profile'],
@@ -54,7 +64,6 @@ const RUN_BOOLEAN_FLAGS = new Map([
   ['preflight', '--preflight'],
   ['resultsAuto', '--results-auto'],
   ['applyLocalPatch', '--apply-local-patch'],
-  ['scriptStdin', '--script-stdin'],
 ]);
 
 const INIT_VALUE_FLAGS = new Map([
@@ -69,11 +78,17 @@ const INIT_BOOLEAN_FLAGS = new Map([
 ]);
 
 function truthy(value) {
-  return value === true || value === 'true' || value === '1' || value === 1 || value === 'Yes' || value === 'yes';
+  if (value === true || value === 1) return true;
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
 function explicitlyDisabled(value) {
-  return value === false || value === 'false' || value === '0' || value === 0 || value === 'No' || value === 'no';
+  if (value === false || value === 0) return true;
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'false' || normalized === '0' || normalized === 'no';
 }
 
 function compact(value) {
@@ -92,19 +107,23 @@ export function parseCommandLine(command) {
   }
 
   const args = [];
+  const chars = Array.from(command.trim());
   let current = '';
   let quote = null;
-  let escaping = false;
 
-  for (const char of command.trim()) {
-    if (escaping) {
+  for (let index = 0; index < chars.length; index += 1) {
+    const char = chars[index];
+
+    // Backslash escapes only quotes, backslashes, and whitespace (never inside
+    // single quotes), so Windows paths like C:\temp pass through literally.
+    if (char === '\\' && quote !== "'") {
+      const next = chars[index + 1];
+      if (next === '"' || next === "'" || next === '\\' || (next !== undefined && /\s/.test(next))) {
+        current += next;
+        index += 1;
+        continue;
+      }
       current += char;
-      escaping = false;
-      continue;
-    }
-
-    if (char === '\\') {
-      escaping = true;
       continue;
     }
 
@@ -133,10 +152,6 @@ export function parseCommandLine(command) {
     current += char;
   }
 
-  if (escaping) {
-    current += '\\';
-  }
-
   if (quote) {
     throw new Error(`Unclosed ${quote} quote in command`);
   }
@@ -161,6 +176,22 @@ export function normalizeAllowEnv(value) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+export function clampNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.min(Math.max(parsed, min), max);
+}
+
+function assertSafePositional(value, label) {
+  const candidate = String(value);
+  if (!POSITIONAL_PATTERN.test(candidate)) {
+    throw new Error(`${label} contains unsupported characters: ${candidate}`);
+  }
+  return candidate;
 }
 
 function appendMappedFlags(args, flagMap, params) {
@@ -295,7 +326,7 @@ export function buildCrabboxArgs(params = {}) {
   if (action === 'STOP') {
     const id = compact(params.leaseId || params.id);
     if (!id) throw new Error('leaseId is required for Crabbox stop');
-    args.push(String(id));
+    args.push(assertSafePositional(id, 'leaseId'));
   }
 
   if (action === 'INSPECT') {
@@ -326,10 +357,10 @@ export function buildCrabboxArgs(params = {}) {
     if (compact(params.stop)) args.push('--stop', String(compact(params.stop)));
     appendExtraArgs(args, params.extraArgs);
     if (!jobName) throw new Error('jobName is required for Crabbox job run');
-    args.push(String(jobName));
+    args.push(assertSafePositional(jobName, 'jobName'));
   }
 
-  if (['STATUS', 'INSPECT', 'LIST', 'DOCTOR', 'SYNC_PLAN', 'INIT', 'JOB_LIST'].includes(action)) {
+  if (['STATUS', 'INSPECT', 'LIST', 'STOP', 'DOCTOR', 'SYNC_PLAN', 'INIT', 'JOB_LIST'].includes(action)) {
     appendExtraArgs(args, params.extraArgs);
   }
 
@@ -353,7 +384,7 @@ export function buildCrabboxArgs(params = {}) {
   return args;
 }
 
-function appendBounded(target, chunk, maxBytes) {
+export function appendBounded(target, chunk, maxBytes) {
   const next = target + chunk;
   if (Buffer.byteLength(next) <= maxBytes) {
     return next;
@@ -361,7 +392,13 @@ function appendBounded(target, chunk, maxBytes) {
 
   const overflowMarker = '\n[agnt: output truncated]\n';
   const keepBytes = Math.max(0, maxBytes - Buffer.byteLength(overflowMarker));
-  return overflowMarker + Buffer.from(next).subarray(-keepBytes).toString('utf8');
+  const buffer = Buffer.from(next);
+  let start = buffer.length - keepBytes;
+  // Never start the retained tail mid-way through a multi-byte UTF-8 character.
+  while (start < buffer.length && (buffer[start] & 0xc0) === 0x80) {
+    start += 1;
+  }
+  return overflowMarker + buffer.subarray(start).toString('utf8');
 }
 
 export function parseCrabboxOutput(stdout = '', stderr = '') {
@@ -393,8 +430,27 @@ export function parseCrabboxOutput(stdout = '', stderr = '') {
     leaseId: timing?.leaseId || combined.match(/\b(?:leaseId|lease id|id)[=:]\s*((?:cbx|tbx)_[a-z0-9_-]+)/i)?.[1] || null,
     runId: timing?.runId || combined.match(/\brunId[=:]\s*([a-z0-9_-]+)/i)?.[1] || null,
     slug: timing?.slug || combined.match(/\bslug[=:]\s*([a-z0-9_-]+)/i)?.[1] || null,
-    stopCommand: timing?.stopCommand || combined.match(/crabbox stop[^\r\n]*/i)?.[0] || null,
+    stopCommand: timing?.stopCommand || combined.match(/crabbox stop\s+[a-z0-9._-]+/i)?.[0] || null,
     exitCode: timing?.exitCode ?? null,
+  };
+}
+
+// The local CLI exit code is the manifest's exitCode contract; the remote
+// command's exit code from timing JSON is surfaced separately so the spread
+// of parsed fields cannot mask a non-zero local exit.
+export function composeResult({ action, args, cwd, stdout, stderr, exitCode, signal, timedOut, leaseCleanup, parsed }) {
+  return {
+    action,
+    args,
+    cwd,
+    stdout,
+    stderr,
+    signal,
+    timedOut,
+    leaseCleanup,
+    ...parsed,
+    exitCode,
+    remoteExitCode: parsed?.exitCode ?? null,
   };
 }
 
@@ -407,21 +463,102 @@ export function resolveWorkingDirectory(workingDirectory) {
   return path.resolve(requested);
 }
 
+// The binary must be an absolute path before spawn: on Windows, CreateProcess
+// resolves a bare program name against the child cwd before PATH, and cwd is
+// a workflow parameter - a bare 'crabbox' would let a workflow author plant
+// an executable in workingDirectory and have it run.
+export function resolveBinary(env = process.env, platform = process.platform) {
+  const isWindows = platform === 'win32';
+  const rejectShim = (candidate) => {
+    if (isWindows && /\.(cmd|bat)$/i.test(candidate)) {
+      throw new Error(
+        `Crabbox resolved to ${candidate}, but .cmd/.bat shims cannot be spawned without a shell. ` +
+          'Set CRABBOX_BIN to the crabbox executable (.exe).'
+      );
+    }
+  };
+
+  const configured = compact(env.CRABBOX_BIN);
+  if (configured) {
+    const resolved = path.resolve(configured);
+    if (!fs.statSync(resolved, { throwIfNoEntry: false })?.isFile()) {
+      throw new Error(`CRABBOX_BIN points to a missing file: ${resolved}`);
+    }
+    rejectShim(resolved);
+    return resolved;
+  }
+
+  const pathDirs = (env.PATH || '').split(path.delimiter).filter(Boolean);
+  const extensions = isWindows
+    ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean).map((ext) => ext.toLowerCase())
+    : [''];
+  let shim = null;
+
+  for (const dir of pathDirs) {
+    for (const extension of extensions) {
+      const candidate = path.join(dir, `crabbox${extension}`);
+      if (!fs.statSync(candidate, { throwIfNoEntry: false })?.isFile()) continue;
+      if (isWindows && /\.(cmd|bat)$/i.test(candidate)) {
+        shim = shim || candidate;
+        continue;
+      }
+      if (!isWindows) {
+        try {
+          fs.accessSync(candidate, fs.constants.X_OK);
+        } catch {
+          continue;
+        }
+      }
+      return candidate;
+    }
+  }
+
+  if (shim) rejectShim(shim);
+  throw new Error('Crabbox binary not found on PATH. Install from https://crabbox.sh or set CRABBOX_BIN.');
+}
+
 // Minimal allowlist: the server env holds API keys and session secrets that the
-// Crabbox CLI must never see. Only PATH/HOME (binary + CLI config resolution)
-// and explicit CRABBOX_* settings cross the boundary.
+// Crabbox CLI must never see. Only PATH/HOME-style resolution variables, temp
+// dirs, Windows system/config dirs, and explicit CRABBOX_* settings cross the
+// boundary, and CRABBOX_TOKEN comes exclusively from the per-run credential,
+// never from the server's ambient environment.
 export function buildChildEnv(token, env = process.env) {
   const childEnv = {};
-  for (const key of ['PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP']) {
+  for (const key of ['PATH', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP']) {
     if (env[key] !== undefined) childEnv[key] = env[key];
   }
   for (const [key, value] of Object.entries(env)) {
-    if (key.startsWith('CRABBOX_')) childEnv[key] = value;
+    if (key.startsWith('CRABBOX_') && key !== 'CRABBOX_TOKEN') childEnv[key] = value;
   }
   if (token) {
     childEnv.CRABBOX_TOKEN = token;
   }
   return childEnv;
+}
+
+// Decide whether an interrupted or failed run should stop its remote lease.
+// Caller-supplied leases are reused, not owned by this run, so they are never
+// stopped here.
+export function shouldStopLease({ action, failed, keep, keepOnFailure, callerLeaseId, leaseId }) {
+  if (!['RUN', 'WARMUP'].includes((action || 'RUN').toUpperCase())) {
+    return { stop: false, reason: null };
+  }
+  if (!failed) {
+    return { stop: false, reason: null };
+  }
+  if (callerLeaseId) {
+    return { stop: false, reason: `caller-supplied lease ${callerLeaseId} left running` };
+  }
+  if (!leaseId) {
+    return { stop: false, reason: 'no lease id found in output' };
+  }
+  if (truthy(keep) || truthy(keepOnFailure)) {
+    return { stop: false, reason: `lease ${leaseId} kept on request` };
+  }
+  if (!POSITIONAL_PATTERN.test(String(leaseId))) {
+    return { stop: false, reason: `lease id failed validation: ${leaseId}` };
+  }
+  return { stop: true, reason: null };
 }
 
 class CrabboxPlugin {
@@ -433,21 +570,28 @@ class CrabboxPlugin {
     const { __auth, ...loggableParams } = params;
     console.log('[CrabboxPlugin] Executing with params:', JSON.stringify(loggableParams, null, 2));
 
+    const action = (params.action || 'RUN').toUpperCase();
+    let context = null;
+
     try {
       const token = __auth?.token;
       if (!token) {
         throw new Error(
-          'No valid Crabbox credential found. Connect Crabbox (API key) in Settings → Integrations. ' +
+          'No valid Crabbox credential found. Connect Crabbox (API key) in Settings > Integrations. ' +
             'The Crabbox node never uses the server\'s ambient CLI login.'
         );
       }
 
-      const binary = process.env.CRABBOX_BIN || 'crabbox';
+      const binary = resolveBinary();
       const args = buildCrabboxArgs(params);
       const cwd = resolveWorkingDirectory(params.workingDirectory);
+      if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
+        throw new Error(`workingDirectory does not exist: ${cwd}`);
+      }
       const env = buildChildEnv(token);
-      const timeoutMs = Number(params.timeoutMs || DEFAULT_TIMEOUT_MS);
-      const maxOutputBytes = Number(params.maxOutputBytes || DEFAULT_MAX_OUTPUT_BYTES);
+      context = { binary, cwd, env };
+      const timeoutMs = clampNumber(params.timeoutMs, DEFAULT_TIMEOUT_MS, MIN_TIMEOUT_MS, MAX_TIMEOUT_MS);
+      const maxOutputBytes = clampNumber(params.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES, 1024, MAX_OUTPUT_BYTES_CAP);
       const { stdout, stderr, exitCode, signal, timedOut } = await this.runProcess(binary, args, {
         cwd,
         env,
@@ -455,55 +599,63 @@ class CrabboxPlugin {
         maxOutputBytes,
       });
       const parsed = parseCrabboxOutput(stdout, stderr);
-      const leaseCleanup = await this.cleanupLease({ params, parsed, binary, cwd, env, timedOut, signal });
+      const failed = timedOut || Boolean(signal) || exitCode !== 0;
+      const leaseCleanup = await this.cleanupLease({ params, parsed, context, failed });
 
       return {
-        success: exitCode === 0 && !timedOut,
-        result: {
-          action: (params.action || 'RUN').toUpperCase(),
-          args,
-          cwd,
-          stdout,
-          stderr,
-          exitCode,
-          signal,
-          timedOut,
-          leaseCleanup,
-          ...parsed,
-        },
-        error: exitCode === 0 && !timedOut ? null : this.formatError(exitCode, signal, timedOut, stderr),
+        success: !failed,
+        result: composeResult({ action, args, cwd, stdout, stderr, exitCode, signal, timedOut, leaseCleanup, parsed }),
+        error: failed ? this.formatError(exitCode, signal, timedOut, stderr) : null,
       };
     } catch (error) {
       console.error('[CrabboxPlugin] Error:', error);
+      // The child may have acquired a lease before dying; salvage its partial
+      // output so the lease is stopped instead of billing until ttl.
+      let leaseCleanup = null;
+      if (context && (error.stdout || error.stderr)) {
+        const parsed = parseCrabboxOutput(error.stdout || '', error.stderr || '');
+        leaseCleanup = await this.cleanupLease({ params, parsed, context, failed: true });
+      }
       return {
         success: false,
-        result: null,
+        result: leaseCleanup ? { leaseCleanup } : null,
         error: error.message,
       };
     }
   }
 
-  // A timed-out or signal-killed local CLI never gets to release its remote
-  // lease, which keeps billing on the broker side. Stop it explicitly unless
-  // the user asked to keep it.
-  async cleanupLease({ params, parsed, binary, cwd, env, timedOut, signal }) {
-    const action = (params.action || 'RUN').toUpperCase();
-    if (!timedOut && !signal) return null;
-    if (!['RUN', 'WARMUP'].includes(action)) return null;
-    if (!parsed.leaseId) return { attempted: false, reason: 'no lease id found in output' };
-    if (truthy(params.keep) || truthy(params.keepOnFailure)) {
-      return { attempted: false, reason: `lease ${parsed.leaseId} kept on request` };
+  // A timed-out, signal-killed, or failed local CLI may leave its remote lease
+  // running (and billing) on the broker side. Stop leases this run created
+  // unless the user asked to keep them; `crabbox stop` on an already-released
+  // lease is harmless.
+  async cleanupLease({ params, parsed, context, failed }) {
+    const decision = shouldStopLease({
+      action: params.action,
+      failed,
+      keep: params.keep,
+      keepOnFailure: params.keepOnFailure,
+      callerLeaseId: compact(params.leaseId || params.id),
+      leaseId: parsed.leaseId,
+    });
+
+    if (!decision.stop) {
+      return decision.reason ? { attempted: false, reason: decision.reason } : null;
     }
 
-    console.warn(`[CrabboxPlugin] Run interrupted; stopping remote lease ${parsed.leaseId}`);
+    console.warn(`[CrabboxPlugin] Run failed or was interrupted; stopping remote lease ${parsed.leaseId}`);
     try {
-      const stop = await this.runProcess(binary, ['stop', parsed.leaseId], {
-        cwd,
-        env,
+      const stop = await this.runProcess(context.binary, ['stop', parsed.leaseId], {
+        cwd: context.cwd,
+        env: context.env,
         timeoutMs: LEASE_STOP_TIMEOUT_MS,
         maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
       });
-      return { attempted: true, leaseId: parsed.leaseId, stopped: stop.exitCode === 0 && !stop.timedOut };
+      const stopped = stop.exitCode === 0 && !stop.timedOut;
+      const cleanup = { attempted: true, leaseId: parsed.leaseId, stopped };
+      if (!stopped) {
+        cleanup.detail = `${stop.stderr || stop.stdout || ''}`.trim().split(/\r?\n/).slice(-3).join('\n');
+      }
+      return cleanup;
     } catch (error) {
       console.error(`[CrabboxPlugin] Failed to stop lease ${parsed.leaseId}:`, error.message);
       return { attempted: true, leaseId: parsed.leaseId, stopped: false, error: error.message };
@@ -516,11 +668,13 @@ class CrabboxPlugin {
       let stderr = '';
       let timedOut = false;
       let killTimer = null;
+      let flushTimer = null;
 
       const child = spawn(binary, args, {
         cwd,
         env,
         shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
 
       const timer = setTimeout(() => {
@@ -546,16 +700,32 @@ class CrabboxPlugin {
       child.on('error', (error) => {
         clearTimeout(timer);
         clearTimeout(killTimer);
-        if (error.code === 'ENOENT') {
-          reject(new Error(`Crabbox binary not found: ${binary}. Install from https://crabbox.sh or set CRABBOX_BIN.`));
-          return;
-        }
-        reject(error);
+        clearTimeout(flushTimer);
+        const wrapped =
+          error.code === 'ENOENT'
+            ? new Error(`Failed to spawn ${binary}: not found. Check CRABBOX_BIN or install from https://crabbox.sh.`)
+            : error;
+        wrapped.stdout = stdout;
+        wrapped.stderr = stderr;
+        wrapped.timedOut = timedOut;
+        reject(wrapped);
+      });
+
+      // 'close' waits for the stdio pipes to drain, and grandchildren that
+      // inherited those pipes can hold them open forever after a kill; force
+      // the streams shut shortly after the process itself exits.
+      child.on('exit', () => {
+        flushTimer = setTimeout(() => {
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+        }, STREAM_FLUSH_GRACE_MS);
+        flushTimer.unref?.();
       });
 
       child.on('close', (exitCode, signal) => {
         clearTimeout(timer);
         clearTimeout(killTimer);
+        clearTimeout(flushTimer);
         resolve({ stdout, stderr, exitCode, signal, timedOut });
       });
     });
