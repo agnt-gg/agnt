@@ -104,19 +104,34 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
-    fallbackModels: [
+    recommendedModels: [
+      'claude-fable-5',
+      'claude-opus-4-8',
       'claude-opus-4-7',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
+      'claude-haiku-4-5-20251001',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-5-20250929',
+    ],
+    fallbackModels: [
+      'claude-fable-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
       'claude-haiku-4-5-20251001',
+      'claude-opus-4-5-20251101',
+      'claude-sonnet-4-5-20250929',
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
+    fallbackVisionModels: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelMetadata: {
+      'claude-fable-5': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-mythos-5': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-mythos-preview': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-opus-4-8': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-7': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-6': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-sonnet-4-6': { contextWindow: 200000, maxOutputTokens: 64000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: true },
@@ -153,6 +168,12 @@ const PROVIDER_CONFIGS = [
     },
     sdkOptions: {
       defaultHeaders: {
+        // TODO(PRD-082): All beta tokens here are from 2024-2025; Fable 5 /
+        // Mythos 5 shipped June 2026 with always-on adaptive thinking. If
+        // Phase 1 diagnostic logs show `stop_reason=end_turn + blocks={} +
+        // tiny output_tokens`, refresh this header with the current 2026
+        // beta tokens documented at platform.claude.com (and/or mirrored in
+        // the Claude Code GitHub source).
         'anthropic-beta':
           'claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31,extended-cache-ttl-2025-04-11',
         'user-agent': 'claude-cli/2.1.2 (external, cli)',
@@ -170,18 +191,29 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
-    fallbackModels: [
+    recommendedModels: [
+      'claude-fable-5',
+      'claude-opus-4-8',
       'claude-opus-4-7',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
+      'claude-haiku-4-5-20251001',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-5-20250929',
+    ],
+    fallbackModels: [
+      'claude-fable-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
       'claude-haiku-4-5-20251001',
+      'claude-opus-4-5-20251101',
+      'claude-sonnet-4-5-20250929',
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
+    fallbackVisionModels: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelTransform: (raw) => ({
       id: raw.id,
       name: raw.display_name || raw.id,
@@ -369,9 +401,15 @@ const PROVIDER_CONFIGS = [
     baseURL: 'https://openrouter.ai/api/v1',
     sdkType: 'openai',
     authScheme: 'bearer',
+    // Send BOTH `X-Title` (legacy backward-compat) and `X-OpenRouter-Title`
+    // (newer name). OpenRouter's docs are inconsistent about which one
+    // currently controls the rankings/analytics title; sending both costs
+    // nothing and guarantees the app shows as "AGNT" (or $OPENROUTER_APP_TITLE)
+    // regardless of which header OpenRouter actually reads.
     sdkOptions: {
       defaultHeaders: {
         'HTTP-Referer': process.env.OPENROUTER_APP_REFERER || 'https://agnt.gg',
+        'X-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
         'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
         'X-OpenRouter-Categories':
           process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',
@@ -379,6 +417,7 @@ const PROVIDER_CONFIGS = [
     },
     fetchHeaders: {
       'HTTP-Referer': process.env.OPENROUTER_APP_REFERER || 'https://agnt.gg',
+      'X-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
       'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
       'X-OpenRouter-Categories':
         process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',
@@ -957,6 +996,9 @@ function isOpenAIResponsesReasoningModel(modelId) {
 function isAnthropicAdaptiveThinkingModel(modelId) {
   const lower = String(modelId || '').toLowerCase();
   return (
+    lower.startsWith('claude-fable-') ||
+    lower.startsWith('claude-mythos-') ||
+    lower.startsWith('claude-opus-4-8') ||
     lower.startsWith('claude-opus-4-7') ||
     lower.startsWith('claude-opus-4-6') ||
     lower.startsWith('claude-sonnet-4-6')
@@ -1258,6 +1300,43 @@ export function getModelMetadata(providerKey, modelId) {
 }
 
 /**
+ * Resolve the right `max_tokens` value to send for a (provider, model) request.
+ *
+ * Looks up the model's documented max output from the metadata table. If the
+ * model is unknown (a brand-new release we haven't catalogued yet), falls back
+ * to a provider-specific ceiling that won't silently truncate long responses.
+ * The defaults are deliberately high — a clear API error on an oversize value
+ * is always better than a 4k/8k silent cut-off.
+ *
+ * Anthropic's API REQUIRES `max_tokens`, so callers should always pass the
+ * result through. OpenAI-compatible providers may pass it or omit it; passing
+ * the documented max is fine.
+ *
+ * @param {string} providerKey - e.g. 'anthropic', 'openai', 'gemini'
+ * @param {string} modelId
+ * @param {number} [fallback] - explicit fallback for truly unknown providers
+ * @returns {number}
+ */
+export function resolveMaxOutputTokens(providerKey, modelId, fallback) {
+  const meta = getModelMetadata(providerKey, modelId);
+  if (meta?.maxOutputTokens) return meta.maxOutputTokens;
+
+  const key = (providerKey || '').toLowerCase();
+  // Anthropic — current flagship ceiling (Fable 5 / Opus 4.6-4.8 = 128k)
+  if (key === 'anthropic' || key === 'claude-code') return 128000;
+  // OpenAI — gpt-5.x flagship ceiling
+  if (key === 'openai' || key === 'openai-codex') return 128000;
+  // Gemini — current 2.5/3.x ceiling
+  if (key === 'gemini') return 65536;
+  // xAI Grok 4.x — 131k
+  if (key === 'grokai' || key === 'xai') return 131072;
+  // Groq / Cerebras / TogetherAI / OpenRouter — varies widely; 64k is a sane ceiling
+  if (['groq', 'cerebras', 'togetherai', 'openrouter', 'deepseek'].includes(key)) return 65536;
+
+  return fallback ?? 65536;
+}
+
+/**
  * Estimate cost for a given number of input/output tokens, accounting for
  * prompt cache discounts where applicable.
  *
@@ -1444,7 +1523,12 @@ export function getReasoningControl(providerKey, modelId) {
       { value: 'high', label: 'High' },
     ];
 
-    if (lowerModel.startsWith('claude-opus-4-7')) {
+    if (
+      lowerModel.startsWith('claude-opus-4-7') ||
+      lowerModel.startsWith('claude-opus-4-8') ||
+      lowerModel.startsWith('claude-fable-') ||
+      lowerModel.startsWith('claude-mythos-')
+    ) {
       options.push({ value: 'xhigh', label: 'Max' });
     }
 

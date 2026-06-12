@@ -1116,10 +1116,12 @@ class AnthropicAdapter extends BaseAdapter {
     this.baseDelay = 1000; // 1 second
     this.retryableStatusCodes = new Set([429, 500, 502, 503, 504, 529]);
 
-    // Model-specific max output token limits (from Anthropic docs)
-    // https://docs.anthropic.com/en/docs/about-claude/models
+    // Model-specific max output token limits (synchronous Messages API).
+    // Source: https://platform.claude.com/docs/en/docs/about-claude/models/overview
+    // Note: Opus 4.6+, Sonnet 4.6, Fable 5, Mythos 5 support 300k via the
+    // `output-300k-2026-03-24` beta header — not enabled here.
     this.modelMaxTokens = {
-      // Legacy Claude 3 models
+      // Legacy Claude 3
       'claude-3-haiku-20240307': 4096,
       'claude-3-sonnet-20240229': 4096,
       'claude-3-opus-20240229': 4096,
@@ -1127,64 +1129,99 @@ class AnthropicAdapter extends BaseAdapter {
       'claude-3-5-sonnet-20240620': 8192,
       'claude-3-5-sonnet-20241022': 8192,
       'claude-3-7-sonnet-20250219': 64000,
-      // Claude 4 models
+      // Claude 4 (deprecated)
       'claude-sonnet-4-20250514': 64000,
       'claude-sonnet-4-0': 64000,
       'claude-opus-4-20250514': 32000,
       'claude-opus-4-0': 32000,
       'claude-opus-4-1-20250805': 32000,
       'claude-opus-4-1': 32000,
-      // Claude 4.5 models
+      // Claude 4.5
       'claude-sonnet-4-5-20250929': 64000,
       'claude-sonnet-4-5': 64000,
       'claude-haiku-4-5-20251001': 64000,
       'claude-haiku-4-5': 64000,
       'claude-opus-4-5-20251101': 64000,
       'claude-opus-4-5': 64000,
+      // Claude 4.6 / 4.7 / 4.8
+      'claude-opus-4-6': 128000,
+      'claude-sonnet-4-6': 64000,
+      'claude-opus-4-7': 128000,
+      'claude-opus-4-8': 128000,
+      // Claude Fable 5 / Mythos 5 (June 2026)
+      'claude-fable-5': 128000,
+      'claude-mythos-5': 128000,
+      'claude-mythos-preview': 128000,
     };
   }
 
   /**
-   * Get the maximum output tokens for the current model
-   * @returns {number} Max tokens for the model
+   * Get the maximum output tokens for the current model.
+   * Ordered most-specific-first to avoid mis-classifying newer variants
+   * (e.g. `opus-4-6` must not fall into the generic `opus-4` legacy bucket).
    */
   _getMaxTokensForModel() {
-    // Check for exact match first
     if (this.modelMaxTokens[this.model]) {
       return this.modelMaxTokens[this.model];
     }
 
-    // Check for partial matches (e.g., model aliases or variations)
-    const modelLower = this.model.toLowerCase();
+    const m = this.model.toLowerCase();
 
-    // Claude 4.5 models (newest, highest limits)
-    if (modelLower.includes('4-5') || modelLower.includes('4.5')) {
+    // Fable / Mythos family (any version) — 128k
+    if (m.includes('fable') || m.includes('mythos')) {
+      return 128000;
+    }
+
+    // Generation 5+ (future flagships: opus-5, sonnet-5, haiku-5, opus-10, …) — 128k
+    if (/(opus|sonnet|haiku)-([5-9]|\d{2,})(\b|-|$)/.test(m)) {
+      return 128000;
+    }
+
+    // Opus 4.6+ (Opus 4.6 / 4.7 / 4.8 / 4.9 / 4.10 …) — 128k extended output
+    if (/opus-4-([6-9]|\d{2,})/.test(m)) {
+      return 128000;
+    }
+
+    // Opus 4.2 – 4.5 — 64k
+    if (/opus-4-[2-5]/.test(m)) {
       return 64000;
     }
 
-    // Claude 4 Opus models
-    if (modelLower.includes('opus-4') || modelLower.includes('opus4')) {
+    // Opus 4.0 / 4.1 (deprecated) — 32k. Matches `opus-4`, `opus-4-0`, `opus-4-1`.
+    if (/opus-4(-[01])?(\b|-|$)/.test(m)) {
       return 32000;
     }
 
-    // Claude 4 Sonnet or Claude 3.7 models
-    if (modelLower.includes('sonnet-4') || modelLower.includes('sonnet4') || modelLower.includes('3-7') || modelLower.includes('3.7')) {
+    // Sonnet 4.x — 64k (covers 4.0 / 4.5 / 4.6 / future 4.x)
+    if (/sonnet-4/.test(m)) {
       return 64000;
     }
 
-    // Claude 3.5 models
-    if (modelLower.includes('3-5') || modelLower.includes('3.5')) {
+    // Haiku 4.x — 64k
+    if (/haiku-4/.test(m)) {
+      return 64000;
+    }
+
+    // Claude 3.7 — 64k
+    if (m.includes('3-7') || m.includes('3.7')) {
+      return 64000;
+    }
+
+    // Claude 3.5 — 8k
+    if (m.includes('3-5') || m.includes('3.5')) {
       return 8192;
     }
 
-    // Claude 3 Haiku (legacy) - most restrictive
-    if (modelLower.includes('haiku') && modelLower.includes('3') && !modelLower.includes('3-5') && !modelLower.includes('3.5')) {
+    // Claude 3.x legacy — 4k
+    if (/claude-3(-|$)/.test(m)) {
       return 4096;
     }
 
-    // Default to 4096 for unknown models (safe fallback)
-    console.warn(`[Anthropic] Unknown model '${this.model}', using safe default max_tokens: 4096`);
-    return 4096;
+    // Unknown model — assume current flagship ceiling (128k). Anthropic's API
+    // requires max_tokens, so we can't omit it; defaulting low would silently
+    // truncate long responses from new models we haven't catalogued yet.
+    console.warn(`[Anthropic] Unknown model '${this.model}', defaulting max_tokens to 128000 (current flagship ceiling)`);
+    return 128000;
   }
 
   /**
@@ -1667,9 +1704,13 @@ Please carefully check the tool schema and ensure all parameters match the expec
       }
     }
 
+    // Labeled so the in-catch `continue streamingAttemptLoop` below skips the
+    // inner pause_turn-resume `while` and restarts the whole attempt cleanly.
+    streamingAttemptLoop:
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
       let accumulatedToolCalls = [];
+      let accumulatedThinking = '';
       let contentBlocks = [];
       let anthropicUsage = {
         input_tokens: 0,
@@ -1679,6 +1720,18 @@ Please carefully check the tool schema and ensure all parameters match the expec
         cache_creation_5m_input_tokens: 0,
         cache_creation_1h_input_tokens: 0,
       };
+      // Anthropic's documented stop_reason values: end_turn, max_tokens,
+      // stop_sequence, tool_use, pause_turn, refusal. We capture the last one
+      // we see on message_delta so we can: (a) auto-resume on pause_turn, and
+      // (b) log it on empty responses for diagnostic visibility. See PRD-082.
+      let anthropicStopReason = null;
+      // Offset added to every event.index so that a resumed stream (after
+      // pause_turn) appends its blocks to the same accumulator instead of
+      // overwriting blocks from the previous segment. Bumped to
+      // contentBlocks.length before each resume.
+      let blockIndexOffset = 0;
+      let resumeCount = 0;
+      const MAX_PAUSE_TURN_RESUMES = 3;
 
       try {
         const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
@@ -1795,11 +1848,20 @@ Please carefully check the tool schema and ensure all parameters match the expec
           requestParams.output_config = reasoningConfig.outputConfig;
         }
 
-        const stream = await this.client.messages.stream(requestParams);
-
-        // Handle streaming events with error recovery
+        // Outer loop: handles `stop_reason: pause_turn` resumes. Anthropic emits
+        // pause_turn on long agentic turns (typically big context + lots of
+        // tools) to ask the client to re-invoke with the partial assistant
+        // content appended; the model resumes the same turn. See PRD-082.
         let streamParseError = null;
-        try {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          // Reset the per-segment stop_reason so we only ever read the one
+          // emitted by the segment we're about to consume.
+          anthropicStopReason = null;
+          const stream = await this.client.messages.stream(requestParams);
+
+          // Handle streaming events with error recovery
+          try {
           for await (const event of stream) {
             if (abortSignal?.aborted) {
               stream.abort?.();
@@ -1836,28 +1898,65 @@ Please carefully check the tool schema and ensure all parameters match the expec
             if (event.type === 'message_delta' && event.usage) {
               anthropicUsage.output_tokens = event.usage.output_tokens || 0;
             }
+            // Capture stop_reason from message_delta. `pause_turn` is used by
+            // Anthropic on long agentic turns to ask the client to resume; we
+            // handle it explicitly below. All other values are logged on empty
+            // responses (PRD-082 diagnostic) so we can tell end_turn vs refusal
+            // vs max_tokens at a glance.
+            if (event.type === 'message_delta' && event.delta?.stop_reason) {
+              anthropicStopReason = event.delta.stop_reason;
+            }
 
-            // Handle content block start
+            // Handle content block start.
+            // CRITICAL: Use indexed assignment, not push(). Anthropic streams emit a
+            // sequential `index` per content block. Fable 5 and Mythos 5 have
+            // adaptive thinking ALWAYS ON — every stream begins with an index-0
+            // `thinking` block regardless of request params. Older code only
+            // initialized text/tool_use blocks via push(), silently skipping the
+            // thinking slot, so the array fell one ahead of the event indices:
+            // `input_json_delta` for tool_use(index=2) looked up contentBlocks[2]
+            // which was undefined, the tool's argument JSON got dropped, and the
+            // assistant emitted an orphan tool_use with empty args — hence "0 tool
+            // calls" and [sanitizeOrphanToolCalls] warnings on Fable.
+            //
+            // Opus 4.6 / 4.7 / 4.8 / Sonnet 4.6 also support adaptive thinking but
+            // only emit a thinking block when our adapter passes `thinking: {type:
+            // 'adaptive'}`. They worked fine pre-fix because we never enabled it.
+            // With those models now recognized by supportsAnthropicAdaptiveThinking,
+            // the indexed-assignment fix protects them too once a user turns on
+            // a non-default reasoning effort.
             if (event.type === 'content_block_start') {
               const block = event.content_block;
+              // blockIndexOffset is 0 on the first segment of a stream, and
+              // bumped to contentBlocks.length before each pause_turn resume,
+              // so resumed segments append rather than overwrite.
+              const idx = blockIndexOffset + event.index;
               if (block.type === 'text') {
-                // Initialize text block
-                contentBlocks.push({ type: 'text', text: '' });
+                contentBlocks[idx] = { type: 'text', text: '' };
               } else if (block.type === 'tool_use') {
-                // Initialize tool use block
-                contentBlocks.push({
+                contentBlocks[idx] = {
                   type: 'tool_use',
                   id: block.id,
                   name: block.name,
                   input: {},
-                });
+                };
+              } else if (block.type === 'thinking') {
+                // Preserve thinking blocks so the cryptographic signature flows back
+                // into the conversation history; Anthropic verifies it on the follow-up
+                // call when the same assistant message is replayed with tool_results.
+                contentBlocks[idx] = { type: 'thinking', thinking: '', signature: '' };
+              } else if (block.type === 'redacted_thinking') {
+                contentBlocks[idx] = { type: 'redacted_thinking', data: block.data || '' };
+              } else {
+                // Future-proof: store unknown block types as-is so indices stay aligned.
+                contentBlocks[idx] = { ...block };
               }
             }
 
-            // Handle content block delta (streaming text or tool input)
+            // Handle content block delta (streaming text, tool input, or thinking)
             if (event.type === 'content_block_delta') {
               const delta = event.delta;
-              const index = event.index;
+              const index = blockIndexOffset + event.index;
 
               if (delta.type === 'text_delta') {
                 // Accumulate text content
@@ -1890,12 +1989,37 @@ Please carefully check the tool schema and ensure all parameters match the expec
 
                   // Don't try to parse until we have the complete JSON (on content_block_stop)
                 }
+              } else if (delta.type === 'thinking_delta') {
+                // Fable 5 / Mythos 5 (always-on adaptive thinking) and any
+                // model with `output_config.effort` set spend tokens here
+                // BEFORE emitting any text. Without forwarding these deltas
+                // to onChunk, the UI sees dead silence for the whole thinking
+                // phase and the response feels like it's batching rather than
+                // streaming. The orchestrator translates `type: 'reasoning'`
+                // into a `reasoning_delta` SSE event — same path the OpenAI
+                // adapter (line ~708) uses for o-series reasoning tokens.
+                const thinkingDelta = delta.thinking || '';
+                accumulatedThinking += thinkingDelta;
+                if (contentBlocks[index] && contentBlocks[index].type === 'thinking') {
+                  contentBlocks[index].thinking += thinkingDelta;
+                }
+                if (onChunk) {
+                  onChunk({
+                    type: 'reasoning',
+                    delta: thinkingDelta,
+                    accumulated: accumulatedThinking,
+                  });
+                }
+              } else if (delta.type === 'signature_delta') {
+                if (contentBlocks[index] && contentBlocks[index].type === 'thinking') {
+                  contentBlocks[index].signature += (delta.signature || '');
+                }
               }
             }
 
             // Handle content block stop
             if (event.type === 'content_block_stop') {
-              const index = event.index;
+              const index = blockIndexOffset + event.index;
               const block = contentBlocks[index];
 
               if (block && block.type === 'tool_use') {
@@ -1984,7 +2108,8 @@ Please carefully check the tool schema and ensure all parameters match the expec
               );
               const delay = this.calculateDelay(attempt);
               await this.sleep(delay);
-              continue; // Retry the call
+              // Skip the pause_turn resume loop and restart the whole attempt.
+              continue streamingAttemptLoop;
             }
           }
 
@@ -1997,6 +2122,41 @@ Please carefully check the tool schema and ensure all parameters match the expec
             `[Anthropic] Continuing with ${accumulatedContent.length} chars content and ${accumulatedToolCalls.length} tool calls after stream error`,
           );
         }
+
+          // pause_turn auto-resume. Append the partial assistant content
+          // (thinking blocks + signatures + any text/tool_use so far) to the
+          // request's messages and re-stream. The model picks up where it
+          // left off. Hard-capped at MAX_PAUSE_TURN_RESUMES to prevent
+          // runaway. See PRD-082.
+          if (
+            anthropicStopReason === 'pause_turn' &&
+            resumeCount < MAX_PAUSE_TURN_RESUMES &&
+            contentBlocks.length > 0
+          ) {
+            resumeCount++;
+            const partialAssistant = {
+              role: 'assistant',
+              content: contentBlocks.map((block) => {
+                if (block && block.type === 'tool_use') {
+                  const { _inputJsonString, ...clean } = block;
+                  return clean;
+                }
+                return { ...block };
+              }).filter(Boolean),
+            };
+            requestParams.messages = [...requestParams.messages, partialAssistant];
+            blockIndexOffset = contentBlocks.length;
+            console.log(
+              `[Anthropic Stream] pause_turn detected — resuming (${resumeCount}/${MAX_PAUSE_TURN_RESUMES}), ` +
+              `${contentBlocks.length} block(s) carried forward, offset=${blockIndexOffset}`,
+            );
+            continue; // re-enter the pause_turn resume while loop
+          }
+
+          // Any other stop_reason (end_turn, max_tokens, tool_use, refusal,
+          // null) means this segment is the final one — exit the resume loop.
+          break;
+        } // end of pause_turn resume while loop
 
         // Log successful retry if this wasn't the first attempt
         if (attempt > 0) {
@@ -2025,6 +2185,27 @@ Please carefully check the tool schema and ensure all parameters match the expec
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
         if (wasEmpty) {
           console.warn('[Anthropic Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
+          // Phase 1 diagnostic — PRD-082. On empty responses, log the data we
+          // need to disambiguate root cause without restarting the chat:
+          //   stop_reason         — end_turn vs pause_turn vs refusal vs max_tokens
+          //   block tally         — was the response all thinking? truly nothing?
+          //   thinkingSigLen      — did we capture a full signature?
+          //   resumeCount         — did we already exhaust pause_turn resumes?
+          const blockSummary = contentBlocks.reduce((acc, b) => {
+            if (!b) return acc;
+            acc[b.type] = (acc[b.type] || 0) + 1;
+            return acc;
+          }, {});
+          const thinkingBlock = contentBlocks.find((b) => b?.type === 'thinking');
+          console.warn(
+            `[Anthropic Stream] Empty response detail — model=${this.model} ` +
+            `provider=${this.provider} ` +
+            `stop_reason=${anthropicStopReason || 'null'} ` +
+            `blocks=${JSON.stringify(blockSummary)} ` +
+            `thinkingSigLen=${(thinkingBlock?.signature || '').length} ` +
+            `output_tokens=${anthropicUsage.output_tokens || 0} ` +
+            `resumeCount=${resumeCount}/${MAX_PAUSE_TURN_RESUMES}`,
+          );
         }
 
         return {
@@ -4887,6 +5068,9 @@ function buildResponsesReasoningConfig(model, reasoningValue) {
 function supportsAnthropicAdaptiveThinking(model) {
   const lower = String(model || '').toLowerCase();
   return (
+    lower.startsWith('claude-fable-') ||
+    lower.startsWith('claude-mythos-') ||
+    lower.startsWith('claude-opus-4-8') ||
     lower.startsWith('claude-opus-4-7') ||
     lower.startsWith('claude-opus-4-6') ||
     lower.startsWith('claude-sonnet-4-6')
@@ -4897,14 +5081,33 @@ function buildAnthropicReasoningConfig(model, reasoningValue) {
   if (!supportsAnthropicAdaptiveThinking(model)) return null;
 
   const normalized = normalizeReasoningValue(reasoningValue);
-  if (normalized === 'default') return null;
+  const lower = String(model || '').toLowerCase();
+
+  // PRD-082: Fable 5 and Mythos 5 have always-on adaptive thinking, but unlike
+  // Opus 4.8 (where Anthropic's server-side default is documented as `effort:
+  // 'high'`) the docs are silent on Fable/Mythos's default. Empirically, when
+  // we send no output_config we get tiny 4-6 token responses with everything
+  // consumed by thinking. Pin 'default' to 'high' for these models so the
+  // model has the budget to actually emit text/tool_use after thinking.
+  const isAlwaysOnThinkingModel =
+    lower.startsWith('claude-fable-') || lower.startsWith('claude-mythos-');
+
+  if (normalized === 'default') {
+    if (!isAlwaysOnThinkingModel) return null;
+    return { thinking: { type: 'adaptive' }, outputConfig: { effort: 'high' } };
+  }
   if (normalized === 'off') {
     return { thinking: { type: 'disabled' } };
   }
 
   const effort = normalized === 'on' ? 'high' : normalized;
-  const lower = String(model || '').toLowerCase();
-  const allowed = lower.startsWith('claude-opus-4-7')
+  // Opus 4.7 and the Fable/Mythos/Opus-4.8 generation expose an `xhigh` ("Max") tier.
+  const supportsXHigh =
+    lower.startsWith('claude-opus-4-7') ||
+    lower.startsWith('claude-opus-4-8') ||
+    lower.startsWith('claude-fable-') ||
+    lower.startsWith('claude-mythos-');
+  const allowed = supportsXHigh
     ? new Set(['low', 'medium', 'high', 'xhigh'])
     : new Set(['low', 'medium', 'high']);
 

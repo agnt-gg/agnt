@@ -9,7 +9,7 @@ import AuthManager from '../services/auth/AuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import { createLlmClient } from '../services/ai/LlmService.js';
 import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
-import { getProviderConfig } from '../services/ai/providerConfigs.js';
+import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/providerConfigs.js';
 
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer, trimToWordLimit, generateUniqueId, computeFileHash } from './utils.js';
 
@@ -340,7 +340,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           model: modelName,
           messages: finalMessages,
           system: systemBlocks,
-          max_tokens: modelName === 'claude-3-7-sonnet-20250219' ? 64000 : modelName === 'claude-3-5-sonnet-20240620' ? 8192 : 4096,
+          max_tokens: resolveMaxOutputTokens(provider, modelName),
           temperature: modelName === 'claude-3-7-sonnet-20250219' ? 1 : 0.5,
           thinking:
             modelName === 'claude-3-7-sonnet-20250219'
@@ -455,10 +455,10 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
       // Add the appropriate token limit parameter based on the model and provider
       if ((modelName === 'o1-mini' || modelName === 'o3-mini' || modelName === 'o1') && isOpenAIProvider) {
-        streamOptions.max_completion_tokens = 8192;
+        streamOptions.max_completion_tokens = resolveMaxOutputTokens(provider, modelName);
       } else if (providerKey !== 'groq') {
         // Don't set max_tokens for Groq
-        streamOptions.max_tokens = 8192;
+        streamOptions.max_tokens = resolveMaxOutputTokens(provider, modelName);
       }
 
       // Don't set temperature for Groq as it has special handling
@@ -808,7 +808,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             (params) => client.messages.create(params),
             {
               model: selectedModel,
-              max_tokens: 8192,
+              max_tokens: resolveMaxOutputTokens(provider, selectedModel),
               temperature: 0,
               system: toolGenSystemBlocks,
               messages: [
@@ -832,7 +832,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: toolGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -850,7 +850,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: toolGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -886,7 +886,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: toolGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -923,7 +923,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
                 content: `System: Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.\nUser: ${toolGenerationPrompt}`,
               },
             ],
-            max_completion_tokens: 8192,
+            max_completion_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -937,7 +937,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: toolGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -945,7 +945,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           response = await client.completions.create({
             model: selectedModel,
             prompt: `System: Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.\nUser: ${toolGenerationPrompt}`,
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { template: this._removeMarkdownJson(response.choices[0].text) };
 
@@ -959,7 +959,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: toolGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { template: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -1302,7 +1302,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               { role: 'system', content: workflowGenSystemPrompt },
               { role: 'user', content: workflowElements.overview },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
@@ -1317,7 +1317,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               { role: 'system', content: workflowGenSystemPrompt },
               { role: 'user', content: workflowElements.overview },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
@@ -1350,7 +1350,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               { role: 'system', content: workflowGenSystemPrompt },
               { role: 'user', content: workflowElements.overview },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
@@ -1390,7 +1390,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
                 content: `WORKFLOW SYSTEM PROMPT: ${workflowGenSystemPrompt}\nWORKFLOW OVERVIEW: ${workflowElements.overview}`,
               },
             ],
-            max_completion_tokens: 8192,
+            max_completion_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
@@ -1401,7 +1401,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               { role: 'system', content: workflowGenSystemPrompt },
               { role: 'user', content: workflowElements.overview },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) };
 
@@ -1409,7 +1409,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           completion = await client.completions.create({
             model: selectedModel,
             prompt: `System: ${workflowGenSystemPrompt}\nUser: ${workflowElements.overview}`,
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].text) };
 
@@ -1420,7 +1420,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               { role: 'system', content: workflowGenSystemPrompt },
               { role: 'user', content: workflowElements.overview },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { workflow: this._removeMarkdownJson(completion.choices[0].message.content) }; // Adjust based on your local API response
 
@@ -1552,7 +1552,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             (params) => client.messages.create(params),
             {
               model: selectedModel,
-              max_tokens: 8192,
+              max_tokens: resolveMaxOutputTokens(provider, selectedModel),
               temperature: 0,
               system: agentGenSystemBlocks,
               messages: [
@@ -1576,7 +1576,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: agentGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -1594,7 +1594,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: agentGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -1630,7 +1630,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: agentGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -1667,7 +1667,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
                 content: `System: Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.\nUser: ${agentGenerationPrompt}`,
               },
             ],
-            max_completion_tokens: 8192,
+            max_completion_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -1681,7 +1681,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: agentGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -1689,7 +1689,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           response = await client.completions.create({
             model: selectedModel,
             prompt: `System: Generate valid JSON based on the user instructions. Return ONLY JSON with no additional text.\nUser: ${agentGenerationPrompt}`,
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { agent: this._removeMarkdownJson(response.choices[0].text) };
 
@@ -1703,7 +1703,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: agentGenerationPrompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           return { agent: this._removeMarkdownJson(response.choices[0].message.content) };
 
@@ -1778,7 +1778,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
             (params) => client.messages.create(params),
             {
               model: selectedModel,
-              max_tokens: selectedModel === 'claude-3-7-sonnet-20250219' ? 64000 : 8192,
+              max_tokens: resolveMaxOutputTokens(provider, selectedModel),
               temperature: selectedModel === 'claude-3-7-sonnet-20250219' ? 1 : 0,
               system: completionSystemBlocks,
               messages: [
@@ -1837,7 +1837,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: prompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
@@ -1856,7 +1856,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: prompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
@@ -1897,7 +1897,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: prompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
@@ -1939,7 +1939,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
                 content: `System: You are a helpful assistant. Generate valid responses based on the user instructions.\nUser: ${prompt}`,
               },
             ],
-            max_completion_tokens: 8192,
+            max_completion_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
@@ -1954,7 +1954,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: prompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
@@ -1963,7 +1963,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
           completion = await client.completions.create({
             model: selectedModel,
             prompt: `System: You are a helpful assistant. Generate valid responses based on the user instructions.\nUser: ${prompt}`,
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].text;
@@ -1978,7 +1978,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
               },
               { role: 'user', content: prompt },
             ],
-            max_tokens: 8192,
+            max_tokens: resolveMaxOutputTokens(provider, selectedModel),
           });
           this._lastCompletionUsage = completion.usage || null;
           return completion.choices[0].message.content;
