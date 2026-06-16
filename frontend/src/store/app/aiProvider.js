@@ -7,9 +7,10 @@ import { TTL } from '../_utils/freshnessConfig.js';
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
 
 // Cache version — bump this to invalidate all provider model caches.
+// v11: Z.AI dropdown adds GLM-5.2 (1M context) + GLM-5.2 reasoning_effort control (high/max).
 // v10: Anthropic dropdown reordered (Fable 5 first, Opus 4.8 second) + Fable 5 / Opus 4.8 metadata added.
 // v9: chutes reasoning controls added — old cached metadata lacks reasoningControl.
-const MODEL_CACHE_VERSION = 10;
+const MODEL_CACHE_VERSION = 11;
 (() => {
   const storedVersion = localStorage.getItem('model_cache_version');
   if (storedVersion !== String(MODEL_CACHE_VERSION)) {

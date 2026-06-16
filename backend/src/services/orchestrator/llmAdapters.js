@@ -5,7 +5,7 @@ import { manageContext } from '../../utils/contextManager.js';
 import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
-import { getModelMetadata, getProviderConfig, getReasoningControl } from '../ai/providerConfigs.js';
+import { getModelMetadata, getProviderConfig, getReasoningControl, supportsZaiReasoningEffort } from '../ai/providerConfigs.js';
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 
 /**
@@ -5703,6 +5703,20 @@ function buildOpenAiLikeReasoningExtraBody(provider, model, reasoningValue) {
   }
 
   if (normalizedProvider === 'zai') {
+    // GLM-5.2: OpenAI-compatible `reasoning_effort` with `high` (default) and
+    // `max` only. No `off` — adaptive thinking is always on. Older GLM models
+    // (5.1, 5, 4.7, 4.6, 4.5) still use the enabled/disabled `thinking`
+    // toggle below.
+    if (supportsZaiReasoningEffort(model)) {
+      // `default` already returned null at the top of this function — we only
+      // reach here on an explicit non-default selection. Map our internal
+      // values to Z.AI's accepted set.
+      let effort = normalizedValue;
+      if (effort === 'on' || effort === 'low' || effort === 'medium') effort = 'high';
+      if (effort === 'xhigh') effort = 'max';
+      if (!['high', 'max'].includes(effort)) return null;
+      return { reasoning_effort: effort };
+    }
     if (normalizedValue === 'off') return { thinking: { type: 'disabled' } };
     return { thinking: { type: 'enabled' } };
   }

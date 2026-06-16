@@ -625,10 +625,17 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['glm-5.1', 'glm-5'],
-    fallbackModels: ['glm-5.1', 'glm-5-turbo', 'glm-5v-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.6v', 'glm-4.6v-flash', 'glm-4.5-flash'],
+    recommendedModels: ['glm-5.2', 'glm-5.1', 'glm-5'],
+    fallbackModels: ['glm-5.2', 'glm-5.2[1m]', 'glm-5.1', 'glm-5-turbo', 'glm-5v-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.6v', 'glm-4.6v-flash', 'glm-4.5-flash'],
     fallbackVisionModels: ['glm-5v-turbo', 'glm-4.6v', 'glm-4.6v-flash'],
     modelMetadata: {
+      // GLM-5.2: launched 2026-06-13. Default ID has a 1M-token context per
+      // Z.AI's official model page; the `[1m]` suffix is a third-party-tool
+      // notation (Claude Code / OpenClaw) that also routes to the 1M variant.
+      // Reasoning uses OpenAI-compatible `reasoning_effort` with `high`
+      // (default) and `max` only — see supportsZaiReasoningEffort below.
+      'glm-5.2': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 1.4, inputCacheReadCostPer1M: 0.26, outputCostPer1M: 4.4, supportsVision: false, supportsTools: true, reasoning: true },
+      'glm-5.2[1m]': { contextWindow: 1000000, maxOutputTokens: 131072, inputCostPer1M: 1.4, inputCacheReadCostPer1M: 0.26, outputCostPer1M: 4.4, supportsVision: false, supportsTools: true, reasoning: true },
       'glm-5.1': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 1.4, outputCostPer1M: 4.0, supportsVision: false, supportsTools: true, reasoning: true },
       'glm-5-turbo': { contextWindow: 128000, maxOutputTokens: 128000, inputCostPer1M: 0.5, outputCostPer1M: 1.5, supportsVision: false, supportsTools: true, reasoning: false },
       'glm-5v-turbo': { contextWindow: 128000, maxOutputTokens: 128000, inputCostPer1M: 0.6, outputCostPer1M: 1.8, supportsVision: true, supportsTools: true, reasoning: false },
@@ -1041,12 +1048,28 @@ function isCerebrasGlmReasoningModel(modelId) {
 
 function supportsZaiThinkingToggle(modelId) {
   const lower = String(modelId || '').toLowerCase();
+  // GLM-5.2 uses the effort-based control (see supportsZaiReasoningEffort),
+  // not the legacy enabled/disabled toggle. Exclude it from this check so
+  // it falls through to the effort branch in getReasoningControl.
+  if (supportsZaiReasoningEffort(modelId)) return false;
   return (
     lower.startsWith('glm-5') ||
     lower.startsWith('glm-4.7') ||
     lower.startsWith('glm-4.6') ||
     lower.startsWith('glm-4.5')
   );
+}
+
+// GLM-5.2 switched from the enabled/disabled thinking toggle that older GLM
+// models used to an OpenAI-compatible `reasoning_effort` parameter that only
+// accepts `high` (default) and `max`. Per Z.AI docs (docs.z.ai/guides/llm/
+// glm-5.2), omitting the parameter lets Z.AI apply the server-side default
+// of `high`. Matches both the bare `glm-5.2` and the `glm-5.2[1m]` 1M-context
+// variant. Exported because llmAdapters.js routes the reasoning-extra-body
+// shape based on this distinction.
+export function supportsZaiReasoningEffort(modelId) {
+  const lower = String(modelId || '').toLowerCase();
+  return lower.startsWith('glm-5.2');
 }
 
 function supportsKimiReasoningToggle(providerKey, modelId) {
@@ -1665,6 +1688,16 @@ export function getReasoningControl(providerKey, modelId) {
   }
 
   if (lowerProvider === 'zai') {
+    // GLM-5.2: OpenAI-compatible `reasoning_effort` with `high` (default) and
+    // `max` only. No `off` — adaptive thinking is always on for GLM-5.2.
+    if (supportsZaiReasoningEffort(modelId)) {
+      return buildReasoningControl('effort', [
+        { value: 'default', label: 'Default' },
+        { value: 'high', label: 'High' },
+        { value: 'max', label: 'Max' },
+      ]);
+    }
+    // GLM-5.1 / GLM-5 / GLM-4.x: legacy enabled/disabled thinking toggle.
     if (!supportsZaiThinkingToggle(modelId)) return null;
     return buildReasoningControl('toggle', [
       { value: 'default', label: 'Default' },
