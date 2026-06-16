@@ -1402,6 +1402,22 @@ class AnthropicAdapter extends BaseAdapter {
     }
 
     // Merge consecutive same-role messages (Anthropic requires alternating user/assistant)
+    //
+    // KNOWN ANTI-PATTERN (PRD-082 follow-up): when a user adds a follow-up
+    // text message immediately after a tool_result-bearing user message
+    // (no assistant turn between them), this merge produces a user message
+    // shaped like [tool_result, tool_result, ..., text]. Anthropic's
+    // documentation explicitly warns against this: "Never add text blocks
+    // immediately after tool results — this teaches Claude to expect user
+    // input after every tool use" and is a documented cause of empty 2-3
+    // token end_turn responses (the *original* PRD-082 symptom, distinct
+    // from the Fable refusal symptom in PRD-083).
+    //
+    // A fully correct fix is non-trivial because Anthropic also requires
+    // alternating user/assistant — we can't just split the merged message
+    // without inserting a synthetic assistant turn. Left as a follow-up;
+    // the [Anthropic Pre-Call] diagnostic will surface when this shape
+    // appears so we can prioritize.
     const merged = [];
     for (const msg of converted) {
       const last = merged[merged.length - 1];
@@ -1419,11 +1435,17 @@ class AnthropicAdapter extends BaseAdapter {
 
   async call(messages, tools) {
     let lastError;
+    // PRD-083 (CTO follow-up): mirror callStream's one-shot refusal fallback
+    // here too so the suggestions feature (and other non-streaming consumers)
+    // also benefits from auto-fallback to Opus 4.8 on Fable/Mythos refusals.
+    let currentMessages = messages;
+    let fallbackAttempted = false;
+    const REFUSAL_FALLBACK_MODEL = 'claude-opus-4-8';
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const systemPrompt = messages.find((m) => m.role === 'system')?.content || '';
-        const conversationMessages = this._normalizeHistoryMessages(messages.filter((m) => m.role !== 'system'));
+        const systemPrompt = currentMessages.find((m) => m.role === 'system')?.content || '';
+        const conversationMessages = this._normalizeHistoryMessages(currentMessages.filter((m) => m.role !== 'system'));
 
         // Build system parameter with cache_control for prompt caching.
         // Anthropic allows max 4 cache_control breakpoints total across
@@ -1533,6 +1555,74 @@ class AnthropicAdapter extends BaseAdapter {
           console.warn(`[Anthropic] Empty response model=${this.model} ${rawShape}`);
         }
 
+        // PRD-083 §7d (extended): refusal stop_reason path for non-streaming
+        // calls. Mirrors the callStream handling — surface a clear refusal
+        // message instead of the generic "API Error: Provider returned empty
+        // response" string. This path is hit by features like suggestions
+        // generation that don't stream.
+        //
+        // Per Anthropic docs: refusals carry a top-level `stop_details` object
+        // with { type:'refusal', category, explanation }. Both category and
+        // explanation can legitimately be null. Surface them when present so
+        // the user sees the classifier that fired.
+        if (response?.stop_reason === 'refusal') {
+          const category = response?.stop_details?.category;
+          const explanation = response?.stop_details?.explanation;
+          console.warn(
+            `[Anthropic Refusal] model=${this.model} provider=${this.provider} ` +
+            `category=${category || 'null'} ` +
+            `explanation=${explanation ? JSON.stringify(explanation) : 'null'} ` +
+            `output_tokens=${response.usage?.output_tokens || 0}`,
+          );
+
+          // Auto-fallback to Opus 4.8 on Fable/Mythos refusal (same as
+          // callStream). One-shot per call — if Opus also refuses, fall
+          // through to the user-facing refusal message.
+          const canFallback =
+            isFableOrMythosModel(this.model) &&
+            !fallbackAttempted &&
+            this.model.toLowerCase() !== REFUSAL_FALLBACK_MODEL.toLowerCase();
+          if (canFallback) {
+            fallbackAttempted = true;
+            const originalModel = this.model;
+            console.warn(
+              `[Anthropic Fallback] ${originalModel} refused (category=${category || 'null'}) — ` +
+              `retrying same request on ${REFUSAL_FALLBACK_MODEL} with thinking blocks stripped`,
+            );
+            currentMessages = stripThinkingBlocksFromHistory(currentMessages);
+            this.model = REFUSAL_FALLBACK_MODEL;
+            attempt--;
+            continue;
+          }
+
+          const categoryLabel = category ? ` (${category})` : '';
+          const explanationLine = explanation
+            ? ` Anthropic's explanation: ${explanation}`
+            : '';
+          const fallbackNote = fallbackAttempted
+            ? ` Fallback to ${REFUSAL_FALLBACK_MODEL} also refused.`
+            : '';
+          const refusalText =
+            `The model declined to respond to that turn` +
+            `${categoryLabel}. This is a model-side safety classifier decision, ` +
+            `not an API error.${explanationLine}${fallbackNote} ` +
+            `Try rephrasing, switching to a different model, or switching to the Anthropic provider.`;
+          // CRITICAL: toolCalls: [] on refusal (see streaming-path comment).
+          // The returned responseMessage is plain text — any tool_use the
+          // model emitted before refusing isn't in it, so we must not let
+          // the orchestrator execute orphaned tool calls.
+          return {
+            responseMessage: {
+              role: 'assistant',
+              content: [{ type: 'text', text: refusalText }],
+            },
+            toolCalls: [],
+            usage: response.usage || undefined,
+            recoveredFromError: true,
+            recoveredError: refusalText,
+          };
+        }
+
         return {
           responseMessage: normalizedMessage,
           toolCalls: standardizedToolCalls,
@@ -1632,6 +1722,12 @@ Please carefully check the tool schema and ensure all parameters match the expec
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
     let currentMessages = messages;
+    // PRD-083 (CTO follow-up): one-shot refusal fallback to Opus 4.8. Declared
+    // outside streamingAttemptLoop so it persists across attempt iterations.
+    // When Fable/Mythos refuses, we swap this.model, strip thinking blocks
+    // from history, and `continue streamingAttemptLoop` to retry on Opus 4.8.
+    let fallbackAttempted = false;
+    const REFUSAL_FALLBACK_MODEL = 'claude-opus-4-8';
 
     // Handle vision images - inject into the last user message if model supports vision
     if (context.imageData && context.imageData.length > 0) {
@@ -1725,6 +1821,13 @@ Please carefully check the tool schema and ensure all parameters match the expec
       // we see on message_delta so we can: (a) auto-resume on pause_turn, and
       // (b) log it on empty responses for diagnostic visibility. See PRD-082.
       let anthropicStopReason = null;
+      // PRD-082/083: stop_details carries the *reason* behind a stop_reason
+      // — particularly important for refusals where Anthropic publishes the
+      // classifier category (cyber/bio/frontier_llm/reasoning_extraction)
+      // and a human-readable explanation. Per Anthropic docs, both fields
+      // can legitimately be null (un-categorized refusal). Without this we
+      // were dropping the single most diagnostic field on the response.
+      let anthropicStopDetails = null;
       // Offset added to every event.index so that a resumed stream (after
       // pause_turn) appends its blocks to the same accumulator instead of
       // overwriting blocks from the previous segment. Bumped to
@@ -1779,6 +1882,29 @@ Please carefully check the tool schema and ensure all parameters match the expec
             }
           }
         }
+
+        // PRD-083 §7a: Pre-slim oversized tool_result content for Fable/Mythos
+        // before sending. The universal orchestrator-level compactor misses
+        // results that are under its 50k char threshold but, because of
+        // Fable's 30%-larger tokenizer, still land at ~10k+ tokens — the
+        // size at which Fable returns an empty 2-token response. Idempotent
+        // across pause_turn resumes and retries (the stub is ≤2000 chars,
+        // so a slimmed block is never re-slimmed).
+        let fableSlimSummary = { slimmedCount: 0, originalBytes: 0, slimmedBytes: 0 };
+        if (isFableOrMythosModel(this.model)) {
+          fableSlimSummary = slimLargeToolResultsForFableMythos(conversationMessages);
+          if (fableSlimSummary.slimmedCount > 0) {
+            console.warn(
+              `[Anthropic] Fable/Mythos tool_result slim — ${fableSlimSummary.slimmedCount} block(s), ` +
+              `${fableSlimSummary.originalBytes} → ${fableSlimSummary.slimmedBytes} chars (PRD-083 §7a)`,
+            );
+          }
+        }
+
+        // PRD-083 §6: Pre-call diagnostic — log the input shape that the
+        // post-call empty-response detector pairs against. With both lines
+        // we can identify the trigger from one repro.
+        logAnthropicPreCall(this.model, this.provider, conversationMessages, fableSlimSummary);
 
         // Build system parameter with cache_control for prompt caching.
         // Anthropic allows max 4 cache_control breakpoints total across
@@ -1906,6 +2032,15 @@ Please carefully check the tool schema and ensure all parameters match the expec
             if (event.type === 'message_delta' && event.delta?.stop_reason) {
               anthropicStopReason = event.delta.stop_reason;
             }
+            // Capture stop_details — the explanatory companion to stop_reason.
+            // On refusals this contains { type: 'refusal', category, explanation }
+            // where category is the classifier that fired (cyber/bio/frontier_llm/
+            // reasoning_extraction) and explanation is Anthropic's human-readable
+            // reason. Both can be null (un-categorized refusal). This is the
+            // single highest-value field for diagnosing why Fable refused.
+            if (event.type === 'message_delta' && event.delta?.stop_details) {
+              anthropicStopDetails = event.delta.stop_details;
+            }
 
             // Handle content block start.
             // CRITICAL: Use indexed assignment, not push(). Anthropic streams emit a
@@ -1947,6 +2082,18 @@ Please carefully check the tool schema and ensure all parameters match the expec
                 contentBlocks[idx] = { type: 'thinking', thinking: '', signature: '' };
               } else if (block.type === 'redacted_thinking') {
                 contentBlocks[idx] = { type: 'redacted_thinking', data: block.data || '' };
+              } else if (block.type === 'refusal') {
+                // PRD-083 §7d: Anthropic emits a `refusal` content block when the
+                // model declines to answer (safety/policy). Pre-fix we initialized
+                // these via the fallback `{ ...block }` branch, which left them
+                // shaped like `{type:'refusal'}` with no `.text` field — subsequent
+                // text_delta accumulation would set `.text = textDelta` rather than
+                // `'' + textDelta`, technically fine, but the value never reached
+                // the UI because nothing extracts `text` from refusal blocks. We
+                // now initialize with an explicit empty text and surface the
+                // refusal via onChunk so the user sees *something* instead of
+                // "API Error: Provider returned empty response".
+                contentBlocks[idx] = { type: 'refusal', text: '' };
               } else {
                 // Future-proof: store unknown block types as-is so indices stay aligned.
                 contentBlocks[idx] = { ...block };
@@ -1964,13 +2111,32 @@ Please carefully check the tool schema and ensure all parameters match the expec
                 accumulatedContent += textDelta;
 
                 if (contentBlocks[index]) {
-                  contentBlocks[index].text += textDelta;
+                  // text_delta covers both `text` and `refusal` blocks — for
+                  // refusal blocks the field is still `.text` (PRD-083 §7d).
+                  contentBlocks[index].text = (contentBlocks[index].text || '') + textDelta;
                 }
 
                 if (onChunk) {
                   onChunk({
                     type: 'content',
                     delta: textDelta,
+                    accumulated: accumulatedContent,
+                  });
+                }
+              } else if (delta.type === 'refusal_delta') {
+                // PRD-083 §7d: explicit refusal_delta path (in case Anthropic
+                // routes refusal content through a dedicated delta type instead
+                // of reusing text_delta). Same accumulation as text so the
+                // user actually sees the refusal text in the chat stream.
+                const refusalDelta = delta.text || delta.refusal || '';
+                accumulatedContent += refusalDelta;
+                if (contentBlocks[index]) {
+                  contentBlocks[index].text = (contentBlocks[index].text || '') + refusalDelta;
+                }
+                if (onChunk) {
+                  onChunk({
+                    type: 'content',
+                    delta: refusalDelta,
                     accumulated: accumulatedContent,
                   });
                 }
@@ -2183,6 +2349,14 @@ Please carefully check the tool schema and ensure all parameters match the expec
         };
 
         const { message: normalizedMessage, wasEmpty } = BaseAdapter._normalizeAssistantResponse(responseMessage);
+        // PRD-083 §7d (extended): Anthropic can set `stop_reason: refusal`
+        // WITHOUT emitting a refusal content block — the only signal is the
+        // stop_reason. When that happens our empty-response handler kicks in,
+        // but the user sees the generic "API Error" string which is wrong:
+        // the model didn't error, it refused. Detect the refusal stop_reason
+        // and surface a clear message so the user understands what happened
+        // and what to do about it.
+        const wasRefusal = anthropicStopReason === 'refusal';
         if (wasEmpty) {
           console.warn('[Anthropic Stream] Provider returned empty response (no content, no tool calls) — padded for history safety');
           // Phase 1 diagnostic — PRD-082. On empty responses, log the data we
@@ -2201,11 +2375,140 @@ Please carefully check the tool schema and ensure all parameters match the expec
             `[Anthropic Stream] Empty response detail — model=${this.model} ` +
             `provider=${this.provider} ` +
             `stop_reason=${anthropicStopReason || 'null'} ` +
+            `stop_details=${anthropicStopDetails ? JSON.stringify(anthropicStopDetails) : 'null'} ` +
             `blocks=${JSON.stringify(blockSummary)} ` +
             `thinkingSigLen=${(thinkingBlock?.signature || '').length} ` +
             `output_tokens=${anthropicUsage.output_tokens || 0} ` +
             `resumeCount=${resumeCount}/${MAX_PAUSE_TURN_RESUMES}`,
           );
+        }
+
+        // If the model refused (with or without explicit content), inject a
+        // user-facing message so the chat bubble shows real text instead of
+        // the generic "API Error: Provider returned empty response".
+        //
+        // Per Anthropic docs: refusals on Fable 5 / Mythos 5 are not errors —
+        // they're successful HTTP 200 responses where the pre-output safety
+        // classifier declined the turn. stop_details carries the classifier
+        // category (cyber/bio/frontier_llm/reasoning_extraction) and a
+        // human-readable explanation when Anthropic categorized the refusal.
+        // Both fields can legitimately be null. Pre-output refusals are not
+        // billed; mid-stream refusals bill only what was emitted before the
+        // refusal block.
+        //
+        // CRITICAL: stream via onChunk(type: 'content') so the message goes
+        // through the SAME SSE/socket path the model's normal text would
+        // have used — landing in APPEND_MESSAGE_CONTENT during the live
+        // stream, before message_end fires. The `recoveredFromError` /
+        // post-stream content_delta path was racing badly with message_end
+        // in some chat types (orchestrator chat) and never reaching the
+        // bubble. Routing through onChunk avoids that race entirely.
+        //
+        // We don't set recoveredFromError on the return: from the
+        // orchestrator's point of view this is now a normal successful
+        // response whose text happens to be a refusal explanation.
+        //
+        // Recommended next step per Anthropic: on stop_reason:refusal, fall
+        // back to a different model (e.g. Opus 4.8) with thinking blocks
+        // stripped from the history — never retry the same model. Left as
+        // a follow-up.
+        if (wasRefusal) {
+          const category = anthropicStopDetails?.category;
+          const explanation = anthropicStopDetails?.explanation;
+
+          // One-shot operational log so refusals show up as their own metric
+          // rather than getting buried in the empty-response detail line.
+          console.warn(
+            `[Anthropic Refusal] model=${this.model} provider=${this.provider} ` +
+            `category=${category || 'null'} ` +
+            `explanation=${explanation ? JSON.stringify(explanation) : 'null'} ` +
+            `output_tokens=${anthropicUsage.output_tokens || 0}`,
+          );
+
+          // Auto-fallback to Opus 4.8 on Fable/Mythos refusal. Per Anthropic
+          // docs: "Re-sending a refused request to the same model usually
+          // earns another refusal" — fall back to a different model with
+          // thinking blocks stripped from history first. One-shot per call
+          // (fallbackAttempted gates re-entry) — if Opus also refuses, fall
+          // through to the user-facing refusal message below.
+          const canFallback =
+            isFableOrMythosModel(this.model) &&
+            !fallbackAttempted &&
+            this.model.toLowerCase() !== REFUSAL_FALLBACK_MODEL.toLowerCase();
+          if (canFallback) {
+            fallbackAttempted = true;
+            const originalModel = this.model;
+            console.warn(
+              `[Anthropic Fallback] ${originalModel} refused (category=${category || 'null'}) — ` +
+              `retrying same request on ${REFUSAL_FALLBACK_MODEL} with thinking blocks stripped`,
+            );
+            // Strip thinking blocks (carries cryptographic signatures only
+            // valid on the original model). Mutates `currentMessages` so
+            // the next streamingAttemptLoop iteration rebuilds the request
+            // with the cleaned history.
+            currentMessages = stripThinkingBlocksFromHistory(currentMessages);
+            this.model = REFUSAL_FALLBACK_MODEL;
+            // Tell the user what's happening so the bubble shows progress
+            // rather than going silent during the second roundtrip.
+            if (onChunk) {
+              const notice =
+                `⚠️ ${originalModel} declined this turn` +
+                `${category ? ` (${category})` : ''}. ` +
+                `Falling back to ${REFUSAL_FALLBACK_MODEL}…\n\n`;
+              onChunk({ type: 'content', delta: notice, accumulated: notice });
+            }
+            // Don't burn a retry slot — the for loop will increment attempt
+            // back to where it was. Restart the attempt with the new model.
+            attempt--;
+            continue streamingAttemptLoop;
+          }
+
+          // No fallback available (already attempted, or model isn't Fable/Mythos,
+          // or model IS the fallback model). Surface the refusal to the user.
+          const categoryLabel = category ? ` (${category})` : '';
+          const explanationLine = explanation
+            ? `\n\n**Anthropic's explanation:** ${explanation}`
+            : '';
+          const fallbackNote = fallbackAttempted
+            ? `\n\nFallback to ${REFUSAL_FALLBACK_MODEL} also refused.`
+            : '';
+          const refusalText =
+            `⚠️ The model declined to respond to that turn` +
+            `${categoryLabel}. This is a model-side safety classifier decision, ` +
+            `not an API error.${explanationLine}${fallbackNote}\n\n` +
+            `Re-sending the same prompt to the same model will almost always earn ` +
+            `another refusal. Try: switching to a different model, switching ` +
+            `to the Anthropic provider (not Claude Code), or rephrasing the request.`;
+          // accumulatedContent may already hold partial text the model
+          // emitted before refusing — preserve it and append the refusal
+          // explanation as a clearly-separated suffix.
+          const prefix = accumulatedContent ? `${accumulatedContent}\n\n` : '';
+          const streamDelta = `${prefix ? '\n\n' : ''}${refusalText}`;
+          if (onChunk) {
+            onChunk({
+              type: 'content',
+              delta: streamDelta,
+              accumulated: `${prefix}${refusalText}`,
+            });
+          }
+          const refusalMessage = {
+            role: 'assistant',
+            content: [{ type: 'text', text: `${prefix}${refusalText}` }],
+          };
+          // CRITICAL: must return toolCalls: [] on refusal. If Fable started
+          // emitting a tool_use block before refusing, accumulatedToolCalls
+          // would carry that tool_use's id. But the assistant message we're
+          // returning is plain refusal text — there is no matching tool_use
+          // in its content. Returning the tool calls anyway would cause the
+          // orchestrator to execute the tool and append a tool_result whose
+          // tool_use_id has no matching tool_use in the preceding assistant
+          // message — Anthropic 400 ("unexpected tool_use_id found in
+          // tool_result blocks") on the next call. Drop them entirely.
+          return {
+            responseMessage: refusalMessage,
+            toolCalls: [],
+            usage: anthropicUsage.input_tokens || anthropicUsage.output_tokens ? anthropicUsage : undefined,
+          };
         }
 
         return {
@@ -5074,6 +5377,192 @@ function supportsAnthropicAdaptiveThinking(model) {
     lower.startsWith('claude-opus-4-7') ||
     lower.startsWith('claude-opus-4-6') ||
     lower.startsWith('claude-sonnet-4-6')
+  );
+}
+
+// PRD-083: Fable 5 and Mythos 5 are the only Anthropic models we've observed
+// emitting empty 2-token responses immediately after a large tool_result
+// payload (typically a file save / read echo). The hypothesis is that a fresh
+// ~50k-token tool_result block — even when the conversation as a whole still
+// fits comfortably in the 1M window — overwhelms Fable's working memory after
+// thinking budget allocation. Mark these models so the adapter can pre-slim
+// oversized tool_result content before the API call.
+function isFableOrMythosModel(model) {
+  const lower = String(model || '').toLowerCase();
+  return lower.startsWith('claude-fable-') || lower.startsWith('claude-mythos-');
+}
+
+// PRD-083 (CTO follow-up): when retrying a refused request on a different
+// model, Anthropic's docs explicitly require stripping the original model's
+// thinking blocks from the conversation history first. Fable/Mythos thinking
+// blocks carry cryptographic signatures that only validate on the original
+// model; replaying them on Opus 4.8 causes a 400 invalid_request_error.
+// Walks all assistant messages and removes thinking/redacted_thinking blocks.
+function stripThinkingBlocksFromHistory(messages) {
+  if (!Array.isArray(messages)) return messages;
+  let totalStripped = 0;
+  const stripped = messages.map((msg) => {
+    if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return msg;
+    const filtered = msg.content.filter(
+      (b) => b && b.type !== 'thinking' && b.type !== 'redacted_thinking',
+    );
+    if (filtered.length === msg.content.length) return msg;
+    totalStripped += (msg.content.length - filtered.length);
+    return { ...msg, content: filtered };
+  });
+  if (totalStripped > 0) {
+    console.log(`[Anthropic Fallback] Stripped ${totalStripped} thinking/redacted_thinking block(s) from history for cross-model replay`);
+  }
+  return stripped;
+}
+
+// Stringify a tool_result `content` field for byte counting. Anthropic accepts
+// either a raw string or an array of content blocks ([{type: 'text', text}]).
+function _stringifyToolResultContent(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((b) => {
+        if (!b) return '';
+        if (typeof b === 'string') return b;
+        if (b.type === 'text') return b.text || '';
+        return JSON.stringify(b);
+      })
+      .join('');
+  }
+  if (content && typeof content === 'object') return JSON.stringify(content);
+  return '';
+}
+
+// PRD-083 §7a: For Fable/Mythos only, walk Anthropic-format messages and
+// replace tool_result blocks whose content exceeds `thresholdChars` with a
+// head+tail stub. The universal orchestrator-level compactor (50k char
+// threshold on role:'tool' messages) misses cases where the result is just
+// under 50k chars but, because Fable's tokenizer produces ~30% more tokens
+// per character, ends up well over 10k tokens — which is the size at which
+// we see the 2-token empty-response failure mode.
+//
+// Mutates `messages` in place. Returns a summary { slimmedCount,
+// originalBytes, slimmedBytes } for diagnostic logging.
+function slimLargeToolResultsForFableMythos(messages, thresholdChars = 32000) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { slimmedCount: 0, originalBytes: 0, slimmedBytes: 0 };
+  }
+  let slimmedCount = 0;
+  let originalBytes = 0;
+  let slimmedBytes = 0;
+
+  for (const msg of messages) {
+    if (!msg || msg.role !== 'user' || !Array.isArray(msg.content)) continue;
+    for (let i = 0; i < msg.content.length; i++) {
+      const block = msg.content[i];
+      if (!block || block.type !== 'tool_result') continue;
+
+      const asString = _stringifyToolResultContent(block.content);
+      // Idempotency: blocks already below the threshold (including ones
+      // slimmed on a previous pass — the stub is ≤2000 chars) are skipped.
+      // This keeps the cache prefix stable across pause_turn resumes/retries.
+      if (asString.length <= thresholdChars) continue;
+
+      const head = asString.slice(0, 800);
+      const tail = asString.slice(-800);
+      const elided = asString.length - head.length - tail.length;
+      const stub =
+        `[tool_result content elided for Fable/Mythos compatibility — ` +
+        `original ${asString.length} chars, ${elided} elided]\n\n` +
+        `--- head (first 800 chars) ---\n${head}\n\n` +
+        `--- tail (last 800 chars) ---\n${tail}`;
+
+      originalBytes += asString.length;
+      slimmedBytes += stub.length;
+      slimmedCount++;
+
+      // NOTE: don't add custom marker fields — Anthropic strictly validates
+      // tool_result block shape and rejects unknown keys ("Extra inputs are
+      // not permitted"). The length check above is enough.
+      msg.content[i] = {
+        type: 'tool_result',
+        tool_use_id: block.tool_use_id,
+        content: stub,
+        ...(block.is_error ? { is_error: block.is_error } : {}),
+      };
+    }
+  }
+
+  return { slimmedCount, originalBytes, slimmedBytes };
+}
+
+// PRD-083 §6: Pre-call diagnostic. On every Anthropic call, log the shape of
+// the conversation we're about to send so we can correlate input shape with
+// the post-call "[Anthropic Stream] Empty response detail" line. Specifically
+// surfaces: (a) whether the last message is a tool_result carrier and how
+// big the tool_results are (H1/H2 — large tool_result poisoning), and (b)
+// whether the previous assistant turn has a thinking block with a real
+// signature (H3 — orphan signature on replay).
+function logAnthropicPreCall(model, provider, conversationMessages, slimSummary) {
+  if (!Array.isArray(conversationMessages) || conversationMessages.length === 0) return;
+
+  const lastMsg = conversationMessages[conversationMessages.length - 1];
+  const lastMessageRole = lastMsg?.role || 'unknown';
+
+  let lastMessageContentTypes = [];
+  if (Array.isArray(lastMsg?.content)) {
+    lastMessageContentTypes = lastMsg.content.map((b) => b?.type || 'unknown');
+  } else if (typeof lastMsg?.content === 'string') {
+    lastMessageContentTypes = ['text'];
+  }
+
+  let totalToolResultBytes = 0;
+  let lastToolResultBytes = 0;
+  for (const m of conversationMessages) {
+    if (!Array.isArray(m?.content)) continue;
+    for (const b of m.content) {
+      if (b && b.type === 'tool_result') {
+        const size = _stringifyToolResultContent(b.content).length;
+        totalToolResultBytes += size;
+      }
+    }
+  }
+  if (Array.isArray(lastMsg?.content)) {
+    const lastToolResult = [...lastMsg.content].reverse().find((b) => b?.type === 'tool_result');
+    if (lastToolResult) {
+      lastToolResultBytes = _stringifyToolResultContent(lastToolResult.content).length;
+    }
+  }
+
+  // Walk backwards for the most recent assistant message. Inspect its thinking
+  // block (if any) and the captured signature length. Empty signature on a
+  // thinking block in history is a red flag for H3 (signature lost during
+  // accumulation or compaction).
+  let prevAssistantHasThinking = false;
+  let prevAssistantThinkingSigLen = 0;
+  for (let i = conversationMessages.length - 1; i >= 0; i--) {
+    const m = conversationMessages[i];
+    if (m?.role !== 'assistant') continue;
+    if (Array.isArray(m.content)) {
+      const thinkingBlock = m.content.find((b) => b?.type === 'thinking');
+      if (thinkingBlock) {
+        prevAssistantHasThinking = true;
+        prevAssistantThinkingSigLen = (thinkingBlock.signature || '').length;
+      }
+    }
+    break;
+  }
+
+  const slimPart = slimSummary && slimSummary.slimmedCount > 0
+    ? ` slimmed=${slimSummary.slimmedCount}(${slimSummary.originalBytes}→${slimSummary.slimmedBytes})`
+    : '';
+
+  console.log(
+    `[Anthropic Pre-Call] model=${model} provider=${provider} ` +
+    `messagesCount=${conversationMessages.length} ` +
+    `lastMessageRole=${lastMessageRole} ` +
+    `lastMessageContentTypes=${JSON.stringify(lastMessageContentTypes)} ` +
+    `totalToolResultBytes=${totalToolResultBytes} ` +
+    `lastToolResultBytes=${lastToolResultBytes} ` +
+    `prevAssistantHasThinking=${prevAssistantHasThinking} ` +
+    `prevAssistantThinkingSigLen=${prevAssistantThinkingSigLen}` +
+    slimPart,
   );
 }
 

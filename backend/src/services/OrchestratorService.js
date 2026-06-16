@@ -152,6 +152,119 @@ function sanitizeOrphanToolCalls(msgs) {
   return out;
 }
 
+/**
+ * Inverse of sanitizeOrphanToolCalls: remove tool_result blocks whose matching
+ * tool_use is missing from the IMMEDIATELY PREVIOUS assistant message.
+ *
+ * This rescues histories already corrupted by a prior bug (e.g. a refusal turn
+ * that dropped tool_use blocks but left the tool_result downstream). Anthropic
+ * 400s with "unexpected tool_use_id found in tool_result blocks" on replay;
+ * this strips the orphans so the next call goes through.
+ *
+ * If a user message ends up empty after orphan removal, drop the whole message
+ * (Anthropic also rejects empty user content arrays).
+ *
+ * Also handles the OpenAI-style inverse: role:'tool' messages with no matching
+ * tool_calls[] entry on the preceding assistant.
+ */
+function sanitizeUnexpectedToolResults(msgs) {
+  if (!Array.isArray(msgs) || msgs.length === 0) return msgs;
+  const out = [];
+  let removedAnthropic = 0;
+  let removedOpenAI = 0;
+
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
+
+    // Anthropic-style: user message with tool_result blocks; validate against
+    // the previous assistant message's tool_use ids.
+    if (
+      msg && msg.role === 'user' &&
+      Array.isArray(msg.content) &&
+      msg.content.some((b) => b && b.type === 'tool_result')
+    ) {
+      const prev = out[out.length - 1];
+      const validIds = new Set();
+      if (prev && prev.role === 'assistant' && Array.isArray(prev.content)) {
+        for (const b of prev.content) {
+          if (b && b.type === 'tool_use' && b.id) validIds.add(b.id);
+        }
+      }
+
+      const keptBlocks = [];
+      const orphanIds = [];
+      for (const b of msg.content) {
+        if (b && b.type === 'tool_result') {
+          if (validIds.has(b.tool_use_id)) keptBlocks.push(b);
+          else orphanIds.push(b.tool_use_id);
+        } else {
+          keptBlocks.push(b);
+        }
+      }
+
+      if (orphanIds.length > 0) {
+        removedAnthropic += orphanIds.length;
+        console.warn(
+          `[sanitizeUnexpectedToolResults] Removed ${orphanIds.length} orphan tool_result block(s): ${orphanIds.join(', ')}`,
+        );
+      }
+
+      if (keptBlocks.length > 0) {
+        out.push({ ...msg, content: keptBlocks });
+      }
+      continue;
+    }
+
+    // OpenAI-style: role:'tool' message; validate against preceding assistant's
+    // tool_calls[]. Walk back over consecutive role:'tool' messages until we
+    // hit the assistant that owns them.
+    if (msg && msg.role === 'tool') {
+      // Find the most recent non-tool message in out — should be the assistant.
+      let prevAssistant = null;
+      for (let k = out.length - 1; k >= 0; k--) {
+        const candidate = out[k];
+        if (!candidate || candidate.role === 'tool') continue;
+        if (candidate.role === 'assistant') prevAssistant = candidate;
+        break;
+      }
+      // Collect valid IDs from BOTH possible assistant shapes so a mixed-format
+      // history (e.g. a saved Anthropic-format assistant message in a turn
+      // that's now being replayed to an OpenAI-compatible provider) doesn't
+      // get its valid tool messages mistakenly stripped:
+      //   - OpenAI shape: prevAssistant.tool_calls[].id
+      //   - Anthropic shape: prevAssistant.content[].tool_use.id
+      const validIds = new Set();
+      if (prevAssistant && Array.isArray(prevAssistant.tool_calls)) {
+        for (const tc of prevAssistant.tool_calls) {
+          if (tc && tc.id) validIds.add(tc.id);
+        }
+      }
+      if (prevAssistant && Array.isArray(prevAssistant.content)) {
+        for (const block of prevAssistant.content) {
+          if (block && block.type === 'tool_use' && block.id) validIds.add(block.id);
+        }
+      }
+      if (msg.tool_call_id && !validIds.has(msg.tool_call_id)) {
+        removedOpenAI++;
+        console.warn(
+          `[sanitizeUnexpectedToolResults] Removed orphan role:'tool' message ` +
+          `(tool_call_id=${msg.tool_call_id} not in preceding assistant.tool_calls or content[].tool_use)`,
+        );
+        continue;
+      }
+    }
+
+    out.push(msg);
+  }
+
+  if (removedAnthropic > 0 || removedOpenAI > 0) {
+    console.warn(
+      `[sanitizeUnexpectedToolResults] Total removed — anthropic tool_result blocks: ${removedAnthropic}, openai tool messages: ${removedOpenAI}`,
+    );
+  }
+  return out;
+}
+
 // Empty-response placeholder text. This string is structural padding for the
 // LLM's *next* turn (strict providers reject empty assistant messages). It
 // must NEVER reach the user-facing UI — see `extractDisplayText` /
@@ -960,6 +1073,7 @@ async function universalChatHandler(req, res, context = {}) {
   }
 
   messageInput = sanitizeOrphanToolCalls(messageInput);
+  messageInput = sanitizeUnexpectedToolResults(messageInput);
   messageInput = sanitizeEmptyAssistantMessages(messageInput);
 
   // Set up streaming response
@@ -2692,6 +2806,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
     // tool_use block is saved without a result — the next turn then fails with
     // "tool_use ids were found without tool_result blocks immediately after".
     messages = sanitizeOrphanToolCalls(messages);
+    messages = sanitizeUnexpectedToolResults(messages);
     messages = sanitizeEmptyAssistantMessages(messages);
 
     // Log conversation
