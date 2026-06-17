@@ -130,6 +130,7 @@
                     @toggle-tool="toggleToolCallExpansion"
                     @provider-connected="handleProviderConnected"
                     @edit-message="handleEditMessage"
+                    @assistant-action="handleAssistantAction"
                   />
                 </template>
               </TransitionGroup>
@@ -1082,6 +1083,67 @@ export default {
         reasoningEnabled: store.state.aiProvider.reasoningEnabled,
       });
     };
+
+    // Chat toolbar action handler
+    const handleAssistantAction = async (payload) => {
+      const action = payload?.action;
+      const messageId = payload?.messageId;
+      const vote = payload?.vote;
+      if (!action || !messageId) return;
+
+      if (action === 'regenerate') {
+        if (store.state.chat.isStreaming) return;
+        const msgs = displayMessages.value || [];
+        const idx = msgs.findIndex((m) => m?.id === messageId);
+        if (idx === -1) return;
+        let prevUser = null;
+        for (let i = idx - 1; i >= 0; i--) {
+          if (msgs[i]?.role === 'user') { prevUser = msgs[i]; break; }
+        }
+        if (prevUser?.id && prevUser?.content) {
+          await handleEditMessage({ messageId: prevUser.id, newContent: prevUser.content });
+        }
+        return;
+      }
+
+      if (action === 'copy-conversation') {
+        try {
+          const msgs = displayMessages.value || [];
+          const lines = [];
+          for (const m of msgs) {
+            if (!m || !m.role) continue;
+            lines.push(`### ${m.role.toUpperCase()}\n${(m.content || '').trim()}`);
+          }
+          await navigator.clipboard.writeText(lines.join('\n\n---\n\n'));
+        } catch (e) { console.warn('[Chat] Copy conversation failed:', e); }
+        return;
+      }
+
+      if (action === 'generate-artifact') {
+        try {
+          const msgs = displayMessages.value || [];
+          const lines = [];
+          for (const m of msgs) {
+            if (!m || !m.role) continue;
+            lines.push(`### ${m.role.toUpperCase()}\n${(m.content || '').trim()}`);
+          }
+          const artifact = { kind: 'conversation', title: 'Conversation Artifact', content: lines.join('\n\n---\n\n'), timestamp: Date.now(), source: 'chat-toolbar' };
+          const blob = new Blob([JSON.stringify(artifact, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = `conversation-artifact-${Date.now()}.json`;
+          document.body.appendChild(a); a.click();
+          document.body.removeChild(a); URL.revokeObjectURL(url);
+        } catch (e) { console.warn('[Chat] Generate artifact failed:', e); }
+        return;
+      }
+
+      if (action === 'feedback') {
+        console.log('[Chat] Assistant feedback:', { messageId, vote });
+        return;
+      }
+    };
+
 
     // Stream event handler. Monitoring state (counters, token/cache stats,
     // activity feed, context status) is always routed to the SOURCE
@@ -2329,6 +2391,7 @@ export default {
       clearActivities,
       handleUserInputSubmit,
       handleEditMessage,
+      handleAssistantAction,
       handlePanelAction,
       handleScreenChange,
       handleProviderConnected,

@@ -175,6 +175,15 @@
               {{ data }}
             </span>
           </div> </template
+
+          <!-- Chat Toolbar: pinned action strip -->
+          <ChatToolbar
+            v-if="message.role === 'assistant'"
+            :message="message"
+            :status="status"
+            @assistant-action="onAssistantAction"
+          />
+
         ><!-- end v-else (non-editing mode) -->
       </div>
       <span class="message-time">{{ formatTime(message.timestamp) }}</span>
@@ -583,7 +592,7 @@ export default {
       default: false,
     },
   },
-  emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message'],
+  emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message', 'assistant-action'],
   setup(props, { emit }) {
     // Get Vuex store for auth token
     const store = useStore();
@@ -2824,6 +2833,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       startEditing,
       cancelEditing,
       submitEdit,
+      onAssistantAction,
       handleEditKeydown,
       autoResizeEdit,
       formatJSON,
