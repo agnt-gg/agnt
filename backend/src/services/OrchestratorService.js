@@ -24,7 +24,7 @@ import UserModel from '../models/UserModel.js';
 import AgentModel from '../models/AgentModel.js';
 import SkillModel from '../models/SkillModel.js';
 import { buildSkillsContext } from './SkillService.js';
-import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled } from './unfirehose/UnfirehoseLogger.js';
+import { createSession as createUnfirehoseSession, wrapSendEvent as wrapUnfirehoseSendEvent, isEnabled as isUnfirehoseEnabled, deriveProjectSlug as deriveUnfirehoseProjectSlug } from './unfirehose/UnfirehoseLogger.js';
 import { saveBase64Image } from './ImageStorage.js';
 import pathManager from '../utils/PathManager.js';
 
@@ -1053,6 +1053,15 @@ async function universalChatHandler(req, res, context = {}) {
         model,
         chatType,
         firstPrompt: typeof firstPrompt === 'string' ? firstPrompt : String(firstPrompt || ''),
+        projectSlug: deriveUnfirehoseProjectSlug({
+          chatType,
+          agentContext,
+          workflowContext,
+          toolContext,
+          widgetContext,
+          goalContext,
+          goalId,
+        }),
       });
       sendEvent = wrapUnfirehoseSendEvent(unfirehoseSession, rawSendEvent);
       console.log(`[unfirehose] Session ${conversationId} → ${unfirehoseSession.outputFile}`);

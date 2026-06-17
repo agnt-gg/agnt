@@ -61,6 +61,62 @@ function encodeProjectSlug(fsPath) {
 }
 
 /**
+ * Slugify an entity name for use inside a project slug.
+ */
+function slugifyName(s) {
+  if (!s) return null;
+  const out = String(s).toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return out || null;
+}
+
+/**
+ * Derive a stable unfirehose project slug from chat context.
+ *
+ * Without this, every dockerized session collapses into `app` because
+ * `process.cwd()` is `/app` inside our container. This routes each chat
+ * to a project bucket named after the entity actually being driven, so
+ * the unfirehose dashboard shows useful per-agent / per-workflow stats.
+ *
+ * Pure function — no side effects, no I/O — trivially testable.
+ */
+export function deriveProjectSlug({
+  chatType,
+  agentContext,
+  workflowContext,
+  toolContext,
+  widgetContext,
+  goalContext,
+  goalId,
+} = {}) {
+  if (chatType === 'agent') {
+    const name = slugifyName(agentContext?.name);
+    if (name) return `agent-${name}`;
+  }
+  if (chatType === 'workflow') {
+    const name = slugifyName(workflowContext?.name);
+    if (name) return `workflow-${name}`;
+  }
+  if (chatType === 'tool') {
+    const name = slugifyName(toolContext?.title || toolContext?.name);
+    if (name) return `tool-${name}`;
+  }
+  if (chatType === 'widget') {
+    const name = slugifyName(widgetContext?.name);
+    if (name) return `widget-${name}`;
+  }
+  if (chatType === 'goal') {
+    const name = slugifyName(goalContext?.title || goalContext?.name);
+    if (name) return `goal-${name}`;
+    if (goalId) return `goal-${String(goalId).slice(0, 8)}`;
+  }
+
+  return 'chat';
+}
+
+/**
  * Generate a UUIDv7-like ID (time-ordered).
  * Falls back to randomUUID if crypto.randomUUID is available.
  */
