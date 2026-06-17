@@ -10,7 +10,7 @@ version: '3.8'
 #   make run-both
 #
 # ⚠️ PERMISSIONS: If you get "EACCES: permission denied" errors, run:
-#   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/logs/lite ~/.agnt/plugins/installed ~/.agnt/plugins/builds
+#   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/logs/lite ~/.agnt/unfirehose ~/.agnt/plugins/installed ~/.agnt/plugins/builds
 #   sudo chown -R 1000:1000 ~/.agnt
 
 services:
@@ -51,6 +51,9 @@ services:
       # Required when both full and lite containers access the same database
       - SQLITE_WAL_MODE=true
 
+      # unfirehose JSONL session logs (UnfirehoseLogger writes here)
+      - UNFIREHOSE_DIR=/app/unfirehose
+
     volumes:
       # SHARED SQLite database and user data (both full and lite use the same)
       # USER_DATA_PATH=/app/data - plugins, database, and registry are stored here
@@ -58,6 +61,9 @@ services:
 
       # Separate logs for each container
       - ${AGNT_HOME:-$HOME}/.agnt/logs/full:/app/logs
+
+      # SHARED unfirehose session logs (consumed by unfirehose-nextjs-logger)
+      - ${AGNT_HOME:-$HOME}/.agnt/unfirehose:/app/unfirehose
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
@@ -122,6 +128,9 @@ services:
       # Required when both full and lite containers access the same database
       - SQLITE_WAL_MODE=true
 
+      # unfirehose JSONL session logs (UnfirehoseLogger writes here)
+      - UNFIREHOSE_DIR=/app/unfirehose
+
     volumes:
       # SHARED SQLite database and user data (both full and lite use the same)
       # USER_DATA_PATH=/app/data - plugins, database, and registry are stored here
@@ -129,6 +138,9 @@ services:
 
       # Separate logs for each container
       - ${AGNT_HOME:-$HOME}/.agnt/logs/lite:/app/logs
+
+      # SHARED unfirehose session logs (consumed by unfirehose-nextjs-logger)
+      - ${AGNT_HOME:-$HOME}/.agnt/unfirehose:/app/unfirehose
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro
