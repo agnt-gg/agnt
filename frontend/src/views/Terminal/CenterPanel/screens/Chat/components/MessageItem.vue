@@ -174,16 +174,91 @@
             <span v-for="data in message.metadata" :key="data" class="metadata-tag">
               {{ data }}
             </span>
-          </div> </template
+          </div>
 
-          <!-- Chat Toolbar: pinned action strip -->
-          <ChatToolbar
-            v-if="message.role === 'assistant'"
-            :message="message"
-            :status="status"
-            @assistant-action="onAssistantAction"
-          />
+          <!-- Pinned assistant actions (always present on assistant messages) -->
+          <div v-if="message.role === 'assistant'" class="assistant-actions-wrap">
+            <div class="assistant-actions" :class="{ busy: assistantIsBusy }" role="toolbar" aria-label="Assistant message actions">
+              <button class="assistant-action-btn" data-accent="cyan" type="button" title="Regenerate" :disabled="assistantIsBusy" @click="onAssistantRegenerate">
+                <span class="i" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                    <path d="M20 4v6h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </button>
 
+              <button class="assistant-action-btn" data-accent="pink" type="button" title="Copy" @click="onAssistantCopy">
+                <span class="i" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M9 9h10v10H9z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                    <path d="M5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                  </svg>
+                </span>
+              </button>
+
+              <button class="assistant-action-btn" data-accent="green" type="button" title="Share / Upload" @click="onAssistantShare">
+                <span class="i" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M12 3v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                    <path d="M8 7l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                  </svg>
+                </span>
+              </button>
+
+              <!-- Copy entire conversation (α) -->
+              <button class="assistant-action-btn" data-accent="indigo" type="button" title="Copy conversation" @click="onAssistantCopyConversation">
+                <span class="i alpha-glyph" aria-hidden="true">α</span>
+              </button>
+
+              <!-- Generate artifact (▶▶) -->
+              <button class="assistant-action-btn" data-accent="orange" type="button" title="Generate artifact" @click="onAssistantGenerateArtifact">
+                <span class="i artifact-glyph" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+                    <path d="M5 3l9 9-9 9V3z" />
+                    <path d="M13 8l5 5-5 5V8z" opacity="0.6" />
+                  </svg>
+                </span>
+              </button>
+
+              <span class="assistant-actions-sep" aria-hidden="true"></span>
+
+              <button class="assistant-action-btn" data-accent="gold" type="button" title="Thumbs up" @click="onAssistantFeedback('up')">
+                <span class="i" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M7 11v10H4V11h3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                    <path
+                      d="M7 11l5-7a2 2 0 0 1 3 2l-1 5h6a2 2 0 0 1 2 2l-1 6a2 2 0 0 1-2 2H7"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </span>
+              </button>
+
+              <button class="assistant-action-btn" data-accent="violet" type="button" title="Thumbs down" @click="onAssistantFeedback('down')">
+                <span class="i" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M17 13V3h3v10h-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                    <path
+                      d="M17 13l-5 7a2 2 0 0 1-3-2l1-5H4a2 2 0 0 1-2-2l1-6a2 2 0 0 1 2-2h12"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </span>
+              </button>
+
+              <span class="assistant-actions-spacer"></span>
+              <span v-if="assistantActionNote" class="assistant-actions-status">{{ assistantActionNote }}</span>
+            </div>
+          </div>
+        </template
         ><!-- end v-else (non-editing mode) -->
       </div>
       <span class="message-time">{{ formatTime(message.timestamp) }}</span>
@@ -593,6 +668,7 @@ export default {
     },
   },
   emits: ['toggle-tool', 'provider-connected', 'open-html-preview', 'edit-message', 'assistant-action'],
+
   setup(props, { emit }) {
     // Get Vuex store for auth token
     const store = useStore();
@@ -981,7 +1057,9 @@ export default {
       if (type === 'chartjs') {
         return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"><\/script>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;display:flex;align-items:center;justify-content:center;height:100vh;padding:24px}canvas{max-width:100%;max-height:100%}</style>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;display:flex;align-items:center;justify-content:center;height:100vh;padding:24px}canvas{max-width:100%;max-height:100%}
+
+</style>
 </head><body><canvas id="chart"></canvas><script>
 try{const config=${sourceCode};
 config.options=config.options||{};config.options.responsive=true;config.options.maintainAspectRatio=true;
@@ -2820,6 +2898,107 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       window.open(url, '_blank');
     };
 
+    // --- Assistant pinned actions strip (theme-aware) ---
+    const assistantIsBusy = computed(() => {
+      const t = props.status?.type;
+      return t === 'thinking' || t === 'running' || t === 'streaming';
+    });
+
+    const assistantActionNote = ref('');
+    const flashAssistantNote = (msg) => {
+      assistantActionNote.value = msg || '';
+      window.clearTimeout(flashAssistantNote._t);
+      flashAssistantNote._t = window.setTimeout(() => {
+        assistantActionNote.value = '';
+      }, 1400);
+    };
+
+    // Trigger glow + vibration feedback on the entire bar
+    const triggerBarFeedback = () => {
+      const bar = document.querySelector('.assistant-actions');
+      if (!bar) return;
+      // Remove existing animation class to allow re-triggering
+      bar.classList.remove('bar-feedback');
+      // Force reflow to restart animation
+      void bar.offsetWidth;
+      bar.classList.add('bar-feedback');
+      // Haptic vibration if available (mobile)
+      if (navigator.vibrate) {
+        navigator.vibrate(30);
+      }
+      // Clean up after animation
+      clearTimeout(triggerBarFeedback._t);
+      triggerBarFeedback._t = setTimeout(() => {
+        bar.classList.remove('bar-feedback');
+      }, 400);
+    };
+
+    const onAssistantRegenerate = () => {
+      triggerBarFeedback();
+      emit('assistant-action', { action: 'regenerate', messageId: props.message?.id });
+      flashAssistantNote('Regenerating…');
+    };
+
+    const onAssistantCopy = async () => {
+      triggerBarFeedback();
+      try {
+        await navigator.clipboard.writeText(String(props.message?.content || ''));
+        flashAssistantNote('Copied');
+      } catch (e) {
+        flashAssistantNote('Copy failed');
+      }
+    };
+
+    const onAssistantShare = async () => {
+      const text = String(props.message?.content || '');
+      triggerBarFeedback();
+      try {
+        if (navigator.share) {
+          const shareData = {
+            title: 'AGNT Output',
+            text: text.slice(0, 4000),
+          };
+          // Include URL if available (rich native share on mobile/desktop)
+          if (window.location?.href) {
+            shareData.url = window.location.href;
+          }
+          await navigator.share(shareData);
+          flashAssistantNote('Shared');
+        } else {
+          // Fallback: copy shareable link + text
+          const shareText = window.location?.href
+            ? `${text.slice(0, 4000)}\n\n— Shared from AGNT: ${window.location.href}`
+            : text;
+          await navigator.clipboard.writeText(shareText);
+          flashAssistantNote('Copied to clipboard');
+        }
+      } catch (e) {
+        if (e?.name === 'NotAllowedError') {
+          flashAssistantNote('Share dismissed');
+        } else {
+          flashAssistantNote('Share failed');
+        }
+      }
+    };
+
+    const onAssistantCopyConversation = () => {
+      triggerBarFeedback();
+      emit('assistant-action', { action: 'copy-conversation', messageId: props.message?.id });
+      flashAssistantNote('Copying…');
+    };
+
+    const onAssistantGenerateArtifact = () => {
+      triggerBarFeedback();
+      emit('assistant-action', { action: 'generate-artifact', messageId: props.message?.id });
+      flashAssistantNote('Generating artifact…');
+    };
+
+    const onAssistantFeedback = (vote) => {
+      triggerBarFeedback();
+      emit('assistant-action', { action: 'feedback', vote, messageId: props.message?.id });
+      flashAssistantNote(vote === 'up' ? 'Thanks' : 'Noted');
+    };
+
     return {
       messageRef,
       reasoningContentRef,
@@ -2833,7 +3012,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       startEditing,
       cancelEditing,
       submitEdit,
-      onAssistantAction,
       handleEditKeydown,
       autoResizeEdit,
       formatJSON,
@@ -2884,6 +3062,16 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       copyShareLink,
       copyEmbedCode,
       openInBrowser,
+      // Assistant actions strip
+      assistantIsBusy,
+      assistantActionNote,
+      triggerBarFeedback,
+      onAssistantRegenerate,
+      onAssistantCopy,
+      onAssistantShare,
+      onAssistantCopyConversation,
+      onAssistantGenerateArtifact,
+      onAssistantFeedback,
     };
   },
 };
@@ -3204,6 +3392,221 @@ span.nodeLabel p {
   margin-top: 8px;
   display: block;
   padding: 0 4px;
+}
+
+/* --- Assistant pinned actions strip (sleek AGNT glass) --- */
+.assistant-actions-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.assistant-actions {
+  --bg-rgb: var(--color-background-rgb, 11, 15, 26);
+  --muted: var(--color-text-muted, rgba(255, 255, 255, 0.62));
+
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  flex-wrap: wrap;
+
+  padding: 8px 10px;
+  border-radius: 14px;
+
+  background: linear-gradient(180deg, rgba(var(--bg-rgb), 0.34), rgba(var(--bg-rgb), 0.22));
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  position: relative;
+  overflow: hidden;
+
+  /* keep blend/overlays self-contained */
+  isolation: isolate;
+}
+
+/* darken on hover (your request) */
+.assistant-actions:hover {
+  background: rgba(var(--bg-rgb), 0.40);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Glow + vibration feedback on any button click */
+.assistant-actions.bar-feedback {
+  animation: bar-glow 400ms ease-out;
+}
+
+@keyframes bar-glow {
+  0% {
+    box-shadow:
+      0 10px 30px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+      0 0 0 0 rgba(18, 224, 255, 0);
+    transform: scale(1);
+  }
+  15% {
+    box-shadow:
+      0 10px 30px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+      0 0 20px 4px rgba(18, 224, 255, 0.35),
+      0 0 40px 8px rgba(229, 61, 143, 0.15);
+    transform: scale(1.015);
+  }
+  40% {
+    box-shadow:
+      0 10px 30px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+      0 0 12px 2px rgba(18, 224, 255, 0.2);
+    transform: scale(1.005);
+  }
+  100% {
+    box-shadow:
+      0 10px 30px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+      0 0 0 0 rgba(18, 224, 255, 0);
+    transform: scale(1);
+  }
+}
+
+/* subtle neon sweep, always behind icons */
+.assistant-actions::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(800px 120px at 10% 0%, rgba(18, 224, 255, 0.12), transparent 60%),
+    radial-gradient(700px 140px at 90% 100%, rgba(229, 61, 143, 0.10), transparent 65%);
+  opacity: 0.9;
+  mix-blend-mode: screen;
+}
+
+.assistant-action-btn {
+  width: 32px;
+  height: 28px;
+  border-radius: 10px;
+
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0;
+
+  /* override global button rules (buttons.css) */
+  opacity: 1 !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+
+  cursor: pointer;
+  outline: none;
+  position: relative;
+  z-index: 1;
+
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.assistant-action-btn::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: 14px;
+  background: radial-gradient(circle at 50% 50%, var(--accent, rgba(18, 224, 255, 0.55)) 0%, transparent 55%);
+  opacity: 0;
+  filter: blur(10px);
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
+.assistant-action-btn:hover::before {
+  opacity: 0.22;
+}
+
+.assistant-action-btn[data-accent="cyan"] { --accent: var(--color-secondary, var(--color-blue, #12e0ff)); }
+.assistant-action-btn[data-accent="pink"] { --accent: var(--color-primary, var(--color-pink, #e53d8f)); }
+.assistant-action-btn[data-accent="green"] { --accent: var(--color-success, var(--color-green, #19ef83)); }
+.assistant-action-btn[data-accent="gold"] { --accent: var(--color-warning, var(--color-yellow, #ffd700)); }
+.assistant-action-btn[data-accent="violet"] { --accent: var(--color-violet, var(--color-indigo, var(--color-secondary, #7d3de5))); }
+.assistant-action-btn[data-accent="indigo"] { --accent: var(--color-indigo, #7d3de5); }
+.assistant-action-btn[data-accent="orange"] { --accent: var(--color-warning, var(--color-orange, #ff9500)); }
+
+.assistant-action-btn:hover {
+  opacity: 1 !important;
+  background: var(--color-lighter-0, rgba(255, 255, 255, 0.10));
+  border-color: var(--color-lighter-1, rgba(255, 255, 255, 0.20));
+  color: rgba(255, 255, 255, 0.92) !important;
+  transform: translateY(-1px);
+}
+
+.assistant-action-btn[data-accent]:hover {
+  color: color-mix(in srgb, white 70%, var(--accent) 30%) !important;
+}
+
+.assistant-action-btn:active {
+  transform: translateY(0px) scale(0.98);
+}
+
+.assistant-action-btn:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed;
+}
+
+.assistant-action-btn .i {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.assistant-action-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.alpha-glyph {
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.artifact-glyph {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.artifact-glyph svg {
+  width: 18px;
+  height: 18px;
+}
+
+.assistant-actions-sep {
+  width: 10px;
+  height: 18px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 0 2px;
+  opacity: 0.9;
+  position: relative;
+  z-index: 1;
+}
+
+.assistant-actions-spacer {
+  flex: 1;
+}
+
+.assistant-actions-status {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  user-select: none;
+  min-height: 14px;
+  padding-right: 2px;
+  position: relative;
+  z-index: 1;
 }
 
 .file-info {
