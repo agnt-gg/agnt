@@ -187,14 +187,20 @@ router.beforeEach(async (to, from, next) => {
       await store.dispatch('userAuth/fetchUserData');
 
       if (!store.state.userAuth.user) {
-        // If still no user after fetch attempt, redirect to login
-        next('/settings');
+        // No user after fetch — redirect to login surface. Surface the
+        // bounce so a stranded click (e.g. saved-output → /chat) is not
+        // a silent no-op. Preserve intended path so we can resume after
+        // auth.
+        console.warn(`[router] auth required for ${to.fullPath} but no user — redirecting to /settings`);
+        window.dispatchEvent(new CustomEvent('auth-redirect', { detail: { from: to.fullPath, reason: 'no-user' } }));
+        next({ path: '/settings', query: { returnTo: to.fullPath } });
       } else {
         next();
       }
     } catch (error) {
-      console.error('Error fetching user data:', error);
-      next('/settings');
+      console.error(`[router] fetchUserData failed while navigating to ${to.fullPath}:`, error);
+      window.dispatchEvent(new CustomEvent('auth-redirect', { detail: { from: to.fullPath, reason: 'fetch-error', error: error?.message } }));
+      next({ path: '/settings', query: { returnTo: to.fullPath } });
     }
   } else {
     next();
