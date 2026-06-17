@@ -5,6 +5,7 @@ import Terminal from '@/views/Terminal/Terminal.vue';
 const DocsView = () => import('@/views/Docs/Docs.vue');
 import OAuthCallback from '@/views/_components/utility/OAuthCallback.vue';
 import store from '@/store/state';
+import { createAuthGuard } from './authGuard.js';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -170,42 +171,7 @@ const router = createRouter({
   ],
 });
 
-router.beforeEach(async (to, from, next) => {
-  // Check if this is an OAuth callback (has code parameter) and redirect to settings
-  if (to.path === '/settings' && to.query.code) {
-    console.log('OAuth callback detected, redirecting to settings page');
-    next({
-      path: '/connectors',
-      query: to.query, // Preserve all query parameters
-    });
-    return;
-  }
-
-  if (to.meta.requiresAuth && !store.state.userAuth.user) {
-    try {
-      // If no user in store, try to fetch user data
-      await store.dispatch('userAuth/fetchUserData');
-
-      if (!store.state.userAuth.user) {
-        // No user after fetch — redirect to login surface. Surface the
-        // bounce so a stranded click (e.g. saved-output → /chat) is not
-        // a silent no-op. Preserve intended path so we can resume after
-        // auth.
-        console.warn(`[router] auth required for ${to.fullPath} but no user — redirecting to /settings`);
-        window.dispatchEvent(new CustomEvent('auth-redirect', { detail: { from: to.fullPath, reason: 'no-user' } }));
-        next({ path: '/settings', query: { returnTo: to.fullPath } });
-      } else {
-        next();
-      }
-    } catch (error) {
-      console.error(`[router] fetchUserData failed while navigating to ${to.fullPath}:`, error);
-      window.dispatchEvent(new CustomEvent('auth-redirect', { detail: { from: to.fullPath, reason: 'fetch-error', error: error?.message } }));
-      next({ path: '/settings', query: { returnTo: to.fullPath } });
-    }
-  } else {
-    next();
-  }
-});
+router.beforeEach(createAuthGuard(store));
 
 // Add error handling to prevent infinite loading on failed routes
 router.onError((error) => {
