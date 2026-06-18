@@ -307,6 +307,23 @@ function startBackend() {
     }
   }
 
+  // User keys overlay: load root agnt-pro/.env on top of backend/.env so users
+  // can put their personal keys (OPENAI_API_KEY, etc.) in the repo-root .env
+  // — backend/.env stays the source of truth for system stuff (JWT, encryption,
+  // OAuth client IDs). Root wins on conflict so a user override always sticks.
+  if (!app.isPackaged) {
+    const userEnvPath = path.join(__dirname, '.env');
+    if (fs.existsSync(userEnvPath) && userEnvPath !== envPath) {
+      try {
+        const userEnv = dotenv.parse(fs.readFileSync(userEnvPath));
+        fileEnv = { ...fileEnv, ...userEnv };
+        console.log('User .env overlay loaded:', userEnvPath, `(${Object.keys(userEnv).length} keys)`);
+      } catch (err) {
+        console.warn('Failed to read user .env at', userEnvPath, ':', err.message);
+      }
+    }
+  }
+
   // NODE_PATH: include both ASAR modules and unpacked native modules
   const nodePathValue = app.isPackaged
     ? `${path.join(__dirname, 'node_modules')}${path.delimiter}${nodeModulesPath}`

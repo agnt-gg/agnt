@@ -11,6 +11,8 @@ import os from 'os';
 import path from 'path';
 import { getAuthEntry, getCapabilities, isLocalProvider } from '../services/auth/AuthDispatcher.js';
 import CodexCliService from '../services/ai/CodexCliService.js';
+import AuthManager from '../services/auth/AuthManager.js';
+import { authenticateToken } from './Middleware.js';
 
 const router = express.Router();
 
@@ -70,7 +72,7 @@ router.get('/:providerId/auth/capabilities', (req, res) => {
 
 // ─────────────────────────── CONNECT ───────────────────────────
 
-router.post('/:providerId/auth/connect', async (req, res) => {
+router.post('/:providerId/auth/connect', authenticateToken, async (req, res) => {
   const { providerEntry, providerId } = req;
 
   if (providerEntry.local) {
@@ -110,28 +112,29 @@ router.post('/:providerId/auth/connect', async (req, res) => {
     return res.status(400).json({ success: false, error: `Connect not supported for ${providerId}` });
   }
 
-  // Remote providers: proxy API key save to REMOTE_URL
+  // Remote-type providers: save API key locally (encrypted) instead of proxying to REMOTE_URL.
   try {
-    const REMOTE_URL = process.env.REMOTE_URL || 'https://api.agnt.gg';
-    const authHeader = req.headers.authorization || '';
-    const response = await fetch(`${REMOTE_URL}/auth/apikeys/${providerId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authHeader ? { Authorization: authHeader } : {}),
-      },
-      body: JSON.stringify(req.body),
-    });
-    const data = await response.json();
-    res.status(response.status).json(data);
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Authentication required to save API key' });
+    }
+
+    const { apiKey } = req.body || {};
+    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+      return res.status(400).json({ success: false, error: 'apiKey is required in request body' });
+    }
+
+    await AuthManager._saveApiKey(userId, providerId, apiKey);
+    return res.json({ success: true, message: `${providerId} API key saved locally`, providerId });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message || 'Failed to connect provider' });
+    console.error(`[ProviderAuth] Failed to save API key for ${req.providerId}:`, error.message);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to save API key' });
   }
 });
 
 // ─────────────────────────── DISCONNECT ───────────────────────────
 
-router.post('/:providerId/auth/disconnect', async (req, res) => {
+router.post('/:providerId/auth/disconnect', authenticateToken, async (req, res) => {
   const { providerEntry, providerId } = req;
 
   if (providerEntry.local) {
@@ -144,20 +147,18 @@ router.post('/:providerId/auth/disconnect', async (req, res) => {
     }
   }
 
-  // Remote providers: proxy disconnect to REMOTE_URL
+  // Remote-type providers: delete the locally-stored API key (and any OAuth token row).
   try {
-    const REMOTE_URL = process.env.REMOTE_URL || 'https://api.agnt.gg';
-    const authHeader = req.headers.authorization || '';
-    const response = await fetch(`${REMOTE_URL}/auth/disconnect/${providerId}`, {
-      method: 'POST',
-      headers: {
-        ...(authHeader ? { Authorization: authHeader } : {}),
-      },
-    });
-    const data = await response.json();
-    res.status(response.status).json(data);
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Authentication required to disconnect provider' });
+    }
+
+    await AuthManager.disconnectProviderAndRemoveApiKey(providerId, userId);
+    return res.json({ success: true, message: `${providerId} disconnected locally`, providerId });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message || 'Failed to disconnect provider' });
+    console.error(`[ProviderAuth] Failed to disconnect ${req.providerId}:`, error.message);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to disconnect provider' });
   }
 });
 

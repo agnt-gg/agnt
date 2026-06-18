@@ -15,6 +15,7 @@ import PluginManager from './src/plugins/PluginManager.js';
 
 // Import your API routes
 import UserRoutes from './src/routes/UserRoutes.js';
+import AuthRoutes from './src/routes/AuthRoutes.js';
 import ProviderAuthRoutes from './src/routes/ProviderAuthRoutes.js';
 import StreamRoutes from './src/routes/StreamRoutes.js';
 import WorkflowRoutes from './src/routes/WorkflowRoutes.js';
@@ -156,6 +157,7 @@ if (frontendExists) {
 // Define API routes
 app.use('/lite', express.static(path.join(__dirname, '..', 'lite')));
 app.use('/api/users', UserRoutes);
+app.use('/api/auth', AuthRoutes);
 app.use('/api/providers', ProviderAuthRoutes);
 app.use('/api/stream', StreamRoutes);
 app.use('/api/agents', AgentRoutes);

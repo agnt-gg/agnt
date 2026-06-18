@@ -3,6 +3,7 @@ import CryptoJS from 'crypto-js';
 import axios from 'axios';
 import generateUUID from '../../utils/generateUUID.js';
 import { decrypt, encrypt } from '../../utils/encryption.js';
+import ENV_KEY_MAP from './envKeyMap.js';
 
 // Add this import
 import { getUserTokenFromSession } from '../../routes/Middleware.js';
@@ -30,36 +31,106 @@ class AuthManager {
     this._scheduleTokenRefresh(userId, providerId, tokens);
     return tokens;
   }
-  // LOCAL VERSION THAT USES REMOTE AUTH SERVICE
+  // Local-first resolver: env var → local SQLite api_keys → remote fallback.
+  // Env wins over DB so a sysadmin-pinned value can't be silently overridden by
+  // a stale DB row. Remote is always tried last so existing users with
+  // remote-stored keys keep working without any opt-in.
   async getValidAccessToken(userId, providerId) {
-    try {
-      const response = await axios.get(`${this.remoteUrl}/auth/valid-token`, {
-        params: { userId, providerId },
-      });
-      return response.data.access_token;
-    } catch (error) {
-      console.error('Error proxying getValidAccessToken:', error.message);
-      throw new Error('Failed to retrieve access token from remote auth service.');
-    }
-  }
-  async getConnectedApps(userId, authToken) {
-    // Desktop version: proxy to remote server to get connected apps
-    try {
-      const response = await axios.get(`${this.remoteUrl}/auth/connected`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-
-      if (!response.data || !Array.isArray(response.data)) {
-        throw new Error('Failed to fetch connected apps from remote');
+    // Tier 1: env var
+    const envVar = ENV_KEY_MAP[providerId];
+    if (envVar) {
+      const envValue = process.env[envVar];
+      if (envValue && envValue.trim()) {
+        return envValue.trim();
       }
-
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching connected apps from remote:', error.message);
-      throw new Error('Failed to retrieve connected apps from remote auth service.');
     }
+
+    // Tier 2: local SQLite api_keys (encrypted)
+    try {
+      const localKey = await this._getApiKey(userId, providerId);
+      if (localKey) return localKey;
+    } catch (err) {
+      console.warn(`Local api_keys lookup failed for ${providerId}:`, err.message);
+    }
+
+    // Tier 3: remote fallback (always-on so users with remote-stored keys keep working;
+    // no opt-in flag — if env and local DB both miss, ask remote)
+    if (this.remoteUrl) {
+      try {
+        const response = await axios.get(`${this.remoteUrl}/auth/valid-token`, {
+          params: { userId, providerId },
+          timeout: 5000,
+        });
+        return response.data?.access_token || null;
+      } catch (error) {
+        console.warn(`Remote key fallback failed for ${providerId}:`, error.message);
+        return null;
+      }
+    }
+
+    return null;
+  }
+  // Local-first connected list: env-sourced providers + local api_keys + local
+  // oauth_tokens, merged with the remote /auth/connected list (always-on).
+  // Shape preserved: array of { providerId, connected } (frontend compatibility).
+  async getConnectedApps(userId, authToken) {
+    const connected = new Set();
+
+    // 1. Env-sourced API keys
+    for (const [providerId, envVar] of Object.entries(ENV_KEY_MAP)) {
+      const value = process.env[envVar];
+      if (value && value.trim()) connected.add(providerId);
+    }
+
+    // 2. Local api_keys rows (encrypted UI-saved keys)
+    try {
+      const apiKeyRows = await new Promise((resolve, reject) => {
+        db.all('SELECT provider_id FROM api_keys WHERE user_id = ?', [userId], (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows || []);
+        });
+      });
+      apiKeyRows.forEach((r) => r.provider_id && connected.add(r.provider_id));
+    } catch (err) {
+      console.warn('getConnectedApps: api_keys lookup failed:', err.message);
+    }
+
+    // 3. Local oauth_tokens rows (preserve OAuth provider badges; PRD-023B owns the
+    //    full OAuth localization — this just surfaces what is already locally stored)
+    try {
+      const oauthRows = await new Promise((resolve, reject) => {
+        db.all('SELECT provider_id FROM oauth_tokens WHERE user_id = ?', [userId], (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows || []);
+        });
+      });
+      oauthRows.forEach((r) => r.provider_id && connected.add(r.provider_id));
+    } catch (err) {
+      console.warn('getConnectedApps: oauth_tokens lookup failed:', err.message);
+    }
+
+    // 4. Remote fallback (always-on; surfaces remote-stored keys for users who
+    //    haven't re-saved locally yet). If remote is unreachable, the UI degrades
+    //    silently to the local-only set above.
+    if (this.remoteUrl) {
+      try {
+        const response = await axios.get(`${this.remoteUrl}/auth/connected`, {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          timeout: 5000,
+        });
+        if (Array.isArray(response.data)) {
+          response.data.forEach((entry) => {
+            if (typeof entry === 'string') connected.add(entry);
+            else if (entry?.providerId) connected.add(entry.providerId);
+            else if (entry?.provider_id) connected.add(entry.provider_id);
+          });
+        }
+      } catch (error) {
+        console.warn('getConnectedApps: remote fallback failed:', error.message);
+      }
+    }
+
+    return Array.from(connected).map((providerId) => ({ providerId, connected: true }));
   }
   async disconnectProviderAndRemoveApiKey(providerId, userId) {
     return new Promise((resolve, reject) => {
@@ -98,19 +169,12 @@ class AuthManager {
 
   async checkConnectionHealth(userId, authToken) {
     try {
-      // Fetch connected apps from remote
-      const response = await axios.get(`${this.remoteUrl}/auth/connected`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-
-      if (!response.data || !Array.isArray(response.data)) {
-        throw new Error('Failed to fetch connected apps from remote');
-      }
-
-      // Filter out google-login from the health check
-      const connectedProviderIds = response.data.filter((providerId) => providerId !== 'google-login');
+      // Use the local-first union (env + local DB + OAuth + remote merge) instead of
+      // remote-only so env-sourced providers get health-checked and lit on the UI.
+      const apps = await this.getConnectedApps(userId, authToken);
+      const connectedProviderIds = (Array.isArray(apps) ? apps : [])
+        .map((a) => (typeof a === 'string' ? a : a?.providerId || a?.provider_id))
+        .filter((id) => id && id !== 'google-login');
       const results = [];
 
       for (const providerId of connectedProviderIds) {
@@ -239,19 +303,12 @@ class AuthManager {
 
   async checkConnectionHealthStream(userId, authToken, onUpdate) {
     try {
-      // Fetch connected apps from remote
-      const response = await axios.get(`${this.remoteUrl}/auth/connected`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-
-      if (!response.data || !Array.isArray(response.data)) {
-        throw new Error('Failed to fetch connected apps from remote');
-      }
-
-      // Filter out google-login from the health check
-      const connectedProviderIds = response.data.filter((providerId) => providerId !== 'google-login');
+      // Local-first union (same as checkConnectionHealth) so env-sourced providers
+      // appear in the health stream and light up the integration grid.
+      const apps = await this.getConnectedApps(userId, authToken);
+      const connectedProviderIds = (Array.isArray(apps) ? apps : [])
+        .map((a) => (typeof a === 'string' ? a : a?.providerId || a?.provider_id))
+        .filter((id) => id && id !== 'google-login');
       const results = [];
       let healthyCount = 0;
       let processedCount = 0;
@@ -446,6 +503,29 @@ class AuthManager {
           resolve(null);
         }
       });
+    });
+  }
+  async _saveApiKey(userId, providerId, apiKey) {
+    if (!userId) throw new Error('userId is required');
+    if (!providerId) throw new Error('providerId is required');
+    if (!apiKey || typeof apiKey !== 'string') throw new Error('apiKey must be a non-empty string');
+
+    const encrypted = encrypt(apiKey.trim());
+    return new Promise((resolve, reject) => {
+      db.run(
+        `INSERT OR REPLACE INTO api_keys (id, user_id, provider_id, api_key, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))`,
+        [generateUUID(), userId, providerId, encrypted],
+        (err) => {
+          if (err) {
+            console.error(`Error saving API key for ${providerId}:`, err);
+            reject(err);
+          } else {
+            console.log(`API key for ${providerId}: Saved`);
+            resolve();
+          }
+        }
+      );
     });
   }
   async _getTokens(userId, providerId) {

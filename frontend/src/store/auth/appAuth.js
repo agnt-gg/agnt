@@ -83,18 +83,37 @@ const actions = {
         const token = localStorage.getItem('token');
         let connectedApps = [];
 
-        // Remote agnt.gg call runs concurrently but we don't block on it for initial render
+        // Shared normalizer — handles strings, {provider_id}, {providerId}, {id}.
+        // Used by every lane so the merge is collision-free by ID.
+        const normalizeProviderId = (app) => {
+          let raw;
+          if (typeof app === 'string') raw = app;
+          else if (app?.provider_id) raw = String(app.provider_id);
+          else if (app?.providerId) raw = String(app.providerId);
+          else if (app?.id) raw = String(app.id);
+          else return null;
+          return resolveProviderKey(raw) || raw.toLowerCase();
+        };
+
+        // LANE 1 — local backend (env + local api_keys + local oauth_tokens).
+        // This is what surfaces env-sourced keys (OPENAI_API_KEY in .env etc.)
+        // as "connected" without any UI action and without needing remote.
+        const localBackendPromise = axios.get(`${API_CONFIG.BASE_URL}/auth/connected`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          timeout: 2000,
+        }).catch(() => null);
+
+        // LANE 2 — remote agnt.gg (legacy + back-compat for remote-stored keys).
         const remotePromise = axios.get(`${API_CONFIG.REMOTE_URL}/auth/connected`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           timeout: 5000,
         }).catch(() => null);
 
-        // Fast local checks via unified endpoints — these resolve in <100ms
+        // LANE 3 — local CLI providers via per-provider status probes (<100ms each).
         const statusResults = await Promise.allSettled(
           CLI_PROVIDER_IDS.map((id) => providerAuthService.getStatus(id)),
         );
 
-        // Process each CLI provider status
         CLI_PROVIDER_IDS.forEach((id, index) => {
           const result = statusResults[index];
           if (result.status === 'fulfilled') {
@@ -109,21 +128,20 @@ const actions = {
           }
         });
 
-        // Commit local results immediately so UI can render
-        const localDeduped = Array.from(new Set(connectedApps));
-        commit('SET_CONNECTED_APPS', localDeduped);
+        // Local backend usually resolves before remote — merge it in next so the
+        // UI lights up env-sourced providers without waiting on the remote round-trip.
+        const localBackendResult = await localBackendPromise;
+        if (localBackendResult && Array.isArray(localBackendResult.data)) {
+          const localBackendApps = localBackendResult.data.map(normalizeProviderId).filter(Boolean);
+          connectedApps = [...new Set([...localBackendApps, ...connectedApps])];
+        }
 
-        // Now await the remote result and merge it in
+        // Commit interim result so the UI can render before remote resolves.
+        commit('SET_CONNECTED_APPS', Array.from(new Set(connectedApps)));
+
+        // Finally merge remote — purely additive.
         const remoteResult = await remotePromise;
         if (remoteResult && Array.isArray(remoteResult.data)) {
-          const normalizeProviderId = (app) => {
-            let raw;
-            if (typeof app === 'string') raw = app;
-            else if (app?.provider_id) raw = String(app.provider_id);
-            else if (app?.id) raw = String(app.id);
-            else return null;
-            return resolveProviderKey(raw) || raw.toLowerCase();
-          };
           const remoteApps = remoteResult.data.map(normalizeProviderId).filter(Boolean);
           const merged = Array.from(new Set([...remoteApps, ...connectedApps]));
           commit('SET_CONNECTED_APPS', merged);
