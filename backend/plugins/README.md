@@ -1,4 +1,4 @@
-# AGNT Plugin System
+﻿# AGNT Plugin System
 
 The plugin system allows tools to be loaded dynamically with their own isolated dependencies. Plugins are distributed as `.agnt` files (gzipped tar archives) with all dependencies pre-bundled.
 
@@ -24,7 +24,7 @@ backend/plugins/
 │   └── my-plugin.agnt
 ├── build-plugin.js         # Build single plugin
 ├── build-all-plugins.js    # Build all plugins
-├── marketplace.json        # Plugin metadata for marketplace
+├── marketplace.json        # Metadata for AGNT-bundled/default marketplace plugins only
 └── README.md
 ```
 

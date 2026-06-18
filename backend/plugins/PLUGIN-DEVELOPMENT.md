@@ -1,4 +1,4 @@
-# AGNT Plugin Development Guide
+﻿# AGNT Plugin Development Guide
 
 This comprehensive guide covers everything you need to know to create, test, and distribute plugins for AGNT.
 
@@ -1562,7 +1562,7 @@ export default new GoogleSheetsNewRow();
 
 ### 2. Submit to Marketplace Registry
 
-Add your plugin to `marketplace.json` (the **single source of truth** for plugin metadata):
+For AGNT-bundled/default plugins only, add the plugin to `marketplace.json` (the source of truth for bundled/default marketplace metadata). This file is not used for third-party or user-published plugins:
 
 ```json
 {
@@ -1608,7 +1608,7 @@ Add your plugin to `marketplace.json` (the **single source of truth** for plugin
 | `category`    | string | ❌       | Plugin category (e.g., "social", "utility", "ai")           |
 | `tools`       | array  | ✅       | Array of tools with type and schema (title, description)    |
 
-> **Important**: The `marketplace.json` is the single source of truth for all plugin metadata. When a plugin is installed, the UI displays data from `marketplace.json`, not from the plugin's `manifest.json`. This ensures consistency between the marketplace and installed views.
+> **Important**: `marketplace.json` is only the source of truth for AGNT-bundled/default plugins. Third-party and user-published plugins do not edit `marketplace.json`; they publish a built `.agnt` through the marketplace UI, and their plugin metadata comes from their `manifest.json` / listing.
 
 ### 3. Host Your Plugin
 
@@ -1630,3 +1630,4 @@ Options:
 ---
 
 _Happy plugin building! 🚀_
+
