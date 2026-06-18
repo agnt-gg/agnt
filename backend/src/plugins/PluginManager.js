@@ -62,6 +62,13 @@ class PluginManager {
     this.toolToPlugin = new Map(); // toolType -> pluginName
     this.loadedTools = new Map(); // toolType -> loaded module
     this.initialized = false;
+    // Incremented on every reload(). Used as the per-reload generation token
+    // for the reload-shim mechanism in _resolveModuleUrl. Node's ESM cache is
+    // keyed by URL and never invalidates on its own, so cache-busting only the
+    // entry point with ?v=Date.now() doesn't reach its static imports — the
+    // shim system gives every file in the plugin's intra-module graph a fresh
+    // URL on reload.
+    this.reloadGeneration = 0;
 
     // Use USER_DATA_PATH from environment (set by Electron main.js)
     // This ensures plugins are loaded from outside the ASAR archive
@@ -154,6 +161,12 @@ class PluginManager {
   async loadPlugin(pluginName) {
     const pluginPath = path.join(this.pluginsDir, pluginName);
     const manifestPath = path.join(pluginPath, 'manifest.json');
+
+    // Sweep stale reload shims from prior generations before we (potentially)
+    // create new ones in this generation. Cheap no-op on first load.
+    try {
+      await this._cleanupReloadShims(pluginPath);
+    } catch {}
 
     try {
       // Check if manifest exists
@@ -387,16 +400,13 @@ class PluginManager {
       throw new Error(`[PluginManager] Tool ${toolType} entry point not found in plugin ${pluginName}`);
     }
 
-    // Construct the full path to the tool module
-    const toolPath = path.join(pluginData.path, toolDef.entryPoint);
-
-    // Convert to file:// URL for dynamic import on Windows.
-    // Cache-bust query param forces Node's ESM registry to re-import on reload —
-    // without it, edits to plugin files require a process restart to take effect.
-    const toolUrl = `file:///${toolPath.replace(/\\/g, '/')}?v=${Date.now()}`;
+    // Resolve to a file:// URL. On reload, this returns a shim that gives the
+    // entire transitive intra-plugin import graph fresh URLs — necessary
+    // because Node's ESM cache is keyed by URL and never invalidates.
+    const toolUrl = await this._resolveModuleUrl(pluginData, toolDef.entryPoint);
 
     try {
-      console.log(`[PluginManager] Loading tool ${toolType} from ${toolPath}`);
+      console.log(`[PluginManager] Loading tool ${toolType} from ${toolUrl}`);
       const toolModule = await import(toolUrl);
 
       // Cache the loaded module
@@ -429,11 +439,11 @@ class PluginManager {
    */
   async registerPluginTrigger(toolType, pluginPath, entryPoint) {
     try {
-      // Construct the full path to the trigger module
-      const triggerPath = path.join(pluginPath, entryPoint);
-      const triggerUrl = `file:///${triggerPath.replace(/\\/g, '/')}?v=${Date.now()}`;
+      // Trigger files share the same reload-shim machinery as tools so their
+      // transitive intra-plugin imports also get fresh URLs on reload.
+      const triggerUrl = await this._resolveModuleUrl({ path: pluginPath }, entryPoint);
 
-      console.log(`[PluginManager] Registering plugin trigger: ${toolType}`);
+      console.log(`[PluginManager] Registering plugin trigger: ${toolType} from ${triggerUrl}`);
 
       // Load the trigger module
       const triggerModule = await import(triggerUrl);
@@ -506,11 +516,172 @@ class PluginManager {
    * Reload all plugins (useful after installing new plugins)
    */
   async reload() {
+    // Bump first so loadPlugin/registerPluginTrigger see the new generation.
+    this.reloadGeneration += 1;
     this.plugins.clear();
     this.toolToPlugin.clear();
     this.loadedTools.clear();
     this.initialized = false;
     await this.initialize();
+  }
+
+  /**
+   * Return the file:// URL to import for a plugin module. On first load
+   * (generation 0), this is the real path with a timestamp cache-buster on
+   * the entry. On reloads (generation > 0), the entry and its transitive
+   * relative imports are mirrored as `*.__reload-<gen>.js` shim files inside
+   * the plugin directory; each shim rewrites its `from './x'` imports to
+   * point at the child shim. This gives every file in the intra-plugin
+   * module graph a fresh URL, which is the only way to evict Node's ESM
+   * module cache short of restarting the process.
+   *
+   * Bare imports (e.g. 'ws', 'fs/promises') are left alone — they resolve
+   * through node_modules and aren't pinned by file:// caching.
+   */
+  async _resolveModuleUrl(pluginData, entryPoint) {
+    const realPath = path.join(pluginData.path, entryPoint);
+    if (this.reloadGeneration === 0) {
+      return `file:///${realPath.replace(/\\/g, '/')}?v=${Date.now()}`;
+    }
+    const visited = new Map();
+    let target = realPath;
+    try {
+      target = await this._createReloadShim(realPath, visited);
+    } catch (err) {
+      console.warn(`[PluginManager] Shim creation failed for ${realPath}, falling back to real path:`, err.message);
+    }
+    return `file:///${target.replace(/\\/g, '/')}?v=${this.reloadGeneration}`;
+  }
+
+  /**
+   * Recursively produce a reload-shim copy of a plugin file. The shim lives
+   * next to the original (so relative paths and node_modules resolution still
+   * work) but rewrites every relative import to point at the shim version of
+   * the dependency. Returns the original path on failure so the caller can
+   * still import something, even if it won't be cache-busted.
+   */
+  async _createReloadShim(filePath, visited) {
+    if (visited.has(filePath)) return visited.get(filePath);
+
+    const dir = path.dirname(filePath);
+    const ext = path.extname(filePath) || '.js';
+    const base = path.basename(filePath, ext);
+
+    // Don't shim an existing shim — would create N×N copies on reload N.
+    if (/\.__reload-\d+$/.test(base)) {
+      visited.set(filePath, filePath);
+      return filePath;
+    }
+
+    const shimName = `${base}.__reload-${this.reloadGeneration}${ext}`;
+    const shimPath = path.join(dir, shimName);
+    visited.set(filePath, shimPath);
+
+    let src;
+    try {
+      src = await fs.readFile(filePath, 'utf-8');
+    } catch {
+      visited.set(filePath, filePath);
+      return filePath;
+    }
+
+    // Matches:
+    //   from './x' | from "./x"            (import .. from / export .. from)
+    //   import './x' | import "./x"        (side-effect import)
+    //   import('./x') | import( './x' )    (dynamic import)
+    const importRegex = /(from\s+['"]|import\s+['"]|import\s*\(\s*['"])(\.\.?\/[^'"?]+)(['"])/g;
+
+    const matches = [];
+    let m;
+    while ((m = importRegex.exec(src)) !== null) {
+      matches.push({ full: m[0], prefix: m[1], relPath: m[2], suffix: m[3] });
+    }
+
+    for (const r of matches) {
+      const resolved = await this._resolveRelativeImport(dir, r.relPath);
+      if (!resolved) continue; // non-JS asset (e.g. .json) — leave the import as-is
+      const childShim = await this._createReloadShim(resolved, visited);
+      if (childShim === resolved) continue; // shim creation skipped/failed; leave import alone
+      const childRel = './' + path.basename(childShim);
+      const newImport = `${r.prefix}${childRel}?v=${this.reloadGeneration}${r.suffix}`;
+      // Use split/join instead of String.replace so a literal $ in the import
+      // path can't trigger replacement-pattern substitution.
+      src = src.split(r.full).join(newImport);
+    }
+
+    const header = `// AUTO-GENERATED reload shim (gen ${this.reloadGeneration}). Safe to delete when AGNT is stopped.\n`;
+    try {
+      await fs.writeFile(shimPath, header + src);
+    } catch (err) {
+      console.warn(`[PluginManager] Failed to write reload shim ${shimPath}:`, err.message);
+      visited.set(filePath, filePath);
+      return filePath;
+    }
+    return shimPath;
+  }
+
+  /**
+   * Resolve a relative import path to an actual file on disk, honoring
+   * extensionless imports and index files. Only resolves to JS/MJS so we
+   * don't accidentally try to shim a JSON asset.
+   */
+  async _resolveRelativeImport(fromDir, relPath) {
+    const base = path.resolve(fromDir, relPath);
+    const ext = path.extname(base).toLowerCase();
+    const candidates = [];
+    if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+      candidates.push(base);
+    } else if (ext === '') {
+      candidates.push(base + '.js', base + '.mjs', path.join(base, 'index.js'), path.join(base, 'index.mjs'));
+    } else {
+      // Non-JS asset (.json, .wasm, etc.) — don't shim.
+      return null;
+    }
+    for (const candidate of candidates) {
+      try {
+        const stat = await fs.stat(candidate);
+        if (stat.isFile()) return candidate;
+      } catch {}
+    }
+    return null;
+  }
+
+  /**
+   * Delete leftover `*.__reload-<gen>.<ext>` files in a plugin dir whose
+   * generation doesn't match the current one. Runs at the start of every
+   * loadPlugin call so stale shims don't accumulate.
+   */
+  async _cleanupReloadShims(pluginPath) {
+    const currentGen = this.reloadGeneration;
+    const SHIM_RE = /\.__reload-(\d+)\.(?:js|mjs|cjs)$/;
+
+    const walk = async (dir) => {
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          // Skip node_modules and any other hidden/dot dirs — shims live next
+          // to source files, never inside dependency trees.
+          if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+          await walk(full);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        const match = entry.name.match(SHIM_RE);
+        if (!match) continue;
+        const shimGen = parseInt(match[1], 10);
+        if (shimGen === currentGen) continue;
+        try {
+          await fs.unlink(full);
+        } catch {}
+      }
+    };
+    await walk(pluginPath);
   }
 
   /**

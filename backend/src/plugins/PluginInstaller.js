@@ -801,9 +801,15 @@ class PluginInstaller {
           const manifestPath = path.join(this.pluginsDir, entry.name, 'manifest.json');
           try {
             await fs.access(manifestPath);
+            // Read manifest to capture real version instead of "unknown".
+            let version = 'unknown';
+            try {
+              const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
+              if (manifest?.version) version = manifest.version;
+            } catch {}
             registry.plugins.push({
               name: entry.name,
-              version: 'unknown',
+              version,
               installedAt: new Date().toISOString(),
               enabled: true,
             });
@@ -816,6 +822,65 @@ class PluginInstaller {
     } catch (error) {
       console.error('[PluginInstaller] Error rebuilding registry:', error);
     }
+    return registry;
+  }
+
+  /**
+   * Reconcile registry.json with what's actually on disk. Updates the version
+   * field of existing entries from each plugin's current manifest.json and adds
+   * any installed-but-unregistered plugins. Preserves installedAt + userUninstalled.
+   *
+   * Called after reload so manually-edited manifest data shows up in the
+   * /api/plugins/installed list endpoint without a process restart.
+   */
+  async syncRegistryFromInstalled() {
+    let registry = { plugins: [], userUninstalled: [] };
+    try {
+      const content = await fs.readFile(this.registryPath, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object') registry = { ...registry, ...parsed };
+      if (!Array.isArray(registry.plugins)) registry.plugins = [];
+      if (!Array.isArray(registry.userUninstalled)) registry.userUninstalled = [];
+    } catch {}
+
+    const existingByName = new Map(registry.plugins.map((p) => [p.name, p]));
+    const seen = new Set();
+
+    let entries = [];
+    try {
+      entries = await fs.readdir(this.pluginsDir, { withFileTypes: true });
+    } catch {
+      return registry;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const manifestPath = path.join(this.pluginsDir, entry.name, 'manifest.json');
+      let manifestVersion = null;
+      try {
+        const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
+        manifestVersion = manifest?.version || null;
+      } catch {
+        continue; // skip dirs without a readable manifest
+      }
+      seen.add(entry.name);
+      const existing = existingByName.get(entry.name);
+      if (existing) {
+        if (manifestVersion) existing.version = manifestVersion;
+      } else {
+        registry.plugins.push({
+          name: entry.name,
+          version: manifestVersion || 'unknown',
+          installedAt: new Date().toISOString(),
+          enabled: true,
+        });
+      }
+    }
+
+    // Drop registry entries whose plugin directory no longer exists.
+    registry.plugins = registry.plugins.filter((p) => seen.has(p.name));
+
+    await fs.writeFile(this.registryPath, JSON.stringify(registry, null, 2));
     return registry;
   }
 
@@ -909,7 +974,14 @@ class PluginInstaller {
   }
 
   /**
-   * Get list of installed plugins with full data from marketplace (single source of truth)
+   * Get list of installed plugins. The installed manifest.json is the source
+   * of truth for everything a user can edit (version, description, author,
+   * icon, tools). Marketplace data only fills in display-only extras
+   * (displayName, homepage) when the manifest doesn't carry them.
+   *
+   * Previously this read primarily from the marketplace, which is why manual
+   * edits to a plugin's manifest (or a manual version bump) didn't show up in
+   * the Plugins list until the marketplace catalog was updated.
    */
   async getInstalledPlugins() {
     try {
@@ -917,59 +989,55 @@ class PluginInstaller {
       const registry = JSON.parse(content);
       const registryPlugins = registry.plugins || [];
 
-      // Get marketplace data as the single source of truth for plugin metadata
-      const marketplaceRegistry = await this.getMarketplaceRegistry();
-      const marketplacePlugins = marketplaceRegistry.plugins || [];
+      // Marketplace data is supplementary now — used for display polish only.
+      let marketplacePlugins = [];
+      try {
+        const marketplaceRegistry = await this.getMarketplaceRegistry();
+        marketplacePlugins = marketplaceRegistry.plugins || [];
+      } catch (err) {
+        console.warn('[PluginInstaller] Marketplace lookup failed, using manifest only:', err.message);
+      }
 
-      // Enrich each installed plugin with data from marketplace
       const enrichedPlugins = await Promise.all(
         registryPlugins.map(async (plugin) => {
-          // First try to get data from marketplace (single source of truth)
           const marketplacePlugin = marketplacePlugins.find((p) => p.name === plugin.name);
 
-          if (marketplacePlugin) {
-            // Use marketplace data as the source of truth
-            return {
-              ...plugin,
-              displayName: marketplacePlugin.displayName || this.toDisplayName(marketplacePlugin.name),
-              description: marketplacePlugin.description || '',
-              author: marketplacePlugin.author || '',
-              homepage: marketplacePlugin.homepage || '',
-              icon: marketplacePlugin.icon || 'custom',
-              size: marketplacePlugin.size || 0,
-              tools: marketplacePlugin.tools || [],
-            };
-          }
-
-          // Fallback to manifest for plugins not in marketplace (manually installed)
+          let manifest = null;
           try {
             const manifestPath = path.join(this.pluginsDir, plugin.name, 'manifest.json');
-            const manifestContent = await fs.readFile(manifestPath, 'utf-8');
-            const manifest = JSON.parse(manifestContent);
-
-            return {
-              ...plugin,
-              displayName: manifest.displayName || this.toDisplayName(manifest.name),
-              description: manifest.description || '',
-              author: manifest.author || '',
-              homepage: manifest.homepage || '',
-              icon: manifest.icon || 'custom',
-              size: manifest.size || 0,
-              tools: manifest.tools || [],
-            };
+            manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
           } catch (error) {
-            // If manifest can't be read, return registry data only
             console.warn(`[PluginInstaller] Could not read manifest for ${plugin.name}:`, error.message);
+          }
+
+          // Disk size: prefer marketplace number, fall back to 0. (We don't
+          // stat the directory on every list call for performance reasons.)
+          const size = marketplacePlugin?.size || 0;
+
+          if (!manifest) {
             return {
               ...plugin,
-              displayName: this.toDisplayName(plugin.name),
-              description: '',
-              author: '',
-              icon: 'custom',
-              size: 0,
-              tools: [],
+              displayName: marketplacePlugin?.displayName || this.toDisplayName(plugin.name),
+              description: marketplacePlugin?.description || '',
+              author: marketplacePlugin?.author || '',
+              homepage: marketplacePlugin?.homepage || '',
+              icon: marketplacePlugin?.icon || 'custom',
+              size,
+              tools: marketplacePlugin?.tools || [],
             };
           }
+
+          return {
+            ...plugin,
+            version: manifest.version || plugin.version,
+            displayName: manifest.displayName || marketplacePlugin?.displayName || this.toDisplayName(manifest.name || plugin.name),
+            description: manifest.description ?? marketplacePlugin?.description ?? '',
+            author: manifest.author ?? marketplacePlugin?.author ?? '',
+            homepage: manifest.homepage || marketplacePlugin?.homepage || '',
+            icon: manifest.icon || marketplacePlugin?.icon || 'custom',
+            size,
+            tools: Array.isArray(manifest.tools) ? manifest.tools : (marketplacePlugin?.tools || []),
+          };
         })
       );
 

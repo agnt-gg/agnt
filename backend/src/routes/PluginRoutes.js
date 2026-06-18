@@ -1068,6 +1068,22 @@ router.post('/reload', async (req, res) => {
     const reloadResults = await reloadAllPlugins();
     const stats = PluginManager.getStats();
 
+    // Re-sync registry.json from current manifest data so /installed list
+    // matches what's actually on disk (manual edits to manifest.json/version
+    // were previously invisible because the list reads from this file).
+    try {
+      await PluginInstaller.syncRegistryFromInstalled();
+    } catch (syncErr) {
+      console.warn('[PluginRoutes] Registry sync after reload failed:', syncErr.message);
+    }
+
+    // Notify connected clients so the Plugins UI re-fetches without a manual
+    // refresh. Reuses plugin:installed since the frontend already handles it.
+    broadcast(RealtimeEvents.PLUGIN_INSTALLED, {
+      reloaded: true,
+      timestamp: new Date().toISOString(),
+    });
+
     res.json({
       success: true,
       message: 'Plugins reloaded',
