@@ -1,6 +1,6 @@
 {
   "name": "atlas-cloud",
-  "version": "1.0.0",
+  "version": "1.1.7",
   "type": "module",
   "main": "atlas-image.js",
   "dependencies": {}
