@@ -12,16 +12,23 @@
  * 3. Creates a .agnt package with source code AND node_modules
  *
  * Usage:
- *   node build-plugin.js <plugin-name>
- *   node build-plugin.js discord-plugin
+ *   node build-plugin.js <plugin-name>      # a folder name inside ./dev (bundled-plugin / contributor path)
+ *   node build-plugin.js <path-to-folder>   # any folder on disk (your own plugin — no repo changes needed)
+ *
+ * Examples:
+ *   node build-plugin.js discord-plugin             # → ./dev/discord-plugin
+ *   node build-plugin.js ./dev/discord-plugin       # explicit relative path
+ *   node build-plugin.js ~/my-weather-plugin        # a folder anywhere on disk
+ *   node build-plugin.js /abs/path/to/my-plugin     # absolute path
  *
  * Output:
- *   plugin-builds/<plugin-name>.agnt
+ *   plugin-builds/<name>.agnt   (<name> is taken from the manifest "name", falling back to the folder name)
  *
  * Note: .agnt files are gzipped tar archives (same as .tar.gz) with a custom extension
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -35,20 +42,77 @@ const __dirname = path.dirname(__filename);
 const PLUGINS_DIR = path.join(__dirname, 'dev');
 const DIST_DIR = path.join(__dirname, 'plugin-builds');
 
-async function buildPlugin(pluginName) {
-  console.log(`\n🔧 Building plugin: ${pluginName}\n`);
+/**
+ * Resolve the build argument to an absolute plugin folder.
+ *
+ * Backward-compatible: a bare name like "discord-plugin" still resolves to
+ * ./dev/discord-plugin. But the argument may ALSO be a path to a plugin folder
+ * anywhere on disk — so authors can build their own plugins without placing the
+ * source inside this repo (see START-HERE-PLUGINS.md).
+ *
+ * An argument is treated as a literal path (not a dev/ name) when it:
+ *   - is absolute, or
+ *   - contains a path separator (/ or \), or
+ *   - starts with "." (./ or ../), or
+ *   - starts with "~" (home expansion).
+ * Otherwise it is treated as a folder name inside ./dev.
+ *
+ * As a final fallback, if ./dev/<arg> does not exist but <arg> resolved against
+ * the current working directory does (and has a manifest.json), the cwd-relative
+ * folder wins — so `node build-plugin.js my-plugin` also works when run from a
+ * directory that directly contains my-plugin/.
+ */
+function expandHome(p) {
+  if (p === '~') return os.homedir();
+  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
+  return p;
+}
 
-  const pluginPath = path.join(PLUGINS_DIR, pluginName);
+function resolvePluginPath(arg) {
+  const expanded = expandHome(arg);
+  const looksLikePath =
+    path.isAbsolute(expanded) ||
+    expanded.includes('/') ||
+    expanded.includes('\\') ||
+    expanded.startsWith('.');
+
+  if (looksLikePath) {
+    return path.resolve(expanded);
+  }
+
+  // Bare name: prefer ./dev/<name> (original behavior).
+  const devPath = path.join(PLUGINS_DIR, expanded);
+  if (fs.existsSync(path.join(devPath, 'manifest.json'))) {
+    return devPath;
+  }
+
+  // Fallback: a folder of that name directly under the current working dir.
+  const cwdPath = path.resolve(process.cwd(), expanded);
+  if (fs.existsSync(path.join(cwdPath, 'manifest.json'))) {
+    return cwdPath;
+  }
+
+  // Default to the dev path so the existing "not found + list dev/" error fires.
+  return devPath;
+}
+
+async function buildPlugin(arg) {
+  const pluginPath = resolvePluginPath(arg);
   const manifestPath = path.join(pluginPath, 'manifest.json');
   const packageJsonPath = path.join(pluginPath, 'package.json');
   const nodeModulesPath = path.join(pluginPath, 'node_modules');
 
+  console.log(`\n🔧 Building plugin from: ${pluginPath}\n`);
+
   // Validate plugin exists
   if (!fs.existsSync(pluginPath)) {
-    console.error(`❌ Plugin not found: ${pluginPath}`);
-    console.error(`\nAvailable plugins:`);
-    const plugins = fs.readdirSync(PLUGINS_DIR).filter((f) => fs.statSync(path.join(PLUGINS_DIR, f)).isDirectory());
-    plugins.forEach((p) => console.error(`  - ${p}`));
+    console.error(`❌ Plugin folder not found: ${pluginPath}`);
+    console.error(`\nPass a folder name inside ./dev, or a path to a plugin folder anywhere on disk.`);
+    if (fs.existsSync(PLUGINS_DIR)) {
+      console.error(`\nAvailable plugins in ./dev:`);
+      const plugins = fs.readdirSync(PLUGINS_DIR).filter((f) => fs.statSync(path.join(PLUGINS_DIR, f)).isDirectory());
+      plugins.forEach((p) => console.error(`  - ${p}`));
+    }
     process.exit(1);
   }
 
@@ -60,6 +124,11 @@ async function buildPlugin(pluginName) {
 
   // Read manifest
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+
+  // Output name comes from the manifest "name" (preferred) or the folder name —
+  // NOT the raw CLI argument, which may be an absolute path.
+  const pluginName = (manifest.name && String(manifest.name).trim()) || path.basename(pluginPath);
+
   console.log(`📦 Plugin: ${manifest.name} v${manifest.version}`);
   console.log(`📝 Description: ${manifest.description || 'No description'}`);
   console.log(`🔧 Tools: ${manifest.tools?.map((t) => t.type).join(', ') || 'None'}`);
@@ -259,13 +328,16 @@ if (args.length === 0) {
 AGNT Plugin Build Script
 
 Usage:
-  node build-plugin.js <plugin-name>
+  node build-plugin.js <plugin-name>      # a folder inside ./dev (bundled-plugin / contributor path)
+  node build-plugin.js <path-to-folder>   # any folder on disk (your own plugin — no repo changes needed)
 
 Examples:
   node build-plugin.js discord-plugin
-  node build-plugin.js stripe-plugin
+  node build-plugin.js ./dev/discord-plugin
+  node build-plugin.js ~/my-weather-plugin
+  node build-plugin.js /abs/path/to/my-plugin
 
-Available plugins:`);
+Available plugins in ./dev:`);
 
   if (fs.existsSync(PLUGINS_DIR)) {
     const plugins = fs.readdirSync(PLUGINS_DIR).filter((f) => {

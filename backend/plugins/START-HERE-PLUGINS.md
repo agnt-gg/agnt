@@ -41,6 +41,9 @@ mkdir my-weather-plugin && cd my-weather-plugin
 
 ### 2. `manifest.json` — declare the tool
 
+Each tool needs a `type`, an `entryPoint` (the JS file), and a `schema` (how the
+node appears in the UI and what inputs it takes).
+
 ```json
 {
   "name": "my-weather-plugin",
@@ -50,22 +53,26 @@ mkdir my-weather-plugin && cd my-weather-plugin
   "tools": [
     {
       "type": "weather-get-current",
-      "title": "Get Current Weather",
-      "category": "action",
-      "icon": "cloud",
-      "entry": "index.js",
-      "parameters": {
-        "city": {
-          "type": "string",
-          "inputType": "text",
-          "description": "City name, e.g. 'Austin'",
-          "required": true
+      "entryPoint": "index.js",
+      "schema": {
+        "title": "Get Current Weather",
+        "type": "weather-get-current",
+        "category": "action",
+        "icon": "cloud",
+        "description": "Get the current temperature for a city",
+        "parameters": {
+          "city": {
+            "type": "string",
+            "inputType": "text",
+            "description": "City name, e.g. 'Austin'",
+            "required": true
+          }
+        },
+        "outputs": {
+          "success": { "type": "boolean" },
+          "result":  { "type": "object" },
+          "error":   { "type": "string" }
         }
-      },
-      "outputs": {
-        "success": { "type": "boolean" },
-        "result":  { "type": "object" },
-        "error":   { "type": "string" }
       }
     }
   ]
@@ -110,16 +117,21 @@ export default class WeatherGetCurrent {
 
 ### 5. Build it → produces your `.agnt`
 
-From the AGNT plugins directory, point the build script at your folder
-(the path can be absolute or relative — your source stays where it is):
+Run the build script and point it at your folder. The path can be **absolute,
+relative, or `~`-based** — your source stays wherever it lives:
 
 ```bash
-node build-plugin.js ~/my-weather-plugin
-# → my-weather-plugin.agnt
+# from anywhere, using the script in this repo:
+node /path/to/agnt/backend/plugins/build-plugin.js ~/my-weather-plugin
+# → backend/plugins/plugin-builds/my-weather-plugin.agnt
 ```
 
-✅ **Checkpoint:** a `my-weather-plugin.agnt` file now exists. If it does, your
-plugin compiled.
+The output `.agnt` is named from your manifest's `name` field. (A bare name with
+no path, e.g. `node build-plugin.js discord-plugin`, is reserved for plugins
+that live in `backend/plugins/dev/` — the contributor path.)
+
+✅ **Checkpoint:** a `my-weather-plugin.agnt` file now exists in
+`plugin-builds/`. If it does, your plugin compiled.
 
 ### 6. Install it
 
@@ -145,8 +157,8 @@ users install it the same way you did in step 6.
 ## Adding credentials (API keys, OAuth)
 
 If your tool needs a secret, **never hardcode it and never read the server's
-ambient environment.** Declare auth in the manifest and let AGNT's AuthManager
-supply a per-user token at run time:
+ambient environment.** Declare auth in the tool's `schema` and let AGNT's
+AuthManager supply a per-user token at run time:
 
 ```json
 "authRequired": "apiKey",
