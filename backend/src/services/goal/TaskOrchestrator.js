@@ -316,7 +316,7 @@ Begin working on this task now.`;
       const availableTools = allToolSchemas.filter((toolSchema) => agentTools.includes(toolSchema.function.name));
 
       // Build system prompt using LlmExecutionService
-      const systemPrompt = LlmExecutionService.buildAgentSystemPrompt(agent, availableTools);
+      const systemPrompt = await LlmExecutionService.buildAgentSystemPrompt(agent, availableTools);
 
       // Prepare messages
       const messages = [{ role: 'user', content: taskMessage }];
