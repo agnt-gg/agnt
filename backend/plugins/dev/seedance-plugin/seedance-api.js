@@ -48,7 +48,7 @@ class SeedanceAPI {
       'X-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
       'X-OpenRouter-Title': process.env.OPENROUTER_APP_TITLE || 'AGNT',
       'X-OpenRouter-Categories':
-        process.env.OPENROUTER_APP_CATEGORIES || 'cloud-agent,personal-agent',
+        process.env.OPENROUTER_APP_CATEGORIES || 'cli-agent,personal-agent',
       ...extra,
     };
   }
