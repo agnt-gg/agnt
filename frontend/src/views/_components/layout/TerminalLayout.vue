@@ -79,8 +79,8 @@ export default {
     const authRedirectModal = ref(null); // SimpleModal for auth-redirect notice
 
     // Debounce repeated auth-redirect events (route guard fires per nav, can
-    // stack while user clicks around). Track the last shown message so we
-    // don't queue duplicates while one is already open.
+    // stack while user clicks around). Track open state so we don't queue
+    // duplicates while one is already open.
     let authModalOpen = false;
     const handleAuthRedirect = async (event) => {
       if (authModalOpen) return;
@@ -98,6 +98,14 @@ export default {
           confirmText: 'OK',
           showCancel: false,
         });
+        // Clear stale auth on dismissal. fetchUserData swallows errors silently
+        // so we cannot distinguish a transient network blip from a genuinely
+        // bad token at the guard layer. In either case the user must re-auth
+        // (their session state is indeterminate), so wipe the token+user to
+        // guarantee LoginSection renders cleanly on /settings and stop other
+        // components from chasing 401s with a dead token.
+        store.commit('userAuth/CLEAR_TOKEN');
+        store.commit('userAuth/SET_USER', null);
       } finally {
         authModalOpen = false;
       }
