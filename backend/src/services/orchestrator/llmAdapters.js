@@ -6,6 +6,7 @@ import { validateToolCalls, createRetryGuidance } from './toolValidator.js';
 import * as ProviderRegistry from '../ai/ProviderRegistry.js';
 import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
 import { getModelMetadata, getProviderConfig, getReasoningControl, supportsZaiReasoningEffort } from '../ai/providerConfigs.js';
+import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../ai/reasoningModels.js';
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
 
 /**
@@ -5369,15 +5370,7 @@ function buildResponsesReasoningConfig(model, reasoningValue) {
 }
 
 function supportsAnthropicAdaptiveThinking(model) {
-  const lower = String(model || '').toLowerCase();
-  return (
-    lower.startsWith('claude-fable-') ||
-    lower.startsWith('claude-mythos-') ||
-    lower.startsWith('claude-opus-4-8') ||
-    lower.startsWith('claude-opus-4-7') ||
-    lower.startsWith('claude-opus-4-6') ||
-    lower.startsWith('claude-sonnet-4-6')
-  );
+  return isAnthropicReasoningModel(model);
 }
 
 // PRD-083: Fable 5 and Mythos 5 are the only Anthropic models we've observed
@@ -5590,12 +5583,8 @@ function buildAnthropicReasoningConfig(model, reasoningValue) {
   }
 
   const effort = normalized === 'on' ? 'high' : normalized;
-  // Opus 4.7 and the Fable/Mythos/Opus-4.8 generation expose an `xhigh` ("Max") tier.
-  const supportsXHigh =
-    lower.startsWith('claude-opus-4-7') ||
-    lower.startsWith('claude-opus-4-8') ||
-    lower.startsWith('claude-fable-') ||
-    lower.startsWith('claude-mythos-');
+  // Opus 4.7+ and Fable/Mythos generations expose an `xhigh` ("Max") tier.
+  const supportsXHigh = anthropicSupportsXHigh(lower);
   const allowed = supportsXHigh
     ? new Set(['low', 'medium', 'high', 'xhigh'])
     : new Set(['low', 'medium', 'high']);

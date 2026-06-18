@@ -117,9 +117,16 @@ function isOpenAIReasoningModel(modelId) {
   return lower.startsWith('gpt-5') || /^o\d/.test(lower);
 }
 
+// MIRROR of backend/src/services/ai/reasoningModels.js — keep regexes in sync.
+// Matches claude-opus-4-6+, claude-sonnet-4-6+ (auto-covers 4.7 / 4.8 / 4.9 / 4.10+),
+// plus the always-on Fable / Mythos family.
+const ANTHROPIC_VERSIONED_REASONING_RE = /^claude-(opus|sonnet)-4-([6-9]|[1-9]\d{1,2})(?:-|$)/;
+const ANTHROPIC_FAMILY_REASONING_RE = /^claude-(fable|mythos)-/;
+const ANTHROPIC_XHIGH_RE = /^claude-(opus-4-([7-9]|[1-9]\d{1,2})(?:-|$)|fable-|mythos-)/;
+
 function isAnthropicReasoningModel(modelId) {
   const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('claude-opus-4-7') || lower.startsWith('claude-opus-4-6') || lower.startsWith('claude-sonnet-4-6');
+  return ANTHROPIC_VERSIONED_REASONING_RE.test(lower) || ANTHROPIC_FAMILY_REASONING_RE.test(lower);
 }
 
 function isGemini3ReasoningModel(modelId) {
@@ -167,7 +174,8 @@ function isOpenRouterOpenAIReasoningModel(modelId) {
 
 function isOpenRouterAnthropicReasoningModel(modelId) {
   const lower = String(modelId || '').toLowerCase();
-  return lower.startsWith('anthropic/claude-opus-4-7') || lower.startsWith('anthropic/claude-opus-4-6') || lower.startsWith('anthropic/claude-sonnet-4-6');
+  if (!lower.startsWith('anthropic/')) return false;
+  return isAnthropicReasoningModel(lower.slice('anthropic/'.length));
 }
 
 function isOpenRouterGeminiReasoningModel(modelId) {
@@ -269,7 +277,7 @@ function inferReasoningControl(providerKey, modelId) {
       { value: 'medium', label: 'Medium' },
       { value: 'high', label: 'High' },
     ];
-    if (lowerModel.startsWith('claude-opus-4-7')) {
+    if (ANTHROPIC_XHIGH_RE.test(lowerModel)) {
       options.push({ value: 'xhigh', label: 'Max' });
     }
     return buildReasoningControl('effort', options);

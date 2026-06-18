@@ -7,6 +7,8 @@
  * To update a provider: change it here and only here.
  */
 
+import { isAnthropicReasoningModel, anthropicSupportsXHigh } from './reasoningModels.js';
+
 // ─────────────────────────── PROVIDER CONFIGS ───────────────────────────
 
 const PROVIDER_CONFIGS = [
@@ -1001,15 +1003,7 @@ function isOpenAIResponsesReasoningModel(modelId) {
 }
 
 function isAnthropicAdaptiveThinkingModel(modelId) {
-  const lower = String(modelId || '').toLowerCase();
-  return (
-    lower.startsWith('claude-fable-') ||
-    lower.startsWith('claude-mythos-') ||
-    lower.startsWith('claude-opus-4-8') ||
-    lower.startsWith('claude-opus-4-7') ||
-    lower.startsWith('claude-opus-4-6') ||
-    lower.startsWith('claude-sonnet-4-6')
-  );
+  return isAnthropicReasoningModel(modelId);
 }
 
 function isGemini3ReasoningModel(modelId) {
@@ -1546,12 +1540,7 @@ export function getReasoningControl(providerKey, modelId) {
       { value: 'high', label: 'High' },
     ];
 
-    if (
-      lowerModel.startsWith('claude-opus-4-7') ||
-      lowerModel.startsWith('claude-opus-4-8') ||
-      lowerModel.startsWith('claude-fable-') ||
-      lowerModel.startsWith('claude-mythos-')
-    ) {
+    if (anthropicSupportsXHigh(lowerModel)) {
       options.push({ value: 'xhigh', label: 'Max' });
     }
 
