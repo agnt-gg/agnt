@@ -92,20 +92,15 @@ export default {
         : `You need to log in to view ${from || 'that page'}.`;
       authModalOpen = true;
       try {
+        // Token + user are already cleared by createAuthGuard before this
+        // event fires, so by the time the modal opens the store is in a
+        // clean slate and LoginSection on /settings will render correctly.
         await authRedirectModal.value?.showModal({
           title: 'Sign in required',
           message,
           confirmText: 'OK',
           showCancel: false,
         });
-        // Clear stale auth on dismissal. fetchUserData swallows errors silently
-        // so we cannot distinguish a transient network blip from a genuinely
-        // bad token at the guard layer. In either case the user must re-auth
-        // (their session state is indeterminate), so wipe the token+user to
-        // guarantee LoginSection renders cleanly on /settings and stop other
-        // components from chasing 401s with a dead token.
-        store.commit('userAuth/CLEAR_TOKEN');
-        store.commit('userAuth/SET_USER', null);
       } finally {
         authModalOpen = false;
       }

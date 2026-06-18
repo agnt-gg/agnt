@@ -31,8 +31,12 @@ export function createAuthGuard(storeInstance) {
         await storeInstance.dispatch('userAuth/fetchUserData');
 
         if (!storeInstance.state.userAuth.user) {
-          // No user after fetch — redirect to login surface. Surface the bounce
-          // so a stranded click (e.g. saved-output → /chat) is not a silent no-op.
+          // No user after fetch — clear any stale token + user state BEFORE
+          // emitting the event so UI handlers see a clean slate, not an
+          // indeterminate one. fetchUserData swallows errors silently, so we
+          // cannot distinguish a transient network blip from a genuinely bad
+          // token here. The session is broken either way; force re-auth.
+          clearStaleAuth(storeInstance);
           console.warn(`[router] auth required for ${to.fullPath} but no user — redirecting to /settings`);
           window.dispatchEvent(new CustomEvent('auth-redirect', { detail: { from: to.fullPath, reason: 'no-user' } }));
           next({ path: '/settings', query: { returnTo: to.fullPath } });
@@ -40,6 +44,7 @@ export function createAuthGuard(storeInstance) {
           next();
         }
       } catch (error) {
+        clearStaleAuth(storeInstance);
         console.error(`[router] fetchUserData failed while navigating to ${to.fullPath}:`, error);
         window.dispatchEvent(new CustomEvent('auth-redirect', { detail: { from: to.fullPath, reason: 'fetch-error', error: error?.message } }));
         next({ path: '/settings', query: { returnTo: to.fullPath } });
@@ -48,4 +53,9 @@ export function createAuthGuard(storeInstance) {
       next();
     }
   };
+}
+
+function clearStaleAuth(storeInstance) {
+  storeInstance.commit('userAuth/CLEAR_TOKEN');
+  storeInstance.commit('userAuth/SET_USER', null);
 }

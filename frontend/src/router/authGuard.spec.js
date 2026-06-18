@@ -26,6 +26,7 @@ function makeStore({ user = null, fetchUserAfterDispatch = null, dispatchThrows 
         state.userAuth.user = fetchUserAfterDispatch;
       }
     }),
+    commit: vi.fn(),
   };
 }
 
@@ -70,6 +71,7 @@ describe('createAuthGuard', () => {
     expect(next).toHaveBeenCalledWith();
     expect(dispatchEventSpy).not.toHaveBeenCalled();
     expect(store.dispatch).not.toHaveBeenCalled();
+    expect(store.commit).not.toHaveBeenCalled();
   });
 
   it('non-auth route (e.g. /settings) passes through even with no user', async () => {
@@ -82,6 +84,7 @@ describe('createAuthGuard', () => {
     expect(next).toHaveBeenCalledOnce();
     expect(next).toHaveBeenCalledWith();
     expect(dispatchEventSpy).not.toHaveBeenCalled();
+    expect(store.commit).not.toHaveBeenCalled();
   });
 
   it('unauthenticated → protected → fetchUserData returns no user: emits auth-redirect, preserves returnTo, warns', async () => {
@@ -112,6 +115,15 @@ describe('createAuthGuard', () => {
     const warnMsg = warnSpy.mock.calls[0][0];
     expect(warnMsg).toContain('/chat?content-id=abc-123');
     expect(warnMsg).toContain('redirecting');
+
+    // Contract: stale token + user cleared BEFORE the event fires so UI
+    // handlers (e.g. SimpleModal in TerminalLayout) observe a clean slate.
+    expect(store.commit).toHaveBeenCalledWith('userAuth/CLEAR_TOKEN');
+    expect(store.commit).toHaveBeenCalledWith('userAuth/SET_USER', null);
+    // The clearing must happen before the event so handlers see clean state.
+    const commitOrder = store.commit.mock.invocationCallOrder;
+    const dispatchOrder = dispatchEventSpy.mock.invocationCallOrder;
+    expect(Math.max(...commitOrder)).toBeLessThan(dispatchOrder[0]);
   });
 
   it('fetchUserData throws: still emits auth-redirect with reason fetch-error, error logged', async () => {
@@ -138,6 +150,10 @@ describe('createAuthGuard', () => {
     });
 
     expect(errorSpy).toHaveBeenCalled();
+
+    // Same clearing contract applies on the fetch-error path
+    expect(store.commit).toHaveBeenCalledWith('userAuth/CLEAR_TOKEN');
+    expect(store.commit).toHaveBeenCalledWith('userAuth/SET_USER', null);
   });
 
   it('fetchUserData succeeds in populating user: passes through without redirect', async () => {
@@ -151,6 +167,8 @@ describe('createAuthGuard', () => {
     expect(next).toHaveBeenCalledOnce();
     expect(next).toHaveBeenCalledWith(); // no redirect
     expect(dispatchEventSpy).not.toHaveBeenCalled();
+    // Do not clear on the happy path — user is freshly populated, token is fine
+    expect(store.commit).not.toHaveBeenCalled();
   });
 
   it('OAuth callback to /settings with ?code redirects to /connectors preserving all query', async () => {
@@ -163,7 +181,8 @@ describe('createAuthGuard', () => {
 
     expect(next).toHaveBeenCalledOnce();
     expect(next).toHaveBeenCalledWith({ path: '/connectors', query });
-    // OAuth path should not trip the auth-redirect event
+    // OAuth path should not trip the auth-redirect event or clear auth
     expect(dispatchEventSpy).not.toHaveBeenCalled();
+    expect(store.commit).not.toHaveBeenCalled();
   });
 });
