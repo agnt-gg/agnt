@@ -1009,6 +1009,94 @@
       ]
     },
     {
+      "name": "atlas-cloud",
+      "displayName": "Atlas Cloud",
+      "icon": "atlas-cloud",
+      "version": "1.1.7",
+      "description": "Atlas Cloud unified AI API plugin for images, video, uploads, and chat. Supports Seedream 4.5/5.0 Lite, Flux, GPT-Image-2, Nano Banana 2, Ideogram, Qwen-Image, Wan-2.7, and OpenAI-compatible chat completions.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/atlas-cloud.agnt",
+      "size": 7526,
+      "tags": [
+        "ai",
+        "image",
+        "video",
+        "chat",
+        "atlas",
+        "generative",
+        "multimodal"
+      ],
+      "category": "ai",
+      "tools": [
+        {
+          "type": "atlas-image",
+          "schema": {
+            "title": "Atlas Image",
+            "description": "Generate or edit an image on Atlas Cloud. Supports Seedream 4.5/5.0 Lite, Flux, GPT-Image-2, Nano Banana 2, Ideogram, Qwen-Image, Wan-2.7 and more."
+          }
+        },
+        {
+          "type": "atlas-video",
+          "schema": {
+            "title": "Atlas Video",
+            "description": "Generate video on Atlas Cloud. Supports Wan/Seedance/etc. Returns videoUrl and can extract/upload the final frame for clip chaining."
+          }
+        },
+        {
+          "type": "atlas-upload",
+          "schema": {
+            "title": "Atlas Upload Media",
+            "description": "Upload a local image/video file to Atlas Cloud and receive a temporary public URL."
+          }
+        },
+        {
+          "type": "atlas-chat",
+          "schema": {
+            "title": "Atlas LLM Chat",
+            "description": "OpenAI-compatible chat completions on Atlas Cloud."
+          }
+        }
+      ]
+    },
+    {
+      "name": "bankr-plugin",
+      "displayName": "Bankr",
+      "icon": "bankr",
+      "version": "2.0.0",
+      "description": "Bankr.bot integration for AGNT — AI-powered crypto trading, token launching, cross-chain swaps, Polymarket betting, and self-sustaining agent infrastructure across Base, Ethereum, Polygon, Unichain, and Solana.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/bankr-plugin.agnt",
+      "size": 10122,
+      "tags": [
+        "bankr",
+        "crypto",
+        "trading",
+        "wallet",
+        "tokens",
+        "polymarket",
+        "defi"
+      ],
+      "category": "finance",
+      "tools": [
+        {
+          "type": "bankr-api",
+          "schema": {
+            "title": "Bankr API",
+            "description": "Interact with Bankr.bot to trade tokens, check prices, launch tokens, sign transactions, manage wallets, and more across Base, Ethereum, Polygon, Unichain, and Solana."
+          }
+        },
+        {
+          "type": "bankr-fee-monitor",
+          "schema": {
+            "title": "Bankr Fee Monitor",
+            "description": "Monitor your token's accumulated trading fees and trigger workflows when fees exceed a threshold. Use for auto-claiming, reinvesting, or alerting on fee revenue."
+          }
+        }
+      ]
+    },
+    {
       "name": "calendly-plugin",
       "displayName": "Calendly",
       "icon": "calendly",

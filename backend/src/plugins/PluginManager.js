@@ -602,7 +602,14 @@ class PluginManager {
       if (!resolved) continue; // non-JS asset (e.g. .json) — leave the import as-is
       const childShim = await this._createReloadShim(resolved, visited);
       if (childShim === resolved) continue; // shim creation skipped/failed; leave import alone
-      const childRel = './' + path.basename(childShim);
+      // Compute the path from the parent shim's directory (same as `dir`, since
+      // shims live next to their originals) to the child shim. Using basename
+      // here would drop any subdirectory (e.g. `./utils/foo.js` → `./foo.js`)
+      // and produce a broken import.
+      let childRel = path.relative(dir, childShim).replace(/\\/g, '/');
+      if (!childRel.startsWith('./') && !childRel.startsWith('../')) {
+        childRel = './' + childRel;
+      }
       const newImport = `${r.prefix}${childRel}?v=${this.reloadGeneration}${r.suffix}`;
       // Use split/join instead of String.replace so a literal $ in the import
       // path can't trigger replacement-pattern substitution.
