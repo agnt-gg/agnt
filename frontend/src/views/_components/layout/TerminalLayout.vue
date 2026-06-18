@@ -33,16 +33,18 @@
     </div>
   </div>
   <SongPlayer />
+  <SimpleModal ref="authRedirectModal" />
 </template>
 
 <script>
 import { ref, computed, onMounted, watch, nextTick, onUnmounted, provide } from 'vue';
 import { useStore } from 'vuex';
 import SongPlayer from '@/views/Terminal/_components/SongPlayer.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
 export default {
   name: 'TerminalLayout',
-  components: { SongPlayer },
+  components: { SongPlayer, SimpleModal },
   props: {
     showInitialNarration: {
       type: Boolean,
@@ -74,6 +76,32 @@ export default {
     const terminalScreenRef = ref(null);
     const hasUserInteracted = ref(false); // To track user interaction
     const currentAudio = ref(null); // Track currently playing audio
+    const authRedirectModal = ref(null); // SimpleModal for auth-redirect notice
+
+    // Debounce repeated auth-redirect events (route guard fires per nav, can
+    // stack while user clicks around). Track the last shown message so we
+    // don't queue duplicates while one is already open.
+    let authModalOpen = false;
+    const handleAuthRedirect = async (event) => {
+      if (authModalOpen) return;
+      const detail = event?.detail || {};
+      const from = detail.from || '';
+      const reason = detail.reason || 'no-user';
+      const message = reason === 'fetch-error'
+        ? `Could not verify your session${detail.error ? ` (${detail.error})` : ''}. Please log in to continue${from ? ` to ${from}` : ''}.`
+        : `You need to log in to view ${from || 'that page'}.`;
+      authModalOpen = true;
+      try {
+        await authRedirectModal.value?.showModal({
+          title: 'Sign in required',
+          message,
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      } finally {
+        authModalOpen = false;
+      }
+    };
 
     // --- Background Layer ---
     const useCustomBackground = computed(() => store.getters['theme/useCustomBackground']);
@@ -254,6 +282,7 @@ export default {
       checkMobile();
       window.addEventListener('resize', checkMobile);
       window.addEventListener('sounds-settings-changed', handleSoundSettingsChange);
+      window.addEventListener('auth-redirect', handleAuthRedirect);
 
       // Load saved sound settings
       const savedEnabled = localStorage.getItem('soundsEnabled');
@@ -276,6 +305,8 @@ export default {
     // --- Lifecycle: Cleanup Listener ---
     onUnmounted(() => {
       window.removeEventListener('resize', checkMobile);
+      window.removeEventListener('sounds-settings-changed', handleSoundSettingsChange);
+      window.removeEventListener('auth-redirect', handleAuthRedirect);
       if (terminalScreenRef.value) {
         terminalScreenRef.value.removeEventListener('click', handleGlobalButtonClick, true);
       }
@@ -309,6 +340,7 @@ export default {
       hasBgLayer,
       bgSrc,
       bgType,
+      authRedirectModal,
     };
   },
 };
