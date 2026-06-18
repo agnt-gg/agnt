@@ -78,6 +78,44 @@ export default {
     const currentAudio = ref(null); // Track currently playing audio
     const authRedirectModal = ref(null); // SimpleModal for auth-redirect notice
 
+    // Map structured failure reasons (from authGuard / userAuth.classifyAuthError)
+    // to user-facing copy. Transient failures keep their tone different from
+    // definitive rejections so users do not panic over an outage.
+    const AUTH_REASON_COPY = {
+      no_token: {
+        title: 'Sign in required',
+        message: (from) => `You need to sign in to view ${from || 'that page'}.`,
+      },
+      http_401: {
+        title: 'Session expired',
+        message: (from) => `Your session is no longer valid. Sign in again to continue${from ? ` to ${from}` : ''}.`,
+      },
+      http_403: {
+        title: 'Access denied',
+        message: (from) => `Your account does not have access. Sign in with a different account or contact support${from ? ` (tried ${from})` : ''}.`,
+      },
+      unauthenticated_response: {
+        title: 'Sign in required',
+        message: (from) => `We could not confirm your sign-in. Please sign in again${from ? ` to continue to ${from}` : ''}.`,
+      },
+      http_5xx: {
+        title: 'Sign-in service is down',
+        message: (from) => `Our sign-in service is having trouble right now. Try again shortly${from ? ` (you were heading to ${from})` : ''}.`,
+      },
+      timeout: {
+        title: 'Sign-in service is slow',
+        message: (from) => `Sign-in is taking too long to respond. Try again in a moment${from ? ` (you were heading to ${from})` : ''}.`,
+      },
+      network_error: {
+        title: 'Cannot reach sign-in service',
+        message: (from) => `Check your internet connection and try again${from ? ` (you were heading to ${from})` : ''}.`,
+      },
+      unknown: {
+        title: 'Sign in required',
+        message: (from) => `Please sign in to continue${from ? ` to ${from}` : ''}.`,
+      },
+    };
+
     // Debounce repeated auth-redirect events (route guard fires per nav, can
     // stack while user clicks around). Track open state so we don't queue
     // duplicates while one is already open.
@@ -86,18 +124,20 @@ export default {
       if (authModalOpen) return;
       const detail = event?.detail || {};
       const from = detail.from || '';
-      const reason = detail.reason || 'no-user';
-      const message = reason === 'fetch-error'
-        ? `Could not verify your session${detail.error ? ` (${detail.error})` : ''}. Please log in to continue${from ? ` to ${from}` : ''}.`
-        : `You need to log in to view ${from || 'that page'}.`;
+      const reason = detail.reason || 'unknown';
+      const copy = AUTH_REASON_COPY[reason] || AUTH_REASON_COPY.unknown;
+      // Surface the structured detail in DevTools so admins debugging a stuck
+      // user can see exactly which reason fired and any HTTP status / message.
+      console.warn('[TerminalLayout] auth-redirect modal', detail);
       authModalOpen = true;
       try {
-        // Token + user are already cleared by createAuthGuard before this
-        // event fires, so by the time the modal opens the store is in a
-        // clean slate and LoginSection on /settings will render correctly.
+        // Token + user are cleared by createAuthGuard ONLY for definitive
+        // rejections (401/403/etc.) — transient failures (5xx, network,
+        // timeout) leave the token intact so users are not logged out by
+        // an outage. The modal copy reflects which case occurred.
         await authRedirectModal.value?.showModal({
-          title: 'Sign in required',
-          message,
+          title: copy.title,
+          message: copy.message(from),
           confirmText: 'OK',
           showCancel: false,
         });

@@ -10,10 +10,19 @@
  *   2. Auth gating — requiresAuth routes need store.state.userAuth.user
  *
  * When the auth gate trips a redirect, the guard:
- *   - logs to console (warn for no-user, error for fetch-failure)
- *   - emits a `auth-redirect` window CustomEvent with details
+ *   - reads `state.userAuth.lastAuthFailure` for the structured reason
+ *     populated by fetchUserData (no_token, http_401, http_5xx, etc.)
+ *   - logs to console with the reason so admins can grep
+ *   - emits a `auth-redirect` window CustomEvent carrying the full failure
+ *     record (reason, status, detail, timestamp) so the UI can show a
+ *     reason-aware message
  *   - preserves the intended path as ?returnTo so a deep-link can resume
+ *   - clears the local token ONLY for definitive rejections (401/403/etc.) —
+ *     transient failures (5xx, network, timeout) leave the token alone so
+ *     an outage doesn't log everyone out
  */
+import { isDefinitiveAuthRejection } from '@/store/auth/userAuth.js';
+
 export function createAuthGuard(storeInstance) {
   return async (to, from, next) => {
     // OAuth callback to /settings — handoff to /connectors with code intact
@@ -31,28 +40,44 @@ export function createAuthGuard(storeInstance) {
         await storeInstance.dispatch('userAuth/fetchUserData');
 
         if (!storeInstance.state.userAuth.user) {
-          // No user after fetch — clear any stale token + user state BEFORE
-          // emitting the event so UI handlers see a clean slate, not an
-          // indeterminate one. fetchUserData swallows errors silently, so we
-          // cannot distinguish a transient network blip from a genuinely bad
-          // token here. The session is broken either way; force re-auth.
-          clearStaleAuth(storeInstance);
-          console.warn(`[router] auth required for ${to.fullPath} but no user — redirecting to /settings`);
-          window.dispatchEvent(new CustomEvent('auth-redirect', { detail: { from: to.fullPath, reason: 'no-user' } }));
-          next({ path: '/settings', query: { returnTo: to.fullPath } });
+          handleAuthFailure(storeInstance, to, next);
         } else {
           next();
         }
       } catch (error) {
-        clearStaleAuth(storeInstance);
-        console.error(`[router] fetchUserData failed while navigating to ${to.fullPath}:`, error);
-        window.dispatchEvent(new CustomEvent('auth-redirect', { detail: { from: to.fullPath, reason: 'fetch-error', error: error?.message } }));
-        next({ path: '/settings', query: { returnTo: to.fullPath } });
+        // Defensive: fetchUserData currently swallows its own errors, but if
+        // a future change starts re-throwing we still want a clean bounce.
+        // Synthesize a failure record so downstream consumers see consistent
+        // shape regardless of which path got here.
+        const failure = { reason: 'unknown', detail: error?.message || null, timestamp: Date.now() };
+        storeInstance.commit('userAuth/SET_AUTH_FAILURE', failure);
+        console.error(`[router] fetchUserData threw while navigating to ${to.fullPath}:`, error);
+        handleAuthFailure(storeInstance, to, next);
       }
     } else {
       next();
     }
   };
+}
+
+function handleAuthFailure(storeInstance, to, next) {
+  const failure = storeInstance.state.userAuth.lastAuthFailure || {
+    reason: 'unknown',
+    timestamp: Date.now(),
+  };
+
+  // Only clear the local token on definitive server rejections. Transient
+  // failures (5xx, network, timeout) probably mean the token is still valid;
+  // logging the user out would punish them for an infra issue they did not
+  // cause.
+  if (isDefinitiveAuthRejection(failure.reason)) {
+    clearStaleAuth(storeInstance);
+  }
+
+  const detail = { from: to.fullPath, ...failure };
+  console.warn(`[router] auth required for ${to.fullPath} → bouncing to /settings`, detail);
+  window.dispatchEvent(new CustomEvent('auth-redirect', { detail }));
+  next({ path: '/settings', query: { returnTo: to.fullPath } });
 }
 
 function clearStaleAuth(storeInstance) {
