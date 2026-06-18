@@ -196,14 +196,27 @@ router.get('/:provider/models', async (req, res) => {
 
     // Only require authentication and API key for providers that need it
     if (!hasHardcodedModels) {
-      // OpenAI Codex: fetch models from api.openai.com using Codex OAuth token
+      // OpenAI Codex: model fetching hits chatgpt.com/backend-api/codex/models
+      // which ONLY accepts a ChatGPT OAuth token (the chatgpt-account-id header is
+      // derived from the OAuth JWT). Do not use ensureValidToken here — it honors
+      // the env-level OPENAI_API_KEY override and would send a sk-* key to an
+      // endpoint that rejects it, collapsing the model list to the fallback.
       if (providerLower === 'openai-codex') {
-        apiKey = await CodexAuthManager.ensureValidToken();
+        apiKey = CodexAuthManager.getOAuthToken();
         if (!apiKey) {
           return res.status(400).json({
             success: false,
             error: 'OpenAI Codex is not connected. Start device login from the provider setup.',
           });
+        }
+        // Refresh if the OAuth token is expiring soon (ensureValidToken does this
+        // but also pulls in the API-key path we just rejected; re-do the refresh
+        // step inline so we keep the OAuth-only guarantee).
+        if (CodexAuthManager.isTokenExpiringSoon()) {
+          const refresh = await CodexAuthManager.refreshAccessToken();
+          if (refresh?.success) {
+            apiKey = CodexAuthManager.getOAuthToken() || apiKey;
+          }
         }
       }
       // Claude Code: use local Claude Code OAuth auth.
