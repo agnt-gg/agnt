@@ -640,6 +640,10 @@ const switchToEvolution = () => {
 // Initialization
 const initializeScreen = () => {
   store.dispatch('skills/fetchSkills');
+  // Prefetch counts for the Discovered + Evolution tab badges so the numbers
+  // are correct on first paint, not just after the user clicks the tab.
+  store.dispatch('skills/fetchDiscoveredSkills').catch(() => {});
+  store.dispatch('skillforge/fetchLeaderboard').catch(() => {});
 };
 
 const handlePanelAction = (action, payload) => {
