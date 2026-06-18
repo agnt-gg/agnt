@@ -146,6 +146,20 @@ db.serialize(() => {
 });
 
 // Function to create tables
+// PRD-084-R2 §0.4: performance PRAGMA pack — documented-safe under WAL.
+// - synchronous=NORMAL: WAL preserves integrity on crash; only durability of
+//   the last few transactions is at risk on power loss (never corruption).
+// - cache_size=-64000: 64 MB page cache (driver default is ~2 MB).
+// - temp_store=MEMORY: temp b-trees (ORDER BY / GROUP BY) stay in RAM.
+// - mmap_size=256 MB: page reads served via the OS memory map.
+// Queued at module evaluation, so these run before createTables() below.
+db.serialize(() => {
+  db.run('PRAGMA synchronous = NORMAL');
+  db.run('PRAGMA cache_size = -64000');
+  db.run('PRAGMA temp_store = MEMORY');
+  db.run('PRAGMA mmap_size = 268435456');
+});
+
 function createTables() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
@@ -1219,8 +1233,22 @@ function backfillWorkflowSummaryColumns() {
   });
 }
 
-// Ensure tables are created before exporting the database
-const dbReady = createTables()
+// Ensure tables are created before exporting the database.
+//
+// PRD-084-R2 §0.2: the workflow child process is forked only after the main
+// process has fully initialized the schema (server.js awaits dbReady before
+// WorkflowProcessBridge.spawn()), so re-running createTables + ~25 migration
+// probes + FTS setup in the child is pure duplicated work and creates a
+// startup write-lock race between the two processes. The child is forked
+// with AGNT_SKIP_DB_INIT=1 and resolves dbReady immediately; per-connection
+// PRAGMAs above still run (they are connection-scoped, not schema work).
+const skipSchemaInit = process.env.AGNT_SKIP_DB_INIT === '1';
+
+const dbReady = skipSchemaInit
+  ? Promise.resolve().then(() => {
+      console.log('Database schema init skipped (AGNT_SKIP_DB_INIT=1) — schema owned by parent process');
+    })
+  : createTables()
   .then(() => {
     console.log('All tables created successfully');
     return runMigrations();
@@ -1275,6 +1303,21 @@ async function dbRunWithRetry(fn, maxRetries = 5, baseDelay = 500) {
       }
     }
   }
+}
+
+// PRD-084-R2 §0.4: WAL checkpoint hygiene (main process only — the child
+// skips schema init and must not compete for the checkpoint lock). A
+// TRUNCATE checkpoint resets the -wal file to zero bytes when no reader
+// blocks it; failures are non-fatal and simply retried on the next cycle.
+if (!skipSchemaInit) {
+  const runWalCheckpoint = () => {
+    db.run('PRAGMA wal_checkpoint(TRUNCATE)', (err) => {
+      if (err) console.warn('[DB] WAL checkpoint failed (non-fatal):', err.message);
+    });
+  };
+  dbReady.then(() => runWalCheckpoint());
+  const walCheckpointTimer = setInterval(runWalCheckpoint, 5 * 60 * 1000);
+  if (typeof walCheckpointTimer.unref === 'function') walCheckpointTimer.unref();
 }
 
 export { dbReady, dbRunWithRetry };

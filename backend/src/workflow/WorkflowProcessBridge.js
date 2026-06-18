@@ -24,7 +24,14 @@ class WorkflowProcessBridge {
 
       this.workflowProcess = fork(workflowProcessPath, [], {
         stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-        env: { ...process.env, IS_WORKFLOW_PROCESS: 'true' },
+        env: {
+          ...process.env,
+          IS_WORKFLOW_PROCESS: 'true',
+          // PRD-084-R2 §0.2: schema is fully initialized by the parent
+          // before spawn() is called (server.js awaits dbReady), so the
+          // child skips createTables/migrations/FTS setup entirely.
+          AGNT_SKIP_DB_INIT: '1',
+        },
       });
 
       // Handle messages from workflow process

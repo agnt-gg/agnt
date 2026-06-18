@@ -195,11 +195,21 @@ app.use('/api/admin', AdminClientVersionRoutes);
 app.use('/api/conversations', ConversationSettingsRoutes);
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
-// Version endpoint - reads dynamically from package.json
+// Version + update-check endpoints share a one-time cached package.json read
+// (PRD-084-R2 §0.5) — the app version cannot change without a restart, so
+// re-reading and re-parsing the file on every request was wasted I/O.
+let cachedPackageJson = null;
+const getPackageJson = () => {
+  if (!cachedPackageJson) {
+    const packageJsonPath = path.join(__dirname, '..', 'package.json');
+    cachedPackageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+  }
+  return cachedPackageJson;
+};
+
 app.get('/api/version', (req, res) => {
   try {
-    const packageJsonPath = path.join(__dirname, '..', 'package.json');
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    const packageJson = getPackageJson();
     res.status(200).json({
       version: packageJson.version,
       name: packageJson.name,
@@ -214,10 +224,8 @@ app.get('/api/version', (req, res) => {
 // Update check endpoint - proxies to agnt.gg to avoid CORS issues
 app.get('/api/updates/check', async (req, res) => {
   try {
-    // Get current version from local package.json
-    const packageJsonPath = path.join(__dirname, '..', 'package.json');
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-    const currentVersion = packageJson.version;
+    // Get current version from the cached package.json (PRD-084-R2 §0.5)
+    const currentVersion = getPackageJson().version;
 
     // Call agnt.gg API to check for updates
     const response = await fetch(`https://agnt.gg/api/updates/check?version=${currentVersion}`);
@@ -351,7 +359,12 @@ async function deferredInit() {
     console.error('Plugin initialization error (non-fatal):', error);
   }
 
-  // Spawn workflow process AFTER plugins and database are ready
+  // Spawn workflow process AFTER plugins and database are ready.
+  // PRD-084-R2 §0.2: the child is forked with AGNT_SKIP_DB_INIT=1 and trusts
+  // this process to own schema init — this await IS the ordering guarantee,
+  // not an optimization. dbReady never rejects (it catches internally).
+  const { dbReady } = await import('./src/models/database/index.js');
+  await dbReady;
   console.log('Spawning workflow process...');
   try {
     await WorkflowProcessBridge.spawn();
@@ -559,10 +572,12 @@ function startServer() {
       // });
     });
 
+    // PRD-084-R2 §0.5: memory heartbeat every 60s (10s was pure log noise);
+    // set DEBUG_MEM=1 to restore the 10s cadence when actively profiling.
     setInterval(() => {
       const used = process.memoryUsage().heapUsed / 1024 / 1024;
       console.log(`Current memory usage: approximately ${Math.round(used * 100) / 100} MB`);
-    }, 1 * 10 * 1000);
+    }, process.env.DEBUG_MEM === '1' ? 10 * 1000 : 60 * 1000);
 
     console.log(`Server process ID: ${process.pid}`);
   };

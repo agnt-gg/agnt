@@ -195,10 +195,15 @@ export async function setupFullTextSearch(db) {
       await dbRun(db, buildDeleteTriggerSql(spec));
 
       // Backfill once: only if FTS is empty but source has rows.
-      const ftsRow = await dbGet(db, `SELECT COUNT(*) AS c FROM ${spec.name}`);
-      const srcRow = await dbGet(db, `SELECT COUNT(*) AS c FROM ${spec.source}`);
-      if ((ftsRow?.c || 0) === 0 && (srcRow?.c || 0) > 0) {
-        console.log(`[FTS] Backfilling ${spec.name} with ${srcRow.c} rows from ${spec.source}...`);
+      // PRD-084-R2 §0.1: O(1) existence probes. `SELECT COUNT(*)` on an FTS5
+      // table scans the entire inverted index (measured ~12s on a multi-GB
+      // conversation_logs_fts), and this used to run for every FTS table in
+      // BOTH processes at every boot. `LIMIT 1` answers the same
+      // "is it empty?" question in O(1).
+      const ftsRow = await dbGet(db, `SELECT 1 AS present FROM ${spec.name} LIMIT 1`);
+      const srcRow = ftsRow ? null : await dbGet(db, `SELECT 1 AS present FROM ${spec.source} LIMIT 1`);
+      if (!ftsRow && srcRow) {
+        console.log(`[FTS] Backfilling ${spec.name} from ${spec.source}...`);
         await dbRun(db, buildBackfillSql(spec));
         console.log(`✓ [FTS] ${spec.name} backfilled.`);
       }
