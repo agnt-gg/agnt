@@ -33,6 +33,10 @@ import skills from './features/skills';
 import skillforge from './features/skillforge';
 import experiments from './features/experiments';
 import insights from './features/insights';
+import schedules from './features/schedules';
+import wallets from './features/wallets';
+import contracts from './features/contracts';
+import mutations from './features/mutations';
 
 const store = createStore({
   state: {
@@ -150,6 +154,10 @@ const store = createStore({
     skillforge,
     experiments,
     insights,
+    schedules,
+    wallets,
+    contracts,
+    mutations,
   },
 });
 

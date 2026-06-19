@@ -9,6 +9,7 @@ import { getProviderConfig } from './ai/providerConfigs.js';
 import UserModel from '../models/UserModel.js';
 import db from '../models/database/index.js';
 import { broadcastToUser } from '../utils/realtimeSync.js';
+import VerifierGate, { calculateComposite as gateComposite } from './evolution/VerifierGate.js';
 
 class ExperimentService {
   static async createExperiment(userId, { name, hypothesis, type, sourceGoalId, benchmarkId, skillId, evalDatasetId, config }) {
@@ -134,54 +135,27 @@ class ExperimentService {
       const controlRuns = runs.filter((r) => r.variant === 'control' && r.status === 'completed');
       const treatmentRuns = runs.filter((r) => r.variant === 'treatment' && r.status === 'completed');
 
-      const avgMetrics = (runList) => {
-        if (!runList.length) return { correctness: 0, procedureFollowing: 0, conciseness: 0, composite: 0 };
-        const sum = runList.reduce((acc, r) => {
-          const m = r.metrics || {};
-          acc.correctness += m.correctness || 0;
-          acc.procedureFollowing += m.procedureFollowing || 0;
-          acc.conciseness += m.conciseness || 0;
-          acc.composite += m.composite || 0;
-          return acc;
-        }, { correctness: 0, procedureFollowing: 0, conciseness: 0, composite: 0 });
-        const n = runList.length;
-        return { correctness: sum.correctness / n, procedureFollowing: sum.procedureFollowing / n, conciseness: sum.conciseness / n, composite: sum.composite / n };
-      };
-
-      const controlAvg = avgMetrics(controlRuns);
-      const treatmentAvg = avgMetrics(treatmentRuns);
-
-      const delta = treatmentAvg.composite - controlAvg.composite;
-      const confidence = Math.min(1, controlRuns.length / 5);
-
-      const perDimension = {
-        correctness: { control: controlAvg.correctness, treatment: treatmentAvg.correctness, delta: treatmentAvg.correctness - controlAvg.correctness },
-        procedure: { control: controlAvg.procedureFollowing, treatment: treatmentAvg.procedureFollowing, delta: treatmentAvg.procedureFollowing - controlAvg.procedureFollowing },
-        conciseness: { control: controlAvg.conciseness, treatment: treatmentAvg.conciseness, delta: treatmentAvg.conciseness - controlAvg.conciseness },
-      };
-
-      const constraintResults = skillInstructions ? this.validateConstraints(skillInstructions, baselineInstructions) : [];
-      const allGatesPass = constraintResults.length === 0 || constraintResults.every((g) => g.passed);
-
-      // Load experiment for config
       const experiment = await ExperimentModel.findOne(experimentId);
       const minDelta = experiment?.config?.minDelta || 0.05;
 
-      let decision;
-      if (delta > minDelta && allGatesPass) decision = 'keep';
-      else if (delta > minDelta && !allGatesPass) decision = 'iterate';
-      else decision = 'discard';
+      const verdict = VerifierGate.verify({
+        controlRuns,
+        treatmentRuns,
+        candidateText: skillInstructions,
+        baselineText: baselineInstructions,
+        minDelta,
+      });
 
       const resultId = await ExperimentModel.createResult(experimentId, {
         iteration: 1,
-        controlAvgSes: controlAvg.composite,
-        treatmentAvgSes: treatmentAvg.composite,
-        delta,
-        confidence,
-        perDimension,
-        constraintResults,
-        decision,
-        analysis: { reasoning: `Delta ${delta.toFixed(3)} vs threshold ${minDelta}. Gates: ${allGatesPass ? 'all passed' : 'some failed'}.`, controlMetrics: controlAvg, treatmentMetrics: treatmentAvg },
+        controlAvgSes: verdict.controlAvgSes,
+        treatmentAvgSes: verdict.treatmentAvgSes,
+        delta: verdict.delta,
+        confidence: verdict.confidence,
+        perDimension: verdict.perDimension,
+        constraintResults: verdict.constraintResults,
+        decision: verdict.decision,
+        analysis: { reasoning: verdict.reasoning, controlMetrics: verdict.controlMetrics, treatmentMetrics: verdict.treatmentMetrics },
       });
 
       return await ExperimentModel.findLatest(experimentId);
@@ -278,43 +252,11 @@ Return ONLY JSON:
   }
 
   static calculateComposite(scores) {
-    const raw = (0.5 * (scores.correctness || 0)) + (0.3 * (scores.procedureFollowing || 0)) + (0.2 * (scores.conciseness || 0));
-    return Math.round(raw * 1000) / 1000;
+    return gateComposite(scores);
   }
 
   static validateConstraints(skillInstructions, baselineInstructions) {
-    const results = [];
-
-    results.push({
-      name: 'size_limit',
-      passed: skillInstructions.length <= 15360,
-      message: `${skillInstructions.length}/15360 chars`,
-    });
-
-    if (baselineInstructions) {
-      const growth = (skillInstructions.length - baselineInstructions.length) / baselineInstructions.length;
-      results.push({
-        name: 'growth_limit',
-        passed: growth <= 0.2,
-        message: `${(growth * 100).toFixed(1)}% growth (max 20%)`,
-      });
-    }
-
-    results.push({
-      name: 'non_empty',
-      passed: skillInstructions.trim().length > 0,
-      message: skillInstructions.trim().length > 0 ? 'Non-empty' : 'Empty skill',
-    });
-
-    const hasHeaders = skillInstructions.includes('#');
-    const hasSteps = /\d\.\s/.test(skillInstructions) || /^-\s/m.test(skillInstructions);
-    results.push({
-      name: 'structure',
-      passed: hasHeaders && hasSteps,
-      message: hasHeaders && hasSteps ? 'Valid structure' : 'Missing headers or steps',
-    });
-
-    return results;
+    return VerifierGate.validateConstraints(skillInstructions, baselineInstructions);
   }
 
   static async onRunCompleted(goalId, experimentContext, evaluation) {

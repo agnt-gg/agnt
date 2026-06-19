@@ -163,6 +163,12 @@ const router = createRouter({
       meta: { requiresAuth: true, terminalScreen: 'MemoryScreen' },
     },
     {
+      path: '/autonomy',
+      name: 'TerminalAutonomy',
+      component: Terminal,
+      meta: { requiresAuth: true, terminalScreen: 'AutonomyScreen' },
+    },
+    {
       path: '/oauth-callback',
       name: 'OAuthCallback',
       component: OAuthCallback,

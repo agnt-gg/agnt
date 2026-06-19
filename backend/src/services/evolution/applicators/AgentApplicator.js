@@ -8,6 +8,11 @@ import db from '../../../models/database/index.js';
 class AgentApplicator {
   /**
    * Apply a specific insight to its target agent.
+   *
+   * Orchestrator-chat and goal-extracted insights are stored with
+   * target_id=null intentionally — they're system-wide, not tied to a
+   * specific agent. We route those to the orchestrator-scoped memory
+   * (agent_id='orchestrator') rather than failing.
    */
   static async apply(insightId, userId, provider = null, model = null) {
     const insight = await InsightModel.findOne(insightId);
@@ -17,13 +22,19 @@ class AgentApplicator {
     if (insight.target_type !== 'agent') {
       throw new Error('Insight does not target an agent');
     }
-    if (!insight.target_id) {
-      throw new Error('No target agent specified');
-    }
 
-    const agent = await AgentModel.findOne(insight.target_id);
-    if (!agent) {
-      throw new Error('Target agent not found');
+    let agent = null;
+    let isOrchestratorScope = false;
+    if (insight.target_id) {
+      agent = await AgentModel.findOne(insight.target_id);
+      if (!agent) {
+        throw new Error('Target agent not found');
+      }
+    } else {
+      // Synthesize a stand-in "agent" record so the per-category handlers
+      // can write to AgentMemoryModel using the canonical 'orchestrator' id.
+      agent = { id: 'orchestrator', assignedSkills: [], assignedTools: [], assignedWorkflows: [], created_by: userId };
+      isOrchestratorScope = true;
     }
 
     let result;
@@ -32,7 +43,13 @@ class AgentApplicator {
         result = await this._applyPromptRefinement(agent, insight, userId);
         break;
       case 'skill_recommendation':
-        result = await this._applySkillRecommendation(agent, insight, userId);
+        if (isOrchestratorScope) {
+          // Can't assign a skill to "the orchestrator" — record as a memory cue instead.
+          result = await this._applyPromptRefinement(agent, insight, userId);
+          if (result.applied) result.type = 'skill_recommendation_recorded';
+        } else {
+          result = await this._applySkillRecommendation(agent, insight, userId);
+        }
         break;
       case 'tool_preference':
         result = await this._applyToolPreference(agent, insight, userId);
@@ -42,9 +59,10 @@ class AgentApplicator {
     }
 
     if (result.applied) {
-      await InsightModel.updateStatus(insightId, 'applied', result);
-      // Increment agent's insight_version
-      await this._incrementInsightVersion(insight.target_id);
+      await InsightModel.updateStatus(insightId, 'applied', { ...result, orchestratorScope: isOrchestratorScope });
+      if (!isOrchestratorScope && insight.target_id) {
+        await this._incrementInsightVersion(insight.target_id);
+      }
     }
 
     return result;

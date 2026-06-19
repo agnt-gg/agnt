@@ -159,6 +159,61 @@ class InsightModel {
   }
 
   /**
+   * Persist autonomy router metadata onto an insight (PRD-091 Layer 4).
+   */
+  static updateAutonomyMeta(id, { decision, reason, blastRadius, gateDelta }) {
+    const now = new Date().toISOString();
+    const gatedAt = decision === 'gated' ? now : null;
+    const escalatedAt = decision === 'escalate' ? now : null;
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE insights
+            SET autonomy_decision = COALESCE(?, autonomy_decision),
+                autonomy_reason = COALESCE(?, autonomy_reason),
+                blast_radius = COALESCE(?, blast_radius),
+                gate_delta = COALESCE(?, gate_delta),
+                gated_at = COALESCE(?, gated_at),
+                escalated_at = COALESCE(?, escalated_at)
+          WHERE id = ?`,
+        [
+          decision || null,
+          reason || null,
+          typeof blastRadius === 'number' ? blastRadius : null,
+          typeof gateDelta === 'number' ? gateDelta : null,
+          gatedAt,
+          escalatedAt,
+          id,
+        ],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  /**
+   * Count how many insights this user has auto-applied since `sinceIso`.
+   * Used by AutonomyPolicy for daily-budget gating.
+   */
+  static countAppliedSince(userId, sinceIso) {
+    return new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(*) as count FROM insights
+         WHERE user_id = ?
+           AND status = 'applied'
+           AND autonomy_decision IN ('direct','gated')
+           AND applied_at >= ?`,
+        [userId, sinceIso],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row ? row.count : 0);
+        }
+      );
+    });
+  }
+
+  /**
    * Get counts by status for a user.
    */
   static getStatusCounts(userId) {

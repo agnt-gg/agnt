@@ -30,12 +30,20 @@ class InsightTriggers {
       });
 
       if (insightIds.length > 0) {
-        // Auto-apply high-confidence memory insights (only for specific agents, if enabled)
-        if (agentId && agentId !== 'agent-chat') {
-          const settings = await EvolutionSettingsModel.get(userId);
-          if (settings.autoApplyMemory) {
-            await this._autoApplyMemoryInsights(userId, agentId);
+        const settings = await EvolutionSettingsModel.get(userId);
+
+        // PRD-091 Layer 4: route pending insights through the AutonomyRouter.
+        // The router handles the memory case as the lowest-blast bucket.
+        if (settings.autonomy && settings.autonomy.enabled) {
+          try {
+            const InsightAutonomyRouter = (await import('./InsightAutonomyRouter.js')).default;
+            await InsightAutonomyRouter.routePendingForUser(userId, { provider, model });
+          } catch (err) {
+            console.error('[InsightTriggers] Autonomy router sweep failed:', err.message);
           }
+        } else if (settings.autoApplyMemory && agentId && agentId !== 'agent-chat') {
+          // Legacy fast-path: when the new router is off, keep memory auto-apply for backward compat.
+          await this._autoApplyMemoryInsights(userId, agentId);
         }
 
         // Broadcast to frontend
@@ -75,6 +83,15 @@ class InsightTriggers {
       const forgeResult = await SkillForgeOrchestrator.onGoalCompleted(goalId, userId, provider, model);
 
       if (insightIds.length > 0) {
+        const settings = await EvolutionSettingsModel.get(userId);
+        if (settings.autonomy && settings.autonomy.enabled) {
+          try {
+            const InsightAutonomyRouter = (await import('./InsightAutonomyRouter.js')).default;
+            await InsightAutonomyRouter.routePendingForUser(userId, { provider, model });
+          } catch (err) {
+            console.error('[InsightTriggers] Goal autonomy sweep failed:', err.message);
+          }
+        }
         broadcastToUser(userId, 'evolution:insights_extracted', {
           sourceType: 'goal',
           sourceId: goalId,
@@ -105,6 +122,15 @@ class InsightTriggers {
       const insightIds = await InsightEngine.extract('workflow', executionId, userId, context);
 
       if (insightIds.length > 0) {
+        const settings = await EvolutionSettingsModel.get(userId);
+        if (settings.autonomy && settings.autonomy.enabled) {
+          try {
+            const InsightAutonomyRouter = (await import('./InsightAutonomyRouter.js')).default;
+            await InsightAutonomyRouter.routePendingForUser(userId, {});
+          } catch (err) {
+            console.error('[InsightTriggers] Workflow autonomy sweep failed:', err.message);
+          }
+        }
         broadcastToUser(userId, 'evolution:insights_extracted', {
           sourceType: 'workflow',
           sourceId: executionId,

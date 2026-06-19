@@ -292,6 +292,34 @@ class InsightEngine {
       }
     }
 
+    // PRD-091 Layer 5: mine refinement-type contract proposals from successful
+    // tool runs. Each proposal lands as a contract_proposal insight so the
+    // autonomy router can decide whether to install it.
+    try {
+      const ContractsService = (await import('./ContractsService.js')).default;
+      for (const stat of toolStats) {
+        if (stat.success_count < 10) continue;
+        const proposals = await ContractsService.mineForTool({ toolName: stat.tool_name, userId, lookbackDays: 7, minSamples: 10 });
+        for (const p of proposals) {
+          const insightId = await this._storeInsightWithDedup(userId, {
+            sourceType: 'tool_call',
+            sourceId: 'aggregate',
+            sourceContext: { period: '7d', mined: true },
+            targetType: 'tool',
+            targetId: p.targetId,
+            category: 'contract_proposal',
+            title: `Contract: ${p.name}`,
+            description: `Mined invariant for tool "${p.targetId}": ${JSON.stringify(p.predicate)}`,
+            evidence: { ...p.evidence, predicate: p.predicate },
+            confidence: p.confidence,
+          });
+          if (insightId) stored.push(insightId);
+        }
+      }
+    } catch (err) {
+      console.warn('[InsightEngine] Contract mining skipped:', err.message);
+    }
+
     console.log(`[InsightEngine] Extracted ${stored.length} insights from tool usage aggregation`);
     return stored;
   }

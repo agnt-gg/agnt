@@ -936,6 +936,133 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_plugin ON installed_plugin_assets(plugin_name)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_installed_plugin_assets_local ON installed_plugin_assets(asset_type, local_id)`);
 
+      // PRD-091: Closed Loop — Layer 1 (Clock)
+      db.run(`CREATE TABLE IF NOT EXISTS schedules (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        cron TEXT NOT NULL,
+        timezone TEXT DEFAULT 'UTC',
+        next_run DATETIME,
+        last_run DATETIME,
+        last_status TEXT,
+        last_error TEXT,
+        enabled INTEGER DEFAULT 1,
+        on_missed TEXT DEFAULT 'fire_once',
+        run_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(enabled, next_run)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_schedules_target ON schedules(target_type, target_id)`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS schedule_runs (
+        id TEXT PRIMARY KEY,
+        schedule_id TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        run_target_id TEXT,
+        fired_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        status TEXT DEFAULT 'fired',
+        error TEXT,
+        FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_schedule ON schedule_runs(schedule_id, fired_at)`);
+
+      // PRD-091: Layer 3 (Wallets) — linear capability budgets
+      db.run(`CREATE TABLE IF NOT EXISTS wallets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        owner_type TEXT NOT NULL,
+        owner_id TEXT,
+        parent_id TEXT,
+        kind TEXT NOT NULL DEFAULT 'tokens',
+        balance REAL NOT NULL DEFAULT 0,
+        allocated REAL NOT NULL DEFAULT 0,
+        consumed REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        period_start DATETIME,
+        period_end DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (parent_id) REFERENCES wallets(id) ON DELETE CASCADE
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_wallets_owner ON wallets(owner_type, owner_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_wallets_parent ON wallets(parent_id)`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS wallet_ledger (
+        id TEXT PRIMARY KEY,
+        wallet_id TEXT NOT NULL,
+        amount REAL NOT NULL,
+        op TEXT NOT NULL,
+        source_kind TEXT,
+        source_id TEXT,
+        note TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (wallet_id) REFERENCES wallets(id) ON DELETE CASCADE
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_wallet_ledger_wallet ON wallet_ledger(wallet_id, created_at)`);
+
+      // PRD-091: Layer 5 (Contracts) — refinement-type runtime contracts
+      db.run(`CREATE TABLE IF NOT EXISTS contracts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT,
+        name TEXT NOT NULL,
+        predicate_json TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'mined',
+        confidence REAL DEFAULT 0.5,
+        status TEXT DEFAULT 'active',
+        evidence_count INTEGER DEFAULT 0,
+        violation_count INTEGER DEFAULT 0,
+        last_violation_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_contracts_target ON contracts(target_type, target_id, status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_contracts_user ON contracts(user_id, status)`);
+
+      db.run(`CREATE TABLE IF NOT EXISTS contract_violations (
+        id TEXT PRIMARY KEY,
+        contract_id TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT,
+        runtime_value TEXT,
+        severity TEXT DEFAULT 'warn',
+        source_execution_id TEXT,
+        observed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_contract_violations_contract ON contract_violations(contract_id, observed_at)`);
+
+      // PRD-091: Layer 7 (FitnessScore) — mutation provenance and reward signal
+      db.run(`CREATE TABLE IF NOT EXISTS mutation_history (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        insight_id TEXT,
+        target_type TEXT NOT NULL,
+        target_id TEXT,
+        applied_via TEXT NOT NULL DEFAULT 'router',
+        snapshot_kind TEXT,
+        snapshot_ref TEXT,
+        fitness_before REAL,
+        fitness_after REAL,
+        delta REAL,
+        status TEXT NOT NULL DEFAULT 'applied',
+        reverted_at DATETIME,
+        revert_reason TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_mutation_history_target ON mutation_history(target_type, target_id, created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_mutation_history_insight ON mutation_history(insight_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_mutation_history_status ON mutation_history(status)`);
+
       db.run(`CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id)`,
         (err) => {
           if (err) {
@@ -1155,6 +1282,25 @@ function runMigrations() {
         { name: 'category', type: 'TEXT' },
         { name: 'node_summary', type: 'TEXT' },  // JSON array of {type, icon, label}
       ];
+
+      // PRD-091: Layer 4 (Autonomy Router) — insight routing decisions
+      const autonomyInsightColumns = [
+        { name: 'autonomy_decision', type: 'TEXT' },
+        { name: 'autonomy_reason', type: 'TEXT' },
+        { name: 'blast_radius', type: 'REAL' },
+        { name: 'gate_delta', type: 'REAL' },
+        { name: 'gated_at', type: 'DATETIME' },
+        { name: 'escalated_at', type: 'DATETIME' },
+      ];
+      autonomyInsightColumns.forEach((col) => {
+        db.run(`ALTER TABLE insights ADD COLUMN ${col.name} ${col.type}`, (err) => {
+          if (err && !err.message.includes('duplicate column name')) {
+            console.error(`Error adding ${col.name} column to insights:`, err);
+          } else if (!err) {
+            console.log(`✓ Added ${col.name} column to insights table`);
+          }
+        });
+      });
 
       let columnsAdded = 0;
       summaryColumns.forEach((col, i) => {

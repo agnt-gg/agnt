@@ -165,11 +165,6 @@ export default {
           label: 'Traces',
         },
         {
-          screen: 'ExperimentsScreen',
-          icon: 'flask',
-          label: 'Evolution',
-        },
-        {
           screen: 'SkillsScreen',
           icon: 'brain',
           label: 'Skills',
@@ -178,6 +173,16 @@ export default {
           screen: 'MemoryScreen',
           icon: 'memory',
           label: 'Memory',
+        },
+        {
+          screen: 'ExperimentsScreen',
+          icon: 'flask',
+          label: 'Evolution',
+        },
+        {
+          screen: 'AutonomyScreen',
+          icon: 'autonomy',
+          label: 'Autonomy',
         },
       ],
       system: [
@@ -318,6 +323,7 @@ export default {
         memory: 'fas fa-database',
         dna: 'fas fa-dna',
         flask: 'fas fa-flask',
+        autonomy: 'fas fa-robot',
       };
       return iconMap[icon] || 'fas fa-circle';
     };

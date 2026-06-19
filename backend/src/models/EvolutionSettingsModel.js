@@ -9,6 +9,16 @@ const DEFAULT_SETTINGS = {
     tool_rollup: true,
   },
   autoApplyMemory: true,
+  // PRD-091 Layer 4: autonomy router. Off by default — user opts in.
+  autonomy: {
+    enabled: false,
+    minConfidence: 0.7,
+    minDelta: 0.05,
+    maxBlastRadius: 0.5,
+    dailyBudget: 20,
+    requireGateAbove: 0.45,
+    allowedCategories: ['memory', 'prompt_refinement', 'tool_preference', 'contract_proposal', 'skill_recommendation', 'pattern', 'antipattern'],
+  },
 };
 
 class EvolutionSettingsModel {
@@ -19,11 +29,12 @@ class EvolutionSettingsModel {
         else {
           try {
             const saved = row ? JSON.parse(row.settings) : {};
-            // Deep merge insightSources
+            // Deep merge nested objects
             const merged = {
               ...DEFAULT_SETTINGS,
               ...saved,
               insightSources: { ...DEFAULT_SETTINGS.insightSources, ...(saved.insightSources || {}) },
+              autonomy: { ...DEFAULT_SETTINGS.autonomy, ...(saved.autonomy || {}) },
             };
             resolve(merged);
           } catch {
@@ -40,6 +51,7 @@ class EvolutionSettingsModel {
       ...current,
       ...newSettings,
       insightSources: { ...current.insightSources, ...(newSettings.insightSources || {}) },
+      autonomy: { ...(current.autonomy || {}), ...(newSettings.autonomy || {}) },
     };
     const json = JSON.stringify(merged);
     return new Promise((resolve, reject) => {

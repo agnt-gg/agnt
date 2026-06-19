@@ -17,15 +17,47 @@ const InsightRoutes = express.Router();
 InsightRoutes.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { targetType, targetId, status, category, limit } = req.query;
-    const insights = await InsightModel.findByUserId(userId, {
+    const { targetType, targetId, status, category, autonomyDecision, limit } = req.query;
+    let insights = await InsightModel.findByUserId(userId, {
       targetType, targetId, status, category,
       limit: parseInt(limit) || 1000,
     });
+    // PRD-091 Layer 4: client-side autonomy filter (avoids touching findByUserId signature)
+    if (autonomyDecision) {
+      insights = insights.filter((i) => i.autonomy_decision === autonomyDecision);
+    }
     res.json({ success: true, insights });
   } catch (error) {
     console.error('[Insight Route] List error:', error);
     res.status(500).json({ error: 'Failed to fetch insights' });
+  }
+});
+
+// POST /api/insights/route — Sweep all pending insights through the autonomy router
+InsightRoutes.post('/route', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { provider, model } = req.body || {};
+    const InsightAutonomyRouter = (await import('../services/evolution/InsightAutonomyRouter.js')).default;
+    const summary = await InsightAutonomyRouter.routePendingForUser(userId, { provider, model });
+    res.json({ success: true, summary });
+  } catch (error) {
+    console.error('[Insight Route] Route sweep error:', error);
+    res.status(500).json({ error: 'Failed to route insights', details: error.message });
+  }
+});
+
+// POST /api/insights/:id/route — Route one insight through the autonomy router
+InsightRoutes.post('/:id/route', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { provider, model } = req.body || {};
+    const InsightAutonomyRouter = (await import('../services/evolution/InsightAutonomyRouter.js')).default;
+    const result = await InsightAutonomyRouter.route(req.params.id, userId, { provider, model });
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('[Insight Route] Route one error:', error);
+    res.status(500).json({ error: 'Failed to route insight', details: error.message });
   }
 });
 
@@ -227,21 +259,28 @@ InsightRoutes.post('/:id/apply', authenticateToken, async (req, res) => {
     if (!insight) return res.status(404).json({ error: 'Insight not found' });
 
     let result;
-    switch (insight.target_type) {
-      case 'agent':
-        result = await AgentApplicator.apply(req.params.id, userId, provider, model);
-        break;
-      case 'skill':
-        result = await SkillApplicator.apply(req.params.id, userId);
-        break;
-      case 'workflow':
-        result = await WorkflowApplicator.apply(req.params.id, userId);
-        break;
-      case 'tool':
-        result = await ToolApplicator.apply(req.params.id, userId);
-        break;
-      default:
-        return res.status(400).json({ error: `Unknown target type: ${insight.target_type}` });
+    // PRD-091 Layer 5: contract_proposal insights install via the contract applicator
+    // regardless of target_type.
+    if (insight.category === 'contract_proposal') {
+      const ContractApplicator = (await import('../services/evolution/applicators/ContractApplicator.js')).default;
+      result = await ContractApplicator.apply(req.params.id, userId);
+    } else {
+      switch (insight.target_type) {
+        case 'agent':
+          result = await AgentApplicator.apply(req.params.id, userId, provider, model);
+          break;
+        case 'skill':
+          result = await SkillApplicator.apply(req.params.id, userId);
+          break;
+        case 'workflow':
+          result = await WorkflowApplicator.apply(req.params.id, userId);
+          break;
+        case 'tool':
+          result = await ToolApplicator.apply(req.params.id, userId);
+          break;
+        default:
+          return res.status(400).json({ error: `Unknown target type: ${insight.target_type}` });
+      }
     }
 
     res.json({ success: true, result });

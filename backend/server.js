@@ -50,6 +50,12 @@ import ImageRoutes from './src/routes/ImageRoutes.js';
 import LocalFileRoutes from './src/routes/LocalFileRoutes.js';
 import AdminClientVersionRoutes from './src/routes/AdminClientVersionRoutes.js';
 import ConversationSettingsRoutes from './src/routes/ConversationSettingsRoutes.js';
+import ScheduleRoutes from './src/routes/ScheduleRoutes.js';
+import SchedulerService from './src/services/scheduler/SchedulerService.js';
+import WalletRoutes from './src/routes/WalletRoutes.js';
+import ContractRoutes from './src/routes/ContractRoutes.js';
+import MutationHistoryRoutes from './src/routes/MutationHistoryRoutes.js';
+import { dbReady } from './src/models/database/index.js';
 import { warmupClientVersions } from './src/services/ai/clientVersions.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
@@ -193,6 +199,17 @@ app.use('/api/images', ImageRoutes);
 app.use('/api/local-file', LocalFileRoutes);
 app.use('/api/admin', AdminClientVersionRoutes);
 app.use('/api/conversations', ConversationSettingsRoutes);
+app.use('/api/schedules', ScheduleRoutes);
+app.use('/api/wallets', WalletRoutes);
+app.use('/api/contracts', ContractRoutes);
+app.use('/api/mutations', MutationHistoryRoutes);
+
+// PRD-091: Closed Loop — boot the durable scheduler once the DB is ready.
+dbReady.then(() => {
+  SchedulerService.start().catch((err) => {
+    console.error('[Scheduler] Failed to start:', err);
+  });
+});
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
 // Version + update-check endpoints share a one-time cached package.json read

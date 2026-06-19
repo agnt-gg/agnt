@@ -81,6 +81,7 @@ const screenLoaders = [
   ['ArtifactsScreen', () => import('./CenterPanel/screens/Artifacts/Artifacts.vue')],
   ['ExperimentsScreen', () => import('./CenterPanel/screens/Experiments/Experiments.vue')],
   ['MemoryScreen', () => import('./CenterPanel/screens/Memory/Memory.vue')],
+  ['AutonomyScreen', () => import('./CenterPanel/screens/Autonomy/Autonomy.vue')],
 ];
 
 // Preload all screen chunks in parallel, register into reactive map as each resolves
@@ -148,6 +149,7 @@ export default {
         ArtifactsScreen: '/artifacts',
         ExperimentsScreen: '/experiments',
         MemoryScreen: '/memory',
+        AutonomyScreen: '/autonomy',
       };
 
       if (screenName in screenRoutes) {

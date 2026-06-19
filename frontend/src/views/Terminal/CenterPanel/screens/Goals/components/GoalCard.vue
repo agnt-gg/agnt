@@ -78,6 +78,11 @@
               <i class="fas fa-play"></i>
             </button>
           </Tooltip>
+          <Tooltip :text="scheduleCount > 0 ? `Schedule (${scheduleCount} active)` : 'Schedule'" width="auto">
+            <button @click.stop="$emit('schedule', goal)" class="action-btn schedule-btn" :class="{ 'has-schedule': scheduleCount > 0 }">
+              <i class="fas fa-clock"></i>
+            </button>
+          </Tooltip>
           <Tooltip text="Delete" width="auto">
             <button @click.stop="$emit('delete', goal)" class="action-btn delete-btn">
               <i class="fas fa-trash"></i>
@@ -111,10 +116,14 @@ export default {
     liveIteration: { type: Object, default: null },
     showAge: { type: Boolean, default: true },
   },
-  emits: ['click', 'pause', 'resume', 'delete'],
+  emits: ['click', 'pause', 'resume', 'delete', 'schedule'],
   setup(props) {
     const store = useStore();
     const priority = computed(() => (props.goal.priority || 'medium').toLowerCase());
+    const scheduleCount = computed(() => {
+      const fn = store.getters['schedules/schedulesForGoal'];
+      return fn ? fn(props.goal.id).length : 0;
+    });
 
     const taskProgress = computed(() =>
       store.getters['goals/getGoalTaskProgress'](props.goal.id),
@@ -199,6 +208,7 @@ export default {
 
     return {
       priority,
+      scheduleCount,
       agingClass,
       displayTotal,
       displayCompleted,
@@ -465,6 +475,13 @@ export default {
 .pause-btn:hover { color: var(--color-yellow); }
 .resume-btn:hover { color: var(--color-green); }
 .delete-btn:hover { color: var(--color-red); }
+.schedule-btn:hover { color: var(--color-primary); }
+.schedule-btn.has-schedule { color: var(--color-primary); }
+.schedule-btn.has-schedule::after {
+  content: ''; position: absolute; width: 5px; height: 5px;
+  background: var(--color-primary); border-radius: 50%;
+  margin-top: -2px; margin-left: -2px;
+}
 
 /* Card aging — a subtle left-edge accent on non-terminal cards that have been idle */
 .goal-card.aged-warning::before,

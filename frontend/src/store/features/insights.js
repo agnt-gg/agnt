@@ -158,6 +158,46 @@ export default {
       }
     },
 
+    // PRD-091 Layer 4: route one pending insight through the autonomy router
+    async routeInsight({ commit, dispatch, rootState }, insightId) {
+      try {
+        const provider = rootState.aiProvider?.selectedProvider || null;
+        const model = rootState.aiProvider?.selectedModel || null;
+        const res = await fetch(`${API_CONFIG.BASE_URL}/insights/${insightId}/route`, {
+          method: 'POST', credentials: 'include', headers: getAuthHeaders(),
+          body: JSON.stringify({ provider, model }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        dispatch('fetchInsights');
+        dispatch('fetchStats');
+        return data.result;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        throw error;
+      }
+    },
+
+    // PRD-091 Layer 4: sweep all pending insights through the autonomy router
+    async routeAllPending({ commit, dispatch, rootState }) {
+      try {
+        const provider = rootState.aiProvider?.selectedProvider || null;
+        const model = rootState.aiProvider?.selectedModel || null;
+        const res = await fetch(`${API_CONFIG.BASE_URL}/insights/route`, {
+          method: 'POST', credentials: 'include', headers: getAuthHeaders(),
+          body: JSON.stringify({ provider, model }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        dispatch('fetchInsights');
+        dispatch('fetchStats');
+        return data.summary;
+      } catch (error) {
+        commit('SET_ERROR', error.message);
+        throw error;
+      }
+    },
+
     async triggerRollup({ commit, dispatch }) {
       try {
         const res = await fetch(`${API_CONFIG.BASE_URL}/insights/rollup`, {
@@ -315,5 +355,8 @@ export default {
     pendingInsights: state => state.insights.filter(i => i.status === 'pending'),
     pendingCount: state => state.stats?.statusCounts?.pending || 0,
     insightsByTarget: state => (targetType) => state.insights.filter(i => i.target_type === targetType),
+    // PRD-091 Layer 4: escalation inbox view
+    escalatedInsights: state => state.insights.filter(i => i.autonomy_decision === 'escalate' && i.status === 'pending'),
+    autonomySettings: state => state.evolutionSettings?.autonomy || null,
   },
 };

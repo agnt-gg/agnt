@@ -71,6 +71,7 @@ const ALL_LEFT_PANELS = [
   'WidgetForgePanel', 'ArtifactsPanel', 'GoalsPanel',
   'ExperimentsPanel', 'ExperimentForgePanel', 'EvalDatasetsPanel', 'ExperimentInsightsPanel',
   'MemoryPanel',
+  'AutonomyPanel',
 ];
 let panelsPreloaded = false;
 const preloadPanels = () => {

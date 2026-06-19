@@ -76,6 +76,7 @@
                     @pause="pauseGoal"
                     @resume="resumeGoal"
                     @delete="deleteGoal"
+                    @schedule="openScheduleModal"
                   />
                 </div>
 
@@ -91,6 +92,7 @@
                     @pause="pauseGoal"
                     @resume="resumeGoal"
                     @delete="deleteGoal"
+                    @schedule="openScheduleModal"
                   />
                 </div>
 
@@ -113,6 +115,7 @@
                   @pause="pauseGoal"
                   @resume="resumeGoal"
                   @delete="deleteGoal"
+                  @schedule="openScheduleModal"
                 />
                 <div v-if="column.goals.length === 0" class="empty-column">
                   <div class="empty-icon">{{ getEmptyIcon(column.id) }}</div>
@@ -199,6 +202,16 @@
       </Teleport>
 
       <SimpleModal ref="simpleModal" />
+
+      <!-- PRD-091: Schedule a goal -->
+      <Teleport to="body">
+        <ScheduleGoalModal
+          v-if="scheduleModalGoal"
+          :goal="scheduleModalGoal"
+          @close="scheduleModalGoal = null"
+          @created="onScheduleCreated"
+        />
+      </Teleport>
     </template>
   </BaseScreen>
 </template>
@@ -211,6 +224,7 @@ import GoalCard from './components/GoalCard.vue';
 import GoalsToolbar from './components/GoalsToolbar.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import ScheduleGoalModal from './components/ScheduleGoalModal.vue';
 
 // Status sets shared across column filtering
 const DONE_SUCCESS = ['completed', 'validated'];
@@ -224,6 +238,7 @@ export default {
     GoalsToolbar,
     Tooltip,
     SimpleModal,
+    ScheduleGoalModal,
   },
   emits: ['screen-change'],
   setup(props, { emit }) {
@@ -234,6 +249,13 @@ export default {
     const simpleModal = ref(null);
     const terminalLines = ref([]);
     const selectedGoalId = ref(null);
+
+    // PRD-091: Schedule a goal
+    const scheduleModalGoal = ref(null);
+    const openScheduleModal = (goal) => { scheduleModalGoal.value = goal; };
+    const onScheduleCreated = () => {
+      store.dispatch('schedules/fetchSchedules');
+    };
 
     // Create-goal modal
     const showCreateModal = ref(false);
@@ -371,6 +393,9 @@ export default {
 
       // Load templates for the create modal gallery (no-op if already loaded)
       store.dispatch('goalTemplates/fetchTemplates').catch(() => {});
+
+      // PRD-091: prefetch schedules so GoalCard can show the per-goal badge.
+      store.dispatch('schedules/fetchSchedules').catch(() => {});
     };
 
     const handleGoalClick = async (goal) => {
@@ -580,6 +605,9 @@ export default {
       doneFailureGoals,
       initializeScreen,
       handleGoalClick,
+      scheduleModalGoal,
+      openScheduleModal,
+      onScheduleCreated,
       pauseGoal,
       resumeGoal,
       deleteGoal,
