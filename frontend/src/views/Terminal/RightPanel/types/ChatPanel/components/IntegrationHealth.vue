@@ -810,13 +810,32 @@ export default {
       }
     };
 
-    // Auto-refresh health when connected apps change (skip initial mount)
-    let watchReady = false;
-    watch(connectedApps, async (newApps, oldApps) => {
-      if (!watchReady) return;
-      if (JSON.stringify(newApps) !== JSON.stringify(oldApps)) {
-        await refreshHealth();
+    // Auto-refresh health when connected apps change (skip initial mount).
+    // Compare by sorted-set equality (order-independent) so an array reassigned
+    // to the same providers doesn't trip the watcher. Debounce the refresh so
+    // back-to-back commits from a single fetch coalesce into one health check.
+    const sameProviderSet = (a, b) => {
+      const aArr = Array.isArray(a) ? a : [];
+      const bArr = Array.isArray(b) ? b : [];
+      if (aArr.length !== bArr.length) return false;
+      const aSorted = [...aArr].map(String).sort();
+      const bSorted = [...bArr].map(String).sort();
+      for (let i = 0; i < aSorted.length; i += 1) {
+        if (aSorted[i] !== bSorted[i]) return false;
       }
+      return true;
+    };
+
+    let watchReady = false;
+    let refreshDebounceTimer = null;
+    watch(connectedApps, (newApps, oldApps) => {
+      if (!watchReady) return;
+      if (sameProviderSet(newApps, oldApps)) return;
+      if (refreshDebounceTimer) clearTimeout(refreshDebounceTimer);
+      refreshDebounceTimer = setTimeout(() => {
+        refreshDebounceTimer = null;
+        refreshHealth();
+      }, 300);
     });
 
     // `initializeStore` (state.js) already loads `appAuth/fetchAllProviders`
@@ -837,9 +856,13 @@ export default {
       window.addEventListener('message', handleOAuthMessage);
     });
 
-    // Cleanup message listener on unmount
+    // Cleanup message listener and pending debounce on unmount
     onUnmounted(() => {
       window.removeEventListener('message', handleOAuthMessage);
+      if (refreshDebounceTimer) {
+        clearTimeout(refreshDebounceTimer);
+        refreshDebounceTimer = null;
+      }
     });
 
     return {

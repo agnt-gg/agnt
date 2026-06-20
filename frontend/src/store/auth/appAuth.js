@@ -74,9 +74,17 @@ const mutations = {
 };
 
 const actions = {
-  fetchConnectedApps: withFreshness('appAuth.fetchConnectedApps', async ({ commit }) => {
+  fetchConnectedApps: withFreshness('appAuth.fetchConnectedApps', async ({ commit, state }) => {
     // Deduplicate concurrent calls - return existing in-flight promise
     if (_fetchConnectedAppsPromise) return _fetchConnectedAppsPromise;
+
+    // On cold start (no providers yet), commit the local-only set early so the
+    // UI lights up fast. On refresh polls, we already have providers in Vuex —
+    // committing the partial set would briefly drop remote-only providers,
+    // flipping hasConnectedAIProvider to false, flashing "no provider connected"
+    // in the chat, and triggering watch(connectedApps) cascades. Hold the
+    // partial set and only commit the final merged result on refreshes.
+    const isColdStart = !state.connectedApps || state.connectedApps.length === 0;
 
     _fetchConnectedAppsPromise = (async () => {
       try {
@@ -136,10 +144,16 @@ const actions = {
           connectedApps = [...new Set([...localBackendApps, ...connectedApps])];
         }
 
-        // Commit interim result so the UI can render before remote resolves.
-        commit('SET_CONNECTED_APPS', Array.from(new Set(connectedApps)));
+        // Cold start only: commit the local-only set early so the UI can paint
+        // before remote resolves. On refresh polls we skip this — see comment
+        // above for why (avoids dropping remote-only providers mid-flight).
+        if (isColdStart) {
+          commit('SET_CONNECTED_APPS', Array.from(new Set(connectedApps)));
+        }
 
         // Finally merge remote — purely additive.
+        // If remote fails on a refresh poll, leave Vuex untouched rather than
+        // wiping it down to the local-only set.
         const remoteResult = await remotePromise;
         if (remoteResult && Array.isArray(remoteResult.data)) {
           const remoteApps = remoteResult.data.map(normalizeProviderId).filter(Boolean);
