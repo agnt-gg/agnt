@@ -41,7 +41,7 @@
           @update:sortOrder="(v) => (sortOrder = v)"
           @create="handlePanelAction('navigate', 'AgentForgeScreen')"
         >
-          <!-- PRD-057: small import/export buttons -->
+          <!-- small import/export buttons -->
           <template #extra-buttons>
             <Tooltip text="Import Agent JSON" width="auto">
               <button class="wm-btn" @click="triggerAgentImport">
@@ -510,7 +510,7 @@ export default {
       searchQuery.value = query;
     };
 
-    // PRD-057: agent import/export from the page toolbar
+    // agent import/export from the page toolbar
     const agentImportInput = ref(null);
     const triggerAgentImport = () => {
       agentImportInput.value?.click();
@@ -1810,7 +1810,7 @@ export default {
       saveConfiguration,
       tableColumns,
       handleSearch,
-      // PRD-057
+      //
       agentImportInput,
       triggerAgentImport,
       handleAgentImportFile,
@@ -1978,7 +1978,7 @@ export default {
   display: none;
 }
 
-/* PRD-057: toolbar slot buttons — match ScreenToolbar's .wm-btn styling.
+/* toolbar slot buttons — match ScreenToolbar's .wm-btn styling.
    ScreenToolbar's scoped styles don't apply to slot content rendered from
    here, so we duplicate the style. */
 .wm-btn {

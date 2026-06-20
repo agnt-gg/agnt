@@ -2,7 +2,7 @@
   <div class="schedules-manager">
     <div class="manager-header">
       <h3>Scheduled Goals</h3>
-      <p class="subtitle">Cron-driven recurring goal execution. PRD-091 Layer 1.</p>
+      <p class="subtitle">Cron-driven recurring goal execution.</p>
     </div>
 
     <div v-if="isLoading && !schedules.length" class="empty-state">Loading…</div>

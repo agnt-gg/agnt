@@ -64,7 +64,7 @@
               <i class="fas fa-store"></i>
               Publish to Marketplace
             </BaseButton>
-            <!-- PRD-057: export agent as canonical envelope -->
+            <!-- export agent as canonical envelope -->
             <BaseButton @click="exportAgentJson" variant="secondary" full-width>
               <i class="fas fa-file-export"></i>
               Export JSON
@@ -348,7 +348,7 @@ export default {
     const agentCategories = computed(() => store.getters['agents/agentCategories'] || []);
     const simpleModal = ref(null);
 
-    // PRD-057: export selected agent as canonical envelope JSON
+    // export selected agent as canonical envelope JSON
     const exportAgentJson = async () => {
       const agent = props.selectedAgent;
       if (!agent?.id) return;
@@ -557,7 +557,7 @@ export default {
       handleSetupStripe,
       handleOpenBilling,
       simpleModal,
-      // PRD-057
+      //
       exportAgentJson,
     };
   },

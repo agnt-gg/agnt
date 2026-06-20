@@ -158,7 +158,7 @@ export default {
       }
     },
 
-    // PRD-091 Layer 4: route one pending insight through the autonomy router
+    // Route one pending insight through the autonomy router
     async routeInsight({ commit, dispatch, rootState }, insightId) {
       try {
         const provider = rootState.aiProvider?.selectedProvider || null;
@@ -178,7 +178,7 @@ export default {
       }
     },
 
-    // PRD-091 Layer 4: sweep all pending insights through the autonomy router
+    // Sweep all pending insights through the autonomy router
     async routeAllPending({ commit, dispatch, rootState }) {
       try {
         const provider = rootState.aiProvider?.selectedProvider || null;
@@ -355,7 +355,7 @@ export default {
     pendingInsights: state => state.insights.filter(i => i.status === 'pending'),
     pendingCount: state => state.stats?.statusCounts?.pending || 0,
     insightsByTarget: state => (targetType) => state.insights.filter(i => i.target_type === targetType),
-    // PRD-091 Layer 4: escalation inbox view
+    // Escalation inbox view
     escalatedInsights: state => state.insights.filter(i => i.autonomy_decision === 'escalate' && i.status === 'pending'),
     autonomySettings: state => state.evolutionSettings?.autonomy || null,
   },

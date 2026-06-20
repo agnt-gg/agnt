@@ -204,7 +204,7 @@
       <PluginBuilder @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
     </div>
 
-    <!-- PRD-057: Pack Studio Tab — no-code ecosystem-pack composer -->
+    <!-- Pack Studio Tab — no-code ecosystem-pack composer -->
     <div v-else-if="activeTab === 'pack-studio'" class="plugins-list">
       <PackStudio @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
     </div>
@@ -806,7 +806,7 @@ export default {
     }
 
     async function onPluginInstalled() {
-      // PRD-057: refresh every store the plugin could have touched. Tool-only
+      // refresh every store the plugin could have touched. Tool-only
       // plugins need tool/plugin refresh; ecosystem packs also drop new
       // agents/workflows/skills/widgets in DB and we want those visible
       // immediately on their respective pages.

@@ -488,7 +488,7 @@ export function useRealtimeSync() {
       }
     });
 
-    // PRD-091 — autonomy router events
+    // Autonomy router events
     socket.on('evolution:insight_escalated', (data) => {
       console.log('[Realtime] Insight escalated:', data);
       // Pull a fresh page of pending insights so the inbox count + escalation list update.
@@ -508,7 +508,7 @@ export function useRealtimeSync() {
       window.dispatchEvent(new CustomEvent('autonomy-applied', { detail: data }));
     });
 
-    // PRD-091 — scheduler / mutation events (best-effort; backend may emit later)
+    // Scheduler / mutation events (best-effort; backend may emit later)
     socket.on('schedule:fired', (data) => {
       console.log('[Realtime] Schedule fired:', data);
       store.dispatch('schedules/fetchSchedules').catch(() => {});

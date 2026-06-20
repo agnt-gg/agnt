@@ -35,7 +35,6 @@
         <div class="screen-body">
           <AutonomyManager v-if="activeSection === 'autonomy'" />
           <SchedulesManager v-else-if="activeSection === 'schedules'" />
-          <WalletManager v-else-if="activeSection === 'wallets'" />
           <ContractsManager v-else-if="activeSection === 'contracts'" />
           <MutationsViewer v-else-if="activeSection === 'mutations'" />
         </div>
@@ -50,7 +49,6 @@ import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import AutonomyManager from './components/AutonomyManager/AutonomyManager.vue';
 import SchedulesManager from './components/SchedulesManager/SchedulesManager.vue';
-import WalletManager from './components/WalletManager/WalletManager.vue';
 import ContractsManager from './components/ContractsManager/ContractsManager.vue';
 import MutationsViewer from './components/MutationsViewer/MutationsViewer.vue';
 
@@ -63,8 +61,6 @@ const TABS = [
     title: 'Runtime Contracts', subtitle: 'Refinement-type invariants mined from real executions' },
   { id: 'mutations', label: 'Mutations', icon: 'fas fa-code-branch',
     title: 'Mutation History', subtitle: 'Every router-applied change with snapshot + auto-revert' },
-  { id: 'wallets', label: 'Wallets', icon: 'fas fa-coins',
-    title: 'Capability Wallets', subtitle: 'Linear capability budgets — runaways cannot drain unlimited tokens' },
 ];
 
 export default {
@@ -73,7 +69,6 @@ export default {
     BaseScreen,
     AutonomyManager,
     SchedulesManager,
-    WalletManager,
     ContractsManager,
     MutationsViewer,
   },

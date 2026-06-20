@@ -48,7 +48,7 @@
           @update:sortOrder="(v) => sortOrder = v"
           @create="handlePanelAction('navigate', 'WorkflowForgeScreen')"
         >
-          <!-- PRD-057: small import/export buttons -->
+          <!-- small import/export buttons -->
           <template #extra-buttons>
             <Tooltip text="Import Workflow JSON" width="auto">
               <button class="wm-btn" @click="triggerWorkflowImport">
@@ -653,7 +653,7 @@ export default {
       searchQuery.value = query;
     };
 
-    // PRD-057: workflow import/export from the page toolbar
+    // workflow import/export from the page toolbar
     const workflowImportInput = ref(null);
     const triggerWorkflowImport = () => {
       workflowImportInput.value?.click();
@@ -1221,7 +1221,7 @@ export default {
       onContentClick,
       handleWorkflowClick,
       handleWorkflowDoubleClick,
-      // PRD-057
+      //
       workflowImportInput,
       triggerWorkflowImport,
       handleWorkflowImportFile,
@@ -1291,7 +1291,7 @@ export default {
   height: 100%;
 }
 
-/* PRD-057: toolbar slot buttons — match ScreenToolbar's .wm-btn styling.
+/* toolbar slot buttons — match ScreenToolbar's .wm-btn styling.
    ScreenToolbar's scoped styles don't apply to slot content rendered from
    here, so we duplicate the style. */
 .wm-btn {

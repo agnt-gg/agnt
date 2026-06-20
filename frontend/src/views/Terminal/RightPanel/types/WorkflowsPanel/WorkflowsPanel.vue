@@ -84,7 +84,7 @@
         <BaseButton v-if="!isMarketplaceWorkflow" class="action-button publish" @click="showPublishModal = true">
           <i class="fas fa-store"></i> Publish to Marketplace
         </BaseButton>
-        <!-- PRD-057: export workflow as canonical envelope -->
+        <!-- export workflow as canonical envelope -->
         <BaseButton v-if="!isMarketplaceWorkflow" class="action-button" @click="exportWorkflowJson">
           <i class="fas fa-file-export"></i> Export JSON
         </BaseButton>
@@ -625,7 +625,7 @@ export default {
       localStorage.setItem('settings-initial-section', 'billing');
     };
 
-    // PRD-057: export selected workflow as canonical envelope JSON
+    // export selected workflow as canonical envelope JSON
     const exportWorkflowJson = async () => {
       const wf = selectedWorkflow.value;
       if (!wf?.id) return;
@@ -694,7 +694,7 @@ export default {
       handlePublishWorkflow,
       handleSetupStripe,
       handleOpenBilling,
-      // PRD-057
+      //
       exportWorkflowJson,
       simpleModal,
     };
@@ -992,7 +992,7 @@ h3 {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  /* PRD-057: prevent label overflow from bleeding past the panel edge */
+  /* prevent label overflow from bleeding past the panel edge */
   width: 100%;
   min-width: 0;
   max-width: 100%;

@@ -203,7 +203,7 @@
 
       <SimpleModal ref="simpleModal" />
 
-      <!-- PRD-091: Schedule a goal -->
+      <!-- Schedule a goal -->
       <Teleport to="body">
         <ScheduleGoalModal
           v-if="scheduleModalGoal"
@@ -250,7 +250,7 @@ export default {
     const terminalLines = ref([]);
     const selectedGoalId = ref(null);
 
-    // PRD-091: Schedule a goal
+    // Schedule a goal
     const scheduleModalGoal = ref(null);
     const openScheduleModal = (goal) => { scheduleModalGoal.value = goal; };
     const onScheduleCreated = () => {
@@ -394,7 +394,7 @@ export default {
       // Load templates for the create modal gallery (no-op if already loaded)
       store.dispatch('goalTemplates/fetchTemplates').catch(() => {});
 
-      // PRD-091: prefetch schedules so GoalCard can show the per-goal badge.
+      // Prefetch schedules so GoalCard can show the per-goal badge.
       store.dispatch('schedules/fetchSchedules').catch(() => {});
     };
 

@@ -44,10 +44,6 @@
             <span>Mutations</span>
             <span v-if="mutationCount > 0" class="nav-count">{{ mutationCount }}</span>
           </button>
-          <button class="nav-item" :class="{ active: activeSection === 'wallets' }" @click="handleNavClick('wallets')" data-nav="wallets">
-            <i class="fas fa-coins"></i>
-            <span>Wallets</span>
-          </button>
         </div>
       </div>
     </div>

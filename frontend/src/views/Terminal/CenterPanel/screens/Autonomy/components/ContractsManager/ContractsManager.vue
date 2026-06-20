@@ -2,7 +2,7 @@
   <div class="contracts-manager">
     <div class="manager-header">
       <h3>Runtime Contracts</h3>
-      <p class="subtitle">Refinement-type invariants mined from successful executions. PRD-091 Layer 5.</p>
+      <p class="subtitle">Refinement-type invariants mined from successful executions.</p>
     </div>
 
     <div class="filter-row">

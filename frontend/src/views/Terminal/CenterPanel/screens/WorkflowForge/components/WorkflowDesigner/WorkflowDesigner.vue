@@ -1007,7 +1007,7 @@ export default {
       }
     },
     async exportWorkflow() {
-      // PRD-057: prefer the backend canonical export envelope when we have a
+      // prefer the backend canonical export envelope when we have a
       // saved workflow ID. Falls back to client-side serialization for unsaved
       // workflows so users can still export drafts.
       let envelope = null;
@@ -1087,7 +1087,7 @@ export default {
           return;
         }
 
-        // PRD-057: unwrap the canonical envelope (`{_format, _version, payload}`)
+        // unwrap the canonical envelope (`{_format, _version, payload}`)
         // if the user pasted a fresh export. Older exports were the raw object.
         if (state && state._format === 'agnt-workflow' && state.payload) {
           state = state.payload;
