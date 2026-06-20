@@ -166,6 +166,19 @@ class InsightAutonomyRouter {
       console.error(`[InsightRouter] Apply failed for ${insightId}:`, applyError);
     }
 
+    // An applicator can decline cleanly by returning { applied: false, reason }
+    // without throwing (e.g. "Unsupported category", "No skill ID in evidence").
+    // That used to be silently recorded as `applied` because we only checked
+    // the throw path — now we surface it as `apply_skipped` so the Mutations
+    // view shows the truth and the broadcast doesn't lie.
+    const applyDeclined = !applyError && result && result.applied === false;
+    const declineReason = applyDeclined ? (result.reason || 'declined by applicator') : null;
+
+    let recordStatus;
+    if (applyError) recordStatus = 'apply_failed';
+    else if (applyDeclined) recordStatus = 'apply_skipped';
+    else recordStatus = 'applied';
+
     // Record mutation history for canary/auto-revert (Layer 7).
     let mutationId = null;
     try {
@@ -181,8 +194,8 @@ class InsightAutonomyRouter {
         fitnessBefore,
         fitnessAfter: null,
         delta: gateDelta,
-        status: applyError ? 'apply_failed' : 'applied',
-        notes: applyError || verdict.reason,
+        status: recordStatus,
+        notes: applyError || declineReason || verdict.reason,
       });
     } catch (err) {
       console.warn('[InsightRouter] Mutation history record skipped:', err.message);
@@ -190,6 +203,9 @@ class InsightAutonomyRouter {
 
     if (applyError) {
       return { decision: verdict.decision, applied: false, error: applyError, mutationId };
+    }
+    if (applyDeclined) {
+      return { decision: verdict.decision, applied: false, reason: declineReason, mutationId };
     }
 
     broadcastToUser(userId, 'evolution:insight_applied', {

@@ -42,6 +42,12 @@ class AgentApplicator {
       case 'prompt_refinement':
         result = await this._applyPromptRefinement(agent, insight, userId);
         break;
+      case 'memory':
+        // Memory-category insights about an agent become an AgentMemoryModel
+        // 'fact' row — distinguished from prompt_guidance so the memory system
+        // can rank/inject them differently.
+        result = await this._applyMemory(agent, insight, userId);
+        break;
       case 'skill_recommendation':
         if (isOrchestratorScope) {
           // Can't assign a skill to "the orchestrator" — record as a memory cue instead.
@@ -93,6 +99,38 @@ class AgentApplicator {
         applied: true,
         type: 'prompt_refinement',
         note: 'Stored as dynamic memory — will be injected in future conversations',
+      };
+    } catch (error) {
+      return { applied: false, reason: error.message };
+    }
+  }
+
+  /**
+   * Apply a memory-category insight — store as a general fact about the user
+   * or context. Same storage layer as prompt_refinement but a different
+   * memoryType so the retrieval system can rank them independently.
+   */
+  static async _applyMemory(agent, insight, userId) {
+    try {
+      const AgentMemoryModel = (await import('../../../models/AgentMemoryModel.js')).default;
+      const content = `${insight.title}: ${insight.description}`;
+
+      const existing = await AgentMemoryModel.findDuplicate(agent.id, content);
+      if (existing) {
+        await AgentMemoryModel.update(existing.id, { relevanceScore: Math.min(2.0, existing.relevance_score + 0.2) });
+      } else {
+        await AgentMemoryModel.create({
+          agentId: agent.id,
+          userId,
+          memoryType: 'fact',
+          content,
+        });
+      }
+
+      return {
+        applied: true,
+        type: 'memory_stored',
+        note: 'Stored as agent fact — surfaces via memory recall in future conversations',
       };
     } catch (error) {
       return { applied: false, reason: error.message };

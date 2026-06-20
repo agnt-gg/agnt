@@ -33,19 +33,42 @@ class MutationHistoryModel {
 
   static findOne(id) {
     return new Promise((resolve, reject) => {
-      db.get('SELECT * FROM mutation_history WHERE id = ?', [id], (err, row) => {
-        if (err) reject(err);
-        else resolve(row || null);
-      });
+      // LEFT JOIN insights so callers (canary check, revert UI) can read the
+      // source insight's title/description/category without a second round-trip.
+      db.get(
+        `SELECT m.*,
+                i.title       AS insight_title,
+                i.description AS insight_description,
+                i.category    AS insight_category,
+                i.confidence  AS insight_confidence
+           FROM mutation_history m
+      LEFT JOIN insights i ON i.id = m.insight_id
+          WHERE m.id = ?`,
+        [id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row || null);
+        }
+      );
     });
   }
 
   static findByUserId(userId, { status, targetType, limit = 200 } = {}) {
-    let q = 'SELECT * FROM mutation_history WHERE user_id = ?';
+    // Same JOIN as findOne — the Mutations viewer shows one row per mutation
+    // and needs to render the source insight's title/description inline so
+    // users can tell rows apart without drilling in.
+    let q = `SELECT m.*,
+                    i.title       AS insight_title,
+                    i.description AS insight_description,
+                    i.category    AS insight_category,
+                    i.confidence  AS insight_confidence
+               FROM mutation_history m
+          LEFT JOIN insights i ON i.id = m.insight_id
+              WHERE m.user_id = ?`;
     const params = [userId];
-    if (status) { q += ' AND status = ?'; params.push(status); }
-    if (targetType) { q += ' AND target_type = ?'; params.push(targetType); }
-    q += ' ORDER BY created_at DESC LIMIT ?';
+    if (status) { q += ' AND m.status = ?'; params.push(status); }
+    if (targetType) { q += ' AND m.target_type = ?'; params.push(targetType); }
+    q += ' ORDER BY m.created_at DESC LIMIT ?';
     params.push(limit);
     return new Promise((resolve, reject) => {
       db.all(q, params, (err, rows) => {

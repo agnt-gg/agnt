@@ -2,7 +2,7 @@
   <div class="autonomy-manager">
     <div class="manager-header">
       <h3>Autonomy &amp; Escalation Inbox</h3>
-      <p class="subtitle">Router decides per insight: direct apply, sandbox-gated, or escalate to you. PRD-091 Layer 4.</p>
+      <p class="subtitle">Router decides per insight: direct apply, sandbox-gated, or escalate to you.</p>
     </div>
 
     <!-- Policy -->
@@ -58,8 +58,9 @@
     <div class="inbox-head">
       <span class="inbox-title">Escalation Inbox</span>
       <span class="inbox-count">{{ escalated.length }}</span>
-      <button class="btn ghost" @click="sweep">
-        <i class="fas fa-sync"></i> Sweep now
+      <button class="btn ghost" :disabled="sweeping" @click="sweep">
+        <i class="fas fa-sync" :class="{ 'fa-spin': sweeping }"></i>
+        {{ sweeping ? 'Sweeping…' : 'Sweep now' }}
       </button>
     </div>
 
@@ -159,7 +160,10 @@ export default {
       draft.allowedCategories = [...list];
       commitDraft();
     };
+    const sweeping = ref(false);
     const sweep = async () => {
+      if (sweeping.value) return;
+      sweeping.value = true;
       try {
         const summary = await store.dispatch('insights/routeAllPending');
         const lines = [
@@ -176,7 +180,9 @@ export default {
           showCancel: false,
           confirmClass: 'btn-primary',
         });
-      } catch (e) { /* surfaced */ }
+      } catch (e) { /* surfaced */ } finally {
+        sweeping.value = false;
+      }
     };
     const apply = async (id) => { try { await store.dispatch('insights/applyInsight', id); } catch (e) { /* surfaced */ } };
     const route = async (id) => { try { await store.dispatch('insights/routeInsight', id); } catch (e) { /* surfaced */ } };
@@ -194,7 +200,7 @@ export default {
 
     return {
       simpleModalRef,
-      settings, autonomy, escalated, error, enabled, draft,
+      settings, autonomy, escalated, error, enabled, draft, sweeping,
       availableCategories: AVAILABLE_CATEGORIES,
       commitDraft, toggleEnabled, toggleCategory, sweep, apply, route, reject, formatDate,
     };

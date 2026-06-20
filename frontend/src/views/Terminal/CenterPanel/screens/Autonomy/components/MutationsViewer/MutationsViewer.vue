@@ -2,7 +2,7 @@
   <div class="mutations-viewer">
     <div class="manager-header">
       <h3>Mutation History</h3>
-      <p class="subtitle">Every router-applied change is recorded with a snapshot and fitness baseline for auto-revert. PRD-091 Layer 7.</p>
+      <p class="subtitle">Every router-applied change is recorded with a snapshot and fitness baseline for auto-revert.</p>
     </div>
 
     <div class="stats-row">
@@ -17,27 +17,42 @@
       </div>
     </div>
 
-    <div v-if="isLoading && !history.length" class="empty-state">Loading…</div>
+    <div v-if="staleCount > 0" class="stale-toggle">
+      <label>
+        <input type="checkbox" v-model="showStale" />
+        Show {{ staleCount }} legacy failure{{ staleCount === 1 ? '' : 's' }} (stale audit records, "No target agent specified")
+      </label>
+    </div>
 
-    <div v-else-if="!history.length" class="empty-state">
+    <div v-if="isLoading && !visibleHistory.length" class="empty-state">Loading…</div>
+
+    <div v-else-if="!visibleHistory.length" class="empty-state">
       <i class="fas fa-code-branch"></i>
       <div>No mutations yet.</div>
       <div class="hint">Enable the autonomy router in the Autonomy section to start auto-applying insights.</div>
     </div>
 
     <div v-else class="mutation-list">
-      <div v-for="m in history" :key="m.id" class="mutation-row" :class="m.status">
+      <div v-for="m in visibleHistory" :key="m.id" class="mutation-row" :class="m.status">
         <div class="row-main">
           <div class="row-title">
             <span class="via-chip" :class="m.applied_via">{{ m.applied_via }}</span>
             <span class="target">{{ m.target_type }}{{ m.target_id ? ':' + (m.target_id || '').slice(0, 12) : '' }}</span>
+            <span v-if="m.insight_category" class="cat">{{ m.insight_category }}</span>
             <span :class="['status', m.status]">{{ formatStatus(m.status) }}</span>
             <span v-if="m.delta != null" :class="['delta', m.delta > 0 ? 'pos' : 'neg']">
               {{ m.delta > 0 ? '+' : '' }}{{ m.delta.toFixed(3) }} Δ
             </span>
           </div>
+          <div v-if="m.insight_title" class="insight-title">{{ m.insight_title }}</div>
+          <div v-if="m.insight_description" class="insight-desc">{{ m.insight_description }}</div>
           <div class="row-meta">
-            <span>fitness: {{ formatFitness(m.fitness_before) }} → {{ formatFitness(m.fitness_after) }}</span>
+            <span :class="{ muted: !hasFitnessSignal(m) }">
+              {{ hasFitnessSignal(m)
+                  ? `fitness: ${formatFitness(m.fitness_before)} → ${formatFitness(m.fitness_after)}`
+                  : 'no fitness signal (agent target — coverage gap)' }}
+            </span>
+            <span v-if="m.insight_confidence != null">confidence: {{ Math.round(m.insight_confidence * 100) }}%</span>
             <span v-if="m.snapshot_kind">snap: {{ m.snapshot_kind }}</span>
             <span>{{ formatDate(m.created_at) }}</span>
             <span v-if="m.reverted_at" class="reverted-info">reverted: {{ formatDate(m.reverted_at) }} — {{ m.revert_reason }}</span>
@@ -78,12 +93,30 @@ export default {
     const isLoading = computed(() => store.getters['mutations/isLoading']);
     const error = computed(() => store.getters['mutations/error']);
 
+    // Legacy failures from before the orchestrator-scope fallback was added.
+    // These rows can never succeed and only confuse the view; hide by default
+    // but expose a toggle so the audit trail is still reachable.
+    const STALE_PATTERNS = [/No target agent specified/i];
+    const isStaleFailure = (m) =>
+      m.status === 'apply_failed' &&
+      typeof m.notes === 'string' &&
+      STALE_PATTERNS.some((re) => re.test(m.notes));
+    const showStale = ref(false);
+    const staleCount = computed(() => (history.value || []).filter(isStaleFailure).length);
+    const visibleHistory = computed(() =>
+      showStale.value ? history.value : (history.value || []).filter((m) => !isStaleFailure(m))
+    );
+
     const formatStatus = (s) => (s || '').replace(/_/g, ' ');
     const formatFitness = (v) => v == null ? '—' : Number(v).toFixed(3);
     const formatDate = (s) => {
       if (!s) return '—';
       try { return new Date(s).toLocaleString(); } catch { return s; }
     };
+    // Fitness is only measured for target_types FitnessScoreService supports
+    // (tool, workflow). Agents and memory have no scorer yet (forAgent
+    // coverage gap). Surface that explicitly so users don't read "—" as "broken".
+    const hasFitnessSignal = (m) => m.fitness_before != null || m.fitness_after != null;
 
     const canary = async (id) => {
       try {
@@ -116,7 +149,11 @@ export default {
 
     onMounted(() => store.dispatch('mutations/fetchHistory'));
 
-    return { simpleModalRef, history, appliedCount, revertedCount, failedCount, isLoading, error, formatStatus, formatFitness, formatDate, canary, revert };
+    return {
+      simpleModalRef, history, visibleHistory, showStale, staleCount,
+      appliedCount, revertedCount, failedCount, isLoading, error,
+      formatStatus, formatFitness, formatDate, hasFitnessSignal, canary, revert,
+    };
   },
 };
 </script>
@@ -161,10 +198,25 @@ export default {
 .status.applied { background: rgba(var(--green-rgb), 0.1); color: var(--color-green); }
 .status.reverted { background: rgba(var(--yellow-rgb), 0.1); color: var(--color-yellow); }
 .status.apply_failed { background: rgba(var(--red-rgb), 0.1); color: var(--color-red); }
+.status.apply_skipped { background: rgba(var(--yellow-rgb), 0.1); color: var(--color-yellow); }
+.stale-toggle {
+  padding: 6px 12px; font-size: 0.8em; color: var(--color-text-muted);
+  border: 1px dashed var(--terminal-border-color); border-radius: 6px;
+  background: rgba(var(--yellow-rgb), 0.04);
+}
+.stale-toggle label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.stale-toggle input { cursor: pointer; }
 .delta { margin-left: auto; font-family: var(--font-family-mono); font-size: 0.85em; }
 .delta.pos { color: var(--color-green); }
 .delta.neg { color: var(--color-red); }
+.cat {
+  font-family: var(--font-family-mono); font-size: 0.7em; padding: 2px 6px; border-radius: 3px;
+  background: rgba(var(--primary-rgb), 0.08); color: var(--color-primary); text-transform: lowercase;
+}
+.insight-title { font-size: 0.95em; color: var(--color-light-green); font-weight: 500; }
+.insight-desc { font-size: 0.85em; color: var(--color-text); opacity: 0.85; line-height: 1.4; }
 .row-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.8em; color: var(--color-text-muted); }
+.row-meta .muted { opacity: 0.55; font-style: italic; }
 .reverted-info { color: var(--color-yellow); }
 .row-notes { font-size: 0.85em; color: var(--color-text-muted); font-style: italic; }
 .row-actions { display: flex; gap: 6px; align-items: flex-start; }
