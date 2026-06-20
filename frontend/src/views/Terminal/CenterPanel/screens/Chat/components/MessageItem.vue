@@ -334,20 +334,27 @@ import {
 // Uses morphdom to diff/patch DOM instead of innerHTML replacement (v-html).
 // Preserves stateful elements (Chart.js canvases, iframes, MathJax) during streaming.
 const PRESERVE_SELECTORS = [
-  '.chartjs-container[data-source-code]',
-  '.d3-container[data-source-code]',
-  '.threejs-container[data-source-code]',
   '.html-inline-preview-wrapper',
   '[data-buttons-added]',
   '[data-image-buttons-added]',
-  '[data-viz-buttons]',
   '.math-container[data-math-rendered]',
 ].join(',');
+
+// A viz container is "rendered" once its output element exists. Preserving on data-source-code
+// alone strands stubs that lost their canvas (morphdom + duplicate-id race during streaming).
+function isRenderedVizContainer(el) {
+  if (!el || !el.classList) return false;
+  if (el.classList.contains('chartjs-container')) return !!el.querySelector('canvas');
+  if (el.classList.contains('d3-container')) return !!el.querySelector('.d3-chart');
+  if (el.classList.contains('threejs-container')) return !!el.querySelector('canvas.threejs-canvas');
+  return false;
+}
 
 function shouldPreserve(el) {
   if (!el || el.nodeType !== 1) return false;
   if (el.tagName === 'CANVAS') return true;
   if (el.tagName === 'IFRAME') return true;
+  if (isRenderedVizContainer(el)) return true;
   try {
     return el.matches(PRESERVE_SELECTORS);
   } catch {
@@ -384,7 +391,12 @@ const vMorphHtml = {
         if (node.nodeType === 1 && shouldPreserve(node)) return false;
         if (node.nodeType === 1) {
           try {
-            if (node.matches('.viz-action-buttons, .assistant-image-wrapper, .html-code-actions')) return false;
+            if (node.matches('.viz-action-buttons')) {
+              // Keep action buttons only when their container is still a rendered viz; otherwise
+              // the parent is a stub being replaced and the buttons go with it.
+              return !isRenderedVizContainer(node.parentElement);
+            }
+            if (node.matches('.assistant-image-wrapper, .html-code-actions')) return false;
           } catch {}
         }
         return true;
@@ -695,9 +707,6 @@ export default {
     const previewIframeSrc = ref('');
     const previewIframe = ref(null);
     const chartInstances = ref([]);
-    const renderedChartIds = new Set();
-    const renderedD3Ids = new Set();
-    const renderedThreeIds = new Set();
     const threeInstances = ref([]);
 
     // Visualization fullscreen modal state
@@ -1946,14 +1955,15 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         const Chart = await loadChartJs();
 
         containers.forEach((container) => {
-          const chartId = container.getAttribute('data-chart-id');
-          if (!chartId || renderedChartIds.has(chartId)) return;
-          renderedChartIds.add(chartId);
+          // Element-based dedupe: the config element only exists until render consumes it,
+          // so its presence means "still needs rendering" — survives morphdom shuffles where
+          // duplicate-id stubs would otherwise poison a Set-based dedupe.
+          const configEl = container.querySelector('.chartjs-config');
+          if (!configEl) return;
+          const canvas = container.querySelector('canvas');
+          if (!canvas) return;
 
           try {
-            // Read config from the hidden code element and decode HTML entities
-            const configEl = container.querySelector('.chartjs-config');
-            if (!configEl) return;
             const textarea = document.createElement('textarea');
             textarea.innerHTML = configEl.textContent || '';
             const rawConfig = textarea.value;
@@ -2011,9 +2021,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               });
             }
 
-            const canvas = container.querySelector('canvas');
-            if (!canvas) return;
-
             const ctx = canvas.getContext('2d');
             const instance = new Chart(ctx, config);
             chartInstances.value.push(instance);
@@ -2037,14 +2044,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         const d3 = await loadD3();
 
         containers.forEach((container) => {
-          const d3Id = container.getAttribute('data-d3-id');
-          if (!d3Id || renderedD3Ids.has(d3Id)) return;
-          renderedD3Ids.add(d3Id);
+          const codeEl = container.querySelector('.d3-code');
+          if (!codeEl) return;
 
           (async () => {
             try {
-              const codeEl = container.querySelector('.d3-code');
-              if (!codeEl) return;
 
               // Decode HTML entities
               const textarea = document.createElement('textarea');
@@ -2089,15 +2093,12 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         const { THREE, THREE_ADDONS, OrbitControls } = await loadThreeJs();
 
         containers.forEach((container) => {
-          const threeId = container.getAttribute('data-three-id');
-          if (!threeId || renderedThreeIds.has(threeId)) return;
-          renderedThreeIds.add(threeId);
+          const codeEl = container.querySelector('.threejs-code');
+          if (!codeEl) return;
 
           // Use an async IIFE so LLM-generated code can use await
           (async () => {
             try {
-              const codeEl = container.querySelector('.threejs-code');
-              if (!codeEl) return;
 
               const textarea = document.createElement('textarea');
               textarea.innerHTML = codeEl.textContent || '';
@@ -2252,9 +2253,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         }
       });
       threeInstances.value = [];
-      renderedChartIds.clear();
-      renderedD3Ids.clear();
-      renderedThreeIds.clear();
     };
 
     const highlightCode = () => {
@@ -4518,6 +4516,10 @@ span.nodeLabel p {
 .message-text :deep(.chartjs-container) {
   width: 100%;
   max-width: 100%;
+  /* Chart.js measures the parent at init; without a definite height the canvas
+     can size to ~150px and get clipped by overflow:hidden when multiple charts
+     render in sequence before layout settles. */
+  min-height: 320px;
   padding: 16px;
   margin: 12px 0;
   background-color: var(--color-darker-1);
