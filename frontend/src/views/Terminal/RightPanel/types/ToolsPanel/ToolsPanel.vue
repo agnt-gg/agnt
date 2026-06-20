@@ -21,6 +21,41 @@
         </button>
       </div>
 
+      <div class="tool-schema" v-if="inputParams.length">
+        <h3><i class="fas fa-sign-in-alt schema-heading-icon"></i> Input Parameters</h3>
+        <div class="schema-list">
+          <div v-for="param in inputParams" :key="param.name" class="schema-item">
+            <div class="schema-item-header">
+              <span class="schema-name">{{ param.name }}</span>
+              <span v-if="param.type" class="schema-type">{{ param.type }}</span>
+              <span v-if="param.required" class="schema-required">required</span>
+            </div>
+            <div v-if="param.description" class="schema-description">{{ param.description }}</div>
+            <div v-if="param.options && param.options.length" class="schema-meta">
+              <span class="schema-meta-label">options:</span>
+              <span class="schema-meta-value">{{ param.options.join(', ') }}</span>
+            </div>
+            <div v-if="param.default !== undefined && param.default !== null && param.default !== ''" class="schema-meta">
+              <span class="schema-meta-label">default:</span>
+              <span class="schema-meta-value">{{ formatConfigValue(param.default) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tool-schema" v-if="outputs.length">
+        <h3><i class="fas fa-sign-out-alt schema-heading-icon"></i> Outputs</h3>
+        <div class="schema-list">
+          <div v-for="output in outputs" :key="output.name" class="schema-item">
+            <div class="schema-item-header">
+              <span class="schema-name">{{ output.name }}</span>
+              <span v-if="output.type" class="schema-type">{{ output.type }}</span>
+            </div>
+            <div v-if="output.description" class="schema-description">{{ output.description }}</div>
+          </div>
+        </div>
+      </div>
+
       <div class="tool-config" v-if="selectedTool.config">
         <h3>Configuration</h3>
         <div class="config-list">
@@ -107,6 +142,26 @@ export default {
     const isCustomTool = computed(() => {
       return props.selectedTool && props.selectedTool.source === 'custom';
     });
+
+    // Normalize parameters/outputs into a render-friendly array.
+    // Tools store both as either keyed objects ({ name: { type, description, ... } })
+    // or already-flattened arrays — handle both shapes.
+    const toSchemaArray = (source) => {
+      if (!source) return [];
+      if (Array.isArray(source)) {
+        return source.map((entry) => ({ name: entry.name || entry.key, ...entry }));
+      }
+      if (typeof source === 'object') {
+        return Object.entries(source).map(([name, value]) => ({
+          name,
+          ...(value && typeof value === 'object' ? value : { value }),
+        }));
+      }
+      return [];
+    };
+
+    const inputParams = computed(() => toSchemaArray(props.selectedTool?.parameters));
+    const outputs = computed(() => toSchemaArray(props.selectedTool?.outputs));
 
     // Publishing
     const showPublishModal = ref(false);
@@ -301,6 +356,8 @@ export default {
     return {
       formatConfigValue,
       isCustomTool,
+      inputParams,
+      outputs,
       isProviderConnected,
       handleProviderToggle,
       // Publishing
@@ -368,6 +425,99 @@ export default {
   margin-top: 15px;
   border-top: 1px dashed var(--terminal-border-color-light);
   padding-top: 15px;
+}
+
+.tool-schema {
+  margin-top: 15px;
+  border-top: 1px dashed var(--terminal-border-color-light);
+  padding-top: 15px;
+}
+
+.schema-heading-icon {
+  margin-right: 6px;
+  color: var(--color-primary);
+  font-size: 0.9em;
+}
+
+.schema-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schema-item {
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color-light);
+  padding: 10px 12px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schema-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.schema-name {
+  color: var(--color-primary);
+  font-size: 0.9em;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
+.schema-type {
+  font-size: 0.75em;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(var(--primary-rgb), 0.1);
+  color: var(--color-primary);
+  text-transform: lowercase;
+  letter-spacing: 0.5px;
+}
+
+.schema-required {
+  font-size: 0.7em;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 99, 71, 0.15);
+  color: tomato;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.schema-description {
+  color: var(--color-text);
+  font-size: 0.85em;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+.schema-meta {
+  display: flex;
+  gap: 6px;
+  font-size: 0.8em;
+  color: var(--color-text);
+  opacity: 0.75;
+  flex-wrap: wrap;
+}
+
+.schema-meta-label {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  font-size: 0.85em;
+  letter-spacing: 0.3px;
+}
+
+.schema-meta-value {
+  font-family: 'Courier New', monospace;
+  word-break: break-word;
 }
 
 h3 {
