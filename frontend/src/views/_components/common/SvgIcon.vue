@@ -43,6 +43,16 @@ for (const [path, raw] of Object.entries(svgModules)) {
   }
 }
 
+// When a caller passes an icon name we don't ship a file for (e.g. a plugin
+// manifest naming an icon that exists in their head-canon but not on disk),
+// fall back to puzzle-piece instead of silently rendering an empty <span>.
+// Callsite `name="foo" || 'fallback'` shortcuts only catch *null* names —
+// they can't catch "string is set but unknown to the cache".
+const FALLBACK_ICON = 'puzzle-piece';
+function resolveIcon(name) {
+  return svgCache.get(name) || svgCache.get(FALLBACK_ICON) || '';
+}
+
 export default {
   name: 'SvgIcon',
   props: {
@@ -53,12 +63,12 @@ export default {
   },
   data() {
     return {
-      svgContent: svgCache.get(this.name) || '',
+      svgContent: resolveIcon(this.name),
     };
   },
   watch: {
     name(newName) {
-      this.svgContent = svgCache.get(newName) || '';
+      this.svgContent = resolveIcon(newName);
     },
   },
 };
