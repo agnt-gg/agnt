@@ -1132,6 +1132,64 @@
           }
         }
       ]
+    },
+    {
+      "name": "cua-toolkit",
+      "displayName": "Cua Computer-Use Toolkit",
+      "icon": "terminal",
+      "version": "0.3.4",
+      "description": "Autonomous desktop computer-use for AGNT, powered by the Cua Driver (trycua/cua). Lets agents see windows, read accessibility trees + screenshots, click elements by index, type text, and run a full autonomous goal loop — all in the background without stealing your cursor or focus. Self-contained: cua-setup action=ensure installs the driver + starts the daemon in one call.",
+      "author": "Annie (AGNT)",
+      "homepage": "https://github.com/trycua/cua",
+      "downloadUrl": "file://marketplace-default/cua-toolkit.agnt",
+      "size": 11735,
+      "tags": [
+        "cua",
+        "computer-use",
+        "desktop",
+        "automation",
+        "accessibility",
+        "screenshot",
+        "autonomous"
+      ],
+      "category": "utility",
+      "tools": [
+        {
+          "type": "cua-setup",
+          "schema": {
+            "title": "Cua Setup & Doctor",
+            "description": "Install, verify, and manage the Cua Driver. ensure=ONE-CALL bootstrap (install if missing + start daemon + doctor). Other actions: status, doctor, install, serve, stop, version."
+          }
+        },
+        {
+          "type": "cua-windows",
+          "schema": {
+            "title": "Cua List Windows",
+            "description": "Read-only. Enumerate open desktop windows the driver can see, returning each window's pid, windowId, title, and app."
+          }
+        },
+        {
+          "type": "cua-observe",
+          "schema": {
+            "title": "Cua Observe Window",
+            "description": "Read-only. Capture a window's accessibility tree (every interactive element with its index) plus an inline screenshot. Feeds the autonomous loop."
+          }
+        },
+        {
+          "type": "cua-input",
+          "schema": {
+            "title": "Cua Input (Click / Type / Hotkey)",
+            "description": "Low-level primitive input on a real window: click by element index, type text, press hotkeys, launch apps. Background dispatch — does not steal cursor/focus. Requires confirm=true."
+          }
+        },
+        {
+          "type": "cua-act",
+          "schema": {
+            "title": "Cua Autonomous Act",
+            "description": "High-level autonomous loop. Give a natural-language goal and a target window; tool observes and returns a structured plan for the agent to drive the observe/reason/act/verify loop. dryRun by default; requires confirm=true to execute."
+          }
+        }
+      ]
     }
   ]
 }

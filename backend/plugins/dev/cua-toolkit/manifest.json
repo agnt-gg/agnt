@@ -4,7 +4,7 @@
   "version": "0.3.4",
   "description": "Autonomous desktop computer-use for AGNT, powered by the Cua Driver (trycua/cua). Lets agents see windows, read accessibility trees + screenshots, click elements by index, type text, and run a full autonomous goal loop - all in the background without stealing your cursor or focus. Self-contained: cua-setup action=ensure installs the driver + starts the daemon in one call, and every tool auto-starts the daemon on demand.",
   "author": "Annie (AGNT)",
-  "icon": "monitor",
+  "icon": "terminal",
   "homepage": "https://github.com/trycua/cua",
   "tools": [
     {
@@ -54,7 +54,7 @@
         "title": "Cua List Windows",
         "category": "utility",
         "type": "cua-windows",
-        "icon": "layout",
+        "icon": "grid",
         "description": "Read-only. Enumerate all open desktop windows the driver can see, returning each window's pid, windowId, title, and app. Safe - no clicking. Auto-starts the daemon if it is down. Use a window's pid/windowId with cua-observe or cua-act.",
         "parameters": {
           "filter": {
@@ -73,7 +73,7 @@
         "title": "Cua Observe Window",
         "category": "utility",
         "type": "cua-observe",
-        "icon": "eye",
+        "icon": "image",
         "description": "Read-only. Capture a window's state: accessibility tree (every interactive element with its index) plus an optional screenshot rendered inline. This is the 'see the screen' call that feeds the autonomous loop. No clicks performed. Auto-starts the daemon if down.",
         "parameters": {
           "pid": {
@@ -121,7 +121,7 @@
         "title": "Cua Input (Click / Type / Hotkey)",
         "category": "action",
         "type": "cua-input",
-        "icon": "mouse-pointer",
+        "icon": "connect",
         "description": "Low-level primitive input on a real window. action=click clicks an element by its index (from cua-observe); type types text; hotkey presses a key combo; launch_app opens an app. Background dispatch - does NOT steal cursor/focus. Requires confirm=true.",
         "parameters": {
           "action": {
@@ -182,7 +182,7 @@
         "title": "Cua Autonomous Act",
         "category": "action",
         "type": "cua-act",
-        "icon": "cpu",
+        "icon": "loop",
         "description": "High-level autonomous loop. Give a natural-language goal and a target window; the tool observes (tree+screenshot) and returns the current state plus a structured plan for the calling agent to drive the observe/reason/act/verify loop. maxSteps caps actions. dryRun returns the plan without executing. Requires confirm=true to execute real input.",
         "parameters": {
           "goal": {
