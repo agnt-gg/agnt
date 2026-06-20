@@ -1,7 +1,7 @@
 {
   "name": "cua-toolkit",
   "displayName": "Cua Computer-Use Toolkit",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Autonomous desktop computer-use for AGNT, powered by the Cua Driver (trycua/cua). Lets agents see windows, read accessibility trees + screenshots, click elements by index, type text, and run a full autonomous goal loop - all in the background without stealing your cursor or focus. Self-contained: cua-setup action=ensure installs the driver + starts the daemon in one call, and every tool auto-starts the daemon on demand.",
   "author": "Annie (AGNT)",
   "icon": "terminal",
@@ -44,6 +44,68 @@
             "default": "false",
             "description": "Required true for ensure/install/serve/stop (may install software / change state)."
           }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "True when the requested action completed (and, for ensure, the session is interactive)."
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "Whether the cua-driver binary is currently installed and resolvable."
+          },
+          "version": {
+            "type": "string",
+            "description": "Installed cua-driver version (null when not installed)."
+          },
+          "binaryPath": {
+            "type": "string",
+            "description": "Resolved path to the cua-driver binary (status action)."
+          },
+          "daemon": {
+            "type": "object",
+            "description": "Daemon state for status action: { running: boolean }."
+          },
+          "daemonRunning": {
+            "type": "boolean",
+            "description": "Whether the cua-driver daemon is running (ensure action)."
+          },
+          "daemonStarted": {
+            "type": "boolean",
+            "description": "Whether the serve action successfully started the daemon."
+          },
+          "stopped": {
+            "type": "boolean",
+            "description": "Whether the stop action successfully stopped the daemon."
+          },
+          "session0Warning": {
+            "type": "boolean",
+            "description": "True when the driver is in Windows Session 0 (no interactive desktop) — window tools will return empty."
+          },
+          "session0Hint": {
+            "type": "string",
+            "description": "Remediation guidance when session0Warning is true."
+          },
+          "report": {
+            "type": "string",
+            "description": "Full driver doctor/health report (doctor and ensure actions)."
+          },
+          "installerOutput": {
+            "type": "string",
+            "description": "Tail of the installer output (install action)."
+          },
+          "steps": {
+            "type": "array",
+            "description": "Ordered bootstrap steps the tool executed (ensure action)."
+          },
+          "hint": {
+            "type": "string",
+            "description": "Next-step guidance for the caller."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success=false (null on success)."
+          }
         }
       }
     },
@@ -62,6 +124,32 @@
             "inputType": "text",
             "required": false,
             "description": "Optional case-insensitive substring to filter windows by title or app name (e.g. 'chrome', 'notepad')."
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "True when list_windows ran successfully."
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of windows returned (after the optional filter)."
+          },
+          "windows": {
+            "type": "array",
+            "description": "Array of window descriptors: { pid, windowId, title, app, raw }. Use pid+windowId with cua-observe / cua-input / cua-act."
+          },
+          "warning": {
+            "type": "string",
+            "description": "Set when the result is empty — usually indicates Windows Session 0 (non-interactive driver)."
+          },
+          "hint": {
+            "type": "string",
+            "description": "Suggested next step (e.g. call cua-observe with a chosen pid/windowId)."
+          },
+          "bootstrap": {
+            "type": "array",
+            "description": "Ordered self-heal steps the tool ran to bring the daemon up (empty when nothing was needed)."
           }
         }
       }
@@ -110,6 +198,56 @@
             ],
             "default": "true",
             "description": "If true and a screenshot was captured, render it inline in chat."
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "True when the window state was captured."
+          },
+          "pid": {
+            "type": "number",
+            "description": "The pid that was observed."
+          },
+          "windowId": {
+            "type": "number",
+            "description": "The window id that was observed."
+          },
+          "captureMode": {
+            "type": "string",
+            "description": "Capture mode actually used: som | ax | vision."
+          },
+          "elementCount": {
+            "type": "number",
+            "description": "Number of interactive elements detected in the accessibility tree."
+          },
+          "elements": {
+            "type": "array",
+            "description": "Structured element list: each entry is { index, role, name, value }. Pass `index` to cua-input action=click."
+          },
+          "treeMarkdown": {
+            "type": "string",
+            "description": "Human-readable accessibility tree, with [element_index N] markers — good for LLM reasoning."
+          },
+          "hasScreenshot": {
+            "type": "boolean",
+            "description": "Whether a screenshot was captured (false for ax-only mode)."
+          },
+          "imageHtml": {
+            "type": "string",
+            "description": "Inline <img> tag with the screenshot embedded as a data URL (null when no screenshot)."
+          },
+          "hint": {
+            "type": "string",
+            "description": "Suggested next step (e.g. how to act on an element)."
+          },
+          "bootstrap": {
+            "type": "array",
+            "description": "Ordered self-heal steps the tool ran to bring the daemon up (empty when nothing was needed)."
+          },
+          "rawKeys": {
+            "type": "array",
+            "description": "Keys present in the underlying driver response (debugging aid)."
           }
         }
       }
@@ -172,6 +310,48 @@
             "default": "false",
             "description": "Safety gate. Must be true to actually dispatch input to your desktop."
           }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "True when the input action was dispatched without driver error."
+          },
+          "dispatched": {
+            "type": "boolean",
+            "description": "Whether real input was actually sent (false when blocked by confirm=false or validation)."
+          },
+          "action": {
+            "type": "string",
+            "description": "Echoed input action: click | type | hotkey | launch_app."
+          },
+          "target": {
+            "type": "object",
+            "description": "{ pid, windowId } targeted (null for launch_app)."
+          },
+          "elementIndex": {
+            "type": "number",
+            "description": "Element index that was clicked (action=click only)."
+          },
+          "text": {
+            "type": "string",
+            "description": "Echoed text payload — typed text, hotkey combo, or launched app name (action-dependent)."
+          },
+          "result": {
+            "type": "object",
+            "description": "Parsed driver response for the dispatched input."
+          },
+          "raw": {
+            "type": "string",
+            "description": "Raw driver stdout/stderr (debugging aid)."
+          },
+          "hint": {
+            "type": "string",
+            "description": "Suggested follow-up (typically re-observe to verify the effect)."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success=false (null on success)."
+          }
         }
       }
     },
@@ -233,6 +413,64 @@
             ],
             "default": "false",
             "description": "Safety gate. Must be true (and dryRun=false) to actually drive the desktop."
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "True when the window state was observed and a plan was produced."
+          },
+          "goal": {
+            "type": "string",
+            "description": "Echoed natural-language objective."
+          },
+          "pid": {
+            "type": "number",
+            "description": "The pid that was observed/targeted."
+          },
+          "windowId": {
+            "type": "number",
+            "description": "The window id that was observed/targeted."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Whether this call was a dry run (planning only, no input dispatched)."
+          },
+          "canExecute": {
+            "type": "boolean",
+            "description": "True when dryRun=false AND confirm=true — cua-input may now drive the desktop."
+          },
+          "elementCount": {
+            "type": "number",
+            "description": "Number of interactive elements detected in the accessibility tree."
+          },
+          "elements": {
+            "type": "array",
+            "description": "Structured element list: { index, role, name, value }."
+          },
+          "treeMarkdown": {
+            "type": "string",
+            "description": "Human-readable accessibility tree with [element_index N] markers."
+          },
+          "hasScreenshot": {
+            "type": "boolean",
+            "description": "Whether a screenshot was captured for this observation."
+          },
+          "imageHtml": {
+            "type": "string",
+            "description": "Inline <img> tag with the screenshot embedded as a data URL."
+          },
+          "plan": {
+            "type": "object",
+            "description": "Structured plan envelope: { goal, target, maxSteps, mode, elementsAvailable, instructionsForAgent }. Drives the observe/reason/act/verify loop."
+          },
+          "note": {
+            "type": "string",
+            "description": "Human-readable status note describing the current mode (dry-run / live / blocked)."
+          },
+          "bootstrap": {
+            "type": "array",
+            "description": "Ordered self-heal steps the tool ran to bring the daemon up (empty when nothing was needed)."
           }
         }
       }
