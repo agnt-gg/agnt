@@ -94,14 +94,74 @@ class SchedulerService {
         }
       }
 
-      // PRD-091 Layer 7: canary sweep — every 5th tick (~5 minutes), check
-      // recently-applied mutations for regressions and auto-revert.
+      // Canary sweep — every 5th tick (~5 minutes), check recently-applied
+      // mutations for regressions and auto-revert.
       this._canaryTickCounter = (this._canaryTickCounter || 0) + 1;
       if (this._canaryTickCounter % 5 === 0) {
         await this._runCanarySweep().catch((err) => console.error('[Scheduler] canary sweep error:', err.message));
       }
+
+      // Contract miner — every 60th tick (~1 hour), scan recently-active users
+      // and mine refinement-type contract proposals from their tool runs.
+      // Each proposal lands as a `contract_proposal` insight; the autonomy
+      // router governs whether it actually installs. Cheap when nothing has
+      // changed (dedup in _storeInsightWithDedup); only does real work when
+      // tools have accumulated new samples since the last sweep.
+      this._minerTickCounter = (this._minerTickCounter || 0) + 1;
+      if (this._minerTickCounter % 60 === 0) {
+        await this._runContractMiningSweep().catch((err) => console.error('[Scheduler] contract miner error:', err.message));
+      }
     } finally {
       this._ticking = false;
+    }
+  }
+
+  /**
+   * Periodic contract miner. Finds users with recent tool activity and asks
+   * InsightTriggers to roll up their tool usage into contract proposals.
+   *
+   * Cadence: every ~1 hour on the scheduler tick. Cheap when nothing changed
+   * (insights deduped by sourceType+sourceId+targetId+content hash inside
+   * the engine).
+   */
+  static async _runContractMiningSweep() {
+    try {
+      const db = (await import('../../models/database/index.js')).default;
+      const InsightTriggers = (await import('../evolution/InsightTriggers.js')).default;
+
+      // Active users in the last 24h (have at least one agent execution).
+      // Cap at 50 — tail users with sparse activity wait until next sweep.
+      const userRows = await new Promise((resolve) => {
+        db.all(
+          `SELECT user_id, COUNT(*) AS recent_runs
+             FROM agent_executions
+            WHERE start_time > datetime('now', '-1 day')
+              AND user_id IS NOT NULL
+            GROUP BY user_id
+           HAVING recent_runs >= 5
+            LIMIT 50`,
+          [],
+          (err, rows) => resolve(err ? [] : (rows || []))
+        );
+      });
+
+      if (userRows.length === 0) return;
+      console.log(`[Scheduler] Contract miner sweep: ${userRows.length} active user(s)`);
+
+      let totalInsights = 0;
+      for (const { user_id: userId } of userRows) {
+        const ids = await InsightTriggers.onPeriodicRollup(userId).catch((err) => {
+          console.warn(`[Scheduler] miner: rollup for ${userId} failed:`, err.message);
+          return [];
+        });
+        totalInsights += Array.isArray(ids) ? ids.length : 0;
+      }
+
+      if (totalInsights > 0) {
+        console.log(`[Scheduler] Contract miner sweep complete: ${totalInsights} new insight(s) extracted across ${userRows.length} user(s)`);
+      }
+    } catch (err) {
+      console.error('[Scheduler] Contract mining sweep failed:', err.message);
     }
   }
 
