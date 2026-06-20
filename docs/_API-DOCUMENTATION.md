@@ -7,9 +7,11 @@ This document provides comprehensive documentation for all API endpoints in the 
 ## Table of Contents (Local)
 
 - [Authentication](#authentication)
+- [Closed Loop System (PRD-091)](#closed-loop-system-prd-091)
 - [Agent Routes](#agent-routes)
 - [Async Tool Routes](#async-tool-routes)
 - [Provider Auth Routes](#provider-auth-routes)
+- [Contract Routes](#contract-routes)
 - [Content Output Routes](#content-output-routes)
 - [Custom Provider Routes](#custom-provider-routes)
 - [Custom Tool Routes](#custom-tool-routes)
@@ -24,9 +26,11 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [MCP Routes](#mcp-routes)
 - [Memory Routes](#memory-routes)
 - [Model Routes](#model-routes)
+- [Mutation History Routes](#mutation-history-routes)
 - [NPM Routes](#npm-routes)
 - [Orchestrator Routes](#orchestrator-routes)
 - [Plugin Routes](#plugin-routes)
+- [Schedule Routes](#schedule-routes)
 - [Skill Routes](#skill-routes)
 - [Skill Discovery Routes](#skill-discovery-routes)
 - [SkillForge Routes](#skillforge-routes)
@@ -35,6 +39,7 @@ This document provides comprehensive documentation for all API endpoints in the 
 - [Tool Schema Routes](#tool-schema-routes)
 - [Tools Routes](#tools-routes)
 - [User Routes](#user-routes)
+- [Wallet Routes](#wallet-routes)
 - [Webhook Routes](#webhook-routes)
 - [Widget Definition Routes](#widget-definition-routes)
 - [Workflow Routes](#workflow-routes)
@@ -138,6 +143,88 @@ console.log(JSON.stringify(data, null, 2));
 ```
 
 > **Important:** Each context has its own way to get the token — don't mix them. `localStorage` only exists in the browser. `req.session` only exists in Express handlers. `process.env.AGNT_AUTH_TOKEN` only exists in orchestrator-spawned processes.
+
+---
+
+## Closed Loop System (PRD-091)
+
+AGNT runs a self-improvement loop across four primitives that together let goals fire on a cadence, mutations prove themselves before promoting, safe insights auto-apply, contracts enforce runtime invariants, and regressions auto-revert. **This section is required reading for any agent that touches scheduling, auto-apply, budgets, or revert.**
+
+### The four primitives
+
+| Primitive | Base path | What it stores | Layer |
+|---|---|---|---|
+| **Schedules** | `/api/schedules` | Durable cron entries (target + cron + next_run). Survives backend restart. | 1 (Clock) |
+| **Wallets** | `/api/wallets` | Linear capability budgets (root + sub-wallets). Sub-wallets can never exceed parent balance. | 3 (Budgets) |
+| **Contracts** | `/api/contracts` | Runtime invariants mined from successful executions ("output must be JSON", "step count ≤ 5"). | 5 (Invariants) |
+| **Mutation History** | `/api/mutations` | Every router-applied change, with before-snapshot + fitness baseline. | 7 (Provenance) |
+
+Plus the **Autonomy Router** at `POST /api/insights/route` which decides per pending insight whether to **direct-apply**, **gate via sandbox**, **escalate to the user**, or **skip**. Driven by `EvolutionSettingsModel.autonomy` (off by default).
+
+### When to use which endpoint (intent → call)
+
+| User says... | Call |
+|---|---|
+| "Run this goal every morning at 9 ET" | `POST /api/schedules` with `targetType:'goal'`, `cron:'0 9 * * *'`, `timezone:'America/New_York'` |
+| "When will my schedule fire next?" | `POST /api/schedules/preview` (no persist) — or `GET /api/schedules/:id` and read `next_run` |
+| "Show me what AGNT auto-changed lately" | `GET /api/mutations` |
+| "Did that auto-change regress quality?" | `POST /api/mutations/:id/canary-check` |
+| "Undo that auto-applied change" | `POST /api/mutations/:id/revert` |
+| "Turn on autonomy" | `POST /api/insights/settings` with `{ autonomy: { enabled: true } }` |
+| "Apply all my safe pending insights" | `POST /api/insights/route` (sweeps every pending insight through the router) |
+| "Route just this one insight" | `POST /api/insights/:id/route` |
+| "What's my budget?" | `GET /api/wallets/root` |
+| "Add credit to my budget" | `POST /api/wallets/root/topup` |
+| "Spin up a sub-budget for this agent" | (server-side) `WalletService.allocate(...)` — no public route yet |
+| "Show this agent's spend ledger" | `GET /api/wallets/:id/ledger` |
+| "Does this output satisfy our quality contracts?" | `POST /api/contracts/check` |
+| "Show me what rules have been mined" | `GET /api/contracts` |
+
+### Safety contract (the agent MUST respect this)
+
+1. **Never** flip `autonomy.enabled` on the user's behalf without explicit, in-conversation confirmation. It is off by default for a reason.
+2. **Never** call `POST /api/insights/:id/apply` on insights with `priority: 'critical'` or `category: 'parameter_tune' | 'bottleneck'` without explicit confirmation.
+3. **Always** call `POST /api/mutations/:id/canary-check` before suggesting `revert`. Show the user the verdict (`regression: true|false`, `delta`, `fitnessAfter`).
+4. **Always** call `GET /api/wallets/root` before scheduling a recurring goal that will incur LLM cost — confirm there is budget.
+5. **Default to escalation, not direct-apply.** When in doubt, use `POST /api/insights/route` (which respects the router) rather than `POST /api/insights/:id/apply` (which bypasses it).
+
+### Layered guarantees the safety contract relies on
+
+- The router itself returns `{ decision: 'escalate', reason: 'autonomy_disabled' }` for every insight when `autonomy.enabled === false`. Flipping `enabled` is the *only* way auto-apply turns on.
+- Every router-applied mutation captures `fitness_before` at apply time. Revert is non-lossy because the before-snapshot lives in `mutation_history`.
+- `VerifierGate` enforces `delta > MIN_DELTA (0.05)` AND structural-constraint gates before promote. A regression cannot pass the gate.
+- Wallets cap blast radius — even if autonomy is on AND all gates pass, a tool with a depleted wallet cannot keep spending.
+
+### Default policy values (live in `AutonomyPolicy.DEFAULTS`)
+
+```json
+{
+  "enabled": false,
+  "minConfidence": 0.7,
+  "minDelta": 0.05,
+  "maxBlastRadius": 0.5,
+  "dailyBudget": 20,
+  "allowedCategories": [
+    "memory", "prompt_refinement", "tool_preference",
+    "contract_proposal", "skill_recommendation", "pattern", "antipattern"
+  ],
+  "requireGateAbove": 0.45
+}
+```
+
+Insight with `blast_radius >= requireGateAbove` is routed `gated` (sandbox-tested) instead of `direct`. Insight with `blast_radius > maxBlastRadius` is `escalate`d (human required).
+
+### Realtime events the frontend listens for
+
+| Event | When it fires |
+|---|---|
+| `autonomy.router.decision` | Router emits a decision per insight |
+| `autonomy.mutation.applied` | A mutation lands in `mutation_history` |
+| `autonomy.canary.regression` | Periodic canary sweep detects a regression |
+| `scheduler.tick` | Scheduler tick fires a schedule |
+| `scheduler.run.complete` | A scheduled run finishes |
+
+(Implemented in `frontend/src/composables/useRealtimeSync.js`.)
 
 ---
 
@@ -998,6 +1085,169 @@ For `openai-codex`, also includes `codexWorkdir` and `toolRunner` fields.
 
 - **Error** (400): `{ "error": "Missing projectId" }` if body is incomplete
 - **Error** (400): `{ "error": "GCP project not supported for this provider" }` if provider lacks capability
+
+---
+
+## Contract Routes
+
+Base path: `/api/contracts`
+
+Contracts are refinement-type runtime invariants (PRD-091 Layer 5). They are either **authored** by the user/agent or **mined** by `InsightEngine` from successful executions ("output must be JSON", "step count ≤ 5", "response includes citation block"). At runtime, `ContractsService.check` evaluates whether evidence satisfies the contract; violations are counted on the contract row and feed into `FitnessScoreService` (contract cleanliness component).
+
+### Contract shape
+
+```json
+{
+  "id": "uuid",
+  "user_id": "user-uuid",
+  "target_type": "tool|workflow|skill|agent",
+  "target_id": "target-uuid",
+  "name": "Output must be valid JSON",
+  "predicate": { "type": "json_valid", "field": "output" },
+  "source": "authored|mined",
+  "status": "active|disabled|deprecated",
+  "confidence": 0.92,
+  "evidence_count": 47,
+  "violation_count": 2,
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+### List Contracts
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `status` (query, optional): `active`, `disabled`, `deprecated`
+  - `targetType` (query, optional): `tool`, `workflow`, `skill`, `agent`
+- **Response**:
+
+```json
+{ "success": true, "contracts": [ { ... } ] }
+```
+
+### Create Contract
+
+**POST** `/`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "targetType": "tool",
+  "targetId": "web-search",
+  "name": "Output must include source URLs",
+  "predicate": { "type": "regex", "field": "output", "pattern": "https?://" },
+  "confidence": 0.9
+}
+```
+
+- **Description**: Authors a new contract. `targetType` and `targetId` scope the contract to a specific asset; `predicate` is a JSON shape interpreted by `ContractsService.check`. Errors return `400` if required fields are missing.
+- **Response** (`201`):
+
+```json
+{ "success": true, "contract": { ... } }
+```
+
+### Get Single Contract
+
+**GET** `/:id`
+
+- **Authentication**: Required
+- **Response**:
+
+```json
+{ "success": true, "contract": { ... } }
+```
+
+- **Errors**: `404` not found, `403` forbidden
+
+### Get Contract Violations
+
+**GET** `/:id/violations`
+
+- **Authentication**: Required
+- **Description**: Returns the violation history for a contract — useful when surfacing why a `canary-check` flagged regression.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "violations": [
+    {
+      "id": "v-uuid",
+      "contract_id": "c-uuid",
+      "source_execution_id": "exec-uuid",
+      "details": { "expected": "...", "actual": "..." },
+      "created_at": "..."
+    }
+  ]
+}
+```
+
+### Update Contract Status
+
+**PATCH** `/:id`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{ "status": "disabled" }
+```
+
+- **Description**: Currently only `status` is mutable. Use this to disable a noisy contract without deleting it.
+- **Response**:
+
+```json
+{ "success": true, "contract": { ... } }
+```
+
+### Check Evidence Against Active Contracts
+
+**POST** `/check`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "targetType": "tool",
+  "targetId": "web-search",
+  "runtimeState": { "output": "..." },
+  "sourceExecutionId": "exec-uuid"
+}
+```
+
+- **Description**: Evaluates `runtimeState` against every active contract for `(targetType, targetId)`. Records evidence on each contract; persists a violation row if a predicate fails. Returns per-contract verdicts.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "checked": 3,
+  "passed": 2,
+  "failed": 1,
+  "verdicts": [
+    { "contractId": "...", "name": "...", "passed": true },
+    { "contractId": "...", "name": "...", "passed": false, "violationId": "..." }
+  ]
+}
+```
+
+### Delete Contract
+
+**DELETE** `/:id`
+
+- **Authentication**: Required
+- **Response**:
+
+```json
+{ "success": true, "deleted": true }
+```
 
 ---
 
@@ -1957,7 +2207,110 @@ The unified evolution system extracts actionable insights from agent chats, goal
 
 - **Error** (404): Insight not found
 
-### Apply Insight
+### Autonomy Router — Route Pending Insights (PRD-091 Layer 4)
+
+**POST** `/route`
+
+- **Authentication**: Required
+- **Body** (optional):
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
+}
+```
+
+- **Description**: Sweeps every pending insight for the user through the `InsightAutonomyRouter`. Each insight is evaluated by `AutonomyPolicy.evaluate(insight, settings, ctx)` against `EvolutionSettingsModel.autonomy`. Per-insight verdicts:
+  - **`direct`** — apply now (memory, low blast radius, high confidence)
+  - **`gated`** — sandbox-test before applying (blast radius ≥ `requireGateAbove`)
+  - **`escalate`** — surface to the user as `pending` with `autonomy_decision: 'escalate'` (high blast OR low confidence OR over budget)
+  - **`skip`** — autonomy disabled (the default state)
+
+  Every applied insight gets a row in `mutation_history` with `fitness_before` captured for canary detection. **Prefer this over `/:id/apply` for unattended flows.**
+
+- **Response**:
+
+```json
+{
+  "success": true,
+  "summary": {
+    "evaluated": 12,
+    "direct": 4,
+    "gated": 2,
+    "escalated": 5,
+    "skipped": 1,
+    "mutationIds": ["m-uuid", "m-uuid", "..."]
+  }
+}
+```
+
+### Autonomy Router — Route One Insight
+
+**POST** `/:id/route`
+
+- **Authentication**: Required
+- **Body** (optional): same `{ provider, model }` override as above
+- **Description**: Same logic as `POST /route` but applied to a single insight by id. Useful when surfacing "auto-handle this?" affordance per row.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "result": {
+    "decision": "direct|gated|escalate|skip",
+    "reason": "low_blast_high_confidence",
+    "blastRadius": 0.1,
+    "mutationId": "m-uuid|null"
+  }
+}
+```
+
+### Evolution Settings — Get
+
+**GET** `/settings`
+
+- **Authentication**: Required
+- **Description**: Returns the user's evolution settings, including the autonomy policy block. Defaults live in `AutonomyPolicy.DEFAULTS` (see Closed Loop System section above) — only user overrides are persisted.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "settings": {
+    "autonomy": {
+      "enabled": false,
+      "minConfidence": 0.7,
+      "maxBlastRadius": 0.5,
+      "dailyBudget": 20,
+      "allowedCategories": ["memory", "prompt_refinement", "..."],
+      "requireGateAbove": 0.45
+    }
+  }
+}
+```
+
+### Evolution Settings — Update (Opt-In Switch)
+
+**POST** `/settings`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "autonomy": { "enabled": true, "minConfidence": 0.8 }
+}
+```
+
+- **Description**: **This is the user opt-in switch.** Flipping `autonomy.enabled` to `true` is what permits the router to direct-apply insights. The agent must **never** flip this without explicit, in-conversation confirmation from the user.
+- **Response**:
+
+```json
+{ "success": true, "settings": { ... } }
+```
+
+### Apply Insight (Direct, Bypasses Router)
 
 **POST** `/:id/apply`
 
@@ -1974,6 +2327,8 @@ The unified evolution system extracts actionable insights from agent chats, goal
 ```
 
 - **Description**: Apply an insight to its target entity. For agent prompt refinements, uses LLM to merge the improvement into the agent's system prompt. Provider/model override the user's defaults for the LLM call. The insight status is updated to `applied`.
+
+> **Note vs. router endpoints above:** `/:id/apply` is the human-confirmed path — bypasses `AutonomyPolicy` entirely and just runs the applicator. Use this when the user clicks an "Apply" button. Use `POST /route` or `POST /:id/route` for unattended / batched application that respects the user's policy. **Do not call `/apply` on critical-priority insights without explicit confirmation.**
 - **Response**:
 
 ```json
@@ -3772,6 +4127,111 @@ The `overall` field is one of: `healthy`, `degraded` (some unhealthy/degraded), 
 
 ---
 
+## Mutation History Routes
+
+Base path: `/api/mutations`
+
+Every router-applied change is recorded here (PRD-091 Layer 7). Each row captures the *before-state snapshot* and the `fitness_before` baseline so a regression can trigger non-lossy revert. **This is the audit trail the agent should consult when the user asks "what did AGNT change?" or "undo that change."**
+
+### Mutation shape
+
+```json
+{
+  "id": "uuid",
+  "user_id": "user-uuid",
+  "insight_id": "insight-uuid|null",
+  "target_type": "agent|skill|workflow|tool|memory",
+  "target_id": "target-uuid",
+  "operation": "apply|revert",
+  "status": "applied|reverted|failed",
+  "before_snapshot": { "...": "...": "the asset as it was before the change" },
+  "after_snapshot": { "...": "...": "the asset as written" },
+  "fitness_before": 0.82,
+  "fitness_after": 0.78,
+  "fitness_delta": -0.04,
+  "reverted_reason": "manual|canary_regression|null",
+  "created_at": "...",
+  "reverted_at": "..."
+}
+```
+
+### List Mutations
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `status` (query, optional): `applied`, `reverted`, `failed`
+  - `targetType` (query, optional): `agent`, `skill`, `workflow`, `tool`, `memory`
+  - `limit` (query, optional): default `200`
+- **Description**: Returns the mutation history for the authenticated user, newest first.
+- **Response**:
+
+```json
+{ "success": true, "history": [ { ... } ] }
+```
+
+### Get Single Mutation
+
+**GET** `/:id`
+
+- **Authentication**: Required
+- **Description**: Full row including `before_snapshot` and `after_snapshot`. Use this to render a diff or to surface what changed.
+- **Response**:
+
+```json
+{ "success": true, "mutation": { ... } }
+```
+
+- **Errors**: `404` not found, `403` forbidden
+
+### Canary Check (Detect Regression)
+
+**POST** `/:id/canary-check`
+
+- **Authentication**: Required
+- **Description**: Re-scores fitness for the mutated asset right now (using `FitnessScoreService.forTool` / `forWorkflow`) and compares against the stored `fitness_before` baseline. Persists `fitness_after` and `fitness_delta` on the row. **The agent should call this before suggesting revert.**
+- **Response**:
+
+```json
+{
+  "success": true,
+  "verdict": {
+    "regression": true,
+    "delta": -0.12,
+    "fitnessAfter": 0.70
+  }
+}
+```
+
+- **Verdict shape:**
+  - `regression: true` when `delta < -0.05` (default `minDelta`)
+  - `regression: false, reason: 'not_applicable'` when mutation isn't in `applied` status
+  - `regression: false, reason: 'no_baseline'` when `fitness_before` was never captured
+  - `regression: false, reason: 'no_after_score'` when there's no recent execution data to score against
+
+### Revert Mutation
+
+**POST** `/:id/revert`
+
+- **Authentication**: Required
+- **Body** (optional):
+
+```json
+{ "reason": "manual" }
+```
+
+- **Description**: Marks the mutation row as `reverted` with `reverted_reason`. The actual rollback uses the `before_snapshot` to restore the asset (handled by the model). Safe to call only when canary-check confirms regression OR the user explicitly requests it.
+- **Response**:
+
+```json
+{ "success": true }
+```
+
+- **Default `reason`**: `"manual"` when the user triggers revert; the periodic canary sweep uses `"canary_regression"`.
+
+---
+
 ## NPM Routes
 
 Base path: `/api/npm`
@@ -4394,6 +4854,208 @@ Base path: `/api/plugins`
     "success": true
   }
 }
+```
+
+---
+
+## Schedule Routes
+
+Base path: `/api/schedules`
+
+The durable cron scheduler (PRD-091 Layer 1). Use when the user wants recurring execution of a goal. Survives backend restart, uses in-zone DST-correct timing, idempotent on `last_run`. Hangs on `HeartbeatService` — no separate process.
+
+### Schedule shape
+
+```json
+{
+  "id": "uuid",
+  "user_id": "user-uuid",
+  "target_type": "goal",
+  "target_id": "goal-uuid",
+  "cron": "0 9 * * MON-FRI",
+  "timezone": "America/New_York",
+  "next_run": "2026-06-22T13:00:00.000Z",
+  "last_run": "2026-06-19T13:00:00.000Z",
+  "enabled": true,
+  "on_missed": "fire_once",
+  "created_at": "..."
+}
+```
+
+### Supported cron syntax
+
+5-field cron (`minute hour dom month dow`) plus macros:
+
+- **Macros**: `@hourly`, `@daily`, `@midnight`, `@weekly`, `@monthly`, `@yearly`, `@annually`
+- **Fields**: `*`, `*/N`, `A-B`, `A,B,C`, day-of-week names (`MON`–`SUN`), `7` aliases to `0` (Sunday)
+- **Dom/dow OR semantics**: when both restricted, the schedule fires when *either* matches (standard cron)
+- **Timezone**: IANA name (e.g. `America/New_York`, `Europe/London`). Defaults to `UTC`.
+
+### `on_missed` values
+
+| Value | Behavior on backend restart |
+|---|---|
+| `fire_once` (default) | If next_run is in the past, fire once then resume |
+| `fire_all` | Fire once for each missed slot (use sparingly — can cascade) |
+| `skip` | Skip missed firings; only resume forward |
+
+### List Schedules
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Response**:
+
+```json
+{ "success": true, "schedules": [ { ... } ] }
+```
+
+### Get Schedules by Target
+
+**GET** `/target/:targetType/:targetId`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `targetType` (path): `goal` (MVP currently only supports goal)
+  - `targetId` (path): the goal ID
+- **Description**: Useful for the Goals UI to show "this goal is scheduled."
+- **Response**:
+
+```json
+{ "success": true, "schedules": [ { ... } ] }
+```
+
+### Preview Cron Firings (No Persist)
+
+**POST** `/preview`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "cron": "0 9 * * MON-FRI",
+  "timezone": "America/New_York",
+  "count": 5
+}
+```
+
+- **Description**: Validates the cron expression and returns the next `count` firing times (max 25). **Persists nothing.** Use this when surfacing "this schedule will next fire on..." in the UI before the user clicks Create.
+- **Response**:
+
+```json
+{
+  "success": true,
+  "previews": [
+    "2026-06-22T13:00:00.000Z",
+    "2026-06-23T13:00:00.000Z",
+    "2026-06-24T13:00:00.000Z"
+  ]
+}
+```
+
+- **Errors**: `400` when `cron` is missing or invalid.
+
+### Create Schedule
+
+**POST** `/`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{
+  "targetType": "goal",
+  "targetId": "goal-uuid",
+  "cron": "0 9 * * MON-FRI",
+  "timezone": "America/New_York",
+  "enabled": true,
+  "onMissed": "fire_once"
+}
+```
+
+- **Description**: Creates a schedule. `next_run` is computed from `cron` + `timezone`. `enabled` defaults to `true`. `onMissed` defaults to `fire_once`.
+- **Response** (`201`):
+
+```json
+{ "success": true, "schedule": { ... } }
+```
+
+- **Errors**:
+  - `400` when `targetType`, `targetId`, or `cron` is missing
+  - `400` when `cron` is invalid (per `isValidCron`)
+
+### Update Schedule
+
+**PATCH** `/:id`
+
+- **Authentication**: Required
+- **Body** (any subset):
+
+```json
+{
+  "cron": "0 10 * * MON-FRI",
+  "timezone": "Europe/London",
+  "enabled": false,
+  "onMissed": "skip"
+}
+```
+
+- **Description**: Updates schedule fields. When `cron`, `timezone`, or `onMissed` change, `next_run` is recomputed. Setting `enabled: false` pauses without deleting.
+- **Response**:
+
+```json
+{ "success": true, "schedule": { ... } }
+```
+
+- **Errors**: `404` not found, `403` forbidden, `400` invalid cron
+
+### Fire Schedule Now
+
+**POST** `/:id/fire-now`
+
+- **Authentication**: Required
+- **Description**: Manually trigger the schedule's target (currently invokes `TaskOrchestrator.executeGoalAutonomous`). Does NOT update `next_run` — the regular cadence continues unaffected. Useful for "test run" or "I want it now."
+- **Response**:
+
+```json
+{ "success": true, "result": { "executionId": "...", "status": "running" } }
+```
+
+### Get Run History
+
+**GET** `/:id/runs`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `limit` (query, optional): max `500`, default `50`
+- **Response**:
+
+```json
+{
+  "success": true,
+  "runs": [
+    {
+      "id": "run-uuid",
+      "schedule_id": "schedule-uuid",
+      "fired_at": "2026-06-19T13:00:00.000Z",
+      "execution_id": "exec-uuid",
+      "status": "completed",
+      "duration_ms": 4823
+    }
+  ]
+}
+```
+
+### Delete Schedule
+
+**DELETE** `/:id`
+
+- **Authentication**: Required
+- **Response**:
+
+```json
+{ "success": true, "deleted": true }
 ```
 
 ---
@@ -5589,6 +6251,138 @@ Base path: `/api/users`
   - `token` (query): JWT token
 - **Description**: Get real-time connection health updates via SSE
 - **Response**: Server-sent events stream
+
+---
+
+## Wallet Routes
+
+Base path: `/api/wallets`
+
+Linear-type capability budgets (PRD-091 Layer 3). Each user has a **root wallet**; sub-wallets are derived via `WalletService.allocate` and can never duplicate funds because every debit and transfer goes through an atomic guard with a `balance >= amount` check.
+
+Conservation invariant: across allocate / consume / release cycles, the sum of all active balances is exactly `(root topup total) - (total consumed)`. The agent can rely on this — see `WalletService.spec.js` invariant tests.
+
+### Wallet shape
+
+```json
+{
+  "id": "uuid",
+  "user_id": "user-uuid",
+  "owner_type": "user|agent|workflow|tool|run",
+  "owner_id": "owner-uuid",
+  "parent_id": "uuid|null",
+  "kind": "tokens",
+  "balance": 850,
+  "status": "active|closed",
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+### List Wallets
+
+**GET** `/`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `ownerType` (query, optional): filter by owner type
+  - `status` (query, optional): `active`, `closed`
+- **Response**:
+
+```json
+{ "success": true, "wallets": [ { ... } ] }
+```
+
+### Get-or-Create Root Wallet
+
+**GET** `/root`
+
+- **Authentication**: Required
+- **Description**: Returns the user's root wallet (`owner_type:'user'`, `parent_id:null`). Creates it on first call with `balance:0`.
+- **Response**:
+
+```json
+{ "success": true, "wallet": { ... } }
+```
+
+### Top Up Root Wallet
+
+**POST** `/root/topup`
+
+- **Authentication**: Required
+- **Body**:
+
+```json
+{ "amount": 1000, "note": "monthly_recharge" }
+```
+
+- **Description**: Adds `amount` to the user's root wallet balance and writes a `topup` ledger entry. Idempotent on the API surface — repeated calls add repeatedly, so the agent should confirm with the user before topping up.
+- **Response**:
+
+```json
+{ "success": true, "wallet": { ... } }
+```
+
+- **Errors**: `400` on invalid amount.
+
+### Get Single Wallet
+
+**GET** `/:id`
+
+- **Authentication**: Required
+- **Response**:
+
+```json
+{ "success": true, "wallet": { ... } }
+```
+
+- **Errors**: `404` not found, `403` forbidden
+
+### Get Wallet Ledger
+
+**GET** `/:id/ledger`
+
+- **Authentication**: Required
+- **Parameters**:
+  - `limit` (query, optional): max `1000`, default `200`
+- **Description**: Returns the transaction log for this wallet. Each entry has `amount` (negative for debit), `op` (`topup` / `consume` / `allocate_in` / `allocate_out` / `release_sweep` / `release_recv`), optional `source_kind` / `source_id` linking to the asset that spent (e.g. tool, agent run).
+- **Response**:
+
+```json
+{
+  "success": true,
+  "ledger": [
+    {
+      "id": "led-uuid",
+      "wallet_id": "wal-uuid",
+      "amount": -30,
+      "op": "consume",
+      "source_kind": "tool",
+      "source_id": "web-search",
+      "note": null,
+      "created_at": "..."
+    }
+  ]
+}
+```
+
+### Release Wallet
+
+**POST** `/:id/release`
+
+- **Authentication**: Required
+- **Description**: Sweeps the wallet's remaining balance back to its parent (if any), then marks the wallet `closed`. Safe to call multiple times — a second call on an already-closed wallet is a no-op.
+- **Response**:
+
+```json
+{ "success": true, "wallet": { ... } }
+```
+
+- **Use case**: An agent run finishes; release its sub-wallet so the leftover budget flows back to root.
+
+### Notes on consume / allocate
+
+There is currently **no public HTTP endpoint** for `consume` or `allocate`. Those operations live on the server-side `WalletService` and are invoked by tool executors, the orchestrator, and the scheduler. The HTTP surface is intentionally limited to read + root-topup + release — i.e. the operations a UI or agent on behalf of a user needs. Agent code that needs to debit an arbitrary wallet should call `WalletService.consume(walletId, amount)` directly, not over HTTP.
 
 ---
 
