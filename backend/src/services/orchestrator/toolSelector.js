@@ -156,6 +156,13 @@ export const TOOL_GROUPS = {
     'list_recent',
     'get_trace',
   ],
+  tutorial: [
+    'list_tutorial_targets',
+    'highlight_element',
+    'start_guided_tour',
+    'end_guided_tour',
+    'scan_page_elements',
+  ],
 };
 
 /**
@@ -175,6 +182,7 @@ export const GROUP_TRIGGERS = {
   media: /\b(image|photo|picture|vision|draw|dall[\s-]?e|generate\s+(?:a\s+)?(?:photo|picture|image)|analyze\s+(?:this\s+)?(?:image|photo|picture)|screenshot|ocr)\b/i,
   email: /\b(email|e-mail|mail|compose|smtp|send\s+(?:a\s+)?(?:message|letter))\b/i,
   memory: /\b(remember|memory|recall|forget|memorize|last\s+(?:week|month|year|night|time)|earlier|previously|history|trace|traces|find\s+(?:that|the|when|where)|did\s+(?:you|we)\s+ever|what\s+did\s+(?:you|we)\s+do)\b/i,
+  tutorial: /\b(tour|tutorial|walk\s*me\s*through|guide\s*me|show\s*me\s*(?:how|where)|highlight|point\s*(?:to|at)|onboard)\b/i,
 };
 
 /**
@@ -193,6 +201,7 @@ export const GROUP_DESCRIPTIONS = {
   media: 'Image analysis (vision/OCR) and image generation (DALL-E, Gemini, Grok)',
   email: 'Send emails via SMTP',
   memory: 'Persistent history search (recall / list_recent / get_trace) and per-agent memory storage',
+  tutorial: 'Show in-app tours and highlight UI elements via the live PopupTutorial overlay',
 };
 
 /**
@@ -247,6 +256,7 @@ export const GROUP_GUIDANCE = {
   ],
   email: [],
   memory: [],
+  tutorial: ['IMPORTANT_GUIDELINES'],
 };
 
 /**

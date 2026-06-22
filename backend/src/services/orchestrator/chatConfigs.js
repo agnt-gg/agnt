@@ -230,6 +230,13 @@ function getForcedToolGroups(context) {
 // `mcp_client` in their saved enabledTools list.
 const UNIVERSAL_TOOLS = new Set([
   'mcp_client',
+  // Tutorial / in-app guidance — every chat surface should be able to point
+  // at UI elements or run a guided tour, regardless of specialty.
+  'list_tutorial_targets',
+  'highlight_element',
+  'start_guided_tour',
+  'end_guided_tour',
+  'scan_page_elements',
 ]);
 
 // Per-tool MCP entries are namespaced as `mcp__<server>__<tool>`. We can't
@@ -376,6 +383,11 @@ async function getUnifiedToolSchemas(context) {
     const name = schema.function?.name;
     if (!name) return false;
     if (DEFAULT_TOOLS.has(name)) return true;
+    // UNIVERSAL_TOOLS ride along on the orchestrator/keyword path too —
+    // without this the tutorial tools only loaded when the user message
+    // matched the `tutorial` trigger regex, which meant the assistant
+    // couldn't proactively offer to highlight things mid-conversation.
+    if (isUniversalToolName(name)) return true;
     return groupToolNames.has(name);
   });
 

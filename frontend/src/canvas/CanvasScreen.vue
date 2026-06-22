@@ -77,6 +77,7 @@
             <button
               class="cv-sb-page"
               :class="{ active: !onCustomPage && activeSection && activeSection.id === section.id }"
+              :data-tour-id="`sidebar.${section.id}`"
               @click="navigateToSection(section)"
             >
               <i :class="section.icon"></i>
@@ -106,7 +107,7 @@
 
         <!-- Add page button -->
         <Tooltip text="Add page" position="right" width="auto">
-          <button class="cv-sb-add" @click="startAddPage">
+          <button class="cv-sb-add" data-tour-id="sidebar.add-page" @click="startAddPage">
             <span class="cv-sb-add-icon">+</span>
             <span class="cv-sb-label" v-marquee>
               <span class="cv-sb-label-inner">New page</span>
@@ -123,6 +124,7 @@
             <button
               class="cv-sb-page"
               :class="{ active: !onCustomPage && activeSection && activeSection.id === section.id }"
+              :data-tour-id="`sidebar.${section.id}`"
               @click="navigateToSection(section)"
             >
               <i :class="section.icon"></i>
@@ -137,6 +139,7 @@
         <Tooltip :text="isSidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'" position="right" width="auto">
           <button
             class="cv-sb-toggle"
+            data-tour-id="sidebar.toggle"
             @click="toggleSidebar"
             :aria-label="isSidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'"
           >

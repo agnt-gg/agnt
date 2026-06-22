@@ -13,6 +13,7 @@ import { getWorkflowToolSchemas, executeWorkflowTool } from './workflowTools.js'
 import { getCodeToolSchemas, executeCodeFunction } from './codeTools.js';
 import { getToolForgeToolSchemas, executeToolForgeTool } from './toolForgeTools.js';
 import { getWidgetToolSchemas, executeWidgetTool } from './widgetTools.js';
+import { getTutorialToolSchemas, executeTutorialTool } from './tutorialTools.js';
 import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import CodexCliService from '../ai/CodexCliService.js';
@@ -4233,6 +4234,7 @@ export async function getAvailableToolSchemas({ asyncEnabled = true } = {}) {
   const codeToolSchemas = getCodeToolSchemas();
   const toolForgeToolSchemas = getToolForgeToolSchemas();
   const widgetToolSchemas = getWidgetToolSchemas();
+  const tutorialToolSchemas = getTutorialToolSchemas();
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
 
@@ -4258,6 +4260,7 @@ export async function getAvailableToolSchemas({ asyncEnabled = true } = {}) {
     ...codeToolSchemas,
     ...toolForgeToolSchemas,
     ...widgetToolSchemas,
+    ...tutorialToolSchemas,
     ...registryToolSchemas,
     ...pluginToolSchemas,
     ...mcpToolSchemas,
@@ -4284,7 +4287,7 @@ export async function getAvailableToolSchemas({ asyncEnabled = true } = {}) {
   }
 
   console.log(
-    `[Orchestrator] Available tools: ${uniqueSchemas.length} (${nativeToolSchemas.length} native, ${agentToolSchemas.length} agent, ${workflowToolSchemas.length} workflow, ${goalToolSchemas.length} goal, ${codeToolSchemas.length} code, ${toolForgeToolSchemas.length} tool-forge, ${widgetToolSchemas.length} widget, ${registryToolSchemas.length} registry, ${pluginToolSchemas.length} plugins, ${mcpToolSchemas.length} mcp)`
+    `[Orchestrator] Available tools: ${uniqueSchemas.length} (${nativeToolSchemas.length} native, ${agentToolSchemas.length} agent, ${workflowToolSchemas.length} workflow, ${goalToolSchemas.length} goal, ${codeToolSchemas.length} code, ${toolForgeToolSchemas.length} tool-forge, ${widgetToolSchemas.length} widget, ${tutorialToolSchemas.length} tutorial, ${registryToolSchemas.length} registry, ${pluginToolSchemas.length} plugins, ${mcpToolSchemas.length} mcp)`
   );
 
   return uniqueSchemas;
@@ -4466,6 +4469,13 @@ export async function executeTool(toolName, args, authToken, context) {
     if (widgetToolNames.has(toolName)) {
       console.log(`Executing widget tool: ${toolName}`);
       return await executeWidgetTool(toolName, resolvedArgs, authToken, context);
+    }
+
+    const tutorialToolNames = new Set(getTutorialToolSchemas().map(s => s.function.name));
+    if (tutorialToolNames.has(toolName)) {
+      console.log(`Executing tutorial tool: ${toolName}`);
+      const result = await executeTutorialTool(toolName, resolvedArgs, authToken, context);
+      return JSON.stringify(result);
     }
 
     const registryToolName = toolName.replace(/_/g, '-');

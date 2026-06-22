@@ -99,6 +99,11 @@ export const RealtimeEvents = {
   AUTONOMOUS_CONTENT_DELTA: 'chat:autonomous_content_delta',
   AUTONOMOUS_MESSAGE_END: 'chat:autonomous_message_end',
 
+  // AI-driven in-app tutorials — broadcast so any tab (not just the
+  // SSE-originating one) renders the highlight/tour overlay.
+  TUTORIAL_START: 'tutorial:start',
+  TUTORIAL_END: 'tutorial:end',
+
   // Async Tool Execution
   ASYNC_TOOL_QUEUED: 'chat:async_tool_queued',
   ASYNC_TOOL_STARTED: 'chat:async_tool_started',

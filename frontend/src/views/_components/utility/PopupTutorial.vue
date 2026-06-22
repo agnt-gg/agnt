@@ -83,17 +83,21 @@ export default {
     const progressPercentage = computed(() => `${((currentStepIndex.value + 1) / totalSteps.value) * 100}%`);
 
     const showPopup = async () => {
+      console.log('[PopupTutorial] showPopup invoked', { tutorialId: props.tutorialId, tourMode: props.tourMode, stepIndex: currentStepIndex.value, step: props.config[currentStepIndex.value] });
       // Check if onboarding modal is showing - if so, don't show tours
       const shouldShowOnboarding = store.getters['userAuth/shouldShowOnboarding'];
-      if (shouldShowOnboarding) {
+      if (shouldShowOnboarding && !props.tourMode) {
         console.log('PopupTutorial: Onboarding modal is active. Not showing popup tutorial.');
         closeTutorial();
         return;
       }
 
-      // Check if tours are enabled globally
+      // Check if tours are enabled globally. AI-invoked tours (tourMode=true)
+      // bypass this gate — the user explicitly asked the assistant for help,
+      // so the global "tours" toggle (which controls passive onboarding tours)
+      // must not silently swallow the request.
       const toursEnabled = localStorage.getItem('tours_enabled');
-      if (toursEnabled === 'false') {
+      if (toursEnabled === 'false' && !props.tourMode) {
         console.log('PopupTutorial: Tours are disabled globally. Not showing popup.');
         closeTutorial();
         return;
@@ -607,23 +611,25 @@ export default {
     };
 
     const startTutorial = () => {
-      // Check if onboarding modal is showing - if so, don't start tours
+      console.log('[PopupTutorial] startTutorial invoked', { tutorialId: props.tutorialId, tourMode: props.tourMode, configLen: props.config.length });
+      // Check if onboarding modal is showing - if so, don't start passive tours.
+      // AI-invoked tours (tourMode=true) bypass — user explicitly requested.
       const shouldShowOnboarding = store.getters['userAuth/shouldShowOnboarding'];
-      if (shouldShowOnboarding) {
+      if (shouldShowOnboarding && !props.tourMode) {
         console.log('PopupTutorial: Onboarding modal is active. Not starting tutorial.');
         emit('close');
         return;
       }
 
-      // Check if tours are enabled globally
+      // Tours globally disabled? AI tours bypass.
       const toursEnabled = localStorage.getItem('tours_enabled');
-      if (toursEnabled === 'false') {
+      if (toursEnabled === 'false' && !props.tourMode) {
         console.log('PopupTutorial: Tours are disabled globally. Not starting tutorial.');
         emit('close');
         return;
       }
 
-      // Check if auto-start is enabled
+      // Auto-start disabled? AI tours bypass (they're explicit, not auto).
       const autoStartTours = localStorage.getItem('tours_auto_start');
       if (autoStartTours === 'false' && !props.tourMode) {
         console.log('PopupTutorial: Auto-start tours is disabled. Not starting tutorial automatically.');
@@ -732,17 +738,17 @@ export default {
     watch(
       () => props.startTutorial,
       (newStartTutorial) => {
-        // Check if onboarding modal is showing
+        // AI-invoked tours (tourMode=true) bypass the global onboarding /
+        // tours_enabled gates — the user explicitly asked the assistant.
         const shouldShowOnboarding = store.getters['userAuth/shouldShowOnboarding'];
-        if (shouldShowOnboarding) {
+        if (shouldShowOnboarding && !props.tourMode) {
           console.log('PopupTutorial: Onboarding modal is active. Not starting tutorial from watch.');
           closeTutorial();
           return;
         }
 
-        // Check if tours are enabled before starting
         const toursEnabled = localStorage.getItem('tours_enabled');
-        if (toursEnabled === 'false') {
+        if (toursEnabled === 'false' && !props.tourMode) {
           console.log('PopupTutorial: Tours are disabled globally. Not starting tutorial from watch.');
           closeTutorial();
           return;

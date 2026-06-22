@@ -671,10 +671,26 @@ function handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEven
       if (typeof toolResult === 'string') {
         try { toolResult = JSON.parse(toolResult); } catch { /* not JSON */ }
       }
-      if (toolResult?.frontendEvents && typeof onFrontendEvent === 'function') {
+      if (toolResult?.frontendEvents) {
         for (const evt of toolResult.frontendEvents) {
-          try { onFrontendEvent(evt.type, evt.data, data.toolCall); } catch (e) {
-            console.error('[chatUnified] onFrontendEvent threw:', e);
+          // Tutorial events are global-scope (not chat-channel-scope) — dispatch
+          // a window event the AIGuidedTourHost picks up regardless of which
+          // chat channel produced the tool call.
+          if (evt.type === 'tutorial:start' || evt.type === 'tutorial:end') {
+            try {
+              window.dispatchEvent(new CustomEvent(
+                evt.type === 'tutorial:start' ? 'ai-tour:start' : 'ai-tour:end',
+                { detail: evt.data }
+              ));
+            } catch (e) {
+              console.error('[chatUnified] dispatching tutorial event failed:', e);
+            }
+            continue;
+          }
+          if (typeof onFrontendEvent === 'function') {
+            try { onFrontendEvent(evt.type, evt.data, data.toolCall); } catch (e) {
+              console.error('[chatUnified] onFrontendEvent threw:', e);
+            }
           }
         }
       }
@@ -685,6 +701,23 @@ function handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEven
     }
 
     case 'frontend_event':
+      console.log('[chatUnified] frontend_event SSE received', { eventType: data.eventType, hasData: !!data.eventData });
+      // Tutorial events are global-scope (not chat-channel-scope) — dispatch
+      // a window event the AIGuidedTourHost picks up regardless of which
+      // chat channel produced the tool call. This is the primary delivery
+      // path: OrchestratorService strips frontendEvents from tool_end and
+      // ships each one through this `frontend_event` SSE.
+      if (data.eventType === 'tutorial:start' || data.eventType === 'tutorial:end') {
+        try {
+          window.dispatchEvent(new CustomEvent(
+            data.eventType === 'tutorial:start' ? 'ai-tour:start' : 'ai-tour:end',
+            { detail: data.eventData }
+          ));
+          console.log('[chatUnified] dispatched window event', data.eventType);
+        } catch (e) {
+          console.error('[chatUnified] dispatching tutorial event failed:', e);
+        }
+      }
       if (typeof onFrontendEvent === 'function') {
         try { onFrontendEvent(data.eventType, data.eventData); } catch (e) {
           console.error('[chatUnified] onFrontendEvent threw:', e);

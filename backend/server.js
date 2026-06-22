@@ -507,6 +507,20 @@ function startServer() {
         ack?.({ ok: true });
       });
 
+      // Live page-scan response from a client tab. Resolves a pending
+      // `scan_page_elements` tool call in tutorialScanRegistry. First
+      // response wins; later responses (other tabs) are dropped.
+      socket.on('tutorial:scan_response', async ({ requestId, elements } = {}) => {
+        if (!socket.userId || !requestId) return;
+        const { resolvePendingScan } = await import('./src/services/orchestrator/tutorialScanRegistry.js');
+        const ok = resolvePendingScan(requestId, Array.isArray(elements) ? elements : []);
+        if (ok) {
+          console.log(`[Socket.IO] tutorial:scan_response ${requestId} accepted from user ${socket.userId}: ${elements?.length || 0} elements`);
+        } else {
+          console.log(`[Socket.IO] tutorial:scan_response ${requestId} ignored (no pending request — already resolved or expired)`);
+        }
+      });
+
       socket.on('disconnect', () => {
         if (socket.userId) {
           console.log(`[Socket.IO] User ${socket.userId} disconnected: ${socket.id}`);

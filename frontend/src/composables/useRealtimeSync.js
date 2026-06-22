@@ -129,6 +129,51 @@ export function useRealtimeSync() {
       isConnected.value = false;
     });
 
+    // AI-driven tutorial / highlight overlays — bridge socket.io broadcasts
+    // into the window event the AIGuidedTourHost listens on. Mirrors the
+    // SSE-side dispatch in chatUnified.js so tabs that aren't streaming
+    // (e.g. user is chatting in window A and watching window B) still pop
+    // the overlay.
+    // Live page-scan: the backend asks each tab to enumerate its visible
+    // interactive elements. Foreground tabs reply immediately; hidden tabs
+    // delay 200ms so the active tab's response wins on the server.
+    socket.on('tutorial:scan_request', async ({ requestId, filter } = {}) => {
+      console.log('[Realtime] tutorial:scan_request', requestId, 'filter=', filter || '∅', 'visible=', document.visibilityState);
+      try {
+        const { scanInteractiveElements } = await import('@/views/_components/utility/domScanner.js');
+        const respond = () => {
+          const elements = scanInteractiveElements({ filter });
+          socket.emit('tutorial:scan_response', { requestId, elements });
+          console.log('[Realtime] tutorial:scan_response sent', requestId, elements.length);
+        };
+        if (document.visibilityState === 'visible') {
+          respond();
+        } else {
+          setTimeout(respond, 200);
+        }
+      } catch (e) {
+        console.error('[Realtime] scan failed:', e);
+        socket.emit('tutorial:scan_response', { requestId, elements: [] });
+      }
+    });
+
+    socket.on('tutorial:start', (data) => {
+      console.log('[Realtime] tutorial:start broadcast received', data);
+      try {
+        window.dispatchEvent(new CustomEvent('ai-tour:start', { detail: data }));
+      } catch (e) {
+        console.error('[Realtime] dispatching ai-tour:start failed:', e);
+      }
+    });
+    socket.on('tutorial:end', (data) => {
+      console.log('[Realtime] tutorial:end broadcast received', data);
+      try {
+        window.dispatchEvent(new CustomEvent('ai-tour:end', { detail: data }));
+      } catch (e) {
+        console.error('[Realtime] dispatching ai-tour:end failed:', e);
+      }
+    });
+
     // Initialize debounced fetch functions
     // These prevent multiple rapid events from triggering multiple API calls
     if (!debouncedAgentFetch) {
