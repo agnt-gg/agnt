@@ -15,6 +15,7 @@ import {
   CRITICAL_TOOL_RESPONSE_RULES,
 } from './orchestrator-chat.js';
 import { ASYNC_EXECUTION_GUIDANCE } from './async-execution.js';
+import { getPlatformContextSection } from './platform-context.js';
 // Per-page detailed prompt content. Each module exports a function that
 // returns the rich, page-specific guidance Annie needs when working on that
 // surface (workflow node/edge format rules, tool field shapes, widget HTML
@@ -77,6 +78,13 @@ Every Annie chat surface is functionally the same assistant. The current page co
   // Workspace path is environment context — every surface should know it
   // before reasoning about file-related tool calls.
   if (workspaceSection) parts.push(workspaceSection);
+
+  // Platform context (OS + shell + shell-specific syntax rules). Cheap to
+  // include unconditionally: it's a few hundred bytes and prevents the LLM
+  // from emitting bash-flavored commands on Windows (and vice-versa). Without
+  // this, the LLM passes multi-line strings to cmd.exe, gets empty stdout,
+  // and loops trying alternate syntax — a documented failure mode.
+  parts.push(getPlatformContextSection());
 
   // Image-handling rules only matter if the LLM can actually receive or
   // produce images on this surface.

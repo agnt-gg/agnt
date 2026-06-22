@@ -168,13 +168,19 @@ export const TOOLS = {
       function: {
         name: 'execute_shell_command',
         description:
-          'Executes a shell command in a specified directory. Useful for running build tools, package managers (like npm, pip), or other system commands. Defaults to the workspace directory.',
+          `Executes a shell command in a specified directory. Useful for running build tools, package managers (like npm, pip), or other system commands. Defaults to the workspace directory.
+
+The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS/Linux. The EXECUTION ENVIRONMENT section of the system prompt lists the active shell and its syntax rules; follow them. Common pitfalls:
+- One logical command per call. Do NOT embed literal newlines inside a single command string on Windows cmd.exe — they will be mangled and stdout will come back empty. Chain with the shell's operator (&& / & / ;) instead.
+- For multi-line scripts (Python, Node, shell), write the script to a file first with write_file, then execute the file. Avoid passing multi-line code via -c "..." on Windows.
+- If stdout is empty but success is true, the command likely failed to parse in the shell — re-check the syntax against the EXECUTION ENVIRONMENT rules before retrying.`,
         parameters: {
           type: 'object',
           properties: {
             command: {
               type: 'string',
-              description: "The shell command to execute (e.g., 'npm install', 'python --version').",
+              description:
+                "The shell command to execute (e.g., 'npm install', 'python --version'). Must be valid syntax for the host shell (cmd.exe on Windows, /bin/sh on POSIX) — see EXECUTION ENVIRONMENT in the system prompt.",
             },
             cwd: {
               type: 'string',
@@ -262,6 +268,12 @@ export const TOOLS = {
           }
           env.AGNT_AUTH_TOKEN = token;
         }
+        // Force Python to emit UTF-8 on stdout/stderr regardless of the host
+        // codepage. Without this, Windows Python writes CP1252/CP437, which the
+        // UTF-8 decoder below would either mangle or silently drop. Harmless on
+        // POSIX where UTF-8 is already the default.
+        if (!env.PYTHONIOENCODING) env.PYTHONIOENCODING = 'utf-8';
+        if (!env.PYTHONUTF8) env.PYTHONUTF8 = '1';
 
         // shell: true gives us '&&'/'|'/etc., but on Windows it routes through
         // cmd.exe and on POSIX through /bin/sh — both of which spawn the real
@@ -276,10 +288,31 @@ export const TOOLS = {
           env,
         });
 
-        let stdout = '';
-        let stderr = '';
+        // Accumulate raw bytes, decode at the end. Per-chunk .toString() can
+        // split a multi-byte UTF-8 sequence across chunk boundaries and drop
+        // bytes; Windows native programs may also emit OS-codepage text that
+        // isn't valid UTF-8. We try strict UTF-8 first, fall back to latin1
+        // (a lossless 1-byte-per-codepoint mapping that survives CP1252/CP437
+        // text without producing empty output). See decodeStream() below.
+        /** @type {Buffer[]} */
+        const stdoutChunks = [];
+        /** @type {Buffer[]} */
+        const stderrChunks = [];
         let timedOut = false;
         let timeoutId = null;
+
+        const decodeStream = (chunks) => {
+          if (chunks.length === 0) return '';
+          const buf = Buffer.concat(chunks);
+          try {
+            // fatal: true throws on invalid UTF-8 instead of inserting U+FFFD
+            return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+          } catch (_) {
+            // Lossless byte→codepoint mapping. Better than '' for non-UTF-8
+            // output; the LLM can still see what the program wrote.
+            return buf.toString('latin1');
+          }
+        };
 
         const killTree = () => {
           const pid = childProcess.pid;
@@ -315,11 +348,11 @@ export const TOOLS = {
         }
 
         childProcess.stdout.on('data', (data) => {
-          stdout += data.toString();
+          stdoutChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
         });
 
         childProcess.stderr.on('data', (data) => {
-          stderr += data.toString();
+          stderrChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
         });
 
         childProcess.on('error', (err) => {
@@ -330,6 +363,8 @@ export const TOOLS = {
 
         childProcess.on('close', (code, signal) => {
           if (timeoutId) clearTimeout(timeoutId);
+          const stdout = decodeStream(stdoutChunks);
+          const stderr = decodeStream(stderrChunks);
           if (timedOut) {
             const secs = Math.round(effectiveTimeoutMs / 1000);
             resolve(

@@ -2,6 +2,7 @@ import { createLlmClient } from './LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { executeTool } from '../orchestrator/tools.js';
 import { loadWorkspaceContextSection } from '../orchestrator/workspaceContext.js';
+import { getPlatformContextSection } from '../orchestrator/system-prompts/platform-context.js';
 import { manageContext } from '../../utils/contextManager.js';
 import crypto from 'crypto';
 
@@ -489,6 +490,7 @@ class LlmExecutionService {
   async buildAgentSystemPrompt(agent, toolSchemas) {
     const currentDate = new Date().toString();
     const workspaceSection = await loadWorkspaceContextSection();
+    const platformSection = getPlatformContextSection();
 
     return `Current date and time: ${currentDate}
 
@@ -497,6 +499,8 @@ ${agent.description}
 
 You are executing a task as part of a larger goal. Use your assigned tools to complete the task effectively.
 ${workspaceSection ? `\n${workspaceSection}\n` : ''}
+${platformSection}
+
 AVAILABLE TOOLS:
 ${toolSchemas.map((tool) => `- ${tool.function.name}: ${tool.function.description}`).join('\n')}
 
