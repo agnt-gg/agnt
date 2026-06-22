@@ -47,8 +47,9 @@
             </div>
             <div v-if="cat.description && expanded[cat.id]" class="cat-description">{{ cat.description }}</div>
 
-            <!-- Direct tools (everything except the parent MCP group, which has none here). -->
-            <div v-if="expanded[cat.id] && cat.tools && cat.tools.length > 0" class="section-tools">
+            <!-- Direct tools (rendered only when this category has no nested
+                 subcategories — otherwise the tools live inside the subs). -->
+            <div v-if="expanded[cat.id] && cat.tools && cat.tools.length > 0 && (!cat.subcategories || cat.subcategories.length === 0)" class="section-tools">
               <label
                 v-for="tool in cat.tools"
                 :key="tool.name"
@@ -158,19 +159,22 @@ export default {
     // sets, so unchecking sticks across sessions.
     var universalDefaultOnNames = new Set(UNIVERSAL_DEFAULT_ON_TOOLS);
 
-    // Backend returns Built In + Plugins. For sidebar chats with a specialty
-    // set, we split Built In into Specialty (locked) + System Tools, leaving
-    // Plugins alone. Orchestrator and any channel without specialty keep the
-    // backend's original two-bucket layout.
+    // Backend returns Built In + Plugins + MCP, each potentially with nested
+    // `subcategories`. Built In is bucketed by sector (Agents, Workflows,
+    // Goals, Tool Forge, Widgets, Artifacts, Media, …). Plugins is bucketed
+    // by plugin name. MCP is bucketed by server. For sidebar chats with a
+    // specialty set we extract specialty tools into a top-level locked
+    // group and strip them from the Built In sector subcategories so the
+    // user doesn't see the same tool twice.
     //
     // Memory recall tools (recall / list_recent / get_trace) are default-ON
     // for every chat on first open (see fetchTools / readSavedEnabled) but
-    // are TOGGLEABLE — they live in System Tools (sidebar) or Built In
-    // (orchestrator) and the user can opt out per channel. They are NOT
-    // pulled into a separate group.
+    // are TOGGLEABLE — they live in the Memory sector under System Tools
+    // (sidebar) or Built In (orchestrator) and the user can opt out.
     //
     // Canonical order in the dropdown:
-    //   Specialty Tools (locked) → System Built In Tools → Plugins → MCP
+    //   Specialty Tools (locked, flat) → System Tools / Built In (sectored)
+    //   → Plugins (per-plugin) → MCP (per-server)
     var reorganizeCategories = function (raw) {
       var builtIn = raw.find(function (c) { return c.id === 'builtin'; });
       var plugins = raw.find(function (c) { return c.id === 'plugins'; });
@@ -182,8 +186,12 @@ export default {
       var result = [];
 
       if (hasSpecialty.value && builtIn) {
-        var specialty = builtIn.tools.filter(function (t) { return specialtyNames.value.has(t.name); });
-        var system = builtIn.tools.filter(function (t) { return !specialtyNames.value.has(t.name); });
+        // Walk the full tree (flat + subcategories) so specialty tools are
+        // discovered no matter where the backend puts them.
+        var allBuiltIn = allToolsIn(builtIn);
+        var specialty = allBuiltIn
+          .filter(function (t) { return specialtyNames.value.has(t.name); })
+          .sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
         if (specialty.length > 0) {
           result.push({
             id: 'specialty',
@@ -193,13 +201,25 @@ export default {
             tools: specialty,
           });
         }
-        if (system.length > 0) {
+        // Rebuild builtIn's subcategories without the specialty tools, so
+        // each sector still shows its remaining members. Empty sectors are
+        // dropped.
+        var systemSubcategories = (builtIn.subcategories || [])
+          .map(function (sub) {
+            return Object.assign({}, sub, {
+              tools: (sub.tools || []).filter(function (t) { return !specialtyNames.value.has(t.name); }),
+            });
+          })
+          .filter(function (sub) { return sub.tools.length > 0; });
+        var systemFlatTools = (builtIn.tools || []).filter(function (t) { return !specialtyNames.value.has(t.name); });
+        if (systemSubcategories.length > 0 || systemFlatTools.length > 0) {
           result.push({
             id: 'system',
             name: 'System Tools',
             description: 'General-purpose tools shared across all chats.',
             locked: false,
-            tools: system,
+            tools: systemFlatTools,
+            subcategories: systemSubcategories,
           });
         }
       } else if (builtIn) {
@@ -457,53 +477,14 @@ export default {
 
     // Reload the enabled set when the parent swaps channels while this
     // selector stays mounted (e.g. user pages between saved agents).
-    // Re-derive specialty + recompute the enabled set with the same locking
-    // semantics as fetchTools.
+    // Refetch from the backend so the subcategory structure is re-derived
+    // cleanly with the new channel's specialty set — re-merging the
+    // already-split-and-bucketed categories client-side is brittle.
     watch(
       function () { return props.channelKey; },
       function () {
         if (categories.value.length === 0) return;
-        // Re-bucket tools for the new channel (specialty/system split).
-        // We rebuild from the original built-in + plugins shape every time
-        // by remerging the existing buckets.
-        var flat = [];
-        categories.value.forEach(function (cat) {
-          if (cat.id === 'specialty' || cat.id === 'system') {
-            flat = flat.concat({ id: 'builtin', name: 'Built In', locked: false, tools: cat.tools });
-          } else {
-            flat.push(cat);
-          }
-        });
-        // Coalesce duplicate built-in entries created by the loop above.
-        var builtInTools = [];
-        var others = [];
-        flat.forEach(function (c) {
-          if (c.id === 'builtin') builtInTools = builtInTools.concat(c.tools);
-          else others.push(c);
-        });
-        var raw = [];
-        if (builtInTools.length > 0) raw.push({ id: 'builtin', name: 'Built In', locked: false, tools: builtInTools });
-        raw = raw.concat(others);
-        categories.value = reorganizeCategories(raw);
-
-        var allNames = new Set();
-        categories.value.forEach(function (cat) {
-          cat.tools.forEach(function (t) { allNames.add(t.name); });
-        });
-        var savedEnabled = readSavedEnabled();
-        if (savedEnabled) {
-          var savedSet = new Set(savedEnabled);
-          specialtyNames.value.forEach(function (n) { savedSet.add(n); });
-          enabledTools.value = new Set([...allNames].filter(function (n) {
-            return savedSet.has(n);
-          }));
-        } else if (hasSpecialty.value) {
-          enabledTools.value = new Set([...allNames].filter(function (n) {
-            return specialtyNames.value.has(n);
-          }));
-        } else {
-          enabledTools.value = new Set(allNames);
-        }
+        fetchTools();
       },
     );
 
