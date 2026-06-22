@@ -1,5 +1,24 @@
 import axios from 'axios';
 
+// Convert top-level snake_case keys to camelCase for cloud auth-provider payloads.
+// The cloud controller reads camelCase only; snake_case keys get silently dropped,
+// then NOT NULL constraints trip and the request returns a generic 500.
+function normalizeProviderKeys(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const out = {};
+  // First pass: copy explicit camelCase (and any non-snake) keys as-is.
+  for (const [key, value] of Object.entries(data)) {
+    if (!key.includes('_')) out[key] = value;
+  }
+  // Second pass: fold snake_case keys in only if the camelCase slot is still empty.
+  for (const [key, value] of Object.entries(data)) {
+    if (!key.includes('_')) continue;
+    const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    if (!(camelKey in out)) out[camelKey] = value;
+  }
+  return out;
+}
+
 class AGNT {
   constructor(
     apiKey,
@@ -561,12 +580,13 @@ class AuthModule {
     return response.data;
   }
   // Provider CRUD — body fields must be camelCase (connectionType, authUrl, tokenUrl, providerCode, isGlobal, etc.).
+  // LLM-generated payloads often arrive as snake_case; normalize top-level keys so the cloud controller can read them.
   async createProvider(data) {
-    const response = await this.client.post(`/auth/providers`, data);
+    const response = await this.client.post(`/auth/providers`, normalizeProviderKeys(data));
     return response.data;
   }
   async updateProvider(providerId, data) {
-    const response = await this.client.put(`/auth/providers/${providerId}`, data);
+    const response = await this.client.put(`/auth/providers/${providerId}`, normalizeProviderKeys(data));
     return response.data;
   }
   async deleteProvider(providerId) {

@@ -52,8 +52,31 @@
 
 <script setup>
 import { ref, computed, watch } from "vue";
+import { useStore } from "vuex";
 import { API_CONFIG } from "@/tt.config.js";
 import SimpleModal from "@/views/_components/common/SimpleModal.vue";
+
+const store = useStore();
+
+// Tell the local backend a provider changed so it can fan the event out
+// to every connected Socket.IO client (other tabs / chat panels / etc.).
+// Fire-and-forget — same-tab refresh is handled by the store dispatch below.
+async function notifyProviderChanged(event, providerId) {
+  try {
+    const token = localStorage.getItem("token");
+    await fetch(`${API_CONFIG.BASE_URL}/auth/providers/notify-changed`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ event, providerId }),
+    });
+  } catch (err) {
+    // Non-fatal: same-tab refresh still happens via the store dispatch.
+    console.warn("[ProviderForm] notifyProviderChanged failed:", err);
+  }
+}
 
 const props = defineProps({
   provider: {
@@ -120,6 +143,12 @@ const submitForm = async () => {
     } else {
       emit("provider-added", providerData);
     }
+
+    // Refresh the global provider store so every consumer (chat panel,
+    // Connectors, IntegrationHealth) sees the new/updated provider
+    // without a page reload, and fan a socket event to other tabs.
+    await store.dispatch("appAuth/fetchAllProviders", { forceRefresh: true });
+    notifyProviderChanged(isEditing.value ? "updated" : "created", providerData.id);
 
     // Reset form if adding a new provider
     if (!isEditing.value) {

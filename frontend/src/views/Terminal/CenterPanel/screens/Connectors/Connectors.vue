@@ -875,6 +875,21 @@ export default {
     const route = useRoute();
     const router = useRouter();
     const baseScreenRef = ref(null);
+
+    // Fan a provider-changed event to other tabs via the local backend's
+    // socket broadcast. Same-tab refresh is handled by the forceRefresh
+    // dispatches at each call site. Fire-and-forget; never throws.
+    function notifyProviderChanged(event, providerId) {
+      const token = localStorage.getItem('token');
+      fetch(`${API_CONFIG.BASE_URL}/auth/providers/notify-changed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ event, providerId }),
+      }).catch((err) => console.warn('[Connectors] notify-changed failed:', err));
+    }
     const terminalLines = ref(['Welcome to the Secrets Manager!', 'Store and manage your environment variables and API keys securely.']);
     const activeSection = ref('plugins');
     const searchQuery = ref('');
@@ -1768,7 +1783,8 @@ export default {
 
         // Reset form and refresh providers list
         resetProviderForm();
-        await store.dispatch('appAuth/fetchAllProviders');
+        await store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
+        notifyProviderChanged('created', providerData.id);
 
         // Switch to OAuth tab to see the new provider
         activeTab.value = 'oauth';
@@ -1968,7 +1984,8 @@ export default {
         nextTick(() => baseScreenRef.value?.scrollToBottom());
 
         closeProviderModal();
-        await store.dispatch('appAuth/fetchAllProviders');
+        await store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
+        notifyProviderChanged('created', providerData.id);
       } catch (error) {
         console.error('Error creating provider:', error);
         await showAlert('Error', `Failed to create provider: ${error.message}`);
@@ -2004,7 +2021,7 @@ export default {
         if (data.success) {
           // Refresh the connected apps list
           await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
-          await store.dispatch('appAuth/fetchAllProviders');
+          await store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
 
           // Show success message
           await showAlert('Success', `Successfully connected to ${data.provider || provider}`);

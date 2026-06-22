@@ -130,6 +130,12 @@ export const RealtimeEvents = {
   // Plugins
   PLUGIN_INSTALLED: 'plugin:installed',
   PLUGIN_UNINSTALLED: 'plugin:uninstalled',
+
+  // Auth Providers (cloud-backed; broadcast after the local backend mutates them
+  // so connected clients can refresh their provider list without a page reload).
+  PROVIDER_CREATED: 'provider:created',
+  PROVIDER_UPDATED: 'provider:updated',
+  PROVIDER_DELETED: 'provider:deleted',
 };
 
 export default {

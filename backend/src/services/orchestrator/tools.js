@@ -22,6 +22,7 @@ import ParameterResolver from '../../workflow/ParameterResolver.js';
 import { saveBase64Image } from '../ImageStorage.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
+import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2672,7 +2673,12 @@ export const TOOLS = {
             },
             provider_data: {
               type: 'object',
-              description: "A JSON object representing the provider's configuration. Used for 'create_provider' and 'update_provider'.",
+              description:
+                "Provider configuration JSON for 'create_provider' / 'update_provider'. " +
+                "Field names MUST be camelCase (the cloud API does not accept snake_case and will silently drop unknown keys, then fail NOT NULL on connection_type with a 500). " +
+                "Common fields: id, name, icon, categories (array of strings), connectionType ('oauth' | 'apikey'), instructions, customPrompt, isGlobal (admin only). " +
+                "OAuth-only fields: redirectUri, scope, authUrl, authParams, tokenUrl, tokenParams, tokenHeaders, refreshUrl, refreshParams, refreshHeaders, providerCode. " +
+                "Do NOT send: connection_type, custom_prompt, is_global, supports_refresh — those keys are ignored.",
               additionalProperties: true,
             },
             api_key_string: {
@@ -2712,6 +2718,7 @@ export const TOOLS = {
               return JSON.stringify({ success: false, error: "provider_data (object) is required for 'create_provider'." });
             }
             result = await agnt.auth.createProvider(provider_data);
+            broadcast(RealtimeEvents.PROVIDER_CREATED, { providerId: provider_data.id });
             break;
           case 'update_provider':
             if (!provider_id) {
@@ -2721,12 +2728,14 @@ export const TOOLS = {
               return JSON.stringify({ success: false, error: "provider_data (object) is required for 'update_provider'." });
             }
             result = await agnt.auth.updateProvider(provider_id, provider_data);
+            broadcast(RealtimeEvents.PROVIDER_UPDATED, { providerId: provider_id });
             break;
           case 'delete_provider':
             if (!provider_id) {
               return JSON.stringify({ success: false, error: "provider_id is required for 'delete_provider'." });
             }
             result = await agnt.auth.deleteProvider(provider_id);
+            broadcast(RealtimeEvents.PROVIDER_DELETED, { providerId: provider_id });
             break;
           case 'get_provider_details':
             if (!provider_id) {

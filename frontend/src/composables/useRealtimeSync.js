@@ -51,6 +51,7 @@ export function emitClearSteer(conversationId) {
 let debouncedAgentFetch = null;
 let debouncedWorkflowFetch = null;
 let debouncedContentFetch = null;
+let debouncedProviderFetch = null;
 
 /**
  * Composable for real-time sync via Socket.IO
@@ -145,6 +146,12 @@ export function useRealtimeSync() {
     if (!debouncedContentFetch) {
       debouncedContentFetch = debounce(() => {
         store.dispatch('contentOutputs/refreshOutputs');
+      }, 500, { leading: true, trailing: true });
+    }
+
+    if (!debouncedProviderFetch) {
+      debouncedProviderFetch = debounce(() => {
+        store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
       }, 500, { leading: true, trailing: true });
     }
 
@@ -551,6 +558,24 @@ export function useRealtimeSync() {
       console.log('[Realtime] Plugin uninstalled:', data);
       // Dispatch window event for components to refresh their local state
       window.dispatchEvent(new CustomEvent('plugin-uninstalled', { detail: data }));
+    });
+
+    // Auth provider events — refresh the global provider list so newly
+    // registered providers show up in Settings → Connections without a
+    // full frontend reload.
+    socket.on('provider:created', (data) => {
+      console.log('[Realtime] Provider created:', data);
+      debouncedProviderFetch();
+    });
+
+    socket.on('provider:updated', (data) => {
+      console.log('[Realtime] Provider updated:', data);
+      debouncedProviderFetch();
+    });
+
+    socket.on('provider:deleted', (data) => {
+      console.log('[Realtime] Provider deleted:', data);
+      debouncedProviderFetch();
     });
   };
 

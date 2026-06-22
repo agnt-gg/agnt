@@ -445,6 +445,21 @@ const deleteProvider = async (providerId) => {
     }
 
     allApps.value = allApps.value.filter((app) => app.id !== providerId);
+
+    // Refresh the global provider store and fan the event to other tabs.
+    await store.dispatch('appAuth/fetchAllProviders', { forceRefresh: true });
+    try {
+      await fetch(`${API_CONFIG.BASE_URL}/auth/providers/notify-changed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ event: 'deleted', providerId }),
+      });
+    } catch (err) {
+      console.warn('[OauthManager] notify-changed (delete) failed:', err);
+    }
   } catch (error) {
     console.error('Error deleting provider:', error);
     await showAlert('Deletion Error', 'Failed to delete provider. Please try again.');

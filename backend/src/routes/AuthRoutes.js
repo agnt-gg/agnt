@@ -15,8 +15,15 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import AuthManager from '../services/auth/AuthManager.js';
+import { broadcast, RealtimeEvents } from '../utils/realtimeSync.js';
 
 const router = express.Router();
+
+const PROVIDER_NOTIFY_EVENT = {
+  created: RealtimeEvents.PROVIDER_CREATED,
+  updated: RealtimeEvents.PROVIDER_UPDATED,
+  deleted: RealtimeEvents.PROVIDER_DELETED,
+};
 
 // Soft user-id extraction: tries verify first (local-issued tokens), falls back
 // to decode (remote-issued tokens via api.agnt.gg). We do NOT 401 on failure —
@@ -51,6 +58,23 @@ router.get('/connected', async (req, res) => {
     console.error('[AuthRoutes] /connected failed:', error.message);
     return res.status(500).json({ success: false, error: error.message || 'Failed to list connected providers' });
   }
+});
+
+// POST /api/auth/providers/notify-changed
+//   body: { event: 'created' | 'updated' | 'deleted', providerId?: string }
+//
+// The UI form (and any other client-side caller) posts to the cloud API
+// directly for provider CRUD, so the local backend never sees the write.
+// This endpoint lets the client tell the local backend "I just changed a
+// provider — fan it out" so every connected tab refreshes via Socket.IO.
+router.post('/providers/notify-changed', (req, res) => {
+  const { event, providerId } = req.body || {};
+  const realtimeEvent = PROVIDER_NOTIFY_EVENT[event];
+  if (!realtimeEvent) {
+    return res.status(400).json({ success: false, error: "event must be 'created', 'updated', or 'deleted'." });
+  }
+  broadcast(realtimeEvent, { providerId: providerId || null });
+  return res.json({ success: true });
 });
 
 export default router;

@@ -8,6 +8,21 @@ import { TTL } from '../_utils/freshnessConfig.js';
 // CLI provider IDs that use local filesystem auth
 const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli'];
 
+// Tell the local backend a provider changed so it can fan a Socket.IO
+// event out to every other connected client (other tabs / chat panels)
+// — same-tab refresh is already covered by the forceRefresh dispatch.
+// Fire-and-forget; logs but never throws.
+function notifyLocalBackendProviderChanged(event, providerId) {
+  const token = localStorage.getItem('token');
+  axios.post(
+    `${API_CONFIG.BASE_URL}/auth/providers/notify-changed`,
+    { event, providerId },
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  ).catch((err) => {
+    console.warn('[appAuth] notify-changed failed:', err?.message);
+  });
+}
+
 // In-flight promise for deduplicating concurrent fetchConnectedApps calls.
 // (withFreshness also de-dupes concurrent callers, so this is a redundant
 // safety net for any legacy callers that bypass the wrapper.)
@@ -32,6 +47,22 @@ const mutations = {
   },
   SET_ALL_PROVIDERS(state, providers) {
     state.allProviders = providers;
+  },
+  PATCH_PROVIDER(state, { id, patch }) {
+    const idx = state.allProviders.findIndex((p) => p.id === id);
+    if (idx === -1) return;
+    // Merge: spread existing first, then apply patch fields on top so the
+    // edited values win without dropping fields the patch didn't include.
+    // Replace the array reference so reactive consumers re-evaluate.
+    const merged = { ...state.allProviders[idx], ...patch };
+    state.allProviders = [
+      ...state.allProviders.slice(0, idx),
+      merged,
+      ...state.allProviders.slice(idx + 1),
+    ];
+  },
+  REMOVE_PROVIDER(state, id) {
+    state.allProviders = state.allProviders.filter((p) => p.id !== id);
   },
   SET_CONNECTION_HEALTH(state, health) {
     state.connectionHealth = health;
@@ -462,8 +493,32 @@ const actions = {
         },
       });
 
-      // Refresh the providers list after update
-      await dispatch('fetchAllProviders');
+      // Optimistic patch — the UI snaps to the edited values immediately,
+      // independent of the refetch. Without this, the form fields can
+      // briefly revert if anything else returns a stale provider list.
+      // Snake_case mirrors are kept for components reading either casing.
+      const patch = {
+        ...providerData,
+        connection_type: providerData.connectionType ?? providerData.connection_type,
+        custom_prompt: providerData.customPrompt ?? providerData.custom_prompt,
+        redirect_uri: providerData.redirectUri ?? providerData.redirect_uri,
+        auth_url: providerData.authUrl ?? providerData.auth_url,
+        auth_params: providerData.authParams ?? providerData.auth_params,
+        token_url: providerData.tokenUrl ?? providerData.token_url,
+        token_params: providerData.tokenParams ?? providerData.token_params,
+        token_headers: providerData.tokenHeaders ?? providerData.token_headers,
+        refresh_url: providerData.refreshUrl ?? providerData.refresh_url,
+        refresh_params: providerData.refreshParams ?? providerData.refresh_params,
+        refresh_headers: providerData.refreshHeaders ?? providerData.refresh_headers,
+        provider_code: providerData.providerCode ?? providerData.provider_code,
+      };
+      commit('PATCH_PROVIDER', { id, patch });
+
+      // forceRefresh: true is required — without it, the 5-min freshness
+      // cache on fetchAllProviders silently no-ops the refetch and the UI
+      // keeps showing the pre-edit data until the user reloads.
+      await dispatch('fetchAllProviders', { forceRefresh: true });
+      notifyLocalBackendProviderChanged('updated', id);
       return { success: true, ...response.data };
     } catch (error) {
       console.error('Error updating provider:', error);
@@ -479,8 +534,16 @@ const actions = {
         },
       });
 
-      // Refresh the connected apps list after deletion
-      await dispatch('fetchConnectedApps', { forceRefresh: true });
+      // Optimistic remove — UI updates immediately; refetch reconciles.
+      commit('REMOVE_PROVIDER', providerId);
+
+      // Refresh both lists: the provider catalog (so the deleted row drops
+      // out of the grid) and the connected-apps list (so any badge clears).
+      await Promise.all([
+        dispatch('fetchAllProviders', { forceRefresh: true }),
+        dispatch('fetchConnectedApps', { forceRefresh: true }),
+      ]);
+      notifyLocalBackendProviderChanged('deleted', providerId);
       return { success: true, ...response.data };
     } catch (error) {
       console.error('Error deleting provider:', error);

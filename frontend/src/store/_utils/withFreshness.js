@@ -64,22 +64,32 @@ export function withFreshness(key, fn, { staleAfter = DEFAULT_STALE_AFTER } = {}
       return lastResult;
     }
 
-    // Coalesce concurrent callers onto one in-flight promise
-    if (inFlight) {
+    // Coalesce concurrent callers onto one in-flight promise.
+    // Exception: a force call must NOT ride a pre-existing in-flight that
+    // started before the caller's mutation completed — that in-flight will
+    // return stale (pre-mutation) data and stomp the UI back to old values
+    // after a save. Force always starts its own fetch.
+    if (inFlight && !force) {
       bump(key, 'dedupes');
       return inFlight;
     }
 
     bump(key, 'misses');
-    inFlight = (async () => {
+    const fetchPromise = (async () => {
       try {
-        lastResult = await fn(ctx, payload, ...rest);
+        const result = await fn(ctx, payload, ...rest);
+        lastResult = result;
         lastFetched = Date.now();
-        return lastResult;
+        return result;
       } finally {
-        inFlight = null;
+        // Only clear inFlight if WE'RE still the registered promise. With
+        // force bypassing dedup, two fetches can run concurrently — without
+        // this guard, the first to finish would null out the tracker for
+        // the second, letting unrelated callers race instead of dedupe.
+        if (inFlight === fetchPromise) inFlight = null;
       }
     })();
-    return inFlight;
+    inFlight = fetchPromise;
+    return fetchPromise;
   };
 }
