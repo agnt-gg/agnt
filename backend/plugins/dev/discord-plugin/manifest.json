@@ -1,7 +1,7 @@
 {
   "name": "discord-plugin",
-  "version": "1.4.0",
-  "description": "Discord integration plugin for AGNT - Send messages, manage roles, receive messages, and interact with Discord servers",
+  "version": "1.5.0",
+  "description": "Discord integration plugin for AGNT - Send messages (with automatic message chunking for content over Discord's 2000-char limit), manage roles, receive messages, and interact with Discord servers",
   "author": "AGNT",
   "icon": "discord",
   "tools": [
@@ -13,7 +13,7 @@
         "category": "action",
         "type": "discord-api",
         "icon": "discord",
-        "description": "Interact with Discord to perform various operations such as sending messages, managing roles, and uploading files.",
+        "description": "Interact with Discord to perform various operations such as sending messages, managing roles, and uploading files. Long messages are automatically split into multiple chunks (Discord caps a single message at 2000 characters); splitting is code-block aware and emoji-safe.",
         "authRequired": "apiKey",
         "authProvider": "discord",
         "parameters": {
@@ -35,10 +35,50 @@
           "message": {
             "type": "string",
             "inputType": "textarea",
-            "description": "The message to send (for SEND_MESSAGE action)",
+            "description": "The message to send (for SEND_MESSAGE action). Messages longer than the Discord limit are automatically sent as multiple sequential messages unless autoSplit is disabled.",
             "conditional": {
               "field": "action",
               "value": ["SEND_MESSAGE", "UPLOAD_FILE"]
+            }
+          },
+          "autoSplit": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": true,
+            "description": "Automatically split messages that exceed the character limit into multiple sequential messages (for SEND_MESSAGE action). Splitting avoids breaking words, preserves fenced code blocks, and never slices emoji. Default: true. Set false to send as-is (Discord will reject content over 2000 chars).",
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE"]
+            }
+          },
+          "splitLimit": {
+            "type": "number",
+            "inputType": "number",
+            "default": 2000,
+            "description": "Maximum characters per message chunk when autoSplit is on (for SEND_MESSAGE action). Capped at Discord's 2000-char hard limit. Lower it for a safety margin. Default: 2000.",
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE"]
+            }
+          },
+          "splitDelayMs": {
+            "type": "number",
+            "inputType": "number",
+            "default": 350,
+            "description": "Delay in milliseconds between sequential chunks when a message is split (for SEND_MESSAGE action). Keeps chunks in order and avoids Discord rate limits. Default: 350. Set 0 for no delay.",
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE"]
+            }
+          },
+          "numberChunks": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "description": "Append a (n/N) counter to the end of each chunk when a message is split (for SEND_MESSAGE action). Default: false.",
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE"]
             }
           },
           "guildId": {
@@ -184,7 +224,7 @@
           },
           "result": {
             "type": "object",
-            "description": "The result of the Discord operation"
+            "description": "The result of the Discord operation. For SEND_MESSAGE: a single-message object, or when a long message was split, a chunked object with { chunked: true, chunkCount, messages: [...] } plus top-level pointers to the first message."
           },
           "error": {
             "type": "string",

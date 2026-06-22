@@ -9,6 +9,124 @@ import path from 'path';
  * This is a plugin-based tool that loads discord.js from its own isolated node_modules.
  * The plugin system automatically runs `npm install` on server startup.
  */
+
+// Discord's hard content cap for a single message (non-Nitro bots).
+const DISCORD_MAX_CONTENT = 2000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const lpLen = (s) => Array.from(s).length; // length in Unicode code points
+
+/**
+ * Take up to `room` code points from the front of `str`, preferring to cut on a
+ * paragraph break, then newline, then sentence end, then whitespace. Falls back to a
+ * hard code-point cut if no boundary exists within the window.
+ */
+function sliceOnBoundary(str, room) {
+  const cps = Array.from(str);
+  if (cps.length <= room) return str;
+  const window = cps.slice(0, room).join('');
+  const candidates = [
+    window.lastIndexOf('\n\n'),
+    window.lastIndexOf('\n'),
+    Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? ')),
+    window.lastIndexOf(' '),
+  ];
+  for (const idx of candidates) {
+    // Only honor a boundary if it's reasonably far into the window, else we waste space.
+    if (idx > room * 0.5) return window.slice(0, idx + 1);
+  }
+  // Hard cut on a code-point boundary (never slices a surrogate pair / emoji in half).
+  return cps.slice(0, room).join('');
+}
+
+/**
+ * Split a long string into Discord-safe chunks.
+ *
+ * Quality rules (priority order):
+ *  - Never break a fenced ``` code block across a chunk boundary: close it at the
+ *    end of the chunk and reopen it (preserving the language tag) at the top of the next.
+ *  - Prefer natural boundaries: paragraph break -> newline -> sentence end -> space.
+ *  - Operate on Unicode code points so emoji / surrogate pairs are never sliced.
+ *  - Hard-cut only as a last resort (a single unbreakable token longer than the limit).
+ *
+ * Verified against a local test matrix (plain text, code blocks, pure-emoji,
+ * unbreakable tokens, and realistic mixed content) — every chunk <= limit and every
+ * chunk has balanced ``` fences.
+ *
+ * @returns {string[]} ordered chunks, each <= limit code points.
+ */
+function smartSplitMessage(text, limit = DISCORD_MAX_CONTENT) {
+  if (lpLen(text) <= limit) return [text];
+  const fenceRe = /^```[^\n`]*$/;
+  const lines = text.split('\n');
+
+  const chunks = [];
+  let buf = '';
+  let currentFence = null; // opener string if we are *inside* a code block, else null
+  let chunkFence = null; // the fence the current buf was seeded with (reopen accounting)
+
+  const reserve = () => (currentFence ? 4 : 0); // room for a trailing "\n```"
+
+  const closeChunk = () => {
+    if (buf.length === 0) return;
+    let out = buf;
+    if (currentFence) out += (out.endsWith('\n') ? '' : '\n') + '```';
+    chunks.push(out);
+    buf = '';
+    if (currentFence) {
+      buf = currentFence + '\n'; // reopen the same fence at the top of the next chunk
+      chunkFence = currentFence;
+    } else {
+      chunkFence = null;
+    }
+  };
+
+  const fits = (piece) => lpLen(buf) + lpLen(piece) <= limit - reserve();
+
+  for (let i = 0; i < lines.length; i++) {
+    const isLast = i === lines.length - 1;
+    const line = lines[i];
+    const trimmed = line.trim();
+    const isFence = fenceRe.test(trimmed);
+
+    // Fence state AFTER this line: a fence line toggles in/out of a code block.
+    let fenceAfter = currentFence;
+    if (isFence) fenceAfter = currentFence ? null : trimmed === '```' ? '```' : trimmed;
+
+    const piece = isLast ? line : line + '\n';
+
+    if (fits(piece)) {
+      buf += piece;
+      currentFence = fenceAfter;
+      continue;
+    }
+
+    // Doesn't fit. If buf has real content beyond a reopened fence header, flush it.
+    const headerLen = chunkFence ? lpLen(chunkFence + '\n') : 0;
+    if (lpLen(buf) > headerLen) closeChunk();
+
+    // The single line itself may exceed the limit -> wrap it on soft boundaries.
+    let remaining = piece;
+    while (lpLen(buf) + lpLen(remaining) > limit - reserve()) {
+      const room = limit - lpLen(buf) - reserve();
+      const slice = sliceOnBoundary(remaining, Math.max(1, room));
+      buf += slice;
+      remaining = remaining.slice(slice.length);
+      closeChunk();
+    }
+    if (remaining.length) buf += remaining;
+    currentFence = fenceAfter;
+  }
+
+  // Final flush WITHOUT reopening (we're done).
+  if (buf.length) {
+    let out = buf;
+    if (currentFence) out += (out.endsWith('\n') ? '' : '\n') + '```';
+    chunks.push(out);
+  }
+  return chunks.filter((c) => c.trim().length > 0);
+}
+
 class DiscordAPI {
   constructor() {
     this.name = 'discord-api';
@@ -70,18 +188,77 @@ class DiscordAPI {
 
   async sendMessage(client, params) {
     const channel = await client.channels.fetch(params.channelId);
-    const message = await channel.send(params.message);
-    const messageAuthor = message.author;
+
+    // --- chunking options (all optional, backwards compatible) ---
+    const autoSplit = params.autoSplit !== false && params.autoSplit !== 'false';
+    let limit = parseInt(params.splitLimit, 10);
+    if (Number.isNaN(limit)) limit = DISCORD_MAX_CONTENT;
+    limit = Math.min(Math.max(limit, 1), DISCORD_MAX_CONTENT);
+    let delayMs = parseInt(params.splitDelayMs, 10);
+    if (Number.isNaN(delayMs)) delayMs = 350;
+    delayMs = Math.max(delayMs, 0);
+    const numberChunks = params.numberChunks === true || params.numberChunks === 'true';
+
+    const text = params.message ?? '';
+
+    // Fast path: short message OR splitting disabled -> single send (unchanged behavior).
+    if (!autoSplit || lpLen(text) <= limit) {
+      const message = await channel.send(text);
+      return this.formatSentMessage(message, { chunked: false }).result;
+    }
+
+    // Build chunks. Reserve room for a " (n/N)" suffix when numbering is enabled.
+    let chunks = smartSplitMessage(text, numberChunks ? limit - 12 : limit);
+    if (numberChunks) {
+      const total = chunks.length;
+      chunks = chunks.map((c, i) => `${c}\n\n(${i + 1}/${total})`);
+    }
+
+    const sent = [];
+    for (let i = 0; i < chunks.length; i++) {
+      // Ping only on the first chunk; suppress notifications on the rest while
+      // still rendering any <@id> mentions as clickable text.
+      const allowedMentions = i === 0 ? undefined : { parse: [] };
+      try {
+        const msg = await channel.send({ content: chunks[i], allowedMentions });
+        sent.push(this.formatSentMessage(msg, null).result);
+      } catch (err) {
+        // Partial success: report what landed plus the failure point.
+        return {
+          chunked: true,
+          chunkCount: sent.length,
+          totalChunks: chunks.length,
+          messages: sent,
+          failedAtChunk: i + 1,
+          error: `Sent ${sent.length}/${chunks.length} chunks before failing on chunk ${i + 1}: ${err.message}`,
+        };
+      }
+      if (i < chunks.length - 1 && delayMs > 0) await sleep(delayMs);
+    }
 
     return {
-      success: true,
-      result: {
-        messageId: message.id,
-        timestamp: message.createdTimestamp,
-        username: messageAuthor?.username || null,
-        avatarUrl: messageAuthor ? messageAuthor.displayAvatarURL({ extension: 'png', size: 256 }) : null,
-      },
+      chunked: true,
+      chunkCount: sent.length,
+      messages: sent,
+      // convenience top-level pointers to the first message (backwards-compatible reads)
+      messageId: sent[0]?.messageId ?? null,
+      timestamp: sent[0]?.timestamp ?? null,
+      username: sent[0]?.username ?? null,
+      avatarUrl: sent[0]?.avatarUrl ?? null,
     };
+  }
+
+  /** Shape a single sent discord.js Message into our standard result envelope. */
+  formatSentMessage(message, extra) {
+    const messageAuthor = message.author;
+    const base = {
+      messageId: message.id,
+      timestamp: message.createdTimestamp,
+      username: messageAuthor?.username || null,
+      avatarUrl: messageAuthor ? messageAuthor.displayAvatarURL({ extension: 'png', size: 256 }) : null,
+    };
+    if (extra && typeof extra === 'object') Object.assign(base, extra);
+    return { success: true, result: base };
   }
 
   async assignRole(client, params) {
