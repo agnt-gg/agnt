@@ -110,7 +110,13 @@ export function deriveProjectSlug({
   if (chatType === 'goal') {
     const name = slugifyName(goalContext?.title || goalContext?.name);
     if (name) return `goal-${name}`;
-    if (goalId) return `goal-${String(goalId).slice(0, 8)}`;
+    if (goalId) {
+      // Run the id fallback through the same slug helper as every other
+      // branch — this value becomes part of the unfirehose output directory,
+      // so path-ish characters in a raw id must not leak through.
+      const id = slugifyName(goalId);
+      if (id) return `goal-${id.slice(0, 8)}`;
+    }
   }
 
   return 'chat';

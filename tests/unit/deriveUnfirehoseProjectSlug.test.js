@@ -51,6 +51,34 @@ describe('deriveUnfirehoseProjectSlug', () => {
     })).toBe('goal-abc12345');
   });
 
+  it('goal id with path-ish characters runs through slugifyName before slicing', () => {
+    // This value becomes part of the unfirehose output directory, so slashes,
+    // dots and other path separators must not leak through. Slugifying first
+    // strips them; the slice then takes the first 8 chars of the safe form.
+    expect(deriveUnfirehoseProjectSlug({
+      chatType: 'goal',
+      goalId: '../etc/passwd',
+    })).toBe('goal-etc-pass');
+
+    expect(deriveUnfirehoseProjectSlug({
+      chatType: 'goal',
+      goalId: 'foo/bar/baz',
+    })).toBe('goal-foo-bar-');
+
+    // Whitespace + special chars also collapse to dashes via slugifyName
+    expect(deriveUnfirehoseProjectSlug({
+      chatType: 'goal',
+      goalId: '  weird id!! ',
+    })).toBe('goal-weird-id');
+  });
+
+  it('goal id that slugifies to empty falls back to chat (no goal- leak)', () => {
+    expect(deriveUnfirehoseProjectSlug({
+      chatType: 'goal',
+      goalId: '!!!',
+    })).toBe('chat');
+  });
+
   it('orchestrator chat → chat', () => {
     expect(deriveUnfirehoseProjectSlug({ chatType: 'orchestrator' })).toBe('chat');
   });
