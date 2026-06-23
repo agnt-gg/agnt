@@ -16,7 +16,7 @@ version: '3.8'
 # make run-both
 #
 # ⚠️ PERMISSIONS: If you get "EACCES: permission denied" errors, run:
-#   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/plugins/installed ~/.agnt/plugins/builds
+#   mkdir -p ~/.agnt/data ~/.agnt/logs/full ~/.agnt/unfirehose ~/.agnt/plugins/installed ~/.agnt/plugins/builds
 #   sudo chown -R 1000:1000 ~/.agnt
 
 services:
@@ -57,6 +57,9 @@ services:
       # When enabled, multiple containers can safely access the same database
       - SQLITE_WAL_MODE=true
 
+      # unfirehose JSONL session logs (UnfirehoseLogger writes here)
+      - UNFIREHOSE_DIR=/app/unfirehose
+
     volumes:
       # SQLite database and user data (persistent across restarts)
       # USER_DATA_PATH=/app/data - plugins, database, and registry are stored here
@@ -64,6 +67,9 @@ services:
 
       # Application logs
       - ${AGNT_HOME:-$HOME}/.agnt/logs/full:/app/logs
+
+      # unfirehose session logs (consumed by unfirehose-nextjs-logger)
+      - ${AGNT_HOME:-$HOME}/.agnt/unfirehose:/app/unfirehose
 
       # Optional: Custom environment file
       # - ./backend/.env:/app/backend/.env:ro

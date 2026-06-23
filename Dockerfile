@@ -90,7 +90,11 @@ RUN apk add --no-cache \
     ttf-freefont \
     sqlite \
     ffmpeg \
-    su-exec
+    su-exec \
+    bash \
+    git \
+    curl \
+    jq
 
 # Set Puppeteer to use installed Chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true

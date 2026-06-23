@@ -16,7 +16,12 @@ if [ "$(id -u)" = "0" ]; then
     if [ -d "/app/logs" ]; then
         chown -R node:node /app/logs 2>/dev/null || true
     fi
-    
+
+    # Fix /app/unfirehose directory (UNFIREHOSE_DIR - JSONL session logs)
+    # Docker auto-creates the bind-mount target as root if the host dir is missing
+    mkdir -p /app/unfirehose 2>/dev/null || true
+    chown -R node:node /app/unfirehose 2>/dev/null || true
+
     # Create required subdirectories in /app/data (USER_DATA_PATH)
     # These are where PluginManager and PluginInstaller look for plugins
     mkdir -p /app/data/_logs 2>/dev/null || true
