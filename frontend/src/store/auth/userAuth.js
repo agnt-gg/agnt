@@ -207,6 +207,11 @@ export default {
             dispatch('fetchPseudonym');
           }
         } else {
+          // Server returned 200 but explicitly says "no authenticated user".
+          // Drop any stale local user so the guard's user-check stays in sync
+          // with what the server just told us. Symmetric with the happy path,
+          // which sets the user — this clears it.
+          commit('SET_USER', null);
           commit('SET_AUTH_FAILURE', {
             reason: 'unauthenticated_response',
             status: response.status,
