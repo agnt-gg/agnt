@@ -20,6 +20,14 @@
  *   - clears the local token ONLY for definitive rejections (401/403/etc.) —
  *     transient failures (5xx, network, timeout) leave the token alone so
  *     an outage doesn't log everyone out
+ *
+ * The gate dispatches fetchUserData with `forceRefresh: true` because
+ * fetchUserData is wrapped in withFreshness. An active attempt to enter
+ * a protected route is a live probe, not a background refresh: riding
+ * the TTL cache would (a) keep showing "service is down" after a transient
+ * failure has recovered and (b) delay honoring a token that became valid
+ * mid-TTL. Background refreshers (main.js boot, LoginSection) still use
+ * the cached path.
  */
 import { isDefinitiveAuthRejection } from '@/store/auth/userAuth.js';
 
@@ -37,7 +45,10 @@ export function createAuthGuard(storeInstance) {
 
     if (to.meta.requiresAuth && !storeInstance.state.userAuth.user) {
       try {
-        await storeInstance.dispatch('userAuth/fetchUserData');
+        // forceRefresh bypasses the withFreshness TTL cache. The gate must
+        // re-probe live; a cached no-op would mask both a recovered service
+        // and a freshly-valid token.
+        await storeInstance.dispatch('userAuth/fetchUserData', { forceRefresh: true });
 
         if (!storeInstance.state.userAuth.user) {
           handleAuthFailure(storeInstance, to, next);

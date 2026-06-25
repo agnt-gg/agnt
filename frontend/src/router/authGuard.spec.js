@@ -16,10 +16,12 @@
  *      (http_401, http_403, unauthenticated_response, no_token); transient
  *      failures (http_5xx, network_error, timeout) leave the token alone
  *      so users are not logged out by an outage
+ *   5. fetchUserData dispatched with { forceRefresh: true } so the gate
+ *      bypasses the withFreshness TTL cache (live probe, not background)
  *
  * If a future refactor removes the event, drops returnTo, reverts to a
- * silent redirect, or starts clearing tokens on transient failures, these
- * tests fail.
+ * silent redirect, starts clearing tokens on transient failures, or drops
+ * forceRefresh and lets the gate ride the cache — these tests fail.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createAuthGuard } from './authGuard.js';
@@ -118,13 +120,30 @@ describe('createAuthGuard', () => {
 
     await guard(makeRoute(), {}, next);
 
-    expect(store.dispatch).toHaveBeenCalledWith('userAuth/fetchUserData');
+    expect(store.dispatch).toHaveBeenCalledWith('userAuth/fetchUserData', { forceRefresh: true });
     expect(next).toHaveBeenCalledOnce();
     expect(next).toHaveBeenCalledWith();
     expect(dispatchEventSpy).not.toHaveBeenCalled();
     // No CLEAR_TOKEN, no SET_USER(null) on the happy path
     expect(store.commit).not.toHaveBeenCalledWith('userAuth/CLEAR_TOKEN');
     expect(store.commit).not.toHaveBeenCalledWith('userAuth/SET_USER', null);
+  });
+
+  it('dispatches fetchUserData with forceRefresh:true so the gate bypasses the withFreshness cache', async () => {
+    // The gate is a live probe — riding the cache would mask both a
+    // recovered service (sticky transient failure) and a freshly-valid
+    // token (delayed pickup). If a future refactor drops forceRefresh,
+    // this test fails. See comment in createAuthGuard.
+    const store = makeStore({ user: null, fetchUserAfterDispatch: { id: 'u9' } });
+    const guard = createAuthGuard(store);
+    const next = vi.fn();
+
+    await guard(makeRoute(), {}, next);
+
+    expect(store.dispatch).toHaveBeenCalledWith(
+      'userAuth/fetchUserData',
+      expect.objectContaining({ forceRefresh: true }),
+    );
   });
 
   it('OAuth callback to /settings with ?code redirects to /connectors preserving all query', async () => {
