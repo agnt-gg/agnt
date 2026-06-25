@@ -85,7 +85,11 @@ function handleAuthFailure(storeInstance, to, next) {
     clearStaleAuth(storeInstance);
   }
 
-  const detail = { from: to.fullPath, ...failure };
+  // detail.from is user-facing (rendered in the modal copy), so use the
+  // bare path — fullPath would leak ?content-id=… and similar internal query
+  // noise into messages a human reads. The ?returnTo below DOES use fullPath
+  // so deep-link resume after sign-in preserves the original query.
+  const detail = { from: to.path, ...failure };
   console.warn(`[router] auth required for ${to.fullPath} → bouncing to /settings`, detail);
   window.dispatchEvent(new CustomEvent('auth-redirect', { detail }));
   next({ path: '/settings', query: { returnTo: to.fullPath } });

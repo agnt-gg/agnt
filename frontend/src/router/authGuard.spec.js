@@ -11,12 +11,14 @@
  *   1. console warn so the bounce is visible in DevTools
  *   2. window 'auth-redirect' event carrying the full failure record
  *      (reason, status, detail, timestamp) for the UI layer to consume
- *   3. returnTo query param so deep-links can resume after auth
- *   4. CLEAR_TOKEN + SET_USER(null) ONLY for definitive rejections
+ *   3. returnTo query param (fullPath) so deep-links can resume after auth
+ *   4. event detail.from is the bare path (no ?query noise) since it's
+ *      rendered in user-facing modal copy
+ *   5. CLEAR_TOKEN + SET_USER(null) ONLY for definitive rejections
  *      (http_401, http_403, unauthenticated_response, no_token); transient
  *      failures (http_5xx, network_error, timeout) leave the token alone
  *      so users are not logged out by an outage
- *   5. fetchUserData dispatched with { forceRefresh: true } so the gate
+ *   6. fetchUserData dispatched with { forceRefresh: true } so the gate
  *      bypasses the withFreshness TTL cache (live probe, not background)
  *
  * If a future refactor removes the event, drops returnTo, reverts to a
@@ -170,6 +172,7 @@ describe('createAuthGuard', () => {
 
     await guard(makeRoute(), {}, next);
 
+    // returnTo carries fullPath so deep-link resume preserves the query.
     expect(next).toHaveBeenCalledWith({
       path: '/settings',
       query: { returnTo: '/chat?content-id=abc-123' },
@@ -177,8 +180,9 @@ describe('createAuthGuard', () => {
     expect(dispatchEventSpy).toHaveBeenCalledOnce();
     const event = dispatchEventSpy.mock.calls[0][0];
     expect(event.type).toBe('auth-redirect');
+    // detail.from is user-facing copy → bare path, no query noise.
     expect(event.detail).toMatchObject({
-      from: '/chat?content-id=abc-123',
+      from: '/chat',
       reason: 'http_401',
       status: 401,
       detail: 'token expired',
@@ -236,6 +240,7 @@ describe('createAuthGuard', () => {
 
     await guard(makeRoute(), {}, next);
 
+    // returnTo still carries fullPath even on transient failure paths.
     expect(next).toHaveBeenCalledWith({
       path: '/settings',
       query: { returnTo: '/chat?content-id=abc-123' },
@@ -318,6 +323,8 @@ describe('createAuthGuard', () => {
 
     expect(warnSpy).toHaveBeenCalled();
     const [msg, payload] = warnSpy.mock.calls[0];
+    // Warn log uses fullPath so admins can grep by the exact route the user
+    // tried, query string and all.
     expect(msg).toContain('/chat?content-id=abc-123');
     expect(payload).toMatchObject({ reason: 'http_401', status: 401 });
   });
