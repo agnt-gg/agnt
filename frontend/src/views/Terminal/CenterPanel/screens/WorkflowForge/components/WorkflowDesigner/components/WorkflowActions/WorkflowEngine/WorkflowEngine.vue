@@ -137,8 +137,9 @@ export default {
           // Update workflow status.
           this.localWorkflowStatus = startResult.status || 'listening';
 
-          // Start animations and polling.
-          this.startAnimation();
+          // Animation is now driven purely by the CSS .animated class via
+          // WorkflowDesigner's isAnimating prop → Canvas → Edge.
+          // No JS animation needed — see startAnimation() below.
           this.startPolling();
           this.$emit('workflow-started');
           this.$emit('animation-state-changed', this.isAnimating);
@@ -150,14 +151,14 @@ export default {
           this.$emit('workflow-error', error.message);
         }
       } else {
-        // Otherwise, do the normal “stop” logic
+        // Otherwise, do the normal "stop" logic
         this.localWorkflowStatus = 'stopping';
         this.$emit('animation-state-changed', this.isAnimating);
 
         const workflowId = localStorage.getItem('activeWorkflow');
         const stopPromise = this.stopWorkflow(workflowId);
 
-        // Force “stopping” for at least 2 seconds
+        // Force "stopping" for at least 2 seconds
         await new Promise((resolve) => setTimeout(resolve, 2000));
 
         try {
@@ -165,7 +166,8 @@ export default {
           console.log('Workflow ID Stopped:', workflowId);
 
           this.stopPolling();
-          this.stopAnimation();
+          // Animation cleanup is handled by CSS class removal when
+          // WorkflowDesigner sets isAnimating = false.
           this.isAnimating = false;
           this.localWorkflowStatus = 'stopped';
           this.$emit('workflow-stopped');
@@ -177,49 +179,38 @@ export default {
         }
       }
     },
+
+    // ---------------------------------------------------------------
+    // Animation methods — DEPRECATED
+    // Edge dash animation is now driven entirely by the CSS .animated
+    // class applied to <path> elements in Edge.vue, controlled by the
+    // isAnimating prop that flows from WorkflowDesigner → Canvas → Edge.
+    //
+    // The previous JS implementation ran a setInterval every 5 seconds
+    // that queried every edge path via querySelector, forced a reflow
+    // with getBoundingClientRect(), and reset the CSS animation with a
+    // different duration (20s) than the stylesheet (25s). This caused
+    // visible "jumps" in the dash animation every 5 seconds and
+    // unnecessary layout thrashing.
+    //
+    // These stubs are kept so any remaining call sites compile harmlessly.
+    // ---------------------------------------------------------------
     startAnimation() {
-      this.playAnimation();
-      this.animationInterval = setInterval(this.playAnimation, 5000);
+      // No-op — animation is driven by CSS .animated class
     },
     stopAnimation() {
-      clearInterval(this.animationInterval);
-      this.animationInterval = null;
-      this.edges.forEach(this.stopEdgeAnimation);
+      // No-op — animation stops when .animated class is removed
     },
     playAnimation() {
-      if (this.canvasRef) {
-        this.edges.forEach(this.animateEdge);
-      }
+      // No-op — see startAnimation()
     },
-    animateEdge(edge) {
-      if (!this.canvasRef) return;
-      const edgeEl = this.canvasRef.querySelector(
-        `.edge[data-start="${edge.start.index}-${edge.start.type}"][data-end="${edge.end.index}-${edge.end.type}"]`
-      );
-      if (edgeEl) {
-        const path = edgeEl.querySelector('path');
-        if (path) {
-          const pathLength = path.getTotalLength();
-          path.style.strokeDasharray = `20 10`;
-          path.style.strokeDashoffset = `${pathLength}`;
-          path.style.animation = 'none';
-          path.getBoundingClientRect(); // Force reflow
-          path.style.animation = 'dashOffset 20s linear infinite';
-        }
-      }
+    animateEdge(/* edge */) {
+      // No-op — see startAnimation()
     },
-    stopEdgeAnimation(edge) {
-      if (!this.canvasRef) return;
-      const edgeEl = this.canvasRef.querySelector(
-        `.edge[data-start="${edge.start.index}-${edge.start.type}"][data-end="${edge.end.index}-${edge.end.type}"]`
-      );
-      if (edgeEl) {
-        const path = edgeEl.querySelector('path');
-        if (path) {
-          path.style.animation = 'none';
-        }
-      }
+    stopEdgeAnimation(/* edge */) {
+      // No-op — see startAnimation()
     },
+
     async startWorkflow(workflow) {
       console.log('🚀 Starting workflow with data:', workflow);
       try {
@@ -598,7 +589,7 @@ export default {
     },
   },
   beforeDestroy() {
-    clearInterval(this.animationInterval);
+    // animationInterval cleanup removed — animation is now pure CSS
   },
   mounted() {
     // this.startPolling();

@@ -1429,17 +1429,16 @@ export default {
     },
     handleWorkflowStarted() {
       // Reset all nodes and edges to inactive state
-      this.nodes = this.nodes.map((node) => ({
-        ...node,
-        isActive: false,
-        error: null,
-        output: null,
-      }));
+      // In-place mutation — avoids full array rebuild and Vue re-render
+      this.nodes.forEach((node) => {
+        node.isActive = false;
+        node.error = null;
+        node.output = null;
+      });
 
-      this.edges = this.edges.map((edge) => ({
-        ...edge,
-        isActive: false,
-      }));
+      this.edges.forEach((edge) => {
+        edge.isActive = false;
+      });
 
       // Update Vuex store so right panel reflects the change immediately
       const wfId = this.activeWorkflowId || localStorage.getItem('activeWorkflow');
@@ -1455,17 +1454,16 @@ export default {
     },
     handleWorkflowStopped() {
       // Reset all nodes and edges to inactive state
-      this.nodes = this.nodes.map((node) => ({
-        ...node,
-        isActive: false,
-        error: null,
-        output: null,
-      }));
+      // In-place mutation — avoids full array rebuild and Vue re-render
+      this.nodes.forEach((node) => {
+        node.isActive = false;
+        node.error = null;
+        node.output = null;
+      });
 
-      this.edges = this.edges.map((edge) => ({
-        ...edge,
-        isActive: false,
-      }));
+      this.edges.forEach((edge) => {
+        edge.isActive = false;
+      });
 
       // Reset workflow-related states
       // this.activeWorkflowId = null;
@@ -1561,17 +1559,17 @@ export default {
           const nextOutput = this.nodeOutputs[node.id] || null;
           return (
             (node.isActive || false) !== nextActive ||
-            (node.error || null) !== nextError ||
-            (node.output || null) !== nextOutput
+            JSON.stringify(node.error || null) !== JSON.stringify(nextError) ||
+            JSON.stringify(node.output || null) !== JSON.stringify(nextOutput)
           );
         });
         if (nodesChanged) {
-          this.nodes = this.nodes.map((node) => ({
-            ...node,
-            isActive: node.id === currentNodeId,
-            error: this.nodeErrors[node.id] || null,
-            output: this.nodeOutputs[node.id] || null,
-          }));
+          // In-place mutation — avoids full array rebuild and Vue re-render
+          this.nodes.forEach((node) => {
+            node.isActive = node.id === currentNodeId;
+            node.error = this.nodeErrors[node.id] || null;
+            node.output = this.nodeOutputs[node.id] || null;
+          });
 
           // Update selectedNode if it exists and matches one of the updated nodes
           if (this.selectedNode && this.selectedNodeIndex !== null) {
@@ -1592,14 +1590,17 @@ export default {
           return (edge.isActive || false) !== nextActive;
         });
         if (edgesChanged) {
-          this.edges = this.edges.map((edge) => ({
-            ...edge,
-            isActive: activeEdgeIds.has(edge.id),
-          }));
+          // In-place mutation — avoids full array rebuild
+          this.edges.forEach((edge) => {
+            edge.isActive = activeEdgeIds.has(edge.id);
+          });
         }
 
-        // Update animation state
-        this.updateAnimationState(this.workflowStatus === 'running' || this.workflowStatus === 'error' || this.workflowStatus === 'listening');
+        // Update animation state — only when it actually changes
+        const shouldBeAnimating = this.workflowStatus === 'running' || this.workflowStatus === 'error' || this.workflowStatus === 'listening';
+        if (this.isAnimating !== shouldBeAnimating) {
+          this.updateAnimationState(shouldBeAnimating);
+        }
 
         // Adaptive polling interval based on workflow status
         let nextPollInterval = 5000; // Default 5 seconds
