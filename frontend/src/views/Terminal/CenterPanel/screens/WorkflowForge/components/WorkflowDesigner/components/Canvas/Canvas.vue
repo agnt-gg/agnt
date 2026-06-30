@@ -842,7 +842,6 @@ export default {
   width: 100%;
   height: 100%;
   background-color: transparent;
-  transition: transform 0.05s ease-out;
 }
 
 .grid-overlay {
@@ -856,8 +855,8 @@ export default {
   background-position: center;
   opacity: 0.1;
   z-index: 0;
-  width: 10000%;
-  height: 10000%;
+  width: 300%;
+  height: 300%;
   transform: translate(-50%, -50%);
   cursor: grab;
 }

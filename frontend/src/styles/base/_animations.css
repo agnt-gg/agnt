@@ -8,6 +8,17 @@
   }
 }
 
+
+@keyframes breathe-shadow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0px var(--color-red);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--color-red);
+  }
+}
+
 @keyframes error-breathe-inset {
   0%,
   100% {

@@ -597,7 +597,6 @@ export default {
   transition:
     width 0.25s ease,
     stroke 0.25s ease;
-  will-change: stroke, d;
   backdrop-filter: blur(4px);
 }
 
@@ -886,7 +885,7 @@ body.dark .node.has-output {
 .node.has-error {
   border: 2px solid var(--color-red);
   /* color: #FE4E4E; */
-  animation: breathe 1.25s ease-in-out infinite;
+  animation: breathe-shadow 1.25s ease-in-out infinite;
   border-color: var(--color-red);
 }
 

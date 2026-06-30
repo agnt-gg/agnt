@@ -69,8 +69,16 @@ if (isLiteBuild) {
   console.log('[Lite Mode] Browser automation features disabled');
 }
 
-// Disable GPU hardware acceleration on macOS to prevent black screen issues
-if (process.platform === 'darwin') {
+// GPU hardware acceleration — enabled by default for smooth rendering.
+// The original blanket disable (commit 4580f33, Feb 2026) was added to fix
+// a black screen issue, but it forces all rendering through SwiftShader
+// (CPU-based software rasterizer), causing ~98% CPU on the GPU process and
+// severe sluggishness on canvas-heavy pages like the Workflow Designer.
+//
+// If you experience a black screen on launch, set AGNT_DISABLE_GPU=1 in
+// your environment and restart AGNT.
+if (process.env.AGNT_DISABLE_GPU === '1') {
+  console.log('[GPU] Hardware acceleration disabled via AGNT_DISABLE_GPU=1');
   app.disableHardwareAcceleration();
 }
 

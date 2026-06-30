@@ -191,8 +191,8 @@ export default {
   position: absolute;
   top: 0;
   left: 0;
-  width: 10000%;
-  height: 10000%;
+  width: 100%;
+  height: 100%;
   pointer-events: all;
   z-index: 1;
   overflow: visible;
@@ -206,7 +206,6 @@ export default {
 .edges path {
   stroke-dasharray: 16, 16;
   transition: stroke 0.2s ease;
-  will-change: stroke, d;
   stroke-width: 2.25;
 }
 
