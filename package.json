@@ -88,6 +88,7 @@
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "@playwright/test": "^1.57.0",
     "cross-env": "^7.0.3",
     "electron": "^33.0.2",
@@ -117,6 +118,7 @@
     "buildDependenciesFromSource": false,
     "nodeGypRebuild": false,
     "afterPack": "./scripts/electron-builder-lite.js",
+    "afterSign": "./scripts/notarize.js",
     "appId": "com.agnt.app",
     "productName": "AGNT",
     "directories": {
@@ -154,11 +156,13 @@
       ],
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT}-${version}-${os}-${arch}.${ext}"
+      "identity": "AGNT GG, Inc. (56BD35UF2U)",
+      "artifactName": "${productName}${env.AGNT_BUILD_VARIANT}-${version}-${os}-${arch}.${ext}",
+      "notarize": false
     },
     "linux": {
       "maintainer": "Nathan Wilbanks <nathan@agnt.gg>",

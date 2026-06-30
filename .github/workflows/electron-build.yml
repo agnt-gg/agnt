@@ -89,6 +89,13 @@ jobs:
           SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
+          # macOS code signing (electron-builder auto-imports the .p12)
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # macOS notarization (read by scripts/notarize.js)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -180,6 +187,13 @@ jobs:
           SETUPTOOLS_USE_DISTUTILS: local
           npm_config_msvs_version: ${{ runner.os == 'Windows' && '2022' || '' }}
           GYP_MSVS_VERSION: ${{ runner.os == 'Windows' && '2022' || '' }}
+          # macOS code signing (electron-builder auto-imports the .p12)
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # macOS notarization (read by scripts/notarize.js)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
