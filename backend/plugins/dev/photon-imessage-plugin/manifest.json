@@ -1,0 +1,292 @@
+{
+  "name": "photon-imessage-plugin",
+  "version": "0.1.0",
+  "description": "iMessage integration for AGNT via Photon Spectrum. Send and receive blue-bubble iMessages from workflows, with allowlist + pairing guardrails. Modeled on the Hermes Agent Photon pattern.",
+  "author": "AGNT",
+  "icon": "message-circle",
+  "tools": [
+    {
+      "type": "photon-imessage-api",
+      "entryPoint": "./photon-api.js",
+      "schema": {
+        "title": "Photon iMessage API",
+        "category": "action",
+        "type": "photon-imessage-api",
+        "icon": "message-circle",
+        "description": "Send iMessages and manage Photon Spectrum conversations. Choose an action to send a message/attachment, list conversations, register a user, check the assigned line, or call any raw Spectrum method.",
+        "authRequired": "apiKey",
+        "authProvider": "photon",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "SEND_MESSAGE",
+              "SEND_ATTACHMENT",
+              "GET_STATUS",
+              "GET_ASSIGNED_LINE",
+              "LIST_SPACES",
+              "LIST_MESSAGES",
+              "REGISTER_USER",
+              "RAW_SPECTRUM_CALL"
+            ],
+            "description": "The Photon iMessage operation to perform.",
+            "required": true,
+            "default": "SEND_MESSAGE"
+          },
+          "projectId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional fallback Photon Spectrum project ID. If omitted, AGNT uses the connected Photon provider from Settings → Connections.",
+            "required": false
+          },
+          "projectSecret": {
+            "type": "string",
+            "inputType": "password",
+            "description": "Optional fallback Photon Spectrum project secret. If omitted, AGNT uses the connected Photon provider.",
+            "required": false
+          },
+          "apiBaseUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional Photon Spectrum base URL. Defaults to https://spectrum.photon.codes.",
+            "required": false
+          },
+          "spaceId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Photon conversation (space) ID. Use this to reply into an existing thread.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE", "SEND_ATTACHMENT", "LIST_MESSAGES"]
+            }
+          },
+          "recipient": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Recipient phone number in E.164 format (e.g. +15551234567). Use to start a new conversation or register a user.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE", "SEND_ATTACHMENT", "REGISTER_USER"]
+            }
+          },
+          "message": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Message text to send. For SEND_ATTACHMENT this becomes the caption (a separate iMessage bubble).",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": ["SEND_MESSAGE", "SEND_ATTACHMENT"]
+            }
+          },
+          "filePath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Local path to the attachment to send (image, voice note, video, document).",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "SEND_ATTACHMENT"
+            }
+          },
+          "fileName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional override filename for the attachment. Defaults to the file's base name.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "SEND_ATTACHMENT"
+            }
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Max items to return (1-200). Default 50.",
+            "required": false,
+            "default": 50,
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_SPACES", "LIST_MESSAGES"]
+            }
+          },
+          "method": {
+            "type": "string",
+            "inputType": "text",
+            "description": "For RAW_SPECTRUM_CALL: dotted Spectrum method name, e.g. space.send, app.status, app.spaces.list.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "RAW_SPECTRUM_CALL"
+            }
+          },
+          "payloadJson": {
+            "type": "string",
+            "inputType": "codearea",
+            "description": "For RAW_SPECTRUM_CALL: JSON object payload for the Spectrum method. Use {} or leave empty for no payload.",
+            "required": false,
+            "default": "{}",
+            "conditional": {
+              "field": "action",
+              "value": "RAW_SPECTRUM_CALL"
+            }
+          },
+          "httpMethod": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["", "GET", "POST"],
+            "description": "For RAW_SPECTRUM_CALL: override the HTTP verb. Leave blank to auto-detect.",
+            "required": false,
+            "conditional": {
+              "field": "action",
+              "value": "RAW_SPECTRUM_CALL"
+            }
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Include the raw Photon Spectrum response in the output.",
+            "required": false,
+            "default": false
+          }
+        },
+        "outputs": {
+          "success": { "type": "boolean", "description": "Whether the operation succeeded." },
+          "action": { "type": "string", "description": "The action that was executed." },
+          "messageId": { "type": "string", "description": "Photon message ID (for sends)." },
+          "spaceId": { "type": "string", "description": "Photon conversation/space ID." },
+          "assignedLine": { "type": "string", "description": "The assigned iMessage line/number." },
+          "spaces": { "type": "array", "description": "List of conversations (LIST_SPACES)." },
+          "messages": { "type": "array", "description": "List of messages (LIST_MESSAGES)." },
+          "result": { "type": "object", "description": "Normalized Photon result." },
+          "raw": { "type": "object", "description": "Raw Photon response when includeRaw is enabled." },
+          "error": { "type": "string", "description": "Error message if the operation failed." }
+        }
+      }
+    },
+    {
+      "type": "receive-imessage",
+      "entryPoint": "./photon-receiver.js",
+      "schema": {
+        "title": "Receive iMessage",
+        "category": "trigger",
+        "type": "receive-imessage",
+        "icon": "message-circle",
+        "description": "Listen for incoming iMessages through Photon Spectrum. Allowlist-gated by default, with optional pairing prompts and group mention-gating.",
+        "authRequired": "apiKey",
+        "authProvider": "photon",
+        "parameters": {
+          "projectId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional fallback Photon Spectrum project ID. If omitted, AGNT uses the connected Photon provider from Settings → Connections.",
+            "required": false
+          },
+          "projectSecret": {
+            "type": "string",
+            "inputType": "password",
+            "description": "Optional fallback Photon Spectrum project secret. If omitted, AGNT uses the connected Photon provider.",
+            "required": false
+          },
+          "apiBaseUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional Photon Spectrum base URL. Defaults to https://spectrum.photon.codes.",
+            "required": false
+          },
+          "allowedUsers": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Comma/newline-separated E.164 phone allowlist. Only these numbers can drive your workflow. Strongly recommended.",
+            "required": false
+          },
+          "allowAllUsers": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "DANGER: allow messages from ANY sender. Development only — leave off in production.",
+            "required": false,
+            "default": false
+          },
+          "pairingMode": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "When an unknown number texts in, reply with a pairing code instead of silently ignoring it. On by default.",
+            "required": false,
+            "default": true
+          },
+          "requireMention": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "In group chats, only respond when the agent is mentioned (wake word).",
+            "required": false,
+            "default": false
+          },
+          "mentionPatterns": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Optional regex wake patterns, one per line. Defaults to AGNT / Annie / @AGNT / @Annie.",
+            "required": false,
+            "conditional": {
+              "field": "requireMention",
+              "value": true
+            }
+          },
+          "ignoreGroups": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Ignore all group-chat messages; only react to 1:1 DMs.",
+            "required": false,
+            "default": false
+          },
+          "dropPendingOnStart": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Ignore messages that arrived before the workflow started; only fire for new ones. On by default.",
+            "required": false,
+            "default": true
+          },
+          "pollIntervalMs": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Polling interval in ms (1000-60000). Default 3000.",
+            "required": false,
+            "default": 3000
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Max messages to fetch per poll (1-200). Default 50.",
+            "required": false,
+            "default": 50
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Include the raw Photon message payload in the trigger output.",
+            "required": false,
+            "default": false
+          }
+        },
+        "outputs": {
+          "platform": { "type": "string", "description": "Always 'imessage'." },
+          "provider": { "type": "string", "description": "Always 'photon'." },
+          "messageId": { "type": "string", "description": "Photon message ID." },
+          "spaceId": { "type": "string", "description": "Photon conversation/space ID — pass this back to photon-imessage-api to reply." },
+          "sender": { "type": "string", "description": "Sender phone number." },
+          "senderName": { "type": "string", "description": "Sender display name, if known." },
+          "text": { "type": "string", "description": "Inbound message text." },
+          "isGroup": { "type": "boolean", "description": "Whether the message came from a group chat." },
+          "participants": { "type": "array", "description": "Group participants, if available." },
+          "attachments": { "type": "array", "description": "Attachment metadata (bytes are metadata-only on Photon's free tier)." },
+          "timestamp": { "type": "string", "description": "Message timestamp." },
+          "serviceLine": { "type": "string", "description": "The Photon iMessage line the message arrived on." },
+          "raw": { "type": "object", "description": "Raw Photon payload when includeRaw is enabled." },
+          "response": { "type": "object", "description": "Full normalized event object." }
+        }
+      }
+    }
+  ]
+}

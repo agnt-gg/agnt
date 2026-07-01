@@ -1,0 +1,8 @@
+{
+  "name": "photon-imessage-plugin",
+  "version": "0.1.0",
+  "description": "iMessage integration for AGNT via Photon Spectrum - send/receive blue-bubble iMessages, with allowlist + pairing guardrails.",
+  "type": "module",
+  "main": "photon-api.js",
+  "dependencies": {}
+}
