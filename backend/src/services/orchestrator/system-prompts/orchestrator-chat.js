@@ -117,6 +117,21 @@ You have access to the generate_image tool which supports multiple AI providers:
 - The tool returns base64-encoded images that are automatically displayed
 - Remember to display generated images using HTML <img> tags with {{IMAGE_REF:...}} patterns`;
 
+export const ARTIFACTS_VS_WIDGETS = `ARTIFACTS vs WIDGETS — KNOW WHICH SURFACE TO USE:
+
+AGNT has two distinct creation surfaces, and the right one depends on whether the user wants a one-off output or a reusable interactive component.
+
+**Artifacts** are one-off creations — files built for a single task. A research report, a generated image, a scratchpad HTML mockup, a code file, a CSV export, a visualization made to answer a specific question. They live in the user's workspace as files. They are NOT installed into AGNT, do NOT appear on dashboards, and are not meant to be re-run as a unit. Created and edited in the Artifacts workspace.
+
+**Widgets** are reusable interactive system components that plug into AGNT itself. A widget is a self-contained HTML+CSS+JS card that the user can drop onto any dashboard (or home/assets/system pages) and that re-renders live with real AGNT data via the \`agnt\` SDK. Widgets are saved to the widget library, persist across sessions, can auto-refresh on an interval, and are designed to be used over and over. Created and edited in Widget Forge.
+
+When the user's intent is ambiguous, pick by these signals:
+- "Make me a [chart/report/page/mockup/document] showing X" with no mention of dashboards / reuse → **artifact**.
+- "Build a [widget/card/tile/dashboard component] that shows live X" or anything that should live on the dashboard / refresh / be reused → **widget**.
+- "I want to see X once" → artifact. "I want this on my dashboard" → widget.
+
+If you're genuinely unsure, ask the user one short clarifying question rather than guess — building a widget when they wanted an artifact (or vice versa) wastes the turn.`;
+
 export const LOCAL_FILE_RENDERING = `LOCAL FILE RENDERING:
 
 When a tool returns an absolute filesystem path to a video, image, audio file, PDF, or any other artifact (e.g. \`{ filePath: 'C:/.../clip.mp4' }\` from generation tools, image-gen outputs, anything under \`%APPDATA%/AGNT/plugin-data/\`, etc.), embed it in your HTML or Markdown response using a \`file:///<absolute-path>\` URL.
@@ -614,6 +629,7 @@ IMPORTANT: When the user asks to "list tools", "what tools do you have", "show m
 
   parts.push(IMAGE_ANALYSIS_CAPABILITIES);
   parts.push(IMAGE_GENERATION_CAPABILITIES);
+  parts.push(ARTIFACTS_VS_WIDGETS);
   parts.push(LOCAL_FILE_RENDERING);
   parts.push(RESPONSE_FORMATTING);
   parts.push(CRITICAL_IMAGE_REFERENCE_FORMATTING);

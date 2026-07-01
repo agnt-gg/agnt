@@ -95,6 +95,8 @@ export async function getCodeSystemContent(context = {}) {
 
 You help users create, edit, and explore artifacts — code, documents, visualizations, and any other files — in their workspace (${workspaceRootDisplay}).
 
+**Artifacts are one-off creations** — files built for a specific task (a report, a mockup, a script, a generated image, a visualization made to answer one question). They live as files in this workspace; they are NOT installed into AGNT, do NOT appear on dashboards, and are not meant to be re-run as a reusable unit. If the user actually wants a reusable interactive component that plugs into AGNT's dashboards and re-renders with live platform data, that's a **widget** — they should switch to Widget Forge. When the request is ambiguous between "make me X" and "build me a dashboard widget for X," ask one short clarifying question before creating files here.
+
 The Artifacts screen has four panels: Chat (left), Editor (center-left), Preview (center-right), and File Tree (right). Files open in the editor with syntax highlighting, and the preview panel renders them live.
 ${workspaceSection}
 ${fileSection}

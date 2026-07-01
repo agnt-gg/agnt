@@ -104,7 +104,8 @@ export function getWidgetToolSchemas() {
 }
 
 export async function executeWidgetTool(functionName, args, authToken, context) {
-  const { userId, widgetState } = context;
+  const { userId } = context;
+  let { widgetState } = context;
 
   try {
     let result;
@@ -282,13 +283,15 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
             console.error('Widget auto-save failed:', saveErr.message);
           }
 
-          if (widgetState) {
-            widgetState.source_code = content;
-            widgetState.name = widgetData.name;
-            widgetState.description = widgetData.description;
-            widgetState.widget_type = widgetData.widget_type;
-            if (savedWidgetId) widgetState.id = savedWidgetId;
+          if (!widgetState) {
+            widgetState = {};
+            context.widgetState = widgetState;
           }
+          widgetState.source_code = content;
+          widgetState.name = widgetData.name;
+          widgetState.description = widgetData.description;
+          widgetState.widget_type = widgetData.widget_type;
+          if (savedWidgetId) widgetState.id = savedWidgetId;
 
           const frontendEvents = generateWidgetFrontendEvents(widgetData, operationType);
           if (savedWidgetId && savedWidgetId !== 'widget-forge') {
@@ -333,7 +336,26 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
             break;
           }
 
-          const existingId = widgetState?.id;
+          // When the tool runs in a chat that didn't ship a widgetState (e.g.
+          // an agent chat where the LLM is chaining generate → config → save),
+          // fall back to the conversation's widgetId. Without this fallback we
+          // silently skipped the DB UPDATE and returned success, losing every
+          // icon/category/size change made outside Widget Forge.
+          if (!widgetState) {
+            const fallbackId = context.widgetId && context.widgetId !== 'widget-forge' ? context.widgetId : null;
+            if (!fallbackId) {
+              result = {
+                success: false,
+                error: 'No widget in context to update. Call generate_widget or load_widget first.',
+                message: 'No widget identified — generate or load a widget before changing its configuration.',
+              };
+              break;
+            }
+            widgetState = { id: fallbackId };
+            context.widgetState = widgetState;
+          }
+
+          const existingId = widgetState.id;
           const isExistingWidget = existingId && existingId !== 'widget-forge';
           if (db && isExistingWidget) {
             const setClauses = [];
@@ -349,7 +371,7 @@ export async function executeWidgetTool(functionName, args, authToken, context) 
             });
           }
 
-          if (widgetState) Object.assign(widgetState, updates);
+          Object.assign(widgetState, updates);
           const frontendEvents = Object.entries(updates).map(([field, value]) => ({
             type: 'widget-field-updated',
             data: { field, value },
@@ -521,10 +543,16 @@ NEVER write var(--name, #fallback) — fallbacks are noise; the runtime always d
 NEVER invent variables not on this list (no --color-accent, --color-card-bg, --color-hover, --color-success, --color-error, --color-warning). Derive what you need from the list (rgba(var(--primary-rgb), 0.2) for tinted overlays, etc.).
 Do NOT define :root variables yourself.
 
+BORDERS — STRICT:
+- EVERY border in the widget MUST use var(--terminal-border-color). Non-negotiable: card edges, panel outlines, input borders, button outlines, divider rules, hover/focus rings — all of them.
+- Use var(--terminal-border-color-light) ONLY for faint, de-emphasized rules (subtle section dividers, ghost outlines).
+- NEVER use var(--color-border). It's the legacy token. The user has standardized widget surfaces on the terminal-border tokens and will reject anything that uses --color-border.
+- Hardcoded hex/rgb border colors are forbidden. If you need a tinted border use rgba(var(--primary-rgb), 0.3) etc., NOT a literal color.
+
 Colour palette:    --color-red --color-orange --color-yellow --color-green --color-blue --color-indigo --color-violet --color-pink
                    --color-primary --color-secondary --color-light-green
 Semantic colours:  --color-background --color-background-rgb --color-surface --color-popup
-                   --color-text --color-text-secondary --color-text-muted --color-text-dull --color-border
+                   --color-text --color-text-secondary --color-text-muted --color-text-dull
                    --terminal-border-color --terminal-border-color-light --terminal-highlight-color --terminal-muted-color
 Navy scale:        --color-ultra-light-navy --color-bright-light-navy --color-light-navy --color-light-med-navy
                    --color-med-navy --color-duller-navy --color-dull-navy --color-navy --color-dark-navy

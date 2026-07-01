@@ -13,6 +13,7 @@ import {
   MCP_TOOL_USE_RULES,
   MEMORY_RECALL_GUIDANCE,
   CRITICAL_TOOL_RESPONSE_RULES,
+  ARTIFACTS_VS_WIDGETS,
 } from './orchestrator-chat.js';
 import { ASYNC_EXECUTION_GUIDANCE } from './async-execution.js';
 import { getPlatformContextSection } from './platform-context.js';
@@ -137,6 +138,7 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   // is actually available for this channel.
   if (has('analyze_image')) parts.push(IMAGE_ANALYSIS_CAPABILITIES);
   if (has('generate_image')) parts.push(IMAGE_GENERATION_CAPABILITIES);
+  parts.push(ARTIFACTS_VS_WIDGETS);
   parts.push(RESPONSE_FORMATTING);
   // Local file rendering applies to every surface: any tool (generation, plugin,
   // MCP, file_operations, etc.) can return an absolute path the LLM needs to
