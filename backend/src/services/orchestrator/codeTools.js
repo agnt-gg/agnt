@@ -29,11 +29,21 @@ async function getWorkspaceRoot() {
 }
 
 /**
- * Validate that a resolved path is within the workspace root
+ * Resolve a user-supplied path.
+ *
+ * - Absolute paths are allowed anywhere on the filesystem (intentional).
+ * - Relative paths are resolved against the workspace root and must stay inside it.
+ *
+ * Uses path.relative for the containment check so prefix collisions
+ * (`C:\foo` vs `C:\foobar`) and Windows case differences are handled correctly.
  */
-function validatePath(relPath, workspaceRoot) {
-  const resolved = path.resolve(workspaceRoot, relPath || '');
-  if (!resolved.startsWith(workspaceRoot)) {
+function validatePath(inputPath, workspaceRoot) {
+  if (inputPath && path.isAbsolute(inputPath)) {
+    return path.resolve(inputPath);
+  }
+  const resolved = path.resolve(workspaceRoot, inputPath || '');
+  const rel = path.relative(workspaceRoot, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error('Path traversal not allowed');
   }
   return resolved;
@@ -54,7 +64,7 @@ export function getCodeToolSchemas() {
           properties: {
             path: {
               type: 'string',
-              description: 'Relative path to the file within the workspace (e.g. "my-project/index.js")',
+              description: 'Path to the file. Relative paths resolve against the workspace (e.g. "my-project/index.js"). Absolute paths are also accepted and may point anywhere on disk (e.g. "C:\\\\path\\\\to\\\\file.js" or "/path/to/file.js").',
             },
           },
           required: ['path'],
@@ -71,7 +81,7 @@ export function getCodeToolSchemas() {
           properties: {
             path: {
               type: 'string',
-              description: 'Relative path to the file within the workspace (e.g. "my-project/hello.py")',
+              description: 'Path to the file. Relative paths resolve against the workspace (e.g. "my-project/hello.py"). Absolute paths are also accepted and may point anywhere on disk.',
             },
             content: {
               type: 'string',
@@ -92,7 +102,7 @@ export function getCodeToolSchemas() {
           properties: {
             path: {
               type: 'string',
-              description: 'Relative path to the file within the workspace (e.g. "my-project/index.js")',
+              description: 'Path to the file. Relative paths resolve against the workspace (e.g. "my-project/index.js"). Absolute paths are also accepted and may point anywhere on disk (e.g. "C:\\\\path\\\\to\\\\file.js" or "/path/to/file.js").',
             },
             edits: {
               type: 'array',
@@ -125,7 +135,7 @@ export function getCodeToolSchemas() {
           properties: {
             path: {
               type: 'string',
-              description: 'Relative directory path within the workspace (e.g. "my-project/src"). Defaults to workspace root.',
+              description: 'Directory path. Relative paths resolve against the workspace (e.g. "my-project/src"). Absolute paths are also accepted and may point anywhere on disk. Defaults to workspace root.',
             },
           },
         },

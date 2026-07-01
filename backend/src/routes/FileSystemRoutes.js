@@ -89,11 +89,23 @@ async function ensureWorkspaceRoot() {
 }
 
 /**
- * Validate that a resolved path is within the workspace root (path traversal protection)
+ * Resolve a user-supplied path.
+ *
+ * - Absolute paths are allowed anywhere on the filesystem (intentional —
+ *   the editor can browse outside the configured workspace).
+ * - Relative paths are resolved against the workspace root and must stay
+ *   inside it (path traversal protection).
+ *
+ * Uses path.relative for the containment check so prefix collisions
+ * (`C:\foo` vs `C:\foobar`) and Windows case differences are handled correctly.
  */
-function validatePath(relPath, workspaceRoot) {
-  const resolved = path.resolve(workspaceRoot, relPath || '');
-  if (!resolved.startsWith(workspaceRoot)) {
+function validatePath(inputPath, workspaceRoot) {
+  if (inputPath && path.isAbsolute(inputPath)) {
+    return path.resolve(inputPath);
+  }
+  const resolved = path.resolve(workspaceRoot, inputPath || '');
+  const rel = path.relative(workspaceRoot, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error('Path traversal not allowed');
   }
   return resolved;
