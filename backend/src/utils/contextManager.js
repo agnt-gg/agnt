@@ -299,19 +299,50 @@ function truncateMessagePayload(message, maxTokens) {
 
 /**
  * Group messages into atomic units that must stay together.
- * An assistant message with tool_calls + its following tool result messages form one unit.
- * Everything else is its own unit.
+ *
+ * An assistant turn that issued tool calls MUST stay paired with the
+ * messages carrying its tool results — otherwise summarization can drop one
+ * side and the next provider request fails with "tool_use ids were found
+ * without tool_result blocks" (Anthropic) or the OpenAI equivalent.
+ *
+ * Two wire shapes to recognize:
+ *   OpenAI/Gemini: `{ role: 'assistant', tool_calls: [...] }` followed by
+ *     one or more `{ role: 'tool', ... }` messages.
+ *   Anthropic:     `{ role: 'assistant', content: [{ type: 'tool_use', ... }] }`
+ *     followed by `{ role: 'user', content: [{ type: 'tool_result', ... }] }`.
  */
+function assistantHasToolUseBlock(msg) {
+  if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return false;
+  return msg.content.some((b) => b && b.type === 'tool_use');
+}
+
+function userHasToolResultBlock(msg) {
+  if (!msg || msg.role !== 'user' || !Array.isArray(msg.content)) return false;
+  return msg.content.some((b) => b && b.type === 'tool_result');
+}
+
 function groupMessageUnits(messages) {
   const units = [];
   let i = 0;
   while (i < messages.length) {
     const msg = messages[i];
+    // OpenAI/Gemini shape: assistant.tool_calls + following role:'tool' messages
     if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-      // Collect this assistant message + all following tool results
       const group = [msg];
       let j = i + 1;
       while (j < messages.length && messages[j].role === 'tool') {
+        group.push(messages[j]);
+        j++;
+      }
+      units.push(group);
+      i = j;
+    // Anthropic shape: assistant with tool_use block(s) + following user message
+    // carrying tool_result block(s). All results for one assistant turn are
+    // packed into a single user message, but stay defensive and absorb extras.
+    } else if (assistantHasToolUseBlock(msg)) {
+      const group = [msg];
+      let j = i + 1;
+      while (j < messages.length && userHasToolResultBlock(messages[j])) {
         group.push(messages[j]);
         j++;
       }
@@ -369,7 +400,22 @@ function summarizeMessages(messages, maxSummaryTokens = 500) {
         });
       }
       if (msg.role === 'user' && msg.content) {
-        userTopics.push(msg.content.substring(0, 80));
+        // user content may be a string (OpenAI/Gemini) or an array of blocks
+        // (Anthropic tool_result / multimodal). Calling .substring on an array
+        // throws — extract a text-ish preview safely instead.
+        let preview = '';
+        if (typeof msg.content === 'string') {
+          preview = msg.content;
+        } else if (Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (!block) continue;
+            if (typeof block === 'string') { preview = block; break; }
+            if (typeof block.text === 'string') { preview = block.text; break; }
+            if (typeof block.content === 'string') { preview = block.content; break; }
+          }
+          if (!preview) preview = `[${msg.content[0]?.type || 'structured'} content]`;
+        }
+        if (preview) userTopics.push(preview.substring(0, 80));
       }
     }
   }
@@ -505,6 +551,16 @@ function manageContext(messages, model, tools = [], provider = null) {
   const messagesTokens = estimateMessagesTokens(nonSystemMessages);
   const totalRequestTokens = systemTokens + toolTokens + messagesTokens;
 
+  // Last-line-of-defence: scrub any unpaired UTF-16 surrogates from the
+  // messages array before it heads to the LLM adapter. Without this, a
+  // single broken character in conversation history (most commonly from
+  // a tool result sliced mid-surrogate-pair) makes every subsequent turn
+  // fail at the provider's JSON validation — Anthropic returns a verbose
+  // "no low surrogate in string" 400, OpenAI's Responses API returns a
+  // silent 400 with no body. Mutates managedMessages in place; no-op on
+  // strings without lone surrogates.
+  deepScrubLoneSurrogatesInPlace(managedMessages);
+
   return {
     messages: managedMessages,
     originalTokens: estimateMessagesTokens(messages),
@@ -519,6 +575,53 @@ function manageContext(messages, model, tools = [], provider = null) {
     outputBufferTokens: outputBuffer,
     totalRequestTokens,
   };
+}
+
+/**
+ * Replace any unpaired UTF-16 surrogate with the Unicode replacement
+ * character (U+FFFD). JavaScript strings are arrays of UTF-16 code units
+ * and tolerate lone surrogates internally, but JSON parsers downstream
+ * (notably Anthropic's API and OpenAI's Responses API) reject them with
+ * either a verbose "no low surrogate in string" error or a silent 400.
+ *
+ * Sources of lone surrogates in this codebase tend to be tool outputs
+ * sliced by character count without checking codepoint boundaries, PDF /
+ * web-scrape parsers returning broken UTF-8 that gets decoded as a single
+ * surrogate, and streaming SSE buffers chopped mid-pair. Once a lone
+ * surrogate lands in conversation_logs.full_history every subsequent turn
+ * replays it and the conversation becomes unusable on strict providers.
+ */
+function scrubLoneSurrogates(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    // high surrogate not followed by a low surrogate → orphan
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '�')
+    // low surrogate not preceded by a high surrogate → orphan
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '�');
+}
+
+/**
+ * Walk a messages array (or any nested structure) and scrub every string
+ * field in place. In-place mutation keeps allocation cost to zero in the
+ * common case where there's nothing to scrub — String.prototype.replace
+ * is a no-op on a clean string and re-assignment to the same field is
+ * free. We mutate `managedMessages` only (which is constructed inside
+ * manageContext and not shared with callers), so this is safe.
+ */
+function deepScrubLoneSurrogatesInPlace(obj) {
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      const v = obj[i];
+      if (typeof v === 'string') obj[i] = scrubLoneSurrogates(v);
+      else if (v && typeof v === 'object') deepScrubLoneSurrogatesInPlace(v);
+    }
+  } else if (obj && typeof obj === 'object') {
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      if (typeof v === 'string') obj[k] = scrubLoneSurrogates(v);
+      else if (v && typeof v === 'object') deepScrubLoneSurrogatesInPlace(v);
+    }
+  }
 }
 
 /**
