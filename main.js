@@ -410,12 +410,22 @@ function startBackend() {
       }
     });
   } else {
-    // In development, use regular fork() which works with system Node.js
+    // In development, use the system Node that npm resolved — not Electron's
+    // process.execPath. Inside Electron, process.execPath points to the
+    // Electron binary, which can SIGSEGV when loading native modules compiled
+    // for system Node (ABI mismatch). See: https://github.com/agnt-gg/agnt/issues/40
+    const devNodeExecPath =
+      process.env.npm_node_execpath ||
+      process.env.NODE ||
+      process.env.npm_config_node ||
+      'node';
     console.log('Using child_process.fork() for development');
+    console.log('Development backend Node execPath:', devNodeExecPath);
     backendProcess = fork(serverPath, [], {
       cwd: backendCwd,
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       env: env,
+      execPath: devNodeExecPath,
     });
 
     backendProcess.stdout.on('data', (data) => {
