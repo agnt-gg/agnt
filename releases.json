@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "0.6.0",
+      "date": "July 1, 2026",
+      "title": "Autonomy Engine, Desktop Computer Use & Plugin Trust — AGNT v0.6.0",
+      "type": "minor",
+      "features": [
+        { "name": "New Autonomy Engine lets AGNT observe its own performance, propose improvements, test them in a sandbox, and auto-revert anything that regresses", "status": "new" },
+        { "name": "Desktop Computer Use gives Annie the ability to see your screen, click buttons, type text, and automate any app through natural language", "status": "new" },
+        { "name": "Annie can now highlight any UI element and walk you through multi-step guided tours inside the app", "status": "new" },
+        { "name": "New settings let you control tool output size and max tool rounds per chat turn so you can tune how much compute each message uses", "status": "new" },
+        { "name": "Tool calls now show live status pills that update from pending to running to completed instead of a generic spinner", "status": "new" },
+        { "name": "API keys now resolve locally first from env vars and encrypted storage before falling back to the remote vault", "status": "updated" },
+        { "name": "App startup is dramatically faster thanks to SQLite tuning, single-process init, and cached package lookups", "status": "updated" },
+        { "name": "Anthropic tool-call crashes and silent 400 errors from malformed characters in tool results are now caught and cleaned automatically", "status": "bug" },
+        { "name": "File tools now accept absolute paths anywhere on your system instead of only workspace-relative ones", "status": "updated" },
+        { "name": "Shell commands now work correctly on every OS because system prompts include your platform, shell type, and syntax rules", "status": "updated" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.5.17",
       "date": "May 28, 2026",
       "title": "Remember Anything Recall, Calendly Plugin & Codex Long-Chat Recovery - AGNT v0.5.17",

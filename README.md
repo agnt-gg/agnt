@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.5.17-blue.svg?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.6.0-blue.svg?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg?style=flat-square&logo=node.js" alt="Node">
   <img src="https://img.shields.io/badge/AI%20Providers-15+-blueviolet?style=flat-square" alt="15+ AI Providers">
