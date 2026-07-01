@@ -52,7 +52,16 @@
         <!-- Conversation Canvas -->
         <div class="conversation-canvas-wrapper">
           <div class="conversation-canvas" ref="conversationSpace">
-            <div class="conversation-container">
+            <!-- Loading state masks the heavy MessageItem mount cost during
+                 conversation cold-open / switch. Without it the user sees a
+                 blank canvas followed by content slowly resolving. The
+                 spinner is shown while `bulkLoading` is true; loadSavedOutput
+                 forces a real paint frame between flipping the flag and
+                 committing the messages so the spinner is actually visible. -->
+            <div v-if="bulkLoading" class="chat-loading-state">
+              <div class="spinner"></div>
+            </div>
+            <div v-else class="conversation-container">
               <TransitionGroup :name="bulkLoading ? '' : 'message'" tag="div" class="message-flow">
                 <template v-for="message in displayMessages" :key="message.id">
                   <!-- Inline skill pill: right-aligned to match user bubbles. -->
@@ -1572,6 +1581,13 @@ export default {
       }
     };
 
+    // Yield to the browser for a real paint frame. Vue's `nextTick` only
+    // flushes the microtask queue; the browser doesn't actually paint
+    // until the next animation frame. We need the spinner to be visible
+    // BEFORE the heavy SCOPED_SET_MESSAGES commit runs, so we force a
+    // real frame between flipping `bulkLoading` and committing.
+    const waitForPaint = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
     const loadSavedOutput = async (contentId) => {
       const token = localStorage.getItem('token');
 
@@ -1586,10 +1602,19 @@ export default {
       const conversations = store.state.chat.conversations;
       for (const [convId, conv] of Object.entries(conversations)) {
         if (conv.savedOutputId === contentId) {
+          // Cached-switch path also gets the spinner so the user sees
+          // consistent feedback regardless of whether the conversation
+          // is already in memory.
+          bulkLoading.value = true;
+          await nextTick();
+          await waitForPaint();
           store.commit('chat/SET_ACTIVE_CONVERSATION', convId);
           currentConversationId.value = convId;
           terminalLines.value.push(`Switched to conversation (${conv.messages.length} messages)`);
-          scrollToTop();
+          await nextTick();
+          await waitForPaint();
+          bulkLoading.value = false;
+          // Scroll the new conversation to top after it's painted.
           await nextTick();
           scrollToTop();
           return;
@@ -1614,8 +1639,14 @@ export default {
           // Use the saved conversation's ID as the slot key
           const convId = conversationData.conversationId || `saved-${contentId}`;
 
-          // Suppress enter animations when bulk-loading all messages at once
+          // Show the spinner BEFORE committing — and force a real paint
+          // frame before the heavy SCOPED_SET_MESSAGES commit so the user
+          // sees feedback immediately. Without the rAF, Vue's microtask
+          // queue would run all renders (spinner-on, messages-mount,
+          // spinner-off) before the browser paints once.
           bulkLoading.value = true;
+          await nextTick();
+          await waitForPaint();
 
           // Create or switch to the conversation slot
           store.commit('chat/ENSURE_CONVERSATION', convId);
@@ -1634,8 +1665,12 @@ export default {
             `Loaded conversation from ${new Date(conversationData.createdAt).toLocaleDateString()} (${conversationData.messages.length} messages)`,
           );
 
-          // Re-enable animations after DOM settles
+          // Wait for Vue to render the messages, then for the browser to
+          // actually paint them, before removing the spinner. Without the
+          // second rAF the spinner disappears while the messages are still
+          // mid-paint and the user sees a flash of blank canvas.
           await nextTick();
+          await waitForPaint();
           bulkLoading.value = false;
         } else {
           // Legacy HTML format
@@ -1654,7 +1689,10 @@ export default {
           terminalLines.value.push(`Loaded saved output from ${createdAt.toLocaleDateString()}`);
         }
 
-        scrollToTop();
+        // Scroll the NEW conversation to top once it has rendered. The
+        // pre-render scrollToTop that used to live here snapped the
+        // outgoing conversation, which the user saw as a "scroll on the
+        // current conversation, then load" sequence.
         await nextTick();
         scrollToTop();
       } catch (error) {
@@ -2653,6 +2691,31 @@ export default {
   width: 100%;
   max-width: 800px;
   margin: 0 auto;
+}
+
+/* Spinner shown while a saved conversation is loading or being switched.
+   Centered in the canvas; matches the OAuthCallback spinner style so we
+   stay visually consistent with the rest of the app's loading states. */
+.chat-loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  width: 100%;
+  padding: 48px 0;
+}
+
+.chat-loading-state .spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(var(--green-rgb, 25, 239, 131), 0.2);
+  border-top-color: var(--color-green, #19ef83);
+  border-radius: 50%;
+  animation: chat-loading-spin 0.9s linear infinite;
+}
+
+@keyframes chat-loading-spin {
+  to { transform: rotate(360deg); }
 }
 
 .message-flow {

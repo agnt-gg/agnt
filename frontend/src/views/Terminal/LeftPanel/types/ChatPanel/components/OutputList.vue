@@ -1430,7 +1430,11 @@ div#saved-outputs {
   background: var(--color-darker-0);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  transition: all 0.2s;
+  /* 200ms was long enough that the highlight visibly lagged behind the
+     conversation itself loading — see notes in OutputList.vue. Kept short
+     enough to still feel smooth on hover, fast enough to feel instant
+     relative to a conversation switch. */
+  transition: all 0.05s;
   position: relative;
   overflow: visible;
 }
