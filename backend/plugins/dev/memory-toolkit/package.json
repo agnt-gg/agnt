@@ -1,0 +1,7 @@
+{
+  "name": "memory-toolkit",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "memory-graph.js",
+  "dependencies": {}
+}

@@ -1,0 +1,344 @@
+{
+  "name": "memory-toolkit",
+  "version": "1.0.0",
+  "description": "Advanced memory system with knowledge graph, semantic search, entity extraction, auto-consolidation (dream), and graph crawling",
+  "author": "AGNT Team",
+  "icon": "graph",
+  "displayName": "Memory Toolkit",
+  "tools": [
+    {
+      "type": "memory-graph",
+      "entryPoint": "./memory-graph.js",
+      "schema": {
+        "title": "Memory Graph",
+        "category": "action",
+        "type": "memory-graph",
+        "icon": "graph",
+        "description": "Build, query, and crawl a knowledge graph of entities and relationships extracted from AGNT memories, insights, and execution traces",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "EXTRACT_ENTITIES",
+              "BUILD_GRAPH",
+              "CRAWL",
+              "GET_ENTITY",
+              "LIST_ENTITIES",
+              "GET_EDGES",
+              "STATS"
+            ],
+            "required": true,
+            "description": "Operation to perform on the memory graph"
+          },
+          "entityName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Entity name to start crawl from or look up",
+            "placeholder": "e.g. Redis, auth module, deploy pipeline",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "CRAWL",
+                "GET_ENTITY"
+              ]
+            }
+          },
+          "entityId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Entity ID for edge lookups",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "GET_EDGES"
+              ]
+            }
+          },
+          "depth": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Graph traversal depth (1-5)",
+            "default": 2,
+            "minimum": 1,
+            "maximum": 5,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "CRAWL"
+              ]
+            }
+          },
+          "entityType": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "all",
+              "project",
+              "technology",
+              "person",
+              "concept",
+              "file",
+              "service",
+              "agent"
+            ],
+            "description": "Filter entities by type",
+            "default": "all",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "LIST_ENTITIES"
+              ]
+            }
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Max results to return",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 200,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "LIST_ENTITIES",
+                "CRAWL"
+              ]
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation succeeded"
+          },
+          "data": {
+            "type": "object",
+            "description": "Result data (entities, edges, graph, stats)"
+          },
+          "entitiesExtracted": {
+            "type": "number",
+            "description": "Number of entities extracted (EXTRACT_ENTITIES)"
+          },
+          "edgesCreated": {
+            "type": "number",
+            "description": "Number of edges created (BUILD_GRAPH)"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if failed"
+          }
+        }
+      }
+    },
+    {
+      "type": "memory-semantic-search",
+      "entryPoint": "./memory-semantic-search.js",
+      "schema": {
+        "title": "Memory Semantic Search",
+        "category": "action",
+        "type": "memory-semantic-search",
+        "icon": "search",
+        "description": "LLM-powered query expansion for semantic memory search. Finds memories by meaning, not just keywords — 'port conflicts' finds 'docker-compose mapping issues'",
+        "parameters": {
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "required": true,
+            "description": "Search query (will be semantically expanded)",
+            "placeholder": "e.g. port conflicts, auth module issues"
+          },
+          "sources": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "all",
+              "memories",
+              "insights",
+              "conversations",
+              "executions"
+            ],
+            "default": "all",
+            "description": "Which memory sources to search"
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Max results",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the search succeeded"
+          },
+          "results": {
+            "type": "array",
+            "description": "Search results ranked by relevance"
+          },
+          "expandedTerms": {
+            "type": "array",
+            "description": "The expanded search terms used"
+          },
+          "originalQuery": {
+            "type": "string",
+            "description": "The original query"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if failed"
+          }
+        }
+      }
+    },
+    {
+      "type": "memory-dream",
+      "entryPoint": "./memory-dream.js",
+      "schema": {
+        "title": "Memory Dream (Auto-Consolidate)",
+        "category": "action",
+        "type": "memory-dream",
+        "icon": "magic",
+        "description": "Auto-consolidation cycle inspired by Claude Code's Auto Dream. Scans all memories, finds duplicates, resolves contradictions, prunes stale entries, extracts entities, and builds graph edges",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "FULL_DREAM",
+              "FIND_DUPLICATES",
+              "FIND_CONTRADICTIONS",
+              "PRUNE_STALE",
+              "GENERATE_REPORT"
+            ],
+            "required": true,
+            "description": "Dream operation to perform"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "inputType": "select",
+            "options": [
+              "true",
+              "false"
+            ],
+            "default": "true",
+            "description": "Preview changes without applying them"
+          },
+          "staleDays": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Memories not accessed in this many days are considered stale",
+            "default": 90,
+            "minimum": 7,
+            "maximum": 365,
+            "conditional": {
+              "field": "action",
+              "value": [
+                "PRUNE_STALE",
+                "FULL_DREAM"
+              ]
+            }
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the dream cycle completed"
+          },
+          "report": {
+            "type": "object",
+            "description": "Consolidation report with stats"
+          },
+          "duplicates": {
+            "type": "array",
+            "description": "Duplicate memory pairs found"
+          },
+          "contradictions": {
+            "type": "array",
+            "description": "Contradicting memory pairs found"
+          },
+          "pruned": {
+            "type": "number",
+            "description": "Number of stale memories pruned"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if failed"
+          }
+        }
+      }
+    },
+    {
+      "type": "memory-toolkit-api",
+      "entryPoint": "./memory-toolkit-api.js",
+      "schema": {
+        "title": "Memory Toolkit API",
+        "category": "action",
+        "type": "memory-toolkit-api",
+        "icon": "database",
+        "description": "Unified API for the Memory Toolkit widget — provides stats, graph data, search results, and dream reports in a single call",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "DASHBOARD_STATS",
+              "GRAPH_DATA",
+              "SEARCH",
+              "ENTITY_DETAIL",
+              "DREAM_REPORT",
+              "RECENT_ACTIVITY"
+            ],
+            "required": true,
+            "description": "Data to fetch for the widget"
+          },
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Search query for SEARCH action",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEARCH"
+              ]
+            }
+          },
+          "entityId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Entity ID for detail view",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "ENTITY_DETAIL"
+              ]
+            }
+          },
+          "limit": {
+            "type": "number",
+            "inputType": "number",
+            "default": 50,
+            "description": "Max results"
+          }
+        },
+        "outputs": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation succeeded"
+          },
+          "data": {
+            "type": "object",
+            "description": "Requested data for the widget"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if failed"
+          }
+        }
+      }
+    }
+  ]
+}
