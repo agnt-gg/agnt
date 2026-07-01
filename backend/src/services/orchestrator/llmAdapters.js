@@ -2076,6 +2076,22 @@ Please carefully check the tool schema and ensure all parameters match the expec
                   name: block.name,
                   input: {},
                 };
+                // Announce tool call immediately so the UI can render a pending
+                // pill while args still stream. Anthropic only emits the final
+                // tool_call_delta on content_block_stop (after full args parse),
+                // which is what made the UI look frozen during long arg writes.
+                console.log('[Anthropic DEBUG] content_block_start tool_use:', block.name, block.id);
+                if (onChunk) {
+                  onChunk({
+                    type: 'tool_call_delta',
+                    index: idx,
+                    toolCall: {
+                      id: block.id,
+                      type: 'function',
+                      function: { name: block.name, arguments: '' },
+                    },
+                  });
+                }
               } else if (block.type === 'thinking') {
                 // Preserve thinking blocks so the cryptographic signature flows back
                 // into the conversation history; Anthropic verifies it on the follow-up
@@ -4608,14 +4624,25 @@ class OpenAIResponsesAdapter extends BaseAdapter {
             // New output item started
             const item = event.item;
             if (item.type === 'function_call') {
-              accumulatedToolCalls.push({
+              const newToolCall = {
                 id: item.call_id || `responses-tool-${Date.now()}-${accumulatedToolCalls.length}`,
                 type: 'function',
                 function: {
                   name: item.name || '',
                   arguments: '',
                 },
-              });
+              };
+              accumulatedToolCalls.push(newToolCall);
+              // Announce immediately so the UI shows a pending pill before
+              // arg deltas start arriving — otherwise the pill only appears
+              // once the first arg token streams in.
+              if (onChunk && newToolCall.function.name) {
+                onChunk({
+                  type: 'tool_call_delta',
+                  index: accumulatedToolCalls.length - 1,
+                  toolCall: newToolCall,
+                });
+              }
             }
           } else if (event.type === 'response.output_text.delta') {
             // Text content delta

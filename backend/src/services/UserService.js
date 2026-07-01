@@ -49,15 +49,17 @@ class UserService {
   }
   async updateUserSettings(req, res) {
     try {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled } = req.body;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds } = req.body;
 
       if (
         selectedProvider === undefined &&
         selectedModel === undefined &&
         customInstructions === undefined &&
-        asyncToolsEnabled === undefined
+        asyncToolsEnabled === undefined &&
+        toolOutputCap === undefined &&
+        maxToolRounds === undefined
       ) {
-        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, or asyncToolsEnabled) is required' });
+        return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, or maxToolRounds) is required' });
       }
 
       if (customInstructions !== undefined && typeof customInstructions === 'string' && customInstructions.length > 4000) {
@@ -68,11 +70,25 @@ class UserService {
         return res.status(400).json({ error: 'asyncToolsEnabled must be a boolean' });
       }
 
+      if (toolOutputCap !== undefined) {
+        if (!Number.isInteger(toolOutputCap) || toolOutputCap < 25000 || toolOutputCap > 500000) {
+          return res.status(400).json({ error: 'toolOutputCap must be an integer between 25000 and 500000' });
+        }
+      }
+
+      if (maxToolRounds !== undefined) {
+        if (!Number.isInteger(maxToolRounds) || maxToolRounds < 1 || maxToolRounds > 999999) {
+          return res.status(400).json({ error: 'maxToolRounds must be an integer between 1 and 999999' });
+        }
+      }
+
       const result = await UserModel.updateUserSettings(req.user.id, {
         selectedProvider,
         selectedModel,
         customInstructions,
         asyncToolsEnabled,
+        toolOutputCap,
+        maxToolRounds,
       });
 
       res.json({
@@ -83,6 +99,8 @@ class UserService {
           selectedModel,
           customInstructions,
           asyncToolsEnabled,
+          toolOutputCap,
+          maxToolRounds,
         },
       });
     } catch (error) {

@@ -52,7 +52,7 @@ class UserModel {
   static getUserSettings(userId) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled
+        `SELECT default_provider as selectedProvider, default_model as selectedModel, custom_instructions as customInstructions, async_tools_enabled as asyncToolsEnabled, tool_output_cap as toolOutputCap, max_tool_rounds as maxToolRounds
          FROM users WHERE id = ?`,
         [userId],
         (err, row) => {
@@ -70,6 +70,11 @@ class UserModel {
               asyncToolsEnabled: row.asyncToolsEnabled === null || row.asyncToolsEnabled === undefined
                 ? false
                 : Boolean(row.asyncToolsEnabled),
+              // Legacy rows that pre-date the column come back as null —
+              // fall back to the documented default (100k chars).
+              toolOutputCap: Number.isFinite(row.toolOutputCap) ? row.toolOutputCap : 100000,
+              // Legacy rows return null — fall back to the documented default (100).
+              maxToolRounds: Number.isFinite(row.maxToolRounds) ? row.maxToolRounds : 100,
             });
           } else {
             // User not found, return defaults
@@ -78,6 +83,8 @@ class UserModel {
               selectedModel: 'claude-3-5-sonnet-20240620',
               customInstructions: '',
               asyncToolsEnabled: false,
+              toolOutputCap: 100000,
+              maxToolRounds: 100,
             });
           }
         }
@@ -87,7 +94,7 @@ class UserModel {
 
   static updateUserSettings(userId, settings) {
     return new Promise((resolve, reject) => {
-      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled } = settings;
+      const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds } = settings;
 
       const fields = [];
       const params = [];
@@ -114,6 +121,16 @@ class UserModel {
         params.push(asyncToolsEnabled ? 1 : 0);
       }
 
+      if (toolOutputCap !== undefined) {
+        fields.push('tool_output_cap = ?');
+        params.push(toolOutputCap);
+      }
+
+      if (maxToolRounds !== undefined) {
+        fields.push('max_tool_rounds = ?');
+        params.push(maxToolRounds);
+      }
+
       if (fields.length === 0) {
         return resolve({ changes: 0 });
       }
@@ -130,8 +147,8 @@ class UserModel {
           } else if (this.changes === 0) {
             // User doesn't exist, create with settings
             db.run(
-              `INSERT INTO users (id, default_provider, default_model, custom_instructions, async_tools_enabled, created_at)
-               VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+              `INSERT INTO users (id, default_provider, default_model, custom_instructions, async_tools_enabled, tool_output_cap, max_tool_rounds, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
               [
                 userId,
                 selectedProvider || 'Anthropic',
@@ -139,6 +156,8 @@ class UserModel {
                 customInstructions ? String(customInstructions).trim() : null,
                 // New rows default to async OFF (experimental opt-in).
                 asyncToolsEnabled === undefined ? 0 : (asyncToolsEnabled ? 1 : 0),
+                toolOutputCap === undefined ? 100000 : toolOutputCap,
+                maxToolRounds === undefined ? 100 : maxToolRounds,
               ],
               function (insertErr) {
                 if (insertErr) {

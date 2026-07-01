@@ -436,6 +436,22 @@ export default {
     // the frontend so the toggle survives reloads; loadUserSettings()
     // reconciles it with the backend value on session start.
     asyncToolsEnabled: localStorage.getItem('asyncToolsEnabled') === 'true',
+    // Per-user hard cap on tool result size returned to the LLM. Default
+    // 100000 matches the historical OrchestratorService MAX_TOOL_RESULT_CHARS.
+    // localStorage is the source of truth on the frontend so the value
+    // survives reloads; loadUserSettings() reconciles with the backend.
+    toolOutputCap: (() => {
+      const raw = Number(localStorage.getItem('toolOutputCap'));
+      return Number.isFinite(raw) && raw > 0 ? raw : 100000;
+    })(),
+    // Per-user cap on tool-loop rounds per chat turn. Default 100 matches the
+    // historical orchestrator/agent/tool/widget/goal cap. When set, overrides
+    // every chat surface uniformly (including workflow/artifact which default
+    // to 25 server-side).
+    maxToolRounds: (() => {
+      const raw = Number(localStorage.getItem('maxToolRounds'));
+      return Number.isFinite(raw) && raw > 0 ? raw : 100;
+    })(),
     loadingModels: {},
     modelCache: {},
   },
@@ -506,6 +522,18 @@ export default {
       // localStorage-missing-key default and tripping over future default
       // changes).
       localStorage.setItem('asyncToolsEnabled', value ? 'true' : 'false');
+    },
+    SET_TOOL_OUTPUT_CAP(state, value) {
+      const num = Number(value);
+      const clean = Number.isFinite(num) && num > 0 ? Math.round(num) : 100000;
+      state.toolOutputCap = clean;
+      localStorage.setItem('toolOutputCap', String(clean));
+    },
+    SET_MAX_TOOL_ROUNDS(state, value) {
+      const num = Number(value);
+      const clean = Number.isFinite(num) && num > 0 ? Math.round(num) : 100;
+      state.maxToolRounds = clean;
+      localStorage.setItem('maxToolRounds', String(clean));
     },
     ENSURE_VALID_MODEL(state) {
       const availableModels = state.allModels[state.selectedProvider] || [];
@@ -681,6 +709,71 @@ export default {
       }
     },
 
+    async setToolOutputCap({ commit }, newCap) {
+      // Clamp to the same window the backend validates against — keeps the
+      // PUT from 400-ing on out-of-range values.
+      const raw = Number(newCap);
+      const clamped = Number.isFinite(raw)
+        ? Math.max(25000, Math.min(500000, Math.round(raw)))
+        : 100000;
+      commit('SET_TOOL_OUTPUT_CAP', clamped);
+
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              toolOutputCap: clamped,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Backend sync failed:', response.status, errorText);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to sync tool output cap with backend:', error);
+      }
+    },
+
+    async setMaxToolRounds({ commit }, newRounds) {
+      // Clamp to the backend-validated [1, 999999] window.
+      const raw = Number(newRounds);
+      const clamped = Number.isFinite(raw)
+        ? Math.max(1, Math.min(999999, Math.round(raw)))
+        : 100;
+      commit('SET_MAX_TOOL_ROUNDS', clamped);
+
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const response = await fetch(`${API_CONFIG.BASE_URL}/users/settings`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              maxToolRounds: clamped,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Backend sync failed:', response.status, errorText);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to sync max tool rounds with backend:', error);
+      }
+    },
+
     async setModel({ commit, state }, newModel) {
       commit('SET_SELECTED_MODEL', newModel);
 
@@ -730,6 +823,14 @@ export default {
 
             if (settings.asyncToolsEnabled !== undefined) {
               commit('SET_ASYNC_TOOLS_ENABLED', settings.asyncToolsEnabled === true);
+            }
+
+            if (settings.toolOutputCap !== undefined && Number.isFinite(Number(settings.toolOutputCap))) {
+              commit('SET_TOOL_OUTPUT_CAP', Number(settings.toolOutputCap));
+            }
+
+            if (settings.maxToolRounds !== undefined && Number.isFinite(Number(settings.maxToolRounds))) {
+              commit('SET_MAX_TOOL_ROUNDS', Number(settings.maxToolRounds));
             }
 
             if (provider) {

@@ -173,7 +173,9 @@ function createTables() {
         default_provider TEXT DEFAULT 'Anthropic',
         default_model TEXT DEFAULT 'claude-3-5-sonnet-20240620',
         custom_instructions TEXT,
-        async_tools_enabled INTEGER DEFAULT 0
+        async_tools_enabled INTEGER DEFAULT 0,
+        tool_output_cap INTEGER DEFAULT 100000,
+        max_tool_rounds INTEGER DEFAULT 100
       )`);
 
       db.run(`CREATE TABLE IF NOT EXISTS transactions (
@@ -1271,6 +1273,31 @@ function runMigrations() {
           console.error('Error adding async_tools_enabled column to users:', err);
         } else if (!err) {
           console.log('✓ Added async_tools_enabled column to users table');
+        }
+      });
+
+      // Migration: Add tool_output_cap column to users — user-tunable hard cap
+      // on tool result size returned to the LLM. Backs the "Tool output limit"
+      // control on Settings → AI Provider. Default 100000 chars (~28k tokens)
+      // matches the prior hardcoded MAX_TOOL_RESULT_CHARS in OrchestratorService.
+      db.run(`ALTER TABLE users ADD COLUMN tool_output_cap INTEGER DEFAULT 100000`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding tool_output_cap column to users:', err);
+        } else if (!err) {
+          console.log('✓ Added tool_output_cap column to users table');
+        }
+      });
+
+      // Migration: Add max_tool_rounds column to users — user-tunable cap on
+      // the number of tool execution rounds per chat turn. Overrides the
+      // per-surface defaults in chatConfigs.js (orchestrator/agent/tool/widget/
+      // goal default 100; workflow/artifact default 25). Default 100 matches
+      // the highest historical surface cap, so existing users see no change.
+      db.run(`ALTER TABLE users ADD COLUMN max_tool_rounds INTEGER DEFAULT 100`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding max_tool_rounds column to users:', err);
+        } else if (!err) {
+          console.log('✓ Added max_tool_rounds column to users table');
         }
       });
 

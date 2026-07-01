@@ -35,12 +35,7 @@
             <span class="status-text">{{ status.text }}</span>
             <span v-if="message.reasoning" class="reasoning-chevron">{{ showReasoning ? '▾' : '▸' }}</span>
           </div>
-          <button
-            v-else-if="message.reasoning"
-            class="reasoning-toggle"
-            :class="{ expanded: showReasoning }"
-            @click="toggleReasoning"
-          >
+          <button v-else-if="message.reasoning" class="reasoning-toggle" :class="{ expanded: showReasoning }" @click="toggleReasoning">
             <span class="reasoning-chevron">{{ showReasoning ? '▾' : '▸' }}</span>
             <i class="fas fa-brain"></i>
             <span>Reasoning</span>
@@ -60,10 +55,7 @@
                     <span class="tool-label">{{ tc.toolCall.name }}</span>
                   </div>
 
-                  <div v-if="isRunning(tc.toolCall.id)" class="tool-running">
-                    <div class="spinner"></div>
-                    <span>Executing...</span>
-                  </div>
+                  <span class="tool-status-indicator" :class="toolCallStatus(tc)">{{ toolCallStatus(tc) }}</span>
 
                   <!-- Stop button for async tools -->
                   <Tooltip text="Stop async tool">
@@ -803,7 +795,9 @@ export default {
     // iframes — same idea, different endpoint (local-file is unscoped, so it
     // also works for files outside the active workspace).
     const resolveRelativeAssetURL = (ref, baseDir) => {
-      const dir = String(baseDir || '').replace(/\\/g, '/').replace(/\/+$/, '');
+      const dir = String(baseDir || '')
+        .replace(/\\/g, '/')
+        .replace(/\/+$/, '');
       if (!dir) return ref;
       const trimmed = String(ref).trim();
       const rel = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
@@ -845,11 +839,19 @@ export default {
       if (!tc) return null;
       let args = tc.args;
       if (typeof args === 'string') {
-        try { args = JSON.parse(args); } catch { args = null; }
+        try {
+          args = JSON.parse(args);
+        } catch {
+          args = null;
+        }
       }
       let res = tc.result;
       if (typeof res === 'string') {
-        try { res = JSON.parse(res); } catch { res = null; }
+        try {
+          res = JSON.parse(res);
+        } catch {
+          res = null;
+        }
       }
       if (!res) return null;
 
@@ -1256,9 +1258,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               (pre.previousElementSibling && pre.previousElementSibling.classList?.contains('html-inline-preview-wrapper')
                 ? pre.previousElementSibling
                 : null) ||
-              (pre.nextElementSibling && pre.nextElementSibling.classList?.contains('html-inline-preview-wrapper')
-                ? pre.nextElementSibling
-                : null);
+              (pre.nextElementSibling && pre.nextElementSibling.classList?.contains('html-inline-preview-wrapper') ? pre.nextElementSibling : null);
             if (adjacentWrapper) {
               const existingCode = adjacentWrapper.querySelector('.html-inline-code code');
               if (existingCode && (existingCode.textContent || '') === htmlCode) {
@@ -1404,9 +1404,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       nextTick(() => {
         if (!messageRef.value) return;
 
-        const iframes = messageRef.value.querySelectorAll(
-          'iframe:not(.html-inline-iframe):not([data-fs-added])',
-        );
+        const iframes = messageRef.value.querySelectorAll('iframe:not(.html-inline-iframe):not([data-fs-added])');
         iframes.forEach((iframe) => {
           // Skip if this iframe is already inside a wrapper we created.
           if (iframe.closest('.iframe-inline-preview-wrapper')) {
@@ -2049,7 +2047,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
           (async () => {
             try {
-
               // Decode HTML entities
               const textarea = document.createElement('textarea');
               textarea.innerHTML = codeEl.textContent || '';
@@ -2099,7 +2096,6 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           // Use an async IIFE so LLM-generated code can use await
           (async () => {
             try {
-
               const textarea = document.createElement('textarea');
               textarea.innerHTML = codeEl.textContent || '';
               const threeCode = textarea.value;
@@ -2451,12 +2447,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     let lastRenderTime = 0;
     const RENDER_INTERVAL = 66; // ~15fps during streaming
 
-    const toolCallRenderSignature = computed(() => (props.message.toolCalls || [])
-      .map((tc) => {
-        const result = typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result || null);
-        return `${tc.id}:${tc.status || ''}:${tc.error || ''}:${result}`;
-      })
-      .join('|'));
+    const toolCallRenderSignature = computed(() =>
+      (props.message.toolCalls || [])
+        .map((tc) => {
+          const result = typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result || null);
+          return `${tc.id}:${tc.status || ''}:${tc.error || ''}:${result}`;
+        })
+        .join('|'),
+    );
 
     watch(
       () => [
@@ -2559,6 +2557,15 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
     const isRunning = (toolCallId) => {
       return props.runningTools.includes(toolCallId);
+    };
+
+    // PRD-100: status pill state. Order matters — error wins over running so a
+    // tool that erred mid-execution shows the red pill, not the cyan one.
+    const toolCallStatus = (tc) => {
+      if (tc.toolCall.error) return 'error';
+      if (props.runningTools.includes(tc.toolCall.id)) return 'running';
+      if (tc.toolCall.result !== undefined && tc.toolCall.result !== null) return 'completed';
+      return 'pending';
     };
 
     // Helper functions for GoalProgressWidget detection
@@ -2828,6 +2835,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       formatTime,
       isExpanded,
       isRunning,
+      toolCallStatus,
       isAutonomousGoalTool,
       extractGoalId,
       extractGoalTitle,
@@ -3220,7 +3228,7 @@ span.nodeLabel p {
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  padding: 4px 8px 2px 4px;
+  padding: 4px 6px 1px 4px;
   border-radius: 8px;
   transition: background-color 0.2s ease;
 }
@@ -3392,24 +3400,45 @@ span.nodeLabel p {
   color: var(--color-red);
 }
 
-.tool-running {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  float: left;
-  padding: 4px;
-  align-self: self-start;
+/* PRD-100: tool-call status pill — replaces the old spinner+text indicator */
+.tool-status-indicator {
+  font-size: 9px;
+  padding: 4px 12px 1px;
+  background: rgba(127, 129, 147, 0.1);
+  border-radius: 4px;
   color: var(--color-med-navy);
-  justify-content: flex-start;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  align-self: center;
+  margin-right: 4px;
+  white-space: nowrap;
 }
 
-.tool-running .spinner {
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--color-blue);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+.tool-status-indicator.completed {
+  background: rgba(25, 239, 131, 0.1);
+  color: var(--color-green);
+}
+
+.tool-status-indicator.running {
+  background: rgba(18, 224, 255, 0.1);
+  color: var(--color-blue);
+  animation: tool-pulse 1.2s ease-in-out infinite;
+}
+
+.tool-status-indicator.error {
+  background: rgba(255, 91, 114, 0.1);
+  color: var(--color-red);
+}
+
+@keyframes tool-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes spin {
@@ -3454,16 +3483,16 @@ span.nodeLabel p {
   justify-content: center;
   width: 18px;
   height: 18px;
-  margin: 4px;
   background: #ef4444;
   color: #fff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
+  padding-bottom: 1px;
   transition: all 0.2s ease;
   box-shadow: 0 1px 3px #ef44444d;
-  margin-left: 8px;
+  margin: 4px 4px 4px 2px;
 }
 
 .stop-async-tool-btn:hover {

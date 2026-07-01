@@ -20,6 +20,7 @@ import * as ProviderRegistry from './ai/ProviderRegistry.js';
 import asyncToolQueue from './AsyncToolQueue.js';
 import conversationManager from './ConversationManager.js';
 import autonomousMessageService from './AutonomousMessageService.js';
+import { shouldTriggerAutonomousFollowup } from './orchestrator/autonomousFollowupConfig.js';
 import UserModel from '../models/UserModel.js';
 import AgentModel from '../models/AgentModel.js';
 import SkillModel from '../models/SkillModel.js';
@@ -938,9 +939,38 @@ async function universalChatHandler(req, res, context = {}) {
   const authToken = req.headers.authorization;
   const files = req.files || []; // Multer files
 
+  // Per-user tunable runtime caps (Settings → AI Provider). One DB fetch
+  // covers both knobs — toolOutputCap (hard cap on tool result size returned
+  // to the LLM) and maxToolRounds (cap on tool-loop rounds per turn).
+  // Falls back to the historical defaults when the user record is missing or
+  // the columns are null on legacy rows.
+  let toolOutputCap = 100000;
+  let maxToolRoundsOverride = null;
+  if (userId) {
+    try {
+      const _userRuntimeSettings = await UserModel.getUserSettings(userId);
+      if (Number.isFinite(_userRuntimeSettings.toolOutputCap)) {
+        toolOutputCap = _userRuntimeSettings.toolOutputCap;
+      }
+      if (Number.isFinite(_userRuntimeSettings.maxToolRounds) && _userRuntimeSettings.maxToolRounds > 0) {
+        maxToolRoundsOverride = _userRuntimeSettings.maxToolRounds;
+      }
+    } catch (e) {
+      console.warn('[Chat] Could not load runtime caps from user settings:', e.message);
+    }
+  }
+
   // Detect chat type and get configuration
   const chatType = detectChatType(req, context);
-  const config = getChatConfig(chatType);
+  // getChatConfig returns a shared object — clone before mutating so per-user
+  // overrides never leak into other requests.
+  let config = { ...getChatConfig(chatType) };
+  // Apply user override uniformly: replaces the per-surface default
+  // (orchestrator/agent/tool/widget/goal=100, workflow/artifact=25). The
+  // suggestions surface keeps its own 0 cap — it never enters this handler.
+  if (maxToolRoundsOverride !== null) {
+    config.maxToolRounds = maxToolRoundsOverride;
+  }
 
   log(`Universal chat handler: ${chatType}`, { userId, chatType });
 
@@ -1134,6 +1164,7 @@ async function universalChatHandler(req, res, context = {}) {
       const chatEventMappings = {
         'assistant_message': RealtimeEvents.CHAT_MESSAGE_START,
         'content_delta': RealtimeEvents.CHAT_CONTENT_DELTA,
+        'tool_pending': RealtimeEvents.CHAT_TOOL_START,
         'tool_start': RealtimeEvents.CHAT_TOOL_START,
         'tool_end': RealtimeEvents.CHAT_TOOL_END,
         'done': RealtimeEvents.CHAT_MESSAGE_END,
@@ -1770,6 +1801,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
       ...agentMeta,
     });
 
+    // Track which tool call IDs we've already announced as pending so we only
+    // fire tool_pending once per tool (adapters emit tool_call_delta repeatedly
+    // as args stream in).
+    const announcedToolIds = new Set();
     let { responseMessage, toolCalls, toolCallError, invalidToolCalls, toolsSkipped, toolsSkippedReason, recoveredFromError, recoveredError, usage: initialUsage } = await adapter.callStream(
       contextResult.messages,
       finalToolSchemas,
@@ -1788,8 +1823,19 @@ IMPORTANT: The image data is already available in the system context. You don't 
             accumulated: chunk.accumulated,
           });
         } else if (chunk.type === 'tool_call_delta') {
-          // Optionally send tool call progress updates
-          // For now, we'll wait until tool calls are complete
+          // Announce the pending pill the moment we know the tool name+id, so
+          // the UI doesn't look frozen while args are still streaming. The
+          // canonical tool_start event below will upgrade it with full args.
+          const tc = chunk.toolCall;
+          console.log('[tool_pending DEBUG] got tool_call_delta:', { id: tc?.id, name: tc?.function?.name, already: announcedToolIds.has(tc?.id) });
+          if (tc?.id && tc?.function?.name && !announcedToolIds.has(tc.id)) {
+            announcedToolIds.add(tc.id);
+            console.log('[tool_pending DEBUG] emitting tool_pending SSE event for', tc.function.name, tc.id);
+            sendEvent('tool_pending', {
+              assistantMessageId,
+              toolCall: { id: tc.id, name: tc.function.name },
+            });
+          }
         }
       },
       conversationContext // Pass context for vision image handling
@@ -1807,21 +1853,19 @@ IMPORTANT: The image data is already available in the system context. You don't 
       );
       const extracted = extractDisplayText(responseMessage?.content);
       const scrubbed = scrubEmptyPlaceholder(extracted);
-      if (!scrubbed) {
+      if (scrubbed) {
+        sendEvent('content_delta', {
+          assistantMessageId,
+          delta: scrubbed,
+          accumulated: scrubbed,
+        });
+      } else {
         console.warn(
           `[Empty Response] provider=${normalizedProvider} model=${model} ` +
           `round=0 chatType=${chatType} recoveredError="${recoveredError || 'unknown'}" ` +
-          `→ suppressing placeholder from chat stream`
+          `→ suppressing empty/error placeholder from chat stream`
         );
       }
-      const errorContent = scrubbed
-        || `API Error: ${typeof recoveredError === 'string' ? recoveredError : String(recoveredError)}`;
-      // Send as content_delta to fill the existing empty assistant message bubble
-      sendEvent('content_delta', {
-        assistantMessageId,
-        delta: errorContent,
-        accumulated: errorContent,
-      });
     }
 
     // Handle tools being skipped (model doesn't support function calling)
@@ -1923,6 +1967,15 @@ IMPORTANT: The image data is already available in the system context. You don't 
               sendEvent('content_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
             } else if (chunk.type === 'reasoning') {
               sendEvent('reasoning_delta', { assistantMessageId, delta: chunk.delta, accumulated: chunk.accumulated });
+            } else if (chunk.type === 'tool_call_delta') {
+              const tc = chunk.toolCall;
+              if (tc?.id && tc?.function?.name && !announcedToolIds.has(tc.id)) {
+                announcedToolIds.add(tc.id);
+                sendEvent('tool_pending', {
+                  assistantMessageId,
+                  toolCall: { id: tc.id, name: tc.function.name },
+                });
+              }
             }
           },
           conversationContext
@@ -2147,6 +2200,52 @@ IMPORTANT: The image data is already available in the system context. You don't 
               ? Number(functionArgs._interval) * 1000
               : null);
 
+          // Autonomous-follow-up gate: by default an async tool's completion
+          // just updates its tool-call card in the originating assistant
+          // message (via the ASYNC_TOOL_COMPLETED SSE broadcast inside
+          // AsyncToolQueue). Only tools listed in autonomousFollowupConfig
+          // also get the LLM-narrated follow-up message that
+          // AutonomousMessageService spawns. Without this gate, EVERY async
+          // tool produced an extra assistant message even when the result
+          // was self-explanatory and the originating message was still on
+          // screen — see autonomousFollowupConfig.js for the rationale.
+          const wantsAutonomousFollowup = shouldTriggerAutonomousFollowup(functionName);
+          const asyncCallbacks = wantsAutonomousFollowup
+            ? {
+                onProgress: async (progressData, execution) => {
+                  if (progressData?.type === 'iteration_complete') {
+                    return;
+                  }
+                  // Trigger autonomous message for progress update
+                  await autonomousMessageService.triggerToolProgress(conversationId, {
+                    toolCallId: toolCall.id,
+                    functionName,
+                    progress: progressData,
+                    executionId: execution.executionId,
+                  });
+                },
+                onComplete: async (result, execution) => {
+                  // Trigger autonomous message for completion
+                  await autonomousMessageService.triggerToolCompletion(conversationId, {
+                    toolCallId: toolCall.id,
+                    functionName,
+                    result,
+                    executionId: execution.executionId,
+                    duration: execution.completedAt - execution.startedAt,
+                  });
+                },
+                onError: async (error, execution) => {
+                  // Trigger autonomous message for error
+                  await autonomousMessageService.triggerToolFailure(conversationId, {
+                    toolCallId: toolCall.id,
+                    functionName,
+                    error: error.message || String(error),
+                    executionId: execution.executionId,
+                  });
+                },
+              }
+            : {};
+
           // Queue the async tool for background execution
           const executionId = asyncToolQueue.enqueue(
             toolCall.id,
@@ -2155,42 +2254,10 @@ IMPORTANT: The image data is already available in the system context. You don't 
             functionName,
             functionArgs, // Pass raw args - AsyncToolQueue strips control params internally
             assistantMessageId, // Pass message ID for frontend status updates
-            {
-              onProgress: async (progressData, execution) => {
-                if (progressData?.type === 'iteration_complete') {
-                  return;
-                }
-                // Trigger autonomous message for progress update
-                await autonomousMessageService.triggerToolProgress(conversationId, {
-                  toolCallId: toolCall.id,
-                  functionName,
-                  progress: progressData,
-                  executionId: execution.executionId,
-                });
-              },
-              onComplete: async (result, execution) => {
-                // Trigger autonomous message for completion
-                await autonomousMessageService.triggerToolCompletion(conversationId, {
-                  toolCallId: toolCall.id,
-                  functionName,
-                  result,
-                  executionId: execution.executionId,
-                  duration: execution.completedAt - execution.startedAt,
-                });
-              },
-              onError: async (error, execution) => {
-                // Trigger autonomous message for error
-                await autonomousMessageService.triggerToolFailure(conversationId, {
-                  toolCallId: toolCall.id,
-                  functionName,
-                  error: error.message || String(error),
-                  executionId: execution.executionId,
-                });
-              },
-            },
+            asyncCallbacks,
             // Execute function wrapper — single dispatcher across all chat surfaces
             async (args, onProgress) => {
-              console.log(`[AsyncTool] Executing ${functionName} for ${chatType} chat`);
+              console.log(`[AsyncTool] Executing ${functionName} for ${chatType} chat (autonomous follow-up: ${wantsAutonomousFollowup ? 'on' : 'off'})`);
               return await executeTool(functionName, args, authToken, conversationContext);
             }
           );
@@ -2292,7 +2359,7 @@ IMPORTANT: The image data is already available in the system context. You don't 
           // with many sub-50k fields whose aggregate is enormous. The
           // artifact-chat carve-out was removed alongside the offload skip;
           // huge file reads now route through query_data instead.
-          const MAX_TOOL_RESULT_CHARS = 100000; // ~28k tokens
+          const MAX_TOOL_RESULT_CHARS = toolOutputCap; // user-tunable; default 100000 (~28k tokens)
           if (functionResponseContent.length > MAX_TOOL_RESULT_CHARS) {
             const originalSize = functionResponseContent.length;
             console.log(`[Context Protection] Tool ${functionName} result too large (${originalSize} chars), truncating to ${MAX_TOOL_RESULT_CHARS}`);
@@ -2654,6 +2721,15 @@ IMPORTANT: The image data is already available in the system context. You don't 
               delta: chunk.delta,
               accumulated: chunk.accumulated,
             });
+          } else if (chunk.type === 'tool_call_delta') {
+            const tc = chunk.toolCall;
+            if (tc?.id && tc?.function?.name && !announcedToolIds.has(tc.id)) {
+              announcedToolIds.add(tc.id);
+              sendEvent('tool_pending', {
+                assistantMessageId,
+                toolCall: { id: tc.id, name: tc.function.name },
+              });
+            }
           }
         },
         conversationContext
@@ -2676,24 +2752,19 @@ IMPORTANT: The image data is already available in the system context. You don't 
       if (nextResponse.recoveredFromError && responseMessage.content) {
         const extracted = extractDisplayText(responseMessage.content);
         const scrubbed = scrubEmptyPlaceholder(extracted);
-        // Diagnostic: empty responses are usually a streaming bug or a
-        // tool-call-only turn the adapter mistakenly classified as empty.
-        // Log enough to identify which provider/model/round triggered it.
-        if (!scrubbed) {
+        if (scrubbed) {
+          sendEvent('content_delta', {
+            assistantMessageId,
+            delta: scrubbed,
+            accumulated: scrubbed,
+          });
+        } else {
           console.warn(
             `[Empty Response] provider=${normalizedProvider} model=${model} ` +
             `round=${currentRound} chatType=${chatType} recoveredError="${nextResponse.recoveredError || 'unknown'}" ` +
-            `→ suppressing placeholder from chat stream`
+            `→ suppressing empty/error placeholder from chat stream`
           );
         }
-        // Fall back to a real error sentence when we have nothing to show.
-        const errorContent = scrubbed
-          || `API Error: ${typeof nextResponse.recoveredError === 'string' ? nextResponse.recoveredError : String(nextResponse.recoveredError || 'empty response')}`;
-        sendEvent('content_delta', {
-          assistantMessageId,
-          delta: errorContent,
-          accumulated: errorContent,
-        });
       }
 
       safePushAssistantMessage(messages, responseMessage);
