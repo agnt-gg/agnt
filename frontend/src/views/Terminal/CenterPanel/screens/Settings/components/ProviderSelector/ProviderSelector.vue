@@ -132,6 +132,94 @@
       </p>
     </div>
 
+    <!-- Tool output limit — per-call hard cap on tool result size returned to the LLM -->
+    <div class="tool-output-cap-section">
+      <div class="tool-output-cap-header">
+        <label for="tool-output-cap-input">Tool output limit</label>
+        <Tooltip
+          title="Per-call cap on tool result size"
+          text="Maximum characters of any single tool result returned to the LLM. Results above this size are replaced with a short JSON note telling Annie to narrow the query or paginate. Raise this if you keep hitting truncations on big reads — every ~4 characters is roughly 1 token, so 100k chars ≈ 28k tokens."
+          position="top"
+          width="340px"
+        >
+          <i class="fas fa-info-circle info-icon"></i>
+        </Tooltip>
+      </div>
+      <div class="tool-output-cap-controls">
+        <input
+          id="tool-output-cap-input"
+          v-model.number="toolOutputCapDraft"
+          type="number"
+          min="25000"
+          max="500000"
+          step="5000"
+          class="tool-output-cap-input"
+          @blur="saveToolOutputCap"
+        />
+        <span class="tool-output-cap-unit">chars (~{{ Math.round((Number(toolOutputCapDraft) || 0) / 4 / 1000) }}k tokens)</span>
+      </div>
+      <div class="tool-output-cap-footer">
+        <div class="tool-output-cap-presets">
+          <button
+            v-for="preset in [50000, 100000, 200000, 400000]"
+            :key="preset"
+            type="button"
+            class="preset-chip"
+            :class="{ active: Number(toolOutputCapDraft) === preset }"
+            @click="applyToolOutputCapPreset(preset)"
+          >
+            {{ preset / 1000 }}k
+          </button>
+        </div>
+        <span v-if="toolOutputCapStatus === 'saving'" class="status-indicator saving">Saving…</span>
+        <span v-else-if="toolOutputCapStatus === 'saved'" class="status-indicator saved"><i class="fas fa-check"></i> Saved</span>
+      </div>
+    </div>
+
+    <!-- Max tool runs — cap on tool-loop rounds per chat turn -->
+    <div class="tool-output-cap-section">
+      <div class="tool-output-cap-header">
+        <label for="max-tool-rounds-input">Max tool runs</label>
+        <Tooltip
+          title="Cap on tool-loop rounds per turn"
+          text="Maximum number of tool execution rounds Annie can run in a single turn before the loop is forced to end. Raise this for long autonomous tasks; lower it to fail fast on runaway loops. Applies to every chat (orchestrator, agent, workflow, widget, plugin tool, goal, artifact). Default 100."
+          position="top"
+          width="340px"
+        >
+          <i class="fas fa-info-circle info-icon"></i>
+        </Tooltip>
+      </div>
+      <div class="tool-output-cap-controls">
+        <input
+          id="max-tool-rounds-input"
+          v-model.number="maxToolRoundsDraft"
+          type="number"
+          min="1"
+          max="999999"
+          step="5"
+          class="tool-output-cap-input"
+          @blur="saveMaxToolRounds"
+        />
+        <span class="tool-output-cap-unit">rounds per turn</span>
+      </div>
+      <div class="tool-output-cap-footer">
+        <div class="tool-output-cap-presets">
+          <button
+            v-for="preset in [25, 50, 100, 200]"
+            :key="preset"
+            type="button"
+            class="preset-chip"
+            :class="{ active: Number(maxToolRoundsDraft) === preset }"
+            @click="applyMaxToolRoundsPreset(preset)"
+          >
+            {{ preset }}
+          </button>
+        </div>
+        <span v-if="maxToolRoundsStatus === 'saving'" class="status-indicator saving">Saving…</span>
+        <span v-else-if="maxToolRoundsStatus === 'saved'" class="status-indicator saved"><i class="fas fa-check"></i> Saved</span>
+      </div>
+    </div>
+
     <!-- Custom Provider Dialog -->
     <CustomProviderDialog :is-open="isDialogOpen" :edit-provider="editingProvider" @close="closeDialog" @saved="handleProviderSaved" />
 
@@ -242,6 +330,88 @@ export default {
       store.dispatch('aiProvider/setAsyncToolsEnabled', !asyncToolsEnabled.value);
     };
 
+    // Tool output cap — edited locally, persisted on blur/preset-click.
+    const toolOutputCapDraft = ref(store.state.aiProvider.toolOutputCap || 100000);
+    const toolOutputCapStatus = ref('');
+    let toolOutputCapSavedResetTimer = null;
+
+    watch(
+      () => store.state.aiProvider.toolOutputCap,
+      (val) => {
+        if (document.activeElement?.id !== 'tool-output-cap-input') {
+          toolOutputCapDraft.value = val || 100000;
+        }
+      },
+    );
+
+    const saveToolOutputCap = async () => {
+      const raw = Number(toolOutputCapDraft.value);
+      const next = Number.isFinite(raw)
+        ? Math.max(25000, Math.min(500000, Math.round(raw)))
+        : 100000;
+      toolOutputCapDraft.value = next;
+      if (next === store.state.aiProvider.toolOutputCap) return;
+
+      toolOutputCapStatus.value = 'saving';
+      try {
+        await store.dispatch('aiProvider/setToolOutputCap', next);
+        toolOutputCapStatus.value = 'saved';
+        clearTimeout(toolOutputCapSavedResetTimer);
+        toolOutputCapSavedResetTimer = setTimeout(() => {
+          if (toolOutputCapStatus.value === 'saved') toolOutputCapStatus.value = '';
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to save tool output cap:', error);
+        toolOutputCapStatus.value = '';
+      }
+    };
+
+    const applyToolOutputCapPreset = (value) => {
+      toolOutputCapDraft.value = value;
+      saveToolOutputCap();
+    };
+
+    // Max tool runs — same shape as toolOutputCap above.
+    const maxToolRoundsDraft = ref(store.state.aiProvider.maxToolRounds || 100);
+    const maxToolRoundsStatus = ref('');
+    let maxToolRoundsSavedResetTimer = null;
+
+    watch(
+      () => store.state.aiProvider.maxToolRounds,
+      (val) => {
+        if (document.activeElement?.id !== 'max-tool-rounds-input') {
+          maxToolRoundsDraft.value = val || 100;
+        }
+      },
+    );
+
+    const saveMaxToolRounds = async () => {
+      const raw = Number(maxToolRoundsDraft.value);
+      const next = Number.isFinite(raw)
+        ? Math.max(1, Math.min(999999, Math.round(raw)))
+        : 100;
+      maxToolRoundsDraft.value = next;
+      if (next === store.state.aiProvider.maxToolRounds) return;
+
+      maxToolRoundsStatus.value = 'saving';
+      try {
+        await store.dispatch('aiProvider/setMaxToolRounds', next);
+        maxToolRoundsStatus.value = 'saved';
+        clearTimeout(maxToolRoundsSavedResetTimer);
+        maxToolRoundsSavedResetTimer = setTimeout(() => {
+          if (maxToolRoundsStatus.value === 'saved') maxToolRoundsStatus.value = '';
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to save max tool rounds:', error);
+        maxToolRoundsStatus.value = '';
+      }
+    };
+
+    const applyMaxToolRoundsPreset = (value) => {
+      maxToolRoundsDraft.value = value;
+      saveMaxToolRounds();
+    };
+
     const saveCustomInstructions = async () => {
       const next = (customInstructionsDraft.value || '').trim();
       const current = (store.state.aiProvider.customInstructions || '').trim();
@@ -263,6 +433,8 @@ export default {
 
     onUnmounted(() => {
       clearTimeout(savedResetTimer);
+      clearTimeout(toolOutputCapSavedResetTimer);
+      clearTimeout(maxToolRoundsSavedResetTimer);
     });
 
     const filteredModels = computed(() => store.getters['aiProvider/filteredModels']);
@@ -624,6 +796,14 @@ export default {
       saveCustomInstructions,
       asyncToolsEnabled,
       toggleAsyncTools,
+      toolOutputCapDraft,
+      toolOutputCapStatus,
+      saveToolOutputCap,
+      applyToolOutputCapPreset,
+      maxToolRoundsDraft,
+      maxToolRoundsStatus,
+      saveMaxToolRounds,
+      applyMaxToolRoundsPreset,
     };
   },
 };
@@ -997,5 +1177,101 @@ export default {
   font-size: 0.75em;
   color: var(--color-med-navy);
   line-height: 1.4;
+}
+
+/* Tool output limit */
+.tool-output-cap-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.tool-output-cap-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-output-cap-header label {
+  font-weight: 500;
+  width: auto;
+}
+
+.tool-output-cap-header .info-icon {
+  color: var(--color-med-navy);
+  font-size: 0.95em;
+  cursor: help;
+  transition: color 0.15s ease;
+}
+
+.tool-output-cap-header .info-icon:hover {
+  color: var(--color-primary);
+}
+
+.tool-output-cap-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tool-output-cap-input {
+  width: 140px;
+  padding: 8px 10px;
+  background: var(--terminal-background-color, transparent);
+  color: var(--color-text, inherit);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 0.9em;
+  transition: border-color 0.15s ease;
+}
+
+.tool-output-cap-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.tool-output-cap-unit {
+  font-size: 0.8em;
+  color: var(--color-med-navy);
+}
+
+.tool-output-cap-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tool-output-cap-presets {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.preset-chip {
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--color-med-navy);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 999px;
+  font-size: 0.75em;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.preset-chip:hover {
+  color: var(--color-light-med-navy);
+  border-color: var(--color-light-med-navy);
+}
+
+.preset-chip.active {
+  background: rgba(var(--green-rgb), 0.12);
+  color: var(--color-green);
+  border-color: var(--color-green);
 }
 </style>
