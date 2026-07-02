@@ -11,7 +11,7 @@
       @screen-change="changeScreen"
     >
       <!-- KeepAlive caches visited screens so charts/data don't reload on every navigation -->
-      <KeepAlive>
+      <KeepAlive :max="4">
         <component
           v-if="isScreenReady"
           :is="activeScreenComponent"
@@ -37,7 +37,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch, defineAsyncComponent, shallowReactive, markRaw, nextTick } from 'vue';
+import { ref, computed, onMounted, watch, shallowReactive, markRaw } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -49,20 +49,14 @@ import OnboardingModal from '@/components/OnboardingModal.vue';
 // Canvas system (provides navigation sidebar + toolbar)
 import CanvasScreen from '@/canvas/CanvasScreen.vue';
 
-// Chat + Settings loaded eagerly (default screen + auth fallback)
-import ChatScreen from './CenterPanel/screens/Chat/Chat.vue';
-import SettingsScreen from './CenterPanel/screens/Settings/Settings.vue';
-
 // Shallow-reactive screen registry — screens register as they load
 // Must be shallowReactive so Vue doesn't deep-proxy component objects
 // (deep proxying breaks Vue internals like emitsOptions/HMR in dev mode)
-const screenComponents = shallowReactive({
-  ChatScreen: markRaw(ChatScreen),
-  SettingsScreen: markRaw(SettingsScreen),
-});
+const screenComponents = shallowReactive({});
 
-// Screens to preload in background after Chat renders
 const screenLoaders = [
+  ['ChatScreen', () => import('./CenterPanel/screens/Chat/Chat.vue')],
+  ['SettingsScreen', () => import('./CenterPanel/screens/Settings/Settings.vue')],
   ['AgentsScreen', () => import('./CenterPanel/screens/Agents/Agents.vue')],
   ['ToolsScreen', () => import('./CenterPanel/screens/Tools/Tools.vue')],
   ['WorkflowsScreen', () => import('./CenterPanel/screens/Workflows/Workflows.vue')],
@@ -84,13 +78,83 @@ const screenLoaders = [
   ['AutonomyScreen', () => import('./CenterPanel/screens/Autonomy/Autonomy.vue')],
 ];
 
-// Preload all screen chunks in parallel, register into reactive map as each resolves
-const preloadScreens = () => {
-  for (const [name, loader] of screenLoaders) {
-    loader()
-      .then((mod) => { screenComponents[name] = markRaw(mod.default); })
-      .catch((err) => console.warn(`[preload] Failed to load ${name}:`, err));
+const screenLoadersByName = new Map(screenLoaders);
+const screenLoadPromises = new Map();
+const preloadedGroups = new Set();
+const DASHBOARD_PREFETCH_SCREENS = new Set(['DashboardScreen', 'GoalsScreen', 'TracesScreen']);
+
+const screenPreloadGroups = {
+  DashboardScreen: ['GoalsScreen', 'TracesScreen'],
+  GoalsScreen: ['DashboardScreen', 'TracesScreen'],
+  TracesScreen: ['DashboardScreen', 'GoalsScreen'],
+  AgentsScreen: ['AgentForgeScreen'],
+  AgentForgeScreen: ['AgentsScreen'],
+  WorkflowsScreen: ['WorkflowForgeScreen'],
+  WorkflowForgeScreen: ['WorkflowsScreen'],
+  ToolsScreen: ['ToolForgeScreen'],
+  ToolForgeScreen: ['ToolsScreen'],
+  WidgetManagerScreen: ['WidgetForgeScreen'],
+  WidgetForgeScreen: ['WidgetManagerScreen'],
+  SkillsScreen: ['MemoryScreen', 'ExperimentsScreen', 'AutonomyScreen'],
+  MemoryScreen: ['SkillsScreen', 'ExperimentsScreen', 'AutonomyScreen'],
+  ExperimentsScreen: ['SkillsScreen', 'MemoryScreen', 'AutonomyScreen'],
+  AutonomyScreen: ['SkillsScreen', 'MemoryScreen', 'ExperimentsScreen'],
+};
+
+const idle = (cb, timeout = 2000) => (
+  typeof requestIdleCallback === 'function'
+    ? requestIdleCallback(cb, { timeout })
+    : setTimeout(cb, 100)
+);
+
+const loadScreen = (screenName) => {
+  if (screenComponents[screenName]) {
+    return Promise.resolve(screenComponents[screenName]);
   }
+
+  if (screenLoadPromises.has(screenName)) {
+    return screenLoadPromises.get(screenName);
+  }
+
+  const loader = screenLoadersByName.get(screenName);
+  if (!loader) {
+    return Promise.reject(new Error(`Unknown screen: ${screenName}`));
+  }
+
+  const promise = loader()
+    .then((mod) => {
+      screenComponents[screenName] = markRaw(mod.default);
+      return screenComponents[screenName];
+    })
+    .catch((err) => {
+      screenLoadPromises.delete(screenName);
+      console.warn(`[screen] Failed to load ${screenName}:`, err);
+      throw err;
+    });
+
+  screenLoadPromises.set(screenName, promise);
+  return promise;
+};
+
+const preloadLikelyScreens = (screenName) => {
+  const candidates = screenPreloadGroups[screenName] || [];
+  const groupKey = [screenName, ...candidates].join('|');
+  if (!candidates.length || preloadedGroups.has(groupKey)) return;
+  preloadedGroups.add(groupKey);
+
+  let index = 0;
+  const loadNext = () => {
+    const nextScreen = candidates[index++];
+    if (!nextScreen) return;
+
+    loadScreen(nextScreen)
+      .catch(() => {})
+      .finally(() => {
+        if (index < candidates.length) idle(loadNext, 4000);
+      });
+  };
+
+  idle(loadNext);
 };
 
 export default {
@@ -117,9 +181,6 @@ export default {
       return getDefaultScreen();
     };
     const activeScreen = ref(getScreenFromRoute());
-
-    // Placeholder shown while a screen chunk is still loading
-    const ScreenPlaceholder = { template: '<div style="flex:1;width:100%;height:100%;background:var(--color-background)"></div>' };
 
     const isScreenReady = computed(() => !!screenComponents[activeScreen.value]);
 
@@ -153,6 +214,8 @@ export default {
       };
 
       if (screenName in screenRoutes) {
+        ensureScreen(screenName);
+        prefetchScreenData(screenName);
         activeScreen.value = screenName;
         const targetPath = screenRoutes[screenName];
 
@@ -205,42 +268,40 @@ export default {
       store.dispatch('executionHistory/fetchExecutions').catch(() => {});
     };
 
-    onMounted(() => {
-      // Eagerly load the active screen if it's not already available
-      // This ensures reloading on /workflows (etc.) shows content immediately
-      const currentScreen = activeScreen.value;
-      if (!screenComponents[currentScreen]) {
-        const entry = screenLoaders.find(([name]) => name === currentScreen);
-        if (entry) {
-          entry[1]()
-            .then((mod) => { screenComponents[currentScreen] = markRaw(mod.default); })
-            .catch((err) => console.warn(`[eager] Failed to load ${currentScreen}:`, err));
-        }
-      }
+    const ensureScreen = (screenName) => {
+      loadScreen(screenName)
+        .then(() => preloadLikelyScreens(screenName))
+        .catch((err) => console.warn(`[screen] Failed to prepare ${screenName}:`, err));
+    };
 
-      // Preload remaining screens AND prime dashboard data in the same idle
-      // window. Both run in background so the active screen paints first.
-      const startPreload = () => {
-        preloadScreens();
-        prefetchDashboardData();
-      };
-      if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(startPreload);
-      } else {
-        setTimeout(startPreload, 100);
+    const prefetchScreenData = (screenName) => {
+      if (DASHBOARD_PREFETCH_SCREENS.has(screenName)) {
+        idle(prefetchDashboardData, 3000);
       }
+    };
+
+    onMounted(() => {
+      ensureScreen(activeScreen.value);
+      prefetchScreenData(activeScreen.value);
     });
 
     watch(
       () => route.path,
       () => {
+        let nextScreen = activeScreen.value;
         if (route.meta?.terminalScreen) {
-          activeScreen.value = route.meta.terminalScreen;
+          nextScreen = route.meta.terminalScreen;
         } else if (route.query.id) {
-          activeScreen.value = 'WorkflowForgeScreen';
+          nextScreen = 'WorkflowForgeScreen';
         } else if (route.path === '/') {
-          activeScreen.value = getDefaultScreen();
+          nextScreen = getDefaultScreen();
         }
+
+        if (nextScreen !== activeScreen.value) {
+          activeScreen.value = nextScreen;
+        }
+        ensureScreen(nextScreen);
+        prefetchScreenData(nextScreen);
       },
     );
 
