@@ -82,6 +82,12 @@ class WorkflowEngine extends EventEmitter {
       if (receiver.stop) {
         await receiver.stop();
       }
+      // Some receivers (e.g. the Discord/Slack plugin receivers) expose a
+      // teardown() that destroys their live gateway client instead of
+      // stop()/unsubscribe(). Call it so the socket is actually closed on stop.
+      if (receiver.teardown) {
+        await receiver.teardown();
+      }
     }
     for (const timerId of this.timerIntervals.values()) {
       clearInterval(timerId);

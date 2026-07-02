@@ -445,6 +445,23 @@ class PluginManager {
 
       console.log(`[PluginManager] Registering plugin trigger: ${toolType} from ${triggerUrl}`);
 
+      // Tear down any previously-registered live instance for this trigger type
+      // before we overwrite the registry entry. On hot-reload the old instance
+      // may still hold a live connection (e.g. a logged-in discord.js gateway
+      // Client). Without this teardown the old socket is orphaned and message
+      // delivery silently dies until the workflow is manually reloaded.
+      const previous = ToolConfig.triggers[toolType];
+      if (previous && previous._pluginInstance) {
+        try {
+          if (typeof previous.teardown === 'function') {
+            await previous.teardown();
+            console.log(`[PluginManager] Tore down previous instance of trigger: ${toolType}`);
+          }
+        } catch (teardownErr) {
+          console.warn(`[PluginManager] Error tearing down previous trigger ${toolType}:`, teardownErr.message);
+        }
+      }
+
       // Load the trigger module
       const triggerModule = await import(triggerUrl);
       const triggerInstance = triggerModule.default;
@@ -516,6 +533,22 @@ class PluginManager {
    * Reload all plugins (useful after installing new plugins)
    */
   async reload() {
+    // Tear down any live plugin-trigger instances before we wipe the registry.
+    // These may hold live connections (e.g. a logged-in discord.js gateway
+    // Client). registerPluginTrigger also tears down the previous instance on
+    // re-register, but doing it here first guarantees a clean slate even for
+    // triggers that no longer exist after the reload.
+    for (const [toolType, trigger] of Object.entries(ToolConfig.triggers)) {
+      if (trigger && trigger._pluginInstance && typeof trigger.teardown === 'function') {
+        try {
+          await trigger.teardown();
+          console.log(`[PluginManager] Reload: tore down live trigger instance: ${toolType}`);
+        } catch (teardownErr) {
+          console.warn(`[PluginManager] Reload: error tearing down trigger ${toolType}:`, teardownErr.message);
+        }
+      }
+    }
+
     // Bump first so loadPlugin/registerPluginTrigger see the new generation.
     this.reloadGeneration += 1;
     this.plugins.clear();
