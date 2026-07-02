@@ -5,6 +5,7 @@ import Terminal from '@/views/Terminal/Terminal.vue';
 const DocsView = () => import('@/views/Docs/Docs.vue');
 import OAuthCallback from '@/views/_components/utility/OAuthCallback.vue';
 import store from '@/store/state';
+import { createAuthGuard } from './authGuard.js';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -176,36 +177,7 @@ const router = createRouter({
   ],
 });
 
-router.beforeEach(async (to, from, next) => {
-  // Check if this is an OAuth callback (has code parameter) and redirect to settings
-  if (to.path === '/settings' && to.query.code) {
-    console.log('OAuth callback detected, redirecting to settings page');
-    next({
-      path: '/connectors',
-      query: to.query, // Preserve all query parameters
-    });
-    return;
-  }
-
-  if (to.meta.requiresAuth && !store.state.userAuth.user) {
-    try {
-      // If no user in store, try to fetch user data
-      await store.dispatch('userAuth/fetchUserData');
-
-      if (!store.state.userAuth.user) {
-        // If still no user after fetch attempt, redirect to login
-        next('/settings');
-      } else {
-        next();
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      next('/settings');
-    }
-  } else {
-    next();
-  }
-});
+router.beforeEach(createAuthGuard(store));
 
 // Add error handling to prevent infinite loading on failed routes
 router.onError((error) => {

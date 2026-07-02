@@ -33,16 +33,18 @@
     </div>
   </div>
   <SongPlayer />
+  <SimpleModal ref="authRedirectModal" />
 </template>
 
 <script>
 import { ref, computed, onMounted, watch, nextTick, onUnmounted, provide } from 'vue';
 import { useStore } from 'vuex';
 import SongPlayer from '@/views/Terminal/_components/SongPlayer.vue';
+import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 
 export default {
   name: 'TerminalLayout',
-  components: { SongPlayer },
+  components: { SongPlayer, SimpleModal },
   props: {
     showInitialNarration: {
       type: Boolean,
@@ -74,6 +76,75 @@ export default {
     const terminalScreenRef = ref(null);
     const hasUserInteracted = ref(false); // To track user interaction
     const currentAudio = ref(null); // Track currently playing audio
+    const authRedirectModal = ref(null); // SimpleModal for auth-redirect notice
+
+    // Map structured failure reasons (from authGuard / userAuth.classifyAuthError)
+    // to user-facing copy. Transient failures keep their tone different from
+    // definitive rejections so users do not panic over an outage.
+    const AUTH_REASON_COPY = {
+      no_token: {
+        title: 'Sign in required',
+        message: (from) => `You need to sign in to view ${from || 'that page'}.`,
+      },
+      http_401: {
+        title: 'Session expired',
+        message: (from) => `Your session is no longer valid. Sign in again to continue${from ? ` to ${from}` : ''}.`,
+      },
+      http_403: {
+        title: 'Access denied',
+        message: (from) => `Your account does not have access. Sign in with a different account or contact support${from ? ` (tried ${from})` : ''}.`,
+      },
+      unauthenticated_response: {
+        title: 'Sign in required',
+        message: (from) => `We could not confirm your sign-in. Please sign in again${from ? ` to continue to ${from}` : ''}.`,
+      },
+      http_5xx: {
+        title: 'Sign-in service is down',
+        message: (from) => `Our sign-in service is having trouble right now. Try again shortly${from ? ` (you were heading to ${from})` : ''}.`,
+      },
+      timeout: {
+        title: 'Sign-in service is slow',
+        message: (from) => `Sign-in is taking too long to respond. Try again in a moment${from ? ` (you were heading to ${from})` : ''}.`,
+      },
+      network_error: {
+        title: 'Cannot reach sign-in service',
+        message: (from) => `Check your internet connection and try again${from ? ` (you were heading to ${from})` : ''}.`,
+      },
+      unknown: {
+        title: 'Sign in required',
+        message: (from) => `Please sign in to continue${from ? ` to ${from}` : ''}.`,
+      },
+    };
+
+    // Debounce repeated auth-redirect events (route guard fires per nav, can
+    // stack while user clicks around). Track open state so we don't queue
+    // duplicates while one is already open.
+    let authModalOpen = false;
+    const handleAuthRedirect = async (event) => {
+      if (authModalOpen) return;
+      const detail = event?.detail || {};
+      const from = detail.from || '';
+      const reason = detail.reason || 'unknown';
+      const copy = AUTH_REASON_COPY[reason] || AUTH_REASON_COPY.unknown;
+      // Surface the structured detail in DevTools so admins debugging a stuck
+      // user can see exactly which reason fired and any HTTP status / message.
+      console.warn('[TerminalLayout] auth-redirect modal', detail);
+      authModalOpen = true;
+      try {
+        // Token + user are cleared by createAuthGuard ONLY for definitive
+        // rejections (401/403/etc.) — transient failures (5xx, network,
+        // timeout) leave the token intact so users are not logged out by
+        // an outage. The modal copy reflects which case occurred.
+        await authRedirectModal.value?.showModal({
+          title: copy.title,
+          message: copy.message(from),
+          confirmText: 'OK',
+          showCancel: false,
+        });
+      } finally {
+        authModalOpen = false;
+      }
+    };
 
     // --- Background Layer ---
     const useCustomBackground = computed(() => store.getters['theme/useCustomBackground']);
@@ -254,6 +325,7 @@ export default {
       checkMobile();
       window.addEventListener('resize', checkMobile);
       window.addEventListener('sounds-settings-changed', handleSoundSettingsChange);
+      window.addEventListener('auth-redirect', handleAuthRedirect);
 
       // Load saved sound settings
       const savedEnabled = localStorage.getItem('soundsEnabled');
@@ -276,6 +348,8 @@ export default {
     // --- Lifecycle: Cleanup Listener ---
     onUnmounted(() => {
       window.removeEventListener('resize', checkMobile);
+      window.removeEventListener('sounds-settings-changed', handleSoundSettingsChange);
+      window.removeEventListener('auth-redirect', handleAuthRedirect);
       if (terminalScreenRef.value) {
         terminalScreenRef.value.removeEventListener('click', handleGlobalButtonClick, true);
       }
@@ -309,6 +383,7 @@ export default {
       hasBgLayer,
       bgSrc,
       bgType,
+      authRedirectModal,
     };
   },
 };

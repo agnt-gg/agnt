@@ -8,6 +8,55 @@ import { TTL } from '../_utils/freshnessConfig.js';
 // second call within the per-action TTL is a no-op. Pass `{ forceRefresh: true }`
 // to bypass — required after writes that change the underlying data.
 
+/**
+ * Classify an axios error into a structured auth failure record so the router
+ * guard can tell the user why their session is no longer trusted, and admins
+ * can grep logs by reason. Distinguishes:
+ *
+ *   - http_401 / http_403 / http_5xx / http_<N>  — server responded
+ *   - timeout                                     — request aborted at the timeout
+ *   - network_error                               — request never reached the server
+ *   - unknown                                     — anything else
+ *
+ * The caller decides whether each reason warrants clearing the local token.
+ * Definitive client-side rejections (401/403/unauthenticated_response/no_token)
+ * should clear; transient failures (5xx/network/timeout) should NOT.
+ */
+export function classifyAuthError(error) {
+  const timestamp = Date.now();
+  if (error?.response) {
+    const status = error.response.status;
+    const detail = error.response.data?.error || null;
+    if (status === 401) return { reason: 'http_401', status, detail, timestamp };
+    if (status === 403) return { reason: 'http_403', status, detail, timestamp };
+    if (status >= 500) return { reason: 'http_5xx', status, detail, timestamp };
+    return { reason: `http_${status}`, status, detail, timestamp };
+  }
+  if (error?.code === 'ECONNABORTED' || /timeout/i.test(error?.message || '')) {
+    return { reason: 'timeout', detail: error?.message || null, timestamp };
+  }
+  if (error?.message) {
+    return { reason: 'network_error', detail: error.message, timestamp };
+  }
+  return { reason: 'unknown', timestamp };
+}
+
+/**
+ * Reasons that mean the server has *definitively* rejected the local token,
+ * so it is safe (and helpful) to clear it. Transient failures are excluded
+ * so an outage or offline blip does not log the user out.
+ */
+const DEFINITIVE_AUTH_REJECTIONS = new Set([
+  'http_401',
+  'http_403',
+  'unauthenticated_response',
+  'no_token',
+]);
+
+export function isDefinitiveAuthRejection(reason) {
+  return DEFINITIVE_AUTH_REJECTIONS.has(reason);
+}
+
 // Helper function to sync token with local backend
 const syncTokenWithBackend = async (token) => {
   try {
@@ -47,6 +96,17 @@ export default {
     signedLicense: JSON.parse(localStorage.getItem('signedLicense') || 'null'),
     licenseStatus: 'unknown', // 'valid', 'expired', 'invalid', 'offline', 'unknown'
     lastLicenseCheck: null,
+
+    // Diagnostic record of why the last fetchUserData failed (if it did).
+    // Populated whenever the auth probe fails to confirm a user; cleared on
+    // a successful probe. Consumed by the router auth-guard so it can tell
+    // the user (and any admin watching DevTools) *why* the session is no
+    // longer trusted instead of bouncing them to /settings silently.
+    //
+    // Shape: { reason, status?, detail?, timestamp } or null when healthy.
+    // Reasons: no_token | http_401 | http_403 | http_5xx | http_<N> |
+    //          timeout | network_error | unauthenticated_response | unknown
+    lastAuthFailure: null,
   },
   mutations: {
     SET_TOKEN(state, token) {
@@ -118,10 +178,19 @@ export default {
       state.licenseStatus = 'invalid';
       localStorage.removeItem('signedLicense');
     },
+    SET_AUTH_FAILURE(state, failure) {
+      state.lastAuthFailure = failure;
+    },
+    CLEAR_AUTH_FAILURE(state) {
+      state.lastAuthFailure = null;
+    },
   },
   actions: {
     fetchUserData: withFreshness('userAuth.fetchUserData', async ({ commit, state, dispatch }) => {
-      if (!state.token) return;
+      if (!state.token) {
+        commit('SET_AUTH_FAILURE', { reason: 'no_token', timestamp: Date.now() });
+        return;
+      }
 
       try {
         const response = await axios.get(`${API_CONFIG.REMOTE_URL}/users/auth/status`, {
@@ -132,15 +201,29 @@ export default {
 
         if (response.data.isAuthenticated && response.data.user) {
           commit('SET_USER', response.data.user);
+          commit('CLEAR_AUTH_FAILURE');
           // Fetch pseudonym after user data is set
           if (response.data.user.email) {
             dispatch('fetchPseudonym');
           }
         } else {
+          // Server returned 200 but explicitly says "no authenticated user".
+          // Drop any stale local user so the guard's user-check stays in sync
+          // with what the server just told us. Symmetric with the happy path,
+          // which sets the user — this clears it.
+          commit('SET_USER', null);
+          commit('SET_AUTH_FAILURE', {
+            reason: 'unauthenticated_response',
+            status: response.status,
+            detail: response.data?.error || null,
+            timestamp: Date.now(),
+          });
           console.error('Auth status returned but no user data:', response.data);
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
+        const failure = classifyAuthError(error);
+        commit('SET_AUTH_FAILURE', failure);
+        console.error(`Error fetching user data (${failure.reason}):`, error);
       }
     }, { staleAfter: TTL.userAuthFetchUserData }),
     fetchPseudonym: withFreshness('userAuth.fetchPseudonym', async ({ commit, state }) => {
