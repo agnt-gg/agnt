@@ -5,6 +5,7 @@ import AgentTaskMatcher from './AgentTaskMatcher.js';
 import LlmExecutionService from '../ai/LlmExecutionService.js';
 import { getAvailableToolSchemas } from '../orchestrator/tools.js';
 import GoalEvaluator from './GoalEvaluator.js';
+import GoalProcessor from './GoalProcessor.js';
 import SkillForgeOrchestrator from './SkillForgeOrchestrator.js';
 import InsightTriggers from '../evolution/InsightTriggers.js';
 import { createLlmClient } from '../ai/LlmService.js';
@@ -788,6 +789,40 @@ The goal you delegated did not fully pass. Let the user know:
         conversationId,
       });
 
+      // Bootstrap: goals created without tasks (e.g. proposals inserted
+      // directly into the goals table by an agent) can never pass evaluation —
+      // the loop would burn LLM eval calls on an empty task list and stop as
+      // "stuck". Plan tasks from the goal description before entering the loop.
+      let bootstrappedTasks = await TaskModel.findByGoalId(goalId);
+      if (bootstrappedTasks.length === 0) {
+        console.log(`[AGI Loop] Goal ${goalId} has 0 tasks — bootstrapping task plan from goal description`);
+        await GoalModel.updateLoopStatus(goalId, 'planning');
+        try {
+          bootstrappedTasks = await GoalProcessor.planTasksForExistingGoal(goalId, userId, provider, model);
+          console.log(`[AGI Loop] Bootstrapped ${bootstrappedTasks.length} tasks for goal ${goalId}`);
+        } catch (bootstrapError) {
+          console.error(`[AGI Loop] Task bootstrap failed for goal ${goalId}:`, bootstrapError.message);
+        }
+        await GoalModel.updateLoopStatus(goalId, 'starting');
+      }
+
+      // Fail fast: if there are still no tasks, exit with a clear error
+      // instead of looping evaluate/replan against nothing.
+      if (bootstrappedTasks.length === 0) {
+        console.error(`[AGI Loop] Goal ${goalId} has no tasks and task planning failed — aborting (no_tasks)`);
+        await GoalModel.updateLoopStatus(goalId, 'error');
+        await GoalModel.updateStatus(goalId, 'failed');
+        broadcastToUser(userId, RealtimeEvents.GOAL_LOOP_ERROR, {
+          goalId,
+          error: 'no_tasks: goal has no tasks and automatic task planning failed',
+        });
+        if (conversationId) {
+          this._sendGoalFailureToChat(goalId, conversationId, 'no_tasks', 'Goal has no tasks and automatic task planning failed — nothing to execute.').catch(() => {});
+        }
+        this.runningGoals.delete(goalId);
+        return { goalId, status: 'error', reason: 'no_tasks' };
+      }
+
       let identicalReplanCount = 0;
       let lastReplanHash = null;
 
@@ -1280,7 +1315,9 @@ Rules:
       await fs.writeFile(stateFile, JSON.stringify(worldState, null, 2));
 
       // Stage and commit
-      await execAsync(`git add "${stateFile}"`, { cwd });
+      // -f: the state dir (backend/.agnt) is commonly gitignored — checkpoints
+      // should still be recorded on the goal branch without noisy failures.
+      await execAsync(`git add -f "${stateFile}"`, { cwd });
       const commitMessage = `checkpoint: goal ${goalId} iteration ${iteration} - score ${Math.round(score)}%`;
       const { stdout } = await execAsync(`git commit -m "${commitMessage}"`, { cwd });
 

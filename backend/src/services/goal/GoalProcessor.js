@@ -64,6 +64,46 @@ class GoalProcessor {
       throw error;
     }
   }
+
+  /**
+   * Plans tasks for a goal that already exists but has no tasks
+   * (e.g. proposal goals inserted directly into the goals table by an agent,
+   * bypassing processGoal). Reuses the same AI analysis + task creation
+   * pipeline as processGoal, but against the existing goal record.
+   * @param {string} goalId - The ID of the existing goal.
+   * @param {string|number} userId - The ID of the user who owns the goal.
+   * @param {string|null} provider - Optional LLM provider override.
+   * @param {string|null} model - Optional LLM model override.
+   * @returns {Promise<Array>} The tasks for the goal (existing or newly created).
+   */
+  static async planTasksForExistingGoal(goalId, userId, provider = null, model = null) {
+    const goal = await GoalModel.findOne(goalId);
+    if (!goal) {
+      throw new Error(`Goal ${goalId} not found`);
+    }
+
+    const existingTasks = await TaskModel.findByGoalId(goalId);
+    if (existingTasks.length > 0) {
+      console.log(`[GoalProcessor] Goal ${goalId} already has ${existingTasks.length} tasks — skipping bootstrap`);
+      return existingTasks;
+    }
+
+    const goalText = goal.description ? `${goal.title}: ${goal.description}` : goal.title;
+    console.log(`[GoalProcessor] Bootstrapping task plan for existing goal ${goalId}: ${goalText.substring(0, 100)}...`);
+
+    // _analyzeGoal falls back to _createFallbackAnalysis on LLM failure,
+    // so this always yields at least one task breakdown entry.
+    const analysis = await this._analyzeGoal(goalText, userId, provider, model);
+    const tasks = await this._createTasks(goalId, analysis.taskBreakdown);
+
+    if (tasks.length === 0) {
+      throw new Error(`Task planning produced 0 tasks for goal ${goalId}`);
+    }
+
+    console.log(`[GoalProcessor] Bootstrap complete: created ${tasks.length} tasks for goal ${goalId}`);
+    return tasks;
+  }
+
   /**
    * Validates whether a goal is completed by checking if all associated tasks are completed.
    * Updates the goal status to 'completed' if all tasks are done.

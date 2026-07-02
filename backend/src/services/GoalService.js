@@ -429,8 +429,55 @@ class GoalService {
       }
 
       if (action === 'approve') {
-        await GoalModel.updateStatus(id, 'validated');
-        res.json({ message: 'Goal approved', status: 'validated' });
+        // Proposal goals may have been created without tasks (e.g. inserted
+        // directly into the goals table by an agent, bypassing GoalProcessor).
+        // Approval must produce something executable, so plan tasks now if
+        // none exist — otherwise the autonomous loop evaluates an empty task
+        // list, scores 0%, and flips the goal right back to needs_review.
+        const userId = req.user?.userId || goal.user_id;
+        const { provider, model } = req.body || {};
+        let tasksCreated = 0;
+        const existingTasks = await TaskModel.findByGoalId(id);
+        if (existingTasks.length === 0) {
+          try {
+            const planned = await GoalProcessor.planTasksForExistingGoal(id, userId, provider || null, model || null);
+            tasksCreated = planned.length;
+            console.log(`[GoalService] Approve: planned ${tasksCreated} tasks for task-less goal ${id}`);
+          } catch (planError) {
+            console.error(`[GoalService] Approve: task planning failed for goal ${id}:`, planError.message);
+          }
+        }
+
+        // Reset stale loop state from any prior failed run so the
+        // autonomous loop starts fresh from iteration 1.
+        await GoalModel.updateIteration(id, 0);
+        await GoalModel.updateLoopStatus(id, null);
+        await GoalModel.updateWorldState(id, {});
+
+        // Reset any existing tasks back to pending so they can re-execute
+        const allTasks = await TaskModel.findByGoalId(id);
+        for (const t of allTasks) {
+          if (t.status !== 'pending') {
+            await TaskModel.updateStatus(t.id, 'pending');
+          }
+        }
+
+        // Set status to 'executing' — NOT 'validated'.
+        // 'validated' is a terminal status (GoalModel auto-sets completed_at,
+        // frontend treats it as done). Approval is not completion — it's the
+        // start of execution.
+        await GoalModel.updateStatus(id, 'executing');
+
+        // Fire the autonomous loop in the background (non-blocking).
+        TaskOrchestrator.executeGoalAutonomous(id, userId, {
+          maxIterations: goal.max_iterations || 50,
+          provider: provider || null,
+          model: model || null,
+        }).catch(err => {
+          console.error(`[GoalService] Approve: autonomous execution failed for goal ${id}:`, err.message);
+        });
+
+        res.json({ message: 'Goal approved and execution started', status: 'executing', tasksCreated });
       } else if (action === 'reject') {
         // Park in planning until the caller re-runs; frontend's "Send & Retry"
         // immediately dispatches executeGoalAutonomous so this is only a
