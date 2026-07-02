@@ -105,6 +105,7 @@ build/chromium/
 *.claude/
 
 test-results/
+perf-results/
 backend/tests/providers/results/*.json
 
 # MCP config (contains sensitive data)

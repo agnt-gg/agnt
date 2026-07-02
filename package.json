@@ -14,6 +14,8 @@
     "start:lite": "cross-env AGNT_LITE_MODE=true electron .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "perf:probe": "node scripts/perf/run-page-probe.mjs",
+    "perf:compare": "node scripts/perf/compare-variants.mjs",
     "dev": "node backend/server.js",
     "generate-icons": "node scripts/generate-icons.js",
     "prebuild": "npm run generate-icons",
