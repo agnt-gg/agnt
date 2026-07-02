@@ -25,6 +25,8 @@ const authenticateSSEToken = async (req, res, next) => {
 
 // Define routes
 UserRoutes.get('/health', UserService.healthCheck);
+UserRoutes.get('/auth/status', authenticateToken, UserService.authStatus);
+UserRoutes.post('/auth/test-token', UserService.createLocalTestToken);
 UserRoutes.get('/user-stats', authenticateToken, UserService.getUserStats);
 
 // User settings routes

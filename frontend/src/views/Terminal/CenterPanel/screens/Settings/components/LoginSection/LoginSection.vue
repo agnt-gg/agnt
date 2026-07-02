@@ -40,6 +40,33 @@
             </button>
           </div>
 
+          <template v-if="canPasteToken">
+            <div class="divider testing-divider">
+              <span>testing</span>
+            </div>
+
+            <div class="manual-token-login">
+              <input
+                type="password"
+                v-model="manualToken"
+                class="token-input"
+                placeholder="Paste AGNT token"
+                autocomplete="off"
+                spellcheck="false"
+                :disabled="isTokenLoginLoading"
+                @keyup.enter="signInWithToken"
+              />
+              <button class="token-login" @click="signInWithToken" :disabled="isTokenLoginLoading || !manualToken.trim()">
+                {{ isTokenLoginLoading ? 'Checking token…' : 'Use token' }}
+              </button>
+              <button class="local-token-login" @click="signInWithGeneratedLocalToken" :disabled="isTokenLoginLoading">
+                {{ isTokenLoginLoading ? 'Working…' : 'Use local test token' }}
+              </button>
+              <p v-if="tokenLoginError" class="error-message">{{ tokenLoginError }}</p>
+              <p v-if="tokenLoginSuccess" class="success-message">{{ tokenLoginSuccess }}</p>
+            </div>
+          </template>
+
           <p class="helper-text">
             By continuing, you agree to the AGNT
             <a href="#" @click.prevent="openTermsModal('terms')">Terms</a>
@@ -119,6 +146,10 @@ export default {
     const isAuthenticated = computed(() => store.getters['userAuth/isAuthenticated']);
     const user = computed(() => store.state.userAuth.user);
     const displayPseudonym = computed(() => store.getters['userAuth/userPseudonym']);
+    const canPasteToken = computed(() => {
+      if (typeof window === 'undefined') return false;
+      return ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+    });
 
     // Email magic link state
     const email = ref('');
@@ -131,6 +162,12 @@ export default {
     const verificationCode = ref('');
     const isVerifying = ref(false);
     const verifyError = ref('');
+
+    // Local/manual token login state
+    const manualToken = ref('');
+    const isTokenLoginLoading = ref(false);
+    const tokenLoginError = ref('');
+    const tokenLoginSuccess = ref('');
 
     // Terms/Privacy modal state
     const showTermsModal = ref(false);
@@ -277,6 +314,83 @@ export default {
       await sendMagicLink();
     };
 
+    const completeTokenLogin = async () => {
+      await store.dispatch('userAuth/fetchUserData', { forceRefresh: true });
+
+      if (!store.state.userAuth.user) {
+        store.commit('userAuth/CLEAR_TOKEN');
+        throw new Error('Token was not accepted by the auth server.');
+      }
+
+      await syncTokenWithBackend();
+      await store.dispatch('userAuth/fetchPseudonym').catch((error) => {
+        console.error('Failed to fetch pseudonym after token login:', error);
+      });
+      await store.dispatch('userAuth/fetchSubscription').catch((error) => {
+        console.error('Failed to fetch subscription after token login:', error);
+      });
+      await store.dispatch('userAuth/validateLicense').catch((error) => {
+        console.error('Failed to validate license after token login:', error);
+      });
+    };
+
+    const signInWithToken = async () => {
+      const token = manualToken.value.trim();
+      if (!token) return;
+
+      isTokenLoginLoading.value = true;
+      tokenLoginError.value = '';
+      tokenLoginSuccess.value = '';
+
+      try {
+        store.commit('userAuth/SET_TOKEN', token);
+        await completeTokenLogin();
+        manualToken.value = '';
+        tokenLoginSuccess.value = 'Token accepted.';
+
+        const returnTo = router.currentRoute.value.query.returnTo;
+        router.push(typeof returnTo === 'string' && returnTo.startsWith('/') ? returnTo : '/');
+      } catch (error) {
+        store.commit('userAuth/CLEAR_TOKEN');
+        store.commit('userAuth/SET_USER', null);
+        tokenLoginError.value = error?.message || 'Token login failed.';
+      } finally {
+        isTokenLoginLoading.value = false;
+      }
+    };
+
+    const signInWithGeneratedLocalToken = async () => {
+      isTokenLoginLoading.value = true;
+      tokenLoginError.value = '';
+      tokenLoginSuccess.value = '';
+
+      try {
+        const response = await axios.post(`${API_CONFIG.BASE_URL}/users/auth/test-token`, {
+          email: 'local-test@agnt.local',
+          name: 'Local Test User',
+          expiresIn: '8h',
+        });
+
+        const token = response.data?.token;
+        if (!token) {
+          throw new Error(response.data?.error || 'Local backend did not return a token.');
+        }
+
+        store.commit('userAuth/SET_TOKEN', token);
+        await completeTokenLogin();
+        tokenLoginSuccess.value = 'Local test token accepted.';
+
+        const returnTo = router.currentRoute.value.query.returnTo;
+        router.push(typeof returnTo === 'string' && returnTo.startsWith('/') ? returnTo : '/');
+      } catch (error) {
+        store.commit('userAuth/CLEAR_TOKEN');
+        store.commit('userAuth/SET_USER', null);
+        tokenLoginError.value = error?.response?.data?.error || error?.message || 'Local test token login failed.';
+      } finally {
+        isTokenLoginLoading.value = false;
+      }
+    };
+
     const logout = () => {
       store.dispatch('userAuth/logout');
       router.push('/');
@@ -366,6 +480,13 @@ export default {
       verifyCode,
       closeModal,
       resendCode,
+      canPasteToken,
+      manualToken,
+      isTokenLoginLoading,
+      tokenLoginError,
+      tokenLoginSuccess,
+      signInWithToken,
+      signInWithGeneratedLocalToken,
       logout,
       showTermsModal,
       termsModalTab,
@@ -492,7 +613,8 @@ body.dark .auth-section {
   opacity: 0.9;
 }
 
-input[type='email'] {
+input[type='email'],
+.token-input {
   width: calc(100% - 28px);
   font-family: var(--font-family-primary);
   font-size: 15px;
@@ -505,35 +627,42 @@ input[type='email'] {
   transition: all 0.2s ease;
 }
 
-input[type='email']::placeholder {
+input[type='email']::placeholder,
+.token-input::placeholder {
   color: var(--color-text-muted);
   opacity: 0.6;
 }
 
-input[type='email']:hover {
+input[type='email']:hover,
+.token-input:hover {
   border-color: var(--terminal-border-color);
 }
 
-input[type='email']:focus {
+input[type='email']:focus,
+.token-input:focus {
   border-color: var(--color-green);
   outline: none;
   box-shadow: 0 0 0 1px rgba(var(--green-rgb), 0.38);
 }
 
-body.dark input[type='email'] {
+body.dark input[type='email'],
+body.dark .token-input {
   background: var(--color-darker-2);
   border-color: var(--terminal-border-color);
 }
 
-body.dark input[type='email']:hover {
+body.dark input[type='email']:hover,
+body.dark .token-input:hover {
   border-color: var(--terminal-border-color);
 }
 
-body.dark input[type='email']:focus {
+body.dark input[type='email']:focus,
+body.dark .token-input:focus {
   border-color: var(--color-green);
 }
 
-button.magic-link {
+button.magic-link,
+button.token-login {
   background: linear-gradient(135deg, var(--color-green) 0%, var(--color-green) 100%);
   color: var(--color-ultra-dark-navy);
   border: none;
@@ -549,7 +678,31 @@ button.magic-link {
   position: relative;
 }
 
-button.magic-link::before {
+button.local-token-login {
+  width: 100%;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--terminal-border-color);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-family-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+button.local-token-login:hover:not(:disabled) {
+  background: var(--color-darker-1);
+}
+
+button.local-token-login:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.magic-link::before,
+button.token-login::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -559,21 +712,25 @@ button.magic-link::before {
   transition: opacity 0.18s ease;
 }
 
-button.magic-link:hover:not(:disabled) {
+button.magic-link:hover:not(:disabled),
+button.token-login:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
-button.magic-link:hover:not(:disabled)::before {
+button.magic-link:hover:not(:disabled)::before,
+button.token-login:hover:not(:disabled)::before {
   opacity: 1;
 }
 
-button.magic-link:active:not(:disabled) {
+button.magic-link:active:not(:disabled),
+button.token-login:active:not(:disabled) {
   transform: translateY(0);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 
-button.magic-link:disabled {
+button.magic-link:disabled,
+button.token-login:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: none;
@@ -584,6 +741,23 @@ button.magic-link:disabled {
   flex-direction: column;
   align-items: center;
   width: 100%;
+}
+
+.manual-token-login {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  gap: 8px;
+}
+
+.token-input {
+  text-align: left;
+  font-size: 13px;
+}
+
+.testing-divider {
+  margin-top: 0;
 }
 
 .social-login button {

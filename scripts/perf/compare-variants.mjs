@@ -42,6 +42,9 @@ function parseArgs(argv) {
         .map((page) => page.trim())
         .filter(Boolean);
     } else if (arg === '--config') options.configPath = readValue();
+    else if (arg === '--auth-token') options.authToken = readValue();
+    else if (arg === '--auth-token-file') options.authTokenFile = readValue();
+    else if (arg === '--api-base-url') options.apiBaseUrl = readValue();
     else if (arg === '--runs') options.runs = Number(readValue());
     else if (arg === '--output') options.outputDir = readValue();
     else if (arg === '--sample-ms') options.sampleMs = Number(readValue());
@@ -70,6 +73,9 @@ Options:
   --variant NAME=URL            Variant label and running app base URL. Repeat for each variant.
   --pages /settings,/chat       Comma-separated page paths. Defaults to scripts/perf/default-pages.json.
   --config FILE                 JSON with variants, pages, runs, sampleMs, sampleIntervalMs, outputDir.
+  --auth-token TOKEN            Seed localStorage.token before each measured navigation.
+  --auth-token-file FILE        Read token from a local file and seed localStorage.token.
+  --api-base-url URL            Seed AGNT_API_BASE_URL before each measured navigation for static previews.
   --runs N                      Runs per page per variant. Default: ${DEFAULT_RUNS}.
   --output DIR                  Output directory. Default: ${DEFAULT_OUTPUT_DIR}.
   --sample-ms MS                Runtime memory sampling window after load. Default: 10000.
@@ -86,6 +92,7 @@ async function readJson(filePath) {
 async function loadConfig(options) {
   const defaultPages = await readJson(DEFAULT_PAGES_FILE);
   const fileConfig = options.configPath ? await readJson(path.resolve(options.configPath)) : {};
+  const authTokenFile = options.authTokenFile ?? fileConfig.authTokenFile;
 
   return {
     ...options,
@@ -98,6 +105,8 @@ async function loadConfig(options) {
     sampleIntervalMs: options.sampleIntervalMs ?? fileConfig.sampleIntervalMs ?? 1000,
     viewport: options.viewport || fileConfig.viewport || { width: 1280, height: 720 },
     headless: options.headless ?? fileConfig.headless ?? true,
+    authToken: options.authToken ?? fileConfig.authToken ?? (authTokenFile ? (await readFile(path.resolve(authTokenFile), 'utf8')).trim() : null),
+    apiBaseUrl: options.apiBaseUrl ?? fileConfig.apiBaseUrl ?? null,
   };
 }
 
@@ -415,6 +424,8 @@ async function main() {
           viewport: options.viewport,
           sampleMs: options.sampleMs,
           sampleIntervalMs: options.sampleIntervalMs,
+          authToken: options.authToken,
+          apiBaseUrl: options.apiBaseUrl,
           headless: options.headless,
           waitUntil: 'networkidle',
           warmupMs: 250,
@@ -433,6 +444,8 @@ async function main() {
     sampleMs: options.sampleMs,
     sampleIntervalMs: options.sampleIntervalMs,
     viewport: options.viewport,
+    hasAuthToken: Boolean(options.authToken),
+    apiBaseUrl: options.apiBaseUrl,
   };
 
   await writeFile(path.join(outputDir, 'results.json'), JSON.stringify({ metadata, summary, results }, null, 2));

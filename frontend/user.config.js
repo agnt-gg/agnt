@@ -55,9 +55,13 @@ export const AI_PROVIDERS_CONFIG = {
 // Semi Local Configuration
 // Dynamically detect backend URL based on how the frontend is served
 const isDevServer = typeof window !== 'undefined' && window.location.port === '5173';
-const backendBaseUrl = isDevServer
+const localApiBaseUrlOverride =
+  typeof window !== 'undefined' && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+    ? localStorage.getItem('AGNT_API_BASE_URL')
+    : null;
+const backendBaseUrl = localApiBaseUrlOverride || (isDevServer
   ? 'http://localhost:3333/api'
-  : `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3333'}/api`;
+  : `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3333'}/api`);
 
 export const API_CONFIG = {
   BASE_URL: backendBaseUrl, // dynamically set based on frontend port

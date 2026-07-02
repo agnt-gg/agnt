@@ -13,6 +13,25 @@ npm run perf:compare -- \
   --sample-ms 10000
 ```
 
+Authenticated local preview example:
+
+```sh
+JWT_SECRET=dev-secret npm run auth:test-token -- \
+  --email perf@local.test \
+  --name "Perf Tester" \
+  --out ~/.agnt-test-token
+
+npm run perf:compare -- \
+  --variant base=http://127.0.0.1:5301 \
+  --variant lazy-loading=http://127.0.0.1:5302 \
+  --variant lazy-global-libs=http://127.0.0.1:5303 \
+  --auth-token-file ~/.agnt-test-token \
+  --api-base-url http://127.0.0.1:3333/api \
+  --runs 3
+```
+
+The local backend must run with the same `JWT_SECRET` used to generate the token.
+
 Outputs are written under `perf-results/<timestamp>/`:
 
 - `results.json`: full probe data, resource lists, console/page/request failures, runtime samples.
@@ -24,7 +43,7 @@ The default page set is in `scripts/perf/default-pages.json`. Use `--pages /sett
 Single page probe:
 
 ```sh
-npm run perf:probe -- --url http://127.0.0.1:5301/settings --label base
+npm run perf:probe -- --url http://127.0.0.1:5301/settings --label base --auth-token-file ~/.agnt-test-token
 ```
 
 Recommended three-variant workflow:

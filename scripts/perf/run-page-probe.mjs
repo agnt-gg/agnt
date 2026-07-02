@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -31,6 +32,9 @@ function parseArgs(argv) {
     if (arg === '--url') options.url = readValue();
     else if (arg === '--label') options.label = readValue();
     else if (arg === '--page') options.pagePath = readValue();
+    else if (arg === '--auth-token') options.authToken = readValue();
+    else if (arg === '--auth-token-file') options.authTokenFile = readValue();
+    else if (arg === '--api-base-url') options.apiBaseUrl = readValue();
     else if (arg === '--sample-ms') options.sampleMs = Number(readValue());
     else if (arg === '--sample-interval-ms') options.sampleIntervalMs = Number(readValue());
     else if (arg === '--wait-until') options.waitUntil = readValue();
@@ -56,6 +60,9 @@ Options:
   --url URL                     Full page URL to measure.
   --label NAME                  Variant label used in output.
   --page PATH                   Logical app path for output grouping.
+  --auth-token TOKEN            Seed localStorage.token before navigation.
+  --auth-token-file FILE        Read token from a local file and seed localStorage.token.
+  --api-base-url URL            Seed AGNT_API_BASE_URL before navigation for static previews.
   --sample-ms MS                Runtime sampling window after load. Default: ${DEFAULT_SAMPLE_MS}.
   --sample-interval-ms MS       Runtime sampling cadence. Default: ${DEFAULT_SAMPLE_INTERVAL_MS}.
   --viewport WIDTHxHEIGHT       Browser viewport. Default: 1280x720.
@@ -63,6 +70,13 @@ Options:
   --warmup-ms MS                Short idle wait after navigation. Default: 250.
   --headful                     Show the browser.
 `;
+}
+
+async function resolveAuthToken(options) {
+  if (options.authTokenFile) {
+    return (await readFile(path.resolve(options.authTokenFile), 'utf8')).trim();
+  }
+  return options.authToken || null;
 }
 
 function percentile(values, percentileValue) {
@@ -174,6 +188,17 @@ async function runProbe(options) {
   const page = await context.newPage();
   const cdpSession = await context.newCDPSession(page);
   await cdpSession.send('Performance.enable').catch(() => null);
+  const authToken = await resolveAuthToken(options);
+  if (authToken) {
+    await page.addInitScript((token) => {
+      window.localStorage.setItem('token', token);
+    }, authToken);
+  }
+  if (options.apiBaseUrl) {
+    await page.addInitScript((apiBaseUrl) => {
+      window.localStorage.setItem('AGNT_API_BASE_URL', apiBaseUrl);
+    }, options.apiBaseUrl);
+  }
 
   const consoleErrors = [];
   const pageErrors = [];
@@ -327,6 +352,8 @@ async function runProbe(options) {
     input: {
       url: options.url,
       viewport: options.viewport,
+      hasAuthToken: Boolean(authToken),
+      apiBaseUrl: options.apiBaseUrl || null,
       sampleMs: options.sampleMs,
       sampleIntervalMs: options.sampleIntervalMs,
       waitUntil: options.waitUntil,

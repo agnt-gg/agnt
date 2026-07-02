@@ -121,6 +121,7 @@ class Middleware {
             id: userId,
             userId: userId,
             email: decoded.email,
+            name: decoded.name,
             auth_type: decoded.auth_type || 'remote'
           };
 
@@ -142,11 +143,14 @@ class Middleware {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const userId = this.extractUserId(decoded);
+      await this.syncRemoteUserToLocal(decoded);
+
       req.user = {
         isAuthenticated: true,
         id: userId,
         userId: userId,
         email: decoded.email,
+        name: decoded.name,
         auth_type: decoded.auth_type || 'local'
       };
 

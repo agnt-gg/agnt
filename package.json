@@ -14,6 +14,7 @@
     "start:lite": "cross-env AGNT_LITE_MODE=true electron .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "auth:test-token": "node scripts/auth/generate-local-test-token.mjs",
     "perf:probe": "node scripts/perf/run-page-probe.mjs",
     "perf:compare": "node scripts/perf/compare-variants.mjs",
     "dev": "node backend/server.js",
