@@ -79,6 +79,26 @@ const syncTokenWithBackend = async (token) => {
   }
 };
 
+const decodeJwtPayload = (token) => {
+  try {
+    const payload = token?.split?.('.')[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(normalized));
+  } catch {
+    return null;
+  }
+};
+
+const isLocalTestAuthToken = (token) => {
+  const payload = decodeJwtPayload(token);
+  return payload?.auth_type === 'local-test' || payload?.iss === 'agnt-local-test';
+};
+
+const getAuthStatusBaseUrl = (token) => {
+  return isLocalTestAuthToken(token) ? API_CONFIG.BASE_URL : API_CONFIG.REMOTE_URL;
+};
+
 export default {
   namespaced: true,
   state: {
@@ -193,7 +213,8 @@ export default {
       }
 
       try {
-        const response = await axios.get(`${API_CONFIG.REMOTE_URL}/users/auth/status`, {
+        const authStatusBaseUrl = getAuthStatusBaseUrl(state.token);
+        const response = await axios.get(`${authStatusBaseUrl}/users/auth/status`, {
           headers: { Authorization: `Bearer ${state.token}` },
           withCredentials: true,
           timeout: 10000,

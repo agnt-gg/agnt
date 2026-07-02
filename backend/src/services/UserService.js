@@ -2,6 +2,8 @@ import UserModel from '../models/UserModel.js';
 import { getUserTokenFromSession } from '../routes/Middleware.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import { getCliProviderIds, getAuthEntry } from './auth/AuthDispatcher.js';
+import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 
 async function _getLocalCliHealthProviders() {
   const ids = getCliProviderIds();
@@ -22,12 +24,96 @@ async function _getLocalCliHealthProviders() {
     .filter(Boolean);
 }
 
+function normalizeString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeEmail(value) {
+  const email = normalizeString(value);
+  return email.includes('@') ? email : '';
+}
+
+function isLocalHost(value) {
+  return ['localhost', '127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(value);
+}
+
+function canUseLocalTestAuth(req) {
+  const host = req.hostname;
+  const remoteAddress = req.ip || req.socket?.remoteAddress || '';
+  const isLocal = isLocalHost(host) || isLocalHost(remoteAddress);
+  if (!isLocal) return false;
+
+  return process.env.NODE_ENV !== 'production' || process.env.AGNT_ENABLE_LOCAL_TEST_AUTH === 'true';
+}
+
 class UserService {
   healthCheck(req, res) {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     res.status(200).json({ status: 'OK' });
+  }
+  authStatus(req, res) {
+    if (!req.user?.isAuthenticated) {
+      return res.status(401).json({
+        isAuthenticated: false,
+        user: null,
+        error: 'Not authenticated',
+      });
+    }
+
+    res.json({
+      isAuthenticated: true,
+      user: {
+        id: req.user.id,
+        userId: req.user.userId,
+        email: req.user.email,
+        name: req.user.name || req.user.email || 'Local Test User',
+        authMethod: req.user.auth_type || 'local',
+      },
+    });
+  }
+  createLocalTestToken(req, res) {
+    if (!canUseLocalTestAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Local test token generation is only available from local development hosts.' });
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return res.status(500).json({ success: false, error: 'JWT_SECRET is required to generate local test tokens.' });
+    }
+
+    const email = normalizeEmail(req.body?.email) || 'local-test@agnt.local';
+    const name = normalizeString(req.body?.name) || 'Local Test User';
+    const userId = normalizeString(req.body?.userId) || `local-test-${randomUUID()}`;
+    const expiresIn = normalizeString(req.body?.expiresIn) || '8h';
+
+    const token = jwt.sign(
+      {
+        id: userId,
+        userId,
+        sub: userId,
+        email,
+        name,
+        auth_type: 'local-test',
+        iss: 'agnt-local-test',
+        aud: 'agnt-local',
+      },
+      secret,
+      { expiresIn },
+    );
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: userId,
+        email,
+        name,
+        authMethod: 'local-test',
+      },
+      expiresIn,
+    });
   }
   async getUserStats(req, res) {
     try {

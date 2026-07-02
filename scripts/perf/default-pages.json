@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "/settings",
+    "/chat",
+    "/dashboard",
+    "/tools",
+    "/workflows",
+    "/agents",
+    "/marketplace",
+    "/connectors",
+    "/docs"
+  ]
+}
