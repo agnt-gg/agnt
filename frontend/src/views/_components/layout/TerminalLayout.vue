@@ -73,7 +73,11 @@ export default {
     const glitchDuration = 1000;
     const terminalScreenRef = ref(null);
     const hasUserInteracted = ref(false); // To track user interaction
-    const currentAudio = ref(null); // Track currently playing audio
+    const activeHtmlAudio = new Set();
+    const activeAudioSources = new Set();
+    const audioBuffers = new Map();
+    const pendingAudioBuffers = new Map();
+    let audioContext = null;
 
     // --- Background Layer ---
     const useCustomBackground = computed(() => store.getters['theme/useCustomBackground']);
@@ -114,15 +118,79 @@ export default {
       // keyPress: '/sounds/key-press.mp3',
       // notification: '/sounds/notification.mp3',
     };
+    const eagerSoundNames = ['buttonClick'];
 
     const setInteracted = () => {
       if (!hasUserInteracted.value) {
         hasUserInteracted.value = true;
         // console.log("User interaction detected. Sounds are now operational.");
       }
+      if (audioContext?.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+      }
     };
 
-    const playSound = (soundName, volume = null) => {
+    const getAudioContext = () => {
+      if (audioContext) return audioContext;
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) return null;
+
+      audioContext = new AudioContextCtor();
+      return audioContext;
+    };
+
+    const getAudioBuffer = async (soundPath) => {
+      if (audioBuffers.has(soundPath)) return audioBuffers.get(soundPath);
+      if (pendingAudioBuffers.has(soundPath)) return pendingAudioBuffers.get(soundPath);
+
+      const context = getAudioContext();
+      if (!context) return null;
+
+      const pendingBuffer = fetch(soundPath)
+        .then((response) => {
+          if (!response.ok) throw new Error(`Unable to load ${soundPath}: ${response.status}`);
+          return response.arrayBuffer();
+        })
+        .then((arrayBuffer) => context.decodeAudioData(arrayBuffer))
+        .then((buffer) => {
+          audioBuffers.set(soundPath, buffer);
+          pendingAudioBuffers.delete(soundPath);
+          return buffer;
+        })
+        .catch((error) => {
+          pendingAudioBuffers.delete(soundPath);
+          console.warn(`Could not decode sound "${soundPath}":`, error);
+          return null;
+        });
+
+      pendingAudioBuffers.set(soundPath, pendingBuffer);
+      return pendingBuffer;
+    };
+
+    const preloadSoundBuffers = () => {
+      getAudioContext();
+      eagerSoundNames.forEach((soundName) => {
+        const soundPath = sounds[soundName];
+        if (soundPath) getAudioBuffer(soundPath).catch(() => {});
+      });
+    };
+
+    const playHtmlAudioFallback = (soundName, soundPath, volume) => {
+      const audio = new Audio(soundPath);
+      audio.volume = volume;
+      activeHtmlAudio.add(audio);
+
+      const cleanup = () => activeHtmlAudio.delete(audio);
+      audio.addEventListener('ended', cleanup, { once: true });
+      audio.addEventListener('error', cleanup, { once: true });
+
+      audio.play().catch((error) => {
+        console.warn(`Could not play sound "${soundName}" (HTML audio fallback):`, error);
+        cleanup();
+      });
+    };
+
+    const playSound = async (soundName, volume = null) => {
       // Check localStorage for sound settings
       const savedEnabled = localStorage.getItem('soundsEnabled');
       const soundsEnabled = savedEnabled === null ? true : savedEnabled === 'true';
@@ -145,53 +213,50 @@ export default {
         return;
       }
 
+      // Get saved volume or use provided/default
+      const savedVolume = localStorage.getItem('soundVolume');
+      let finalVolume;
+
+      if (volume !== null && typeof volume === 'number' && volume >= 0 && volume <= 1) {
+        // Use provided volume
+        finalVolume = volume;
+      } else if (savedVolume !== null) {
+        // Use saved volume
+        finalVolume = parseFloat(savedVolume);
+      } else {
+        // Use default
+        finalVolume = 0.3;
+      }
+
       try {
-        // Stop any currently playing sound
-        if (currentAudio.value) {
-          currentAudio.value.pause();
-          currentAudio.value.currentTime = 0;
-          currentAudio.value = null;
+        const context = getAudioContext();
+        if (!context) {
+          playHtmlAudioFallback(soundName, soundPath, finalVolume);
+          return;
         }
 
-        const audio = new Audio(soundPath);
-
-        // Get saved volume or use provided/default
-        const savedVolume = localStorage.getItem('soundVolume');
-        let finalVolume;
-
-        if (volume !== null && typeof volume === 'number' && volume >= 0 && volume <= 1) {
-          // Use provided volume
-          finalVolume = volume;
-        } else if (savedVolume !== null) {
-          // Use saved volume
-          finalVolume = parseFloat(savedVolume);
-        } else {
-          // Use default
-          finalVolume = 0.3;
+        if (context.state === 'suspended') {
+          await context.resume();
         }
 
-        audio.volume = finalVolume;
+        const buffer = await getAudioBuffer(soundPath);
+        if (!buffer) {
+          playHtmlAudioFallback(soundName, soundPath, finalVolume);
+          return;
+        }
 
-        // Track this audio as the current one
-        currentAudio.value = audio;
+        const source = context.createBufferSource();
+        const gain = context.createGain();
+        source.buffer = buffer;
+        gain.gain.value = finalVolume;
+        source.connect(gain).connect(context.destination);
 
-        // Clear the reference when the sound finishes
-        audio.addEventListener('ended', () => {
-          if (currentAudio.value === audio) {
-            currentAudio.value = null;
-          }
-        });
-
-        audio.play().catch((error) => {
-          // This catch handles errors other than NotAllowedError post-interaction
-          console.warn(`Could not play sound "${soundName}" (post-interaction attempt):`, error);
-          // Clear the reference on error
-          if (currentAudio.value === audio) {
-            currentAudio.value = null;
-          }
-        });
+        activeAudioSources.add(source);
+        source.onended = () => activeAudioSources.delete(source);
+        source.start();
       } catch (error) {
-        console.error(`Error creating or playing sound "${soundName}":`, error);
+        console.error(`Error playing sound "${soundName}":`, error);
+        playHtmlAudioFallback(soundName, soundPath, finalVolume);
       }
     };
 
@@ -252,6 +317,12 @@ export default {
 
     onMounted(() => {
       checkMobile();
+      const preloadSounds = () => preloadSoundBuffers();
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(preloadSounds, { timeout: 2500 });
+      } else {
+        setTimeout(preloadSounds, 250);
+      }
       window.addEventListener('resize', checkMobile);
       window.addEventListener('sounds-settings-changed', handleSoundSettingsChange);
 
@@ -279,6 +350,19 @@ export default {
       if (terminalScreenRef.value) {
         terminalScreenRef.value.removeEventListener('click', handleGlobalButtonClick, true);
       }
+      activeAudioSources.forEach((source) => {
+        try {
+          source.stop();
+        } catch (e) {
+          // Source may have already ended.
+        }
+      });
+      activeAudioSources.clear();
+      activeHtmlAudio.forEach((audio) => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+      activeHtmlAudio.clear();
     });
 
     // Watch for the terminal becoming visible
