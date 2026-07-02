@@ -87,13 +87,13 @@
         v-model="customInstructionsDraft"
         class="custom-instructions-textarea"
         rows="4"
-        maxlength="4000"
+        maxlength="10000"
         placeholder="e.g. Always respond concisely. I'm a senior engineer — skip the hand-holding. Prefer bullet points over prose."
         @blur="saveCustomInstructions"
       ></textarea>
       <div class="custom-instructions-footer">
-        <span class="char-count" :class="{ 'char-count-warn': customInstructionsDraft.length > 3600 }">
-          {{ customInstructionsDraft.length }} / 4000
+        <span class="char-count" :class="{ 'char-count-warn': customInstructionsDraft.length > 9000 }">
+          {{ customInstructionsDraft.length }} / 10000
         </span>
         <span v-if="customInstructionsStatus === 'saving'" class="status-indicator saving">Saving…</span>
         <span v-else-if="customInstructionsStatus === 'saved'" class="status-indicator saved"> <i class="fas fa-check"></i> Saved </span>

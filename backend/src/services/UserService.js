@@ -62,8 +62,8 @@ class UserService {
         return res.status(400).json({ error: 'At least one setting (selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, or maxToolRounds) is required' });
       }
 
-      if (customInstructions !== undefined && typeof customInstructions === 'string' && customInstructions.length > 4000) {
-        return res.status(400).json({ error: 'customInstructions must be 4000 characters or fewer' });
+      if (customInstructions !== undefined && typeof customInstructions === 'string' && customInstructions.length > 10000) {
+        return res.status(400).json({ error: 'customInstructions must be 10000 characters or fewer' });
       }
 
       if (asyncToolsEnabled !== undefined && typeof asyncToolsEnabled !== 'boolean') {
