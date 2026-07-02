@@ -47,6 +47,7 @@ function parseArgs(argv) {
     } else if (arg === '--pages') {
       options.pages = readValue().split(',').map((page) => page.trim()).filter(Boolean);
     } else if (arg === '--config') options.configPath = readValue();
+    else if (arg === '--render-results') options.renderResultsPath = readValue();
     else if (arg === '--auth-token') options.authToken = readValue();
     else if (arg === '--auth-token-file') options.authTokenFile = readValue();
     else if (arg === '--api-base-url') options.apiBaseUrl = readValue();
@@ -82,6 +83,7 @@ Options:
   --variant NAME=URL            Variant label and running app base URL. Repeat for each variant.
   --pages /settings,/chat       Ordered app journey. Defaults to scripts/perf/default-pages.json.
   --config FILE                 JSON with variants, pages, runs, sampleMs, sampleIntervalMs, outputDir.
+  --render-results FILE         Re-render an existing journey-results.json without running a browser.
   --auth-token TOKEN            Seed localStorage.token before the journey.
   --auth-token-file FILE        Read token from a local file and seed localStorage.token.
   --api-base-url URL            Seed AGNT_API_BASE_URL for static previews.
@@ -391,6 +393,134 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+function variantNames(rows) {
+  return [...new Set(rows.map((row) => row.variant))];
+}
+
+function pagePaths(rows) {
+  return [...new Set(rows.map((row) => row.pagePath))];
+}
+
+function colorForVariant(variant, variants) {
+  const colors = ['#2563eb', '#059669', '#dc2626', '#7c3aed', '#ea580c', '#0891b2'];
+  const index = Math.max(0, variants.indexOf(variant));
+  return colors[index % colors.length];
+}
+
+function totalRows(rows) {
+  const totals = new Map();
+  for (const row of rows) {
+    const total = totals.get(row.variant) || {
+      variant: row.variant,
+      totalWallMs: 0,
+      totalTransferKb: 0,
+      totalErrors: 0,
+      avgHeapMb: 0,
+      maxHeapMb: 0,
+      pages: 0,
+    };
+    total.totalWallMs += row.medianWallMs;
+    total.totalTransferKb += row.medianTransferKb;
+    total.totalErrors += row.errorCount;
+    total.avgHeapMb += row.medianHeapMb;
+    total.maxHeapMb = Math.max(total.maxHeapMb, row.maxHeapMb);
+    total.pages += 1;
+    totals.set(row.variant, total);
+  }
+
+  return [...totals.values()].map((total) => ({
+    ...total,
+    avgHeapMb: total.pages ? total.avgHeapMb / total.pages : 0,
+  }));
+}
+
+function formatMetric(value, unit = '', digits = 1) {
+  const rounded = round(value, digits);
+  return `${rounded.toLocaleString()}${unit}`;
+}
+
+function renderMetricCards(rows) {
+  const totals = totalRows(rows);
+  const bestWall = Math.min(...totals.map((row) => row.totalWallMs));
+  const bestTransfer = Math.min(...totals.map((row) => row.totalTransferKb));
+  const bestHeap = Math.min(...totals.map((row) => row.avgHeapMb));
+  const bestMaxHeap = Math.min(...totals.map((row) => row.maxHeapMb));
+
+  return `<section class="metric-grid" aria-label="Summary metrics">
+    ${totals
+      .map(
+        (row) => `<article class="metric-card">
+          <h2>${escapeHtml(row.variant)}</h2>
+          <dl>
+            <div class="${row.totalWallMs === bestWall ? 'best' : ''}"><dt>Total wall</dt><dd>${formatMetric(row.totalWallMs, ' ms', 0)}</dd></div>
+            <div class="${row.totalTransferKb === bestTransfer ? 'best' : ''}"><dt>Transfer</dt><dd>${formatMetric(row.totalTransferKb, ' KB')}</dd></div>
+            <div class="${row.avgHeapMb === bestHeap ? 'best' : ''}"><dt>Avg heap</dt><dd>${formatMetric(row.avgHeapMb, ' MB')}</dd></div>
+            <div class="${row.maxHeapMb === bestMaxHeap ? 'best' : ''}"><dt>Max heap</dt><dd>${formatMetric(row.maxHeapMb, ' MB')}</dd></div>
+          </dl>
+        </article>`,
+      )
+      .join('\n')}
+  </section>`;
+}
+
+function renderGroupedBarChart(title, rows, metric, unit = '', digits = 0) {
+  const pages = pagePaths(rows);
+  const variants = variantNames(rows);
+  const width = 1120;
+  const left = 128;
+  const right = 120;
+  const top = 72;
+  const rowHeight = 58;
+  const barHeight = 12;
+  const variantGap = 4;
+  const height = top + pages.length * rowHeight + 40;
+  const maxValue = Math.max(1, ...rows.map((row) => row[metric] || 0));
+  const chartWidth = width - left - right;
+  const byKey = new Map(rows.map((row) => [`${row.pagePath}\t${row.variant}`, row]));
+
+  const bars = pages
+    .map((page, pageIndex) => {
+      const y = top + pageIndex * rowHeight;
+      const group = variants
+        .map((variant, variantIndex) => {
+          const row = byKey.get(`${page}\t${variant}`);
+          const value = row?.[metric] || 0;
+          const barWidth = (value / maxValue) * chartWidth;
+          const barY = y + variantIndex * (barHeight + variantGap);
+          const color = colorForVariant(variant, variants);
+          return `<g>
+            <rect x="${left}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="3" fill="${color}"></rect>
+            <text x="${left + barWidth + 6}" y="${barY + 10}" font-size="11" fill="#374151">${formatMetric(value, unit, digits)}</text>
+          </g>`;
+        })
+        .join('\n');
+      return `<g>
+        <text x="14" y="${y + 21}" font-size="12" font-weight="700" fill="#111827">${escapeHtml(page)}</text>
+        ${group}
+      </g>`;
+    })
+    .join('\n');
+
+  const legend = variants
+    .map(
+      (variant, index) => `<span><i style="background:${colorForVariant(variant, variants)}"></i>${escapeHtml(variant)}</span>`,
+    )
+    .join('');
+
+  return `<section class="chart-card">
+    <div class="chart-title">
+      <h2>${escapeHtml(title)}</h2>
+      <div class="legend">${legend}</div>
+    </div>
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
+      <line x1="${left}" y1="${top - 16}" x2="${left + chartWidth}" y2="${top - 16}" stroke="#d1d5db"></line>
+      <text x="${left}" y="${top - 28}" font-size="11" fill="#6b7280">0</text>
+      <text x="${left + chartWidth - 44}" y="${top - 28}" font-size="11" fill="#6b7280">${formatMetric(maxValue, unit, digits)}</text>
+      ${bars}
+    </svg>
+  </section>`;
+}
+
 function renderReport(summary, metadata) {
   const rows = [...summary].sort((a, b) => a.pagePath.localeCompare(b.pagePath) || a.variant.localeCompare(b.variant));
   return `<!doctype html>
@@ -400,26 +530,56 @@ function renderReport(summary, metadata) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AGNT Performance Journey</title>
   <style>
+    :root { color-scheme: light; }
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111827; background: #f9fafb; }
     main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 56px; }
     h1 { margin: 0 0 8px; font-size: 28px; }
     .meta { color: #4b5563; margin: 0 0 20px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin: 22px 0; }
+    .metric-card, .chart-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 1px 2px rgb(15 23 42 / 0.04); }
+    .metric-card { padding: 16px; }
+    .metric-card h2 { margin: 0 0 14px; font-size: 15px; }
+    .metric-card dl { display: grid; gap: 8px; margin: 0; }
+    .metric-card dl div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid #f3f4f6; }
+    .metric-card dt { color: #6b7280; font-size: 12px; }
+    .metric-card dd { margin: 0; font-weight: 700; font-size: 13px; }
+    .metric-card .best dd { color: #047857; }
+    .chart-card { margin: 18px 0; padding: 16px; }
+    .chart-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+    .chart-title h2 { margin: 0; font-size: 17px; }
+    .legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 14px; color: #374151; font-size: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .legend i { width: 10px; height: 10px; display: inline-block; border-radius: 999px; }
+    svg { display: block; width: 100%; height: auto; }
+    .table-wrap { margin-top: 22px; overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e7eb; }
     th, td { padding: 9px 10px; border-bottom: 1px solid #e5e7eb; text-align: right; font-size: 13px; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
     th { background: #f3f4f6; font-weight: 700; }
+    @media (max-width: 760px) {
+      main { padding: 24px 12px 40px; }
+      .chart-title { display: block; }
+      .legend { justify-content: flex-start; margin-top: 10px; }
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>AGNT Performance Journey</h1>
     <p class="meta">Generated ${escapeHtml(metadata.generatedAt)}. Runs: ${metadata.runs}. Viewport: ${metadata.viewport.width}x${metadata.viewport.height}. Sample window per section: ${metadata.sampleMs} ms.</p>
-    <table>
-      <thead><tr><th>Variant</th><th>Section</th><th>Runs</th><th>Wall ms</th><th>FCP ms</th><th>TBT ms</th><th>Transfer KB</th><th>Resources</th><th>DOM</th><th>Heap MB</th><th>Max Heap MB</th><th>Errors</th></tr></thead>
-      <tbody>
-        ${rows.map((row) => `<tr><td>${escapeHtml(row.variant)}</td><td>${escapeHtml(row.pagePath)}</td><td>${row.runs}</td><td>${round(row.medianWallMs)}</td><td>${round(row.medianFcpMs)}</td><td>${round(row.medianTbtMs)}</td><td>${round(row.medianTransferKb)}</td><td>${round(row.medianResourceCount)}</td><td>${round(row.medianDomElements)}</td><td>${round(row.medianHeapMb)}</td><td>${round(row.maxHeapMb)}</td><td>${row.errorCount}</td></tr>`).join('\n')}
-      </tbody>
-    </table>
+    ${renderMetricCards(rows)}
+    ${renderGroupedBarChart('Route Wall Time', rows, 'medianWallMs', ' ms', 0)}
+    ${renderGroupedBarChart('JS Heap by Section', rows, 'medianHeapMb', ' MB', 1)}
+    ${renderGroupedBarChart('Transfer Size by Section', rows, 'medianTransferKb', ' KB', 1)}
+    ${renderGroupedBarChart('Console and Request Errors', rows, 'errorCount', '', 0)}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variant</th><th>Section</th><th>Runs</th><th>Wall ms</th><th>FCP ms</th><th>TBT ms</th><th>Transfer KB</th><th>Resources</th><th>DOM</th><th>Heap MB</th><th>Max Heap MB</th><th>Errors</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => `<tr><td>${escapeHtml(row.variant)}</td><td>${escapeHtml(row.pagePath)}</td><td>${row.runs}</td><td>${round(row.medianWallMs)}</td><td>${round(row.medianFcpMs)}</td><td>${round(row.medianTbtMs)}</td><td>${round(row.medianTransferKb)}</td><td>${round(row.medianResourceCount)}</td><td>${round(row.medianDomElements)}</td><td>${round(row.medianHeapMb)}</td><td>${round(row.maxHeapMb)}</td><td>${row.errorCount}</td></tr>`).join('\n')}
+        </tbody>
+      </table>
+    </div>
   </main>
 </body>
 </html>`;
@@ -429,6 +589,16 @@ async function main() {
   const cliOptions = parseArgs(process.argv.slice(2));
   if (cliOptions.help) {
     console.log(usage());
+    return;
+  }
+
+  if (cliOptions.renderResultsPath) {
+    const resultsPath = path.resolve(cliOptions.renderResultsPath);
+    const outputDir = path.dirname(resultsPath);
+    const existing = await readJson(resultsPath);
+    await writeFile(path.join(outputDir, 'journey-summary.csv'), `${toCsv(existing.summary)}\n`);
+    await writeFile(path.join(outputDir, 'journey-report.html'), renderReport(existing.summary, existing.metadata));
+    console.log(`[perf:journey] rendered ${path.join(outputDir, 'journey-report.html')}`);
     return;
   }
 
