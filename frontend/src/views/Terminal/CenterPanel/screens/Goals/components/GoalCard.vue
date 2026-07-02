@@ -1,9 +1,5 @@
 <template>
-  <div
-    class="goal-card"
-    :class="[goal.status, agingClass, { selected: isSelected }]"
-    @click="$emit('click', goal)"
-  >
+  <div class="goal-card" :class="[goal.status, agingClass, { selected: isSelected }]" @click="$emit('click', goal)">
     <div class="card-body">
       <div class="card-meta-row">
         <span class="goal-id">G-{{ goal.id.slice(0, 8) }}</span>
@@ -24,21 +20,13 @@
         <i class="fas fa-sync fa-spin"></i>
         <span>Iter {{ liveIteration.iteration }}/{{ goal.max_iterations || '∞' }}</span>
         <span class="iteration-phase">• {{ liveIteration.phase }}</span>
-        <span v-if="liveIteration.score != null" class="iteration-score">
-          {{ Math.round(liveIteration.score) }}%
-        </span>
+        <span v-if="liveIteration.score != null" class="iteration-score"> {{ Math.round(liveIteration.score) }}% </span>
       </div>
 
-      <div
-        v-if="runningTaskTitle && goal.status === 'executing'"
-        class="running-task"
-        :title="runningTaskTitle"
-      >
+      <div v-if="runningTaskTitle && goal.status === 'executing'" class="running-task" :title="runningTaskTitle">
         <i class="fas fa-play-circle"></i>
         <span class="running-task-label">{{ runningTaskTitle }}</span>
-        <span v-if="runningTaskCount > 1" class="running-task-more">
-          +{{ runningTaskCount - 1 }}
-        </span>
+        <span v-if="runningTaskCount > 1" class="running-task-more"> +{{ runningTaskCount - 1 }} </span>
       </div>
 
       <div class="progress-section">
@@ -47,11 +35,7 @@
           <span class="progress-pct">{{ Math.round(displayProgress) }}%</span>
         </div>
         <div class="progress-track">
-          <div
-            class="progress-fill"
-            :class="goal.status"
-            :style="{ width: `${displayProgress}%` }"
-          ></div>
+          <div class="progress-fill" :class="goal.status" :style="{ width: `${displayProgress}%` }"></div>
         </div>
       </div>
 
@@ -59,9 +43,7 @@
         <span class="task-count">
           <i class="fas fa-tasks"></i>
           {{ displayCompleted }}/{{ displayTotal }}
-          <span v-if="displayRunning > 0" class="task-running-pill">
-            <i class="fas fa-circle-notch fa-spin"></i>{{ displayRunning }}
-          </span>
+          <span v-if="displayRunning > 0" class="task-running-pill"> <i class="fas fa-circle-notch fa-spin"></i>{{ displayRunning }} </span>
         </span>
         <span v-if="showAge && goal.created_at" class="age-badge" :title="formatDate(goal.created_at)">
           <i class="far fa-clock"></i>
@@ -125,16 +107,10 @@ export default {
       return fn ? fn(props.goal.id).length : 0;
     });
 
-    const taskProgress = computed(() =>
-      store.getters['goals/getGoalTaskProgress'](props.goal.id),
-    );
+    const taskProgress = computed(() => store.getters['goals/getGoalTaskProgress'](props.goal.id));
 
-    const displayTotal = computed(() =>
-      taskProgress.value?.total ?? props.goal.task_count ?? 0,
-    );
-    const displayCompleted = computed(() =>
-      taskProgress.value?.completed ?? props.goal.completed_tasks ?? 0,
-    );
+    const displayTotal = computed(() => taskProgress.value?.total ?? props.goal.task_count ?? 0);
+    const displayCompleted = computed(() => taskProgress.value?.completed ?? props.goal.completed_tasks ?? 0);
     const displayRunning = computed(() => taskProgress.value?.running ?? 0);
 
     // Weight running tasks at 0.5 so the bar moves as soon as a task starts
@@ -144,7 +120,7 @@ export default {
       if (!total) return Math.round(props.goal.progress || 0);
       const completed = displayCompleted.value;
       const running = displayRunning.value;
-      const weighted = (completed + 0.5 * running) / total * 100;
+      const weighted = ((completed + 0.5 * running) / total) * 100;
       // Fall back to server-reported progress if it's higher (trust upstream).
       return Math.min(100, Math.max(weighted, props.goal.progress || 0));
     });
@@ -168,18 +144,19 @@ export default {
       return '';
     });
 
-    const getStatusIcon = (status) => ({
-      planning: 'fas fa-lightbulb',
-      queued: 'fas fa-clock',
-      executing: 'fas fa-cog fa-spin',
-      paused: 'fas fa-pause',
-      needs_review: 'fas fa-exclamation-triangle',
-      validated: 'fas fa-check-double',
-      completed: 'fas fa-check',
-      failed: 'fas fa-times',
-      error: 'fas fa-times',
-      stopped: 'fas fa-stop',
-    }[status] || 'fas fa-circle');
+    const getStatusIcon = (status) =>
+      ({
+        planning: 'fas fa-lightbulb',
+        queued: 'fas fa-clock',
+        executing: 'fas fa-cog fa-spin',
+        paused: 'fas fa-pause',
+        needs_review: 'fas fa-exclamation-triangle',
+        validated: 'fas fa-check-double',
+        completed: 'fas fa-check',
+        failed: 'fas fa-times',
+        error: 'fas fa-times',
+        stopped: 'fas fa-stop',
+      })[status] || 'fas fa-circle';
 
     const formatStatus = (status) => {
       if (!status) return '';
@@ -279,10 +256,18 @@ export default {
   align-items: center;
   gap: 4px;
 }
-.priority-badge.urgent { color: var(--color-red); }
-.priority-badge.high { color: var(--color-orange); }
-.priority-badge.medium { color: var(--color-yellow); }
-.priority-badge.low { color: var(--color-blue); }
+.priority-badge.urgent {
+  color: var(--color-red);
+}
+.priority-badge.high {
+  color: var(--color-orange);
+}
+.priority-badge.medium {
+  color: var(--color-yellow);
+}
+.priority-badge.low {
+  color: var(--color-blue);
+}
 
 .priority-dot {
   width: 6px;
@@ -290,10 +275,18 @@ export default {
   border-radius: 50%;
   display: inline-block;
 }
-.priority-dot.urgent { background: var(--color-red); }
-.priority-dot.high { background: var(--color-orange); }
-.priority-dot.medium { background: var(--color-yellow); }
-.priority-dot.low { background: var(--color-blue); }
+.priority-dot.urgent {
+  background: var(--color-red);
+}
+.priority-dot.high {
+  background: var(--color-orange);
+}
+.priority-dot.medium {
+  background: var(--color-yellow);
+}
+.priority-dot.low {
+  background: var(--color-blue);
+}
 
 .goal-title {
   font-weight: 600;
@@ -318,16 +311,37 @@ export default {
   gap: 4px;
   letter-spacing: 0.3px;
 }
-.status-chip.executing { background: rgba(var(--green-rgb), 0.18); color: var(--color-green); }
+.status-chip.executing {
+  background: rgba(var(--green-rgb), 0.18);
+  color: var(--color-green);
+}
 .status-chip.completed,
-.status-chip.validated { background: rgba(var(--green-rgb), 0.18); color: var(--color-green); }
+.status-chip.validated {
+  background: rgba(var(--green-rgb), 0.18);
+  color: var(--color-green);
+}
 .status-chip.failed,
 .status-chip.error,
-.status-chip.stopped { background: rgba(var(--red-rgb), 0.18); color: var(--color-red); }
-.status-chip.paused { background: rgba(var(--yellow-rgb), 0.18); color: var(--color-yellow); }
-.status-chip.needs_review { background: rgba(var(--orange-rgb), 0.18); color: var(--color-orange); }
-.status-chip.planning { background: rgba(var(--violet-rgb), 0.18); color: var(--color-violet); }
-.status-chip.queued { background: rgba(var(--indigo-rgb), 0.18); color: var(--color-indigo); }
+.status-chip.stopped {
+  background: rgba(var(--red-rgb), 0.18);
+  color: var(--color-red);
+}
+.status-chip.paused {
+  background: rgba(var(--yellow-rgb), 0.18);
+  color: var(--color-yellow);
+}
+.status-chip.needs_review {
+  background: rgba(var(--orange-rgb), 0.18);
+  color: var(--color-orange);
+}
+.status-chip.planning {
+  background: rgba(var(--violet-rgb), 0.18);
+  color: var(--color-violet);
+}
+.status-chip.queued {
+  background: rgba(var(--indigo-rgb), 0.18);
+  color: var(--color-indigo);
+}
 
 .iteration-indicator {
   display: flex;
@@ -418,16 +432,30 @@ export default {
   transition: width 0.3s ease;
   background: var(--color-green);
 }
-.progress-fill.executing { background: var(--color-green); }
-.progress-fill.paused { background: var(--color-yellow); }
+.progress-fill.executing {
+  background: var(--color-green);
+}
+.progress-fill.paused {
+  background: var(--color-yellow);
+}
 .progress-fill.completed,
-.progress-fill.validated { background: var(--color-green); }
+.progress-fill.validated {
+  background: var(--color-green);
+}
 .progress-fill.failed,
 .progress-fill.error,
-.progress-fill.stopped { background: var(--color-red); }
-.progress-fill.planning { background: var(--color-violet); }
-.progress-fill.queued { background: var(--color-indigo); }
-.progress-fill.needs_review { background: var(--color-orange); }
+.progress-fill.stopped {
+  background: var(--color-red);
+}
+.progress-fill.planning {
+  background: var(--color-violet);
+}
+.progress-fill.queued {
+  background: var(--color-indigo);
+}
+.progress-fill.needs_review {
+  background: var(--color-orange);
+}
 
 .card-footer {
   display: flex;
@@ -472,15 +500,30 @@ export default {
   color: var(--color-text);
 }
 
-.pause-btn:hover { color: var(--color-yellow); }
-.resume-btn:hover { color: var(--color-green); }
-.delete-btn:hover { color: var(--color-red); }
-.schedule-btn:hover { color: var(--color-primary); }
-.schedule-btn.has-schedule { color: var(--color-primary); }
+.pause-btn:hover {
+  color: var(--color-yellow);
+}
+.resume-btn:hover {
+  color: var(--color-green);
+}
+.delete-btn:hover {
+  color: var(--color-red);
+}
+.schedule-btn:hover {
+  color: var(--color-primary);
+}
+.schedule-btn.has-schedule {
+  color: var(--color-primary);
+}
 .schedule-btn.has-schedule::after {
-  content: ''; position: absolute; width: 5px; height: 5px;
-  background: var(--color-primary); border-radius: 50%;
-  margin-top: -2px; margin-left: -2px;
+  content: '';
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: var(--color-primary);
+  border-radius: 50%;
+  margin-top: -2px;
+  margin-left: -2px;
 }
 
 /* Card aging — a subtle left-edge accent on non-terminal cards that have been idle */
@@ -493,9 +536,10 @@ export default {
   top: 3px;
   bottom: 0;
   width: 2px;
-  background: rgba(var(--yellow-rgb), 0.55);
+  /* background: rgba(var(--yellow-rgb), 0.55); */
+  background: transparent;
 }
-.goal-card.aged-danger::before { background: rgba(var(--red-rgb), 0.5); }
-.goal-card.aged-stale::before { background: rgba(var(--red-rgb), 0.75); }
-.goal-card.aged-stale { opacity: 0.85; }
+/* .goal-card.aged-danger::before { background: rgba(var(--red-rgb), 0.5); }
+.goal-card.aged-stale::before { background: rgba(var(--red-rgb), 0.75); } */
+/* .goal-card.aged-stale { opacity: 0.85; } */
 </style>
