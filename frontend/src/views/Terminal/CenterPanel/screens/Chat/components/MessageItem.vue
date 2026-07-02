@@ -316,6 +316,7 @@ import GoalProgressWidget from './GoalProgressWidget.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import morphdom from 'morphdom';
 import { API_CONFIG } from '@/../user.config.js';
+import { typesetMath } from '@/utils/lazyGlobalLibraries.js';
 import {
   buildLocalFileUrl as sharedBuildLocalFileUrl,
   fileUrlToLocalFileUrl as sharedFileUrlToLocalFileUrl,
@@ -2216,15 +2217,18 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     // Typeset individual math containers — same pattern as charts.
     // Each .math-container has a stable ID so morphdom preserves it after typesetting.
     const renderMathElements = () => {
-      nextTick(() => {
-        if (!messageRef.value || typeof MathJax === 'undefined' || !MathJax.typesetPromise) return;
+      nextTick(async () => {
+        if (!messageRef.value) return;
         const containers = messageRef.value.querySelectorAll('.math-container:not([data-math-rendered])');
         if (containers.length === 0) return;
         const els = Array.from(containers);
         els.forEach((el) => el.setAttribute('data-math-rendered', 'true'));
-        MathJax.typesetPromise(els).catch((err) => {
+        try {
+          await typesetMath(els);
+        } catch (err) {
           console.error('MathJax rendering error:', err);
-        });
+          els.forEach((el) => el.removeAttribute('data-math-rendered'));
+        }
       });
     };
 

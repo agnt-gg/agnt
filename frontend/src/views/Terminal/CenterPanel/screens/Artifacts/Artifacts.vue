@@ -366,6 +366,7 @@ import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import { getFile, saveFile } from '@/services/fileSystemService.js';
 import { API_CONFIG } from '@/tt.config.js';
 import { fileUrlToLocalFileUrl } from '@/utils/localFileUrl.js';
+import { typesetMath } from '@/utils/lazyGlobalLibraries.js';
 
 // Lazy-loaded heavy library caches
 let _Chart = null;
@@ -1946,14 +1947,14 @@ export default {
     let mathJaxTimer = null;
     const renderMathJax = () => {
       clearTimeout(mathJaxTimer);
-      mathJaxTimer = setTimeout(() => {
+      mathJaxTimer = setTimeout(async () => {
         const el = markdownPreviewRef.value;
-        if (!el || typeof MathJax === 'undefined' || !MathJax.typesetPromise) return;
-        // Clear previous state and re-typeset scoped to this element only
-        MathJax.typesetClear([el]);
-        MathJax.typesetPromise([el]).catch((err) => {
+        if (!el) return;
+        try {
+          await typesetMath(el);
+        } catch (err) {
           console.error('MathJax rendering error:', err);
-        });
+        }
       }, 50);
     };
 

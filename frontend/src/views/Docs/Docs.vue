@@ -30,6 +30,7 @@ let _showdown = null;
 let _hljs = null;
 import { addCopyEventListenerToPreButtons } from '../_components/base/response.js';
 import LoadingOverlay from '@/views/_components/utility/LoadingOverlay.vue';
+import { typesetMath } from '@/utils/lazyGlobalLibraries.js';
 
 // Dynamically import all markdown files from the docs directory
 const markdownFiles = {
@@ -212,13 +213,7 @@ export default {
       });
     };
     const renderMathJax = () => {
-      if (window.MathJax) {
-        window.MathJax.typesetPromise([contentWrapper.value])
-          .then(() => {})
-          .catch((err) => console.error('MathJax error:', err));
-      } else {
-        console.warn('MathJax not loaded');
-      }
+      typesetMath(contentWrapper.value).catch((err) => console.error('MathJax error:', err));
     };
     const addCopyButtons = () => {
       document.querySelectorAll('pre').forEach((pre) => {

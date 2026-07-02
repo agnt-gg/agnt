@@ -2,6 +2,7 @@ import { onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { API_CONFIG } from '@/tt.config.js';
+import { highlightCodeBlocks, typesetMath } from '@/utils/lazyGlobalLibraries.js';
 
 /**
  * Composable to load content from query parameters
@@ -36,26 +37,17 @@ export function useContentLoader() {
             contentActions.style.display = 'flex';
           }
 
-          // Highlight code blocks
-          responseArea.querySelectorAll('pre code:not([highlighted])').forEach((el) => {
-            if (typeof hljs !== 'undefined') {
-              hljs.highlightElement(el);
-              el.setAttribute('highlighted', 'true');
-            }
-          });
+          await highlightCodeBlocks(responseArea);
 
           // Set spellcheck to false for code elements
           responseArea.querySelectorAll('code').forEach((el) => {
             el.setAttribute('spellcheck', 'false');
           });
 
-          // Handle MathJax rendering
-          if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-            try {
-              await MathJax.typesetPromise([responseArea]);
-            } catch (error) {
-              console.error('Error in MathJax typesetting:', error);
-            }
+          try {
+            await typesetMath(responseArea);
+          } catch (error) {
+            console.error('Error in MathJax typesetting:', error);
           }
 
           // Add copy buttons to pre elements

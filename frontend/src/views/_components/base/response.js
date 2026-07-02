@@ -1,8 +1,10 @@
 import { removeStreamId } from './stream';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
+import showdown from 'showdown';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import { highlightCodeBlocks, typesetMath } from '@/utils/lazyGlobalLibraries.js';
 
 // Track all event listeners for cleanup
 const eventListeners = new Map();
@@ -112,29 +114,17 @@ export function updateContentArea(fullMarkdownContent, message) {
   message.innerHTML = htmlText.trim();
   message.setAttribute('contenteditable', 'true');
 
-  message.querySelectorAll('pre code:not([highlighted])').forEach((el) => {
-    hljs.highlightElement(el);
-    el.setAttribute('highlighted', 'true');
+  highlightCodeBlocks(message).catch((error) => {
+    console.error('Error highlighting code blocks:', error);
   });
 
   message.querySelectorAll('code').forEach((el) => {
     el.setAttribute('spellcheck', 'false');
   });
 
-  // Modified MathJax handling
-  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-    MathJax.typesetPromise()
-      .then(() => {
-        message.querySelectorAll('mjx-container').forEach((el) => {
-          MathJax.typesetClear([el]);
-        });
-      })
-      .catch((error) => {
-        console.error('Error in MathJax typesetting:', error);
-      });
-  } else {
-    console.warn('MathJax is not available or not fully loaded');
-  }
+  typesetMath(message).catch((error) => {
+    console.error('Error in MathJax typesetting:', error);
+  });
 
   // Add this new code to handle link clicks
   const linkClickHandler = (e) => {
@@ -232,31 +222,14 @@ export async function importOutputById(outputId) {
       responseArea.innerHTML = outputContent;
       document.getElementById('content-actions').style.display = 'flex';
 
-      // Highlight code blocks
-      responseArea.querySelectorAll('pre code:not([highlighted])').forEach((el) => {
-        hljs.highlightElement(el);
-        el.setAttribute('highlighted', 'true');
-      });
+      await highlightCodeBlocks(responseArea);
 
       // Set spellcheck to false for code elements
       responseArea.querySelectorAll('code').forEach((el) => {
         el.setAttribute('spellcheck', 'false');
       });
 
-      // Handle MathJax rendering
-      if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-        MathJax.typesetPromise()
-          .then(() => {
-            responseArea.querySelectorAll('mjx-container').forEach((el) => {
-              MathJax.typesetClear([el]);
-            });
-          })
-          .catch((error) => {
-            console.error('Error in MathJax typesetting:', error);
-          });
-      } else {
-        console.warn('MathJax is not available or not fully loaded');
-      }
+      await typesetMath(responseArea);
 
       // Add copy buttons to pre elements
       _addCopyButtonsToPre();

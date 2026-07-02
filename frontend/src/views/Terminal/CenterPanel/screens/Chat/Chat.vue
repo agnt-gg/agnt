@@ -189,6 +189,7 @@ import { resolveProviderKey, AI_PROVIDERS_WITH_API } from '@/store/app/aiProvide
 import PopupTutorial from '../../../../_components/utility/PopupTutorial.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import ChatScrollControls from '@/views/_components/chat/ChatScrollControls.vue';
+import { typesetMath } from '@/utils/lazyGlobalLibraries.js';
 
 export default {
   name: 'ChatScreen',
@@ -1856,9 +1857,9 @@ export default {
       window.addEventListener('keydown', handleChatKeyboardScroll);
 
       await nextTick();
-      if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-        MathJax.typesetPromise();
-      }
+      typesetMath(document.querySelector('.chat-main')).catch((error) => {
+        console.error('MathJax rendering error:', error);
+      });
 
       // Check for AI provider connection and show tutorial if needed
       if (!hasConnectedAIProvider.value) {

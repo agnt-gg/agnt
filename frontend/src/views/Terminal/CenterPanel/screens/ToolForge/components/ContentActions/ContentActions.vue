@@ -96,6 +96,7 @@ import axios from 'axios';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { highlightCodeBlocks, loadPdfExportLibraries, typesetMath } from '@/utils/lazyGlobalLibraries.js';
 
 export default {
   name: 'SharedContentActions',
@@ -347,26 +348,17 @@ export default {
           responseArea.setAttribute('data-tool-id', response.data.tool_id);
           document.getElementById('content-actions').style.display = 'flex';
 
-          // Highlight code blocks
-          responseArea.querySelectorAll('pre code:not([highlighted])').forEach((el) => {
-            hljs.highlightElement(el);
-            el.setAttribute('highlighted', 'true');
-          });
+          await highlightCodeBlocks(responseArea);
 
           // Set spellcheck to false for code elements
           responseArea.querySelectorAll('code').forEach((el) => {
             el.setAttribute('spellcheck', 'false');
           });
 
-          // Render MathJax content
-          if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-            try {
-              await MathJax.typesetPromise([responseArea]);
-            } catch (error) {
-              console.error('Error in MathJax typesetting:', error);
-            }
-          } else {
-            console.warn('MathJax is not available or not fully loaded');
+          try {
+            await typesetMath(responseArea);
+          } catch (error) {
+            console.error('Error in MathJax typesetting:', error);
           }
 
           // Add copy buttons to pre elements
@@ -427,8 +419,9 @@ export default {
         this.cleanup.addEventListener(button, 'click', clickHandler);
       });
     },
-    downloadPDF() {
+    async downloadPDF() {
       const responseArea = document.getElementById('response-area');
+      const { html2canvas, jspdf } = await loadPdfExportLibraries();
       const pdfDownloadLoaderDiv = document.createElement('div');
       const spinner = document.createElement('div'); // Create a new div element for the spinner
 
