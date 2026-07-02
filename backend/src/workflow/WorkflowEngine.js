@@ -478,8 +478,12 @@ class WorkflowEngine extends EventEmitter {
     }
   }
   _initializeNodeNameMapping() {
+    this.nodeIdSet = new Set();
     this.workflow.nodes.forEach((node) => {
+      // Primary: map display-name (lowercased, spaces stripped) → node id
       this.nodeNameToId.set(node.text.toLowerCase().replace(/\s+/g, ''), node.id);
+      // Track all raw node ids so the resolver can fall back to direct id lookup
+      this.nodeIdSet.add(node.id);
     });
   }
   _updateNodeError(nodeId, error) {

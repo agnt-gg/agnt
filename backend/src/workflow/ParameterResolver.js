@@ -50,7 +50,12 @@ class ParameterResolver {
       if (prefix.toLowerCase() === 'trigger' || prefix.toLowerCase() === 'input') {
         value = this.workflowEngine.currentTriggerData[prefix.toLowerCase()];
       } else {
-        const nodeId = this.workflowEngine.nodeNameToId.get(prefix.toLowerCase());
+        // Primary: resolve by display-name (lowercased, spaces stripped)
+        let nodeId = this.workflowEngine.nodeNameToId.get(prefix.toLowerCase());
+        // Fallback: if name lookup missed, try treating prefix as a raw node id
+        if (nodeId === undefined && this.workflowEngine.nodeIdSet?.has(prefix)) {
+          nodeId = prefix;
+        }
         value = this.workflowEngine.outputs[nodeId];
       }
   
@@ -168,10 +173,15 @@ class ParameterResolver {
     const nodeName = parts.shift();
     let value;
 
-    if (nodeName.toLowerCase() === 'trigger') {
-      value = this.workflowEngine.currentTriggerData;
+    if (nodeName.toLowerCase() === 'trigger' || nodeName.toLowerCase() === 'input') {
+      value = this.workflowEngine.currentTriggerData?.[nodeName.toLowerCase()] ?? this.workflowEngine.currentTriggerData;
     } else {
-      const nodeId = this.workflowEngine.nodeNameToId.get(nodeName.toLowerCase());
+      // Primary: resolve by display-name (lowercased, spaces stripped)
+      let nodeId = this.workflowEngine.nodeNameToId.get(nodeName.toLowerCase());
+      // Fallback: if name lookup missed, try treating prefix as a raw node id
+      if (nodeId === undefined && this.workflowEngine.nodeIdSet?.has(nodeName)) {
+        nodeId = nodeName;
+      }
       value = this.workflowEngine.outputs[nodeId];
     }
 
@@ -238,10 +248,15 @@ class ParameterResolver {
       const nodeName = parts.shift();
       let value;
 
-      if (nodeName.toLowerCase() === 'trigger') {
-        value = this.workflowEngine.currentNodeData.trigger;
+      if (nodeName.toLowerCase() === 'trigger' || nodeName.toLowerCase() === 'input') {
+        value = this.workflowEngine.currentTriggerData?.[nodeName.toLowerCase()];
       } else {
-        const nodeId = this.workflowEngine.nodeNameToId.get(nodeName.toLowerCase());
+        // Primary: resolve by display-name (lowercased, spaces stripped)
+        let nodeId = this.workflowEngine.nodeNameToId.get(nodeName.toLowerCase());
+        // Fallback: if name lookup missed, try treating prefix as a raw node id
+        if (nodeId === undefined && this.workflowEngine.nodeIdSet?.has(nodeName)) {
+          nodeId = nodeName;
+        }
         value = this.workflowEngine.outputs[nodeId];
       }
 
