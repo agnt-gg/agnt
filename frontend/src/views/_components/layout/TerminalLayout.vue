@@ -73,7 +73,8 @@ export default {
     const glitchDuration = 1000;
     const terminalScreenRef = ref(null);
     const hasUserInteracted = ref(false); // To track user interaction
-    const currentAudio = ref(null); // Track currently playing audio
+    const activeAudio = new Set(); // Keep short UI sounds alive until playback ends
+    const preloadedAudio = new Map();
 
     // --- Background Layer ---
     const useCustomBackground = computed(() => store.getters['theme/useCustomBackground']);
@@ -106,6 +107,8 @@ export default {
     // --- Sound Effects ---
     const sounds = {
       buttonClick: '/sounds/mouse-click.mp3',
+      buttonDown: '/sounds/in.wav',
+      buttonUp: '/sounds/out.wav',
       shutterClick: '/sounds/shutter-click.mp3',
       typewriterKeyPress: '/sounds/typewriter-keypress.mp3',
       chaChingMoney: '/sounds/cha-ching-money.mp3',
@@ -113,6 +116,16 @@ export default {
       // Add other sounds here like:
       // keyPress: '/sounds/key-press.mp3',
       // notification: '/sounds/notification.mp3',
+    };
+
+    const preloadSounds = () => {
+      Object.values(sounds).forEach((soundPath) => {
+        if (!soundPath || preloadedAudio.has(soundPath)) return;
+        const audio = new Audio(soundPath);
+        audio.preload = 'auto';
+        audio.load();
+        preloadedAudio.set(soundPath, audio);
+      });
     };
 
     const setInteracted = () => {
@@ -146,14 +159,9 @@ export default {
       }
 
       try {
-        // Stop any currently playing sound
-        if (currentAudio.value) {
-          currentAudio.value.pause();
-          currentAudio.value.currentTime = 0;
-          currentAudio.value = null;
-        }
-
-        const audio = new Audio(soundPath);
+        const audio = preloadedAudio.has(soundPath)
+          ? preloadedAudio.get(soundPath).cloneNode(true)
+          : new Audio(soundPath);
 
         // Get saved volume or use provided/default
         const savedVolume = localStorage.getItem('soundVolume');
@@ -172,26 +180,46 @@ export default {
 
         audio.volume = finalVolume;
 
-        // Track this audio as the current one
-        currentAudio.value = audio;
+        activeAudio.add(audio);
 
-        // Clear the reference when the sound finishes
-        audio.addEventListener('ended', () => {
-          if (currentAudio.value === audio) {
-            currentAudio.value = null;
-          }
-        });
+        const cleanup = () => activeAudio.delete(audio);
+        audio.addEventListener('ended', cleanup, { once: true });
+        audio.addEventListener('error', cleanup, { once: true });
 
         audio.play().catch((error) => {
           // This catch handles errors other than NotAllowedError post-interaction
           console.warn(`Could not play sound "${soundName}" (post-interaction attempt):`, error);
-          // Clear the reference on error
-          if (currentAudio.value === audio) {
-            currentAudio.value = null;
-          }
+          cleanup();
         });
       } catch (error) {
         console.error(`Error creating or playing sound "${soundName}":`, error);
+      }
+    };
+
+    const getElementWithSound = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return null;
+      return target.hasAttribute('data-sound') ? target : target.closest('[data-sound]');
+    };
+
+    const getButton = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      return target?.closest('button') || null;
+    };
+
+    const getSoundTrigger = (event) => getElementWithSound(event) || getButton(event);
+
+    const handleGlobalButtonMouseDown = (event) => {
+      setInteracted();
+      if (getSoundTrigger(event)) {
+        playSound('buttonDown');
+      }
+    };
+
+    const handleGlobalButtonMouseUp = (event) => {
+      setInteracted();
+      if (getSoundTrigger(event)) {
+        playSound('buttonUp');
       }
     };
 
@@ -200,12 +228,7 @@ export default {
       setInteracted(); // Mark interaction
 
       // First check if the clicked element itself has data-sound
-      let elementWithSound = event.target.hasAttribute('data-sound') ? event.target : null;
-
-      // If not, check if any parent element has data-sound
-      if (!elementWithSound) {
-        elementWithSound = event.target.closest('[data-sound]');
-      }
+      const elementWithSound = getElementWithSound(event);
 
       if (elementWithSound) {
         const soundName = elementWithSound.getAttribute('data-sound');
@@ -216,10 +239,9 @@ export default {
       }
 
       // Fallback: Check if it's a button without data-sound attribute
-      const button = event.target.closest('button');
+      const button = getButton(event);
       if (button && !button.hasAttribute('data-sound')) {
-        // Default to buttonClick for buttons without explicit sound
-        playSound('buttonClick');
+        // Default buttons already play responsive down/up sounds.
       }
     };
 
@@ -252,6 +274,7 @@ export default {
 
     onMounted(() => {
       checkMobile();
+      preloadSounds();
       window.addEventListener('resize', checkMobile);
       window.addEventListener('sounds-settings-changed', handleSoundSettingsChange);
 
@@ -267,6 +290,8 @@ export default {
         // Add the global click listener once the terminal screen exists
         nextTick(() => {
           if (terminalScreenRef.value) {
+            terminalScreenRef.value.addEventListener('mousedown', handleGlobalButtonMouseDown, true);
+            terminalScreenRef.value.addEventListener('mouseup', handleGlobalButtonMouseUp, true);
             terminalScreenRef.value.addEventListener('click', handleGlobalButtonClick, true); // Use capture phase
           }
         });
@@ -277,6 +302,8 @@ export default {
     onUnmounted(() => {
       window.removeEventListener('resize', checkMobile);
       if (terminalScreenRef.value) {
+        terminalScreenRef.value.removeEventListener('mousedown', handleGlobalButtonMouseDown, true);
+        terminalScreenRef.value.removeEventListener('mouseup', handleGlobalButtonMouseUp, true);
         terminalScreenRef.value.removeEventListener('click', handleGlobalButtonClick, true);
       }
     });
