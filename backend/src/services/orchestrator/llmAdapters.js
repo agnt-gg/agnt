@@ -291,6 +291,53 @@ class BaseAdapter {
 
     return { message: msg, wasEmpty: false };
   }
+
+  /**
+   * Detect transient network / connection failures that should always be
+   * retried, regardless of provider. The Anthropic and OpenAI SDKs wrap
+   * socket failures in APIConnectionError with `status: undefined` and the
+   * real errno buried under `error.cause`, so status/code-only checks miss
+   * them — a mid-stream "Connection error." would previously kill the retry
+   * loop (and any refusal-fallback call) on the first attempt.
+   * Deliberate user cancellations are never treated as transient.
+   */
+  _isTransientNetworkError(error) {
+    if (!error) return false;
+
+    // Never retry deliberate cancellations
+    const name = error.name || error.constructor?.name || '';
+    if (name === 'APIUserAbortError' || name === 'AbortError') return false;
+
+    // SDK connection-error wrappers (Anthropic + OpenAI SDKs)
+    if (name === 'APIConnectionError' || name === 'APIConnectionTimeoutError') return true;
+
+    // Message-based matching (e.g., Z.AI / Anthropic SDK "Connection error.")
+    const msg = (error.message || '').toLowerCase();
+    if (
+      msg.includes('connection error') ||
+      msg.includes('network error') ||
+      msg.includes('fetch failed') ||
+      msg.includes('socket hang up') ||
+      msg.includes('econnrefused')
+    ) {
+      return true;
+    }
+
+    // errno codes — direct, or buried under error.cause by SDK/undici wrapping
+    const transientCodes = new Set([
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      'ECONNREFUSED',
+      'EPIPE',
+      'UND_ERR_SOCKET',
+      'UND_ERR_CONNECT_TIMEOUT',
+      'UND_ERR_HEADERS_TIMEOUT',
+      'UND_ERR_BODY_TIMEOUT',
+    ]);
+    const code = error.code || error.cause?.code || error.cause?.cause?.code;
+    return transientCodes.has(code);
+  }
 }
 
 /**
@@ -350,16 +397,9 @@ class OpenAiLikeAdapter extends BaseAdapter {
   isRetryableError(error) {
     if (error.status && this.retryableStatusCodes.has(error.status)) {
       return true;
-    }
-
-    // Check for network errors (code-based)
-    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
-      return true;
-    }
-
-    // Check for network errors (message-based, e.g., Z.AI "Connection error.")
-    const errMsg = (error.message || '').toLowerCase();
-    if (errMsg.includes('connection error') || errMsg.includes('network error') || errMsg.includes('econnrefused')) {
+    }    // Transient network / SDK-wrapped connection errors (code-based,
+    // message-based, and APIConnectionError shapes) — shared BaseAdapter helper.
+    if (this._isTransientNetworkError(error)) {
       return true;
     }
 
@@ -1247,10 +1287,11 @@ class AnthropicAdapter extends BaseAdapter {
   isRetryableError(error) {
     if (error.status && this.retryableStatusCodes.has(error.status)) {
       return true;
-    }
-
-    // Check for network errors
-    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+    }    // Transient network / SDK-wrapped connection errors (e.g. the Anthropic
+    // SDK's APIConnectionError: status=undefined, message='Connection error.').
+    // Without this, a mid-stream network hiccup killed the retry loop — and
+    // the refusal→fallback-model call — on the first attempt.
+    if (this._isTransientNetworkError(error)) {
       return true;
     }
 
@@ -3253,10 +3294,8 @@ class GeminiAdapter extends BaseAdapter {
     // Check for axios error response
     if (error.response?.status && this.retryableStatusCodes.has(error.response.status)) {
       return true;
-    }
-
-    // Check for network errors
-    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+    }    // Transient network / SDK-wrapped connection errors — shared BaseAdapter helper.
+    if (this._isTransientNetworkError(error)) {
       return true;
     }
 
@@ -4157,12 +4196,13 @@ class OpenAIResponsesAdapter extends BaseAdapter {
 
   /**
    * Check if an error is retryable
-   */
-  isRetryableError(error) {
+   */  isRetryableError(error) {
     if (error.status && this.retryableStatusCodes.has(error.status)) {
       return true;
     }
-    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+    // Transient network / SDK-wrapped connection errors — shared BaseAdapter
+    // helper (also covers CodexResponsesAdapter via its super call).
+    if (this._isTransientNetworkError(error)) {
       return true;
     }
     return false;
@@ -4969,8 +5009,14 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    * SDK frequently throws them without `error.status` populated (mid-stream
    * SSE errors), which means the parent's status-based check misses them and
    * the user sees the wrapped error after a single attempt.
-   */
-  isRetryableError(error) {
+   */  isRetryableError(error) {
+    // Deliberate user cancellations must never be retried — without this
+    // guard, the 'aborted' substring match below would classify
+    // APIUserAbortError ("Request was aborted.") as a transient backend
+    // hiccup and replay a request the user explicitly stopped.
+    const errName = error?.name || error?.constructor?.name || '';
+    if (errName === 'APIUserAbortError' || errName === 'AbortError') return false;
+
     if (super.isRetryableError(error)) return true;
     const message = String(error?.message || '').toLowerCase();
     if (
@@ -5931,7 +5977,13 @@ export async function createLlmAdapter(provider, client, model, options = {}) {
     default:
       throw new Error(`Unsupported provider for LLM adapter: ${provider}`);
   }
-}
-
-// Export adapters for testing
-export { GeminiAdapter, buildOpenAiLikeReasoningExtraBody };
+}// Export adapters for testing
+export {
+  GeminiAdapter,
+  buildOpenAiLikeReasoningExtraBody,
+  BaseAdapter,
+  OpenAiLikeAdapter,
+  AnthropicAdapter,
+  OpenAIResponsesAdapter,
+  CodexResponsesAdapter,
+};
