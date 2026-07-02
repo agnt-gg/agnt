@@ -32,11 +32,24 @@ npm run perf:compare -- \
 
 The local backend must run with the same `JWT_SECRET` used to generate the token.
 
+For a logged-in journey through multiple sections in one browser context:
+
+```sh
+npm run perf:journey -- \
+  --variant base=http://127.0.0.1:5301 \
+  --variant lazy-loading=http://127.0.0.1:5302 \
+  --variant lazy-global-libs=http://127.0.0.1:5303 \
+  --auth-token-file ~/.agnt-test-token \
+  --api-base-url http://127.0.0.1:3333/api \
+  --runs 3
+```
+
 Outputs are written under `perf-results/<timestamp>/`:
 
 - `results.json`: full probe data, resource lists, console/page/request failures, runtime samples.
 - `summary.csv`: median/average comparison table for spreadsheet import.
 - `report.html`: self-contained HTML report with comparison charts and heap-over-time graph.
+- `journey-results.json`, `journey-summary.csv`, and `journey-report.html`: logged-in multi-section journey output from `perf:journey`.
 
 The default page set is in `scripts/perf/default-pages.json`. Use `--pages /settings,/chat,/tools` for a smaller run.
 

@@ -389,4 +389,11 @@ if (isDirectRun) {
   });
 }
 
-export { runProbe };
+export {
+  runProbe,
+  resolveAuthToken,
+  resourceSummary,
+  getChromeMetrics,
+  collectRuntimeSamples,
+  percentile,
+};
