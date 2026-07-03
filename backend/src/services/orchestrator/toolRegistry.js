@@ -188,7 +188,19 @@ class ToolRegistry {
    * Reload plugin tools (called when plugins are installed/uninstalled)
    */
   async reloadPluginTools() {
+    // PRD-105 P4: if this call is what triggered initialization, _initialize()
+    // just loaded plugin tools from the CURRENT PluginManager state — an
+    // immediate reload would re-register the exact same tools (observed at
+    // every boot: 80 tools registered twice). Skip the duplicate pass.
+    const wasAlreadyInitialized = this._isInitialized;
     await this.ensureInitialized();
+    if (!wasAlreadyInitialized) {
+      console.log(`[Orchestrator ToolRegistry] Init just completed; skipping duplicate plugin reload (${this.pluginTools.size} plugin tools).`);
+      return {
+        success: true,
+        pluginToolCount: this.pluginTools.size,
+      };
+    }
     console.log('[Orchestrator ToolRegistry] Reloading plugin tools...');
     this.pluginTools.clear();
     await this._loadPluginTools();

@@ -407,7 +407,10 @@ let _OrbitControls = null;
 
 const loadHljs = async () => {
   if (!_hljs) {
-    const mod = await import('highlight.js');
+    // PRD-105 P1b: lib/common ships ~40 mainstream languages at ~90KB
+    // instead of all 190+ grammars at ~950KB. Unknown languages degrade
+    // gracefully to un-highlighted text.
+    const mod = await import('highlight.js/lib/common');
     _hljs = mod.default;
   }
   return _hljs;

@@ -49,16 +49,18 @@ import OnboardingModal from '@/components/OnboardingModal.vue';
 // Canvas system (provides navigation sidebar + toolbar)
 import CanvasScreen from '@/canvas/CanvasScreen.vue';
 
-// Chat + Settings loaded eagerly (default screen + auth fallback)
+// Chat loaded eagerly (default screen). Settings is the auth fallback but
+// wrapped in defineAsyncComponent (PRD-105 P1c): it is ALWAYS renderable
+// (navigating to it just triggers the chunk load), so the auth-fallback
+// path stays safe while its chunk leaves the eager graph.
 import ChatScreen from './CenterPanel/screens/Chat/Chat.vue';
-import SettingsScreen from './CenterPanel/screens/Settings/Settings.vue';
 
 // Shallow-reactive screen registry — screens register as they load
 // Must be shallowReactive so Vue doesn't deep-proxy component objects
 // (deep proxying breaks Vue internals like emitsOptions/HMR in dev mode)
 const screenComponents = shallowReactive({
   ChatScreen: markRaw(ChatScreen),
-  SettingsScreen: markRaw(SettingsScreen),
+  SettingsScreen: markRaw(defineAsyncComponent(() => import('./CenterPanel/screens/Settings/Settings.vue'))),
 });
 
 // Screens to preload in background after Chat renders

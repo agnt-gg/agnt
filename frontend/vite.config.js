@@ -73,8 +73,13 @@ export default defineConfig({
           // HTTP client - imported eagerly by main.js, keep tiny and separate
           'vendor-axios': ['axios'],
 
-          // Markdown rendering - only when chat messages render
-          'vendor-markdown': ['dompurify', 'showdown', 'highlight.js'],
+          // Markdown rendering - only when chat messages render.
+          // NOTE (PRD-105): highlight.js must NOT be fused here. showdown is
+          // statically imported by MessageItem (eager via Chat screen), which
+          // would drag the ~950KB of hljs grammars into the modulepreload
+          // graph. All hljs usage is dynamic import — leaving it out of
+          // manualChunks lets Rollup emit it as its own lazy chunk.
+          'vendor-markdown': ['dompurify', 'showdown'],
 
           // Encryption - only when provider setup / onboarding triggers
           'vendor-crypto': ['crypto-js'],

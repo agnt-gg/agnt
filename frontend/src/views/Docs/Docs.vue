@@ -204,7 +204,8 @@ export default {
       const codeBlocks = document.querySelectorAll('pre code');
       if (codeBlocks.length === 0) return;
       if (!_hljs) {
-        const mod = await import('highlight.js');
+        // PRD-105 P1b: lib/common (~40 languages, ~90KB) instead of full hljs (~950KB)
+        const mod = await import('highlight.js/lib/common');
         _hljs = mod.default;
       }
       codeBlocks.forEach((block) => {

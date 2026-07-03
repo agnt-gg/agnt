@@ -5,7 +5,9 @@
     <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AGNT.gg</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.css" />
+    <!-- PRD-105 P3a: FontAwesome self-hosted (was cdnjs — render-blocking
+         cross-origin CSS that stalled first paint and broke offline launch) -->
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css" />
     <script id="Highlight-script" src="/js/libs/highlight.js"></script>
     <script defer>
       window.MathJax = {
@@ -37,7 +39,11 @@
         ignoreUnescapedHTML: true,
       });
     </script>
-    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+    <!-- PRD-105 P3b: MathJax served from the local copy that already shipped in
+         /js/libs (v3.2.2 CHTML build). Its runtime deps — [tex]/mhchem and the
+         woff-v2 fonts — resolve relative to this script URL and are vendored at
+         /js/libs/input/... and /js/libs/output/... respectively. -->
+    <script id="MathJax-script" async src="/js/libs/mathjax.js" defer></script>
     <script defer>
       // Add this script at the end of the head section
       document.addEventListener('DOMContentLoaded', function () {

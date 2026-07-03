@@ -644,13 +644,11 @@ function waitForBackend(callback) {
   let isBackendReady = false;
   let retryCount = 0;
 
-  // Exponential backoff: start at 500ms, double each time, cap at 5000ms
-  const getRetryDelay = () => {
-    const baseDelay = 500;
-    const maxDelay = 5000;
-    const delay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay);
-    return delay;
-  };
+  // PRD-105 P2: flat fast polling. A refused localhost connection costs ~1ms,
+  // so there is no resource to protect with backoff — exponential delays were
+  // adding 2-4s of dead air AFTER the backend was already up (the backend
+  // routinely became ready inside the 4s gap between attempts 3 and 4).
+  const getRetryDelay = () => 250;
 
   const attempt = () => {
     console.log(`Attempting to connect to backend (attempt ${retryCount + 1})...`);

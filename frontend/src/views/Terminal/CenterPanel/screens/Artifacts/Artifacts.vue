@@ -377,7 +377,8 @@ let _hljs = null;
 
 const loadHljs = async () => {
   if (!_hljs) {
-    const mod = await import('highlight.js');
+    // PRD-105 P1b: lib/common (~40 languages, ~90KB) instead of full hljs (~950KB)
+    const mod = await import('highlight.js/lib/common');
     _hljs = mod.default;
   }
   return _hljs;
