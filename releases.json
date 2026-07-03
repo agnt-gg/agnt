@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.6.2",
+      "date": "July 3, 2026",
+      "title": "Antigravity Chat & OAuth Fixes — AGNT v0.6.2",
+      "type": "patch",
+      "features": [
+        { "name": "Antigravity chat now actually works because model listing hits the gateway with the correct browser identity and returns the real model IDs it recognizes instead of falling back to a stale list that 404'd every request", "status": "bug" },
+        { "name": "Antigravity OAuth no longer throws 'not configured' on installed builds because AGNT now layers the bundled .env defaults under your saved values on every launch so new required keys reach existing installs automatically without touching your customizations", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.1",
       "date": "July 3, 2026",
       "title": "Antigravity Provider, File Watcher Plugin & Faster Startup — AGNT v0.6.1",
