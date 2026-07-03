@@ -1,0 +1,9 @@
+{
+  "name": "fs-watcher-plugin",
+  "version": "1.0.0",
+  "description": "AGNT plugin: watch a file or directory for changes and trigger workflows.",
+  "type": "module",
+  "dependencies": {
+    "chokidar": "^3.6.0"
+  }
+}

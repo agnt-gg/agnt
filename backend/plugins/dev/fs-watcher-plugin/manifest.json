@@ -1,0 +1,111 @@
+{
+  "name": "fs-watcher-plugin",
+  "displayName": "File System Watcher",
+  "version": "1.0.0",
+  "description": "Watch a file or directory for changes and trigger workflows on create, modify, and delete events.",
+  "author": "AGNT",
+  "icon": "folder",
+  "license": "MIT",
+  "tools": [
+    {
+      "type": "fs-watcher-trigger",
+      "entryPoint": "./fs-watcher-trigger.js",
+      "schema": {
+        "title": "File/Directory Watcher",
+        "category": "trigger",
+        "type": "fs-watcher-trigger",
+        "icon": "folder",
+        "description": "Watches a file or directory path for changes (create, modify, delete). Auto-detects whether the path is a file or a directory from a single input.",
+        "parameters": {
+          "watchPath": {
+            "type": "string",
+            "inputType": "text",
+            "required": true,
+            "description": "Absolute path to watch. Can be a file or a directory - the trigger auto-detects which.",
+            "placeholder": "C:\\Users\\Studio\\Documents\\my-project"
+          },
+          "recursive": {
+            "type": "string",
+            "inputType": "select",
+            "required": false,
+            "default": "Yes",
+            "options": ["Yes", "No"],
+            "inputSize": "half",
+            "description": "Watch subdirectories recursively (only applies to directories)."
+          },
+          "fireOnStart": {
+            "type": "string",
+            "inputType": "select",
+            "required": false,
+            "default": "No",
+            "options": ["Yes", "No"],
+            "inputSize": "half",
+            "description": "Fire once immediately when the workflow starts."
+          },
+          "events": {
+            "type": "string",
+            "inputType": "text",
+            "required": false,
+            "default": "add,change,unlink",
+            "description": "Comma-separated events to listen for: add (new file), change (modified), unlink (deleted), addDir (dir created), unlinkDir (dir removed)."
+          },
+          "ignorePatterns": {
+            "type": "string",
+            "inputType": "textarea",
+            "required": false,
+            "default": "**/node_modules/**\n**/.git/**\n**/*.tmp",
+            "description": "Glob patterns to ignore, one per line."
+          },
+          "debounceMs": {
+            "type": "number",
+            "inputType": "number",
+            "required": false,
+            "default": 300,
+            "minimum": 0,
+            "maximum": 10000,
+            "inputSize": "half",
+            "description": "Write-stability debounce in ms. Prevents rapid-fire triggers while a file is still being written."
+          }
+        },
+        "outputs": {
+          "event": {
+            "type": "string",
+            "description": "The event type: add, change, unlink, addDir, unlinkDir, or initial-scan"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Absolute path of the changed file/directory"
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Basename of the changed path"
+          },
+          "directory": {
+            "type": "string",
+            "description": "Parent directory of the changed file"
+          },
+          "extension": {
+            "type": "string",
+            "description": "File extension (e.g. '.js') or empty for directories"
+          },
+          "isDirectory": {
+            "type": "boolean",
+            "description": "Whether the changed path is a directory"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO timestamp of when the change was detected"
+          },
+          "watchPath": {
+            "type": "string",
+            "description": "The original path being watched"
+          },
+          "stats": {
+            "type": "object",
+            "description": "File stats (size, mtime, etc.) when available - null for delete events"
+          }
+        }
+      }
+    }
+  ]
+}
