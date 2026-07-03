@@ -315,6 +315,28 @@ function startBackend() {
     }
   }
 
+  // Packaged: overlay the user's .env ON TOP of the bundled defaults. The
+  // first-run copy above only happens once, so without this merge, existing
+  // installs never receive keys added to backend/.env in later releases
+  // (e.g. ANTIGRAVITY_CLIENT_ID). Defaults form the base; anything the user
+  // customized in their AppData .env still wins. Runtime-only — the user's
+  // file is never modified.
+  if (app.isPackaged) {
+    const defaultEnvPath = path.join(__dirname, 'backend', '.env');
+    if (fs.existsSync(defaultEnvPath)) {
+      try {
+        const defaultEnv = dotenv.parse(fs.readFileSync(defaultEnvPath));
+        const missingKeys = Object.keys(defaultEnv).filter((k) => !(k in fileEnv));
+        fileEnv = { ...defaultEnv, ...fileEnv };
+        if (missingKeys.length > 0) {
+          console.log('Bundled .env defaults applied for missing keys:', missingKeys.join(', '));
+        }
+      } catch (err) {
+        console.warn('Failed to read bundled default .env:', err.message);
+      }
+    }
+  }
+
   // User keys overlay: load root agnt-pro/.env on top of backend/.env so users
   // can put their personal keys (OPENAI_API_KEY, etc.) in the repo-root .env
   // — backend/.env stays the source of truth for system stuff (JWT, encryption,
