@@ -55,6 +55,14 @@ const SOURCES = {
     format: (v) => `KimiCLI/${v}`,
     fallback: '1.38.0',
   },
+  antigravity: {
+    label: 'Antigravity CLI',
+    registry: 'https://api.github.com/repos/google-antigravity/antigravity-cli/releases/latest',
+    headers: { 'User-Agent': 'agnt', Accept: 'application/vnd.github+json' },
+    extract: (json) => json?.tag_name?.replace(/^v/, ''),
+    format: (v) => v,
+    fallback: '1.0.16',
+  },
 };
 
 // In-memory cache: { [key]: { version, timestamp, source: 'registry'|'disk'|'fallback' } }
@@ -103,7 +111,7 @@ async function fetchFromRegistry(key, config) {
   try {
     const res = await fetch(config.registry, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...(config.headers || {}) },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();

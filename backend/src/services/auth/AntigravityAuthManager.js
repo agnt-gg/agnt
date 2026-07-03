@@ -5,7 +5,10 @@ import http from 'http';
 import url from 'url';
 import crypto from 'crypto';
 import axios from 'axios';
-import { OAuth2Client } from 'google-auth-library';const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
+import { OAuth2Client } from 'google-auth-library';
+import { getClientVersion } from '../ai/clientVersions.js';
+
+const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // PRD-109 ban-avoidance: the only documented Antigravity ban cause is behavioral
 // (quota exhaustion + retry-storms). A single account-global cooldown flag stops
@@ -90,11 +93,14 @@ const ANTIGRAVITY_HEADERS = {
 
 // fetchAvailableModels is gated the OPPOSITE way from loadCodeAssist: it returns
 // 403 for the nodejs-client UA and requires the full Antigravity browser UA
-// (verified against the live gateway). Keep the version bumpable via env.
-const ANTIGRAVITY_BROWSER_HEADERS = {
-  'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${process.env.ANTIGRAVITY_VERSION || '1.18.3'} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
-  'Client-Metadata': JSON.stringify(CLIENT_METADATA),
-};
+// (verified against the live gateway). Version resolved LIVE via clientVersions.js.
+async function getAntigravityBrowserHeaders() {
+  const ver = await getClientVersion('antigravity');
+  return {
+    'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${ver} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
+    'Client-Metadata': JSON.stringify(CLIENT_METADATA),
+  };
+}
 
 // ── Credential paths ─────────────────────────────────────────
 // We store OAuth tokens at ~/.antigravity/oauth_creds.json (our own file —
@@ -664,11 +670,12 @@ class AntigravityAuthManager {
     try {
       const body = {};
       if (projectId) body.project = projectId;
+      const browserHeaders = await getAntigravityBrowserHeaders();
       const res = await authClient.request({
         url: `${ANTIGRAVITY_BASE}:fetchAvailableModels`,
         method: 'POST',
         data: body,
-        headers: ANTIGRAVITY_BROWSER_HEADERS,
+        headers: browserHeaders,
       });
 
       const models = res.data?.models || {};

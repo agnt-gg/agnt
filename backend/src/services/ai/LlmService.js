@@ -151,22 +151,21 @@ class GeminiOAuthProxy {
 // client identity: `antigravity` User-Agent + X-Goog-Api-Client headers, and
 // the top-level `requestType: 'agent'` / `userAgent: 'antigravity'` fields the
 // gateway keys off to route to the Antigravity quota pool and multi-vendor
-// model set (Gemini 3.x + Claude 4.6 + GPT-OSS). See PRD-107.
-
-// generateContent / streamGenerateContent carry the full Antigravity browser UA
-// (matches the reference client's getAntigravityHeaders). Google's version gate
-// only inspects `Antigravity/<version>` UAs — if this pin goes stale and Google
-// starts rejecting with "out of date", bump it via the ANTIGRAVITY_VERSION env
-// var (or update the fallback). Auth-path calls (loadCodeAssist/onboardUser in
-// AntigravityAuthManager) deliberately use the google-api-nodejs-client UA,
+// model set (Gemini 3.x + Claude 4.6 + GPT-OSS). See PRD-107.// generateContent / streamGenerateContent carry the full Antigravity browser UA.
+// The version is resolved LIVE from the GitHub releases API via clientVersions.js
+// (same pattern as Claude Code / Codex). Auth-path calls (loadCodeAssist/onboardUser
+// in AntigravityAuthManager) deliberately use the google-api-nodejs-client UA,
 // which has no version to gate.
-const ANTIGRAVITY_UA_VERSION = process.env.ANTIGRAVITY_VERSION || '1.18.3';
 const ANTIGRAVITY_META_PLATFORM = process.platform === 'win32' ? 'WINDOWS' : 'MACOS';
-const ANTIGRAVITY_CLIENT_HEADERS = {
-  'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${ANTIGRAVITY_UA_VERSION} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
-  'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1',
-  'Client-Metadata': JSON.stringify({ ideType: 'ANTIGRAVITY', platform: ANTIGRAVITY_META_PLATFORM, pluginType: 'GEMINI' }),
-};
+const ANTIGRAVITY_STATIC_META = JSON.stringify({ ideType: 'ANTIGRAVITY', platform: ANTIGRAVITY_META_PLATFORM, pluginType: 'GEMINI' });
+async function getAntigravityClientHeaders() {
+  const ver = await getClientVersion('antigravity');
+  return {
+    'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${ver} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
+    'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1',
+    'Client-Metadata': ANTIGRAVITY_STATIC_META,
+  };
+}
 
 class AntigravityOAuthProxy extends GeminiOAuthProxy {
   _buildRequest(params) {
@@ -179,9 +178,10 @@ class AntigravityOAuthProxy extends GeminiOAuthProxy {
   async _generateContent(params) {
     const url = `${GEMINI_OAUTH_BASE}:generateContent`;
     const body = this._buildRequest(params);
+    const headers = await getAntigravityClientHeaders();
     try {
       const res = await this._auth.request({
-        url, method: 'POST', data: body, headers: ANTIGRAVITY_CLIENT_HEADERS,
+        url, method: 'POST', data: body, headers,
       });
       return this._extractResponse(res.data);
     } catch (e) {
@@ -194,9 +194,10 @@ class AntigravityOAuthProxy extends GeminiOAuthProxy {
   async _generateContentStream(params) {
     const url = `${GEMINI_OAUTH_BASE}:streamGenerateContent?alt=sse`;
     const body = this._buildRequest(params);
+    const headers = await getAntigravityClientHeaders();
     try {
       const res = await this._auth.request({
-        url, method: 'POST', data: body, responseType: 'stream', headers: ANTIGRAVITY_CLIENT_HEADERS,
+        url, method: 'POST', data: body, responseType: 'stream', headers,
       });
       return this._parseSSEStream(res.data);
     } catch (e) {
