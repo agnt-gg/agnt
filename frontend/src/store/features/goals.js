@@ -323,7 +323,10 @@ const actions = {
     }
   },
 
-  async createGoal({ commit, rootState }, { text, priority = 'medium', maxIterations }) {
+  async createGoal(
+    { commit, rootState },
+    { text, priority = 'medium', maxIterations, title, description, successCriteria, provider: providerOverride, model: modelOverride },
+  ) {
     commit('SET_CREATING_GOAL', true);
     commit('SET_ERROR', null);
 
@@ -333,9 +336,9 @@ const actions = {
         throw new Error('No authentication token found');
       }
 
-      // Get user's configured provider and model from aiProvider store
-      const provider = rootState.aiProvider?.selectedProvider || null;
-      const model = rootState.aiProvider?.selectedModel || null;
+      // Allow the caller to override provider/model; otherwise fall back to the user's selection.
+      const provider = providerOverride ?? rootState.aiProvider?.selectedProvider ?? null;
+      const model = modelOverride ?? rootState.aiProvider?.selectedModel ?? null;
 
       const response = await fetch(`${API_CONFIG.BASE_URL}/goals/create`, {
         method: 'POST',
@@ -350,6 +353,9 @@ const actions = {
           provider,
           model,
           ...(maxIterations ? { maxIterations } : {}),
+          ...(title ? { title } : {}),
+          ...(description ? { description } : {}),
+          ...(successCriteria ? { success_criteria: successCriteria } : {}),
         }),
       });
 

@@ -140,60 +140,182 @@
                 <i class="fas fa-times"></i>
               </button>
             </div>
-            <div class="modal-body">
-              <label class="modal-label">What do you want to accomplish?</label>
-              <textarea
-                ref="goalInputRef"
-                v-model="goalInput"
-                class="goal-input"
-                placeholder="Describe your goal in detail..."
-                rows="4"
-                @keydown.ctrl.enter="handleCreateGoal"
-                @keydown.escape="showCreateModal = false"
-                :disabled="isCreatingGoal"
-              ></textarea>
+            <div class="modal-body two-col">
+              <div class="modal-col">
+                <div class="label-row">
+                  <label class="modal-label">What do you want to accomplish?</label>
+                  <Tooltip
+                    text="Describe the outcome you want in plain language. The planner turns this into a task graph the agent will execute."
+                    width="260px"
+                  >
+                    <i class="fas fa-info-circle info-icon"></i>
+                  </Tooltip>
+                </div>
+                <textarea
+                  ref="goalInputRef"
+                  v-model="goalInput"
+                  class="goal-input"
+                  placeholder="Describe your goal in detail..."
+                  rows="4"
+                  @keydown.ctrl.enter="handleCreateGoal"
+                  @keydown.escape="showCreateModal = false"
+                  :disabled="isCreatingGoal"
+                ></textarea>
 
-              <label class="modal-label">Priority</label>
-              <div class="priority-selector">
-                <button
-                  v-for="p in ['low', 'medium', 'high', 'urgent']"
-                  :key="p"
-                  type="button"
-                  :class="['priority-option', p, { active: newGoalPriority === p }]"
-                  @click="newGoalPriority = p"
-                >
-                  <span class="priority-dot" :class="p"></span>
-                  {{ p }}
-                </button>
+                <div class="label-row">
+                  <label class="modal-label">Title <span class="optional">(optional)</span></label>
+                  <Tooltip
+                    text="Short display name shown on the goal card. Auto-generated from your goal statement if left blank."
+                    width="240px"
+                  >
+                    <i class="fas fa-info-circle info-icon"></i>
+                  </Tooltip>
+                </div>
+                <input v-model="goalTitle" type="text" class="text-input" placeholder="Auto-generated if blank" :disabled="isCreatingGoal" />
+
+                <div class="label-row">
+                  <label class="modal-label">Success criteria <span class="optional">(optional)</span></label>
+                  <Tooltip
+                    text="How the evaluator decides this goal is done. Prefer measurable outcomes: 'PR merged', 'tests pass', 'metric &lt; X'."
+                    width="260px"
+                  >
+                    <i class="fas fa-info-circle info-icon"></i>
+                  </Tooltip>
+                </div>
+                <textarea
+                  v-model="goalSuccessCriteria"
+                  class="goal-input compact"
+                  placeholder="e.g. All unit tests pass and the PR is approved"
+                  rows="2"
+                  :disabled="isCreatingGoal"
+                ></textarea>
               </div>
 
-              <label class="modal-label">Max autonomous iterations</label>
-              <input type="number" v-model.number="maxIterations" min="1" max="100" class="iterations-input" />
-
-              <template v-if="availableTemplates.length > 0">
-                <label class="modal-label">Start from a template (optional)</label>
-                <div class="template-gallery">
-                  <button
-                    v-for="tpl in availableTemplates"
-                    :key="tpl.id"
-                    type="button"
-                    :class="['template-card', { active: selectedTemplateId === tpl.id }]"
-                    @click="applyTemplate(tpl)"
+              <div class="modal-col">
+                <div class="label-row">
+                  <label class="modal-label">Priority</label>
+                  <Tooltip
+                    text="Higher priority surfaces the goal earlier in the Planning column and biases the scheduler to pick it up sooner."
+                    width="260px"
                   >
-                    <i :class="tpl.icon || 'fas fa-bookmark'" class="tpl-icon"></i>
-                    <span class="tpl-name">{{ tpl.title }}</span>
+                    <i class="fas fa-info-circle info-icon"></i>
+                  </Tooltip>
+                </div>
+                <div class="priority-selector">
+                  <button
+                    v-for="p in ['low', 'medium', 'high', 'urgent']"
+                    :key="p"
+                    type="button"
+                    :class="['priority-option', p, { active: newGoalPriority === p }]"
+                    @click="newGoalPriority = p"
+                  >
+                    <span class="priority-dot" :class="p"></span>
+                    {{ p }}
                   </button>
                 </div>
-              </template>
+
+                <div class="label-row">
+                  <label class="modal-label">Max autonomous iterations</label>
+                  <Tooltip
+                    text="Hard cap on plan/execute/evaluate cycles before the AGI loop gives up. Higher = more retries but more tokens."
+                    width="260px"
+                  >
+                    <i class="fas fa-info-circle info-icon"></i>
+                  </Tooltip>
+                </div>
+                <input type="number" v-model.number="maxIterations" min="1" max="100" class="iterations-input" />
+
+                <div class="label-row">
+                  <label class="modal-label">Schedule <span class="optional">(optional)</span></label>
+                  <Tooltip
+                    text="Run this goal on a recurring schedule. 'Run once' fires immediately; 'Interval' repeats on a fixed cadence; 'Specific time' fires at a chosen time on chosen days."
+                    width="300px"
+                  >
+                    <i class="fas fa-info-circle info-icon"></i>
+                  </Tooltip>
+                </div>
+                <div class="schedule-tabs">
+                  <button
+                    type="button"
+                    :class="['schedule-tab', { active: scheduleType === 'none' }]"
+                    @click="scheduleType = 'none'"
+                  >
+                    Run once
+                  </button>
+                  <button
+                    type="button"
+                    :class="['schedule-tab', { active: scheduleType === 'interval' }]"
+                    @click="scheduleType = 'interval'"
+                  >
+                    Interval
+                  </button>
+                  <button
+                    type="button"
+                    :class="['schedule-tab', { active: scheduleType === 'specific' }]"
+                    @click="scheduleType = 'specific'"
+                  >
+                    Specific time
+                  </button>
+                </div>
+
+                <template v-if="scheduleType === 'interval'">
+                  <select v-model="intervalSchedule" class="interval-select">
+                    <option v-for="opt in intervalOptions" :key="opt" :value="opt">{{ opt }}</option>
+                  </select>
+                </template>
+
+                <template v-if="scheduleType === 'specific'">
+                  <div class="cron-row">
+                    <input v-model="specificTime" type="time" class="time-input" />
+                    <select v-model="timezone" class="tz-select">
+                      <option v-for="tz in commonTimezones" :key="tz" :value="tz">{{ tz }}</option>
+                    </select>
+                  </div>
+                  <div class="days-picker">
+                    <button
+                      v-for="d in daysOfWeek"
+                      :key="d"
+                      type="button"
+                      :class="['day-chip', { active: specificDays.includes(d) }]"
+                      @click="toggleSpecificDay(d)"
+                    >
+                      {{ d.slice(0, 3) }}
+                    </button>
+                  </div>
+                </template>
+
+                <div v-if="scheduleType !== 'none' && computedCron" class="cron-preview">
+                  <div class="cron-preview-label">Next 5 firings</div>
+                  <div v-if="cronPreviewing" class="cron-preview-note">Computing…</div>
+                  <div v-else-if="cronPreviewError" class="cron-preview-error">{{ cronPreviewError }}</div>
+                  <ul v-else-if="cronPreviews.length" class="cron-preview-list">
+                    <li v-for="(p, i) in cronPreviews" :key="i">
+                      <i class="far fa-clock"></i>
+                      {{ formatCronPreview(p) }}
+                    </li>
+                  </ul>
+                </div>
+                <div v-else-if="scheduleType === 'specific' && !computedCron" class="cron-preview-note">
+                  Pick at least one day to schedule.
+                </div>
+              </div>
             </div>
             <div class="modal-footer">
               <span class="modal-hint">Ctrl+Enter to create · Esc to close</span>
               <div class="modal-actions">
                 <button class="modal-btn modal-cancel" @click="showCreateModal = false">Cancel</button>
-                <button class="modal-btn create" @click="handleCreateGoal" :disabled="!goalInput.trim() || isCreatingGoal">
+                <button
+                  class="modal-btn create"
+                  @click="handleCreateGoal"
+                  :disabled="
+                    !goalInput.trim() ||
+                    isCreatingGoal ||
+                    (scheduleType !== 'none' && (!computedCron || !!cronPreviewError))
+                  "
+                >
                   <i v-if="isCreatingGoal" class="fas fa-spinner fa-spin"></i>
-                  <i v-else class="fas fa-rocket"></i>
-                  {{ isCreatingGoal ? 'Creating...' : 'Create & Run' }}
+                  <i v-else :class="scheduleType !== 'none' ? 'fas fa-clock' : 'fas fa-rocket'"></i>
+                  {{ isCreatingGoal ? 'Creating...' : scheduleType !== 'none' ? 'Create & Schedule' : 'Create & Run' }}
                 </button>
               </div>
             </div>
@@ -230,6 +352,49 @@ import ScheduleGoalModal from './components/ScheduleGoalModal.vue';
 const DONE_SUCCESS = ['completed', 'validated'];
 const DONE_FAILURE = ['failed', 'error', 'stopped'];
 
+// Schedule options — mirrors the Timer Trigger tool's UX (Interval or
+// Specific Time + Days) so users see the same vocabulary they already know
+// from the workflow builder. Cron strings are only produced internally.
+const INTERVAL_OPTIONS = [
+  'Every 5 Minutes',
+  'Every 15 Minutes',
+  'Every 30 Minutes',
+  'Hourly',
+  'Daily',
+  'Weekly',
+  'Monthly',
+];
+const INTERVAL_TO_CRON = {
+  'Every 5 Minutes': '*/5 * * * *',
+  'Every 15 Minutes': '*/15 * * * *',
+  'Every 30 Minutes': '*/30 * * * *',
+  Hourly: '0 * * * *',
+  Daily: '0 9 * * *',
+  Weekly: '0 9 * * MON',
+  Monthly: '0 9 1 * *',
+};
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAY_TO_CRON = {
+  Monday: 'MON',
+  Tuesday: 'TUE',
+  Wednesday: 'WED',
+  Thursday: 'THU',
+  Friday: 'FRI',
+  Saturday: 'SAT',
+  Sunday: 'SUN',
+};
+const COMMON_TZ = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+];
+
 export default {
   name: 'GoalsScreen',
   components: {
@@ -263,8 +428,74 @@ export default {
     const goalInputRef = ref(null);
     const newGoalPriority = ref('medium');
     const maxIterations = ref(50);
-    const selectedTemplateId = ref(null);
+    const goalTitle = ref('');
+    const goalSuccessCriteria = ref('');
+    const scheduleType = ref('none'); // 'none' | 'interval' | 'specific'
+    const intervalSchedule = ref('Hourly');
+    const specificTime = ref('09:00');
+    const specificDays = ref(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
+    const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+    const cronPreviews = ref([]);
+    const cronPreviewing = ref(false);
+    const cronPreviewError = ref(null);
     const isCreatingGoal = computed(() => store.getters['goals/isCreatingGoal']);
+
+    // Derive a cron string from the user-friendly picker. Empty string means
+    // "run once now — no schedule".
+    const computedCron = computed(() => {
+      if (scheduleType.value === 'interval') {
+        return INTERVAL_TO_CRON[intervalSchedule.value] || '';
+      }
+      if (scheduleType.value === 'specific') {
+        if (!specificTime.value || specificDays.value.length === 0) return '';
+        const [h, m] = specificTime.value.split(':').map(Number);
+        if (Number.isNaN(h) || Number.isNaN(m)) return '';
+        const dayCodes = specificDays.value.map((d) => DAY_TO_CRON[d]).filter(Boolean).join(',');
+        if (!dayCodes) return '';
+        return `${m} ${h} * * ${dayCodes}`;
+      }
+      return '';
+    });
+
+    const toggleSpecificDay = (day) => {
+      const idx = specificDays.value.indexOf(day);
+      if (idx === -1) specificDays.value.push(day);
+      else specificDays.value.splice(idx, 1);
+    };
+
+    // Debounced cron preview — kicks whenever the derived cron changes.
+    let cronPreviewTimer = null;
+    watch([computedCron, timezone], () => {
+      if (cronPreviewTimer) clearTimeout(cronPreviewTimer);
+      cronPreviewError.value = null;
+      cronPreviews.value = [];
+      const cron = computedCron.value;
+      if (!cron) return;
+      cronPreviewing.value = true;
+      cronPreviewTimer = setTimeout(async () => {
+        try {
+          const result = await store.dispatch('schedules/previewCron', {
+            cron,
+            timezone: timezone.value,
+            count: 5,
+          });
+          cronPreviews.value = result || [];
+        } catch (e) {
+          cronPreviewError.value = e.message || 'Invalid schedule';
+        } finally {
+          cronPreviewing.value = false;
+        }
+      }, 250);
+    });
+
+    const formatCronPreview = (s) => {
+      if (!s) return '—';
+      try {
+        return new Date(s).toLocaleString();
+      } catch {
+        return s;
+      }
+    };
 
     // Search / filter / sort
     const searchQuery = ref('');
@@ -277,10 +508,6 @@ export default {
 
     const allGoals = computed(() => store.getters['goals/allGoals']);
     const isLoading = computed(() => store.getters['goals/isLoading']);
-    const availableTemplates = computed(() => {
-      const templates = store.getters['goalTemplates/allTemplates'] || [];
-      return templates.slice(0, 8);
-    });
 
     const getLiveIteration = (goalId) => store.getters['goals/getLiveIteration'](goalId);
 
@@ -391,9 +618,6 @@ export default {
           baseScreenRef.value?.scrollToBottom();
         });
 
-      // Load templates for the create modal gallery (no-op if already loaded)
-      store.dispatch('goalTemplates/fetchTemplates').catch(() => {});
-
       // Prefetch schedules so GoalCard can show the per-goal badge.
       store.dispatch('schedules/fetchSchedules').catch(() => {});
     };
@@ -459,31 +683,60 @@ export default {
       selectedGoalId.value = null;
     };
 
+    const resetCreateModal = () => {
+      goalInput.value = '';
+      newGoalPriority.value = 'medium';
+      maxIterations.value = 50;
+      goalTitle.value = '';
+      goalSuccessCriteria.value = '';
+      scheduleType.value = 'none';
+      intervalSchedule.value = 'Hourly';
+      specificTime.value = '09:00';
+      specificDays.value = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      cronPreviews.value = [];
+      cronPreviewError.value = null;
+    };
+
+    const wantsSchedule = () => scheduleType.value !== 'none' && Boolean(computedCron.value);
+
     const handleCreateGoal = async () => {
       if (!goalInput.value.trim()) return;
+      if (scheduleType.value !== 'none' && (!computedCron.value || cronPreviewError.value)) return;
       const goalText = goalInput.value.trim();
       try {
-        await store.dispatch('goals/createGoal', {
+        const newGoal = await store.dispatch('goals/createGoal', {
           text: goalText,
           priority: newGoalPriority.value,
           maxIterations: maxIterations.value,
+          title: goalTitle.value.trim() || undefined,
+          successCriteria: goalSuccessCriteria.value.trim() || undefined,
         });
-        goalInput.value = '';
-        newGoalPriority.value = 'medium';
-        maxIterations.value = 50;
-        selectedTemplateId.value = null;
+
+        if (wantsSchedule() && newGoal?.id) {
+          const cron = computedCron.value;
+          try {
+            await store.dispatch('schedules/createSchedule', {
+              targetType: 'goal',
+              targetId: newGoal.id,
+              cron,
+              timezone: timezone.value,
+              enabled: true,
+              onMissed: 'fire_once',
+            });
+            terminalLines.value.push(`Scheduled goal: ${cron} (${timezone.value})`);
+          } catch (scheduleError) {
+            terminalLines.value.push(`Goal created but schedule failed: ${scheduleError.message}`);
+          }
+        }
+
         showCreateModal.value = false;
         terminalLines.value.push(`Created goal: ${goalText.substring(0, 50)}...`);
+        resetCreateModal();
         baseScreenRef.value?.scrollToBottom();
       } catch (error) {
         terminalLines.value.push(`Error creating goal: ${error.message}`);
         baseScreenRef.value?.scrollToBottom();
       }
-    };
-
-    const applyTemplate = (tpl) => {
-      selectedTemplateId.value = tpl.id;
-      goalInput.value = tpl.template || tpl.description || tpl.title || '';
     };
 
     const handlePanelAction = (action, payload) => {
@@ -617,7 +870,6 @@ export default {
       getLiveIteration,
       getEmptyIcon,
       getEmptyText,
-      applyTemplate,
       emit,
       selectedGoalId,
       allGoals,
@@ -627,12 +879,27 @@ export default {
       goalInputRef,
       newGoalPriority,
       maxIterations,
-      selectedTemplateId,
-      availableTemplates,
       isCreatingGoal,
       searchQuery,
       activeFilters,
       sortBy,
+      goalTitle,
+      goalSuccessCriteria,
+      scheduleType,
+      intervalSchedule,
+      specificTime,
+      specificDays,
+      timezone,
+      computedCron,
+      cronPreviews,
+      cronPreviewing,
+      cronPreviewError,
+      intervalOptions: INTERVAL_OPTIONS,
+      daysOfWeek: DAYS_OF_WEEK,
+      commonTimezones: COMMON_TZ,
+      formatCronPreview,
+      toggleSpecificDay,
+      wantsSchedule,
     };
   },
 };
@@ -868,8 +1135,8 @@ body[data-page='terminal-goals'] .scrollable-content {
   background: var(--color-popup);
   border: 1px solid var(--terminal-border-color);
   border-radius: 8px;
-  width: 560px;
-  max-width: 92vw;
+  width: 880px;
+  max-width: 94vw;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -909,6 +1176,26 @@ body[data-page='terminal-goals'] .scrollable-content {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.modal-body.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+}
+
+.modal-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .modal-body.two-col {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
 }
 
 .modal-label {
@@ -1014,50 +1301,6 @@ body[data-page='terminal-goals'] .scrollable-content {
   border-color: rgba(var(--green-rgb), 0.5);
 }
 
-.template-gallery {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 6px;
-}
-
-.template-card {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--color-darker-0);
-  border: 1px solid var(--terminal-border-color);
-  border-radius: 6px;
-  color: var(--color-text-muted);
-  padding: 8px 10px;
-  font-size: 0.8em;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  text-align: left;
-  font-family: inherit;
-}
-
-.template-card:hover {
-  border-color: rgba(var(--green-rgb), 0.35);
-  color: var(--color-text);
-}
-
-.template-card.active {
-  background: rgba(var(--green-rgb), 0.1);
-  border-color: rgba(var(--green-rgb), 0.5);
-  color: var(--color-green);
-}
-
-.tpl-icon {
-  font-size: 0.9em;
-  opacity: 0.9;
-}
-
-.tpl-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .modal-footer {
   display: flex;
   justify-content: space-between;
@@ -1114,5 +1357,248 @@ body[data-page='terminal-goals'] .scrollable-content {
 .modal-btn.create:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ─── Modal enhancements: label rows with info tooltips ─── */
+.label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  margin-bottom: 4px;
+  align-self: flex-start;
+  width: auto;
+  max-width: 100%;
+}
+
+.label-row .modal-label {
+  margin: 0;
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.label-row .tooltip-container {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+.info-icon {
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+  cursor: help;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.info-icon:hover {
+  opacity: 1;
+  color: var(--color-text);
+}
+
+.modal-label .optional {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.7;
+  margin-left: 4px;
+}
+
+/* Plain text input reuses goal-input styling */
+.text-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 0.9em;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: rgba(var(--green-rgb), 0.5);
+}
+
+.goal-input.compact {
+  min-height: 52px;
+}
+
+.schedule-tabs {
+  display: inline-flex;
+  gap: 0;
+  padding: 3px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.schedule-tab {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-size: 0.8em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.schedule-tab:hover:not(.active) {
+  color: var(--color-text);
+}
+
+.schedule-tab.active {
+  background: rgba(var(--green-rgb), 0.15);
+  color: var(--color-green);
+}
+
+.cron-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.time-input {
+  flex: 0 1 140px;
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9em;
+  transition: border-color 0.2s ease;
+  color-scheme: dark;
+}
+
+.time-input:focus {
+  outline: none;
+  border-color: rgba(var(--green-rgb), 0.5);
+}
+
+.days-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.day-chip {
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  color: var(--color-text-muted);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.78em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  min-width: 40px;
+  text-align: center;
+}
+
+.day-chip:hover:not(.active) {
+  color: var(--color-text);
+  border-color: rgba(var(--green-rgb), 0.4);
+}
+
+.day-chip.active {
+  background: rgba(var(--green-rgb), 0.15);
+  color: var(--color-green);
+  border-color: rgba(var(--green-rgb), 0.5);
+}
+
+.tz-select {
+  flex: 0 1 180px;
+  padding: 8px 12px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.tz-select option,
+.interval-select option {
+  background: var(--color-popup);
+  color: var(--color-text);
+}
+
+.interval-select {
+  align-self: flex-start;
+  width: 220px;
+  max-width: 100%;
+  padding: 8px 12px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.88em;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.interval-select:focus {
+  outline: none;
+  border-color: rgba(var(--green-rgb), 0.5);
+}
+
+.cron-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--color-darker-0);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 6px;
+}
+
+.cron-preview-label {
+  font-size: 0.72em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.cron-preview-note {
+  font-size: 0.82em;
+  color: var(--color-text-muted);
+}
+
+.cron-preview-error {
+  font-size: 0.82em;
+  color: var(--color-red);
+}
+
+.cron-preview-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cron-preview-list li {
+  font-family: var(--font-family-mono);
+  font-size: 0.8em;
+  color: var(--color-text);
+}
+
+.cron-preview-list li i {
+  color: var(--color-green);
+  margin-right: 6px;
 }
 </style>

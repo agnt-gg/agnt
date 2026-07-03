@@ -47,7 +47,7 @@
         </span>
         <span v-if="showAge && goal.created_at" class="age-badge" :title="formatDate(goal.created_at)">
           <i class="far fa-clock"></i>
-          {{ timeAgo(goal.created_at) }}
+          <span class="age-text">{{ timeAgo(goal.created_at) }}</span>
         </span>
         <div class="card-actions">
           <Tooltip v-if="goal.status === 'executing'" text="Pause" width="auto">
@@ -213,6 +213,7 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .goal-card:hover {
@@ -458,8 +459,8 @@ export default {
 }
 
 .card-footer {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   margin-top: auto;
@@ -473,10 +474,19 @@ export default {
   align-items: center;
   gap: 4px;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .age-badge {
-  margin-left: auto;
+  justify-self: end;
+  overflow: hidden;
+}
+
+.age-badge .age-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-actions {
