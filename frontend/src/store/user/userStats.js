@@ -1,9 +1,12 @@
 import axios from 'axios';
 import { API_CONFIG } from '@/tt.config.js';
-import { isEqual } from 'lodash-es'; // Import isEqual for deep comparison
-
-// Track active timeouts for cleanup
+import { isEqual } from 'lodash-es'; // Import isEqual for deep comparison// Track active timeouts for cleanup
 const activeTimeouts = new Set();
+
+// Cache gate for fetchSecondsAutomated90Day (module-level because this fetch
+// has no dedicated meta slot in state). Same policy as fetchCreditsActivity:
+// 60s success cache, 15s retry backoff on failure.
+let secondsAutomated90DayLastFetch = 0;
 
 function clearAllTimeouts() {
   activeTimeouts.forEach((timeoutId) => {
@@ -673,8 +676,11 @@ export default {
         } else {
           console.error('Error fetching credits activity:', error);
         }
-        // Don't stamp lastFetchTime on failure — that would lock out same-range retries for 60s
-        commit('SET_CREDITS_ACTIVITY_META', { isLoading: false });
+        // Failure backoff: stamp a partial cache time so the next automatic
+        // retry is allowed after 15s instead of immediately. An instant-retry
+        // loop against a slow/timing-out backend query pegs the disk; a
+        // user-driven range change still bypasses this via timeRangeChanged.
+        commit('SET_CREDITS_ACTIVITY_META', { isLoading: false, lastFetchTime: now - 45000 });
       }
     },
 
@@ -682,6 +688,15 @@ export default {
     // Writes only to state.secondsAutomated90Day — never touches creditsActivity,
     // so the dashboard chart's range selection is not affected.
     async fetchSecondsAutomated90Day({ commit }) {
+      // Cache gate: this used to re-run a 90-day aggregate on every dashboard
+      // mount with no throttle at all. 60s cache, matching fetchCreditsActivity.
+      // Stamped up-front so concurrent calls dedupe; rolled back to a 15s
+      // backoff in the catch below if the request fails.
+      const now = Date.now();
+      if (now - secondsAutomated90DayLastFetch < 60000) {
+        return;
+      }
+      secondsAutomated90DayLastFetch = now;
       try {
         const token = localStorage.getItem('token');
         if (!token) throw new Error('No auth token found');
@@ -718,10 +733,12 @@ export default {
         commit('SET_SECONDS_AUTOMATED_90_DAY', total);
       } catch (error) {
         if (axios.isCancel(error)) {
-          console.warn('[UserStats] Request canceled for fetchSecondsAutomated90Day');
-        } else {
+          console.warn('[UserStats] Request canceled for fetchSecondsAutomated90Day');        } else {
           console.error('Error fetching 90-day seconds automated:', error);
         }
+        // Failure backoff: allow a retry after 15s instead of holding the full
+        // 60s cache window — but never instantly (retry storms peg the disk).
+        secondsAutomated90DayLastFetch = Date.now() - 45000;
       }
     },
 
