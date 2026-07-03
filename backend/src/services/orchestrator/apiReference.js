@@ -10,7 +10,33 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DOCS_PATH = path.resolve(__dirname, '../../../../docs/_API-DOCUMENTATION.md');
+
+/**
+ * Resolve the API docs path. In dev, __dirname is:
+ *   <repo>/backend/src/services/orchestrator
+ * so ../../../../docs works. In a built Electron app, __dirname is:
+ *   <resources>/app.asar/backend/src/services/orchestrator
+ * and the docs file must be packed into the ASAR at docs/_API-DOCUMENTATION.md
+ * (see the "files" array in package.json build config).
+ *
+ * We also check process.resourcesPath (Electron) for an extraResources fallback.
+ */
+function resolveDocsPath() {
+  // Primary: relative from __dirname (works in both dev and ASAR)
+  const primary = path.resolve(__dirname, '../../../../docs/_API-DOCUMENTATION.md');
+  if (fs.existsSync(primary)) return primary;
+
+  // Fallback: Electron extraResources path
+  if (process.resourcesPath) {
+    const extra = path.join(process.resourcesPath, 'docs', '_API-DOCUMENTATION.md');
+    if (fs.existsSync(extra)) return extra;
+  }
+
+  // Return primary anyway — parseSections will log the specific error
+  return primary;
+}
+
+const DOCS_PATH = resolveDocsPath();
 
 const BOILERPLATE = `// -- AGNT API helper --
 // Use the right pattern for your runtime context:
@@ -100,8 +126,8 @@ function parseSections() {
   try {
     raw = fs.readFileSync(DOCS_PATH, 'utf-8');
   } catch (err) {
-    console.error('[apiReference] Could not read API docs:', err.message);
-    return {};
+    console.error(`[apiReference] Could not read API docs at ${DOCS_PATH}:`, err.message);
+    return null;
   }
 
   // Only use Local API section (everything before Remote API)
@@ -158,7 +184,7 @@ function getSectionNames() {
     const stat = fs.statSync(DOCS_PATH);
     const mtime = stat.mtimeMs;
     if (_cachedNames && mtime === _cachedMtime) return _cachedNames;
-    _cachedNames = Object.keys(parseSections());
+    _cachedNames = Object.keys(parseSections() || {});
     _cachedMtime = mtime;
   } catch {
     if (_cachedNames) return _cachedNames;
@@ -183,6 +209,10 @@ const SECTION_NAMES = new Proxy([], {
  */
 function getOverview() {
   const sections = parseSections();
+
+  if (!sections) {
+    return `AGNT API Reference — ERROR\n\nCould not load API documentation file.\nExpected path: ${DOCS_PATH}\n\nThis usually means the docs/_API-DOCUMENTATION.md file was not included in the Electron build.\nThe get_agnt_api tool is unavailable until this is fixed.\n\n${BOILERPLATE}`;
+  }
 
   let out = `AGNT API Reference — Overview
 Base URL: http://localhost:${process.env.PORT || 3333}/api
@@ -213,6 +243,10 @@ Available sections: ${Object.keys(sections).join(', ')}`;
  */
 function getSectionDetail(section) {
   const sections = parseSections();
+
+  if (!sections) {
+    return `Could not load API documentation. The docs file is missing from this installation. Expected: ${DOCS_PATH}`;
+  }
   // Tolerate singular/plural variants — LLMs frequently default to plural
   // ("plugins") when the canonical key is singular ("plugin").
   let data = sections[section];

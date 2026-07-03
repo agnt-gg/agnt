@@ -211,12 +211,12 @@
           "**/*"
         ]
       }
-    ],
-    "files": [
+    ],    "files": [
       "main.js",
       "preload.js",
       "assets/**/*",
       "backend/**/*",
+      "docs/_API-DOCUMENTATION.md",
       "frontend/dist/**/*",
       "scripts/**/*",
       "build/**/*",
