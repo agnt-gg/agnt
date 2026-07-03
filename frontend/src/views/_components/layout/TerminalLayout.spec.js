@@ -2,6 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import TerminalLayout from './TerminalLayout.vue';
 
+vi.mock('vuex', () => ({
+  useStore: () => ({
+    getters: {
+      'theme/useCustomBackground': false,
+      'theme/currentThemeBackgroundImage': null,
+      'theme/currentBackgroundType': 'image',
+    },
+    state: {
+      theme: {
+        defaultBackgroundImage: null,
+      },
+    },
+  }),
+}));
+
 describe('TerminalLayout', () => {
   let wrapper;
 
@@ -16,6 +31,10 @@ describe('TerminalLayout', () => {
       volume: 0.3,
       currentTime: 0,
     }));
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+    });
 
     // Mock localStorage
     const localStorageMock = {
@@ -314,6 +333,12 @@ describe('TerminalLayout', () => {
       expect(wrapper.exists()).toBe(true);
     });
 
+    it('does not create audio elements on mount', () => {
+      wrapper = createWrapper();
+
+      expect(global.Audio).not.toHaveBeenCalled();
+    });
+
     it('respects soundEnabled prop', () => {
       wrapper = createWrapper({ soundEnabled: false });
       expect(wrapper.props('soundEnabled')).toBe(false);
@@ -323,6 +348,31 @@ describe('TerminalLayout', () => {
       wrapper = createWrapper();
 
       expect(localStorage.getItem).toHaveBeenCalledWith('soundsEnabled');
+    });
+
+    it('skips sound target lookup when sounds are disabled', async () => {
+      localStorage.getItem.mockImplementation((key) => (key === 'soundsEnabled' ? 'false' : null));
+      const closestSpy = vi.spyOn(Element.prototype, 'closest');
+      wrapper = mount(TerminalLayout, {
+        props: { initialDelay: 50 },
+        global: {
+          stubs: {
+            SongPlayer: {
+              template: '<div class="song-player-stub"></div>',
+            },
+          },
+        },
+        slots: {
+          default: '<button class="sound-test-button">Test</button>',
+        },
+        attachTo: document.body,
+      });
+
+      vi.advanceTimersByTime(50);
+      await wrapper.vm.$nextTick();
+      await wrapper.find('.sound-test-button').trigger('mousedown');
+
+      expect(closestSpy).not.toHaveBeenCalled();
     });
   });
 

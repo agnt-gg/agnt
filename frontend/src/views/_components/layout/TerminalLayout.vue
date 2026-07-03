@@ -75,7 +75,6 @@ export default {
     const glitchDuration = 1000;
     const terminalScreenRef = ref(null);
     const hasUserInteracted = ref(false); // To track user interaction
-    const currentAudio = ref(null); // Track currently playing audio
     const authRedirectModal = ref(null); // SimpleModal for auth-redirect notice
 
     // Map structured failure reasons (from authGuard / userAuth.classifyAuthError)
@@ -145,8 +144,9 @@ export default {
         authModalOpen = false;
       }
     };
-    const activeAudio = new Set(); // Keep short UI sounds alive until playback ends
-    const preloadedAudio = new Map();
+    const audioBuffers = new Map();
+    const activeAudioSources = new Set(); // Keep short UI sounds alive until playback ends
+    let audioContext = null;
 
     // --- Background Layer ---
     const useCustomBackground = computed(() => store.getters['theme/useCustomBackground']);
@@ -190,31 +190,82 @@ export default {
       // notification: '/sounds/notification.mp3',
     };
 
-    const preloadSounds = () => {
-      Object.values(sounds).forEach((soundPath) => {
-        if (!soundPath || preloadedAudio.has(soundPath)) return;
-        const audio = new Audio(soundPath);
-        audio.preload = 'auto';
-        audio.load();
-        preloadedAudio.set(soundPath, audio);
-      });
+    const soundVolumeMultipliers = {
+      buttonDown: 0.55,
+      buttonUp: 0.45,
+    };
+
+    const isSoundEnabled = () => {
+      const savedEnabled = localStorage.getItem('soundsEnabled');
+      const soundsEnabled = savedEnabled === null ? true : savedEnabled === 'true';
+      return props.soundEnabled && soundsEnabled;
+    };
+
+    const getAudioContext = () => {
+      if (audioContext) return audioContext;
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) return null;
+      audioContext = new AudioContextCtor();
+      return audioContext;
+    };
+
+    const loadSoundBuffer = (soundName) => {
+      const soundPath = sounds[soundName];
+      if (!soundPath) return Promise.resolve(null);
+
+      const cached = audioBuffers.get(soundName);
+      if (cached) return cached;
+
+      const promise = fetch(soundPath)
+        .then((response) => {
+          if (!response.ok) throw new Error(`Failed to load ${soundPath}: ${response.status}`);
+          return response.arrayBuffer();
+        })
+        .then((arrayBuffer) => {
+          const context = getAudioContext();
+          return context ? context.decodeAudioData(arrayBuffer) : null;
+        })
+        .catch((error) => {
+          audioBuffers.delete(soundName);
+          console.warn(`Could not load sound "${soundName}":`, error);
+          return null;
+        });
+
+      audioBuffers.set(soundName, promise);
+      return promise;
+    };
+
+    const preloadInteractionSounds = () => {
+      loadSoundBuffer('buttonDown');
+      loadSoundBuffer('buttonUp');
+    };
+
+    const getSoundVolume = (soundName, volume = null) => {
+      let baseVolume;
+
+      if (volume !== null && typeof volume === 'number' && volume >= 0 && volume <= 1) {
+        baseVolume = volume;
+      } else {
+        const savedVolume = Number.parseFloat(localStorage.getItem('soundVolume'));
+        baseVolume = Number.isFinite(savedVolume) ? savedVolume : 0.3;
+      }
+
+      const multiplier = soundVolumeMultipliers[soundName] ?? 1;
+      return Math.max(0, Math.min(1, baseVolume * multiplier));
     };
 
     const setInteracted = () => {
       if (!hasUserInteracted.value) {
         hasUserInteracted.value = true;
+        if (isSoundEnabled()) {
+          preloadInteractionSounds();
+        }
         // console.log("User interaction detected. Sounds are now operational.");
       }
     };
 
     const playSound = (soundName, volume = null) => {
-      // Check localStorage for sound settings
-      const savedEnabled = localStorage.getItem('soundsEnabled');
-      const soundsEnabled = savedEnabled === null ? true : savedEnabled === 'true';
-
-      // console.log(`playSound: ${soundName}, volume: ${volume}, interacted: ${hasUserInteracted.value}, enabled: ${soundsEnabled}`);
-
-      if (!soundsEnabled || !props.soundEnabled) {
+      if (!isSoundEnabled()) {
         // console.log('Sound is disabled.');
         return;
       }
@@ -231,40 +282,43 @@ export default {
       }
 
       try {
-        const audio = preloadedAudio.has(soundPath)
-          ? preloadedAudio.get(soundPath).cloneNode(true)
-          : new Audio(soundPath);
+        const context = getAudioContext();
+        if (!context) return;
 
-        // Get saved volume or use provided/default
-        const savedVolume = localStorage.getItem('soundVolume');
-        let finalVolume;
+        const finalVolume = getSoundVolume(soundName, volume);
 
-        if (volume !== null && typeof volume === 'number' && volume >= 0 && volume <= 1) {
-          // Use provided volume
-          finalVolume = volume;
-        } else if (savedVolume !== null) {
-          // Use saved volume
-          finalVolume = parseFloat(savedVolume);
-        } else {
-          // Use default
-          finalVolume = 0.3;
+        if (context.state === 'suspended') {
+          context.resume().catch((error) => {
+            console.warn('Could not resume sound context:', error);
+          });
         }
 
-        audio.volume = finalVolume;
+        loadSoundBuffer(soundName)
+          .then((buffer) => {
+            if (!buffer || !isSoundEnabled()) return;
 
-        activeAudio.add(audio);
+            const source = context.createBufferSource();
+            const gain = context.createGain();
+            source.buffer = buffer;
+            gain.gain.value = finalVolume;
+            source.connect(gain);
+            gain.connect(context.destination);
 
-        const cleanup = () => activeAudio.delete(audio);
-        audio.addEventListener('ended', cleanup, { once: true });
-        audio.addEventListener('error', cleanup, { once: true });
+            const cleanup = () => {
+              source.disconnect();
+              gain.disconnect();
+              activeAudioSources.delete(source);
+            };
 
-        audio.play().catch((error) => {
-          // This catch handles errors other than NotAllowedError post-interaction
-          console.warn(`Could not play sound "${soundName}" (post-interaction attempt):`, error);
-          cleanup();
-        });
+            source.onended = cleanup;
+            activeAudioSources.add(source);
+            source.start(0);
+          })
+          .catch((error) => {
+            console.warn(`Could not play sound "${soundName}":`, error);
+          });
       } catch (error) {
-        console.error(`Error creating or playing sound "${soundName}":`, error);
+        console.error(`Error preparing sound "${soundName}":`, error);
       }
     };
 
@@ -283,6 +337,7 @@ export default {
 
     const handleGlobalButtonMouseDown = (event) => {
       setInteracted();
+      if (!isSoundEnabled()) return;
       if (getSoundTrigger(event)) {
         playSound('buttonDown');
       }
@@ -290,6 +345,7 @@ export default {
 
     const handleGlobalButtonMouseUp = (event) => {
       setInteracted();
+      if (!isSoundEnabled()) return;
       if (getSoundTrigger(event)) {
         playSound('buttonUp');
       }
@@ -298,6 +354,8 @@ export default {
     // --- Global Click Handler for Any Element with data-sound ---
     const handleGlobalButtonClick = (event) => {
       setInteracted(); // Mark interaction
+
+      if (!isSoundEnabled()) return;
 
       // First check if the clicked element itself has data-sound
       const elementWithSound = getElementWithSound(event);
@@ -346,7 +404,6 @@ export default {
 
     onMounted(() => {
       checkMobile();
-      preloadSounds();
       window.addEventListener('resize', checkMobile);
       window.addEventListener('sounds-settings-changed', handleSoundSettingsChange);
       window.addEventListener('auth-redirect', handleAuthRedirect);
