@@ -1484,6 +1484,9 @@ export default {
         const confirmed = await modalRef.value?.showModal({
           title: 'Antigravity Authentication',
           message: `<div style="text-align:left">
+            <p style="background:rgba(255,180,0,0.1);border:1px solid rgba(255,180,0,0.3);border-radius:6px;padding:8px 10px;font-size:12px;color:rgba(255,180,0,0.85);margin-bottom:12px">
+              ⚠️ This is an unofficial integration. Antigravity access is provided through your Google account's subscription — heavy automated usage may trigger rate limits or account restrictions. Use responsibly.
+            </p>
             <p>A browser window has opened for Google authentication.</p>
             <p><strong>1.</strong> Sign in to your Google account</p>
             <p><strong>2.</strong> Click <strong>Allow</strong> to grant access</p>

@@ -302,6 +302,13 @@ router.get('/:provider/models', async (req, res) => {
             error: 'Antigravity is not connected. Use Google OAuth to connect.',
           });
         }
+        // PRD-109: while cooling down after a 403/429, don't hit Google for models.
+        if (agStatus.coolingDown) {
+          return res.status(429).json({
+            success: false, coolingDown: true, retryAfterMs: agStatus.retryAfterMs,
+            error: agStatus.hint,
+          });
+        }
         apiKey = await AntigravityAuthManager.getAccessToken();
         if (!apiKey) {
           return res.status(400).json({ success: false, error: 'Antigravity token not found.' });

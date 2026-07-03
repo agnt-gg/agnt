@@ -5,10 +5,13 @@ import http from 'http';
 import url from 'url';
 import crypto from 'crypto';
 import axios from 'axios';
-import { OAuth2Client } from 'google-auth-library';
-
-const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
+import { OAuth2Client } from 'google-auth-library';const API_CHECK_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// PRD-109 ban-avoidance: the only documented Antigravity ban cause is behavioral
+// (quota exhaustion + retry-storms). A single account-global cooldown flag stops
+// us hitting Google after a 403/429 or when quota crosses the soft floor.
+const SOFT_QUOTA_FLOOR = parseFloat(process.env.ANTIGRAVITY_SOFT_QUOTA_FLOOR || '0.10');
+const COOLDOWN_MS = 5 * 60 * 1000; // after a 403/429, stop hitting Google for 5 min
 const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes before expiry
 
 // ══════════════════════════════════════════════════════════════
@@ -445,9 +448,26 @@ class AntigravityAuthManager {
     }
   }
 
-  // ── Status Checks ──────────────────────────────────────────
+  // ── Status Checks ──────────────────────────────────────────  // ── Ban-avoidance cooldown (PRD-109) ───────────────────────
+  // Tripped by any 403/429 from the gateway or a quota-floor breach. While open,
+  // callers must not hit Google — this prevents the retry-storm / exhaustion
+  // pattern that shadow-bans accounts.
+  isCoolingDown() { return Date.now() < this._cooldownUntil; }
+  cooldownMsLeft() { return Math.max(0, this._cooldownUntil - Date.now()); }
+  tripCooldown(reason) {
+    this._cooldownUntil = Date.now() + COOLDOWN_MS;
+    this._lastApiCheck = null; // force a fresh status read once cooldown ends
+    console.warn(`[AntigravityAuth] cooldown ${COOLDOWN_MS / 1000}s — ${reason}`);
+  }
 
   async checkApiUsable({ forceRefresh = false } = {}) {
+    if (this.isCoolingDown()) {
+      return {
+        available: true, apiUsable: false, coolingDown: true,
+        retryAfterMs: this.cooldownMsLeft(),
+        hint: 'Antigravity is cooling down to protect your Google account. Use an API-key provider meanwhile.',
+      };
+    }
     if (!forceRefresh && this._lastApiCheck && Date.now() - this._lastApiCheck < API_CHECK_TTL_MS) {
       return this._lastApiStatus;
     }
@@ -670,6 +690,15 @@ class AntigravityAuthManager {
         ? sortedIds
         : Object.keys(models).filter((id) => models[id]?.displayName);
 
+      // PRD-109: this is the live quota read point. If every usable model is at/under
+      // the soft floor, trip the cooldown so we stop routing before exhaustion.
+      const fractions = ids
+        .map((id) => models[id]?.quotaInfo?.remainingFraction)
+        .filter((f) => f != null);
+      if (fractions.length > 0 && Math.max(...fractions) <= SOFT_QUOTA_FLOOR) {
+        this.tripCooldown('quota floor');
+      }
+
       return ids
         .filter((id) => models[id] && !deprecated.has(id))
         .filter((id) => !models[id]?.quotaInfo?.isExhausted)
@@ -684,6 +713,8 @@ class AntigravityAuthManager {
           quotaResetTime: models[id]?.quotaInfo?.resetTime ?? null,
         }));
     } catch (error) {
+      const status = error.response?.status;
+      if (status === 403 || status === 429) this.tripCooldown(`fetchAvailableModels HTTP ${status}`);
       console.warn('[AntigravityAuth] fetchAvailableModels failed:', error.message);
       return [];
     }

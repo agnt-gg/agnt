@@ -179,19 +179,31 @@ class AntigravityOAuthProxy extends GeminiOAuthProxy {
   async _generateContent(params) {
     const url = `${GEMINI_OAUTH_BASE}:generateContent`;
     const body = this._buildRequest(params);
-    const res = await this._auth.request({
-      url, method: 'POST', data: body, headers: ANTIGRAVITY_CLIENT_HEADERS,
-    });
-    return this._extractResponse(res.data);
+    try {
+      const res = await this._auth.request({
+        url, method: 'POST', data: body, headers: ANTIGRAVITY_CLIENT_HEADERS,
+      });
+      return this._extractResponse(res.data);
+    } catch (e) {
+      const s = e.response?.status; // PRD-109: trip cooldown, never retry-storm
+      if (s === 403 || s === 429) AntigravityAuthManager.tripCooldown(`generateContent HTTP ${s}`);
+      throw e;
+    }
   }
 
   async _generateContentStream(params) {
     const url = `${GEMINI_OAUTH_BASE}:streamGenerateContent?alt=sse`;
     const body = this._buildRequest(params);
-    const res = await this._auth.request({
-      url, method: 'POST', data: body, responseType: 'stream', headers: ANTIGRAVITY_CLIENT_HEADERS,
-    });
-    return this._parseSSEStream(res.data);
+    try {
+      const res = await this._auth.request({
+        url, method: 'POST', data: body, responseType: 'stream', headers: ANTIGRAVITY_CLIENT_HEADERS,
+      });
+      return this._parseSSEStream(res.data);
+    } catch (e) {
+      const s = e.response?.status; // PRD-109: trip cooldown, never retry-storm
+      if (s === 403 || s === 429) AntigravityAuthManager.tripCooldown(`streamGenerateContent HTTP ${s}`);
+      throw e;
+    }
   }
 }
 
@@ -433,6 +445,12 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
   // Same cloudcode-pa endpoint as gemini-cli OAuth, but Antigravity client
   // identity + extra scopes unlock Gemini 3.x + Claude 4.6 + GPT-OSS.
   if (lowerCaseProvider === 'antigravity') {
+    if (AntigravityAuthManager.isCoolingDown()) {
+      throw Object.assign(
+        new Error('Antigravity is cooling down to protect your Google account. Use an API-key provider.'),
+        { code: 'ANTIGRAVITY_COOLDOWN', retryAfterMs: AntigravityAuthManager.cooldownMsLeft() },
+      );
+    }
     const token = await AntigravityAuthManager.getAccessToken();
     if (!token) {
       throw new Error('Antigravity is not connected. Use Google OAuth to connect.');
