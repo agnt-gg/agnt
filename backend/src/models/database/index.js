@@ -368,11 +368,25 @@ function createTables() {
         error TEXT,
         credits_used REAL DEFAULT 0,
         FOREIGN KEY (execution_id) REFERENCES workflow_executions(id)
-      )`);
-
-      // Index for faster node execution lookups by execution_id (CRITICAL for run details)
+      )`);      // Index for faster node execution lookups by execution_id (CRITICAL for run details)
       db.run(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_id ON node_executions(execution_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_node_executions_execution_status ON node_executions(execution_id, status)`);
+
+      // Daily activity rollup for the dashboard's Automation Activity chart.
+      // One row per (user_id, local date) with pre-aggregated credits/tokens/cost.
+      // Finished days are immutable, so each is computed at most once from the
+      // raw execution tables (lazily, by ExecutionModel._getActivityViaRollup)
+      // and then served from here — O(days in window) per chart request instead
+      // of O(entire execution history).
+      db.run(`CREATE TABLE IF NOT EXISTS daily_usage_stats (
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        credits_used REAL DEFAULT 0,
+        total_tokens INTEGER DEFAULT 0,
+        estimated_cost REAL DEFAULT 0,
+        computed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, date)
+      )`);
 
       // Goal system tables - extending existing architecture
       db.run(`CREATE TABLE IF NOT EXISTS goals (
@@ -1076,6 +1090,68 @@ function createTables() {
       );
     });
   });
+}// --- Guarded build for the activity-chart covering index (2026-07-03) -------
+//
+// SQLite has no online index build: CREATE INDEX holds the write lock for its
+// full duration (it must read every table row once). On small tables that is
+// milliseconds and nobody notices; on whale installs (this table has carried
+// 1.3M rows / 100+ GB of blob payload) it is minutes — long enough to storm
+// every concurrent writer past the 10s busy_timeout. The guard cannot remove
+// that stall, only relocate it: small tables build inline at boot, large ones
+// defer to a post-boot idle window so the build doesn't collide with startup
+// activity (goal processors, waking workflows). Once built, the sqlite_master
+// check makes the whole path a permanent no-op.
+const ACTIVITY_INDEX = {
+  name: 'idx_node_executions_exec_tokens',
+  sql: `CREATE INDEX IF NOT EXISTS idx_node_executions_exec_tokens
+        ON node_executions(execution_id, input_tokens, output_tokens)`,
+  // ~500k rows ≈ a few seconds of build. Below this an inline build is
+  // imperceptible; above it the stall is long enough to break writers.
+  bigTableRows: 500000,
+};
+
+// Idle heuristic: mtime of the WAL sidecar. Every write from EVERY process
+// (main server + WorkflowProcess child) touches the WAL, so this observes
+// cross-process activity that an in-memory tracker would miss. Checkpoint
+// truncation also bumps mtime — an acceptable false-busy, never a false-idle.
+function isDbIdle(idleMs, cb) {
+  fs.stat(dbPath + '-wal', (err, st) => {
+    if (err) return cb(true); // no WAL file => no recent writes; fail open
+    cb(Date.now() - st.mtimeMs > idleMs);
+  });
+}
+
+function scheduleDeferredIndexBuild(attempt = 0) {
+  // Env overrides exist for tests only (time-compressing a 5-min/1-h schedule);
+  // production installs should never set them.
+  const RETRY_DELAY_MS = Number(process.env.AGNT_INDEX_GUARD_RETRY_MS) || 5 * 60 * 1000; // re-check every 5 min
+  const IDLE_THRESHOLD_MS = Number(process.env.AGNT_INDEX_GUARD_IDLE_MS) || 3 * 60 * 1000; // "quiet" = no writes for 3 min
+  const MAX_GATED_ATTEMPTS = Number(process.env.AGNT_INDEX_GUARD_MAX_ATTEMPTS) || 12; // gate on idleness for ~1h, then force
+
+  const timer = setTimeout(() => {
+    isDbIdle(IDLE_THRESHOLD_MS, (idle) => {
+      if (!idle && attempt < MAX_GATED_ATTEMPTS) {
+        return scheduleDeferredIndexBuild(attempt + 1);
+      }
+      if (!idle) {
+        console.warn(
+          `[migrations] DB never went idle within ~1h — building ${ACTIVITY_INDEX.name} anyway; writes may stall for a few minutes`
+        );
+      }
+      const t0 = Date.now();
+      db.run(ACTIVITY_INDEX.sql, (err) => {
+        if (err) {
+          // DDL is transactional: a failed/interrupted build rolls back and the
+          // sqlite_master check re-arms this path on next boot. No torn state.
+          console.error('[migrations] deferred index build failed (will retry next boot):', err);
+        } else {
+          console.log(`[migrations] ${ACTIVITY_INDEX.name} built in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+        }
+      });
+    });
+  }, RETRY_DELAY_MS);
+  // Maintenance must never be the reason the process won't exit.
+  if (typeof timer.unref === 'function') timer.unref();
 }
 
 // Function to run migrations
@@ -1173,6 +1249,54 @@ function runMigrations() {
           }
         });
       });
+
+      // Migration: Covering index for the activity chart's token aggregation (2026-07-03).
+      // Contains every column the /executions/activity inner subquery touches, so
+      // SQLite serves it index-only and never reads node_executions table rows —
+      // which matters because those rows carry multi-MB input/output JSON blobs in
+      // overflow-page chains that must be walked just to reach the trailing token
+      // columns. Must run AFTER the token-column migration above: the base CREATE
+      // TABLE does not include input_tokens/output_tokens on fresh installs.
+      // (db.run calls are serialized per connection, so submission order holds.)
+      //
+      // GUARDED: see ACTIVITY_INDEX above. Small tables build inline; large
+      // tables defer to an idle window instead of stalling writers at boot.
+      db.get(
+        `SELECT name FROM sqlite_master WHERE type='index' AND name = ?`,
+        [ACTIVITY_INDEX.name],
+        (idxErr, idxRow) => {
+          if (idxErr) {
+            // Status quo (no index this boot); self-heals on next boot.
+            console.error('[migrations] activity index existence check failed:', idxErr);
+            return;
+          }
+          if (idxRow) return; // already built — permanent no-op (the common case)
+
+          // MAX(rowid) is O(1) (one b-tree descent); COUNT(*) would scan an
+          // index. Overestimates after deletes — fine for a threshold heuristic.
+          db.get(`SELECT MAX(rowid) AS approxRows FROM node_executions`, (cntErr, r) => {
+            if (cntErr) {
+              console.error('[migrations] activity index row estimate failed:', cntErr);
+              return;
+            }
+            const approxRows = (r && r.approxRows) || 0;
+            if (approxRows < ACTIVITY_INDEX.bigTableRows) {
+              db.run(ACTIVITY_INDEX.sql, (err) => {
+                if (err) {
+                  console.error('Error creating idx_node_executions_exec_tokens:', err);
+                }
+              });
+            } else {
+              console.warn(
+                `[migrations] node_executions has ~${approxRows.toLocaleString()} rows — ` +
+                  `deferring ${ACTIVITY_INDEX.name} build to an idle window (activity chart ` +
+                  `uses the slower un-indexed path until then)`
+              );
+              scheduleDeferredIndexBuild();
+            }
+          });
+        }
+      );
 
       // Migration: Add token usage columns to evaluation tables (2026-03-11)
       const evalTokenColumns = [

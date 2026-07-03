@@ -1,5 +1,33 @@
-import db from './database/index.js';
+import db, { dbRunWithRetry } from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
+
+// --- Promisified db helpers (module-local) ---------------------------------
+const dbAll = (query, params) =>
+  new Promise((resolve, reject) => db.all(query, params, (err, rows) => (err ? reject(err) : resolve(rows || []))));
+const dbGet = (query, params) =>
+  new Promise((resolve, reject) => db.get(query, params, (err, row) => (err ? reject(err) : resolve(row))));
+const dbRun = (query, params) =>
+  new Promise((resolve, reject) =>
+    db.run(query, params, function (err) {
+      if (err) reject(err);
+      else resolve(this);
+    })
+  );
+
+// 'YYYY-MM-DD' + n days -> 'YYYY-MM-DD', computed in the server's local
+// timezone — the same clock SQLite's 'localtime' modifier uses, so day
+// boundaries agree between JS and the SQL grouping.
+const addDays = (ymd, n) => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+};
+
+const eachDay = (fromYmd, toYmd) => {
+  const days = [];
+  for (let d = fromYmd; d <= toYmd; d = addDays(d, 1)) days.push(d);
+  return days;
+};
 
 class ExecutionModel {
   static create(workflowId, userId, workflowName) {
@@ -163,8 +191,107 @@ class ExecutionModel {
         output: safeParse(ne.output),
       })),
     };
+  }  // Public entry point for POST /executions/activity.
+  //
+  // Serves finished days from the daily_usage_stats rollup (O(days) reads) and
+  // computes only "today" live. Historical days are immutable, so each is
+  // aggregated from the execution tables at most once, then cached forever.
+  // Any rollup failure falls back to the original full-window aggregation —
+  // slower, but never wrong.
+  static async getAgentActivityData(userId, startDate, endDate) {
+    try {
+      return await ExecutionModel._getActivityViaRollup(userId, startDate, endDate);
+    } catch (error) {
+      console.error('[activity] rollup path failed, falling back to raw aggregation:', error);
+      return ExecutionModel._computeActivityRaw(userId, startDate, endDate);
+    }
   }
-  static getAgentActivityData(userId, startDate, endDate) {
+
+  static async _getActivityViaRollup(userId, startDate, endDate) {
+    // Normalize to plain local-date strings (the frontend sends 'YYYY-MM-DD',
+    // with endDate = tomorrow, i.e. the chart displays [startDate, endDate)).
+    const reqStart = String(startDate).slice(0, 10);
+    const reqEnd = String(endDate).slice(0, 10);
+    // Use SQLite's clock for "today" so the boundary matches the
+    // DATE(..., 'localtime') grouping in the raw query.
+    const { today } = await dbGet(`SELECT DATE('now', 'localtime') AS today`, []);
+    const yesterday = addDays(today, -1);
+
+    // --- 1. Finished days, served from the rollup ---------------------------
+    const lastRequested = addDays(reqEnd, -1);
+    const rollEnd = lastRequested < yesterday ? lastRequested : yesterday;
+    const rowsByDate = new Map();
+    if (reqStart <= rollEnd) {
+      // Yesterday gets a 1-hour freshness window: a workflow that was still
+      // running when yesterday's rollup was computed may have finished (and
+      // written credits) since. Treating a stale yesterday-row as missing
+      // forces one cheap single-day recompute; older days stay cached forever.
+      const cached = await dbAll(
+        `SELECT date, credits_used, total_tokens, estimated_cost
+         FROM daily_usage_stats
+         WHERE user_id = ? AND date >= ? AND date <= ?
+           AND NOT (date = ? AND computed_at < datetime('now', '-1 hour'))`,
+        [userId, reqStart, rollEnd, yesterday]
+      );
+      for (const r of cached) rowsByDate.set(r.date, r);
+      const missing = eachDay(reqStart, rollEnd).filter((d) => !rowsByDate.has(d));
+
+      if (missing.length > 0) {
+        // Compute the missing span in one raw query, padded by a day on each
+        // side: start_time is stored in UTC but days are grouped in localtime,
+        // so executions belonging to the edge days can carry UTC timestamps
+        // outside the local-date range. Padding + keeping only the missing
+        // days guarantees every persisted day is complete in any timezone.
+        const spanStart = missing[0];
+        const spanEnd = missing[missing.length - 1];
+        const raw = await ExecutionModel._computeActivityRaw(userId, addDays(spanStart, -1), addDays(spanEnd, 2));
+        const rawByDate = new Map(raw.map((r) => [r.date, r]));
+
+        for (const day of missing) {
+          const row = rawByDate.get(day) || { credits_used: 0, total_tokens: 0, estimated_cost: 0 };
+          // Persist zero-rows too — "no activity" must be cacheable, or empty
+          // days would be recomputed on every request. Only finished days are
+          // ever persisted (rollEnd <= yesterday), never today.
+          // Retry on SQLITE_BUSY: the workflow process writes concurrently, and
+          // one transient lock collision shouldn't abort the whole backfill into
+          // the slow raw-query fallback path.
+          await dbRunWithRetry(() => dbRun(
+            `INSERT INTO daily_usage_stats (user_id, date, credits_used, total_tokens, estimated_cost, computed_at)
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+             ON CONFLICT(user_id, date) DO UPDATE SET
+               credits_used = excluded.credits_used,
+               total_tokens = excluded.total_tokens,
+               estimated_cost = excluded.estimated_cost,
+               computed_at = CURRENT_TIMESTAMP`,
+            [userId, day, row.credits_used || 0, row.total_tokens || 0, row.estimated_cost || 0]
+          ));
+          rowsByDate.set(day, {
+            date: day,
+            credits_used: row.credits_used || 0,
+            total_tokens: row.total_tokens || 0,
+            estimated_cost: row.estimated_cost || 0,
+          });
+        }
+      }
+    }
+
+    // --- 2. Today (still mutating) is always computed live, never cached ----
+    let todayRows = [];
+    if (lastRequested >= today) {
+      const rawToday = await ExecutionModel._computeActivityRaw(userId, yesterday, reqEnd);
+      todayRows = rawToday.filter((r) => r.date >= today);
+    }
+
+    // Match the raw query's response shape: only days with activity, ascending
+    // by date. (The frontend zero-fills the window itself via fillMissingDates,
+    // and clips anything outside [startDate, endDate) — so dropping the raw
+    // query's partial out-of-window edge rows changes nothing it displays.)
+    return [...rowsByDate.values(), ...todayRows]
+      .filter((r) => r.credits_used || r.total_tokens || r.estimated_cost)
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }
+
+  static _computeActivityRaw(userId, startDate, endDate) {
     return new Promise((resolve, reject) => {
       // The dashboard's Cumulative Credits chart calls this on every mount.
       // Output is one row per date (small response), but the work to compute
