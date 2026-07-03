@@ -85,6 +85,14 @@ const ANTIGRAVITY_HEADERS = {
   'Client-Metadata': JSON.stringify(CLIENT_METADATA),
 };
 
+// fetchAvailableModels is gated the OPPOSITE way from loadCodeAssist: it returns
+// 403 for the nodejs-client UA and requires the full Antigravity browser UA
+// (verified against the live gateway). Keep the version bumpable via env.
+const ANTIGRAVITY_BROWSER_HEADERS = {
+  'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${process.env.ANTIGRAVITY_VERSION || '1.18.3'} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
+  'Client-Metadata': JSON.stringify(CLIENT_METADATA),
+};
+
 // ── Credential paths ─────────────────────────────────────────
 // We store OAuth tokens at ~/.antigravity/oauth_creds.json (our own file —
 // the real CLI uses the OS keychain which we can't read).
@@ -640,22 +648,40 @@ class AntigravityAuthManager {
         url: `${ANTIGRAVITY_BASE}:fetchAvailableModels`,
         method: 'POST',
         data: body,
-        headers: ANTIGRAVITY_HEADERS,
+        headers: ANTIGRAVITY_BROWSER_HEADERS,
       });
 
-      const models = res.data?.models || res.data?.availableModels || {};
-      const entries = Array.isArray(models)
-        ? models.map(m => [m.id || m.name, m])
-        : Object.entries(models);
+      const models = res.data?.models || {};
+      const deprecated = new Set(Object.keys(res.data?.deprecatedModelIds || {}));
 
-      return entries
-        .filter(([id]) => !!id)
-        .filter(([, info]) => !info?.quotaInfo?.isExhausted)
-        .map(([id, info]) => ({
-          id: String(id).replace(/^models\//, ''),
-          name: info?.displayName || String(id).replace(/^models\//, ''),
-          quotaRemaining: info?.quotaInfo?.remainingFraction ?? null,
-          quotaResetTime: info?.quotaInfo?.resetTime ?? null,
+      // The gateway's own "Recommended" agent sort is the authoritative list of
+      // chat-usable models (the raw map also contains internal tab/autocomplete
+      // models like chat_20706 / tab_* that reject generateContent).
+      const sortedIds = [];
+      for (const sort of res.data?.agentModelSorts || []) {
+        for (const group of sort.groups || []) {
+          for (const id of group.modelIds || []) {
+            if (!sortedIds.includes(id)) sortedIds.push(id);
+          }
+        }
+      }
+
+      const ids = sortedIds.length > 0
+        ? sortedIds
+        : Object.keys(models).filter((id) => models[id]?.displayName);
+
+      return ids
+        .filter((id) => models[id] && !deprecated.has(id))
+        .filter((id) => !models[id]?.quotaInfo?.isExhausted)
+        .map((id) => ({
+          id,
+          name: models[id]?.displayName || id,
+          maxTokens: models[id]?.maxTokens ?? null,
+          maxOutputTokens: models[id]?.maxOutputTokens ?? null,
+          supportsImages: models[id]?.supportsImages ?? false,
+          supportsThinking: models[id]?.supportsThinking ?? false,
+          quotaRemaining: models[id]?.quotaInfo?.remainingFraction ?? null,
+          quotaResetTime: models[id]?.quotaInfo?.resetTime ?? null,
         }));
     } catch (error) {
       console.warn('[AntigravityAuth] fetchAvailableModels failed:', error.message);

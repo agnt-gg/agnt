@@ -38,7 +38,7 @@ const PROVIDER_CONFIG = {
     supportsImageEdit: false,
   },
   antigravity: {
-    defaultModel: 'gemini-3-pro',
+    defaultModel: 'gemini-3.5-flash-low',
     supportsVision: true,
     supportsImageGen: false,
     supportsImageEdit: false,

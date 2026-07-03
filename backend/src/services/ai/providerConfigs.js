@@ -316,30 +316,36 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['gemini-3-pro', 'claude-sonnet-4-6', 'gemini-3-flash'],
+    // Model IDs are the gateway's REAL ids from :fetchAvailableModels (its
+    // "Recommended" agent sort, 2026-07-03). Do NOT invent ids here — the
+    // gateway 404s unknown models. Display names differ from ids (e.g.
+    // 'gemini-pro-agent' renders as "Gemini 3.1 Pro (High)"). Dynamic listing
+    // in ModelRoutes refreshes this live; this static list is the fallback.
+    recommendedModels: ['gemini-pro-agent', 'claude-sonnet-4-6', 'gemini-3.5-flash-low'],
     fallbackModels: [
-      'gemini-3-pro',
-      'gemini-3-flash',
-      'gemini-3-pro-high',
-      'gemini-3-pro-low',
-      'claude-opus-4-6',
+      'gemini-3.5-flash-low',
+      'gemini-3-flash-agent',
+      'gemini-3.5-flash-extra-low',
+      'gemini-3.1-pro-low',
+      'gemini-pro-agent',
       'claude-sonnet-4-6',
       'claude-opus-4-6-thinking',
-      'gemini-2.5-pro',
-      'gemini-2.5-flash',
+      'gpt-oss-120b-medium',
     ],
-    fallbackVisionModels: ['gemini-3-pro', 'gemini-2.5-pro'],
+    fallbackVisionModels: ['gemini-pro-agent', 'gemini-3.5-flash-low'],
     // Antigravity is subscription-included — no per-token cost to the user.
+    // contextWindow/maxOutputTokens mirror the live endpoint's maxTokens/maxOutputTokens.
     modelMetadata: {
-      'gemini-3-pro': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
-      'gemini-3-pro-high': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
-      'gemini-3-pro-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3.5-flash-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3-flash-agent': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3.5-flash-extra-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3.1-pro-low': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-pro-agent': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-sonnet-4-6': { contextWindow: 250000, maxOutputTokens: 64000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-opus-4-6-thinking': { contextWindow: 250000, maxOutputTokens: 64000, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gpt-oss-120b-medium': { contextWindow: 131072, maxOutputTokens: 32768, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: false, supportsTools: true, reasoning: true },
+      'gemini-2.5-pro': { contextWindow: 1048576, maxOutputTokens: 65535, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-3-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
-      'claude-opus-4-6': { contextWindow: 200000, maxOutputTokens: 16384, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
-      'claude-sonnet-4-6': { contextWindow: 200000, maxOutputTokens: 16384, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
-      'claude-opus-4-6-thinking': { contextWindow: 200000, maxOutputTokens: 16384, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
-      'gemini-2.5-pro': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
-      'gemini-2.5-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
     },
     compat: {},
     sdkOptions: {},
