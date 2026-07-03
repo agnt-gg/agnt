@@ -6,6 +6,25 @@ import { promisify } from 'util';
 
 const execPromise = promisify(exec);
 
+/**
+ * A path is "fully qualified" when it needs no root to resolve unambiguously:
+ *   - Windows drive path:  C:\foo or C:/foo
+ *   - UNC path:            \\server\share
+ *   - POSIX root path:     /foo (only on non-Windows; on Windows a leading
+ *     slash/backslash is DRIVE-RELATIVE and must still join with the root,
+ *     e.g. root="C:\proj" + path="\blogs\a.md" -> C:\proj\blogs\a.md)
+ * Note: path.isAbsolute() is NOT the right test here - it returns true for
+ * Windows drive-relative paths like "\blogs\a.md", which existing workflows
+ * rely on being joined under rootDirectory.
+ */
+function isFullyQualifiedPath(p) {
+  const s = String(p);
+  if (/^[a-zA-Z]:[\\/]/.test(s)) return true; // drive path
+  if (s.startsWith('\\\\') || s.startsWith('//')) return true; // UNC
+  if (process.platform !== 'win32' && s.startsWith('/')) return true; // POSIX root
+  return false;
+}
+
 class FileSystemOperation extends BaseAction {
   static schema = {
     title: 'File System Operation',
@@ -17,7 +36,9 @@ class FileSystemOperation extends BaseAction {
       rootDirectory: {
         type: 'string',
         inputType: 'text',
-        description: 'The root directory for file system operations',
+        required: false,
+        description:
+          'Optional. Base directory that relative paths resolve against (and are sandboxed to). Not needed when path is a full absolute path.',
       },
       operation: {
         type: 'string',
@@ -28,7 +49,8 @@ class FileSystemOperation extends BaseAction {
       path: {
         type: 'string',
         inputType: 'text',
-        description: 'The relative path for the file or directory',
+        description:
+          'File or directory path. A full absolute path (C:\\Users\\... or /home/...) works on its own; a relative path requires rootDirectory.',
       },
       content: {
         type: 'string',
@@ -76,7 +98,31 @@ class FileSystemOperation extends BaseAction {
     }
 
     const { rootDirectory, operation, path: filePath, content } = params;
-    const fullPath = path.join(rootDirectory, filePath);
+    const trimmedRoot = String(rootDirectory ?? '').trim();
+
+    let fullPath;
+    if (isFullyQualifiedPath(filePath)) {
+      // Fully qualified path: use as-is. rootDirectory (if any) is not needed.
+      fullPath = filePath;
+    } else {
+      // Relative (or Windows drive-relative) path: join under the root,
+      // exactly as before. validateParams guarantees trimmedRoot is set here.
+      fullPath = path.join(trimmedRoot, filePath);
+
+      // Opt-in sandbox: a relative path must stay inside the provided root.
+      // Blocks ../.. traversal that path.join would silently allow.
+      const resolvedFull = path.resolve(fullPath);
+      const resolvedRoot = path.resolve(trimmedRoot);
+      const cmpFull = process.platform === 'win32' ? resolvedFull.toLowerCase() : resolvedFull;
+      const cmpRoot = process.platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
+      if (cmpFull !== cmpRoot && !cmpFull.startsWith(cmpRoot + path.sep)) {
+        return this.formatOutput({
+          success: false,
+          result: null,
+          error: `Path escapes rootDirectory: "${filePath}" resolves outside "${trimmedRoot}"`,
+        });
+      }
+    }
 
     console.log(`Performing ${operation} operation on ${fullPath}`);
 
@@ -239,14 +285,17 @@ class FileSystemOperation extends BaseAction {
 
   validateParams(params) {
     console.log('Validating parameters:', JSON.stringify(params, null, 2));
-    if (!params.rootDirectory) {
-      throw new Error('Root directory is required for file system operation');
-    }
     if (!params.operation) {
       throw new Error('Operation is required for file system operation');
     }
     if (!params.path) {
       throw new Error('File path (params.path) is required for file system operation');
+    }
+    // rootDirectory is only required when the path cannot stand on its own.
+    if (!String(params.rootDirectory ?? '').trim() && !isFullyQualifiedPath(params.path)) {
+      throw new Error(
+        'Provide either a full absolute path, or a rootDirectory to resolve the relative path against'
+      );
     }
     if (params.operation === 'writeFile' && !params.content) {
       throw new Error('Content is required for writeFile operation');
