@@ -3,6 +3,7 @@ import TaskModel from '../../models/TaskModel.js';
 import GoalIterationModel from '../../models/GoalIterationModel.js';
 import AgentTaskMatcher from './AgentTaskMatcher.js';
 import LlmExecutionService from '../ai/LlmExecutionService.js';
+import { raceWithAbort, GoalCancelledError, isCancellationError } from '../../utils/abortUtils.js';
 import { getAvailableToolSchemas } from '../orchestrator/tools.js';
 import GoalEvaluator from './GoalEvaluator.js';
 import GoalProcessor from './GoalProcessor.js';
@@ -24,6 +25,33 @@ const execAsync = promisify(exec);
 class TaskOrchestrator {
   static runningGoals = new Map(); // Track active goals
 
+  /**
+   * Abort a running goal's in-flight work and remove it from tracking.
+   * reason: 'paused' | 'stopped'. The abort reason (a GoalCancelledError)
+   * propagates through raceWithAbort so awaits unblock immediately.
+   */
+  static _cancelGoal(goalId, reason) {
+    const entry = this.runningGoals.get(goalId);
+    this.runningGoals.delete(goalId);
+    if (entry?.abortController && !entry.abortController.signal.aborted) {
+      entry.abortController.abort(new GoalCancelledError(goalId, reason));
+    }
+    if (entry?.userId) {
+      broadcastToUser(entry.userId, RealtimeEvents.GOAL_UPDATED, {
+        id: goalId,
+        status: reason,
+      });
+    }
+  }
+
+  static _getGoalSignal(goalId) {
+    return this.runningGoals.get(goalId)?.abortController?.signal || null;
+  }
+
+  static _isCancellation(error) {
+    return isCancellationError(error);
+  }
+
   static async executeGoal(goalId, userId, experimentContext = null, provider = null, model = null, conversationId = null) {
     try {
       // Mark goal as executing
@@ -42,6 +70,7 @@ class TaskOrchestrator {
         userId,
         startTime: Date.now(),
         status: 'executing',
+        abortController: new AbortController(),
         experimentContext,
         provider,
         model,
@@ -69,6 +98,7 @@ class TaskOrchestrator {
   }
   static async executeGoalTasks(goalId, userId, provider = null, model = null) {
     console.log(`Starting workflow-based execution for goal ${goalId}`);
+    const signal = this._getGoalSignal(goalId);
 
     try {
       // Get all tasks for this goal, ordered by order_index
@@ -135,12 +165,16 @@ class TaskOrchestrator {
         if (executableTasks.length === 1) {
           // Single task — run directly
           try {
-            const taskOutputs = await this.executeTask(executableTasks[0], userId, previousGroupOutputs, provider, model);
+            const taskOutputs = await this.executeTask(executableTasks[0], userId, previousGroupOutputs, provider, model, signal);
             if (taskOutputs) {
               previousGroupOutputs = taskOutputs;
               console.log(`[TaskOrchestrator] Task ${executableTasks[0].id} completed with outputs for next group`);
             }
           } catch (error) {
+            if (this._isCancellation(error)) {
+              console.log(`Goal ${goalId} cancelled during task ${executableTasks[0].id} — ending execution`);
+              return;
+            }
             console.error(`Error executing task ${executableTasks[0].id}:`, error);
             await TaskModel.updateStatus(executableTasks[0].id, 'failed');
             break;
@@ -149,12 +183,13 @@ class TaskOrchestrator {
           // Multiple tasks at same order_index — run in parallel
           console.log(`[TaskOrchestrator] Running ${executableTasks.length} tasks in parallel (order_index: ${orderIndex})`);
           const results = await Promise.allSettled(
-            executableTasks.map(task => this.executeTask(task, userId, previousGroupOutputs, provider, model))
+            executableTasks.map(task => this.executeTask(task, userId, previousGroupOutputs, provider, model, signal))
           );
 
           // Collect outputs from all parallel tasks
           const groupOutputs = [];
           let hasFailure = false;
+          let cancelled = false;
           for (let i = 0; i < results.length; i++) {
             const result = results[i];
             if (result.status === 'fulfilled' && result.value) {
@@ -164,10 +199,19 @@ class TaskOrchestrator {
                 ...result.value,
               });
             } else if (result.status === 'rejected') {
+              if (this._isCancellation(result.reason)) {
+                cancelled = true;
+                continue;
+              }
               console.error(`Error executing parallel task ${executableTasks[i].id}:`, result.reason);
               await TaskModel.updateStatus(executableTasks[i].id, 'failed');
               hasFailure = true;
             }
+          }
+
+          if (cancelled) {
+            console.log(`Goal ${goalId} cancelled during parallel task execution — ending execution`);
+            return;
           }
 
           // Merge parallel outputs for the next group
@@ -195,11 +239,15 @@ class TaskOrchestrator {
         }
       }
     } catch (error) {
+      if (this._isCancellation(error)) {
+        console.log(`Goal ${goalId} cancelled — execution halted`);
+        return;
+      }
       console.error(`Error in goal execution for goal ${goalId}:`, error);
       await this.handleGoalError(goalId, error);
     }
   }
-  static async executeTask(task, userId, previousTaskOutputs = null, provider = null, model = null) {
+  static async executeTask(task, userId, previousTaskOutputs = null, provider = null, model = null, signal = null) {
     console.log(`[TaskOrchestrator] Executing task: ${task.title} (ID: ${task.id})`);
 
     try {
@@ -241,7 +289,7 @@ class TaskOrchestrator {
 
       // Step 4: Execute task via agent chat
       console.log(`[TaskOrchestrator] Step 4: Executing task via agent ${agent.name}`);
-      const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model);
+      const result = await this.executeTaskViaAgentChat(agent, taskMessage, userId, provider, model, signal);
       console.log(`[TaskOrchestrator] Step 4 Complete: Agent completed task execution`);
 
       // Step 5: Process and store results
@@ -260,6 +308,18 @@ class TaskOrchestrator {
 
       return taskOutputs; // Return outputs for next task
     } catch (error) {
+      if (this._isCancellation(error)) {
+        // Pause/stop/delete: leave the task resumable, never mark it failed.
+        console.log(`[TaskOrchestrator] Task ${task.id} cancelled (${error.message}) — resetting to pending`);
+        await TaskModel.updateStatus(task.id, 'pending', 0).catch(() => {});
+        broadcastToUser(userId, RealtimeEvents.GOAL_TASK_UPDATED, {
+          goalId: task.goal_id,
+          taskId: task.id,
+          title: task.title,
+          status: 'pending',
+        });
+        throw error;
+      }
       console.error(`[TaskOrchestrator] Error executing task ${task.id}:`, error);
       console.log(`[TaskOrchestrator] Marking task ${task.id} as failed due to error`);
       await TaskModel.updateStatus(task.id, 'failed');
@@ -303,7 +363,7 @@ Begin working on this task now.`;
 
     return message;
   }
-  static async executeTaskViaAgentChat(agent, taskMessage, userId, reqProvider = null, reqModel = null) {
+  static async executeTaskViaAgentChat(agent, taskMessage, userId, reqProvider = null, reqModel = null, signal = null) {
     console.log(`[TaskOrchestrator] Sending task to agent ${agent.name} via chat`);
 
     try {
@@ -371,6 +431,7 @@ Begin working on this task now.`;
           agentName: agent.name,
         },
         maxToolRounds: 10,
+        signal,
       });
 
       // Format response to match expected structure
@@ -631,6 +692,12 @@ The goal you delegated did not fully pass. Let the user know:
     console.log(`[TaskOrchestrator] Goal failure notification sent to conversation ${conversationId} for goal ${goalId}`);
   }
   static async handleGoalError(goalId, error) {
+    if (this._isCancellation(error)) {
+      // Pause/stop/delete is not a failure — never overwrite 'paused'/'stopped' with 'failed'.
+      console.log(`Goal ${goalId} cancelled — not marking as failed`);
+      this.runningGoals.delete(goalId);
+      return;
+    }
     const goalData = this.runningGoals.get(goalId);
     const userId = goalData?.userId;
 
@@ -726,7 +793,7 @@ The goal you delegated did not fully pass. Let the user know:
   }
   static async pauseGoal(goalId) {
     await GoalModel.updateStatus(goalId, 'paused');
-    this.runningGoals.delete(goalId);
+    this._cancelGoal(goalId, 'paused');
   }
   static async resumeGoal(goalId, provider = null, model = null) {
     const goal = await GoalModel.findOne(goalId);
@@ -744,6 +811,7 @@ The goal you delegated did not fully pass. Let the user know:
         userId: goal.user_id,
         startTime: Date.now(),
         status: 'executing',
+        abortController: new AbortController(),
         provider,
         model,
       });
@@ -758,7 +826,7 @@ The goal you delegated did not fully pass. Let the user know:
   }
   static async stopGoal(goalId) {
     await GoalModel.updateStatus(goalId, 'stopped');
-    this.runningGoals.delete(goalId);
+    this._cancelGoal(goalId, 'stopped');
   }
   static async storeTaskResults(taskId, results) {
     // For now, just log the results. Later you might want to store these in a task_results table
@@ -783,6 +851,7 @@ The goal you delegated did not fully pass. Let the user know:
         userId,
         startTime: Date.now(),
         status: 'executing',
+        abortController: new AbortController(),
         autonomous: true,
         provider,
         model,
@@ -862,6 +931,13 @@ The goal you delegated did not fully pass. Let the user know:
           // Don't break — evaluate what we have
         }
 
+        // Cancellation check between phases: don't burn an evaluation LLM call after pause/stop
+        if (!this.runningGoals.has(goalId)) {
+          console.log(`[AGI Loop] Goal ${goalId} was paused/stopped during execution at iteration ${iteration}`);
+          await GoalModel.updateLoopStatus(goalId, 'stopped');
+          return { goalId, status: 'stopped', iteration };
+        }
+
         // Phase 2: Evaluate
         broadcastToUser(userId, RealtimeEvents.GOAL_ITERATION_EVALUATE, {
           goalId,
@@ -872,8 +948,16 @@ The goal you delegated did not fully pass. Let the user know:
         let evaluation;
         let evaluationFailed = false;
         try {
-          evaluation = await GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model);
+          evaluation = await raceWithAbort(
+            GoalEvaluator.evaluateGoal(goalId, userId, 'automatic', provider, model),
+            this._getGoalSignal(goalId)
+          );
         } catch (error) {
+          if (this._isCancellation(error)) {
+            console.log(`[AGI Loop] Goal ${goalId} cancelled during evaluation at iteration ${iteration}`);
+            await GoalModel.updateLoopStatus(goalId, 'stopped');
+            return { goalId, status: 'stopped', iteration };
+          }
           console.error(`[AGI Loop] Evaluation error at iteration ${iteration}:`, error);
           evaluationFailed = true;
           evaluation = { passed: false, scores: { overall: 0 }, feedback: error.message };
@@ -958,6 +1042,13 @@ The goal you delegated did not fully pass. Let the user know:
           return { goalId, status: 'completed', iteration, score: evaluation.scores.overall };
         }
 
+        // Cancellation check between phases: don't burn a replanning LLM call after pause/stop
+        if (!this.runningGoals.has(goalId)) {
+          console.log(`[AGI Loop] Goal ${goalId} was paused/stopped before replanning at iteration ${iteration}`);
+          await GoalModel.updateLoopStatus(goalId, 'stopped');
+          return { goalId, status: 'stopped', iteration };
+        }
+
         // Phase 4: Re-plan failed tasks
         console.log(`[AGI Loop] Goal ${goalId} needs improvement (${evaluation.scores.overall}%) — re-planning`);
         await GoalModel.updateLoopStatus(goalId, 'replanning');
@@ -972,13 +1063,16 @@ The goal you delegated did not fully pass. Let the user know:
           phase: 'replanning',
         });
 
-        const replannedTasks = await this._replanFailedTasks(goalId, evaluation, userId, provider, model, {
-          bestScore,
-          bestIteration,
-          isImprovement,
-          bestTaskSnapshot,
-          currentIteration: iteration,
-        });
+        const replannedTasks = await raceWithAbort(
+          this._replanFailedTasks(goalId, evaluation, userId, provider, model, {
+            bestScore,
+            bestIteration,
+            isImprovement,
+            bestTaskSnapshot,
+            currentIteration: iteration,
+          }),
+          this._getGoalSignal(goalId)
+        );
 
         // Guard: detect identical re-plans
         const replanHash = JSON.stringify(replannedTasks.map((t) => t.title + t.description).sort());
@@ -1052,6 +1146,11 @@ The goal you delegated did not fully pass. Let the user know:
       this.runningGoals.delete(goalId);
       return { goalId, status: 'max_iterations', iteration: maxIterations };
     } catch (error) {
+      if (this._isCancellation(error)) {
+        console.log(`[AGI Loop] Goal ${goalId} cancelled — loop halted`);
+        await GoalModel.updateLoopStatus(goalId, 'stopped').catch(() => {});
+        return { goalId, status: 'stopped' };
+      }
       console.error(`[AGI Loop] Fatal error for goal ${goalId}:`, error);
       await GoalModel.updateLoopStatus(goalId, 'error');
       await this.handleGoalError(goalId, error);
