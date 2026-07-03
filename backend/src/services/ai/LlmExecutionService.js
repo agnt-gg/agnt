@@ -4,6 +4,7 @@ import { executeTool } from '../orchestrator/tools.js';
 import { loadWorkspaceContextSection } from '../orchestrator/workspaceContext.js';
 import { getPlatformContextSection } from '../orchestrator/system-prompts/platform-context.js';
 import { manageContext } from '../../utils/contextManager.js';
+import { raceWithAbort } from '../../utils/abortUtils.js';
 import crypto from 'crypto';
 
 /**
@@ -131,11 +132,12 @@ class LlmExecutionService {
    * @param {string} config.systemPrompt - System prompt (optional, will be prepended)
    * @param {Object} config.context - Additional context for tool execution
    * @param {number} config.maxToolRounds - Maximum tool execution rounds (default: 10)
+   * @param {AbortSignal} config.signal - Optional abort signal for cooperative cancellation (goal pause/stop)
    * @returns {Promise<Object>} { responseMessage, toolExecutions, messages }
    */
   async executeWithTools(config) {
     const startTime = Date.now();
-    const { provider, model, userId, messages: inputMessages, toolSchemas = [], systemPrompt = null, context = {}, maxToolRounds = 10 } = config;
+    const { provider, model, userId, messages: inputMessages, toolSchemas = [], systemPrompt = null, context = {}, maxToolRounds = 10, signal = null } = config;
 
     // Check cache first (only for non-tool calls to avoid stale data)
     const cacheKey = this._generateCacheKey(config);
@@ -187,8 +189,8 @@ class LlmExecutionService {
     // Track accumulated token usage across all LLM calls
     const accumulatedUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
-    // Initial LLM call
-    let { responseMessage, toolCalls, usage: initialUsage } = await adapter.call(messages, finalToolSchemas);
+    // Initial LLM call (raced against abort so pause/stop unblocks immediately)
+    let { responseMessage, toolCalls, usage: initialUsage } = await raceWithAbort(() => adapter.call(messages, finalToolSchemas), signal);
     if (initialUsage) {
       accumulatedUsage.inputTokens += initialUsage.prompt_tokens || initialUsage.input_tokens || 0;
       accumulatedUsage.outputTokens += initialUsage.completion_tokens || initialUsage.output_tokens || 0;
@@ -264,7 +266,7 @@ class LlmExecutionService {
         }
       });
 
-      const toolResponses = await Promise.all(toolPromises);
+      const toolResponses = await raceWithAbort(Promise.all(toolPromises), signal);
       const formattedToolResponses = adapter.formatToolResults(toolResponses);
       messages.push(...formattedToolResponses);
 
@@ -272,8 +274,8 @@ class LlmExecutionService {
       const loopContextResult = manageContext(messages, model, finalToolSchemas, provider);
       messages = loopContextResult.messages;
 
-      // Get next response
-      const nextResponse = await adapter.call(messages, finalToolSchemas);
+      // Get next response (factory form: never fires if already aborted)
+      const nextResponse = await raceWithAbort(() => adapter.call(messages, finalToolSchemas), signal);
       responseMessage = nextResponse.responseMessage;
       toolCalls = nextResponse.toolCalls;
       if (nextResponse.usage) {
