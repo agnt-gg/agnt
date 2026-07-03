@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "0.6.1",
+      "date": "July 3, 2026",
+      "title": "Antigravity Provider, File Watcher Plugin & Faster Startup — AGNT v0.6.1",
+      "type": "patch",
+      "features": [
+        { "name": "New Antigravity provider adds Google's Antigravity as a one-click OAuth login with Gemini 3.x and Claude 4.6 models included", "status": "new" },
+        { "name": "New File System Watcher plugin fires workflows the moment any file or folder on your machine is created, changed, or deleted", "status": "new" },
+        { "name": "The Create Goal modal now lets you set a title, add success criteria, and schedule when the goal runs on a repeating or one-time basis", "status": "new" },
+        { "name": "You now get a clear popup when your login session ends mid-app instead of being silently redirected to settings with no explanation", "status": "new" },
+        { "name": "The custom system instructions field for Annie now accepts up to 10,000 characters so you can give her much longer guidance", "status": "updated" },
+        { "name": "App startup is around 43% lighter thanks to smaller bundles, self-hosted fonts, and no more render-blocking library downloads from the internet", "status": "updated" },
+        { "name": "The dashboard credits chart now loads instantly even when you're looking at a full year of history", "status": "updated" },
+        { "name": "Pausing, stopping, or deleting a Goal now actually cancels its in-flight work instead of letting it keep running in the background", "status": "bug" },
+        { "name": "Workflow code blocks can now reference trigger data with {{trigger.*}} and template placeholders resolve by node id everywhere they're used", "status": "bug" },
+        { "name": "Plugin triggers now cleanly shut down when you reload a plugin or stop a workflow instead of leaving ghost listeners firing in the background", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.0",
       "date": "July 1, 2026",
       "title": "Autonomy Engine, Desktop Computer Use & Plugin Trust — AGNT v0.6.0",
@@ -582,6 +601,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-05-28T12:00:00Z"
+    "lastUpdated": "2026-07-03T12:00:00Z"
   }
 }
