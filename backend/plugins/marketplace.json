@@ -867,12 +867,41 @@
         "utility"
       ],
       "category": "utility",
-      "tools": [
-        {
+      "tools": [        {
           "type": "list-files",
           "schema": {
             "title": "List Files in Directory",
             "description": "Lists all files in the current directory with optional filtering and metadata."
+          }
+        }
+      ]
+    },
+    {
+      "name": "fs-watcher-plugin",
+      "displayName": "File System Watcher",
+      "icon": "folder",
+      "version": "1.0.0",
+      "description": "Watch a file or directory for changes and trigger workflows on create, modify, and delete events. A single path input auto-detects whether it is a file or a directory, supports recursive subfolder watching, glob ignore patterns, and write-stability debouncing.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/fs-watcher-plugin.agnt",
+      "size": 104638,
+      "tags": [
+        "filesystem",
+        "watcher",
+        "file",
+        "directory",
+        "trigger",
+        "automation",
+        "monitor"
+      ],
+      "category": "utility",
+      "tools": [
+        {
+          "type": "fs-watcher-trigger",
+          "schema": {
+            "title": "File/Directory Watcher",
+            "description": "Watches a file or directory path for changes (create, modify, delete). Auto-detects whether the path is a file or a directory from a single input, with recursive watching, ignore globs, and debouncing."
           }
         }
       ]
