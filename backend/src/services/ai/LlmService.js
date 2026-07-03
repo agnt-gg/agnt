@@ -6,6 +6,7 @@ import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../auth/GeminiCliAuthManager.js';
+import AntigravityAuthManager from '../auth/AntigravityAuthManager.js';
 import CustomOpenAIProviderService from './CustomOpenAIProviderService.js';
 import { getProviderConfig } from './providerConfigs.js';
 import { createCchFetch } from './claudeBillingHeader.js';
@@ -142,6 +143,55 @@ class GeminiOAuthProxy {
         console.warn('[GeminiOAuthProxy] SSE flush parse error:', e.message);
       }
     }
+  }
+}
+
+// ── Antigravity OAuth Proxy ─────────────────────────────────────────
+// Same cloudcode-pa gateway as GeminiOAuthProxy, but adds the Antigravity
+// client identity: `antigravity` User-Agent + X-Goog-Api-Client headers, and
+// the top-level `requestType: 'agent'` / `userAgent: 'antigravity'` fields the
+// gateway keys off to route to the Antigravity quota pool and multi-vendor
+// model set (Gemini 3.x + Claude 4.6 + GPT-OSS). See PRD-107.
+
+// generateContent / streamGenerateContent carry the full Antigravity browser UA
+// (matches the reference client's getAntigravityHeaders). Google's version gate
+// only inspects `Antigravity/<version>` UAs — if this pin goes stale and Google
+// starts rejecting with "out of date", bump it via the ANTIGRAVITY_VERSION env
+// var (or update the fallback). Auth-path calls (loadCodeAssist/onboardUser in
+// AntigravityAuthManager) deliberately use the google-api-nodejs-client UA,
+// which has no version to gate.
+const ANTIGRAVITY_UA_VERSION = process.env.ANTIGRAVITY_VERSION || '1.18.3';
+const ANTIGRAVITY_META_PLATFORM = process.platform === 'win32' ? 'WINDOWS' : 'MACOS';
+const ANTIGRAVITY_CLIENT_HEADERS = {
+  'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${ANTIGRAVITY_UA_VERSION} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
+  'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1',
+  'Client-Metadata': JSON.stringify({ ideType: 'ANTIGRAVITY', platform: ANTIGRAVITY_META_PLATFORM, pluginType: 'GEMINI' }),
+};
+
+class AntigravityOAuthProxy extends GeminiOAuthProxy {
+  _buildRequest(params) {
+    const base = super._buildRequest(params);
+    // Antigravity gateway expects two extra top-level fields alongside
+    // { model, project, request }.
+    return { ...base, requestType: 'agent', userAgent: 'antigravity' };
+  }
+
+  async _generateContent(params) {
+    const url = `${GEMINI_OAUTH_BASE}:generateContent`;
+    const body = this._buildRequest(params);
+    const res = await this._auth.request({
+      url, method: 'POST', data: body, headers: ANTIGRAVITY_CLIENT_HEADERS,
+    });
+    return this._extractResponse(res.data);
+  }
+
+  async _generateContentStream(params) {
+    const url = `${GEMINI_OAUTH_BASE}:streamGenerateContent?alt=sse`;
+    const body = this._buildRequest(params);
+    const res = await this._auth.request({
+      url, method: 'POST', data: body, responseType: 'stream', headers: ANTIGRAVITY_CLIENT_HEADERS,
+    });
+    return this._parseSSEStream(res.data);
   }
 }
 
@@ -377,6 +427,22 @@ async function _createSpecialAuthClient(lowerCaseProvider, options) {
     // Ensure user is onboarded and get the Code Assist project ID
     const projectId = await GeminiCliAuthManager.ensureOnboarded(oauth2Client);
     return new GeminiOAuthProxy(oauth2Client, projectId);
+  }
+
+  // Antigravity — Google's unified gateway (OAuth only, multi-vendor models).
+  // Same cloudcode-pa endpoint as gemini-cli OAuth, but Antigravity client
+  // identity + extra scopes unlock Gemini 3.x + Claude 4.6 + GPT-OSS.
+  if (lowerCaseProvider === 'antigravity') {
+    const token = await AntigravityAuthManager.getAccessToken();
+    if (!token) {
+      throw new Error('Antigravity is not connected. Use Google OAuth to connect.');
+    }
+    const oauth2Client = AntigravityAuthManager.getOAuth2Client();
+    if (!oauth2Client) {
+      throw new Error('Antigravity OAuth credentials not found.');
+    }
+    const projectId = await AntigravityAuthManager.ensureOnboarded(oauth2Client);
+    return new AntigravityOAuthProxy(oauth2Client, projectId);
   }
 
   return null;

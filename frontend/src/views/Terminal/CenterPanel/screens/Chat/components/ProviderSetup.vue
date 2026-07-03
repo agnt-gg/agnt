@@ -162,6 +162,12 @@ export default {
         return;
       }
 
+      // Antigravity uses local Google OAuth (loopback) via the Antigravity gateway.
+      if (providerLower === 'antigravity') {
+        await connectAntigravityProvider(provider);
+        return;
+      }
+
       // If already connected, just select it.
       if (isProviderConnected(provider.id)) {
         await selectProvider(provider);
@@ -216,6 +222,63 @@ export default {
       } catch (error) {
         console.error(`Error connecting to ${provider.name}:`, error);
         await showAlert('Connection Error', `Failed to connect to ${provider.name}: ${error.message}`);
+      }
+    };
+
+    const connectAntigravityProvider = async (provider) => {
+      // Already connected on this machine? Just select it.
+      if (isProviderConnected(provider.id)) {
+        await selectProvider(provider);
+        await showAlert('Provider Ready', `${provider.name} is already connected on this machine.`);
+        return;
+      }
+
+      try {
+        const data = await providerAuthService.startOAuth('antigravity');
+        if (!data.authUrl) throw new Error('No authUrl returned');
+
+        if (window.electron?.openExternalUrl) {
+          window.electron.openExternalUrl(data.authUrl);
+        } else {
+          window.open(data.authUrl, '_blank');
+        }
+
+        const confirmed = await modal.value.showModal({
+          title: 'Antigravity Authentication',
+          message: `<div style="text-align:left">
+            <p>A browser window has opened for Google authentication.</p>
+            <p><strong>1.</strong> Sign in to your Google account</p>
+            <p><strong>2.</strong> Click <strong>Allow</strong> to grant access</p>
+            <p><strong>3.</strong> Return here and click <strong>I have signed in</strong></p>
+          </div>`,
+          confirmText: 'I have signed in',
+          cancelText: 'Cancel',
+          showCancel: true,
+          confirmClass: 'btn-primary',
+        });
+        if (!confirmed) return;
+
+        const maxAttempts = 20;
+        for (let i = 0; i < maxAttempts; i++) {
+          const status = await providerAuthService.pollOAuthStatus('antigravity', data.sessionId);
+
+          if (status.status === 'success') {
+            localStorage.removeItem('Antigravity_models');
+            await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
+            await selectProvider(provider);
+            await showAlert('Success', 'Antigravity connected via Google account.');
+            return;
+          }
+          if (status.status === 'error') {
+            await showAlert('Connection Failed', status.error || 'Google OAuth failed.');
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        await showAlert('Connection Failed', 'OAuth timed out. Please try again.');
+      } catch (error) {
+        console.warn('Antigravity OAuth failed:', error.message);
+        await showAlert('Connection Failed', `OAuth error: ${error.message}`);
       }
     };
 

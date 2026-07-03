@@ -5,6 +5,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import AuthManager from '../../../services/auth/AuthManager.js';
 import CodexAuthManager from '../../../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../../../services/auth/ClaudeCodeAuthManager.js';
+import GeminiCliAuthManager from '../../../services/auth/GeminiCliAuthManager.js';
+import AntigravityAuthManager from '../../../services/auth/AntigravityAuthManager.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens } from '../../../services/ai/providerConfigs.js';
@@ -24,6 +26,22 @@ const PROVIDER_CONFIG = {
     supportsImageGen: true,
     supportsImageEdit: true,
     imageModels: ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview', 'nano-banana-pro-preview'],
+  },
+  // Gemini CLI / Antigravity go through the cloudcode-pa OAuth gateway via
+  // createLlmClient + createLlmAdapter (PRD-107) — never PROVIDER_CONFIG.baseURL.
+  // Neither supports image generation (the gateway serves text/vision only);
+  // supportsImageGen: false makes handleImageGeneration reject them cleanly.
+  'gemini-cli': {
+    defaultModel: 'gemini-2.5-pro',
+    supportsVision: true,
+    supportsImageGen: false,
+    supportsImageEdit: false,
+  },
+  antigravity: {
+    defaultModel: 'gemini-3-pro',
+    supportsVision: true,
+    supportsImageGen: false,
+    supportsImageEdit: false,
   },
   grokai: {
     baseURL: 'https://api.x.ai/v1/',
@@ -412,6 +430,21 @@ class GenerateWithAiLlm extends BaseAction {
             if (!accessTokenOrApiKey) {
               throw new Error('OpenAI Codex token not found after login.');
             }
+          } else if (normalizedProvider === 'gemini-cli') {
+            const gcStatus = await GeminiCliAuthManager.checkApiUsable();
+            if (gcStatus?.deprecated) {
+              // Google discontinued Gemini CLI consumer OAuth on June 18, 2026 (PRD-107)
+              throw new Error(gcStatus.hint);
+            }
+            accessTokenOrApiKey = await GeminiCliAuthManager.getAccessToken();
+            if (!accessTokenOrApiKey) {
+              throw new Error('Gemini CLI is not connected. Use Google OAuth or paste an API key to connect.');
+            }
+          } else if (normalizedProvider === 'antigravity') {
+            accessTokenOrApiKey = await AntigravityAuthManager.getAccessToken();
+            if (!accessTokenOrApiKey) {
+              throw new Error('Antigravity is not connected. Use Google OAuth to connect.');
+            }
           } else {
             // All other providers use the remote auth service
             accessTokenOrApiKey = await this.authManager.getValidAccessToken(userId, normalizedProvider);
@@ -480,6 +513,10 @@ class GenerateWithAiLlm extends BaseAction {
       case 'kimi-code':
         response = await this.generateWithKimiCode({ ...params, prompt: fullPrompt });
         break;
+      case 'gemini-cli':
+      case 'antigravity':
+        response = await this.generateWithGoogleGateway({ ...params, prompt: fullPrompt });
+        break;
       case 'cerebras':
       case 'deepseek':
       case 'gemini':
@@ -531,6 +568,10 @@ class GenerateWithAiLlm extends BaseAction {
         break;
       case 'kimi-code':
         response = await this.generateWithKimiCode({ ...params, prompt, image });
+        break;
+      case 'gemini-cli':
+      case 'antigravity':
+        response = await this.generateWithGoogleGateway({ ...params, prompt, image });
         break;
       case 'deepseek':
       case 'gemini':
@@ -593,6 +634,48 @@ class GenerateWithAiLlm extends BaseAction {
       imageMetadata: response.imageMetadata || null,
       groundingMetadata: response.groundingMetadata || null,
       error: null,
+    };
+  }
+
+  async generateWithGoogleGateway(params) {
+    // gemini-cli / antigravity authenticate against the cloudcode-pa OAuth
+    // gateway — a raw GoogleGenerativeAI(apiKey) client would call the wrong
+    // endpoint (generativelanguage). Delegate to createLlmClient, which returns
+    // the GeminiOAuthProxy / AntigravityOAuthProxy the orchestrator chat uses
+    // (or a plain GoogleGenAI client for gemini-cli in API-key mode). The proxy
+    // mirrors the SDK surface: models.generateContent → { text, usageMetadata }.
+    const provider = params.provider.toLowerCase();
+    const client = await createLlmClient(provider, params.userId);
+    const model = params.model || PROVIDER_CONFIG[provider]?.defaultModel || 'gemini-2.5-pro';
+
+    const parts = [{ text: params.prompt }];
+    const imageData = this.processImageData(params);
+    if (imageData) {
+      parts.push({ inlineData: { mimeType: imageData.mimeType, data: imageData.base64Data } });
+    }
+
+    const config = {};
+    if (params.temperature != null && params.temperature !== '') {
+      config.temperature = Number(params.temperature);
+    }
+    if (params.maxTokens) {
+      config.maxOutputTokens = Number(params.maxTokens);
+    } else {
+      config.maxOutputTokens = resolveMaxOutputTokens(provider, model);
+    }
+
+    const response = await client.models.generateContent({
+      model,
+      config,
+      contents: [{ role: 'user', parts }],
+    });
+
+    const usage = response.usageMetadata || {};
+    return {
+      generatedText: response.text || '',
+      tokenCount: usage.totalTokenCount || 0,
+      inputTokens: usage.promptTokenCount || 0,
+      outputTokens: usage.candidatesTokenCount || 0,
     };
   }
 

@@ -27,6 +27,7 @@ const MODEL_CACHE_VERSION = 11;
 
 const BUILT_IN_PROVIDERS = [
   { key: 'anthropic', displayName: 'Anthropic' },
+  { key: 'antigravity', displayName: 'Antigravity' },
   { key: 'cerebras', displayName: 'Cerebras' },
   { key: 'chutes', displayName: 'Chutes' },
   { key: 'claude-code', displayName: 'Claude-Code' },
@@ -283,7 +284,7 @@ function inferReasoningControl(providerKey, modelId) {
     return buildReasoningControl('effort', options);
   }
 
-  if (lowerProvider === 'gemini' || lowerProvider === 'gemini-cli') {
+  if (lowerProvider === 'gemini' || lowerProvider === 'gemini-cli' || lowerProvider === 'antigravity') {
     if (isGemini3ReasoningModel(modelId) || isGemini25ReasoningModel(modelId)) {
       const options = [{ value: 'default', label: 'Default' }];
       if (lowerModel.includes('flash')) {
@@ -923,7 +924,7 @@ export default {
       try {
         const providerLower = resolveProviderKey(provider);
         const token = localStorage.getItem('token');
-        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'claude-code' || providerLower === 'gemini-cli';
+        const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'claude-code' || providerLower === 'gemini-cli' || providerLower === 'antigravity';
         if (!token && !isLocalProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }

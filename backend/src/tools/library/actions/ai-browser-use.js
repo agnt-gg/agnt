@@ -57,6 +57,9 @@ class AIBrowserUse extends BaseAction {
 
       // 2) Get or default the chosen provider
       const provider = params.provider || 'openai';
+      // The select options are display-cased ('OpenAI' / 'Gemini' / 'DeepSeek'),
+      // but the auth registry keys are lowercase — normalize for the lookup.
+      const authProvider = provider.toLowerCase();
 
       // 3) Get browser reuse setting
       const reuseBrowser = params.reuseBrowser === true;
@@ -64,11 +67,20 @@ class AIBrowserUse extends BaseAction {
       // 4) Fetch user's API key
       let apiKey;
       try {
-        apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, provider);
+        apiKey = await AuthManager.getValidAccessToken(workflowEngine.userId, authProvider);
       } catch (authErr) {
         throw new Error(`Failed to retrieve API key for ${provider}: ${authErr.message || authErr}`);
       }
       if (!apiKey) {
+        if (authProvider === 'gemini') {
+          // browser-use's ChatGoogleGenerativeAI only consumes raw API keys —
+          // Antigravity / Gemini CLI OAuth subscriptions can't be used here.
+          throw new Error(
+            'Browser Agent requires a standard Gemini API key. '
+            + 'Antigravity and Gemini CLI subscriptions are not supported for browser automation '
+            + '(browser-use can only consume raw API keys). Add a Gemini API key to use Google models.',
+          );
+        }
         throw new Error(`${provider.toUpperCase()} API key is missing or invalid. Please authenticate.`);
       }
 

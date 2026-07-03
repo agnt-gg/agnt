@@ -6,7 +6,7 @@ import { withFreshness } from '../_utils/withFreshness.js';
 import { TTL } from '../_utils/freshnessConfig.js';
 
 // CLI provider IDs that use local filesystem auth
-const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli'];
+const CLI_PROVIDER_IDS = ['openai-codex', 'claude-code', 'gemini-cli', 'antigravity'];
 
 // Tell the local backend a provider changed so it can fan a Socket.IO
 // event out to every other connected client (other tabs / chat panels)
@@ -224,7 +224,7 @@ const actions = {
         {
           id: 'claude-code',
           name: 'Claude Code',
-          icon: 'anthropic',
+          icon: 'claude',
           categories: ['AI'],
           connectionType: 'oauth',
           instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
@@ -237,6 +237,15 @@ const actions = {
           categories: ['AI'],
           connectionType: 'oauth',
           instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
+          localOnly: true,
+        },
+        {
+          id: 'antigravity',
+          name: 'Antigravity',
+          icon: 'antigravity',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions: 'Uses your Google account via the Antigravity gateway (Gemini 3.x + Claude models). OAuth only — no API key.',
           localOnly: true,
         },
       ];
@@ -268,7 +277,7 @@ const actions = {
         {
           id: 'claude-code',
           name: 'Claude Code',
-          icon: 'anthropic',
+          icon: 'claude',
           categories: ['AI'],
           connectionType: 'oauth',
           instructions: 'Uses Claude Code CLI locally (no API key). Authenticate via setup-token or paste your OAuth token.',
@@ -281,6 +290,15 @@ const actions = {
           categories: ['AI'],
           connectionType: 'oauth',
           instructions: 'Uses your Google account (no API key). Sign in with Google to use your AI Pro/Ultra subscription.',
+          localOnly: true,
+        },
+        {
+          id: 'antigravity',
+          name: 'Antigravity',
+          icon: 'antigravity',
+          categories: ['AI'],
+          connectionType: 'oauth',
+          instructions: 'Uses your Google account via the Antigravity gateway (Gemini 3.x + Claude models). OAuth only — no API key.',
           localOnly: true,
         },
       ]);
@@ -447,6 +465,17 @@ const actions = {
       return result;
     } catch (error) {
       console.error('Error disconnecting Gemini CLI:', error);
+      throw error;
+    }
+  },
+  async disconnectAntigravity({ commit, dispatch }) {
+    try {
+      const result = await providerAuthService.disconnect('antigravity');
+      commit('SET_CLI_PROVIDER_STATUS', { providerId: 'antigravity', status: { available: false, apiUsable: false, hint: 'Disconnected' } });
+      await dispatch('fetchConnectedApps', { forceRefresh: true });
+      return result;
+    } catch (error) {
+      console.error('Error disconnecting Antigravity:', error);
       throw error;
     }
   },
@@ -682,6 +711,7 @@ const getters = {
   claudeCodeStatus: (state) => state.cliProviderStatuses['claude-code'] || { available: false, apiUsable: false },
   claudeCodeSetupSession: (state) => state.claudeCodeSetupSession,
   geminiCliStatus: (state) => state.cliProviderStatuses['gemini-cli'] || { available: false, apiUsable: false },
+  antigravityStatus: (state) => state.cliProviderStatuses['antigravity'] || { available: false, apiUsable: false },
   claudeCodeNeedsReauth: (state) => {
     const s = state.cliProviderStatuses['claude-code'];
     return s?.available === false && s?.hint && s.hint.includes('expired');

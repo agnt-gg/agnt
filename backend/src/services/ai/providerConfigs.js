@@ -301,6 +301,50 @@ const PROVIDER_CONFIGS = [
     sdkOptions: {},
   },
 
+  // ─────────────────────────── ANTIGRAVITY ───────────────────────────
+  // Google's unified gateway (folded Gemini CLI into Antigravity, I/O 2026).
+  // OAuth-only, multi-vendor: Gemini 3.x + Claude 4.6 + GPT-OSS through one
+  // Google login. Routes through the GeminiAdapter via AntigravityOAuthProxy.
+  // ⚠️ ToS-gated — connect popup shows a consent warning (customPrompt). PRD-107.
+  {
+    key: 'antigravity',
+    name: 'Antigravity',
+    baseURL: 'https://cloudcode-pa.googleapis.com/v1internal',
+    sdkType: 'gemini',
+    authScheme: 'antigravity',
+    capabilities: {
+      text: { supportsStreaming: true, supportsTools: true },
+      vision: { supportsStreaming: true },
+    },
+    recommendedModels: ['gemini-3-pro', 'claude-sonnet-4-6', 'gemini-3-flash'],
+    fallbackModels: [
+      'gemini-3-pro',
+      'gemini-3-flash',
+      'gemini-3-pro-high',
+      'gemini-3-pro-low',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
+      'claude-opus-4-6-thinking',
+      'gemini-2.5-pro',
+      'gemini-2.5-flash',
+    ],
+    fallbackVisionModels: ['gemini-3-pro', 'gemini-2.5-pro'],
+    // Antigravity is subscription-included — no per-token cost to the user.
+    modelMetadata: {
+      'gemini-3-pro': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3-pro-high': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3-pro-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-opus-4-6': { contextWindow: 200000, maxOutputTokens: 16384, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-sonnet-4-6': { contextWindow: 200000, maxOutputTokens: 16384, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'claude-opus-4-6-thinking': { contextWindow: 200000, maxOutputTokens: 16384, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-2.5-pro': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-2.5-flash': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+    },
+    compat: {},
+    sdkOptions: {},
+  },
+
   // ─────────────────────────── GROKAI (xAI) ───────────────────────────
   {
     key: 'grokai',
@@ -987,6 +1031,7 @@ const PROVIDER_METADATA_FALLBACK = {
   'openai-codex': 'openai',
   'claude-code': 'anthropic',
   'gemini-cli': 'gemini',
+  'antigravity': 'gemini',
 };
 
 function buildReasoningControl(kind, options, defaultValue = 'default') {
@@ -1547,7 +1592,13 @@ export function getReasoningControl(providerKey, modelId) {
     return buildReasoningControl('effort', options);
   }
 
-  if (lowerProvider === 'gemini' || lowerProvider === 'gemini-cli') {
+  // Antigravity routes Claude models through the Gemini-style gateway; those
+  // manage their own thinking and expose no user-facing reasoning toggle.
+  if (lowerProvider === 'antigravity' && lowerModel.includes('claude')) {
+    return null;
+  }
+
+  if (lowerProvider === 'gemini' || lowerProvider === 'gemini-cli' || lowerProvider === 'antigravity') {
     if (isGemini3ReasoningModel(modelId)) {
       const options = [{ value: 'default', label: 'Default' }];
       if (lowerModel.includes('flash')) {

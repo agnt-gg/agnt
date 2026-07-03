@@ -3394,7 +3394,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
         // Providers `generate-with-ai-llm.handleVision` knows how to dispatch.
         const supportedProviders = [
           'openai', 'openai-codex', 'anthropic', 'claude-code',
-          'gemini', 'grokai', 'groq', 'deepseek', 'kimi', 'kimi-code',
+          'gemini', 'gemini-cli', 'antigravity', 'grokai', 'groq', 'deepseek', 'kimi', 'kimi-code',
           'openrouter', 'togetherai', 'zai', 'minimax', 'local',
         ];
         if (!supportedProviders.includes(normalizedProvider)) {

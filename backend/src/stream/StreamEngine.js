@@ -204,6 +204,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         case 'deepseek':
         case 'gemini':
         case 'gemini-cli':
+        case 'antigravity':
         case 'grokai':
         case 'groq':
         case 'kimi':
@@ -773,6 +774,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         deepseek: 'deepseek-reasoner',
         gemini: 'gemini-2.5-pro-exp-03-25',
         'gemini-cli': 'gemini-2.5-pro-exp-03-25',
+        antigravity: 'gemini-3-pro',
         grokai: 'grok-4',
         groq: 'llama-3.3-70b-versatile',
         kimi: 'kimi-k2.5',
@@ -856,6 +858,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'gemini':
         case 'gemini-cli':
+        case 'antigravity':
           response = await client.models.generateContent({
             model: selectedModel,
             config: {
@@ -1248,6 +1251,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         local: 'llama-3.2-1b-instruct',
         gemini: 'gemini-pro',
         'gemini-cli': 'gemini-pro',
+        antigravity: 'gemini-3-pro',
         grokai: 'grok-4',
         groq: 'mixtral-8x7b-32768',
         kimi: 'kimi-k2.5',
@@ -1323,6 +1327,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'gemini':
         case 'gemini-cli':
+        case 'antigravity':
           completion = await client.models.generateContent({
             model: selectedModel,
             config: {
@@ -1517,6 +1522,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         deepseek: 'deepseek-reasoner',
         gemini: 'gemini-2.5-pro-exp-03-25',
         'gemini-cli': 'gemini-2.5-pro-exp-03-25',
+        antigravity: 'gemini-3-pro',
         grokai: 'grok-4',
         groq: 'llama-3.3-70b-versatile',
         kimi: 'kimi-k2.5',
@@ -1600,6 +1606,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'gemini':
         case 'gemini-cli':
+        case 'antigravity':
           response = await client.models.generateContent({
             model: selectedModel,
             config: {
@@ -1748,6 +1755,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         local: 'llama-3.2-1b-instruct',
         gemini: 'gemini-pro',
         'gemini-cli': 'gemini-pro',
+        antigravity: 'gemini-3-pro',
         grokai: 'grok-4',
         groq: 'mixtral-8x7b-32768',
         kimi: 'kimi-k2.5',
@@ -1863,6 +1871,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
 
         case 'gemini':
         case 'gemini-cli':
+        case 'antigravity':
           completion = await client.models.generateContent({
             model: selectedModel,
             config: {

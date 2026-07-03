@@ -16,6 +16,7 @@ import AuthManager from '../services/auth/AuthManager.js';
 import CodexAuthManager from '../services/auth/CodexAuthManager.js';
 import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../services/auth/GeminiCliAuthManager.js';
+import AntigravityAuthManager from '../services/auth/AntigravityAuthManager.js';
 import { getClientVersion } from '../services/ai/clientVersions.js';
 import jwt from 'jsonwebtoken';
 
@@ -271,6 +272,11 @@ router.get('/:provider/models', async (req, res) => {
         } else {
           // OAuth → Code Assist endpoint has no /models listing, use curated list
           // Ensure onboarding has run so tier info is populated (no-ops if already done)
+          // Google discontinued Gemini CLI consumer OAuth on June 18, 2026 (PRD-107).
+          // Surface a clear diagnostic instead of a cryptic downstream 403.
+          if (gcStatus.deprecated) {
+            return res.status(400).json({ success: false, error: gcStatus.hint, deprecated: true });
+          }
           await GeminiCliAuthManager.ensureOnboarded();
 
           const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
@@ -285,6 +291,41 @@ router.get('/:provider/models', async (req, res) => {
 
           return res.json({ success: true, models, cached: false, count: models.length });
         }
+      }
+      // Antigravity: OAuth-only gateway (Gemini 3.x + Claude 4.6 + GPT-OSS).
+      // Tries the live fetchAvailableModels endpoint, falls back to curated list.
+      else if (providerLower === 'antigravity') {
+        const agStatus = await AntigravityAuthManager.checkApiUsable();
+        if (!agStatus.available) {
+          return res.status(400).json({
+            success: false,
+            error: 'Antigravity is not connected. Use Google OAuth to connect.',
+          });
+        }
+        apiKey = await AntigravityAuthManager.getAccessToken();
+        if (!apiKey) {
+          return res.status(400).json({ success: false, error: 'Antigravity token not found.' });
+        }
+
+        // Try dynamic model listing via fetchAvailableModels
+        try {
+          const oauth2Client = AntigravityAuthManager.getOAuth2Client();
+          if (oauth2Client) {
+            const dynamicModels = await AntigravityAuthManager.fetchAvailableModels(oauth2Client);
+            if (dynamicModels.length > 0) {
+              const modelNames = dynamicModels.map((m) => m.id);
+              return res.json({ success: true, models: modelNames, cached: false, count: modelNames.length, dynamic: true });
+            }
+          }
+        } catch (e) {
+          console.warn('[ModelRoutes] Antigravity dynamic model fetch failed, using fallback:', e.message);
+        }
+
+        // Fallback to the static curated list
+        const { getProviderConfig } = await import('../services/ai/providerConfigs.js');
+        const cfg = getProviderConfig('antigravity');
+        const models = [...(cfg?.fallbackModels || [])];
+        return res.json({ success: true, models, cached: false, count: models.length });
       } else {
         // Standard providers: extract user ID from auth token
         const authToken = req.headers.authorization;
@@ -401,6 +442,15 @@ router.post('/:provider/models/refresh', async (req, res) => {
         });
       }
       apiKey = await GeminiCliAuthManager.getAccessToken();
+    } else if (providerLower === 'antigravity') {
+      const agStatus = await AntigravityAuthManager.checkApiUsable({ forceRefresh: true });
+      if (!agStatus.available) {
+        return res.status(400).json({
+          success: false,
+          error: 'Antigravity is not connected. Use Google OAuth to connect.',
+        });
+      }
+      apiKey = await AntigravityAuthManager.getAccessToken();
     } else if (providerLower === 'openai-codex') {
       const codexStatus = await CodexAuthManager.checkApiUsable({ forceRefresh: true });
       if (!codexStatus.available) {

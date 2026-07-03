@@ -1470,6 +1470,57 @@ export default {
       }
     }
 
+    async function connectAntigravityProvider(app) {
+      try {
+        const data = await providerAuthService.startOAuth('antigravity');
+        if (!data.authUrl) throw new Error('No authUrl returned');
+
+        if (window.electron?.openExternalUrl) {
+          window.electron.openExternalUrl(data.authUrl);
+        } else {
+          window.open(data.authUrl, '_blank');
+        }
+
+        const confirmed = await modalRef.value?.showModal({
+          title: 'Antigravity Authentication',
+          message: `<div style="text-align:left">
+            <p>A browser window has opened for Google authentication.</p>
+            <p><strong>1.</strong> Sign in to your Google account</p>
+            <p><strong>2.</strong> Click <strong>Allow</strong> to grant access</p>
+            <p><strong>3.</strong> Return here and click <strong>I have signed in</strong></p>
+          </div>`,
+          confirmText: 'I have signed in',
+          cancelText: 'Cancel',
+          showCancel: true,
+          confirmClass: 'btn-primary',
+        });
+        if (!confirmed) return;
+
+        const maxAttempts = 20;
+        for (let i = 0; i < maxAttempts; i++) {
+          const status = await providerAuthService.pollOAuthStatus('antigravity', data.sessionId);
+
+          if (status.status === 'success') {
+            localStorage.removeItem('Antigravity_models');
+            await store.dispatch('appAuth/fetchConnectedApps', { forceRefresh: true });
+            await showAlert('Success', 'Antigravity connected via Google account.');
+            terminalLines.value.push('[Connect] Antigravity connected via Google account');
+            nextTick(() => baseScreenRef.value?.scrollToBottom());
+            return;
+          }
+          if (status.status === 'error') {
+            await showAlert('Connection Failed', status.error || 'Google OAuth failed.');
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        await showAlert('Connection Failed', 'OAuth timed out. Please try again.');
+      } catch (error) {
+        console.warn('Antigravity OAuth failed:', error.message);
+        await showAlert('Connection Failed', `OAuth error: ${error.message}`);
+      }
+    }
+
     async function connectCodexProvider(app) {
       try {
         const session = await store.dispatch('appAuth/startCodexDeviceAuth');
@@ -1610,6 +1661,8 @@ export default {
           disconnectLocalProvider(app, 'appAuth/logoutCodex');
         } else if (appId === 'gemini-cli') {
           disconnectLocalProvider(app, 'appAuth/disconnectGeminiCli');
+        } else if (appId === 'antigravity') {
+          disconnectLocalProvider(app, 'appAuth/disconnectAntigravity');
         } else {
           disconnectApp(app);
         }
@@ -1619,6 +1672,8 @@ export default {
         connectClaudeCodeProvider(app);
       } else if (appId === 'gemini-cli') {
         connectGeminiCli(app);
+      } else if (appId === 'antigravity') {
+        connectAntigravityProvider(app);
       } else if (app.connectionType === 'oauth') {
         connectOAuthApp(app);
       } else if (app.connectionType === 'apikey') {

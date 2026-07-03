@@ -9,6 +9,7 @@ import { getProviderConfig, getAllProviderConfigs } from '../ai/providerConfigs.
 import ClaudeCodeAuthManager from './ClaudeCodeAuthManager.js';
 import CodexAuthManager from './CodexAuthManager.js';
 import GeminiCliAuthManager from './GeminiCliAuthManager.js';
+import AntigravityAuthManager from './AntigravityAuthManager.js';
 
 // ─────────────────────────── SCHEME MAP ───────────────────────────
 
@@ -28,6 +29,11 @@ const AUTH_SCHEME_MAP = {
     manager: GeminiCliAuthManager,
     local: true,
     caps: ['status', 'connect-apikey', 'disconnect', 'refresh', 'oauth-loopback', 'set-auth-method', 'gcp-project'],
+  },
+  'antigravity': {
+    manager: AntigravityAuthManager,
+    local: true,
+    caps: ['status', 'disconnect', 'refresh', 'oauth-loopback', 'gcp-project'],
   },
 
   // REMOTE — proxied to agnt.gg for token management

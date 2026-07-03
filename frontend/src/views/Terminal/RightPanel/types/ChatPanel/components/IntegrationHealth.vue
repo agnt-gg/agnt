@@ -315,6 +315,15 @@ export default {
         return;
       }
 
+      if (normalizedProviderId === 'antigravity') {
+        if (integration.statusClass === 'healthy') {
+          await disconnectAntigravity(providerDetails);
+        } else {
+          await connectAntigravity(providerDetails);
+        }
+        return;
+      }
+
       if (integration.statusClass === 'healthy') {
         disconnectApp(providerDetails);
       } else if (connectionType === 'oauth') {
@@ -767,6 +776,80 @@ export default {
         const result = await store.dispatch('appAuth/disconnectGeminiCli');
         if (result?.success) {
           await showAlert('Success', `Successfully disconnected from ${providerDetails?.name || 'Gemini CLI'}`);
+          await refreshHealth();
+        } else {
+          await showAlert('Error', result?.error || 'Failed to disconnect.');
+        }
+      } catch (error) {
+        await showAlert('Error', `Failed to disconnect: ${error.message}`);
+      }
+    };
+
+    const connectAntigravity = async (providerDetails) => {
+      try {
+        const data = await providerAuthService.startOAuth('antigravity');
+        if (!data.authUrl) throw new Error('No authUrl returned');
+
+        if (window.electron?.openExternalUrl) {
+          window.electron.openExternalUrl(data.authUrl);
+        } else {
+          window.open(data.authUrl, '_blank');
+        }
+
+        const confirmed = await modal.value.showModal({
+          title: 'Antigravity Authentication',
+          message: `<div style="text-align:left">
+            <p>A browser window has opened for Google authentication.</p>
+            <p><strong>1.</strong> Sign in to your Google account</p>
+            <p><strong>2.</strong> Click <strong>Allow</strong> to grant access</p>
+            <p><strong>3.</strong> Return here and click <strong>I have signed in</strong></p>
+          </div>`,
+          confirmText: 'I have signed in',
+          cancelText: 'Cancel',
+          showCancel: true,
+          confirmClass: 'btn-primary',
+        });
+        if (!confirmed) return;
+
+        const maxAttempts = 20;
+        for (let i = 0; i < maxAttempts; i++) {
+          const status = await providerAuthService.pollOAuthStatus('antigravity', data.sessionId);
+
+          if (status.status === 'success') {
+            localStorage.removeItem('Antigravity_models');
+            await store.dispatch('appAuth/fetchConnectedApps');
+            await refreshHealth();
+            await showAlert('Success', 'Antigravity connected via Google account.');
+            return;
+          }
+          if (status.status === 'error') {
+            await showAlert('Connection Failed', status.error || 'Google OAuth failed.');
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        await showAlert('Connection Failed', 'OAuth timed out. Please try again.');
+      } catch (error) {
+        console.warn('Antigravity OAuth failed:', error.message);
+        await showAlert('Connection Failed', `OAuth error: ${error.message}`);
+      }
+    };
+
+    const disconnectAntigravity = async (providerDetails) => {
+      const confirmDisconnect = await modal.value.showModal({
+        title: 'Confirm Disconnection',
+        message: `Are you sure you want to disconnect from ${providerDetails?.name || 'Antigravity'}?`,
+        confirmText: 'Disconnect',
+        cancelText: 'Cancel',
+        confirmClass: 'btn-danger',
+      });
+
+      if (!confirmDisconnect) return;
+
+      try {
+        const result = await store.dispatch('appAuth/disconnectAntigravity');
+        if (result?.success) {
+          await showAlert('Success', `Successfully disconnected from ${providerDetails?.name || 'Antigravity'}`);
           await refreshHealth();
         } else {
           await showAlert('Error', result?.error || 'Failed to disconnect.');
