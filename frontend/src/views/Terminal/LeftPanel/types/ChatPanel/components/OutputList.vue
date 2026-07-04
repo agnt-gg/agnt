@@ -91,11 +91,11 @@
                     @dragend="onDragEnd"
                   >
                     <div class="output-content" @click="handleOutputClick(output.id, $event)">
-                      <div class="output-date">
+                      <div class="output-preview">
                         <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                        {{ formatDate(output.updated_at || output.created_at) }}
+                        {{ getPreviewText(output.content, output) }}
                       </div>
-                      <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+                      <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
                     </div>
                     <div class="output-actions">
                       <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
@@ -135,11 +135,11 @@
                   @dragend="onDragEnd"
                 >
                   <div class="output-content" @click="handleOutputClick(output.id, $event)">
-                    <div class="output-date">
+                    <div class="output-preview">
                       <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                      {{ formatDate(output.updated_at || output.created_at) }}
+                      {{ getPreviewText(output.content, output) }}
                     </div>
-                    <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+                    <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
                   </div>
                   <div class="output-actions">
                     <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
@@ -176,11 +176,11 @@
                 :class="{ selected: isSelected(output.id), active: isActive(output.id), streaming: isOutputStreaming(output.id) }"
               >
                 <div class="output-content" @click="handleOutputClick(output.id, $event)">
-                  <div class="output-date">
+                  <div class="output-preview">
                     <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
-                    {{ formatDate(output.updated_at || output.created_at) }}
+                    {{ getPreviewText(output.content, output) }}
                   </div>
-                  <div class="output-preview">{{ getPreviewText(output.content, output) }}</div>
+                  <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
                 </div>
                 <div class="output-actions">
                   <button class="action-menu-btn" @click.stop="toggleMenu(output.id, $event)" :ref="(el) => setMenuButtonRef(output.id, el)">
@@ -223,6 +223,11 @@
                   <span>Ungrouped</span>
                 </button>
               </div>
+              <div class="menu-separator"></div>
+              <button @click="activeMenu = null; showCreateGroup()" class="menu-item">
+                <i class="fas fa-folder-plus"></i>
+                <span>New Group</span>
+              </button>
               <button @click="deleteOutput(activeMenu)" class="menu-item delete">
                 <i class="fas fa-trash"></i>
                 <span>Delete</span>
@@ -1523,22 +1528,21 @@ div#saved-outputs {
   font-size: 12px;
 }
 
-.output-date {
-  margin-bottom: 6px;
-}
-
-.output-date {
-  color: var(--color-text);
-  font-size: var(--font-size-xs);
-}
-
 .output-preview {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  margin-bottom: 2px;
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.output-date {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xxs, 10px);
+  opacity: 0.7;
 }
 
 .list-container {
