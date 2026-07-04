@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.6.3",
+      "date": "July 3, 2026",
+      "title": "Antigravity Safety Rails & UI Polish — AGNT v0.6.3",
+      "type": "patch",
+      "features": [
+        { "name": "Antigravity now auto-cools your account on 403/429 responses and dynamically pulls its client version from GitHub to stop 'out of date' 400 errors", "status": "new" },
+        { "name": "Chat conversation cards now bold the message preview and mute the date, with a New Group action added to the 3-dot menu", "status": "new" },
+        { "name": "Antigravity connection modals now show an amber warning that this is an unofficial integration and heavy usage may trigger restrictions", "status": "updated" },
+        { "name": "Antigravity errors now show a clean one-line message like 'quota reached for gemini-3.1-pro-low, resets in 6d 6h' instead of dumping Google's raw JSON envelope into chat", "status": "bug" },
+        { "name": "Polished onboarding, agent cards, sidebar chevrons, and marketplace previews", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.2",
       "date": "July 3, 2026",
       "title": "Antigravity Chat & OAuth Fixes — AGNT v0.6.2",
