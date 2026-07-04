@@ -253,7 +253,7 @@
                     <div class="workflow-header">
                       <div class="workflow-avatar-container">
                         <div v-if="workflow.preview_image" class="workflow-avatar">
-                          <img :src="workflow.preview_image" :alt="workflow.title" />
+                          <img :src="workflow.preview_image" :alt="workflow.title" @error="workflow.preview_image = null" />
                         </div>
                         <div v-else class="workflow-avatar-placeholder">
                           <i :class="getAssetIcon(workflow)"></i>
@@ -360,7 +360,7 @@
                           <div class="workflow-header">
                             <div class="workflow-avatar-container">
                               <div v-if="workflow.preview_image" class="workflow-avatar">
-                                <img :src="workflow.preview_image" :alt="workflow.title" />
+                                <img :src="workflow.preview_image" :alt="workflow.title" @error="workflow.preview_image = null" />
                               </div>
                               <div v-else class="workflow-avatar-placeholder">
                                 <i :class="getAssetIcon(workflow)"></i>

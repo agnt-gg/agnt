@@ -35,7 +35,7 @@
             @click="selectCategory(entry.cat, { select: true })"
           >
             <span class="accordion-arrow" @click.stop="selectCategory(entry.cat, { select: false })">
-              <i :class="openMainCategories[getMainCategoryCodeFromLabel(entry.cat)] ? 'fas fa-chevron-down' : 'fas fa-chevron-right'"></i>
+              <i class="fas fa-chevron-right"></i>
             </span>
             <span>
               {{ capitalizeCategory(entry.cat) }}
