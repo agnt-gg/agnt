@@ -165,14 +165,59 @@ async function getAntigravityClientHeaders() {
     'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1',
     'Client-Metadata': ANTIGRAVITY_STATIC_META,
   };
-}
-
-class AntigravityOAuthProxy extends GeminiOAuthProxy {
+}class AntigravityOAuthProxy extends GeminiOAuthProxy {
   _buildRequest(params) {
     const base = super._buildRequest(params);
     // Antigravity gateway expects two extra top-level fields alongside
     // { model, project, request }.
     return { ...base, requestType: 'agent', userAgent: 'antigravity' };
+  }
+
+  // Turn Google's structured error into ONE human sentence so the raw JSON
+  // envelope never gets serialized into chat. Returns null for unrecognized
+  // shapes (caller then rethrows the original error).
+  _formatAntigravityError(e) {
+    const status = e.response?.status;
+    const gerr = e.response?.data?.error || e.response?.data?.[0]?.error;
+    const reason = gerr?.status || gerr?.details?.find?.((d) => d.reason)?.reason;
+    const model = gerr?.details?.find?.((d) => d.metadata?.model)?.metadata?.model;
+
+    if (status === 429 || reason === 'QUOTA_EXHAUSTED' || reason === 'RESOURCE_EXHAUSTED') {
+      const delay = gerr?.details?.find?.((d) => d.metadata?.quotaResetDelay)?.metadata?.quotaResetDelay
+        || gerr?.details?.find?.((d) => d.retryDelay)?.retryDelay;
+      let when = '';
+      if (delay) {
+        // Google sends two formats: compound ("150h8m40.6s") on quotaResetDelay,
+        // or plain seconds ("540520.6s") on retryDelay. Parse both to total secs.
+        const str = String(delay);
+        let secs = 0;
+        const compound = str.match(/(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?/);
+        if (compound && (compound[1] || compound[2] || compound[3]) && /[hm]/.test(str)) {
+          secs = (parseInt(compound[1] || 0, 10) * 3600) + (parseInt(compound[2] || 0, 10) * 60) + Math.floor(parseFloat(compound[3] || 0));
+        } else {
+          secs = Math.round(parseFloat(str.replace(/s$/, '')));
+        }
+        if (Number.isFinite(secs) && secs > 0) {
+          const h = Math.floor(secs / 3600);
+          const m = Math.floor((secs % 3600) / 60);
+          const d = Math.floor(h / 24);
+          when = d > 0 ? ` Resets in ${d}d ${h % 24}h.` : h > 0 ? ` Resets in ${h}h ${m}m.` : ` Resets in ${m}m.`;
+        }
+      }
+      const which = model ? ` for ${model}` : '';
+      return `Antigravity quota reached${which}.${when} Try another model or your API-key provider meanwhile.`;
+    }
+    if (status === 403 || reason === 'PERMISSION_DENIED') {
+      return 'Antigravity access was denied. Your Google account may not have access, or usage was restricted.';
+    }
+    if (status === 401) {
+      return 'Antigravity authentication expired. Please reconnect your Google account.';
+    }
+    if (status === 400) {
+      return `Antigravity rejected the request (400). This model may not be available on your plan.`;
+    }
+    if (gerr?.message) return `Antigravity: ${gerr.message}`;
+    return null;
   }
 
   async _generateContent(params) {
@@ -187,6 +232,8 @@ class AntigravityOAuthProxy extends GeminiOAuthProxy {
     } catch (e) {
       const s = e.response?.status; // PRD-109: trip cooldown, never retry-storm
       if (s === 403 || s === 429) AntigravityAuthManager.tripCooldown(`generateContent HTTP ${s}`);
+      const clean = this._formatAntigravityError(e);
+      if (clean) throw new Error(clean);
       throw e;
     }
   }
@@ -203,6 +250,8 @@ class AntigravityOAuthProxy extends GeminiOAuthProxy {
     } catch (e) {
       const s = e.response?.status; // PRD-109: trip cooldown, never retry-storm
       if (s === 403 || s === 429) AntigravityAuthManager.tripCooldown(`streamGenerateContent HTTP ${s}`);
+      const clean = this._formatAntigravityError(e);
+      if (clean) throw new Error(clean);
       throw e;
     }
   }
