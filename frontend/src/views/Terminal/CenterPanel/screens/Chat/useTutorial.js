@@ -24,28 +24,19 @@ export function useTutorial(emitFunction) {
   });
 
   const tutorialConfig = computed(() => [
-    hasAIProvider.value
-      ? {
-          target: '.conversation-canvas',
-          position: 'center',
-          title: "💬 Hi! I'm Annie",
-          content:
-            "Welcome to our chat space! I'm your AI assistant, and I'm here to help you automate tasks, answer questions, and build workflows. Just type your message below and let's get started!",
-          buttonText: 'Show Me Around',
-          hideArrow: true,
-        }
-      : {
-          // No provider connected: highlight the provider-picker card that's
-          // already rendered in the chat canvas instead of navigating away.
-          target: '.provider-setup',
-          position: 'top',
-          title: '🔌 Pick an AI Provider',
-          content:
-            "Before we can chat, you'll need to connect an AI provider. Choose any of the options below to get set up — once you're connected, I can help you automate tasks, answer questions, and build workflows!",
-          buttonText: 'Got It',
-          highlightTarget: true,
-          enforceStep: false,
-        },
+    // Only show the welcome step when a provider is connected.
+    // When no provider is connected the chat canvas already displays a
+    // provider-picker card — a redundant tutorial modal over it confused
+    // users, so we skip the tour entirely in that state.
+    {
+      target: '.conversation-canvas',
+      position: 'center',
+      title: "💬 Hi! I'm Annie",
+      content:
+        "Welcome to our chat space! I'm your AI assistant, and I'm here to help you automate tasks, answer questions, and build workflows. Just type your message below and let's get started!",
+      buttonText: 'Show Me Around',
+      hideArrow: true,
+    },
     {
       target: '.input-container',
       position: 'top',
@@ -207,10 +198,12 @@ export function useTutorial(emitFunction) {
     }
   };
 
-  // Only skip tutorial if completed AND provider is connected
-  const shouldSkipTutorial = localStorage.getItem('tutorial-screen-1-completed') === 'true' && hasAIProvider.value;
+  // Skip tutorial if completed, or if no provider is connected (the chat
+  // canvas already shows a provider-picker — no need for an extra modal).
+  const shouldSkipTutorial =
+    localStorage.getItem('tutorial-screen-1-completed') === 'true' || !hasAIProvider.value;
   if (shouldSkipTutorial) {
-    // startTutorial.value = false; // Uncomment if you don't want it to restart every time
+    startTutorial.value = false;
   }
 
   return {

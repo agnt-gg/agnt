@@ -206,7 +206,7 @@
 
         <!-- Navigation Buttons -->
         <div class="modal-actions">
-          <button v-if="currentStep > 1 && currentStep < finalStep" @click="prevStep" class="btn-secondary">← Back</button>
+          <button v-if="currentStep > 1" @click="prevStep" class="btn-secondary">← Back</button>
           <div class="spacer" v-else></div>
 
           <button v-if="currentStep < finalStep" @click="handleSkip" class="btn-text">Skip Tour</button>
@@ -267,7 +267,19 @@ export default {
     };
 
     // User data
-    const userName = computed(() => store.getters['userAuth/userName'] || 'there');
+    const userName = computed(() => {
+      // Prefer the actual name from the user record, then fall back to the
+      // pseudonym (which chains through email-prefix), then 'there'.
+      // Exclude the hardcoded 'User' fallback that the userPseudonym getter
+      // appends — we'd rather say "Welcome, there!" than "Welcome, User!".
+      const name = store.getters['userAuth/userName'];
+      if (name) return name;
+      const pseudo = store.state.userAuth?.userPseudonym;
+      if (pseudo) return pseudo;
+      const email = store.state.userAuth?.userEmail;
+      if (email) return email.split('@')[0];
+      return 'there';
+    });
     const userPseudonym = computed(() => store.getters['userAuth/userPseudonym']);
     const referralBalance = computed(() => store.state.userStats?.referralBalance || 0);
     const hasReferralBonus = computed(() => referralBalance.value > 0);
@@ -740,7 +752,7 @@ export default {
     watch(
       userPseudonym,
       (newValue) => {
-        if (newValue && !pseudonym.value) {
+        if (newValue && newValue !== 'User' && !pseudonym.value) {
           pseudonym.value = newValue;
           // Set status to current since it's their existing pseudonym
           pseudonymStatus.value = 'current';
@@ -803,9 +815,12 @@ export default {
       // ALWAYS fetch pseudonym to ensure it's loaded
       await store.dispatch('userAuth/fetchPseudonym');
 
-      // Initialize pseudonym field with the fetched value
-      if (userPseudonym.value) {
-        pseudonym.value = userPseudonym.value;
+      // Initialize pseudonym field with the fetched value, but skip the
+      // generic 'User' fallback from the getter — an empty input with a
+      // descriptive placeholder is better than pre-filling 'User'.
+      const resolvedPseudo = userPseudonym.value;
+      if (resolvedPseudo && resolvedPseudo !== 'User') {
+        pseudonym.value = resolvedPseudo;
         pseudonymStatus.value = 'current';
       }
 

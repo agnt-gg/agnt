@@ -250,11 +250,15 @@ export default {
           // Close modal
           showCodeModal.value = false;
 
-          // Navigate to home for new users to trigger onboarding
+          // Navigate to home (or the returnTo path if one was preserved by
+          // the auth guard). New users see onboarding; returning users land
+          // on the chat instead of being stranded on the settings page.
+          const returnTo = new URLSearchParams(window.location.search).get('returnTo');
+          const destination = returnTo || '/';
           if (result.isNewUser) {
             console.log('🎉 New user detected, navigating to home to show onboarding...');
-            router.push('/');
           }
+          router.push(destination);
         } else {
           verifyError.value = result.error;
         }

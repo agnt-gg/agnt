@@ -125,6 +125,12 @@ export default {
       const detail = event?.detail || {};
       const from = detail.from || '';
       const reason = detail.reason || 'unknown';
+
+      // When there's simply no token (fresh visit or intentional logout),
+      // skip the modal entirely — the auth guard already redirected to the
+      // login page, so showing "You need to sign in" is just noise.
+      if (reason === 'no_token') return;
+
       const copy = AUTH_REASON_COPY[reason] || AUTH_REASON_COPY.unknown;
       // Surface the structured detail in DevTools so admins debugging a stuck
       // user can see exactly which reason fired and any HTTP status / message.
