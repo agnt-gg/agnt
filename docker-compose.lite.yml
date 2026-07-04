@@ -1,5 +1,9 @@
 version: '3.8'
 
+# To update: use `make update-lite` (or `make update-lite-local` after git pull).
+# Do NOT run `docker-compose down && up -d` — Compose won't pick up new images.
+# See docs/SELF_HOSTING.md § Updating.
+
 # AGNT Lite Version - Smaller image without Chromium (~715MB, 52% smaller)
 # ⚠️ No Puppeteer/Playwright browser automation support
 # Runs on port 3333

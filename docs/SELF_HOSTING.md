@@ -756,25 +756,51 @@ FROM node:20-alpine AS frontend-builder
 # ... rest of Dockerfile
 ```
 
-## Upgrading
+## Updating
 
-To upgrade to a new version:
+> **Important:** `docker-compose down && docker-compose up -d` does **not** update AGNT. Compose reuses the cached image. Use one of the flows below.
+
+### If you installed from the registry (most users)
 
 ```bash
-# Pull latest code
-git pull origin main
-
-# Rebuild the image
-docker-compose build
-
-# Restart with new image
-docker-compose up -d
-
-# Verify upgrade
-docker-compose logs -f
+sudo make update-full           # Full variant (port 3333)
+sudo make update-lite           # Lite variant (port 3333)
+sudo make update-both           # Both containers
 ```
 
-Your data persists in Docker volumes and won't be lost during upgrades.
+Each of these stops the running container (checkpointing the SQLite WAL), pulls the latest image from `ghcr.io/agnt-gg/agnt`, and starts the new container against your existing `~/.agnt/data/` directory.
+
+### If you installed from source (`git clone`)
+
+```bash
+git pull
+sudo make update-full-local     # Full variant
+sudo make update-lite-local     # Lite variant
+sudo make update-both-local     # Both containers
+```
+
+Same flow, but the image is rebuilt locally from the updated `Dockerfile` instead of pulled.
+
+### Reclaiming disk after an update
+
+Old image layers become dangling:
+
+```bash
+docker image prune -f
+```
+
+Safe to run any time — only removes images no container references.
+
+### What persists across updates
+
+- ✅ **SQLite database** (`~/.agnt/data/agnt.db`) — bind-mounted, never touched
+- ✅ **Installed plugins** (`~/.agnt/data/plugins/`)
+- ✅ **Logs** (`~/.agnt/logs/`)
+- ✅ **Environment variables** in your `.env` — Compose re-reads them on restart
+
+The only thing replaced is the image itself (Node runtime + app code).
+
+Your data persists in Docker volumes and won't be lost during updates.
 
 ## Backup and Restore
 

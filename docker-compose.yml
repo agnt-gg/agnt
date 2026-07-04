@@ -1,5 +1,9 @@
 version: '3.8'
 
+# To update: use `make update-full` (or `make update-full-local` after git pull).
+# Do NOT run `docker-compose down && up -d` — Compose won't pick up new images.
+# See docs/SELF_HOSTING.md § Updating.
+
 # AGNT Full Version - Complete image with Chromium (~1.5GB)
 # ✅ Includes Puppeteer/Playwright browser automation support
 # Runs on port 3333

@@ -42,6 +42,8 @@ help: ## Show this help message
 	@echo "  $(BLUE)Docker:$(NC)"
 	@echo "    make build-full                  # Build Docker full image"
 	@echo "    make run-full                    # Run Docker full image"
+	@echo "    make update-full                 # Update from GHCR and restart"
+	@echo "    make update-full-local           # Rebuild from source and restart"
 	@echo "  $(BLUE)Electron:$(NC)"
 	@echo "    make electron-build-both         # Build both Electron variants"
 	@echo "    make electron-info               # Show Electron build info"
@@ -262,6 +264,49 @@ restart-lite: stop run-lite ## Restart lite image
 
 .PHONY: restart-both
 restart-both: stop-both run-both ## Restart both images
+
+# ============================================================================
+# UPDATE TARGETS - Stop, pull-or-build, restart (with WAL checkpoint)
+# ============================================================================
+# Why these exist: `docker-compose down && docker-compose up -d` does NOT
+# update the image. Compose reuses the cached tag unless told to pull or
+# rebuild. These targets do the right thing end-to-end.
+#
+# - update-*         : pull latest from GHCR, for registry installs
+# - update-*-local   : rebuild from local Dockerfile, for source installs
+#
+# After an update, old images become dangling. To reclaim disk:
+#   docker image prune -f
+
+.PHONY: update-full
+update-full: stop pull-full run-full ## Update full image from GHCR and restart (registry install)
+	@echo "$(GREEN)✓ AGNT Full updated to latest from GHCR$(NC)"
+	@echo "$(YELLOW)  Reclaim disk from old image: docker image prune -f$(NC)"
+
+.PHONY: update-lite
+update-lite: stop pull-lite run-lite ## Update lite image from GHCR and restart (registry install)
+	@echo "$(GREEN)✓ AGNT Lite updated to latest from GHCR$(NC)"
+	@echo "$(YELLOW)  Reclaim disk from old image: docker image prune -f$(NC)"
+
+.PHONY: update-full-local
+update-full-local: stop build-full run-full ## Rebuild full image from source and restart (after git pull)
+	@echo "$(GREEN)✓ AGNT Full rebuilt from source and restarted$(NC)"
+	@echo "$(YELLOW)  Reclaim disk from old image: docker image prune -f$(NC)"
+
+.PHONY: update-lite-local
+update-lite-local: stop build-lite run-lite ## Rebuild lite image from source and restart (after git pull)
+	@echo "$(GREEN)✓ AGNT Lite rebuilt from source and restarted$(NC)"
+	@echo "$(YELLOW)  Reclaim disk from old image: docker image prune -f$(NC)"
+
+.PHONY: update-both
+update-both: stop-both pull-all run-both ## Update both images from GHCR and restart
+	@echo "$(GREEN)✓ AGNT Full and Lite updated to latest from GHCR$(NC)"
+	@echo "$(YELLOW)  Reclaim disk from old images: docker image prune -f$(NC)"
+
+.PHONY: update-both-local
+update-both-local: stop-both build-all run-both ## Rebuild both images from source and restart
+	@echo "$(GREEN)✓ AGNT Full and Lite rebuilt from source and restarted$(NC)"
+	@echo "$(YELLOW)  Reclaim disk from old images: docker image prune -f$(NC)"
 
 .PHONY: logs-full
 logs-full: ## Show logs for full image
