@@ -357,13 +357,38 @@ function startBackend() {
   // NODE_PATH: include both ASAR modules and unpacked native modules
   const nodePathValue = app.isPackaged
     ? `${path.join(__dirname, 'node_modules')}${path.delimiter}${nodeModulesPath}`
-    : nodeModulesPath;
-
-  // For packaged apps, unpacked files are in app.asar.unpacked (outside the ASAR)
+    : nodeModulesPath;  // For packaged apps, unpacked files are in app.asar.unpacked (outside the ASAR)
   // utilityProcess can't read from ASAR, so plugins must be unpacked
   const unpackedPath = app.isPackaged
     ? path.join(process.resourcesPath, 'app.asar.unpacked')
     : __dirname;
+
+  // ─── macOS GUI PATH fix ───────────────────────────────────────────────
+  // macOS launchd gives GUI apps a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin)
+  // that excludes Homebrew, nvm, volta, fnm, etc. This causes spawn('node', ...)
+  // and spawn('python3', ...) to fail with ENOENT inside tool execution.
+  // Append well-known binary locations so user-installed tools are discoverable.
+  // Nonexistent directories in PATH are harmlessly ignored by the OS.
+  if (process.platform === 'darwin') {
+    const home = process.env.HOME || '';
+    const extraPaths = [
+      '/opt/homebrew/bin',            // Homebrew (Apple Silicon)
+      '/opt/homebrew/sbin',
+      '/usr/local/bin',               // Homebrew (Intel) / manual installs
+      '/usr/local/sbin',
+      path.join(home, '.nvm/current/bin'),
+      path.join(home, '.volta/bin'),
+      path.join(home, '.fnm/current/bin'),
+      path.join(home, '.local/bin'),
+    ];
+    const currentPath = process.env.PATH || '';
+    const currentEntries = currentPath.split(':');
+    const missing = extraPaths.filter(p => p && !currentEntries.includes(p));
+    if (missing.length > 0) {
+      process.env.PATH = currentPath + ':' + missing.join(':');
+      console.log('[PATH] macOS GUI fix — appended:', missing.join(', '));
+    }
+  }
 
   const env = {
     ...process.env,
