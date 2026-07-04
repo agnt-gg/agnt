@@ -237,15 +237,11 @@
                               :class="['agent-avatar', (agent.status || 'inactive').toLowerCase() === 'active' ? 'status-active' : 'status-inactive']"
                             >
                               <img
-                                v-if="agent.avatar"
-                                :src="agent.avatar"
+                                :src="agent.avatar || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
                                 :alt="agent.name"
                                 class="avatar-image"
-                                @error="$event.target.style.display = 'none'"
+                                @error="$event.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzE5RUY4MyIgd2lkdGg9IjI0cHgiIGhlaWdodD0iMjRweCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMmMyLjIxIDAgNC0xLjc5IDQtNHMtMS43OS00LTQtNC00IDEuNzktNCA0IDEuNzkgNCA0IDR6bTAgMmMtMi42NyAwLTggMS4zNC04IDR2MmgxNnYtMmMwLTIuNjYtNS4zMy00LTgtNHoiLz48L3N2Zz4='"
                               />
-                              <div v-else class="avatar-placeholder">
-                                {{ (agent.name || 'A').charAt(0).toUpperCase() }}
-                              </div>
                             </div>
                             <span class="agent-name">{{ agent.name }}</span>
                           </div>
@@ -863,6 +859,7 @@ export default {
           avatar: configPayload.avatar,
           provider: configPayload.provider,
           model: configPayload.model,
+          status: selectedAgent.value.status,
           systemPrompt: configPayload.systemPrompt || '',
           assignedTools: configPayload.assignedTools || [],
           assignedWorkflows: configPayload.assignedWorkflows || [],
