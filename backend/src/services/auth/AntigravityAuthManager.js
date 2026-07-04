@@ -467,6 +467,17 @@ class AntigravityAuthManager {
   }
 
   async checkApiUsable({ forceRefresh = false } = {}) {
+    // If there are no stored credentials, we are disconnected — report that
+    // plainly, even during cooldown. A disconnect must never be masked by the
+    // ban-avoidance breaker (otherwise the UI flips back to "connected").
+    const { data: credCheck } = readCredentialsFile();
+    if (!credCheck?.refresh_token && !credCheck?.access_token) {
+      const result = { available: false, apiUsable: false, hint: 'Not connected' };
+      this._lastApiStatus = result;
+      this._lastApiCheck = Date.now();
+      return result;
+    }
+
     if (this.isCoolingDown()) {
       return {
         available: true, apiUsable: false, coolingDown: true,
@@ -734,13 +745,12 @@ class AntigravityAuthManager {
       const credPath = resolveCredentialsPath();
       if (fs.existsSync(credPath)) {
         fs.unlinkSync(credPath);
-      }
-
-      this._lastApiCheck = null;
+      }      this._lastApiCheck = null;
       this._lastApiStatus = null;
       this._codeAssistProject = null;
       this._currentTier = null;
       this._paidTier = null;
+      this._cooldownUntil = 0; // clear cooldown so a re-check doesn't report stale "available"
       console.log('[AntigravityAuth] Logged out, credentials removed');
       return { success: true };
     } catch (error) {
