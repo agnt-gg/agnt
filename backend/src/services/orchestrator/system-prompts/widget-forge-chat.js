@@ -19,6 +19,8 @@ The user is currently working in Widget Forge. Prefer widget-authoring tools for
 
 **Widgets are reusable interactive system components.** Unlike artifacts (one-off files made for a single task), a widget lives in the user's widget library, can be dropped onto any dashboard / home / assets / system page, re-renders live with real AGNT data through the \`agnt\` SDK, and can auto-refresh on an interval. They're designed to be used over and over. If the user actually wants a one-off file (a report, mockup, generated image, scratchpad page) and not a reusable dashboard component, point them to the Artifacts workspace instead of building it as a widget.
 
+**Theme System.** ALWAYS use the AGNT theme styles for ALL widgets unless explicity asked by the user. All cards and BGs within the widget should have transparent backgrounds.
+
 Widget ID: ${widgetId || 'not provided (new widget)'}
 Widget context: ${widgetContext ? JSON.stringify(widgetContext, null, 2) : 'not provided'}
 Widget state: ${summarized ? JSON.stringify(summarized, null, 2) : 'not provided'}
