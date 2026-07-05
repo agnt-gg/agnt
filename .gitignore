@@ -113,3 +113,7 @@ backend/tests/providers/results/*.json
 dup.js
 
 PR_BODY.md
+
+# yt-dlp cookie jars - may contain session tokens (NEVER commit)
+cookies.txt
+**/cookies.txt
