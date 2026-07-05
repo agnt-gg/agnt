@@ -51,10 +51,11 @@ export const CRITICAL_TOOL_CALL_REQUIREMENTS = `CRITICAL TOOL CALL REQUIREMENTS:
 1. ALWAYS use exact tool names from the available tools list - no variations or typos
 2. ALWAYS provide ALL required parameters for each tool
 3. ALWAYS ensure parameter values match the expected types (string, number, boolean, array, object)
-4. ALWAYS use valid JSON format for tool arguments - no trailing commas, proper quotes, etc.
-5. If unsure about a tool's parameters, ask the user for clarification instead of guessing
-6. NEVER EVER DELETE OR CHANGE AN EXISTING FILE WITHOUT EXPLICIT USER CONSENT. ASK FOR EACH FILE.
-7. CRITICAL: NEVER use file_operations to read image files (.png, .jpg, .jpeg, .gif, .webp, etc.). Images are automatically processed by the vision model when uploaded. If a user uploads an image, analyze it directly - DO NOT try to read it as a file!`;
+4. ALWAYS call tools BEFORE your commentary, NEVER assume what a tool will do. RUN IT FIRST ALWAYS.
+5. ALWAYS use valid JSON format for tool arguments - no trailing commas, proper quotes, etc.
+6. If unsure about a tool's parameters, ask the user for clarification instead of guessing
+7. NEVER EVER DELETE OR CHANGE AN EXISTING FILE WITHOUT EXPLICIT USER CONSENT. ASK FOR EACH FILE.
+8. CRITICAL: NEVER use file_operations to read image files (.png, .jpg, .jpeg, .gif, .webp, etc.). Images are automatically processed by the vision model when uploaded. If a user uploads an image, analyze it directly - DO NOT try to read it as a file!`;
 
 export const IMAGE_ANALYSIS_CAPABILITIES = `IMAGE ANALYSIS CAPABILITIES:
 You have access to the analyze_image tool which supports vision analysis with multiple AI providers:
@@ -488,8 +489,6 @@ WHEN TO USE WHICH:
 - **Three.js** (\\\`\\\`\\\`threejs): Interactive 3D scenes (3D models, particles, physics, spatial data)
 - **HTML** (\\\`\\\`\\\`html): Full interactive pages, dashboards, mini-apps, or multi-viz layouts`;
 
-
-
 export const MCP_TOOL_USE_RULES = `MCP TOOLS
 
 MCP server tools are exposed as first-class tools with namespaced names of the form \`mcp__<server>__<tool>\`. Call them directly the same way you'd call any other tool — pass arguments as a regular JSON object matching the tool's input schema. No \`mcp_client\` operation/action ceremony, no stringified args, no separate "List Servers" step. The tool list you've been given already contains every available MCP tool from every configured server.
@@ -574,7 +573,9 @@ You can and should use multiple tools in parallel as to accomplish complex tasks
   parts.push(CRITICAL_IMAGE_HANDLING);
   parts.push(CRITICAL_IMAGE_GENERATION);
 
-  parts.push(`IMPORTANT: Provider names are automatically normalized to lowercase by the backend (e.g., "OpenAI" becomes "openai", "Anthropic" becomes "anthropic"). You don't need to worry about casing when working with provider names.`);
+  parts.push(
+    `IMPORTANT: Provider names are automatically normalized to lowercase by the backend (e.g., "OpenAI" becomes "openai", "Anthropic" becomes "anthropic"). You don't need to worry about casing when working with provider names.`,
+  );
 
   parts.push(ASYNC_EXECUTION_GUIDANCE);
   parts.push(OFFLOADED_DATA_GUIDANCE);
