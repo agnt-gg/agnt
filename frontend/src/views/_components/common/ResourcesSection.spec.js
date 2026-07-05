@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { createStore } from 'vuex';
 import ResourcesSection from './ResourcesSection.vue';
 
 // Mock the config
@@ -13,35 +12,36 @@ vi.mock('@/tt.config.js', () => ({
 // Mock fetch globally
 global.fetch = vi.fn();
 
+const sampleItem = (overrides = {}) => ({
+  id: 'item-1',
+  user_id: 'user-1',
+  user_name: 'Alice',
+  type: 'feature_request',
+  status: 'open',
+  title: 'Add dark mode to workflow editor',
+  description: 'It would be great to have dark mode.',
+  upvotes: 5,
+  downvotes: 1,
+  admin_response: null,
+  created_at: '2026-07-01 12:00:00',
+  updated_at: '2026-07-01 12:00:00',
+  has_screenshot: 0,
+  my_vote: null,
+  ...overrides,
+});
+
+const mockListResponse = (items = [], extra = {}) => ({
+  ok: true,
+  json: () => Promise.resolve({ success: true, items, total: items.length, isAdmin: false, ...extra }),
+});
+
 describe('ResourcesSection', () => {
   let wrapper;
-  let store;
-
-  const createMockStore = (overrides = {}) => {
-    return createStore({
-      modules: {
-        userAuth: {
-          namespaced: true,
-          getters: {
-            userEmail: () => overrides.userEmail || 'test@example.com',
-            userName: () => overrides.userName || 'TestUser',
-          },
-        },
-      },
-    });
-  };
 
   beforeEach(() => {
-    store = createMockStore();
-
-    // Reset fetch mock
     global.fetch.mockReset();
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true }),
-    });
+    global.fetch.mockResolvedValue(mockListResponse([]));
 
-    // Mock localStorage
     const localStorageMock = {
       getItem: vi.fn(() => 'test-token'),
       setItem: vi.fn(),
@@ -58,21 +58,26 @@ describe('ResourcesSection', () => {
     vi.restoreAllMocks();
   });
 
-  const createWrapper = (storeOverrides = {}) => {
-    if (Object.keys(storeOverrides).length > 0) {
-      store = createMockStore(storeOverrides);
-    }
-
+  const createWrapper = () => {
     const mockShowModal = vi.fn().mockResolvedValue(true);
     const wrapper = mount(ResourcesSection, {
       global: {
-        plugins: [store],
         stubs: {
           SimpleModal: {
             template: '<div class="simple-modal-stub"></div>',
             methods: {
               showModal: mockShowModal,
             },
+          },
+          // Stub the shared BaseSelect as a native <select> so tests can drive
+          // v-model + @update:modelValue without the teleported CustomSelect dropdown.
+          BaseSelect: {
+            props: ['modelValue', 'options'],
+            emits: ['update:modelValue'],
+            template:
+              '<select class="base-select-stub" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)">' +
+              '<option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>' +
+              '</select>',
           },
         },
       },
@@ -81,6 +86,11 @@ describe('ResourcesSection', () => {
 
     wrapper.mockShowModal = mockShowModal;
     return wrapper;
+  };
+
+  const openBoard = async () => {
+    await wrapper.find('.resource-button').trigger('click');
+    await flushPromises();
   };
 
   describe('Rendering', () => {
@@ -137,336 +147,252 @@ describe('ResourcesSection', () => {
     });
   });
 
-  describe('Feedback Modal', () => {
-    it('does not show feedback modal initially', () => {
+  describe('Feedback Board Modal', () => {
+    it('does not show board modal initially', () => {
       wrapper = createWrapper();
       expect(wrapper.find('.modal-overlay').exists()).toBe(false);
     });
 
-    it('shows feedback modal when Feedback button is clicked', async () => {
+    it('shows board modal when Feedback button is clicked', async () => {
       wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
+      await openBoard();
       expect(wrapper.find('.modal-overlay').exists()).toBe(true);
+      expect(wrapper.find('.modal-header h3').text()).toBe('Community Feedback');
     });
 
-    it('displays modal header with title', async () => {
+    it('fetches the feedback list when opened', async () => {
       wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.modal-header h3').text()).toBe('Send Feedback');
-    });
-
-    it('displays close button in modal header', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.close-btn').exists()).toBe(true);
-    });
-
-    it('displays feedback textarea', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.feedback-textarea').exists()).toBe(true);
-    });
-
-    it('displays image upload section', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.image-upload-section').exists()).toBe(true);
-    });
-
-    it('displays Cancel and Send buttons', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.btn-secondary').text()).toBe('Cancel');
-      expect(wrapper.find('.btn-primary').text()).toBe('Send Feedback');
-    });
-
-    it('closes modal when close button is clicked', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.modal-overlay').exists()).toBe(true);
-
-      await wrapper.find('.close-btn').trigger('click');
-      expect(wrapper.find('.modal-overlay').exists()).toBe(false);
-    });
-
-    it('closes modal when Cancel button is clicked', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.modal-overlay').exists()).toBe(true);
-
-      await wrapper.find('.btn-secondary').trigger('click');
-      expect(wrapper.find('.modal-overlay').exists()).toBe(false);
-    });
-
-    it('closes modal when clicking overlay background', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.modal-overlay').exists()).toBe(true);
-
-      await wrapper.find('.modal-overlay').trigger('click');
-      expect(wrapper.find('.modal-overlay').exists()).toBe(false);
-    });
-  });
-
-  describe('Feedback Form Validation', () => {
-    it('disables Send button when textarea is empty', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.btn-primary').attributes('disabled')).toBeDefined();
-    });
-
-    it('enables Send button when textarea has content', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      expect(wrapper.find('.btn-primary').attributes('disabled')).toBeUndefined();
-    });
-
-    it('disables Send button when only whitespace', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      await wrapper.find('.feedback-textarea').setValue('   ');
-      expect(wrapper.find('.btn-primary').attributes('disabled')).toBeDefined();
-    });
-  });
-
-  describe('Image Upload', () => {
-    it('shows upload label initially', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.upload-label').text()).toContain('Attach Screenshot (Optional)');
-    });
-
-    it('has hidden file input', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      const fileInput = wrapper.find('.file-input');
-      // File input should exist but be hidden with CSS
-      expect(fileInput.exists()).toBe(true);
-    });
-
-    it('accepts image files', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-      expect(wrapper.find('.file-input').attributes('accept')).toBe('image/*');
-    });
-
-    it('shows image preview after upload', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      // Simulate image upload
-      wrapper.vm.uploadedImage = new File([''], 'test.png', { type: 'image/png' });
-      wrapper.vm.imagePreview = 'data:image/png;base64,test';
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.image-preview').exists()).toBe(true);
-    });
-
-    it('shows remove button on image preview', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      wrapper.vm.uploadedImage = new File([''], 'test.png', { type: 'image/png' });
-      wrapper.vm.imagePreview = 'data:image/png;base64,test';
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.remove-image-btn').exists()).toBe(true);
-    });
-
-    it('removes image when remove button is clicked', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      wrapper.vm.uploadedImage = new File([''], 'test.png', { type: 'image/png' });
-      wrapper.vm.imagePreview = 'data:image/png;base64,test';
-      await wrapper.vm.$nextTick();
-
-      await wrapper.find('.remove-image-btn').trigger('click');
-
-      expect(wrapper.vm.uploadedImage).toBe(null);
-      expect(wrapper.vm.imagePreview).toBe('');
-    });
-
-    it('changes label text after image upload', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      wrapper.vm.uploadedImage = new File([''], 'test.png', { type: 'image/png' });
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.upload-label').text()).toContain('Change Screenshot');
-    });
-  });
-
-  describe('Feedback Submission', () => {
-    it('submits feedback to API', async () => {
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      await wrapper.find('.feedback-textarea').setValue('Test feedback message');
-      await wrapper.find('.btn-primary').trigger('click');
-      await flushPromises();
+      await openBoard();
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:3000/email/send-feedback',
+        expect.stringContaining('http://localhost:3000/feedback?'),
         expect.objectContaining({
-          method: 'POST',
           headers: expect.objectContaining({
-            'Content-Type': 'application/json',
             Authorization: 'Bearer test-token',
           }),
         })
       );
     });
 
-    it('includes user info in submission', async () => {
-      wrapper = createWrapper({ userEmail: 'user@test.com', userName: 'John' });
-      await wrapper.find('.resource-button').trigger('click');
+    it('shows empty state when there are no items', async () => {
+      wrapper = createWrapper();
+      await openBoard();
+      expect(wrapper.find('.board-empty').text()).toContain('No feedback yet');
+    });
 
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      await wrapper.find('.btn-primary').trigger('click');
+    it('renders feedback items with vote counts', async () => {
+      global.fetch.mockResolvedValue(mockListResponse([sampleItem()]));
+      wrapper = createWrapper();
+      await openBoard();
+
+      const item = wrapper.find('.feedback-item');
+      expect(item.exists()).toBe(true);
+      expect(item.find('.item-title').text()).toBe('Add dark mode to workflow editor');
+      expect(item.find('.vote-count').text()).toBe('4'); // 5 up - 1 down
+      expect(item.find('.status-pill').text()).toBe('Open');
+    });
+
+    it('shows error state with retry when list fetch fails', async () => {
+      global.fetch.mockRejectedValue(new Error('Network error'));
+      wrapper = createWrapper();
+      await openBoard();
+      expect(wrapper.find('.board-empty').text()).toContain('Network error');
+    });
+
+    it('uses the shared BaseSelect component for filter and sort (not raw <select>)', async () => {
+      wrapper = createWrapper();
+      await openBoard();
+      // No native <select> should exist — the board must use the shared custom select.
+      expect(wrapper.find('select:not(.base-select-stub)').exists()).toBe(false);
+      // Two toolbar selects: filter + sort.
+      expect(wrapper.findAll('.board-toolbar .base-select-stub').length).toBe(2);
+    });
+
+    it('changing the filter select refetches with the type param', async () => {
+      global.fetch.mockResolvedValue(mockListResponse([]));
+      wrapper = createWrapper();
+      await openBoard();
+      global.fetch.mockClear();
+
+      const filterSelect = wrapper.findAll('.board-toolbar .base-select-stub')[0];
+      await filterSelect.setValue('bug_report');
       await flushPromises();
 
-      const callBody = JSON.parse(global.fetch.mock.calls[0][1].body);
-      expect(callBody.userEmail).toBe('user@test.com');
-      expect(callBody.userName).toBe('John');
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('type=bug_report'),
+        expect.any(Object)
+      );
     });
 
-    it('includes screenshot in submission when uploaded', async () => {
+    it('closes modal when close button is clicked', async () => {
       wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      wrapper.vm.uploadedImage = new File([''], 'test.png', { type: 'image/png' });
-      wrapper.vm.imagePreview = 'data:image/png;base64,testdata';
-      await wrapper.vm.$nextTick();
-
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      await wrapper.find('.btn-primary').trigger('click');
-      await flushPromises();
-
-      const callBody = JSON.parse(global.fetch.mock.calls[0][1].body);
-      expect(callBody.screenshot).toBe('data:image/png;base64,testdata');
+      await openBoard();
+      await wrapper.find('.close-btn').trigger('click');
+      expect(wrapper.find('.modal-overlay').exists()).toBe(false);
     });
 
-    it('shows "Sending..." while submitting', async () => {
-      // Make fetch hang
-      global.fetch.mockImplementation(() => new Promise(() => {}));
-
+    it('closes modal when clicking overlay background', async () => {
       wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      wrapper.find('.btn-primary').trigger('click');
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.btn-primary').text()).toBe('Sending...');
+      await openBoard();
+      await wrapper.find('.modal-overlay').trigger('click');
+      expect(wrapper.find('.modal-overlay').exists()).toBe(false);
     });
+  });
 
-    it('disables button while submitting', async () => {
-      global.fetch.mockImplementation(() => new Promise(() => {}));
-
-      wrapper = createWrapper();
-      await wrapper.find('.resource-button').trigger('click');
-
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      wrapper.find('.btn-primary').trigger('click');
-      await wrapper.vm.$nextTick();
-
-      expect(wrapper.find('.btn-primary').attributes('disabled')).toBeDefined();
-    });
-
-    it('closes modal on successful submission', async () => {
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true }),
+  describe('Voting', () => {
+    it('sends an upvote and applies the returned counts', async () => {
+      global.fetch.mockImplementation((url, options = {}) => {
+        if (url.includes('/vote')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ success: true, upvotes: 6, downvotes: 1, my_vote: 'up' }),
+          });
+        }
+        return Promise.resolve(mockListResponse([sampleItem()]));
       });
 
       wrapper = createWrapper();
+      await openBoard();
 
-      await wrapper.find('.resource-button').trigger('click');
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      await wrapper.find('.btn-primary').trigger('click');
+      await wrapper.find('.vote-btn').trigger('click'); // first vote-btn is the upvote
       await flushPromises();
 
-      expect(wrapper.vm.showFeedbackModal).toBe(false);
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:3000/feedback/item-1/vote',
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(wrapper.find('.vote-count').text()).toBe('5'); // 6 - 1
+      expect(wrapper.find('.vote-btn').classes()).toContain('active');
+    });
+  });
+
+  describe('Item Expansion', () => {
+    it('expands an item to show the description', async () => {
+      global.fetch.mockResolvedValue(mockListResponse([sampleItem()]));
+      wrapper = createWrapper();
+      await openBoard();
+
+      await wrapper.find('.item-body').trigger('click');
+      expect(wrapper.find('.item-description').text()).toBe('It would be great to have dark mode.');
     });
 
-    it('resets form on successful submission', async () => {
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true }),
-      });
-
+    it('shows official response when present', async () => {
+      global.fetch.mockResolvedValue(mockListResponse([sampleItem({ admin_response: 'Shipping next week!' })]));
       wrapper = createWrapper();
+      await openBoard();
 
-      await wrapper.find('.resource-button').trigger('click');
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      await wrapper.find('.btn-primary').trigger('click');
+      await wrapper.find('.item-body').trigger('click');
+      expect(wrapper.find('.admin-response').text()).toContain('Shipping next week!');
+    });
+
+    it('shows admin controls only for admins', async () => {
+      global.fetch.mockResolvedValue(mockListResponse([sampleItem()], { isAdmin: true }));
+      wrapper = createWrapper();
+      await openBoard();
+
+      await wrapper.find('.item-body').trigger('click');
+      expect(wrapper.find('.admin-controls').exists()).toBe(true);
+    });
+
+    it('hides admin controls for regular users', async () => {
+      global.fetch.mockResolvedValue(mockListResponse([sampleItem()]));
+      wrapper = createWrapper();
+      await openBoard();
+
+      await wrapper.find('.item-body').trigger('click');
+      expect(wrapper.find('.admin-controls').exists()).toBe(false);
+    });
+  });
+
+  describe('Submit Form', () => {
+    const openSubmitForm = async () => {
+      await openBoard();
+      const newBtn = wrapper.findAll('.btn-primary').find((b) => b.text().includes('Submit New'));
+      await newBtn.trigger('click');
+    };
+
+    it('switches to the submit view', async () => {
+      wrapper = createWrapper();
+      await openSubmitForm();
+      expect(wrapper.find('.modal-header h3').text()).toBe('Submit Feedback');
+      expect(wrapper.find('.feedback-textarea').exists()).toBe(true);
+      expect(wrapper.find('.image-upload-section').exists()).toBe(true);
+    });
+
+    it('disables Submit until the title has at least 3 characters', async () => {
+      wrapper = createWrapper();
+      await openSubmitForm();
+
+      const submitBtn = wrapper.findAll('.btn-primary').find((b) => b.text().includes('Submit'));
+      expect(submitBtn.attributes('disabled')).toBeDefined();
+
+      await wrapper.find('.form-input').setValue('My idea');
+      expect(submitBtn.attributes('disabled')).toBeUndefined();
+    });
+
+    it('submits the feedback item to the API', async () => {
+      wrapper = createWrapper();
+      await openSubmitForm();
+
+      await wrapper.find('.form-input').setValue('My new feature idea');
+      await wrapper.find('.feedback-textarea').setValue('Details here');
+
+      const submitBtn = wrapper.findAll('.btn-primary').find((b) => b.text().includes('Submit'));
+      await submitBtn.trigger('click');
       await flushPromises();
 
-      expect(wrapper.vm.feedbackText).toBe('');
-      expect(wrapper.vm.uploadedImage).toBe(null);
-      expect(wrapper.vm.imagePreview).toBe('');
+      const createCall = global.fetch.mock.calls.find(
+        ([url, options]) => url === 'http://localhost:3000/feedback' && options?.method === 'POST'
+      );
+      expect(createCall).toBeDefined();
+      const body = JSON.parse(createCall[1].body);
+      expect(body.title).toBe('My new feature idea');
+      expect(body.description).toBe('Details here');
+      expect(body.type).toBe('feature_request');
     });
 
-    it('shows success modal on successful submission', async () => {
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true }),
-      });
-
+    it('shows success modal and returns to the board on success', async () => {
       wrapper = createWrapper();
+      await openSubmitForm();
 
-      await wrapper.find('.resource-button').trigger('click');
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      await wrapper.find('.btn-primary').trigger('click');
+      await wrapper.find('.form-input').setValue('My new feature idea');
+      const submitBtn = wrapper.findAll('.btn-primary').find((b) => b.text().includes('Submit'));
+      await submitBtn.trigger('click');
       await flushPromises();
 
       expect(wrapper.mockShowModal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Feedback Sent',
-        })
+        expect.objectContaining({ title: 'Feedback Submitted' })
       );
+      expect(wrapper.find('.modal-header h3').text()).toBe('Community Feedback');
     });
 
     it('shows error modal on failed submission', async () => {
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: false, error: 'Server error' }),
+      global.fetch.mockImplementation((url, options = {}) => {
+        if (options.method === 'POST') {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ success: false, error: 'Server error' }),
+          });
+        }
+        return Promise.resolve(mockListResponse([]));
       });
 
       wrapper = createWrapper();
+      await openSubmitForm();
 
-      await wrapper.find('.resource-button').trigger('click');
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      await wrapper.find('.btn-primary').trigger('click');
+      await wrapper.find('.form-input').setValue('My new feature idea');
+      const submitBtn = wrapper.findAll('.btn-primary').find((b) => b.text().includes('Submit'));
+      await submitBtn.trigger('click');
       await flushPromises();
 
-      expect(wrapper.mockShowModal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Error',
-        })
-      );
+      expect(wrapper.mockShowModal).toHaveBeenCalledWith(expect.objectContaining({ title: 'Error' }));
     });
 
-    it('handles network errors gracefully', async () => {
-      global.fetch.mockRejectedValue(new Error('Network error'));
-
+    it('Cancel returns to the board view', async () => {
       wrapper = createWrapper();
-
-      await wrapper.find('.resource-button').trigger('click');
-      await wrapper.find('.feedback-textarea').setValue('Test feedback');
-      await wrapper.find('.btn-primary').trigger('click');
-      await flushPromises();
-
-      expect(wrapper.mockShowModal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Error',
-        })
-      );
+      await openSubmitForm();
+      await wrapper.find('.btn-secondary').trigger('click');
+      expect(wrapper.find('.modal-header h3').text()).toBe('Community Feedback');
     });
   });
 
