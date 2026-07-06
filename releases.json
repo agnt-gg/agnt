@@ -1,6 +1,27 @@
 {
   "releases": [
     {
+      "version": "0.6.4",
+      "date": "July 6, 2026",
+      "title": "Sentinel Security Scanner, Mermaid Diagrams & GitHub Plugin v2.0.0 — AGNT v0.6.4",
+      "type": "patch",
+      "features": [
+        { "name": "New Sentinel plugin drops a URL, folder, or repo and returns a plain-English security report with exact file, line, and fix for every real finding", "status": "new" },
+        { "name": "Chat now renders Mermaid diagrams inline and opens them in a full-screen viewer with proper scaling for flowcharts and Gantt charts", "status": "new" },
+        { "name": "Right-clicking anywhere in the app now shows a real menu with cut, copy, paste, spellcheck suggestions, add-to-dictionary, and copy link/image", "status": "new" },
+        { "name": "GitHub plugin rebuilt with 46 actions across issues, PRs, releases, branches, files, gists, and Actions, plus cleaner errors and auto-paging", "status": "updated" },
+        { "name": "Widget Forge now defaults new widgets to your active theme with transparent card backgrounds so they blend into every dashboard", "status": "updated" },
+        { "name": "Light mode is easier on the eyes — the shading behind cards, buttons, and panels has been softened", "status": "updated" },
+        { "name": "Annie now runs tools first and then writes her reply instead of guessing what a tool will return", "status": "updated" },
+        { "name": "Voice input no longer hallucinates 'I'm a very happy person' loops — silent and too-short recordings are dropped before they reach the model", "status": "bug" },
+        { "name": "Discord, Slack, and other plugin triggers no longer silently die on app restart, and a missing trigger now shows a real error", "status": "bug" },
+        { "name": "Chat no longer stutters while Annie is streaming — conversation autosave now waits for the turn to finish instead of thrashing on every tool event", "status": "bug" },
+        { "name": "Workflow runs no longer double-log the trigger step or re-run its side effects", "status": "bug" },
+        { "name": "Tools screen category tabs are readable on the light theme again instead of showing white text on a white background", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.3",
       "date": "July 3, 2026",
       "title": "Antigravity Safety Rails & UI Polish — AGNT v0.6.3",
@@ -626,6 +647,6 @@
     { "name": "Job Board (Agent Missions)", "status": "planned" }
   ],
   "metadata": {
-    "lastUpdated": "2026-07-03T12:00:00Z"
+    "lastUpdated": "2026-07-06T12:00:00Z"
   }
 }
