@@ -138,7 +138,14 @@ class WorkflowEngine extends EventEmitter {
             await this._updateWorkflowStatus('error');
           }
         } else {
-          console.warn(`No setup function found for trigger type: ${node.type}`);
+          // A trigger node with no registered setup means the workflow would sit
+          // in 'listening' while actually dead. Fail loud so it surfaces in the
+          // UI instead of silently dropping events (e.g. plugin not installed).
+          const errorMessage = `No setup function found for trigger type: ${node.type} — trigger is NOT armed (is the plugin installed and loaded?)`;
+          console.error(errorMessage);
+          this._updateNodeError(node.id, errorMessage);
+          this.emit('workflowError', { nodeId: node.id, error: errorMessage });
+          await this._updateWorkflowStatus('error');
         }
       }
     }

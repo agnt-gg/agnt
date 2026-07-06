@@ -10,6 +10,13 @@ console.log(`Workflow process ID: ${process.pid}`);
 // Track if we're shutting down
 let isShuttingDown = false;
 
+// Resolves when the plugin system has finished initializing. Any IPC handler
+// that arms triggers (ACTIVATE_WORKFLOW, RESTART_ACTIVE_WORKFLOWS) MUST await
+// this first — plugin triggers (discord, slack, ...) only exist in
+// ToolConfig.triggers after PluginManager.initialize() completes. Restoring
+// workflows before that silently drops every plugin trigger on restart.
+let pluginsReady = Promise.resolve();
+
 /**
  * Safe IPC send function that checks connection status and handles errors
  * @param {Object} message - The message to send to the parent process
@@ -73,10 +80,11 @@ async function initializeWorkflowProcess() {
     safeSend({ type: 'READY' });
     console.log('Workflow process ready (plugins loading in background)...');
 
-    // Initialize plugins in background - don't block startup
-    initializePlugins().catch((error) => {
-      console.error('[WorkflowProcess] Background plugin init error:', error);
-    });
+    // Initialize plugins in background — READY is still sent immediately so
+    // the parent doesn't block on npm installs, but trigger-arming handlers
+    // gate on pluginsReady (see above). initializePlugins() never rejects
+    // (it catches internally), so this promise always settles.
+    pluginsReady = initializePlugins();
 
     console.log('Workflow process initialized');
   } catch (error) {
@@ -153,6 +161,9 @@ async function handleActivateWorkflow(data) {
   const { workflow, userId, triggerData } = data;
   console.log(`Activating workflow ${workflow.id} for user ${userId}`);
 
+  // Plugin triggers are only registered once plugin init completes.
+  await pluginsReady;
+
   const result = await ProcessManager.activateWorkflow(workflow, userId, triggerData);
   return result;
 }
@@ -177,6 +188,12 @@ async function handleFetchWorkflowState(data) {
 // Handle restart active workflows
 async function handleRestartActiveWorkflows() {
   console.log('Restarting active workflows...');
+
+  // CRITICAL: wait for plugin triggers to be registered in ToolConfig.triggers
+  // before restoring workflows. Without this, every plugin-based trigger
+  // (discord, slack, ...) fails to arm on app restart and dies silently.
+  await pluginsReady;
+  console.log('[WorkflowProcess] Plugins ready — restoring active workflows');
 
   await ProcessManager.restartActiveWorkflows();
   return { message: 'Active workflows restart initiated' };
