@@ -24,6 +24,7 @@ import { saveBase64Image } from '../ImageStorage.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
+import { augmentEnvPath } from '../../utils/envPath.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,7 +108,9 @@ export const TOOLS = {
 
       const wrappedCode = `(async () => {\n${codeString}\n})().catch(e => { console.error(e); process.exit(1); });`;
 
-      const env = { ...process.env };
+      // Restore user tool paths (Homebrew, ~/.local/bin, version managers) —
+      // GUI-launched servers on macOS inherit a minimal PATH. No-op on Windows.
+      const env = augmentEnvPath({ ...process.env });
       if (authToken) {
         let token = authToken;
         if (token.toLowerCase().startsWith('bearer ')) {
@@ -253,8 +256,10 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
       );
 
       return new Promise((resolve) => {
-        // Set NODE_PATH so spawned scripts can find workspace packages
-        const env = { ...process.env };
+        // Set NODE_PATH so spawned scripts can find workspace packages.
+        // augmentEnvPath restores user tool paths (Homebrew, ~/.local/bin,
+        // node version managers) that GUI-launched macOS processes lose.
+        const env = augmentEnvPath({ ...process.env });
         if (workspaceRoot) {
           const workspaceNodeModules = path.join(workspaceRoot, 'node_modules');
           env.NODE_PATH = env.NODE_PATH
@@ -286,6 +291,11 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           shell: true,
           cwd: resolvedCwd,
           env,
+          // stdin: 'ignore' attaches /dev/null (immediate EOF). This tool is
+          // non-interactive and never writes to stdin; leaving it as an open
+          // pipe hangs any child that reads stdin (codex exec, cat, etc.) —
+          // the same fix as appending `</dev/null` manually.
+          stdio: ['ignore', 'pipe', 'pipe'],
         });
 
         // Accumulate raw bytes, decode at the end. Per-chunk .toString() can
@@ -416,8 +426,8 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             },
             model: {
               type: 'string',
-              default: 'gpt-5-codex',
-              description: "Codex CLI model to use (for example: 'gpt-5-codex').",
+              description:
+                "Codex CLI model to use (for example: 'gpt-5-codex' or 'gpt-5.5'). Defaults to the AGNT_CODEX_DEFAULT_MODEL env var, falling back to 'gpt-5-codex'. If the Codex account rejects the model (common with ChatGPT-backed logins), AGNT automatically retries with the account's own default model.",
             },
             cwd: {
               type: 'string',
@@ -461,7 +471,7 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
     execute: async (
       {
         prompt,
-        model = 'gpt-5-codex',
+        model = CodexCliService.getDefaultModel(),
         cwd,
         resume = true,
         sessionScope = 'conversation',
@@ -1455,7 +1465,9 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
 
           console.log(`Attempting to execute: command='${commandToRun}', args='${JSON.stringify(finalSpawnArgs)}', original file='${filePath}'`);
 
-          const childEnv = { ...process.env };
+          // augmentEnvPath restores user tool paths so 'python'/'node'/'sh'
+          // resolve even under the minimal GUI-launch PATH on macOS.
+          const childEnv = augmentEnvPath({ ...process.env });
           if (authToken) {
             let token = authToken;
             if (token.toLowerCase().startsWith('bearer ')) {

@@ -110,7 +110,9 @@ function createStreamGenerator(runPromise, queue) {
 }
 
 export function createCodexCliClient({
-  defaultModel = 'gpt-5-codex',
+  // Configurable via AGNT_CODEX_DEFAULT_MODEL; CodexCliService also retries
+  // without a model flag when the account rejects the requested model.
+  defaultModel = CodexCliService.getDefaultModel(),
   cwd = process.cwd(),
   sessionKey = null,
   userId = null,

@@ -11,6 +11,14 @@ import { createLlmClient } from '../services/ai/LlmService.js';
 import { createLlmAdapter } from '../services/orchestrator/llmAdapters.js';
 import { getProviderConfig, resolveMaxOutputTokens } from '../services/ai/providerConfigs.js';
 
+// Default model for the 'openai-codex' provider when no model is specified.
+// ChatGPT-backed Codex accounts reject 'gpt-5-codex', so this is overridable
+// via AGNT_CODEX_DEFAULT_MODEL (e.g. 'gpt-5.5'). Kept in sync with
+// CodexCliService.getDefaultModel().
+const DEFAULT_CODEX_MODEL =
+  (typeof process.env.AGNT_CODEX_DEFAULT_MODEL === 'string' && process.env.AGNT_CODEX_DEFAULT_MODEL.trim()) ||
+  'gpt-5-codex';
+
 import { getRawTextFromPDFBuffer, getRawTextFromDocxBuffer, trimToWordLimit, generateUniqueId, computeFileHash } from './utils.js';
 
 /**
@@ -780,7 +788,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         kimi: 'kimi-k2.5',
         minimax: 'MiniMax-M2.1',
         openai: 'gpt-4o',
-        'openai-codex': 'gpt-5-codex',
+        'openai-codex': DEFAULT_CODEX_MODEL,
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1245,7 +1253,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
-        'openai-codex': 'gpt-5-codex',
+        'openai-codex': DEFAULT_CODEX_MODEL,
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1528,7 +1536,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         kimi: 'kimi-k2.5',
         minimax: 'MiniMax-M2.1',
         openai: 'gpt-4o',
-        'openai-codex': 'gpt-5-codex',
+        'openai-codex': DEFAULT_CODEX_MODEL,
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',
@@ -1749,7 +1757,7 @@ IMPORTANT: DO NOT INCLUDE THE OUTERMOST "\`\`\`markdown", <>,  OR FINAL "\`\`\`"
         cerebras: 'llama-3.3-70b',
         deepseek: 'deepseek-reasoner',
         openai: 'o1-preview',
-        'openai-codex': 'gpt-5-codex',
+        'openai-codex': DEFAULT_CODEX_MODEL,
         openrouter: 'z-ai/glm-4.5',
         togetherai: 'deepseek-ai/DeepSeek-R1',
         local: 'llama-3.2-1b-instruct',

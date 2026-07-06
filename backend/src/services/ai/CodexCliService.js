@@ -5,6 +5,7 @@ import { spawn } from 'child_process';
 import readline from 'readline';
 import { fileURLToPath } from 'url';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
+import { augmentEnvPath } from '../../utils/envPath.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,6 +13,13 @@ const TOOL_RUNNER_PATH = path.resolve(__dirname, '../../cli/runTool.js');
 const BACKEND_ROOT = path.resolve(__dirname, '../../..');
 const REPO_ROOT = path.resolve(BACKEND_ROOT, '..');
 const DEFAULT_CODEX_WORKDIR = process.env.AGNT_CODEX_WORKDIR || path.join(os.homedir(), 'services', 'agnt-codex-work');
+
+// Hardcoded fallback when AGNT_CODEX_DEFAULT_MODEL is not set. Note that
+// ChatGPT-backed Codex accounts reject 'gpt-5-codex' ("The 'gpt-5-codex'
+// model is not supported when using Codex with a ChatGPT account.") —
+// runExecStream() detects that class of error and retries without a model
+// flag so the CLI falls back to the account's own configured default.
+const FALLBACK_DEFAULT_MODEL = 'gpt-5-codex';
 
 function ensureDirectory(dirPath) {
   try {
@@ -150,6 +158,17 @@ function safeJsonParse(line) {
   }
 }
 
+/**
+ * True when a Codex CLI error means "this account cannot use the requested
+ * model" — e.g. ChatGPT-backed accounts rejecting 'gpt-5-codex', or a model
+ * id that doesn't exist for the account's plan.
+ */
+function isModelNotSupportedError(error) {
+  const message = String(error?.message || error || '');
+  if (!/model/i.test(message)) return false;
+  return /not supported|unsupported|does not exist|not found|no access|not available/i.test(message);
+}
+
 class CodexCliService {
   constructor() {
     this.codexBin = resolveCodexBin();
@@ -157,6 +176,19 @@ class CodexCliService {
 
   getCodexBin() {
     return this.codexBin;
+  }
+
+  /**
+   * Default model for Codex CLI runs. Configurable via the
+   * AGNT_CODEX_DEFAULT_MODEL environment variable (e.g. 'gpt-5.5' for
+   * ChatGPT-backed accounts that reject 'gpt-5-codex').
+   */
+  getDefaultModel() {
+    const envModel =
+      typeof process.env.AGNT_CODEX_DEFAULT_MODEL === 'string'
+        ? process.env.AGNT_CODEX_DEFAULT_MODEL.trim()
+        : '';
+    return envModel || FALLBACK_DEFAULT_MODEL;
   }
 
   getDefaultWorkdir() {
@@ -167,7 +199,30 @@ class CodexCliService {
     return TOOL_RUNNER_PATH;
   }
 
-  async runExecStream(
+  /**
+   * Run `codex exec` with automatic model fallback: if the requested model is
+   * rejected by the account (common with ChatGPT-backed Codex logins and
+   * 'gpt-5-codex'), retry once WITHOUT a model flag so the CLI uses the
+   * account's own configured default. The rejection happens at turn start —
+   * before any agent output — so the retry never duplicates streamed deltas.
+   */
+  async runExecStream(options = {}, handlers = {}) {
+    try {
+      return await this._runExecStreamOnce(options, handlers);
+    } catch (error) {
+      if (options.model && isModelNotSupportedError(error)) {
+        console.warn(
+          `[Codex CLI] Model '${options.model}' rejected by this Codex account (${error.message}). ` +
+            "Retrying with the account's default model. " +
+            'Set AGNT_CODEX_DEFAULT_MODEL to a supported model to skip this retry.'
+        );
+        return await this._runExecStreamOnce({ ...options, model: null }, handlers);
+      }
+      throw error;
+    }
+  }
+
+  async _runExecStreamOnce(
     {
       prompt,
       model,
@@ -220,6 +275,10 @@ class CodexCliService {
     env.AGNT_TOOL_RUNNER = TOOL_RUNNER_PATH;
     env.AGNT_BACKEND_ROOT = BACKEND_ROOT;
     env.AGNT_REPO_ROOT = REPO_ROOT;
+    // GUI-launched/launchd processes on macOS get a minimal PATH; the codex
+    // binary (often a `#!/usr/bin/env node` script) needs Homebrew/user bins
+    // resolvable to launch at all. No-op on Windows.
+    augmentEnvPath(env);
 
     const spawnOptions = {
       cwd,
