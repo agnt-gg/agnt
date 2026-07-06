@@ -1223,6 +1223,53 @@
           }
         }
       ]
+    },
+    {
+      "name": "sentinel",
+      "displayName": "Sentinel Security Auditor",
+      "icon": "shield-halved",
+      "version": "1.0.0",
+      "description": "Drop a URL, local path, or git repo and get a comprehensive, evidence-backed security report with exact file:line:CWE findings and concrete fixes. Real scanners find the bugs (semgrep, detect-secrets, dependency audits, web recon); the LLM only explains and prioritizes — it can never invent a finding.",
+      "author": "AGNT",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/sentinel.agnt",
+      "size": 41951,
+      "tags": [
+        "security",
+        "sast",
+        "semgrep",
+        "vulnerability",
+        "audit",
+        "cwe",
+        "dependencies",
+        "secrets",
+        "code-scanning",
+        "developer"
+      ],
+      "category": "developer",
+      "tools": [
+        {
+          "type": "sentinel-scan",
+          "schema": {
+            "title": "Sentinel Scan",
+            "description": "Ingest a target (git URL, local directory path, or live http(s) URL) and run every applicable security scanner. Returns normalized, deduplicated, evidence-backed findings with file:line:CWE. Does NOT call an LLM — this is the deterministic ground-truth stage."
+          }
+        },
+        {
+          "type": "sentinel-report",
+          "schema": {
+            "title": "Sentinel Report",
+            "description": "Turn Sentinel findings into a comprehensive, plain-English security report (HTML + Markdown) with an executive summary, per-finding impact and concrete fix. The LLM works ONLY from verified findings — it never invents vulnerabilities."
+          }
+        },
+        {
+          "type": "sentinel-audit",
+          "schema": {
+            "title": "Sentinel Audit (Scan + Report)",
+            "description": "One-shot: scan a target AND generate the full report. This is the node the simple frontend calls. Drop a URL/path/repo, get findings + an HTML report file back."
+          }
+        }
+      ]
     }
   ]
 }
