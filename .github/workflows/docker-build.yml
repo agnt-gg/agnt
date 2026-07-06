@@ -1,5 +1,5 @@
 name: Build and Push Docker Images
-run-name: ${{ github.ref_name }}
+run-name: ${{ inputs.release_tag || github.ref_name }}
 
 on:
   push:
@@ -7,6 +7,11 @@ on:
       - 'v*.*.*'  # Supports v0.3.7
       - '*.*.*'   # Supports 0.3.7
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing tag to (re)build Docker images for (e.g. v0.6.4). Leave empty to build the current ref with sha-only tags.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -16,152 +21,271 @@ env:
   # GitHub Container Registry
   GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/agnt
 
-  # Docker Hub (commented out - using GHCR instead)
-  # DOCKER_IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/agnt
-
 jobs:
-  build-full:
-    name: Build Docker Full
+  # ==========================================================================
+  # Resolve what we are building: a pushed tag, a dispatched existing tag,
+  # or a plain branch dispatch (sha-only tags, no release tags).
+  # ==========================================================================
+  prep:
+    name: Prepare build info
     runs-on: ubuntu-latest
+    outputs:
+      build_ref: ${{ steps.info.outputs.build_ref }}
+      version: ${{ steps.info.outputs.version }}
+      majmin: ${{ steps.info.outputs.majmin }}
+      shortsha: ${{ steps.info.outputs.shortsha }}
+      fullsha: ${{ steps.info.outputs.fullsha }}
+      is_release: ${{ steps.info.outputs.is_release }}
+      build_date: ${{ steps.info.outputs.build_date }}
+    steps:
+      - name: Resolve build ref
+        id: ref
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            echo "build_ref=refs/tags/${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+          fi
 
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.ref.outputs.build_ref }}
+
+      - name: Compute version info
+        id: info
+        run: |
+          BUILD_REF="${{ steps.ref.outputs.build_ref }}"
+          echo "build_ref=$BUILD_REF" >> "$GITHUB_OUTPUT"
+          echo "shortsha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "fullsha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          if [[ "$BUILD_REF" == refs/tags/* ]]; then
+            TAG="${BUILD_REF#refs/tags/}"
+            VERSION="${TAG#v}"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "majmin=$(echo "$VERSION" | cut -d. -f1-2)" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "majmin=" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ==========================================================================
+  # FULL image - each platform builds on its NATIVE runner (no QEMU).
+  # This fixes exit code 152 (SIGXCPU) from npm install under QEMU arm64
+  # emulation. Pushes by digest only; tags are applied in the merge job.
+  # ==========================================================================
+  build-full:
+    name: Build Docker Full (${{ matrix.platform }})
+    needs: prep
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            slug: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            slug: linux-arm64
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prep.outputs.build_ref }}
 
-      - name: Update package.json version from tag
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          npm version $VERSION --no-git-tag-version --allow-same-version
+      - name: Update package.json version
+        if: needs.prep.outputs.is_release == 'true'
+        run: npm version ${{ needs.prep.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
-      # GitHub Container Registry
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Docker Hub (commented out - using GHCR instead)
-      # - name: Log in to Docker Hub
-      #   if: github.event_name != 'pull_request'
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ vars.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=raw,value=full,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{version}}-full
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}.{{minor}}-full
-            type=sha,prefix=sha-,format=short
-
-      - name: Build and push Docker Full image
-        uses: docker/build-push-action@v5
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-full
-          cache-to: type=gha,mode=max,scope=docker-full
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=docker-full-${{ matrix.slug }}
+          cache-to: type=gha,mode=max,scope=docker-full-${{ matrix.slug }}
           build-args: |
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
-            VCS_REF=${{ github.sha }}
-            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_DATE=${{ needs.prep.outputs.build_date }}
+            VCS_REF=${{ needs.prep.outputs.fullsha }}
+            VERSION=${{ needs.prep.outputs.version }}
 
-  build-lite:
-    name: Build Docker Lite
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Update package.json version from tag
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Export digest
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          npm version $VERSION --no-git-tag-version --allow-same-version
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-full-${{ matrix.slug }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-full:
+    name: Publish Docker Full manifest
+    needs: [prep, build-full]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-full-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
-      # GitHub Container Registry
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Docker Hub (commented out - using GHCR instead)
-      # - name: Log in to Docker Hub
-      #   if: github.event_name != 'pull_request'
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ vars.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Create and push multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMG: ${{ env.GHCR_IMAGE }}
+          VERSION: ${{ needs.prep.outputs.version }}
+          MAJMIN: ${{ needs.prep.outputs.majmin }}
+          SHORTSHA: ${{ needs.prep.outputs.shortsha }}
+          IS_RELEASE: ${{ needs.prep.outputs.is_release }}
+        run: |
+          TAGS="-t $IMG:sha-$SHORTSHA"
+          if [ "$IS_RELEASE" = "true" ]; then
+            TAGS="$TAGS -t $IMG:latest -t $IMG:full -t $IMG:$VERSION -t $IMG:$VERSION-full -t $IMG:$MAJMIN -t $IMG:$MAJMIN-full"
+          fi
+          docker buildx imagetools create $TAGS $(printf "$IMG@sha256:%s " *)
 
-      - name: Extract metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
+      - name: Inspect manifest
+        env:
+          IMG: ${{ env.GHCR_IMAGE }}
+        run: docker buildx imagetools inspect "$IMG:sha-${{ needs.prep.outputs.shortsha }}"
+
+  # ==========================================================================
+  # LITE image - same native-runner pattern.
+  # ==========================================================================
+  build-lite:
+    name: Build Docker Lite (${{ matrix.platform }})
+    needs: prep
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            slug: linux-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            slug: linux-arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
-          images: ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=raw,value=lite,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=semver,pattern={{version}}-lite
-            type=semver,pattern={{major}}.{{minor}}-lite
-            type=sha,prefix=sha-lite-,format=short
+          ref: ${{ needs.prep.outputs.build_ref }}
 
-      - name: Build and push Docker Lite image
-        uses: docker/build-push-action@v5
+      - name: Update package.json version
+        if: needs.prep.outputs.is_release == 'true'
+        run: npm version ${{ needs.prep.outputs.version }} --no-git-tag-version --allow-same-version
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.lite
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-lite
-          cache-to: type=gha,mode=max,scope=docker-lite
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=docker-lite-${{ matrix.slug }}
+          cache-to: type=gha,mode=max,scope=docker-lite-${{ matrix.slug }}
           build-args: |
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
-            VCS_REF=${{ github.sha }}
-            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_DATE=${{ needs.prep.outputs.build_date }}
+            VCS_REF=${{ needs.prep.outputs.fullsha }}
+            VERSION=${{ needs.prep.outputs.version }}
 
-  # Docker Hub description update (commented out - using GHCR instead)
-  # Note: GHCR package descriptions are managed via repository settings
-  # update-dockerhub-description:
-  #   name: Update Docker Hub Description
-  #   needs: [build-full, build-lite]
-  #   runs-on: ubuntu-latest
-  #   if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-  #
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Update Docker Hub Description
-  #       uses: peter-evans/dockerhub-description@v4
-  #       with:
-  #         username: ${{ vars.DOCKERHUB_USERNAME }}
-  #         password: ${{ secrets.DOCKERHUB_TOKEN }}
-  #         repository: ${{ env.DOCKER_IMAGE }}
-  #         short-description: "AGNT - AI Agent Framework for building intelligent workflows"
-  #         readme-filepath: ./README.md
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-lite-${{ matrix.slug }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-lite:
+    name: Publish Docker Lite manifest
+    needs: [prep, build-lite]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-lite-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMG: ${{ env.GHCR_IMAGE }}
+          VERSION: ${{ needs.prep.outputs.version }}
+          MAJMIN: ${{ needs.prep.outputs.majmin }}
+          SHORTSHA: ${{ needs.prep.outputs.shortsha }}
+          IS_RELEASE: ${{ needs.prep.outputs.is_release }}
+        run: |
+          TAGS="-t $IMG:sha-lite-$SHORTSHA"
+          if [ "$IS_RELEASE" = "true" ]; then
+            TAGS="$TAGS -t $IMG:lite -t $IMG:$VERSION-lite -t $IMG:$MAJMIN-lite"
+          fi
+          docker buildx imagetools create $TAGS $(printf "$IMG@sha256:%s " *)
+
+      - name: Inspect manifest
+        env:
+          IMG: ${{ env.GHCR_IMAGE }}
+        run: docker buildx imagetools inspect "$IMG:sha-lite-${{ needs.prep.outputs.shortsha }}"
