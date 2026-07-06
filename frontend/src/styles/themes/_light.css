@@ -50,10 +50,10 @@ body:not(.dark):not(.rose) {
   --color-popup: rgba(255, 255, 255, 0.98);
 
   /* Overlay shades - subtle tints for light mode */
-  --color-darker-0: rgba(100, 100, 140, 0.06);
-  --color-darker-1: rgba(100, 100, 140, 0.1);
-  --color-darker-2: rgba(100, 100, 140, 0.18);
-  --color-darker-3: rgba(100, 100, 140, 0.3);
+  --color-darker-0: rgba(100, 100, 140, 0.025);
+  --color-darker-1: rgba(100, 100, 140, 0.05);
+  --color-darker-2: rgba(100, 100, 140, 0.1);
+  --color-darker-3: rgba(100, 100, 140, 0.2);
 
   /* Lighter overlays */
   --color-lighter-0: rgba(255, 255, 255, 0.3);
@@ -62,10 +62,10 @@ body:not(.dark):not(.rose) {
   --color-lighter-3: rgba(255, 255, 255, 0.9);
 
   /* Dark shades (used by some components via --color-dark-*) */
-  --color-dark-0: rgba(100, 100, 140, 0.06);
-  --color-dark-1: rgba(100, 100, 140, 0.1);
-  --color-dark-2: rgba(100, 100, 140, 0.18);
-  --color-dark-3: rgba(100, 100, 140, 0.3);
+  --color-dark-0: rgba(100, 100, 140, 0.025);
+  --color-dark-1: rgba(100, 100, 140, 0.05);
+  --color-dark-2: rgba(100, 100, 140, 0.1);
+  --color-dark-3: rgba(100, 100, 140, 0.2);
 
   /* Terminal/border colors */
   --terminal-width: 100%;
