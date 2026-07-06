@@ -40,7 +40,7 @@ const loadPersisted = () => {
   }
 };
 
-const persistConversations = (conversations) => {
+const persistNow = (conversations) => {
   try {
     const filtered = {};
     for (const [key, conv] of Object.entries(conversations)) {
@@ -54,6 +54,59 @@ const persistConversations = (conversations) => {
     console.error('[chatUnified] Failed to persist conversations:', e);
   }
 };
+
+// PRD-058: debounced persistence.
+//
+// persistNow() JSON.stringifies the ENTIRE multi-channel conversations object.
+// With base64 image/audio payloads inline in tool args/results this produces
+// multi-MB strings, and it used to run synchronously on every tool event —
+// heap snapshots showed 17+ retained copies of the same multi-MB string during
+// a single streaming turn. Debouncing collapses an N-tool-event stream into a
+// single serialization, while:
+//   • MAX_PERSIST_LATENCY_MS caps staleness during long-running streams,
+//   • flushPersist() runs on pagehide/beforeunload so a closing window never
+//     loses the tail of a conversation,
+//   • stream boundaries (SET_STREAMING → false) flush immediately.
+const PERSIST_DEBOUNCE_MS = 600;
+const MAX_PERSIST_LATENCY_MS = 5000;
+
+let persistTimer = null;
+let pendingConversations = null;
+let firstPendingAt = 0;
+
+const flushPersist = () => {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  if (pendingConversations) {
+    const conversations = pendingConversations;
+    pendingConversations = null;
+    firstPendingAt = 0;
+    persistNow(conversations);
+  }
+};
+
+const persistConversations = (conversations) => {
+  pendingConversations = conversations;
+  if (!firstPendingAt) firstPendingAt = Date.now();
+
+  // Cap: a continuous stream of mutations must not postpone durability forever.
+  if (Date.now() - firstPendingAt >= MAX_PERSIST_LATENCY_MS) {
+    flushPersist();
+    return;
+  }
+
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(flushPersist, PERSIST_DEBOUNCE_MS);
+};
+
+if (typeof window !== 'undefined') {
+  // pagehide is the reliable unload signal (fires on tab close, navigation,
+  // and Electron window close); beforeunload kept as a belt-and-braces fallback.
+  window.addEventListener('pagehide', flushPersist);
+  window.addEventListener('beforeunload', flushPersist);
+}
 
 /**
  * One-time read-only migration from a legacy per-page localStorage key.
@@ -210,7 +263,12 @@ export default {
     },
     SET_STREAMING(state, { channelKey, isStreaming }) {
       if (isStreaming) state.streamingChannels[channelKey] = true;
-      else delete state.streamingChannels[channelKey];
+      else {
+        delete state.streamingChannels[channelKey];
+        // PRD-058: end of a stream is a durability boundary — flush any
+        // debounced persist so the completed turn hits localStorage now.
+        flushPersist();
+      }
     },
     SET_LOADING_SUGGESTIONS(state, { channelKey, isLoading }) {
       if (isLoading) state.loadingSuggestionsChannels[channelKey] = true;
@@ -278,7 +336,14 @@ export default {
       delete state.pendingSteers[channelKey];
     },
     PERSIST_CONVERSATIONS(state) {
-      persistConversations(state.conversations);
+      // Explicit persistence request — write through immediately (PRD-058).
+      pendingConversations = null;
+      firstPendingAt = 0;
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimer = null;
+      }
+      persistNow(state.conversations);
     },
   },
 

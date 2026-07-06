@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net } from 'electron';
+import { app, BrowserWindow, Menu, globalShortcut, screen, ipcMain, nativeImage, shell, dialog, utilityProcess, protocol, net, clipboard } from 'electron';
 import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -576,6 +576,69 @@ function createWindow() {
 
   // Open DevTools for debugging.
   // mainWindow.webContents.openDevTools();
+
+  // PRD-054: native right-click context menu — copy/cut/paste/select-all plus
+  // spellcheck suggestions in editable fields. Chromium provides the data via
+  // the context-menu event; without a handler Electron shows nothing at all.
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    const template = [];
+
+    // Spellcheck: suggestions for the misspelled word under the cursor.
+    if (params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+        template.push({
+          label: suggestion,
+          click: () => mainWindow.webContents.replaceMisspelling(suggestion),
+        });
+      }
+      template.push({
+        label: `Add "${params.misspelledWord}" to dictionary`,
+        click: () => mainWindow.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+      });
+      template.push({ type: 'separator' });
+    }
+
+    if (params.isEditable) {
+      template.push(
+        { role: 'cut', enabled: params.editFlags.canCut },
+        { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste },
+        { type: 'separator' },
+        { role: 'selectAll', enabled: params.editFlags.canSelectAll }
+      );
+    } else if (params.selectionText.trim()) {
+      template.push({ role: 'copy' }, { type: 'separator' }, { role: 'selectAll' });
+    }
+
+    if (params.linkURL) {
+      if (template.length && template[template.length - 1].type !== 'separator') {
+        template.push({ type: 'separator' });
+      }
+      template.push({
+        label: 'Copy Link Address',
+        click: () => clipboard.writeText(params.linkURL),
+      });
+    }
+
+    if (params.mediaType === 'image' && params.srcURL) {
+      if (template.length && template[template.length - 1].type !== 'separator') {
+        template.push({ type: 'separator' });
+      }
+      template.push({
+        label: 'Copy Image',
+        click: () => mainWindow.webContents.copyImageAt(params.x, params.y),
+      });
+    }
+
+    // Trim a trailing separator so the menu never ends with a divider.
+    while (template.length && template[template.length - 1].type === 'separator') {
+      template.pop();
+    }
+
+    if (template.length) {
+      Menu.buildFromTemplate(template).popup({ window: mainWindow });
+    }
+  });
 
   // Register popup-window handling exactly once. Previously this lived inside
   // a `did-finish-load` callback, which fires on every navigation/reload —

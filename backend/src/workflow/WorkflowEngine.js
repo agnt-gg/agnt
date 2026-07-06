@@ -276,6 +276,14 @@ class WorkflowEngine extends EventEmitter {
 
         let currentNodeData = startNodeResult;
         const executionQueue = [startNode.id];
+        // PRD-034: the start node was already executed above with the raw
+        // trigger payload. The queue is seeded with its id only so the edge
+        // evaluation below runs for it — its first dequeue must REUSE that
+        // result instead of executing the node a second time. Re-executing
+        // double-logged every trigger node (two nodeExecution rows per run,
+        // the second with a degenerate `{timestamp, error: null}` input) and
+        // re-ran side effects when the fallback start node was an action.
+        let startNodeResultConsumed = false;
 
         // // Initialize with trigger data directly
         // let currentNodeData = this.currentTriggerData;
@@ -317,7 +325,20 @@ class WorkflowEngine extends EventEmitter {
             };
           }
 
-          if (node.type === 'stop-workflow') {
+          if (!startNodeResultConsumed && nodeId === startNode.id) {
+            // First dequeue of the start node — reuse the result from the
+            // execution above (PRD-034). Preserve stop-workflow semantics
+            // without re-executing.
+            startNodeResultConsumed = true;
+            nodeResult = startNodeResult;
+            if (node.type === 'stop-workflow') {
+              console.log(`Stop Workflow node encountered: ${node.id}`);
+              executionLog += `Stop Workflow node encountered: ${node.id}\n`;
+              this.stopRequested = true;
+              this.stopReason = 'Stop Workflow node encountered';
+              break;
+            }
+          } else if (node.type === 'stop-workflow') {
             console.log(`Stop Workflow node encountered: ${node.id}`);
             executionLog += `Stop Workflow node encountered: ${node.id}\n`;
             this.stopRequested = true;

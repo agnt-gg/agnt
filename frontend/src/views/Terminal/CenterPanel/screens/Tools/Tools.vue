@@ -1287,7 +1287,9 @@ export default {
 
 .category-item.active {
   background-color: rgba(var(--green-rgb), 0.15);
-  color: #ffffff !important;
+  /* PRD-013: theme-aware — hardcoded white was invisible on the light theme's
+     white background behind the translucent green highlight. */
+  color: var(--color-text) !important;
 }
 
 .category-icon {
@@ -1310,7 +1312,7 @@ export default {
 
 .main-active {
   background: rgba(var(--green-rgb), 0.18) !important;
-  color: #ffffff !important;
+  color: var(--color-text) !important;
 }
 
 .all-tools {

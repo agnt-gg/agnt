@@ -54,6 +54,73 @@ async function getTransformersPipeline() {
   return _pipeline;
 }
 
+// PRD-063: silence + hallucination guards.
+//
+// Whisper (especially tiny.en) has a documented failure mode on silent or
+// near-silent input: it emits training-corpus boilerplate ("I'm a very happy
+// person.", "Thanks for watching!", …) in a degenerate loop until the decoder
+// hits its segment limit. Two deterministic gates prevent that output from
+// ever reaching the chat input:
+//
+//   1. computeAudioStats — if the decoded PCM is effectively silent, skip the
+//      model entirely and return an empty transcript.
+//   2. collapseRepetitions — if the model still produces a repetition loop
+//      (quiet-but-not-silent audio), collapse consecutive duplicate segments.
+//
+// Thresholds are conservative: normal speech at 16 kHz normalized [-1, 1] has
+// RMS well above 0.01; ambient room noise sits around 0.001–0.005.
+const SILENCE_RMS_THRESHOLD = 0.004;
+const SILENCE_PEAK_THRESHOLD = 0.02;
+
+function computeAudioStats(float32Data) {
+  let sumSquares = 0;
+  let peak = 0;
+  for (let i = 0; i < float32Data.length; i++) {
+    const v = float32Data[i];
+    sumSquares += v * v;
+    const abs = Math.abs(v);
+    if (abs > peak) peak = abs;
+  }
+  const rms = float32Data.length > 0 ? Math.sqrt(sumSquares / float32Data.length) : 0;
+  return { rms, peak };
+}
+
+function isSilent({ rms, peak }) {
+  return rms < SILENCE_RMS_THRESHOLD && peak < SILENCE_PEAK_THRESHOLD;
+}
+
+/**
+ * Collapse degenerate repetition loops in a transcript.
+ * Splits on sentence boundaries and removes consecutive duplicate segments
+ * (case/whitespace-insensitive) beyond the first occurrence. Real speech
+ * legitimately repeats a phrase occasionally; a hallucination loop repeats it
+ * dozens of times — collapsing consecutive duplicates preserves the former
+ * and neutralizes the latter.
+ */
+function collapseRepetitions(text) {
+  if (!text) return text;
+  const segments = text.match(/[^.!?\n]+[.!?]*\s*/g);
+  if (!segments || segments.length < 3) return text;
+
+  const collapsed = [];
+  let prevKey = null;
+  let dropped = 0;
+  for (const segment of segments) {
+    const key = segment.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (key && key === prevKey) {
+      dropped++;
+      continue;
+    }
+    collapsed.push(segment);
+    prevKey = key;
+  }
+
+  if (dropped > 0) {
+    console.log(`[Whisper] Collapsed ${dropped} repeated segment(s) (silence-hallucination guard)`);
+  }
+  return collapsed.join('');
+}
+
 class WhisperService {
   constructor() {
     this.transcriber = null;
@@ -163,6 +230,14 @@ class WhisperService {
       // Decode audio to Float32Array at 16kHz
       const audioData = await this.decodeAudio(audioFilePath);
 
+      // PRD-063 gate 1: skip the model entirely on silent audio — Whisper
+      // hallucinates boilerplate phrases on silence instead of returning ''.
+      const stats = computeAudioStats(audioData);
+      if (isSilent(stats)) {
+        console.log(`[Whisper] Audio is silent (rms=${stats.rms.toFixed(5)}, peak=${stats.peak.toFixed(4)}) — skipping transcription`);
+        return '';
+      }
+
       console.log('Audio decoded, starting transcription...');
 
       // Transcribe using Transformers.js
@@ -170,7 +245,9 @@ class WhisperService {
 
       console.log('Transcription complete:', result.text);
 
-      return result.text || '';
+      // PRD-063 gate 2: collapse degenerate repetition loops that slip past
+      // the silence gate (quiet-but-not-silent recordings).
+      return collapseRepetitions(result.text || '');
     } catch (error) {
       console.error('Error transcribing audio:', error);
       throw error;
@@ -198,3 +275,7 @@ class WhisperService {
 
 // Export singleton instance
 export const whisperService = new WhisperService();
+
+// PRD-063: exported for unit testing of the silence/hallucination guards.
+export { computeAudioStats, isSilent, collapseRepetitions };
+

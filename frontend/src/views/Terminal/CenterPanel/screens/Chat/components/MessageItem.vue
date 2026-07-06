@@ -339,6 +339,7 @@ function isRenderedVizContainer(el) {
   if (el.classList.contains('chartjs-container')) return !!el.querySelector('canvas');
   if (el.classList.contains('d3-container')) return !!el.querySelector('.d3-chart');
   if (el.classList.contains('threejs-container')) return !!el.querySelector('canvas.threejs-canvas');
+  if (el.classList.contains('mermaid-container')) return !!el.querySelector('svg');
   return false;
 }
 
@@ -401,6 +402,7 @@ const vMorphHtml = {
 let _hljs = null;
 let _Chart = null;
 let _d3 = null;
+let _mermaid = null;
 let _THREE = null;
 let _THREE_ADDONS = null;
 let _OrbitControls = null;
@@ -430,6 +432,14 @@ const loadD3 = async () => {
     _d3 = await import('d3');
   }
   return _d3;
+};
+
+const loadMermaid = async () => {
+  if (!_mermaid) {
+    const mod = await import('mermaid');
+    _mermaid = mod.default;
+  }
+  return _mermaid;
 };
 
 const loadThreeJs = async () => {
@@ -537,6 +547,11 @@ const markdownConverter = new showdown.Converter({
             result = result.replace(/<pre><code class="[^"]*language-threejs[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
               const id = 'three-' + hashCode(code) + '-' + blockIndex++;
               return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${code}</code></div>`;
+            });
+            // Convert ```mermaid code blocks into Mermaid containers (PRD-017)
+            result = result.replace(/<pre><code class="[^"]*language-mermaid[^"]*">([\s\S]*?)<\/code><\/pre>/g, (match, code) => {
+              const id = 'mermaid-' + hashCode(code) + '-' + blockIndex++;
+              return `<div class="mermaid-container" data-mermaid-id="${id}"><code class="mermaid-code" style="display:none">${code}</code></div>`;
             });
             return result;
           },
@@ -1024,6 +1039,18 @@ setTimeout(()=>{const svg=document.querySelector('svg');if(svg){const w=parseFlo
 <\/script></body></html>`;
       }
 
+      if (type === 'mermaid') {
+        return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;display:flex;align-items:center;justify-content:center;min-height:100vh;overflow:auto;padding:24px}#diagram svg{max-width:95vw;max-height:92vh;height:auto}</style>
+</head><body><div id="diagram"></div><script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'strict'});
+try{const {svg}=await mermaid.render('mermaid-fs',${JSON.stringify(sourceCode)});
+document.getElementById('diagram').innerHTML=svg;
+}catch(e){document.body.innerHTML='<div style="color:#ff4d4d;padding:40px;text-align:center"><strong>Mermaid Render Failed</strong><br>'+e.message+'</div>';}
+<\/script></body></html>`;
+      }
+
       if (type === 'threejs') {
         return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;overflow:hidden}canvas{width:100%;height:100vh;display:block;cursor:grab}canvas:active{cursor:grabbing}</style>
@@ -1072,7 +1099,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     const openVizFullscreen = (container, type) => {
       const html = buildVizHTML(container, type);
       if (!html) return;
-      vizModalTitle.value = type === 'chartjs' ? 'Chart.js' : type === 'd3' ? 'D3 Visualization' : '3D Scene';
+      vizModalTitle.value = type === 'chartjs' ? 'Chart.js' : type === 'd3' ? 'D3 Visualization' : type === 'mermaid' ? 'Mermaid Diagram' : '3D Scene';
       vizModalHTML.value = injectTheme(html);
       showVizModal.value = true;
       document.body.style.overflow = 'hidden';
@@ -1456,7 +1483,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
         if (!messageRef.value) return;
 
         const vizContainers = messageRef.value.querySelectorAll(
-          '.chartjs-container:not([data-viz-buttons]), .d3-container:not([data-viz-buttons]), .threejs-container:not([data-viz-buttons])',
+          '.chartjs-container:not([data-viz-buttons]), .d3-container:not([data-viz-buttons]), .threejs-container:not([data-viz-buttons]), .mermaid-container:not([data-viz-buttons])',
         );
 
         vizContainers.forEach((container) => {
@@ -1467,6 +1494,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           let type = 'chartjs';
           if (container.classList.contains('d3-container')) type = 'd3';
           else if (container.classList.contains('threejs-container')) type = 'threejs';
+          else if (container.classList.contains('mermaid-container')) type = 'mermaid';
 
           // Source code is stored during render (data-source-code attribute)
           const sourceCode = container.getAttribute('data-source-code') || '';
@@ -1864,6 +1892,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           const id = 'three-' + hashCode(block.content) + '-' + vizIdx++;
           return `<div class="threejs-container" data-three-id="${id}"><code class="threejs-code" style="display:none">${escaped}</code></div>`;
         }
+        if (safeLang === 'mermaid') {
+          const id = 'mermaid-' + hashCode(block.content) + '-' + vizIdx++;
+          return `<div class="mermaid-container" data-mermaid-id="${id}"><code class="mermaid-code" style="display:none">${escaped}</code></div>`;
+        }
 
         const langClass = safeLang ? ` class="${safeLang} language-${safeLang}"` : '';
         return `<pre><code${langClass}>${escaped}</code></pre>`;
@@ -2083,6 +2115,60 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
       });
     };
 
+    const renderMermaidDiagrams = () => {
+      nextTick(async () => {
+        if (!messageRef.value) return;
+
+        const containers = messageRef.value.querySelectorAll('.mermaid-container');
+        if (containers.length === 0) return;
+
+        const mermaid = await loadMermaid();
+
+        // Match the app theme — mermaid's 'default' theme is light, 'dark' is dark.
+        const appTheme = store.state.theme?.currentTheme || 'dark';
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: appTheme === 'light' ? 'default' : 'dark',
+          securityLevel: 'strict',
+          fontFamily: 'inherit',
+        });
+
+        containers.forEach((container) => {
+          // Element-based dedupe (same pattern as chartjs/d3): the code element
+          // only exists until render consumes it.
+          const codeEl = container.querySelector('.mermaid-code');
+          if (!codeEl) return;
+
+          (async () => {
+            const id = (container.getAttribute('data-mermaid-id') || 'mermaid-viz').replace(/[^a-zA-Z0-9_-]/g, '');
+            try {
+              // Decode HTML entities
+              const textarea = document.createElement('textarea');
+              textarea.innerHTML = codeEl.textContent || '';
+              const mermaidCode = textarea.value;
+              codeEl.remove();
+
+              // Store source code for copy/fullscreen buttons
+              container.setAttribute('data-source-code', mermaidCode);
+
+              const { svg } = await mermaid.render(id, mermaidCode);
+              const wrapper = document.createElement('div');
+              wrapper.classList.add('mermaid-diagram');
+              wrapper.innerHTML = svg;
+              container.appendChild(wrapper);
+            } catch (err) {
+              // mermaid.render leaves an orphaned error element in <body> on failure
+              document.getElementById(id)?.remove();
+              console.warn('Mermaid rendering error:', err.message);
+              container.innerHTML = `<div style="padding: 16px; background: rgba(255,77,77,0.08); border: 1px solid rgba(255,77,77,0.3); border-radius: 8px; color: var(--color-red, #ff4d4d); font-size: 13px;">
+                <strong>Mermaid Render Failed</strong><br><span style="opacity:0.8">${err.message}</span>
+              </div>`;
+            }
+          })();
+        });
+      });
+    };
+
     const renderThreeJsDiagrams = () => {
       nextTick(async () => {
         if (!messageRef.value) return;
@@ -2270,6 +2356,7 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
           renderChartJsDiagrams();
           renderD3Diagrams();
           renderThreeJsDiagrams();
+          renderMermaidDiagrams();
           renderMathElements();
 
           // Imperative DOM manipulation (replaceWith, appendChild) conflicts with
@@ -4600,21 +4687,23 @@ span.nodeLabel p {
 }
 
 .message-text :deep(.d3-container text) {
-  fill: #e0e0e0;
+  /* PRD-013: theme-aware — hardcoded #e0e0e0 was invisible on the light theme's
+     near-white container background. */
+  fill: var(--color-text, #e0e0e0);
 }
 
 .message-text :deep(.d3-container .axis text) {
-  fill: #a0a0a0;
+  fill: var(--color-text-muted, #a0a0a0);
   font-size: 11px;
 }
 
 .message-text :deep(.d3-container .axis path),
 .message-text :deep(.d3-container .axis line) {
-  stroke: #555;
+  stroke: var(--color-text-dull, #555);
 }
 
 .message-text :deep(.d3-container .grid line) {
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: color-mix(in srgb, var(--color-text, #e0e0e0) 10%, transparent);
 }
 
 /* Three.js inline 3D scenes in chat messages */
@@ -4643,6 +4732,37 @@ span.nodeLabel p {
   cursor: grabbing;
 }
 
+/* Mermaid inline diagrams in chat messages (PRD-017) */
+.message-text :deep(.mermaid-container) {
+  width: 100%;
+  max-width: 100%;
+  margin: 12px 0;
+  padding: 16px;
+  background-color: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-text :deep(.mermaid-container .mermaid-diagram) {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-text :deep(.mermaid-container svg) {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
 /* Visualization action buttons (Copy / Fullscreen) on chart/d3/threejs containers */
 .message-text :deep(.viz-action-buttons) {
   position: absolute;
@@ -4657,7 +4777,8 @@ span.nodeLabel p {
 
 .message-text :deep(.chartjs-container:hover .viz-action-buttons),
 .message-text :deep(.d3-container:hover .viz-action-buttons),
-.message-text :deep(.threejs-container:hover .viz-action-buttons) {
+.message-text :deep(.threejs-container:hover .viz-action-buttons),
+.message-text :deep(.mermaid-container:hover .viz-action-buttons) {
   opacity: 1;
 }
 

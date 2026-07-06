@@ -1,15 +1,22 @@
 import { ref, onUnmounted } from 'vue';
 import { API_CONFIG } from '../../user.config.js';
 
+// PRD-063: recordings shorter than this are discarded client-side. A click-then-
+// immediate-click on the mic button produces ~200ms of audio that Whisper tiny.en
+// reliably hallucinates on ("I'm a very happy person." repeated dozens of times).
+const MIN_RECORDING_MS = 400;
+
 export function useSpeechRecognition() {
   const isListening = ref(false);
   const isSupported = ref(true); // Always supported with Whisper
+  const isTranscribing = ref(false); // PRD-063: true while awaiting the backend transcription
   const transcript = ref('');
   const error = ref(null);
 
   let mediaRecorder = null;
   let audioChunks = [];
   let stream = null;
+  let recordingStartedAt = 0;
 
   // Detect if running in Electron
   const isElectron = navigator.userAgent.toLowerCase().includes('electron');
@@ -36,6 +43,15 @@ export function useSpeechRecognition() {
         console.log('Recording stopped, processing audio...');
 
         try {
+          // PRD-063 gate 1: discard too-short recordings instead of shipping
+          // them to Whisper, which hallucinates on near-empty audio.
+          const recordingMs = Date.now() - recordingStartedAt;
+          if (recordingMs < MIN_RECORDING_MS) {
+            console.log(`Recording too short (${recordingMs}ms < ${MIN_RECORDING_MS}ms) — discarded`);
+            error.value = 'Recording too short — hold the mic a bit longer.';
+            return;
+          }
+
           // Create blob from recorded chunks
           const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
 
@@ -44,6 +60,7 @@ export function useSpeechRecognition() {
           formData.append('audio', audioBlob, 'recording.webm');
 
           console.log('Sending audio to Whisper for transcription...');
+          isTranscribing.value = true;
 
           const response = await fetch(`${API_CONFIG.BASE_URL}/speech/transcribe`, {
             method: 'POST',
@@ -59,13 +76,19 @@ export function useSpeechRecognition() {
           if (result.success && result.transcript) {
             transcript.value = result.transcript;
             console.log('Transcription successful:', result.transcript);
+          } else if (result.success) {
+            // PRD-063: backend silence gate returned an empty transcript —
+            // that's a valid "no speech" outcome, not a failure.
+            console.log('No speech detected in recording');
+            error.value = 'No speech detected.';
           } else {
-            throw new Error('No transcript returned');
+            throw new Error(result.error || 'No transcript returned');
           }
         } catch (err) {
           console.error('Error transcribing audio:', err);
           error.value = 'Failed to transcribe audio. Please try again.';
         } finally {
+          isTranscribing.value = false;
           // Clean up
           if (stream) {
             stream.getTracks().forEach((track) => track.stop());
@@ -76,6 +99,7 @@ export function useSpeechRecognition() {
       };
 
       mediaRecorder.start();
+      recordingStartedAt = Date.now();
       isListening.value = true;
       error.value = null;
       transcript.value = '';
@@ -141,6 +165,7 @@ export function useSpeechRecognition() {
   return {
     isListening,
     isSupported,
+    isTranscribing,
     transcript,
     error,
     startListening,
