@@ -1,0 +1,10 @@
+{
+  "name": "vulnapp",
+  "version": "1.0.0",
+  "description": "Deliberately vulnerable app for Sentinel self-test",
+  "dependencies": {
+    "express": "4.16.0",
+    "mysql": "2.0.0",
+    "lodash": "4.17.4"
+  }
+}

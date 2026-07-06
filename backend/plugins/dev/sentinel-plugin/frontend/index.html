@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sentinel — Security Auditor</title><style>
+:root{--bg:#0b0e14;--panel:#141925;--panel2:#1b2130;--line:#242c3d;--text:#e6ecf5;--muted:#8b9bb4;--accent:#12e0ff;--accent2:#7d3de5;}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:radial-gradient(1200px 600px at 50% -10%,#161c2b,transparent),var(--bg);color:var(--text);font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.top{max-width:900px;margin:0 auto;padding:56px 24px 0;text-align:center}
+.logo{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:inline-flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 8px 40px rgba(18,224,255,.25)}
+h1{font-size:34px;letter-spacing:-.03em;margin:18px 0 6px}
+.tag{color:var(--muted);font-size:15px;max-width:560px;margin:0 auto}
+.card{max-width:760px;margin:34px auto 0;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:10px}
+.inputrow{display:flex;gap:8px;align-items:stretch}
+input[type=text]{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:16px 18px;font-size:15px;outline:none}
+input[type=text]:focus{border-color:var(--accent)}
+button.go{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#04121a;font-weight:800;border:none;border-radius:12px;padding:0 26px;font-size:15px;cursor:pointer;white-space:nowrap}
+button.go:disabled{opacity:.5;cursor:default}
+.opts{display:flex;gap:16px;align-items:center;justify-content:center;margin:14px 6px 8px;flex-wrap:wrap;color:var(--muted);font-size:13px}
+.opts select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 10px}
+.hint{max-width:760px;margin:12px auto 0;color:var(--muted);font-size:12.5px;text-align:center}
+.log{max-width:760px;margin:24px auto 0;background:#0a0d13;border:1px solid var(--line);border-radius:12px;padding:16px 18px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:#9fe8c9;max-height:220px;overflow:auto;display:none}
+.log.on{display:block}
+.log .l{opacity:.85;padding:1px 0}
+.report{max-width:1000px;margin:26px auto 60px;display:none}
+.report.on{display:block}
+.report iframe{width:100%;height:80vh;border:1px solid var(--line);border-radius:16px;background:#0b0e14}
+.bar{max-width:1000px;margin:24px auto 0;display:none;align-items:center;gap:14px}
+.bar.on{display:flex}
+.spin{width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.err{max-width:760px;margin:20px auto;background:rgba(255,59,107,.1);border:1px solid rgba(255,59,107,.4);color:#ffb3c4;border-radius:12px;padding:14px 18px;display:none}
+.err.on{display:block}
+.dl{color:var(--accent);text-decoration:none;font-size:13px;border:1px solid var(--line);padding:8px 14px;border-radius:8px}
+.examples{max-width:760px;margin:16px auto 0;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.ex{font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer}
+.ex:hover{border-color:var(--accent);color:var(--text)}
+</style></head><body>
+<div class="top">
+  <div class="logo">🛡️</div>
+  <h1>Sentinel</h1>
+  <p class="tag">Drop a git repo, a local folder, or a live URL. Get a comprehensive, evidence-backed security report with the exact file, line, and fix. Real scanners find the bugs — the AI only explains them.</p>
+</div>
+
+<div class="card">
+  <div class="inputrow">
+    <input id="target" type="text" placeholder="https://github.com/user/repo  ·  C:\path\to\project  ·  https://example.com" autofocus>
+    <button class="go" id="go">Audit</button>
+  </div>
+  <div class="opts">
+    <label>Depth
+      <select id="depth"><option value="standard">standard</option><option value="deep">deep (+ git-history secrets)</option></select>
+    </label>
+    <label>AI narrative
+      <select id="provider">
+        <option value="claude-code">Claude Code (keyless)</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="none" selected>None (findings only)</option>
+      </select>
+    </label>
+  </div>
+</div>
+<div class="examples">
+  <span class="ex" data-t="https://github.com/agnt-gg/agnt">github.com/agnt-gg/agnt</span>
+</div>
+<p class="hint">⚠️ Only scan targets you own or are explicitly authorized to test. Live-URL probing performs non-destructive GET requests.</p>
+
+<div class="bar" id="bar"><div class="spin"></div><span id="barmsg">Working…</span></div>
+<div class="log" id="log"></div>
+<div class="err" id="err"></div>
+<div class="report" id="report">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div id="verdict" style="font-size:15px;color:var(--muted)"></div>
+    <a class="dl" id="dl" download="sentinel-report.html">⬇ Download report</a>
+  </div>
+  <iframe id="frame"></iframe>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const go = $('go');
+function setBusy(b){ go.disabled=b; $('bar').classList.toggle('on',b); }
+function log(m){ const l=$('log'); l.classList.add('on'); const d=document.createElement('div'); d.className='l'; d.textContent='· '+m; l.appendChild(d); l.scrollTop=l.scrollHeight; }
+
+document.querySelectorAll('.ex').forEach(e=>e.onclick=()=>{ $('target').value=e.dataset.t; });
+
+function start(){
+  const target=$('target').value.trim();
+  if(!target) return;
+  $('log').innerHTML=''; $('log').classList.remove('on');
+  $('err').classList.remove('on'); $('report').classList.remove('on');
+  $('barmsg').textContent='Scanning '+target+' …';
+  setBusy(true);
+
+  const qs=new URLSearchParams({target,depth:$('depth').value,provider:$('provider').value});
+  const es=new EventSource('/audit?'+qs.toString());
+
+  es.addEventListener('progress',ev=>{ const d=JSON.parse(ev.data); log(d.msg); });
+  es.addEventListener('error',ev=>{
+    let msg='Audit failed.'; try{ if(ev.data) msg=JSON.parse(ev.data).error||msg; }catch{}
+    $('err').textContent='✗ '+msg; $('err').classList.add('on'); setBusy(false); es.close();
+  });
+  es.addEventListener('done',ev=>{
+    const d=JSON.parse(ev.data); setBusy(false); es.close();
+    const s=d.summary||{};
+    $('verdict').innerHTML='<b style="color:var(--text)">Grade '+(s.grade||'?')+'</b> · risk '+(s.risk||0)+'/100 · '+(s.total||0)+' findings ('+(s.counts?.critical||0)+' critical, '+(s.counts?.high||0)+' high, '+(s.counts?.medium||0)+' medium)';
+    const blob=new Blob([d.html],{type:'text/html'});
+    const objUrl=URL.createObjectURL(blob);
+    $('frame').src=objUrl;
+    $('dl').href=objUrl;
+    $('report').classList.add('on');
+    $('report').scrollIntoView({behavior:'smooth'});
+  });
+}
+go.onclick=start;
+$('target').addEventListener('keydown',e=>{ if(e.key==='Enter') start(); });
+</script>
+</body></html>

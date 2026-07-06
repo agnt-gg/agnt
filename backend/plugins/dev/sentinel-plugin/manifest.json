@@ -1,0 +1,146 @@
+{
+  "name": "sentinel",
+  "version": "1.0.0",
+  "description": "Drop a URL, local path, or git repo and get a comprehensive, evidence-backed security report with exact file:line:CWE findings and concrete fixes. Real scanners find the bugs (semgrep, detect-secrets, dependency audits, web recon); the LLM only explains and prioritizes — it can never invent a finding.",
+  "author": "AGNT",
+  "icon": "shield-halved",
+  "homepage": "https://github.com/agnt-gg/agnt",
+  "license": "MIT",
+  "type": "module",
+  "tools": [
+    {
+      "type": "sentinel-scan",
+      "entryPoint": "./tools/scan.js",
+      "schema": {
+        "title": "Sentinel Scan",
+        "category": "action",
+        "type": "sentinel-scan",
+        "icon": "shield-halved",
+        "description": "Ingest a target (git URL, local directory path, or live http(s) URL) and run every applicable security scanner. Returns normalized, deduplicated, evidence-backed findings with file:line:CWE. Does NOT call an LLM — this is the deterministic ground-truth stage.",
+        "parameters": {
+          "target": {
+            "type": "string",
+            "inputType": "text",
+            "description": "What to scan: a git URL (https://github.com/user/repo), an absolute local directory path, or a live URL (https://example.com).",
+            "required": true
+          },
+          "depth": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Scan depth. 'standard' runs the core scanners; 'deep' adds git-history secret sweep and extended semgrep rulesets.",
+            "options": ["standard", "deep"],
+            "default": "standard"
+          },
+          "webActiveProbe": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "For live-URL targets only: probe for exposed sensitive files (.git, .env, backups). Non-destructive GETs only. Requires you own or are authorized to test the target.",
+            "default": true
+          }
+        },
+        "outputs": {
+          "success": { "type": "boolean", "description": "Whether the scan completed." },
+          "summary": { "type": "object", "description": "Counts by severity, risk score, scanners run, target metadata." },
+          "totalFindings": { "type": "number", "description": "Total number of findings (full set is on disk at findingsPath)." },
+          "findings": { "type": "array", "description": "Context-safe slice: the top (highest-severity) findings only. Read findingsPath for the complete set." },
+          "truncated": { "type": "boolean", "description": "True when more findings exist than are returned inline." },
+          "findingsPath": { "type": "string", "description": "Absolute path to the JSON file holding the complete findings array + summary." },
+          "target": { "type": "object", "description": "Resolved target info: kind (git|local|url), path/url, languages detected." },
+          "error": { "type": "string", "description": "Error message if the scan failed." }
+        }
+      }
+    },
+    {
+      "type": "sentinel-report",
+      "entryPoint": "./tools/report.js",
+      "schema": {
+        "title": "Sentinel Report",
+        "category": "action",
+        "type": "sentinel-report",
+        "icon": "file-shield",
+        "description": "Turn Sentinel findings into a comprehensive, plain-English security report (HTML + Markdown) with an executive summary, per-finding impact and concrete fix. The LLM works ONLY from verified findings — it never invents vulnerabilities.",
+        "parameters": {
+          "findings": {
+            "type": "array",
+            "inputType": "textarea",
+            "description": "Findings array from sentinel-scan (or the full scan output object). Usually wired from the previous node. Optional if findingsPath is provided.",
+            "required": false
+          },
+          "findingsPath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Absolute path to a findings JSON file written by sentinel-scan/sentinel-audit. Preferred over inline findings for large scans. Wire this from the scan node's findingsPath output.",
+            "required": false
+          },
+          "summary": {
+            "type": "object",
+            "inputType": "textarea",
+            "description": "Summary object from sentinel-scan (optional; improves the report header).",
+            "required": false
+          },
+          "provider": {
+            "type": "string",
+            "inputType": "select",
+            "description": "LLM backbone for the write-up. 'claude-code' uses your keyless Claude Code CLI. 'openrouter'/'openai'/'anthropic' use configured keys. 'none' emits a template report with no LLM prose.",
+            "options": ["claude-code", "openrouter", "openai", "anthropic", "none"],
+            "default": "claude-code"
+          }
+        },
+        "outputs": {
+          "success": { "type": "boolean", "description": "Whether the report was generated." },
+          "reportPath": { "type": "string", "description": "Absolute path to the saved standalone HTML report file." },
+          "markdownPath": { "type": "string", "description": "Absolute path to the saved Markdown report file." },
+          "narrativeExcerpt": { "type": "string", "description": "Short excerpt of the LLM executive summary (full prose is in the report files)." },
+          "narrativeProvider": { "type": "string", "description": "Which LLM backbone produced the prose." },
+          "totalFindings": { "type": "number", "description": "Number of findings the report covers." },
+          "error": { "type": "string", "description": "Error message if generation failed." }
+        }
+      }
+    },
+    {
+      "type": "sentinel-audit",
+      "entryPoint": "./tools/audit.js",
+      "schema": {
+        "title": "Sentinel Audit (Scan + Report)",
+        "category": "action",
+        "type": "sentinel-audit",
+        "icon": "user-shield",
+        "description": "One-shot: scan a target AND generate the full report. This is the node the simple frontend calls. Drop a URL/path/repo, get findings + an HTML report file back.",
+        "parameters": {
+          "target": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Git URL, absolute local directory path, or live URL to audit.",
+            "required": true
+          },
+          "depth": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Scan depth.",
+            "options": ["standard", "deep"],
+            "default": "standard"
+          },
+          "provider": {
+            "type": "string",
+            "inputType": "select",
+            "description": "LLM backbone for the report write-up.",
+            "options": ["claude-code", "openrouter", "openai", "anthropic", "none"],
+            "default": "claude-code"
+          }
+        },
+        "outputs": {
+          "success": { "type": "boolean", "description": "Whether the audit completed." },
+          "summary": { "type": "object", "description": "Severity counts and risk score." },
+          "totalFindings": { "type": "number", "description": "Total number of findings (full set on disk at findingsPath)." },
+          "findings": { "type": "array", "description": "Context-safe slice of the top findings. Read findingsPath for the complete set." },
+          "truncated": { "type": "boolean", "description": "True when more findings exist than are returned inline." },
+          "findingsPath": { "type": "string", "description": "Absolute path to the complete findings JSON." },
+          "reportPath": { "type": "string", "description": "Absolute path to the saved HTML report." },
+          "markdownPath": { "type": "string", "description": "Absolute path to the saved Markdown report." },
+          "narrativeExcerpt": { "type": "string", "description": "Short excerpt of the LLM executive summary." },
+          "error": { "type": "string", "description": "Error message if it failed." }
+        }
+      }
+    }
+  ]
+}
