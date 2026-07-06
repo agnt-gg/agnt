@@ -1041,12 +1041,28 @@ setTimeout(()=>{const svg=document.querySelector('svg');if(svg){const w=parseFlo
 
       if (type === 'mermaid') {
         return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;display:flex;align-items:center;justify-content:center;min-height:100vh;overflow:auto;padding:24px}#diagram svg{max-width:95vw;max-height:92vh;height:auto}</style>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;overflow:hidden}#diagram{display:flex;align-items:center;justify-content:center}#diagram svg{max-width:92vw;max-height:88vh}</style>
 </head><body><div id="diagram"></div><script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'strict'});
-try{const {svg}=await mermaid.render('mermaid-fs',${JSON.stringify(sourceCode)});
+const renderW=Math.round(window.innerWidth*0.92);
+mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'strict',gantt:{useWidth:renderW}});
+try{
+// Gantt (unlike flowcharts) sizes itself from its PARENT's offsetWidth at
+// render time. Without a container, mermaid renders into a temp div on this
+// flex body, which shrink-to-fits to ~0px — squishing wide diagrams. Render
+// into an explicitly-sized off-screen holder instead.
+const holder=document.createElement('div');
+holder.style.cssText='position:fixed;left:-100000px;top:0;width:'+renderW+'px;';
+document.body.appendChild(holder);
+const {svg}=await mermaid.render('mermaid-fs',${JSON.stringify(sourceCode)},holder);
+holder.remove();
 document.getElementById('diagram').innerHTML=svg;
+// Mermaid v11 emits width="100%", NO height attr, and a correct viewBox +
+// style="max-width: NNNpx". Do NOT recompute the viewBox (parseFloat('100%')
+// poisons it) — keep mermaid's, strip its sizing, and let the viewBox scale
+// the diagram up to the viewport (preserveAspectRatio default = meet/centered).
+const s=document.querySelector('#diagram svg');
+if(s&&s.getAttribute('viewBox')){s.removeAttribute('width');s.removeAttribute('height');s.style.cssText='width:92vw;height:88vh;';}
 }catch(e){document.body.innerHTML='<div style="color:#ff4d4d;padding:40px;text-align:center"><strong>Mermaid Render Failed</strong><br>'+e.message+'</div>';}
 <\/script></body></html>`;
       }
