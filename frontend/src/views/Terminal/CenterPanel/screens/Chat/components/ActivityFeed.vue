@@ -89,7 +89,7 @@ export default {
         if (newLength > oldLength) {
           scrollToTop();
         }
-      }
+      },
     );
 
     return {
@@ -109,7 +109,7 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 0;
   padding: 12px 16px;
-  max-height: 200px;
+  max-height: 265px;
   display: flex;
   flex-direction: column;
 }
