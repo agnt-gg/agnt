@@ -1,7 +1,7 @@
 {
   "name": "github-plugin",
-  "version": "1.0.0",
-  "description": "GitHub integration plugin for AGNT - Manage repositories, issues, pull requests, branches, and releases",
+  "version": "2.0.0",
+  "description": "GitHub integration plugin for AGNT - Full repository lifecycle: repos, branches, files, issues, comments, pull requests, reviews, releases, GitHub Actions/CI, and search",
   "author": "AGNT",
   "icon": "github",
   "tools": [
@@ -13,7 +13,7 @@
         "category": "action",
         "type": "github-api",
         "icon": "github",
-        "description": "Interact with GitHub to perform various operations on repositories, issues, pull requests, and more.",
+        "description": "Interact with GitHub: repos, branches, files, issues, comments, pull requests, reviews, releases, Actions/CI, and search.",
         "authRequired": "oauth",
         "authProvider": "github",
         "parameters": {
@@ -21,35 +21,68 @@
             "type": "string",
             "inputType": "select",
             "options": [
-              "CREATE_ISSUE",
-              "CREATE_PR",
+              "GET_AUTHENTICATED_USER",
               "GET_REPO_INFO",
+              "LIST_REPOS",
+              "CREATE_REPO",
+              "FORK_REPO",
+              "LIST_BRANCHES",
               "CREATE_BRANCH",
-              "MERGE_PR",
-              "LIST_PRS",
-              "GET_PR_CHANGES",
-              "ADD_LABELS",
-              "REMOVE_LABELS",
+              "DELETE_BRANCH",
               "GET_FILE_CONTENT",
               "GET_REPO_CONTENTS",
               "CREATE_FILE",
               "UPDATE_FILE",
+              "DELETE_FILE",
+              "CREATE_ISSUE",
+              "LIST_ISSUES",
+              "GET_ISSUE",
+              "UPDATE_ISSUE",
+              "COMMENT_ON_ISSUE",
+              "LIST_COMMENTS",
+              "ADD_LABELS",
+              "REMOVE_LABELS",
+              "CREATE_PR",
+              "LIST_PRS",
+              "GET_PR",
+              "UPDATE_PR",
+              "MERGE_PR",
+              "GET_PR_CHANGES",
+              "CREATE_PR_REVIEW",
+              "LIST_PR_REVIEWS",
+              "REQUEST_REVIEWERS",
+              "LIST_COMMITS",
+              "GET_COMMIT",
+              "COMPARE_COMMITS",
               "CREATE_RELEASE",
-              "LIST_COMMITS"
+              "LIST_RELEASES",
+              "GET_LATEST_RELEASE",
+              "UPLOAD_RELEASE_ASSET",
+              "LIST_WORKFLOWS",
+              "LIST_WORKFLOW_RUNS",
+              "GET_WORKFLOW_RUN",
+              "TRIGGER_WORKFLOW",
+              "RERUN_WORKFLOW",
+              "GET_CHECK_RUNS",
+              "SEARCH_ISSUES",
+              "SEARCH_CODE",
+              "SEARCH_REPOS"
             ],
             "description": "The action to perform on GitHub"
           },
           "owner": {
             "type": "string",
             "inputType": "text",
-            "description": "The owner of the repository",
-            "inputSize": "half"
+            "description": "The owner of the repository (not needed for account-level or search actions)",
+            "inputSize": "half",
+            "required": false
           },
           "repo": {
             "type": "string",
             "inputType": "text",
-            "description": "The name of the repository",
-            "inputSize": "half"
+            "description": "The name of the repository (for CREATE_REPO: the name of the new repository)",
+            "inputSize": "half",
+            "required": false
           },
           "title": {
             "type": "string",
@@ -57,42 +90,72 @@
             "description": "The title of the issue or pull request",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_ISSUE", "CREATE_PR"]
+              "value": ["CREATE_ISSUE", "UPDATE_ISSUE", "CREATE_PR", "UPDATE_PR"]
             }
           },
           "body": {
             "type": "string",
             "inputType": "textarea",
-            "description": "The body of the issue or pull request",
+            "description": "The body text (issue/PR description, comment body, or review body)",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_ISSUE", "CREATE_PR"]
+              "value": ["CREATE_ISSUE", "UPDATE_ISSUE", "CREATE_PR", "UPDATE_PR", "COMMENT_ON_ISSUE", "CREATE_PR_REVIEW"]
+            }
+          },
+          "issueNumber": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The number of the issue (or PR, for comments/labels)",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_ISSUE", "UPDATE_ISSUE", "COMMENT_ON_ISSUE", "LIST_COMMENTS", "ADD_LABELS", "REMOVE_LABELS"]
+            }
+          },
+          "pullNumber": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The number of the pull request",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_PR", "UPDATE_PR", "MERGE_PR", "GET_PR_CHANGES", "CREATE_PR_REVIEW", "LIST_PR_REVIEWS", "REQUEST_REVIEWERS"]
             }
           },
           "head": {
             "type": "string",
             "inputType": "text",
-            "description": "The name of the branch where your changes are implemented",
+            "description": "The branch with your changes (CREATE_PR) or the head ref (COMPARE_COMMITS)",
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": "CREATE_PR"
+              "value": ["CREATE_PR", "COMPARE_COMMITS"]
             }
           },
           "base": {
             "type": "string",
             "inputType": "text",
-            "description": "The name of the branch you want the changes pulled into",
+            "description": "The branch to merge into (CREATE_PR/UPDATE_PR) or the base ref (COMPARE_COMMITS)",
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": "CREATE_PR"
+              "value": ["CREATE_PR", "UPDATE_PR", "COMPARE_COMMITS"]
+            }
+          },
+          "draft": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Create as a draft (PR or release)",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_PR", "CREATE_RELEASE"]
             }
           },
           "baseBranch": {
             "type": "string",
             "inputType": "text",
-            "description": "The name of the branch to create the new branch from",
+            "description": "The branch to create the new branch from",
             "inputSize": "half",
             "conditional": {
               "field": "action",
@@ -109,13 +172,14 @@
               "value": "CREATE_BRANCH"
             }
           },
-          "pullNumber": {
+          "branch": {
             "type": "string",
             "inputType": "text",
-            "description": "The number of the pull request",
+            "description": "The branch to operate on (defaults to the repository's default branch)",
+            "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["MERGE_PR", "GET_PR_CHANGES"]
+              "value": ["LIST_COMMITS", "CREATE_FILE", "UPDATE_FILE", "DELETE_FILE", "DELETE_BRANCH", "LIST_WORKFLOW_RUNS"]
             }
           },
           "mergeMethod": {
@@ -123,6 +187,17 @@
             "inputType": "select",
             "options": ["merge", "squash", "rebase"],
             "description": "The method to use when merging the pull request",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "MERGE_PR"
+            }
+          },
+          "commitTitle": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional title for the merge commit",
+            "inputSize": "half",
             "conditional": {
               "field": "action",
               "value": "MERGE_PR"
@@ -132,29 +207,68 @@
             "type": "string",
             "inputType": "select",
             "options": ["open", "closed", "all"],
-            "description": "The state of pull requests to list",
+            "description": "Filter by state",
+            "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": "LIST_PRS"
+              "value": ["LIST_PRS", "LIST_ISSUES"]
+            }
+          },
+          "issueState": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["open", "closed"],
+            "description": "Set the state (use \"closed\" to close, \"open\" to reopen)",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["UPDATE_ISSUE", "UPDATE_PR"]
             }
           },
           "labels": {
-            "type": "array",
-            "items": { "type": "string" },
+            "type": "string",
             "inputType": "text",
-            "description": "The labels to add or remove (comma-separated)",
+            "description": "Labels, comma-separated (e.g. \"bug, urgent\")",
             "conditional": {
               "field": "action",
-              "value": ["ADD_LABELS", "REMOVE_LABELS"]
+              "value": ["ADD_LABELS", "REMOVE_LABELS", "CREATE_ISSUE", "UPDATE_ISSUE", "LIST_ISSUES"]
+            }
+          },
+          "assignees": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Usernames to assign, comma-separated",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_ISSUE", "UPDATE_ISSUE"]
+            }
+          },
+          "reviewers": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Usernames to request reviews from, comma-separated",
+            "conditional": {
+              "field": "action",
+              "value": "REQUEST_REVIEWERS"
+            }
+          },
+          "reviewEvent": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["APPROVE", "REQUEST_CHANGES", "COMMENT"],
+            "description": "The review action (body is required for REQUEST_CHANGES and COMMENT)",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_PR_REVIEW"
             }
           },
           "filePath": {
             "type": "string",
             "inputType": "text",
-            "description": "The path to the file",
+            "description": "The path to the file (or directory, for GET_REPO_CONTENTS)",
             "conditional": {
               "field": "action",
-              "value": ["GET_FILE_CONTENT", "CREATE_FILE", "UPDATE_FILE"]
+              "value": ["GET_FILE_CONTENT", "GET_REPO_CONTENTS", "CREATE_FILE", "UPDATE_FILE", "DELETE_FILE"]
             }
           },
           "content": {
@@ -172,13 +286,33 @@
             "description": "The commit message",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_FILE", "UPDATE_FILE"]
+              "value": ["CREATE_FILE", "UPDATE_FILE", "DELETE_FILE"]
+            }
+          },
+          "ref": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Git ref: branch name, tag, or commit SHA",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_FILE_CONTENT", "GET_REPO_CONTENTS", "GET_COMMIT", "GET_CHECK_RUNS", "TRIGGER_WORKFLOW"]
+            }
+          },
+          "recursive": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "List the entire repository tree recursively (metadata only, no file contents)",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "GET_REPO_CONTENTS"
             }
           },
           "tagName": {
             "type": "string",
             "inputType": "text",
-            "description": "The name of the tag",
+            "description": "The name of the tag (e.g. v1.0.0)",
             "inputSize": "half",
             "conditional": {
               "field": "action",
@@ -188,7 +322,7 @@
           "releaseName": {
             "type": "string",
             "inputType": "text",
-            "description": "The name of the release",
+            "description": "The name of the release (defaults to the tag name)",
             "inputSize": "half",
             "conditional": {
               "field": "action",
@@ -198,19 +332,148 @@
           "releaseNotes": {
             "type": "string",
             "inputType": "textarea",
-            "description": "The release notes",
+            "description": "The release notes (markdown supported)",
             "conditional": {
               "field": "action",
               "value": "CREATE_RELEASE"
             }
           },
-          "branch": {
-            "type": "string",
-            "inputType": "text",
-            "description": "The branch to list commits from",
+          "prerelease": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Mark as a prerelease",
+            "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": "LIST_COMMITS"
+              "value": "CREATE_RELEASE"
+            }
+          },
+          "releaseId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the release (from CREATE_RELEASE or LIST_RELEASES)",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_RELEASE_ASSET"
+            }
+          },
+          "assetPath": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Local file path of the asset to upload",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_RELEASE_ASSET"
+            }
+          },
+          "assetName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Display name for the asset (defaults to the file name)",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_RELEASE_ASSET"
+            }
+          },
+          "workflowId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The workflow ID or file name (e.g. ci.yml). Optional for LIST_WORKFLOW_RUNS.",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["TRIGGER_WORKFLOW", "LIST_WORKFLOW_RUNS"]
+            }
+          },
+          "runId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the workflow run",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_WORKFLOW_RUN", "RERUN_WORKFLOW"]
+            }
+          },
+          "workflowInputs": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "JSON object of inputs to pass to the workflow (e.g. {\"env\": \"prod\"})",
+            "conditional": {
+              "field": "action",
+              "value": "TRIGGER_WORKFLOW"
+            }
+          },
+          "runStatus": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["", "queued", "in_progress", "completed", "success", "failure"],
+            "description": "Filter workflow runs by status",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "LIST_WORKFLOW_RUNS"
+            }
+          },
+          "query": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Search query using GitHub search syntax (e.g. \"is:open label:bug repo:owner/name\")",
+            "conditional": {
+              "field": "action",
+              "value": ["SEARCH_ISSUES", "SEARCH_CODE", "SEARCH_REPOS"]
+            }
+          },
+          "visibility": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["all", "public", "private"],
+            "description": "Filter repositories by visibility",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "LIST_REPOS"
+            }
+          },
+          "private": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Create the repository as private",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_REPO"
+            }
+          },
+          "description": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Description for the new repository",
+            "conditional": {
+              "field": "action",
+              "value": "CREATE_REPO"
+            }
+          },
+          "perPage": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Results per page (default 30, max 100)",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_ISSUES", "LIST_COMMENTS", "LIST_PRS", "GET_PR_CHANGES", "LIST_PR_REVIEWS", "LIST_REPOS", "LIST_BRANCHES", "LIST_COMMITS", "LIST_RELEASES", "LIST_WORKFLOWS", "LIST_WORKFLOW_RUNS", "SEARCH_ISSUES", "SEARCH_CODE", "SEARCH_REPOS"]
+            }
+          },
+          "page": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Page number (default 1)",
+            "inputSize": "half",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_ISSUES", "LIST_COMMENTS", "LIST_PRS", "GET_PR_CHANGES", "LIST_PR_REVIEWS", "LIST_REPOS", "LIST_BRANCHES", "LIST_COMMITS", "LIST_RELEASES", "LIST_WORKFLOWS", "LIST_WORKFLOW_RUNS", "SEARCH_ISSUES", "SEARCH_CODE", "SEARCH_REPOS"]
             }
           }
         },

@@ -426,18 +426,21 @@
       "name": "github-plugin",
       "displayName": "GitHub",
       "icon": "github",
-      "version": "1.0.0",
-      "description": "GitHub integration plugin for AGNT - Manage repositories, issues, pull requests, branches, and releases.",
+      "version": "2.0.0",
+      "description": "GitHub integration plugin for AGNT - Full repository lifecycle: repos, branches, files, issues, comments, pull requests, reviews, releases, GitHub Actions/CI, and search. 46 actions.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/github-plugin.agnt",
-      "size": 800000,
+      "size": 10299,
       "tags": [
         "github",
         "git",
         "repository",
         "code",
-        "developer"
+        "developer",
+        "ci",
+        "issues",
+        "pull-requests"
       ],
       "category": "developer",
       "tools": [
@@ -445,7 +448,7 @@
           "type": "github-api",
           "schema": {
             "title": "GitHub API",
-            "description": "Interact with GitHub to perform various operations on repositories, issues, pull requests, and more."
+            "description": "Interact with GitHub: repos, branches, files, issues, comments, pull requests, reviews, releases, Actions/CI, and search."
           }
         }
       ]
@@ -867,7 +870,8 @@
         "utility"
       ],
       "category": "utility",
-      "tools": [        {
+      "tools": [
+        {
           "type": "list-files",
           "schema": {
             "title": "List Files in Directory",
