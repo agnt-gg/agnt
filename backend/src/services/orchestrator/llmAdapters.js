@@ -1361,24 +1361,27 @@ class AnthropicAdapter extends BaseAdapter {
         }
       }
     }
-  }
-
-  /**
-   * Hybrid 5m + 1h rolling breakpoints.
+  }  /**
+   * All-1h rolling breakpoints (PRD-113).
    *
    * With `count >= 2`:
    *   - 1-hour marker on the second-to-last non-system message (the end of the
    *     stable prior-turn prefix). Anthropic caches everything up to and
    *     including this block, so prior turns survive long tool pauses / reads.
-   *   - 5-minute marker on the last non-system message (the current turn). This
-   *     shorter-TTL marker doesn't invalidate the 1h prefix — the prefix cache
-   *     is still hit even when the 5m marker is new.
+   *   - 1-hour marker on the last non-system message (the current turn).
    *
-   * With `count === 1` (or only one eligible message): fall back to a single
-   * 5m marker on the latest message.
+   * Why the tail is 1h and NOT 5m: a 5m tail double-writes every turn — the
+   * newest message is written once at the 5m rate (1.25x), then re-written at
+   * the 1h rate (2x) next turn when it joins the long-lived prefix. Measured
+   * live (2026-07-06, cache-wars-bench E4 vs E4b, Sonnet 4.5): 5m-tail hybrid
+   * wrote ~10.4k tokens/turn steady-state vs ~5.2k for all-1h — all-1h was
+   * strictly cheaper ($0.262 vs $0.323 over 5 turns + one idle gap).
+   *
+   * With `count === 1` (or only one eligible message): a single 1h marker on
+   * the latest message.
    *
    * The caller (Anthropic adapter) must also mark system + tools with 1h,
-   * for a total of 4 breakpoints (system/tools/prefix = 1h, latest = 5m).
+   * for a total of 4 breakpoints, all 1h.
    *
    * IMPORTANT: Always strip stale markers first. When the adapter loops
    * through multiple tool-call rounds in one turn, markers on old message
@@ -1400,9 +1403,9 @@ class AnthropicAdapter extends BaseAdapter {
     if (count >= 2 && indices.length >= 2) {
       const prefixIdx = indices[indices.length - 2];
       this._applyCacheMarker(messages[prefixIdx], { type: 'ephemeral', ttl: '1h' });
-      this._applyCacheMarker(messages[latestIdx], { type: 'ephemeral' });
+      this._applyCacheMarker(messages[latestIdx], { type: 'ephemeral', ttl: '1h' });
     } else if (count >= 1) {
-      this._applyCacheMarker(messages[latestIdx], { type: 'ephemeral' });
+      this._applyCacheMarker(messages[latestIdx], { type: 'ephemeral', ttl: '1h' });
     }
   }
 
