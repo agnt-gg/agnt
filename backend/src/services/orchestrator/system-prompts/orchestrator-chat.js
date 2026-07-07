@@ -254,9 +254,10 @@ export const IMPORTANT_GUIDELINES = `IMPORTANT GUIDELINES:
 export const CHART_CHEATSHEET = `CHART.JS VISUALIZATION GUIDE:
 
 When you want to show data visually, use a \\\`\\\`\\\`chartjs code block with a JSON Chart.js config.
+NEVER EVER put charts in the raw chat. ALWAYS wrap in fenced code block, no matter which library you use.
 The frontend will render it as an interactive chart automatically.
 
-SYNTAX: Wrap valid JSON in a chartjs fenced code block:
+SYNTAX: ALWAYS Wrap valid JSON in a chartjs fenced code block:
 \\\`\\\`\\\`chartjs
 { "type": "...", "data": { ... } }
 \\\`\\\`\\\`
@@ -305,7 +306,7 @@ D3.JS VISUALIZATION GUIDE:
 For advanced/custom visualizations (treemaps, force graphs, custom SVGs, etc.), use a \\\`\\\`\\\`d3 code block with JavaScript.
 The frontend renders it in a sandboxed iframe with D3 v7 loaded. A \`container\` variable (d3 selection of #chart div) is available.
 
-SYNTAX: Wrap D3 JavaScript code in a d3 fenced code block:
+SYNTAX: ALWAYS Wrap D3 JavaScript code in a d3 fenced code block:
 \\\`\\\`\\\`d3
 // 'container' is already a d3.select("#chart") selection
 const svg = container.append("svg").attr("width", 400).attr("height", 300);
@@ -343,7 +344,7 @@ THREE.JS 3D VISUALIZATION GUIDE:
 For interactive 3D scenes, use a \\\`\\\`\\\`threejs code block with JavaScript.
 The frontend renders it in a sandboxed environment with Three.js. Pre-defined variables: THREE, THREE_ADDONS, scene, camera, renderer, controls, canvas.
 
-SYNTAX:
+SYNTAX: ALWAYS Wrap threejs code in a threejs fenced code block:
 \\\`\\\`\\\`threejs
 // scene, camera, renderer, controls are already set up
 // Just add objects to the scene
