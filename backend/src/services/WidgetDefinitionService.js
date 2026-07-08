@@ -23,9 +23,12 @@ async function getThumbnailBrowser() {
   const chromePath = getBestChromePath();
   if (!chromePath) throw new Error('No Chrome/Chromium browser found on this system');
 
-  const puppeteer = await import('puppeteer-core');
+  const puppeteer = await import('puppeteer-core');  // headless: 'shell' uses Chrome's classic invisible headless mode.
+  // headless: 'new' (and 'true' which maps to it in Puppeteer 24) flashes a
+  // visible window on Chrome 132+ / Windows (regression seen in Chrome 150).
+  // The off-screen window-position args are belt-and-suspenders.
   _browser = await puppeteer.default.launch({
-    headless: 'new',
+    headless: 'shell',
     executablePath: chromePath,
     protocolTimeout: 60000,
     args: [
@@ -42,6 +45,8 @@ async function getThumbnailBrowser() {
       '--use-gl=angle',
       '--use-angle=swiftshader',
       '--enable-gpu-rasterization',
+      '--window-position=-32000,-32000',
+      '--window-size=1,1',
     ],
   });
 
