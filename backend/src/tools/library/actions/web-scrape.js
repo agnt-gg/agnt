@@ -116,10 +116,20 @@ async function scrape(url) {
   try {
     // 2. Launch a headless browser instance.
     console.log(`[Web Scrape] Launching browser from: ${chromePath}`);
+    // headless: 'shell' uses Chrome's classic invisible headless mode.
+    // headless: true maps to --headless=new in Puppeteer 24, which flashes a
+    // visible window on Chrome 132+ on Windows (regression seen in Chrome 150).
+    // The off-screen window-position args are belt-and-suspenders in case a
+    // future Chrome build regresses shell mode too.
     const launchOptions = {
       executablePath: chromePath,
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'], // Required for some environments
+      headless: 'shell',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--window-position=-32000,-32000',
+        '--window-size=1,1',
+      ],
     };
 
     browser = await puppeteer.launch(launchOptions);
