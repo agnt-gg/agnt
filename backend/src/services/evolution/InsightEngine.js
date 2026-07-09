@@ -251,8 +251,8 @@ class InsightEngine {
     const toolStats = await new Promise((resolve, reject) => {
       db.all(`
         SELECT tool_name, COUNT(*) as call_count,
-          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as success_count,
-          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as fail_count,
+          SUM(CASE WHEN ate.status = 'completed' THEN 1 ELSE 0 END) as success_count,
+          SUM(CASE WHEN ate.status = 'failed' THEN 1 ELSE 0 END) as fail_count,
           AVG(CASE WHEN end_time IS NOT NULL AND start_time IS NOT NULL
             THEN (julianday(end_time) - julianday(start_time)) * 86400 ELSE NULL END) as avg_duration_sec
         FROM agent_tool_executions ate
