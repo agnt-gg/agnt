@@ -1,10 +1,24 @@
 @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@100..900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..700&display=swap');
 
+/* BUNDLED COLOR EMOJI FONT
+   Windows 10's Segoe UI Emoji stopped at ~Emoji 13, so newer emoji
+   (🫠 U+1FAE0 melting face, Emoji 14+) render as tofu boxes. Bundling
+   Noto Color Emoji (COLRv1) guarantees full, identical emoji coverage on
+   every OS. unicode-range scopes it to emoji blocks only — Latin text,
+   digits, and punctuation always come from the primary fonts. */
+@font-face {
+  font-family: 'Noto Color Emoji';
+  src: url('/vendor/fonts/NotoColorEmoji.ttf') format('truetype');
+  font-display: swap;
+  unicode-range: U+200D, U+20E3, U+FE0F, U+203C, U+2049, U+2122, U+2139,
+    U+2194-2BFF, U+1F000-1FBFF, U+E0020-E007F;
+}
+
 /* TYPOGRAPHY */
 :root {
-  --font-family-primary: 'League Spartan', sans-serif;
-  --font-family-mono: 'Fira Code', monospace;
+  --font-family-primary: 'League Spartan', 'Noto Color Emoji', sans-serif;
+  --font-family-mono: 'Fira Code', 'Noto Color Emoji', monospace;
 }
 
 /* BASE TYPOGRAPHY */
