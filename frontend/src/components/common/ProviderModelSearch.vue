@@ -46,12 +46,12 @@ import { computed, onMounted, ref } from 'vue';
 import { useStore } from 'vuex';
 import { PROVIDER_DISPLAY_NAMES } from '@/store/app/aiProvider.js';
 
-const MAX_RESULTS = 40;
-
-// Dispatch fetches for every provider that hasn't loaded its models yet.
-// fetchProviderModels uses a 1-hour localStorage cache, so repeated
-// invocations are cheap — and per-provider failures (missing API key,
-// not connected) are silenced so unrelated providers still populate.
+const MAX_RESULTS = 40;// Dispatch fetches for every provider that hasn't loaded its models yet.
+// fetchProviderModels uses stale-while-revalidate: cached models paint
+// instantly and a background refresh runs on every call, so repeated
+// invocations are cheap and always converge on fresh data. Per-provider
+// failures (missing API key, not connected) are silenced so unrelated
+// providers still populate.
 async function ensureAllProviderModelsLoaded(store) {
   const { allModels = {}, providers = [], customProviders = [] } = store.state.aiProvider;
   const targets = [
@@ -180,12 +180,11 @@ export default {
       await store.dispatch('aiProvider/setProvider', result.provider);
       await store.dispatch('aiProvider/setModel', result.model);
       emit('selected', result);
-    };
-
-    // Models for a provider are only fetched when that provider is first
+    };    // Models for a provider are only fetched when that provider is first
     // selected. To make search cover every provider, kick off background
-    // fetches on mount — fetchProviderModels has a 1-hour localStorage
-    // cache, so this is a one-time hit per provider per hour.
+    // fetches on mount — fetchProviderModels uses stale-while-revalidate,
+    // so subsequent mounts paint from cache instantly and revalidate in
+    // the background.
     onMounted(() => {
       ensureAllProviderModelsLoaded(store);
     });

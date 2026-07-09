@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { EventEmitter } from 'events';
+import { persistLastModels, getLastSuccessfulModels } from '../lastModelsCache.js';
 
 /**
  * Generic model-fetching service for any OpenAI-compatible provider.
@@ -14,7 +15,11 @@ class GenericProviderService extends EventEmitter {
    * @param {string} config.name - Provider display name (e.g., 'OpenAI')
    * @param {string} config.baseURL - Base API URL (e.g., 'https://api.openai.com/v1')
    * @param {string[]} config.fallbackModels - Fallback model IDs if API is unavailable
-   * @param {number} [config.cacheTTL=3600000] - Cache time-to-live in ms (default 1 hour)
+   * @param {number} [config.cacheTTL=300000] - Cache time-to-live in ms (default 5 minutes).
+   *   Model lists are small, infrequent to change but user-visible when stale.
+   *   5 min balances first-paint speed with new-model discovery on the same day.
+   *   Stale-while-revalidate (fetchModels) still serves cache instantly past this
+   *   TTL if a background refresh is inflight.
    * @param {Object} [config.headers] - Extra headers to include in fetch requests
    * @param {string} [config.authScheme='bearer'] - Auth scheme: 'bearer', 'api-key', 'query-param'
    * @param {string} [config.modelsPath='/models'] - Path appended to baseURL for model listing
@@ -31,7 +36,12 @@ class GenericProviderService extends EventEmitter {
     this.baseURL = config.baseURL;
     this.fallbackModels = config.fallbackModels || [];
     this.fallbackModelObjects = config.fallbackModelObjects || null;
-    this.cacheTTL = config.cacheTTL || 60 * 60 * 1000;
+    this.cacheTTL = config.cacheTTL || 5 * 60 * 1000;
+    // Half-life: past this age (but still within cacheTTL) we serve cached
+    // instantly AND kick off a background revalidation. Zero perceived latency,
+    // fresh data by the next tick. Emits 'models:added' / 'models:removed'
+    // when the background result diverges from the served cache.
+    this.staleWhileRevalidateMs = config.staleWhileRevalidateMs || Math.floor(this.cacheTTL / 2);
     this.extraHeaders = config.headers || {};
     this.authScheme = config.authScheme || 'bearer';
     this.modelsPath = config.modelsPath || '/models';
@@ -52,18 +62,45 @@ class GenericProviderService extends EventEmitter {
    * On first load (no cache), returns fallback models immediately and fetches from API in background.
    */
   async fetchModels(apiKey, options = {}) {
-    const { useCache = true } = options;
+    const { useCache = true, force = false } = options;
 
-    if (useCache && this.isCacheValid()) {
+    // Force bypass: caller (refresh endpoint, admin action) explicitly wants
+    // a fresh network fetch. Never serves cache. Never rides a background.
+    if (force || !useCache) {
+      return this._fetchAndCacheOrFallback(apiKey);
+    }
+
+    if (this.isCacheValid()) {
+      // Stale-while-revalidate: if we're past the half-life but still fresh,
+      // kick off a background refresh. Callers get instant response, next
+      // caller gets the new data. Concurrent SWR triggers coalesce onto the
+      // existing background fetch.
+      const age = Date.now() - (this.cacheTimestamp || 0);
+      if (age > this.staleWhileRevalidateMs && !this._backgroundFetchInProgress) {
+        this._backgroundFetchInProgress = true;
+        this._fetchAndCache(apiKey)
+          .catch((err) => {
+            // Don't poison cache on background failure; just log.
+            console.warn(`[${this.name}] Background revalidate failed: ${err.message}`);
+          })
+          .finally(() => { this._backgroundFetchInProgress = false; });
+      }
       return this.modelsCache;
     }
 
-    // If a background fetch is already running, return what we have
-    if (this._backgroundFetchInProgress) {
-      return this.modelsCache || this.getFallbackModels();
+    // Cache invalid — wait for network unless a background fetch is already inflight
+    if (this._backgroundFetchInProgress && this.modelsCache) {
+      return this.modelsCache;
     }
 
-    // Fetch from API (first load or cache expired) — wait for real models
+    return this._fetchAndCacheOrFallback(apiKey);
+  }
+
+  /**
+   * Internal: fetch and cache with fallback on error. Used by force and
+   * cache-miss paths.
+   */
+  async _fetchAndCacheOrFallback(apiKey) {
     try {
       return await this._fetchAndCache(apiKey);
     } catch (error) {
@@ -101,12 +138,25 @@ class GenericProviderService extends EventEmitter {
         return (a.name || a.id || '').localeCompare(b.name || b.id || '');
       });
 
+    // Refuse to cache/persist an empty list. A 200 with zero models is
+    // upstream weirdness (wrong response shape, empty rollout, auth soft-fail)
+    // — treating it as success would poison the cache and blank the dropdown.
+    // Throwing routes the caller through the fallback ladder instead
+    // (persisted last-successful → hardcoded list).
+    if (models.length === 0) {
+      throw new Error(`${this.name} API returned zero models — refusing to cache empty list`);
+    }
+
     // Detect model changes before updating cache
     this._detectChanges(models);
 
     this.modelsCache = models;
     this.cacheTimestamp = Date.now();
     console.log(`[${this.name}] Cached ${models.length} models from API`);
+    // Persist last-successful list to disk so a later degraded state
+    // (network out, upstream 5xx) falls back to real data instead of the
+    // hardcoded fallback list in providerConfigs.js.
+    persistLastModels(this.name.toLowerCase(), models);
     return models;
   }
 
@@ -291,8 +341,15 @@ class GenericProviderService extends EventEmitter {
 
   /**
    * Returns fallback models if API is unavailable.
+   * Preference order: persisted last-successful fetch (real data from a
+   * previous run) → configured fallbackModelObjects → hardcoded ID list.
    */
   getFallbackModels() {
+    const persisted = getLastSuccessfulModels(this.name.toLowerCase());
+    if (persisted) {
+      console.log(`[${this.name}] Using persisted last-successful models (${persisted.length}) instead of hardcoded fallback`);
+      return persisted;
+    }
     if (this.fallbackModelObjects) return this.fallbackModelObjects;
     // Sort fallback models with recommended first
     const recSet = new Set(this.recommendedModels);

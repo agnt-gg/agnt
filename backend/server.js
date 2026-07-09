@@ -57,6 +57,7 @@ import ContractRoutes from './src/routes/ContractRoutes.js';
 import MutationHistoryRoutes from './src/routes/MutationHistoryRoutes.js';
 import { dbReady } from './src/models/database/index.js';
 import { warmupClientVersions } from './src/services/ai/clientVersions.js';
+import { prewarmCodexModels } from './src/routes/ModelRoutes.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
 import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtimeSync.js';
 import { sessionMiddleware } from './src/routes/Middleware.js';
@@ -541,6 +542,13 @@ function startServer() {
       // Warm the upstream CLI version cache so the first Claude Code / Codex /
       // Kimi Code call uses current values instead of stale fallbacks.
       warmupClientVersions();
+
+      // Prewarm the Codex model list on a small delay so the CLI version has
+      // a chance to refresh first (Codex gates model visibility on
+      // ?client_version=X). Best-effort — silent on failure. When the user
+      // opens the model dropdown, they see the current live list instead of
+      // whatever localStorage had cached.
+      setTimeout(() => { prewarmCodexModels(); }, 3000);
 
       // Defer all heavy initialization to next tick so the listen callback
       // returns immediately and the server can respond to health checks

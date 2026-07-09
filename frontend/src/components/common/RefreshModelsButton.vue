@@ -64,7 +64,10 @@ export default {
       if (isCustomProvider.value) return 'Refresh not supported for custom providers';
       if (!props.provider) return 'No provider selected';
       if (hasError.value && errorMessage.value) return `Refresh failed: ${errorMessage.value}`;
-      return `Refresh models for ${props.provider}`;
+      // Models auto-revalidate every ~5 min via stale-while-revalidate; this
+      // button is the escape hatch for when you know upstream just shipped
+      // something new and don't want to wait for the next cycle.
+      return `Force re-fetch ${props.provider} model list (models auto-refresh every 5 min)`;
     });
 
     async function handleClick() {

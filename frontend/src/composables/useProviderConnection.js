@@ -134,7 +134,10 @@ export function useProviderConnection(modalRef) {
       });
 
       if (exchangeResult.success) {
-        localStorage.removeItem('Claude-Code_models');
+        // Force-refresh Claude-Code models to pick up whatever the freshly-
+        // connected account has access to. hardRefresh clears both display-name
+        // and lowercase-key localStorage variants so no split-brain survives.
+        try { await store.dispatch('aiProvider/hardRefreshProviderModels', { provider: 'Claude-Code' }); } catch { /* non-fatal */ }
         await store.dispatch('appAuth/fetchConnectedApps');
         await refreshHealth();
         await showAlert('Success', `${providerDetails.name} connected successfully.`);
@@ -197,8 +200,10 @@ export function useProviderConnection(modalRef) {
         const status = await providerAuthService.pollOAuthStatus(providerId, data.sessionId);
 
         if (status.status === 'success') {
-          localStorage.removeItem('Gemini_models');
-          localStorage.removeItem('Gemini-CLI_models');
+          // Force-refresh both Gemini variants so the newly-connected account's
+          // tier + model access is reflected immediately in dropdowns.
+          try { await store.dispatch('aiProvider/hardRefreshProviderModels', { provider: 'Gemini' }); } catch { /* non-fatal */ }
+          try { await store.dispatch('aiProvider/hardRefreshProviderModels', { provider: 'Gemini-CLI' }); } catch { /* non-fatal */ }
           await store.dispatch('appAuth/fetchConnectedApps');
           await refreshHealth();
           await showAlert('Success', `${providerDetails.name} connected successfully.`);

@@ -36,8 +36,8 @@ const PROVIDER_CONFIGS = [
         supportsStyle: true,
       },
     },
-    recommendedModels: ['gpt-5.2', 'o4-mini', 'gpt-4.1'],
-    fallbackModels: ['gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
+    recommendedModels: ['gpt-5.6', 'gpt-5.5', 'o4-mini', 'gpt-4.1'],
+    fallbackModels: ['gpt-5.6', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
     fallbackVisionModels: ['gpt-5.2', 'gpt-4.1'],
     modelMetadata: {
       'gpt-5.2': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.75, outputCostPer1M: 14.0, supportsVision: true, supportsTools: true, reasoning: true },
@@ -74,8 +74,12 @@ const PROVIDER_CONFIGS = [
       // https://openai.com/index/introducing-gpt-5-2-codex/
       vision: { supportsStreaming: true },
     },
-    fallbackModels: ['gpt-5.2-codex'],
-    fallbackVisionModels: ['gpt-5.2-codex'],
+    // Fallback used only when Codex upstream is unreachable AND we have no
+    // last-successful cache on disk (see codex-last-models.json / persistent
+    // fallback in ModelRoutes). Bumped 2026-07 to include gpt-5.6 variants so
+    // a degraded state doesn't hide the currently-shipping models.
+    fallbackModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.2-codex'],
+    fallbackVisionModels: ['gpt-5.6-sol', 'gpt-5.5', 'gpt-5.2-codex'],
     compat: {},
     sdkOptions: {},
   },
@@ -614,7 +618,12 @@ const PROVIDER_CONFIGS = [
     baseURL: 'https://api.kimi.com/coding/v1',
     sdkType: 'openai',
     authScheme: 'bearer',
-    staticModels: true, // kimi-for-coding is a stable alias; no /models endpoint needed
+    // /models endpoint EXISTS upstream (verified 2026-07-09: returns 401 without
+    // auth, not 404). Dynamic-first: fetch live when a token is available; the
+    // fallback list below is the last resort. keyOptional keeps the dropdown
+    // populated for users who haven't connected yet.
+    modelListingKeyOptional: true,
+    fetchHeaders: { 'User-Agent': 'KimiCLI/1.38.0' },
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true, supportsReasoning: true },
     },
@@ -647,7 +656,10 @@ const PROVIDER_CONFIGS = [
     baseURL: 'https://api.minimax.io/v1',
     sdkType: 'openai',
     authScheme: 'bearer',
-    staticModels: true, // MiniMax has no /models endpoint (GitHub issue #60)
+    // /models endpoint EXISTS upstream now (verified 2026-07-09: 401 without
+    // auth, not 404 — the old "no /models endpoint" note from GitHub issue #60
+    // is stale). Dynamic-first with the list below as last resort.
+    modelListingKeyOptional: true,
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
     },
@@ -672,7 +684,11 @@ const PROVIDER_CONFIGS = [
     baseURL: 'https://api.z.ai/api/paas/v4',
     sdkType: 'openai',
     authScheme: 'bearer',
-    staticModels: true, // Z.AI has no /models endpoint
+    // /models endpoint EXISTS upstream now (verified 2026-07-09: 401 without
+    // auth, not 404 — the old "Z.AI has no /models endpoint" note is stale).
+    // Dynamic-first with the list below as last resort.
+    modelListingKeyOptional: true,
+    fetchHeaders: { 'Accept-Language': 'en-US,en' }, // Required per Z.AI docs
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },

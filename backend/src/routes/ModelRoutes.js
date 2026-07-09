@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import GenericProviderService from '../services/ai/providers/GenericProviderService.js';
 import {
   getAllProviderConfigs,
@@ -18,7 +19,18 @@ import ClaudeCodeAuthManager from '../services/auth/ClaudeCodeAuthManager.js';
 import GeminiCliAuthManager from '../services/auth/GeminiCliAuthManager.js';
 import AntigravityAuthManager from '../services/auth/AntigravityAuthManager.js';
 import { getClientVersion } from '../services/ai/clientVersions.js';
+import { persistLastModels, getLastSuccessfulModels } from '../services/ai/lastModelsCache.js';
 import jwt from 'jsonwebtoken';
+
+// ───────────────────────── PERSISTENT LAST-SUCCESSFUL MODEL CACHE ──────────────────────
+// Whenever an upstream fetch succeeds we persist the model list to disk so a
+// later degraded state (upstream 5xx, network out, auth blip) can still show
+// the currently-shipping models instead of collapsing to the hardcoded
+// fallback list in providerConfigs.js. Small (~2 KB per provider) JSON file,
+// no TTL — always superseded by a fresh live fetch, only read when live fails.
+// Helpers now live in services/ai/lastModelsCache.js — shared with
+// GenericProviderService so EVERY provider (not just Codex) persists its
+// last-successful fetch and survives upstream outages with real data.
 
 const router = express.Router();
 
@@ -31,18 +43,43 @@ const router = express.Router();
 
 let codexModelsCache = null;
 let codexModelsCacheTime = 0;
-const CODEX_MODELS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+// 5 min: model lists are cheap to fetch and rarely change, but new models
+// launch often enough that a 1-hour TTL hides them from users on release day.
+const CODEX_MODELS_CACHE_TTL = 5 * 60 * 1000;
+// Half-life: past this age we serve cached AND kick off background refresh.
+const CODEX_MODELS_SWR_MS = Math.floor(CODEX_MODELS_CACHE_TTL / 2);
+let codexBackgroundInflight = false;
 
-async function fetchCodexModels(token) {
+async function fetchCodexModels(token, options = {}) {
+  const { force = false } = options;
   const now = Date.now();
-  if (codexModelsCache && now - codexModelsCacheTime < CODEX_MODELS_CACHE_TTL) {
+
+  if (!force && codexModelsCache && now - codexModelsCacheTime < CODEX_MODELS_CACHE_TTL) {
+    // Stale-while-revalidate: past half-life, kick off background refresh.
+    const age = now - codexModelsCacheTime;
+    if (age > CODEX_MODELS_SWR_MS && !codexBackgroundInflight) {
+      codexBackgroundInflight = true;
+      _fetchCodexModelsFromUpstream(token)
+        .catch((err) => console.warn(`[ModelRoutes] Codex background revalidate failed: ${err.message}`))
+        .finally(() => { codexBackgroundInflight = false; });
+    }
     return codexModelsCache;
   }
 
+  return _fetchCodexModelsFromUpstream(token);
+}
+
+async function _fetchCodexModelsFromUpstream(token) {
+  const now = Date.now();
   const config = getProviderConfig('openai-codex');
-  const fallback = (config?.fallbackModels || []).map((id) => ({
-    id, name: id, description: '', createdAt: null, ownedBy: 'openai-codex',
-  }));
+
+  // Fallback resolution: persisted last-successful first, then hardcoded.
+  const persisted = getLastSuccessfulModels('openai-codex');
+  const fallback = persisted && persisted.length > 0
+    ? persisted
+    : (config?.fallbackModels || []).map((id) => ({
+        id, name: id, description: '', createdAt: null, ownedBy: 'openai-codex',
+      }));
 
   try {
     const accountId = CodexAuthManager.getChatGptAccountId();
@@ -98,6 +135,9 @@ async function fetchCodexModels(token) {
 
     codexModelsCache = mapped;
     codexModelsCacheTime = now;
+    // Persist last-successful so a later degraded state doesn't collapse
+    // to the stale hardcoded fallback list.
+    persistLastModels('openai-codex', mapped);
     return mapped;
   } catch (error) {
     console.warn(`[ModelRoutes] Failed to fetch Codex models: ${error.message}`);
@@ -111,8 +151,8 @@ for (const config of getAllProviderConfigs()) {
   if (config.codexModelFetch) {
     // Codex: dynamic fetch from chatgpt.com/backend-api/codex/models (handled in route)
     providerServices[config.key] = {
-      fetchModels: async (token) => fetchCodexModels(token),
-      getModelNames: async (token) => (await fetchCodexModels(token)).map((m) => m.id),
+      fetchModels: async (token, opts = {}) => fetchCodexModels(token, opts),
+      getModelNames: async (token, opts = {}) => (await fetchCodexModels(token, opts)).map((m) => m.id),
       isCacheValid: () => codexModelsCache && Date.now() - codexModelsCacheTime < CODEX_MODELS_CACHE_TTL,
       clearCache: () => { codexModelsCache = null; codexModelsCacheTime = 0; },
     };
@@ -168,6 +208,15 @@ providerServices['grok'] = providerServices['grokai'];
 // Providers that have hardcoded models and don't require API key for model listing
 const providersWithHardcodedModels = getAllProviderConfigs()
   .filter((c) => c.staticModels)
+  .map((c) => c.key);
+
+// Providers whose model listing works WITHOUT a stored key: we still try the
+// dynamic fetch first (it fails fast upstream without auth), and the service's
+// fallback ladder (persisted last-successful → hardcoded) keeps the dropdown
+// populated. This preserves browse-before-connect UX for providers that were
+// previously staticModels (zai, minimax, kimi-code).
+const providersWithKeyOptionalListing = getAllProviderConfigs()
+  .filter((c) => c.modelListingKeyOptional)
   .map((c) => c.key);
 
 // ─────────────────────────── ROUTES ───────────────────────────
@@ -334,41 +383,51 @@ router.get('/:provider/models', async (req, res) => {
         const models = [...(cfg?.fallbackModels || [])];
         return res.json({ success: true, models, cached: false, count: models.length });
       } else {
-        // Standard providers: extract user ID from auth token
+        // Standard providers: extract user ID from auth token.
+        // keyOptional providers tolerate missing auth/key — the dynamic fetch
+        // proceeds with a null key, fails fast upstream, and the service's
+        // fallback ladder (persisted → hardcoded) serves the list instead.
+        const keyOptional = providersWithKeyOptionalListing.includes(providerLower);
         const authToken = req.headers.authorization;
         if (!authToken || !authToken.startsWith('Bearer ')) {
-          return res.status(401).json({
-            success: false,
-            error: `Authentication required to fetch ${provider} models`,
-          });
-        }
+          if (!keyOptional) {
+            return res.status(401).json({
+              success: false,
+              error: `Authentication required to fetch ${provider} models`,
+            });
+          }
+        } else {
+          let userId = null;
+          try {
+            const token = authToken.split(' ')[1];
+            const payload = jwt.decode(token);
+            userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
+          } catch (e) {
+            if (!keyOptional) {
+              return res.status(401).json({
+                success: false,
+                error: 'Invalid authentication token',
+              });
+            }
+          }
 
-        let userId = null;
-        try {
-          const token = authToken.split(' ')[1];
-          const payload = jwt.decode(token);
-          userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
-        } catch (e) {
-          return res.status(401).json({
-            success: false,
-            error: 'Invalid authentication token',
-          });
-        }
+          if (!userId && !keyOptional) {
+            return res.status(401).json({
+              success: false,
+              error: 'Could not extract user ID from token',
+            });
+          }
 
-        if (!userId) {
-          return res.status(401).json({
-            success: false,
-            error: 'Could not extract user ID from token',
-          });
-        }
-
-        // Get API key for the user
-        apiKey = await AuthManager.getValidAccessToken(userId, providerLower);
-        if (!apiKey) {
-          return res.status(400).json({
-            success: false,
-            error: `${provider} API key not found. Please configure your ${provider} API key in settings.`,
-          });
+          // Get API key for the user
+          if (userId) {
+            apiKey = await AuthManager.getValidAccessToken(userId, providerLower);
+          }
+          if (!apiKey && !keyOptional) {
+            return res.status(400).json({
+              success: false,
+              error: `${provider} API key not found. Please configure your ${provider} API key in settings.`,
+            });
+          }
         }
       }
     }
@@ -475,38 +534,49 @@ router.post('/:provider/models/refresh', async (req, res) => {
       }
       apiKey = CodexAuthManager.getAccessToken();
     } else if (!hasHardcodedModels) {
+      // keyOptional providers tolerate missing auth/key on refresh too — the
+      // forced fetch fails fast upstream and the fallback ladder answers.
+      const keyOptional = providersWithKeyOptionalListing.includes(providerLower);
       if (!authToken || !authToken.startsWith('Bearer ')) {
-        return res.status(401).json({
-          success: false,
-          error: 'Authentication required',
-        });
-      }
+        if (!keyOptional) {
+          return res.status(401).json({
+            success: false,
+            error: 'Authentication required',
+          });
+        }
+      } else {
+        let userId = null;
+        try {
+          const token = authToken.split(' ')[1];
+          const payload = jwt.decode(token);
+          userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
+        } catch (e) {
+          if (!keyOptional) {
+            return res.status(401).json({
+              success: false,
+              error: 'Invalid authentication token',
+            });
+          }
+        }
 
-      let userId = null;
-      try {
-        const token = authToken.split(' ')[1];
-        const payload = jwt.decode(token);
-        userId = payload?.id || payload?.userId || payload?.user_id || payload?.sub;
-      } catch (e) {
-        return res.status(401).json({
-          success: false,
-          error: 'Invalid authentication token',
-        });
-      }
-
-      // Get API key for the user
-      apiKey = await AuthManager.getValidAccessToken(userId, providerLower);
-      if (!apiKey) {
-        return res.status(400).json({
-          success: false,
-          error: `${provider} API key not found`,
-        });
+        // Get API key for the user
+        if (userId) {
+          apiKey = await AuthManager.getValidAccessToken(userId, providerLower);
+        }
+        if (!apiKey && !keyOptional) {
+          return res.status(400).json({
+            success: false,
+            error: `${provider} API key not found`,
+          });
+        }
       }
     }
 
-    // Clear cache and fetch fresh models
-    service.clearCache();
-    const models = await service.getModelNames(apiKey, { useCache: false });
+    // Clear cache and fetch fresh models. Pass force:true so the Codex path
+    // (which has its own module-level cache separate from GenericProviderService.modelsCache)
+    // bypasses SWR half-life logic and hits upstream unconditionally.
+    if (typeof service.clearCache === 'function') service.clearCache();
+    const models = await service.getModelNames(apiKey, { useCache: false, force: true });
 
     // Register dynamic pricing from cached full model objects
     if (service.modelsCache) {
@@ -528,6 +598,50 @@ router.post('/:provider/models/refresh', async (req, res) => {
     });
   }
 });
+
+// ───────────────────────── SCHEMA VERSION ────────────────────────
+// Hash of the provider config surface the frontend depends on. Frontend
+// compares this against its stored version on boot; a mismatch auto-invalidates
+// all localStorage model caches. Kills the need for the manual
+// MODEL_CACHE_VERSION bump in aiProvider.js — any change to metadata shape or
+// recommended-model order auto-invalidates client caches on next fetch.
+let _cachedSchemaHash = null;
+function computeSchemaHash() {
+  if (_cachedSchemaHash) return _cachedSchemaHash;
+  const configs = getAllProviderConfigs().map((c) => ({
+    key: c.key,
+    name: c.name,
+    recommended: c.recommendedModels || [],
+    fallback: c.fallbackModels || [],
+    metadataKeys: Object.keys(c.modelMetadata || {}).sort(),
+    metadataShapes: Object.entries(c.modelMetadata || {}).map(([id, meta]) => [id, Object.keys(meta).sort().join(',')]),
+  }));
+  _cachedSchemaHash = crypto.createHash('sha1').update(JSON.stringify(configs)).digest('hex').slice(0, 16);
+  return _cachedSchemaHash;
+}
+
+router.get('/schema-version', (req, res) => {
+  res.json({ success: true, version: computeSchemaHash() });
+});
+
+// ───────────────────────── CODEX BOOT PREWARM ────────────────────────
+// Called from server.js after warmupClientVersions() so the first user who
+// opens the Codex model dropdown gets a fresh list instantly instead of
+// waiting for the initial network roundtrip. Best-effort — silent if the
+// user isn't signed in or the network is unavailable.
+export async function prewarmCodexModels() {
+  try {
+    const token = CodexAuthManager.getOAuthToken?.();
+    if (!token) {
+      console.log('[ModelRoutes] Skipping Codex prewarm — not connected');
+      return;
+    }
+    console.log('[ModelRoutes] Prewarming Codex model list on boot...');
+    await fetchCodexModels(token, { force: true });
+  } catch (err) {
+    console.warn(`[ModelRoutes] Codex prewarm failed (non-fatal): ${err.message}`);
+  }
+}
 
 // Legacy endpoint for OpenRouter (backward compatibility)
 router.get('/models', async (req, res) => {

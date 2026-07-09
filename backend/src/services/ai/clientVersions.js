@@ -191,9 +191,27 @@ export async function getClientIdentity(key) {
 
 /**
  * Fire-and-forget warmup for boot. Never blocks; never throws.
- * Runs all providers in parallel so the first user request has warm values.
+ *
+ * Every fresh process start forces a registry refresh so a stale disk cache
+ * (7-day TTL) can't silently pin us to an old CLI version and hide newly-
+ * released models from provider endpoints (e.g. Codex/ChatGPT gates its model
+ * list on the ?client_version= we send). The disk cache still serves as a
+ * fallback when the network is unavailable — see getClientVersion's
+ * degradation path — but boot always tries for fresh first.
+ *
+ * Implementation: hydrate the disk cache into memory (so we still have a
+ * fallback if the network is down), then mark every entry as expired by
+ * backdating its timestamp past CACHE_TTL_MS. The next getClientVersion call
+ * — whether from warmup itself or from an inbound request that races warmup —
+ * will see the entry as stale and hit the registry, with inflight dedup
+ * ensuring concurrent callers share a single network round-trip.
  */
 export function warmupClientVersions() {
+  hydrateFromDisk();
+  const expiredAt = Date.now() - CACHE_TTL_MS - 1;
+  for (const entry of Object.values(memoryCache || {})) {
+    if (entry) entry.timestamp = expiredAt;
+  }
   for (const key of Object.keys(SOURCES)) {
     getClientVersion(key).catch(() => {});
   }

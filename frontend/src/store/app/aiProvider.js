@@ -6,22 +6,47 @@ import { TTL } from '../_utils/freshnessConfig.js';
 // Single source of truth for all built-in provider metadata on the frontend.
 // Derived from the same data as backend/src/services/ai/providerConfigs.js.
 
-// Cache version — bump this to invalidate all provider model caches.
-// v11: Z.AI dropdown adds GLM-5.2 (1M context) + GLM-5.2 reasoning_effort control (high/max).
-// v10: Anthropic dropdown reordered (Fable 5 first, Opus 4.8 second) + Fable 5 / Opus 4.8 metadata added.
-// v9: chutes reasoning controls added — old cached metadata lacks reasoningControl.
-const MODEL_CACHE_VERSION = 11;
+// Cache version fallback — used only if the backend's schema-version endpoint
+// is unreachable on boot (offline, backend not started). The real invalidator
+// is the schema hash returned by GET /api/models/schema-version, fetched on
+// module load and compared against the stored value. Any change to metadata
+// shape, recommended-model order, or fallback list auto-invalidates all
+// per-provider localStorage caches. Kills the manual bump-the-integer footgun.
+const MODEL_CACHE_VERSION_FALLBACK = 12;
 (() => {
   const storedVersion = localStorage.getItem('model_cache_version');
-  if (storedVersion !== String(MODEL_CACHE_VERSION)) {
-    // Clear all provider model caches when version changes
+  if (storedVersion !== String(MODEL_CACHE_VERSION_FALLBACK)) {
     for (const key of Object.keys(localStorage)) {
       if (key.endsWith('_models') || key.endsWith('_metadata')) {
         localStorage.removeItem(key);
       }
     }
-    localStorage.setItem('model_cache_version', String(MODEL_CACHE_VERSION));
-    console.log('[aiProvider] Cleared stale model caches (version upgrade)');
+    localStorage.setItem('model_cache_version', String(MODEL_CACHE_VERSION_FALLBACK));
+    console.log('[aiProvider] Cleared stale model caches (fallback version upgrade)');
+  }
+})();
+
+// Auto cache-bust via backend schema hash. Fetched once on module load and
+// again on every explicit refresh action. Silent failure = keep whatever was
+// cached; the 5-min SWR path below still keeps things fresh.
+(async () => {
+  try {
+    const res = await fetch(`${API_CONFIG.BASE_URL}/models/schema-version`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data?.success || !data.version) return;
+    const stored = localStorage.getItem('model_schema_hash');
+    if (stored !== data.version) {
+      for (const key of Object.keys(localStorage)) {
+        if (key.endsWith('_models') || key.endsWith('_metadata')) {
+          localStorage.removeItem(key);
+        }
+      }
+      localStorage.setItem('model_schema_hash', data.version);
+      console.log(`[aiProvider] Cleared stale model caches (backend schema hash changed to ${data.version})`);
+    }
+  } catch {
+    // Backend not reachable on module load — fine, fallback version handles it.
   }
 })();
 
@@ -864,7 +889,16 @@ export default {
       }
     },
 
-    // Generic function to fetch models for any provider
+    // Generic function to fetch models for any provider.
+    //
+    // Stale-while-revalidate: if cache exists, commit it INSTANTLY for zero
+    // paint latency and simultaneously fire a background network refresh.
+    // If the fresh result diverges from cache, commit the update and overwrite
+    // localStorage. Frontend cache is now display-only — never authoritative,
+    // never blocks new-model discovery.
+    //
+    // forceRefresh: true — caller (RefreshModelsButton, provider reconnect)
+    // awaits the network round-trip and skips the SWR early-return.
     async fetchProviderModels({ commit, state, dispatch }, { provider, forceRefresh = false } = {}) {
       if (!provider) return [];
 
@@ -878,68 +912,52 @@ export default {
         return dispatch('fetchCustomProviderModels', provider);
       }
 
-      if (state.loadingModels[provider]) {
+      if (state.loadingModels[provider] && !forceRefresh) {
         return state.allModels[provider];
       }
 
       const cacheKey = `${provider}_models`;
       const metaCacheKey = `${provider}_metadata`;
-      const cached = localStorage.getItem(cacheKey);
-      if (!forceRefresh && cached) {
-        try {
-          const { models, timestamp } = JSON.parse(cached);
-          const cacheAge = Date.now() - timestamp;
-          const cacheExpiry = 60 * 60 * 1000;
 
-          if (cacheAge < cacheExpiry) {
-            commit('SET_PROVIDER_MODELS', { provider, models });
-            // Restore cached metadata too
+      // Step 1: Instant paint from cache if available. No TTL gate — cache is
+      // for first-paint speed only, revalidation below always runs.
+      let cachedModels = null;
+      const rawCached = localStorage.getItem(cacheKey);
+      if (rawCached) {
+        try {
+          const parsed = JSON.parse(rawCached);
+          cachedModels = parsed.models;
+          if (Array.isArray(cachedModels)) {
+            commit('SET_PROVIDER_MODELS', { provider, models: cachedModels });
             const cachedMeta = localStorage.getItem(metaCacheKey);
             if (cachedMeta) {
               try {
                 commit('SET_MODEL_METADATA', { provider, metadata: JSON.parse(cachedMeta) });
-              } catch (e) { /* ignore */ }
-            } else {
-              // Metadata not cached yet — fetch it in background
-              const providerLower = resolveProviderKey(provider);
-              fetch(`${API_CONFIG.BASE_URL}/models/${providerLower}/metadata`)
-                .then((r) => r.ok ? r.json() : null)
-                .then((data) => {
-                  if (data?.success && data.metadata) {
-                    commit('SET_MODEL_METADATA', { provider, metadata: data.metadata });
-                    localStorage.setItem(metaCacheKey, JSON.stringify(data.metadata));
-                  }
-                })
-                .catch(() => {});
+              } catch { /* ignore malformed meta */ }
             }
-            return models;
           }
-        } catch (e) {
-          console.warn('Failed to parse cached models:', e);
+        } catch {
+          // Malformed cache — nuke it, treat as no cache
+          localStorage.removeItem(cacheKey);
         }
       }
 
-      commit('SET_LOADING_MODELS', { provider, loading: true });
+      // Step 2: revalidate. If we already painted from cache and forceRefresh
+      // is false, run in background and return cached immediately. Otherwise
+      // await the network.
+      const providerLower = resolveProviderKey(provider);
 
-      try {
-        const providerLower = resolveProviderKey(provider);
+      const revalidate = async () => {
         const token = localStorage.getItem('token');
         const isLocalProvider = providerLower === 'openai-codex' || providerLower === 'claude-code' || providerLower === 'gemini-cli' || providerLower === 'antigravity';
         if (!token && !isLocalProvider) {
           throw new Error(`Authentication required to fetch ${provider} models`);
         }
 
-        const headers = {
-          'Content-Type': 'application/json',
-        };
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers.Authorization = `Bearer ${token}`;
 
-        const response = await fetch(`${API_CONFIG.BASE_URL}/models/${providerLower}/models`, {
-          headers,
-        });
-
+        const response = await fetch(`${API_CONFIG.BASE_URL}/models/${providerLower}/models`, { headers });
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
@@ -948,17 +966,21 @@ export default {
         const data = await response.json();
         const models = data.models || [];
 
-        commit('SET_PROVIDER_MODELS', { provider, models });
+        // Only mutate Vuex + localStorage if the list actually changed. Prevents
+        // pointless renders and lets model-selector components diff cleanly.
+        const changed = !cachedModels
+          || cachedModels.length !== models.length
+          || JSON.stringify(cachedModels) !== JSON.stringify(models);
 
-        localStorage.setItem(
-          cacheKey,
-          JSON.stringify({
-            models,
-            timestamp: Date.now(),
-          }),
-        );
+        if (changed) {
+          commit('SET_PROVIDER_MODELS', { provider, models });
+          localStorage.setItem(cacheKey, JSON.stringify({ models, timestamp: Date.now() }));
+          if (cachedModels) {
+            console.log(`[aiProvider] ${provider} model list changed on revalidate (${cachedModels.length} → ${models.length})`);
+          }
+        }
 
-        // Fetch model metadata (context windows, costs, etc.) alongside models
+        // Metadata revalidation runs alongside models.
         try {
           const metaRes = await fetch(`${API_CONFIG.BASE_URL}/models/${providerLower}/metadata`);
           if (metaRes.ok) {
@@ -968,26 +990,31 @@ export default {
               localStorage.setItem(metaCacheKey, JSON.stringify(metaData.metadata));
             }
           }
-        } catch (metaErr) {
-          // Non-critical — context monitor just won't show pre-chat values
-        }
+        } catch { /* non-critical */ }
 
+        return models;
+      };
+
+      // Fast-path: we have cache AND forceRefresh is false. Return cached
+      // instantly, revalidate in background. Loading indicator not shown —
+      // the user already sees a populated dropdown.
+      if (cachedModels && !forceRefresh) {
+        revalidate().catch((err) => {
+          console.warn(`[aiProvider] Background revalidate failed for ${provider}:`, err.message);
+        });
+        return cachedModels;
+      }
+
+      // Slow-path: no cache OR forceRefresh. Await the network.
+      commit('SET_LOADING_MODELS', { provider, loading: true });
+      try {
+        const models = await revalidate();
         console.log(`Fetched ${models.length} ${provider} models`);
         return models;
       } catch (error) {
         console.error(`Failed to fetch ${provider} models:`, error);
-
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-          try {
-            const { models } = JSON.parse(cached);
-            commit('SET_PROVIDER_MODELS', { provider, models });
-            return models;
-          } catch (e) {
-            console.warn('Failed to parse expired cached models:', e);
-          }
-        }
-
+        // Last-resort fallback: any cached data is better than empty.
+        if (cachedModels) return cachedModels;
         return state.allModels[provider] || [];
       } finally {
         commit('SET_LOADING_MODELS', { provider, loading: false });
@@ -998,14 +1025,23 @@ export default {
     // client-versions for CLI-subscription providers) followed by a fresh
     // dispatch so Vuex state ends up with the current model list. Used by the
     // RefreshModelsButton component.
+    //
+    // With SWR in fetchProviderModels this is now an emergency escape hatch,
+    // not a routine action — normal use ships fresh models within one refresh
+    // cycle without any manual button press.
     async hardRefreshProviderModels({ dispatch }, { provider }) {
       if (!provider) throw new Error('provider required');
       const providerLower = resolveProviderKey(provider);
       if (!providerLower) throw new Error(`Unknown provider: ${provider}`);
 
-      // 1. Clear frontend localStorage caches for this provider.
+      // 1. Clear frontend localStorage caches for BOTH the display-name and
+      // lowercase spellings so no split-brain survives. Providers can be
+      // referenced as 'OpenAI-Codex' (display) or 'openai-codex' (key) at
+      // different call sites; belt-and-suspenders coverage kills that class.
       localStorage.removeItem(`${provider}_models`);
       localStorage.removeItem(`${provider}_metadata`);
+      localStorage.removeItem(`${providerLower}_models`);
+      localStorage.removeItem(`${providerLower}_metadata`);
 
       const token = localStorage.getItem('token');
       const headers = { 'Content-Type': 'application/json' };
