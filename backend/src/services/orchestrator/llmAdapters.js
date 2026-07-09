@@ -637,7 +637,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
         }
       } else {
         console.warn(`[Vision Check] Model '${this.model}' does not support vision. Images will be ignored.`);
-        console.warn(`[Vision Check] Supported vision models for ${provider}: ${visionModels.join(', ')}`);
+        console.warn(`[Vision Check] Supported vision models for ${provider}: ${ProviderRegistry.getVisionModels(provider).join(', ')}`);
         console.warn(`[Vision Check] Consider using the 'analyze_image' tool or switching to a vision-capable model.`);
       }
     }
@@ -1840,7 +1840,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
         }
       } else {
         console.warn(`[Vision Check] Model '${this.model}' does not support vision. Images will be ignored.`);
-        console.warn(`[Vision Check] Supported vision models for ${provider}: ${visionModels.join(', ')}`);
+        console.warn(`[Vision Check] Supported vision models for ${provider}: ${ProviderRegistry.getVisionModels(provider).join(', ')}`);
         console.warn(`[Vision Check] Consider using the 'analyze_image' tool or switching to a vision-capable model.`);
       }
     }
@@ -3852,7 +3852,7 @@ class GeminiAdapter extends BaseAdapter {
         }
       } else {
         console.warn(`[Vision Check] Model '${this.model}' does not support vision. Images will be ignored.`);
-        console.warn(`[Vision Check] Supported vision models for ${provider}: ${visionModels.join(', ')}`);
+        console.warn(`[Vision Check] Supported vision models for ${provider}: ${ProviderRegistry.getVisionModels(provider).join(', ')}`);
         console.warn(`[Vision Check] Consider using the 'analyze_image' tool or switching to a vision-capable model.`);
       }
     }
