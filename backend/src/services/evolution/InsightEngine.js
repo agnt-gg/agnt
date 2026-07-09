@@ -253,8 +253,8 @@ class InsightEngine {
         SELECT tool_name, COUNT(*) as call_count,
           SUM(CASE WHEN ate.status = 'completed' THEN 1 ELSE 0 END) as success_count,
           SUM(CASE WHEN ate.status = 'failed' THEN 1 ELSE 0 END) as fail_count,
-          AVG(CASE WHEN end_time IS NOT NULL AND start_time IS NOT NULL
-            THEN (julianday(end_time) - julianday(start_time)) * 86400 ELSE NULL END) as avg_duration_sec
+          AVG(CASE WHEN ate.end_time IS NOT NULL AND ate.start_time IS NOT NULL
+            THEN (julianday(ate.end_time) - julianday(ate.start_time)) * 86400 ELSE NULL END) as avg_duration_sec
         FROM agent_tool_executions ate
         JOIN agent_executions ae ON ate.execution_id = ae.id
         WHERE ae.user_id = ? AND ate.start_time > datetime('now', '-7 days')
