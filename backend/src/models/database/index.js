@@ -780,6 +780,22 @@ function createTables() {
         FOREIGN KEY (user_id) REFERENCES users(id)
       )`);
 
+      // Evolution performance snapshots — time-series telemetry for meta-cognition
+      db.run(`CREATE TABLE IF NOT EXISTS evolution_performance_snapshots (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'user',
+        target_type TEXT,
+        target_id TEXT,
+        score REAL,
+        metrics_json TEXT NOT NULL DEFAULT '{}',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_user ON evolution_performance_snapshots(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_target ON evolution_performance_snapshots(target_type, target_id)`);
+
       // Goal iteration history for AGI loop
       db.run(`CREATE TABLE IF NOT EXISTS goal_iterations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

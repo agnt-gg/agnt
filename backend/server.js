@@ -55,6 +55,7 @@ import SchedulerService from './src/services/scheduler/SchedulerService.js';
 import WalletRoutes from './src/routes/WalletRoutes.js';
 import ContractRoutes from './src/routes/ContractRoutes.js';
 import MutationHistoryRoutes from './src/routes/MutationHistoryRoutes.js';
+import EvolutionCoreRoutes from './src/routes/EvolutionCoreRoutes.js';
 import { dbReady } from './src/models/database/index.js';
 import { warmupClientVersions } from './src/services/ai/clientVersions.js';
 import WorkflowProcessBridge from './src/workflow/WorkflowProcessBridge.js';
@@ -203,6 +204,7 @@ app.use('/api/schedules', ScheduleRoutes);
 app.use('/api/wallets', WalletRoutes);
 app.use('/api/contracts', ContractRoutes);
 app.use('/api/mutations', MutationHistoryRoutes);
+app.use('/api/evolution', EvolutionCoreRoutes);
 
 // PRD-091: Closed Loop — boot the durable scheduler once the DB is ready.
 dbReady.then(() => {
