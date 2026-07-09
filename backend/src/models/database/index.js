@@ -796,6 +796,31 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_user ON evolution_performance_snapshots(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_perf_target ON evolution_performance_snapshots(target_type, target_id)`);
 
+      // Evolution core run receipts — baseline vs best, delta, genome, and routing counts
+      db.run(`CREATE TABLE IF NOT EXISTS evolution_core_runs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        apply_requested INTEGER NOT NULL DEFAULT 0,
+        applied INTEGER NOT NULL DEFAULT 0,
+        lookback_days INTEGER NOT NULL DEFAULT 7,
+        pending_insights_considered INTEGER NOT NULL DEFAULT 0,
+        baseline_score REAL,
+        best_score REAL,
+        delta REAL,
+        snapshot_score REAL,
+        weights_json TEXT,
+        biases_json TEXT,
+        genome_json TEXT,
+        counts_json TEXT,
+        recommendation_json TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_core_runs_user ON evolution_core_runs(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_evolution_core_runs_created ON evolution_core_runs(created_at)`);
+
+
       // Goal iteration history for AGI loop
       db.run(`CREATE TABLE IF NOT EXISTS goal_iterations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

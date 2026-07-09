@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken } from './Middleware.js';
 import EvolutionPerformanceSnapshotModel from '../models/EvolutionPerformanceSnapshotModel.js';
+import EvolutionCoreRunModel from '../models/EvolutionCoreRunModel.js';
 
 const EvolutionCoreRoutes = express.Router();
 
@@ -36,6 +37,21 @@ EvolutionCoreRoutes.post('/core/run', authenticateToken, async (req, res) => {
 });
 
 // GET /api/evolution/core/snapshots
+// GET /api/evolution/core/runs
+EvolutionCoreRoutes.get('/core/runs', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { limit } = req.query;
+    const runs = await EvolutionCoreRunModel.findRecentByUser(userId, {
+      limit: Math.max(1, Math.min(Number(limit) || 200, 2000)),
+    });
+    res.json({ success: true, runs });
+  } catch (error) {
+    console.error('[EvolutionCoreRoutes] runs error:', error);
+    res.status(500).json({ error: 'Failed to fetch core evolution runs', details: error.message });
+  }
+});
+
 EvolutionCoreRoutes.get('/core/snapshots', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;

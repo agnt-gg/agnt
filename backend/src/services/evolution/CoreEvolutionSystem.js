@@ -1,5 +1,6 @@
 import EvolutionSettingsModel from '../../models/EvolutionSettingsModel.js';
 import InsightModel from '../../models/InsightModel.js';
+import EvolutionCoreRunModel from '../../models/EvolutionCoreRunModel.js';
 import PerformanceMonitor from './PerformanceMonitor.js';
 import MetaCognitiveAssessor from './MetaCognitiveAssessor.js';
 import GeneticAlgorithm from './GeneticAlgorithm.js';
@@ -81,11 +82,55 @@ class CoreEvolutionSystem {
       applied: false,
     };
 
+
+    // Persist receipt for this run (baseline/best/delta + genome + counts)
+    try {
+      await EvolutionCoreRunModel.create({
+        userId,
+        applyRequested: !!apply,
+        applied: false,
+        lookbackDays,
+        pendingInsightsConsidered: simInsights.length,
+        baselineScore: baseline.score,
+        bestScore: best.score,
+        delta: recommendation.delta,
+        snapshotScore: performanceSnapshot.score,
+        weights: assessment.weights,
+        biases: assessment.biases,
+        genome: best.genome,
+        counts: best.counts,
+        recommendation,
+      });
+    } catch (e) {
+      // non-critical
+    }
     if (apply) {
       // IMPORTANT: never flip autonomy.enabled on as part of evolution.
       const nextAutonomy = { ...(currentSettings.autonomy || {}), ...best.genome, enabled: !!currentSettings.autonomy?.enabled };
       const updated = await EvolutionSettingsModel.update(userId, { autonomy: nextAutonomy });
       recommendation.applied = true;
+      try {
+        await EvolutionCoreRunModel.create({
+          userId,
+          applyRequested: true,
+          applied: true,
+          lookbackDays,
+          pendingInsightsConsidered: simInsights.length,
+          baselineScore: baseline.score,
+          bestScore: best.score,
+          delta: recommendation.delta,
+          snapshotScore: performanceSnapshot.score,
+          weights: assessment.weights,
+          biases: assessment.biases,
+          genome: nextAutonomy,
+          counts: best.counts,
+          recommendation,
+          notes: 'applied',
+        });
+      } catch (e) {
+        // non-critical
+      }
+
       recommendation.updatedSettings = { autonomy: updated.autonomy };
     }
 
