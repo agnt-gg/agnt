@@ -181,15 +181,20 @@ class GeneticAlgorithm {
   static evolve({ baseSettings, insights, biases, weights, populationSize = 24, generations = 10, eliteCount = 6 } = {}) {
     const autonomyBase = AutonomyPolicy.merged(baseSettings || {});
 
-    let population = Array.from({ length: populationSize }, () => this.randomGenome(autonomyBase, biases));
+    // Always include the baseline genome so evolution cannot regress simply due to sampling.
+    const baselineGenome = this.normalizeGenome(autonomyBase, autonomyBase);
+    const baselineFitness = this.fitness({ genome: baselineGenome, baseSettings, insights, weights });
 
-    let best = null;
+    let population = [baselineGenome, ...Array.from({ length: Math.max(0, populationSize - 1) }, () => this.randomGenome(autonomyBase, biases))];
+
+    let best = baselineFitness;
     for (let gen = 0; gen < generations; gen++) {
       const scored = population
         .map((g) => this.fitness({ genome: g, baseSettings, insights, weights }))
         .sort((a, b) => b.score - a.score);
 
-      best = best ? (scored[0].score > best.score ? scored[0] : best) : scored[0];
+      // best starts as baselineFitness; keep it monotonic
+      best = (scored[0].score > best.score) ? scored[0] : best;
 
       const elites = scored.slice(0, eliteCount).map((s) => s.genome);
       const next = [...elites];
@@ -204,7 +209,8 @@ class GeneticAlgorithm {
       population = next;
     }
 
-    return best;
+    // Never return worse than baseline
+    return best && best.score >= baselineFitness.score ? best : baselineFitness;
   }
 }
 

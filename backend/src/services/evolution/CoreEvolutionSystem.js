@@ -67,6 +67,10 @@ class CoreEvolutionSystem {
     });
 
     const delta = best.score - baseline.score;
+    const deltaRounded = Math.round(delta * 1000) / 1000;
+
+    // Apply gate: never apply if the candidate fails to beat baseline.
+    const minApplyDelta = 0.0;
 
     const recommendation = {
       schema: 'AGNT_CORE_EVOLUTION_RECOMMENDATION.v0.1',
@@ -78,7 +82,7 @@ class CoreEvolutionSystem {
       assessment,
       baseline,
       best,
-      delta: Math.round(delta * 1000) / 1000,
+      delta: deltaRounded,
       applied: false,
     };
 
@@ -104,7 +108,7 @@ class CoreEvolutionSystem {
     } catch (e) {
       // non-critical
     }
-    if (apply) {
+    if (apply && recommendation.delta >= minApplyDelta) {
       // IMPORTANT: never flip autonomy.enabled on as part of evolution.
       const nextAutonomy = { ...(currentSettings.autonomy || {}), ...best.genome, enabled: !!currentSettings.autonomy?.enabled };
       const updated = await EvolutionSettingsModel.update(userId, { autonomy: nextAutonomy });
@@ -132,6 +136,12 @@ class CoreEvolutionSystem {
       }
 
       recommendation.updatedSettings = { autonomy: updated.autonomy };
+    }
+
+    if (apply && !recommendation.applied) {
+      recommendation.apply_blocked = true;
+      recommendation.apply_block_reason = 'delta_below_threshold';
+      recommendation.apply_block_min_delta = minApplyDelta;
     }
 
     return recommendation;
