@@ -2,6 +2,7 @@ import { Message, ChatWindow } from '@/views/_components/base/ChatWindow';
 import { API_CONFIG } from '@/tt.config.js';
 import { resolveChannelEnabledTools } from '@/services/chatChannelConfig.js';
 import { emitSteer, emitClearSteer } from '@/composables/useRealtimeSync.js';
+import { safeTruncate } from '@/utils/safeTruncate.js';
 
 // The orchestrator chat surface owns this channelKey; every send from chat.js
 // resolves provider/model from Vuex (already kept in sync by the popover) and
@@ -1666,9 +1667,8 @@ export default {
         if (!conversationTitle) conversationTitle = savedOutputTitle || null;
         if (!conversationTitle) {
           const firstUserMessage = messages.find((msg) => msg.role === 'user');
-          const agentPrefix = agentId && agentName ? `[${agentName}] ` : '';
-          conversationTitle = firstUserMessage
-            ? agentPrefix + firstUserMessage.content.substring(0, 100) + (firstUserMessage.content.length > 100 ? '...' : '')
+          const agentPrefix = agentId && agentName ? `[${agentName}] ` : '';          conversationTitle = firstUserMessage
+            ? agentPrefix + safeTruncate(firstUserMessage.content, 100, '...')
             : agentPrefix + 'Untitled Conversation';
         }
 
@@ -2500,13 +2500,7 @@ export default {
 
       // Decide eventKind + truncated payloads. Truncation caps:
       //   task output: 400 chars
-      //   feedback / error: 600 chars
-      const truncate = (s, max) => {
-        if (s == null) return '';
-        const str = String(s);
-        if (str.length <= max) return str;
-        return str.slice(0, max) + ' [...]';
-      };
+      //   feedback / error: 600 chars      const truncate = (s, max) => safeTruncate(s, max, ' [...]');
 
       const goalTitle =
         targetConvIds[0] && state.activeGoalByConv[targetConvIds[0]]?.title;

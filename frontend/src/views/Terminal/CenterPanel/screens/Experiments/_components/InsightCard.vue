@@ -90,7 +90,8 @@ const targetIcon = targetIcons[props.insight.target_type] || 'fas fa-cube';
 
 const formatCategory = (c) => (c || '').replace(/_/g, ' ');
 const formatSource = (s) => (s || '').replace(/_/g, ' ');
-const truncate = (text, max) => (!text ? '' : text.length > max ? text.slice(0, max) + '...' : text);
+import { safeTruncate } from '@/utils/safeTruncate.js';
+const truncate = (text, max) => safeTruncate(text, max, '...');
 </script>
 
 <style scoped>

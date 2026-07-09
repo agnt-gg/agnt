@@ -697,7 +697,8 @@ const formatDate = (d) => {
   return new Date(d).toLocaleDateString();
 };
 
-const truncate = (text, max) => (!text ? '' : text.length > max ? text.slice(0, max) + '...' : text);
+import { safeTruncate } from '@/utils/safeTruncate.js';
+const truncate = (text, max) => safeTruncate(text, max, '...');
 const formatCategory = (c) => (c || '').replace(/_/g, ' ');
 const targetIcon = (t) => ({ agent: 'fas fa-robot', skill: 'fas fa-puzzle-piece', workflow: 'fas fa-project-diagram', tool: 'fas fa-wrench' }[t] || 'fas fa-cube');
 

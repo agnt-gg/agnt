@@ -321,7 +321,8 @@ const formatDate = (d) => {
   return new Date(d).toLocaleDateString();
 };
 
-const truncate = (text, max) => (!text ? '' : text.length > max ? text.slice(0, max) + '...' : text);
+import { safeTruncate } from '@/utils/safeTruncate.js';
+const truncate = (text, max) => safeTruncate(text, max, '...');
 
 const selectMemory = (mem) => {
   selectedMemory.value = selectedMemory.value?.id === mem.id ? null : mem;

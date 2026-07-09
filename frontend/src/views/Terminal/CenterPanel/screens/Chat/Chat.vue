@@ -173,6 +173,7 @@ import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import { useCleanup } from '@/composables/useCleanup';
 import BaseScreen from '../../BaseScreen.vue';
+  import { safeTruncate } from '@/utils/safeTruncate.js';
 import EngineHeader from './components/EngineHeader.vue';
 import MessageItem from './components/MessageItem.vue';
 import ProcessingState from './components/ProcessingState.vue';
@@ -1509,9 +1510,8 @@ export default {
 
       try {
         // Generate a title from the first user message or use a default
-        const firstUserMessage = displayMessages.value.find((msg) => msg.role === 'user');
-        const conversationTitle = firstUserMessage
-          ? firstUserMessage.content.substring(0, 100) + (firstUserMessage.content.length > 100 ? '...' : '')
+        const firstUserMessage = displayMessages.value.find((msg) => msg.role === 'user');        const conversationTitle = firstUserMessage
+          ? safeTruncate(firstUserMessage.content, 100, '...')
           : 'Untitled Conversation';
 
         // Helper function to resolve image references in content

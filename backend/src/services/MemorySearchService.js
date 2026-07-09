@@ -1,4 +1,5 @@
 import db from '../models/database/index.js';
+import { safeTruncate } from '../utils/safeTruncate.js';
 
 /**
  * MemorySearchService — hybrid full-text search across AGNT's history
@@ -41,8 +42,8 @@ function sanitizeFtsQuery(q) {
 
 function truncate(s, n = 200) {
   if (!s) return '';
-  const str = typeof s === 'string' ? s : String(s);
-  return str.length > n ? str.slice(0, n) + '…' : str;
+  // Grapheme-aware: never splits an emoji surrogate pair / ZWJ combo (🫠 etc.)
+  return safeTruncate(s, n, '…');
 }
 
 const ALL_SOURCES = ['conversations', 'executions', 'outputs', 'insights', 'memory', 'versions'];

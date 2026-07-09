@@ -303,9 +303,9 @@
   </div>
 </template>
 
-<script>
-import { computed } from 'vue';
-import { useStore } from 'vuex';
+<script>  import { computed } from 'vue';
+  import { useStore } from 'vuex';
+  import { safeTruncate } from '@/utils/safeTruncate.js';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import ResourcesSection from '@/views/_components/common/ResourcesSection.vue';
 
@@ -447,7 +447,7 @@ export default {
       return d > 0 ? 'pos' : d < 0 ? 'neg' : '';
     };
 
-    const truncate = (text, max) => (!text ? '' : text.length > max ? text.slice(0, max) + '...' : text);
+    const truncate = (text, max) => safeTruncate(text, max, '...');
 
     return {
       parsedEvidence, parsedAppliedResult, sourceOriginItems,
