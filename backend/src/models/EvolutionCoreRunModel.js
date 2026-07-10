@@ -69,6 +69,34 @@ class EvolutionCoreRunModel {
     });
   }
 
+  /**
+   * Stamp the apply/routing outcome onto an existing run receipt.
+   * Keeps exactly one row per run — create() writes the run, this updates
+   * the same row with the routing result instead of inserting a second one.
+   */
+  static markApplied(id, { applied = false, notes = null, recommendation = undefined } = {}) {
+    const sets = ['applied = ?'];
+    const params = [applied ? 1 : 0];
+    if (notes !== null && notes !== undefined) {
+      sets.push('notes = ?');
+      params.push(String(notes));
+    }
+    if (recommendation !== undefined) {
+      let json = null;
+      try { json = JSON.stringify(recommendation); } catch { json = null; }
+      sets.push('recommendation_json = ?');
+      params.push(json);
+    }
+    params.push(id);
+    return new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE evolution_core_runs SET ${sets.join(', ')} WHERE id = ?`,
+        params,
+        function (err) { err ? reject(err) : resolve(this?.changes > 0); }
+      );
+    });
+  }
+
   static findRecentByUser(userId, { limit = 200 } = {}) {
     const lim = Math.max(1, Math.min(Number(limit) || 200, 2000));
     return new Promise((resolve, reject) => {

@@ -47,8 +47,17 @@ vi.mock('./PerformanceMonitor.js', () => ({
   },
 }));
 
+// One receipt per run: create() writes it, markApplied() stamps routing outcome on the same row.
+vi.mock('../../models/EvolutionCoreRunModel.js', () => ({
+  default: {
+    create: vi.fn(async () => 'run-1'),
+    markApplied: vi.fn(async () => true),
+  },
+}));
+
 // Import after mocks
 const CoreEvolutionSystem = (await import('./CoreEvolutionSystem.js')).default;
+const EvolutionCoreRunModel = (await import('../../models/EvolutionCoreRunModel.js')).default;
 
 describe('CoreEvolutionSystem.runForUser', () => {
   beforeEach(() => {
@@ -72,5 +81,32 @@ describe('CoreEvolutionSystem.runForUser', () => {
     expect(r.applyInsightId).toBe('insight-1');
     expect(r.applyRouted.decision).toBe('skip');
     expect(r.applyRouted.reason).toBe('autonomy_disabled');
+  });
+
+  it('writes exactly one receipt per applied run and stamps the routing outcome on it', async () => {
+    EvolutionCoreRunModel.create.mockClear();
+    EvolutionCoreRunModel.markApplied.mockClear();
+
+    const r = await CoreEvolutionSystem.runForUser('u1', { generations: 2, populationSize: 10, eliteCount: 4, apply: true });
+
+    expect(EvolutionCoreRunModel.create).toHaveBeenCalledTimes(1);
+    expect(EvolutionCoreRunModel.markApplied).toHaveBeenCalledTimes(1);
+    expect(EvolutionCoreRunModel.markApplied).toHaveBeenCalledWith('run-1', expect.objectContaining({
+      applied: false,
+      notes: expect.stringContaining('routed:skip'),
+    }));
+    // block reason reflects the router decision, not a numeric delta gate
+    expect(r.apply_blocked).toBe(true);
+    expect(r.apply_block_reason).toContain('router:skip');
+  });
+
+  it('writes exactly one receipt and never calls markApplied when apply=false', async () => {
+    EvolutionCoreRunModel.create.mockClear();
+    EvolutionCoreRunModel.markApplied.mockClear();
+
+    await CoreEvolutionSystem.runForUser('u1', { generations: 2, populationSize: 10, eliteCount: 4, apply: false });
+
+    expect(EvolutionCoreRunModel.create).toHaveBeenCalledTimes(1);
+    expect(EvolutionCoreRunModel.markApplied).not.toHaveBeenCalled();
   });
 });

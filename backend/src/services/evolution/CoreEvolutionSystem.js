@@ -69,8 +69,10 @@ class CoreEvolutionSystem {
     const delta = best.score - baseline.score;
     const deltaRounded = Math.round(delta * 1000) / 1000;
 
-    // Apply gate: never apply if the candidate fails to beat baseline.
-    const minApplyDelta = 0.0;
+    // NOTE: no numeric delta gate here. GeneticAlgorithm.evolve seeds the baseline
+    // genome and never returns a worse score, so delta is always >= 0 and a
+    // threshold check is dead code. The real apply gate is InsightAutonomyRouter
+    // below — policy (enabled/category/confidence/blast-radius/budget) decides.
 
     const recommendation = {
       schema: 'AGNT_CORE_EVOLUTION_RECOMMENDATION.v0.1',
@@ -87,9 +89,11 @@ class CoreEvolutionSystem {
     };
 
 
-    // Persist receipt for this run (baseline/best/delta + genome + counts)
+    // Persist a single receipt for this run (baseline/best/delta + genome + counts).
+    // If apply is requested, the routing outcome is stamped onto this same row below.
+    let runReceiptId = null;
     try {
-      await EvolutionCoreRunModel.create({
+      runReceiptId = await EvolutionCoreRunModel.create({
         userId,
         applyRequested: !!apply,
         applied: false,
@@ -107,7 +111,9 @@ class CoreEvolutionSystem {
       });
     } catch (e) {
       // non-critical
-    }    if (apply && recommendation.delta >= minApplyDelta) {
+    }
+
+    if (apply) {
       // IMPORTANT: CoreEvolutionSystem does NOT write EvolutionSettings directly.
       // Instead, route a parameter_tune insight through the existing AutonomyRouter
       // so we get consistent direct/gated/escalate behavior + Arena hook.
@@ -146,25 +152,15 @@ class CoreEvolutionSystem {
         recommendation.updatedSettings = { autonomy: routeResult.result.autonomy };
       }
 
-      // Persist a second receipt when apply was requested so we can audit routing outcome.
+      // Stamp the routing outcome onto the run's single receipt (no second row).
       try {
-        await EvolutionCoreRunModel.create({
-          userId,
-          applyRequested: true,
-          applied: recommendation.applied,
-          lookbackDays,
-          pendingInsightsConsidered: simInsights.length,
-          baselineScore: baseline.score,
-          bestScore: best.score,
-          delta: recommendation.delta,
-          snapshotScore: performanceSnapshot.score,
-          weights: assessment.weights,
-          biases: assessment.biases,
-          genome: patch,
-          counts: best.counts,
-          recommendation,
-          notes: `routed:${routeResult?.decision || 'unknown'}:${routeResult?.reason || ''}`,
-        });
+        if (runReceiptId) {
+          await EvolutionCoreRunModel.markApplied(runReceiptId, {
+            applied: recommendation.applied,
+            notes: `routed:${routeResult?.decision || 'unknown'}:${routeResult?.reason || ''}`,
+            recommendation,
+          });
+        }
       } catch (e) {
         // non-critical
       }
@@ -172,8 +168,9 @@ class CoreEvolutionSystem {
 
     if (apply && !recommendation.applied) {
       recommendation.apply_blocked = true;
-      recommendation.apply_block_reason = 'delta_below_threshold';
-      recommendation.apply_block_min_delta = minApplyDelta;
+      recommendation.apply_block_reason = recommendation.applyRouted
+        ? `router:${recommendation.applyRouted.decision}${recommendation.applyRouted.reason ? ':' + recommendation.applyRouted.reason : ''}`
+        : 'not_routed';
     }
 
     return recommendation;
