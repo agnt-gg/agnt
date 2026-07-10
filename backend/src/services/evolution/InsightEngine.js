@@ -251,10 +251,10 @@ class InsightEngine {
     const toolStats = await new Promise((resolve, reject) => {
       db.all(`
         SELECT tool_name, COUNT(*) as call_count,
-          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as success_count,
-          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as fail_count,
-          AVG(CASE WHEN end_time IS NOT NULL AND start_time IS NOT NULL
-            THEN (julianday(end_time) - julianday(start_time)) * 86400 ELSE NULL END) as avg_duration_sec
+          SUM(CASE WHEN ate.status = 'completed' THEN 1 ELSE 0 END) as success_count,
+          SUM(CASE WHEN ate.status = 'failed' THEN 1 ELSE 0 END) as fail_count,
+          AVG(CASE WHEN ate.end_time IS NOT NULL AND ate.start_time IS NOT NULL
+            THEN (julianday(ate.end_time) - julianday(ate.start_time)) * 86400 ELSE NULL END) as avg_duration_sec
         FROM agent_tool_executions ate
         JOIN agent_executions ae ON ate.execution_id = ae.id
         WHERE ae.user_id = ? AND ate.start_time > datetime('now', '-7 days')
@@ -270,26 +270,80 @@ class InsightEngine {
     if (toolStats.length === 0) return [];
 
     const stored = [];
+
+    // 1) Bottleneck insights (failure rate or latency)
     for (const stat of toolStats) {
-      const failRate = stat.fail_count / stat.call_count;
+      const failRate = stat.fail_count / Math.max(1, stat.call_count);
+      const successRate = stat.success_count / Math.max(1, stat.call_count);
+      const avgSec = Number(stat.avg_duration_sec) || 0;
+
       if (failRate > 0.3) {
-        // High failure rate tool
         const toolDescription = `Tool "${stat.tool_name}" has a ${Math.round(failRate * 100)}% failure rate over ${stat.call_count} calls in the last 7 days.`;
         const insightId = await this._storeInsightWithDedup(userId, {
           sourceType: 'tool_call',
           sourceId: 'aggregate',
-          sourceContext: { period: '7d' },
+          sourceContext: { period: '7d', reason: 'failure_rate' },
           targetType: 'tool',
           targetId: stat.tool_name,
           category: 'bottleneck',
           title: `High failure rate: ${stat.tool_name}`,
           description: toolDescription,
-          evidence: { callCount: stat.call_count, successCount: stat.success_count, failCount: stat.fail_count, avgDuration: stat.avg_duration_sec },
-          confidence: Math.min(0.9, 0.5 + (stat.call_count / 50)),
+          evidence: { callCount: stat.call_count, successCount: stat.success_count, failCount: stat.fail_count, avgDurationSec: avgSec },
+          confidence: Math.min(0.9, 0.55 + (stat.call_count / 50)),
         });
         await this._storeMemory('orchestrator', userId, `[Tool Issue] ${toolDescription}`, 'tool_insight');
         if (insightId) stored.push(insightId);
+        continue;
       }
+
+      // Latency bottleneck (only when it is meaningfully slow and used enough)
+      if (avgSec >= 3 && stat.call_count >= 10) {
+        const toolDescription = `Tool "${stat.tool_name}" averages ~${Math.round(avgSec * 10) / 10}s over ${stat.call_count} calls (success ${Math.round(successRate * 100)}%). Consider batching, caching, or narrowing usage.`;
+        const insightId = await this._storeInsightWithDedup(userId, {
+          sourceType: 'tool_call',
+          sourceId: 'aggregate',
+          sourceContext: { period: '7d', reason: 'latency' },
+          targetType: 'tool',
+          targetId: stat.tool_name,
+          category: 'bottleneck',
+          title: `High latency: ${stat.tool_name}`,
+          description: toolDescription,
+          evidence: { callCount: stat.call_count, successCount: stat.success_count, failCount: stat.fail_count, avgDurationSec: avgSec },
+          confidence: Math.min(0.85, 0.5 + (stat.call_count / 80)),
+        });
+        await this._storeMemory('orchestrator', userId, `[Tool Latency] ${toolDescription}`, 'tool_insight');
+        if (insightId) stored.push(insightId);
+      }
+    }
+
+    // 2) Tool preference insights (create signal even when everything is healthy)
+    // This yields pending insights that the autonomy router can route (often gated/direct depending on blast radius).
+    const preferenceCandidates = toolStats
+      .map((s) => ({
+        ...s,
+        successRate: (s.success_count / Math.max(1, s.call_count)),
+        failRate: (s.fail_count / Math.max(1, s.call_count)),
+        avgSec: Number(s.avg_duration_sec) || 0,
+      }))
+      .filter((s) => s.call_count >= 15 && s.successRate >= 0.95 && s.failRate <= 0.05)
+      .sort((a, b) => (b.call_count - a.call_count));
+
+    for (const stat of preferenceCandidates.slice(0, 5)) {
+      const desc = `Prefer tool "${stat.tool_name}" for similar tasks: success ${Math.round(stat.successRate * 100)}% over ${stat.call_count} calls (avg ${Math.round(stat.avgSec * 10) / 10}s).`;
+      const insightId = await this._storeInsightWithDedup(userId, {
+        sourceType: 'tool_call',
+        sourceId: 'aggregate',
+        sourceContext: { period: '7d', reason: 'high_success_preference' },
+        targetType: 'tool',
+        targetId: stat.tool_name,
+        category: 'tool_preference',
+        title: `Prefer tool: ${stat.tool_name}`,
+        description: desc,
+        evidence: { callCount: stat.call_count, successCount: stat.success_count, failCount: stat.fail_count, avgDurationSec: stat.avgSec },
+        confidence: Math.min(0.9, 0.6 + (stat.call_count / 200)),
+      });
+      await this._storeMemory('orchestrator', userId, `[Tool Preference] ${desc}`, 'tool_insight');
+      if (insightId) stored.push(insightId);
     }
 
     // PRD-091 Layer 5: mine refinement-type contract proposals from successful

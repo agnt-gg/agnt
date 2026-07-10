@@ -151,7 +151,8 @@ class InsightTriggers {
   static async onPeriodicRollup(userId) {
     try {
       // Check if tool rollup insights are enabled
-      if (!await EvolutionSettingsModel.isSourceEnabled(userId, 'tool_call')) {
+      // NOTE: settings key is 'tool_rollup' (source type remains 'tool_call' in InsightEngine).
+      if (!await EvolutionSettingsModel.isSourceEnabled(userId, 'tool_rollup')) {
         return [];
       }
 
