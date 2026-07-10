@@ -1,7 +1,7 @@
 {
   "name": "discord-plugin",
-  "version": "1.5.0",
-  "description": "Discord integration plugin for AGNT - Send messages (with automatic message chunking for content over Discord's 2000-char limit), manage roles, receive messages, and interact with Discord servers",
+  "version": "1.9.2",
+  "description": "Discord integration for AGNT - Send messages and upload files to guild channels OR user DMs (recipientType='user' + userId), delete the bot's own messages (single / purge-all / purge-recent, DM-safe and rate-limit-paced), auto-chunk >2000 char messages, Discord-safe attachment optimization (PNG->JPEG, GIF->MP4, video re-encode), role management, inbound message receiving (guilds + DMs), user lookup by username or ID (RESOLVE_USER), and DM setup diagnostics (TEST_DM). Bot->user DMs require the bot to share at least one guild with the user. Requires ffmpeg on PATH for attachment optimization.",
   "author": "AGNT",
   "icon": "discord",
   "tools": [
@@ -20,25 +20,193 @@
           "action": {
             "type": "string",
             "inputType": "select",
-            "options": ["SEND_MESSAGE", "ASSIGN_ROLE", "GET_MEMBERS", "UPLOAD_FILE", "BAN_MEMBER"],
-            "description": "The action to perform on Discord"
+            "options": [
+              "SEND_MESSAGE",
+              "ASSIGN_ROLE",
+              "GET_MEMBERS",
+              "UPLOAD_FILE",
+              "BAN_MEMBER",
+              "RESOLVE_USER",
+              "TEST_DM",
+              "ORCHESTRATOR_CHAT",
+              "DELETE_MESSAGE"
+            ],
+            "description": "The action to perform on Discord. RESOLVE_USER = look up a user by username or ID. TEST_DM = 5-stage diagnostic that verifies the bot can DM a user. ORCHESTRATOR_CHAT = bridge a message into AGNT's full orchestrator (the same engine that powers the main Annie chat) and return the reply + any generated image refs; conversationId (or channelId) keys persistent memory. DELETE_MESSAGE = delete the bot's OWN message(s) — one by messageId, or purge all/recent bot messages from a DM or channel. In a DM the bot can only delete its own messages (Discord platform rule)."
+          },
+          "conversationId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Stable conversation key for ORCHESTRATOR_CHAT memory. Same ID across calls = same persistent conversation. If omitted, derived from channelId (discord-dm-<channelId>) or userId. This is what gives the Discord bridge full conversation memory.",
+            "conditional": {
+              "field": "action",
+              "value": "ORCHESTRATOR_CHAT"
+            }
+          },
+          "orchestratorModel": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional model override for ORCHESTRATOR_CHAT (e.g. 'claude-sonnet-4-5'). If omitted, uses the user's default provider/model.",
+            "conditional": {
+              "field": "action",
+              "value": "ORCHESTRATOR_CHAT"
+            }
+          },
+          "resolveMode": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "byQuery",
+              "byId"
+            ],
+            "default": "byQuery",
+            "description": "How to look up the user (RESOLVE_USER action). 'byQuery' searches a guild's member list by username/display name/nickname (needs guildId + userQuery). 'byId' validates a known user ID (needs userId).",
+            "conditional": {
+              "field": "action",
+              "value": "RESOLVE_USER"
+            }
+          },
+          "userQuery": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The username, global display name, or nickname to search for (RESOLVE_USER with resolveMode='byQuery'). Case-insensitive substring match by default; set exactMatch=true for exact match.",
+            "conditional": {
+              "field": "resolveMode",
+              "value": "byQuery"
+            }
+          },
+          "guildId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The Discord server (guild) ID to search within (RESOLVE_USER with resolveMode='byQuery'). Discord blocks global user search for anti-harassment, so searches happen per-guild. Enable Developer Mode -> right-click server icon -> Copy Server ID.",
+            "conditional": {
+              "field": "resolveMode",
+              "value": "byQuery"
+            }
+          },
+          "exactMatch": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "description": "Require exact match of username / display name / nickname (RESOLVE_USER with resolveMode='byQuery'). Default: false (case-insensitive substring match).",
+            "conditional": {
+              "field": "resolveMode",
+              "value": "byQuery"
+            }
+          },
+          "dryRun": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "description": "Run all TEST_DM checks WITHOUT actually sending a message. All stages up to messageSend will run, but the final send is skipped. Perfect for first-time setup verification without spamming DMs. Default: false.",
+            "conditional": {
+              "field": "action",
+              "value": "TEST_DM"
+            }
+          },
+          "recipientType": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "channel",
+              "user"
+            ],
+            "default": "channel",
+            "description": "Where the action targets. 'channel' = guild text channel (uses channelId). 'user' = direct message to a Discord user (uses userId; bot must share at least one guild with the user). Applies to SEND_MESSAGE, UPLOAD_FILE, and DELETE_MESSAGE.",
+            "conditional": {
+              "field": "action",
+              "value": [
+                "SEND_MESSAGE",
+                "UPLOAD_FILE",
+                "DELETE_MESSAGE"
+              ]
+            }
+          },
+          "deleteMode": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "single",
+              "purgeMine",
+              "purgeRecent"
+            ],
+            "default": "single",
+            "description": "DELETE_MESSAGE mode. 'single' = delete one message by messageId. 'purgeMine' = delete EVERY message the bot authored in this DM/channel (up to scanLimit). 'purgeRecent' = delete the bot's last N authored messages (set count). In a DM only the bot's own messages can be deleted.",
+            "conditional": {
+              "field": "action",
+              "value": "DELETE_MESSAGE"
+            }
+          },
+          "messageId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the message to delete (DELETE_MESSAGE with deleteMode='single'). Enable Developer Mode -> right-click the message -> Copy Message ID.",
+            "conditional": {
+              "field": "deleteMode",
+              "value": "single"
+            }
+          },
+          "count": {
+            "type": "number",
+            "inputType": "number",
+            "description": "How many of the bot's most recent messages to delete (DELETE_MESSAGE with deleteMode='purgeRecent').",
+            "conditional": {
+              "field": "deleteMode",
+              "value": "purgeRecent"
+            }
+          },
+          "scanLimit": {
+            "type": "number",
+            "inputType": "number",
+            "default": 500,
+            "description": "Max number of messages to scan back through when purging (DELETE_MESSAGE purgeMine/purgeRecent). Safety cap so a purge can't page forever. Default: 500.",
+            "conditional": {
+              "field": "action",
+              "value": "DELETE_MESSAGE"
+            }
+          },
+          "deletePaceMs": {
+            "type": "number",
+            "inputType": "number",
+            "default": 400,
+            "description": "Delay in milliseconds between sequential deletes when purging (DELETE_MESSAGE). discord.js already auto-handles rate limits; this is extra spacing to stay well under the bucket. Default: 400. Set 0 for max speed.",
+            "conditional": {
+              "field": "action",
+              "value": "DELETE_MESSAGE"
+            }
+          },
+          "userId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The Discord user ID to DM (when recipientType='user'). Enable Developer Mode in Discord (Settings -> Advanced), then right-click a user -> Copy User ID. Only used when recipientType='user'.",
+            "conditional": {
+              "field": "recipientType",
+              "value": "user"
+            }
           },
           "channelId": {
             "type": "string",
             "inputType": "text",
-            "description": "The ID of the Discord channel (for SEND_MESSAGE and UPLOAD_FILE actions)",
+            "description": "The ID of the Discord channel (for SEND_MESSAGE, UPLOAD_FILE, and DELETE_MESSAGE when recipientType='channel'). When recipientType='user' this field is ignored (use userId instead).",
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE", "UPLOAD_FILE"]
+              "value": [
+                "SEND_MESSAGE",
+                "UPLOAD_FILE",
+                "DELETE_MESSAGE"
+              ]
             }
           },
           "message": {
             "type": "string",
             "inputType": "textarea",
-            "description": "The message to send (for SEND_MESSAGE action). Messages longer than the Discord limit are automatically sent as multiple sequential messages unless autoSplit is disabled.",
+            "description": "The message text. For SEND_MESSAGE: the Discord message to send (auto-split if over the 2000-char limit unless autoSplit is disabled). For UPLOAD_FILE: optional caption sent with the attachment. For ORCHESTRATOR_CHAT: the prompt sent to Annie's full orchestrator.",
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE", "UPLOAD_FILE"]
+              "value": [
+                "SEND_MESSAGE",
+                "UPLOAD_FILE",
+                "ORCHESTRATOR_CHAT"
+              ]
             }
           },
           "autoSplit": {
@@ -48,7 +216,9 @@
             "description": "Automatically split messages that exceed the character limit into multiple sequential messages (for SEND_MESSAGE action). Splitting avoids breaking words, preserves fenced code blocks, and never slices emoji. Default: true. Set false to send as-is (Discord will reject content over 2000 chars).",
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE"]
+              "value": [
+                "SEND_MESSAGE"
+              ]
             }
           },
           "splitLimit": {
@@ -58,7 +228,9 @@
             "description": "Maximum characters per message chunk when autoSplit is on (for SEND_MESSAGE action). Capped at Discord's 2000-char hard limit. Lower it for a safety margin. Default: 2000.",
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE"]
+              "value": [
+                "SEND_MESSAGE"
+              ]
             }
           },
           "splitDelayMs": {
@@ -68,7 +240,9 @@
             "description": "Delay in milliseconds between sequential chunks when a message is split (for SEND_MESSAGE action). Keeps chunks in order and avoids Discord rate limits. Default: 350. Set 0 for no delay.",
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE"]
+              "value": [
+                "SEND_MESSAGE"
+              ]
             }
           },
           "numberChunks": {
@@ -78,7 +252,9 @@
             "description": "Append a (n/N) counter to the end of each chunk when a message is split (for SEND_MESSAGE action). Default: false.",
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE"]
+              "value": [
+                "SEND_MESSAGE"
+              ]
             }
           },
           "guildId": {
@@ -87,7 +263,11 @@
             "description": "The ID of the Discord guild (server) (for ASSIGN_ROLE and GET_MEMBERS actions)",
             "conditional": {
               "field": "action",
-              "value": ["ASSIGN_ROLE", "GET_MEMBERS", "BAN_MEMBER"]
+              "value": [
+                "ASSIGN_ROLE",
+                "GET_MEMBERS",
+                "BAN_MEMBER"
+              ]
             }
           },
           "roleId": {
@@ -148,6 +328,36 @@
             "type": "boolean",
             "inputType": "checkbox",
             "description": "If true, mark the uploaded file as a spoiler (blurred until clicked). For UPLOAD_FILE action.",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "autoOptimize": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": true,
+            "description": "Automatically shrink the attachment to fit under Discord's size cap before upload (UPLOAD_FILE via filePath only). Applies: PNG/BMP/TIFF -> JPEG Q88, GIF -> h.264 MP4, oversize video -> h.264 re-encode with a 720p/540p/480p downscale ladder. Lossy files (JPEG, MP4, WebP) already under the cap pass through untouched. Requires ffmpeg on PATH. Default: true — set false to upload raw.",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "targetLimitMB": {
+            "type": "number",
+            "inputType": "number",
+            "default": 10,
+            "description": "Size ceiling in MB for auto-optimization (UPLOAD_FILE action). 10 MB is safe everywhere (free tier + legacy webhooks). Use 25 for current free-tier servers, 50 for Boost L2, 100 for Boost L3. Default: 10.",
+            "conditional": {
+              "field": "action",
+              "value": "UPLOAD_FILE"
+            }
+          },
+          "forceOptimize": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "default": false,
+            "description": "Re-encode the attachment even if it already fits under the target limit (UPLOAD_FILE action). Useful for turning a huge PNG icon into a small JPEG. Default: false.",
             "conditional": {
               "field": "action",
               "value": "UPLOAD_FILE"
@@ -295,5 +505,14 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "filesystem",
+      "network",
+      "spawn-process",
+      "env-access"
+    ],
+    "domains": []
+  }
 }

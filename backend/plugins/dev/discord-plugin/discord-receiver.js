@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import EventEmitter from 'events';
 
 /**
@@ -33,7 +33,16 @@ class DiscordReceiver extends EventEmitter {
 
       // Create Discord client
       this.client = new Client({
-        intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+        intents: [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.DirectMessages,     // required to fire on inbound DMs (bot->user DMs work without it, but this makes user->bot DMs work too)
+          GatewayIntentBits.MessageContent,     // required to actually READ message.content in DMs (privileged intent — must also be enabled in the Discord Developer Portal)
+        ],
+        // CRITICAL: without Partials.Channel, discord.js v14 silently drops ALL DM
+        // messageCreate events (DM channels are never cached). Guild messages work
+        // without it, which makes this bug easy to miss.
+        partials: [Partials.Channel],
       });
 
       await this.client.login(accessToken);
@@ -47,8 +56,26 @@ class DiscordReceiver extends EventEmitter {
         // Ignore bot messages
         if (message.author.bot) return;
 
-        // Only process messages from the subscribed channel
-        if (message.channel.id === node.parameters.channelId) {
+        // Only process messages from the subscribed channel.
+        // DM-friendly matching: a DM also matches if the configured value is the
+        // AUTHOR's user id (far easier to find than a DM channel id), or the
+        // literal wildcard 'dm' / 'any-dm' to accept DMs from anyone.
+        const configured = String(node.parameters.channelId).trim();
+        const isDM = !message.guild;
+        const matches =
+          message.channel.id === configured ||
+          (isDM && (
+            message.author.id === configured ||
+            configured.toLowerCase() === 'dm' ||
+            configured.toLowerCase() === 'any-dm'
+          ));
+
+        if (!matches) {
+          console.log(`[DiscordPlugin] Ignoring message: channel=${message.channel.id} author=${message.author.id} isDM=${isDM} (subscribed to ${configured})`);
+          return;
+        }
+
+        {
           const messageData = {
             content: message.content,
             author: message.author.username,
