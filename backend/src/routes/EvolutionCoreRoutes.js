@@ -19,13 +19,20 @@ EvolutionCoreRoutes.post('/core/run', authenticateToken, async (req, res) => {
       apply,
     } = req.body || {};
 
+    // Defensive clamps: GA work is synchronous/CPU-bound.
+    const lookback = Math.max(1, Math.min(Number(lookbackDays) || 7, 90));
+    const pendingLimit = Math.max(1, Math.min(Number(pendingInsightLimit) || 250, 5000));
+    const pop = Math.max(1, Math.min(Number(populationSize) || 24, 200));
+    const gens = Math.max(1, Math.min(Number(generations) || 10, 50));
+    const elite = Math.max(1, Math.min(Number(eliteCount) || 6, pop));
+
     const CoreEvolutionSystem = (await import('../services/evolution/CoreEvolutionSystem.js')).default;
     const recommendation = await CoreEvolutionSystem.runForUser(userId, {
-      lookbackDays: Number(lookbackDays) || 7,
-      pendingInsightLimit: Number(pendingInsightLimit) || 250,
-      populationSize: Number(populationSize) || 24,
-      generations: Number(generations) || 10,
-      eliteCount: Number(eliteCount) || 6,
+      lookbackDays: lookback,
+      pendingInsightLimit: pendingLimit,
+      populationSize: pop,
+      generations: gens,
+      eliteCount: elite,
       apply: !!apply,
     });
 

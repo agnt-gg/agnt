@@ -22,6 +22,7 @@ vi.mock('../../models/EvolutionSettingsModel.js', () => ({
 
 vi.mock('../../models/InsightModel.js', () => ({
   default: {
+    create: vi.fn(async () => 'insight-1'),
     findByUserId: vi.fn(async (_uid, opts) => {
       if (opts?.status !== 'pending') return [];
       return [
@@ -29,6 +30,14 @@ vi.mock('../../models/InsightModel.js', () => ({
         { category: 'prompt_refinement', target_type: 'agent', confidence: 0.85, blast_radius: 0.3 },
       ];
     }),
+  },
+}));
+
+// CoreEvolutionSystem no longer updates settings directly on apply=true.
+// It routes a parameter_tune insight through the existing router.
+vi.mock('./InsightAutonomyRouter.js', () => ({
+  default: {
+    route: vi.fn(async () => ({ decision: 'skip', reason: 'autonomy_disabled', applied: false })),
   },
 }));
 
@@ -57,9 +66,11 @@ describe('CoreEvolutionSystem.runForUser', () => {
     expect(r.best.genome.enabled).toBe(false);
   });
 
-  it('applies without flipping enabled', async () => {
+  it('routes apply requests through the autonomy router (no direct settings write)', async () => {
     const r = await CoreEvolutionSystem.runForUser('u1', { generations: 2, populationSize: 10, eliteCount: 4, apply: true });
-    expect(r.applied).toBe(true);
-    expect(r.updatedSettings.autonomy.enabled).toBe(false);
+    expect(r.applied).toBe(false);
+    expect(r.applyInsightId).toBe('insight-1');
+    expect(r.applyRouted.decision).toBe('skip');
+    expect(r.applyRouted.reason).toBe('autonomy_disabled');
   });
 });

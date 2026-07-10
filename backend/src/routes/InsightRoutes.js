@@ -278,6 +278,11 @@ InsightRoutes.post('/:id/apply', authenticateToken, async (req, res) => {
         case 'tool':
           result = await ToolApplicator.apply(req.params.id, userId);
           break;
+        case 'evolution_settings': {
+          const EvolutionSettingsApplicator = (await import('../services/evolution/applicators/EvolutionSettingsApplicator.js')).default;
+          result = await EvolutionSettingsApplicator.apply(req.params.id, userId);
+          break;
+        }
         default:
           return res.status(400).json({ error: `Unknown target type: ${insight.target_type}` });
       }

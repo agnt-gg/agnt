@@ -107,17 +107,51 @@ class CoreEvolutionSystem {
       });
     } catch (e) {
       // non-critical
-    }
-    if (apply && recommendation.delta >= minApplyDelta) {
-      // IMPORTANT: never flip autonomy.enabled on as part of evolution.
-      const nextAutonomy = { ...(currentSettings.autonomy || {}), ...best.genome, enabled: !!currentSettings.autonomy?.enabled };
-      const updated = await EvolutionSettingsModel.update(userId, { autonomy: nextAutonomy });
-      recommendation.applied = true;
+    }    if (apply && recommendation.delta >= minApplyDelta) {
+      // IMPORTANT: CoreEvolutionSystem does NOT write EvolutionSettings directly.
+      // Instead, route a parameter_tune insight through the existing AutonomyRouter
+      // so we get consistent direct/gated/escalate behavior + Arena hook.
+      const patch = best.genome;
+
+      const title = 'Core evolution: tune autonomy parameters';
+      const desc = `Proposed autonomy parameter tune (delta=${recommendation.delta}). Routed via InsightAutonomyRouter; will only apply if autonomy is enabled + category allowed + policy permits.`;
+
+      const applyInsightId = await InsightModel.create({
+        userId,
+        sourceType: 'core_evolution',
+        sourceId: 'core_run',
+        sourceContext: { lookbackDays, baseline: baseline.score, best: best.score, delta: recommendation.delta },
+        targetType: 'evolution_settings',
+        targetId: userId,
+        category: 'parameter_tune',
+        title,
+        description: desc,
+        evidence: { autonomyPatch: patch, baseline: baseline.score, best: best.score, delta: recommendation.delta },
+        confidence: 0.75,
+      });
+
+      recommendation.applyInsightId = applyInsightId;
+
+      let routeResult = null;
+      try {
+        const InsightAutonomyRouter = (await import('./InsightAutonomyRouter.js')).default;
+        routeResult = await InsightAutonomyRouter.route(applyInsightId, userId, { mode: 'gated_only' });
+      } catch (e) {
+        routeResult = { decision: 'skip', reason: 'router_error', error: e.message };
+      }
+
+      recommendation.applyRouted = routeResult;
+      recommendation.applied = !!routeResult?.applied;
+      if (routeResult?.applied && routeResult?.result?.autonomy) {
+        recommendation.updatedSettings = { autonomy: routeResult.result.autonomy };
+      }
+
+      // Persist a second receipt when apply was requested so we can audit routing outcome.
       try {
         await EvolutionCoreRunModel.create({
           userId,
           applyRequested: true,
-          applied: true,
+          applied: recommendation.applied,
           lookbackDays,
           pendingInsightsConsidered: simInsights.length,
           baselineScore: baseline.score,
@@ -126,16 +160,14 @@ class CoreEvolutionSystem {
           snapshotScore: performanceSnapshot.score,
           weights: assessment.weights,
           biases: assessment.biases,
-          genome: nextAutonomy,
+          genome: patch,
           counts: best.counts,
           recommendation,
-          notes: 'applied',
+          notes: `routed:${routeResult?.decision || 'unknown'}:${routeResult?.reason || ''}`,
         });
       } catch (e) {
         // non-critical
       }
-
-      recommendation.updatedSettings = { autonomy: updated.autonomy };
     }
 
     if (apply && !recommendation.applied) {
