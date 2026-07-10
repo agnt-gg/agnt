@@ -190,12 +190,83 @@ function sanitizeKimiToolSchemas(tools) {
     if (obj.items && typeof obj.items === 'object') {
       fixSchema(obj.items);
     }
+  };  return tools.map((tool) => {
+    const cloned = JSON.parse(JSON.stringify(tool));
+    if (cloned.function?.parameters) {
+      fixSchema(cloned.function.parameters);
+    }
+    return cloned;
+  });
+}
+
+/**
+ * Repair tool input schemas that Anthropic's Messages API rejects under JSON
+ * Schema draft 2020-12. Anthropic is much stricter than OpenAI/Gemini and will
+ * 400 the ENTIRE request (killing every tool, not just the bad one) with:
+ *   "tools.N.custom.input_schema: JSON schema is invalid..."
+ *
+ * The three violations we see from ToolForge-generated tools:
+ *   1. Union types: "type": ["string", "number"]  -> pick the first scalar.
+ *   2. Missing root "type": the top-level schema must be {"type":"object"}.
+ *   3. Invalid/blank type strings (e.g. UI input-types like "text") -> "string".
+ *
+ * Non-destructive: valid schemas pass through unchanged.
+ */
+const ANTHROPIC_VALID_TYPES = new Set([
+  'object', 'array', 'string', 'number', 'integer', 'boolean', 'null',
+]);
+
+function sanitizeAnthropicToolSchemas(tools) {
+  if (!tools || tools.length === 0) return tools;
+
+  const normalizeType = (t) => {
+    // Union type array -> first valid scalar, else 'string'.
+    if (Array.isArray(t)) {
+      const first = t.find((x) => ANTHROPIC_VALID_TYPES.has(x));
+      return first || 'string';
+    }
+    if (typeof t === 'string' && ANTHROPIC_VALID_TYPES.has(t)) return t;
+    // Map common UI input-types / unknowns to 'string'.
+    return 'string';
+  };
+
+  const fixSchema = (obj, isRoot = false) => {
+    if (!obj || typeof obj !== 'object') return;
+
+    // Normalize an explicit type; infer for the root if absent.
+    if (obj.type !== undefined) {
+      obj.type = normalizeType(obj.type);
+    } else if (isRoot) {
+      // Anthropic requires the root schema to declare type: object.
+      obj.type = 'object';
+    } else if (obj.properties && typeof obj.properties === 'object') {
+      obj.type = 'object';
+    }
+
+    // An object schema must carry a properties bag for Anthropic.
+    if (obj.type === 'object' && (!obj.properties || typeof obj.properties !== 'object')) {
+      obj.properties = obj.properties && typeof obj.properties === 'object' ? obj.properties : {};
+    }
+
+    if (obj.properties && typeof obj.properties === 'object') {
+      for (const prop of Object.values(obj.properties)) {
+        fixSchema(prop, false);
+      }
+    }
+    if (obj.items && typeof obj.items === 'object') {
+      fixSchema(obj.items, false);
+    }
   };
 
   return tools.map((tool) => {
     const cloned = JSON.parse(JSON.stringify(tool));
-    if (cloned.function?.parameters) {
-      fixSchema(cloned.function.parameters);
+    if (cloned.function) {
+      // Ensure parameters exists and is a valid root object schema.
+      if (!cloned.function.parameters || typeof cloned.function.parameters !== 'object') {
+        cloned.function.parameters = { type: 'object', properties: {} };
+      } else {
+        fixSchema(cloned.function.parameters, true);
+      }
     }
     return cloned;
   });
@@ -1313,11 +1384,12 @@ class AnthropicAdapter extends BaseAdapter {
     }
 
     return false;
-  }
-
-  _transformToolsToAnthropic(tools) {
+  }  _transformToolsToAnthropic(tools) {
     if (!tools || tools.length === 0) return [];
-    return tools.map((tool) => ({
+    // Repair any schema violations Anthropic's draft-2020-12 validator rejects
+    // BEFORE mapping. One bad tool schema 400s the whole request otherwise.
+    const safeTools = sanitizeAnthropicToolSchemas(tools);
+    return safeTools.map((tool) => ({
       name: tool.function.name,
       description: tool.function.description,
       input_schema: tool.function.parameters,
@@ -4395,37 +4467,90 @@ class OpenAIResponsesAdapter extends BaseAdapter {
    * - Ensures every "type": "array" has an "items" field.
    * - Strips non-standard keys the Responses API rejects.
    */
-  _sanitizeSchema(schema) {
-    if (!schema || typeof schema !== 'object') return schema;
+  _sanitizeSchema(schema, isRoot = false) {
+    if (!schema || typeof schema !== 'object') {
+      return isRoot ? { type: 'object', properties: {} } : { type: 'string' };
+    }
 
     if (Array.isArray(schema)) {
-      return schema.map((item) => this._sanitizeSchema(item));
+      // A schema itself must be an object. Treat a non-standard schema array as
+      // alternatives and keep the first usable schema rather than forwarding an
+      // invalid array to the Responses API.
+      return schema.length > 0
+        ? this._sanitizeSchema(schema[0], isRoot)
+        : (isRoot ? { type: 'object', properties: {} } : { type: 'string' });
     }
 
     const result = { ...schema };
+    const validTypes = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']);
+    const uiTypeMap = {
+      text: 'string',
+      textarea: 'string',
+      password: 'string',
+      email: 'string',
+      url: 'string',
+      date: 'string',
+      datetime: 'string',
+      select: 'string',
+      radio: 'string',
+      checkbox: 'boolean',
+      toggle: 'boolean',
+      range: 'number',
+      json: 'object',
+      list: 'array',
+    };
 
-    // Array type must have items
+    const normalizeType = (type) => {
+      if (Array.isArray(type)) {
+        // Codex Responses rejects AGNT-generated union arrays in some tool
+        // schemas. Preserve the first valid scalar type deterministically.
+        const firstValid = type.find((entry) => validTypes.has(entry));
+        return firstValid || 'string';
+      }
+      if (validTypes.has(type)) return type;
+      if (typeof type === 'string' && uiTypeMap[type.toLowerCase()]) {
+        return uiTypeMap[type.toLowerCase()];
+      }
+      return null;
+    };
+
+    const normalizedType = normalizeType(result.type);
+    if (normalizedType) {
+      result.type = normalizedType;
+    } else if (isRoot || (result.properties && typeof result.properties === 'object')) {
+      result.type = 'object';
+    } else if (result.items) {
+      result.type = 'array';
+    } else {
+      result.type = 'string';
+    }
+
+    // The function parameters root must always be an object schema.
+    if (isRoot) result.type = 'object';
+
+    if (result.type === 'object' && (!result.properties || typeof result.properties !== 'object' || Array.isArray(result.properties))) {
+      result.properties = {};
+    }
+
+    // Array type must have a valid items schema.
     if (result.type === 'array' && !result.items) {
       result.items = { type: 'string' };
     }
 
-    // Recurse into items
     if (result.items) {
-      result.items = this._sanitizeSchema(result.items);
+      result.items = this._sanitizeSchema(result.items, false);
     }
 
-    // Recurse into properties
     if (result.properties) {
       const sanitized = {};
       for (const [key, value] of Object.entries(result.properties)) {
-        sanitized[key] = this._sanitizeSchema(value);
+        sanitized[key] = this._sanitizeSchema(value, false);
       }
       result.properties = sanitized;
     }
 
-    // Recurse into additionalProperties if it's a schema
     if (result.additionalProperties && typeof result.additionalProperties === 'object') {
-      result.additionalProperties = this._sanitizeSchema(result.additionalProperties);
+      result.additionalProperties = this._sanitizeSchema(result.additionalProperties, false);
     }
 
     return result;
@@ -4441,7 +4566,9 @@ class OpenAIResponsesAdapter extends BaseAdapter {
       type: 'function',
       name: tool.function.name,
       description: tool.function.description || '',
-      parameters: this._sanitizeSchema(tool.function.parameters),
+      // Responses/Codex require every function parameter schema to be a valid
+      // root object under JSON Schema. Normalize AGNT UI-oriented schemas here.
+      parameters: this._sanitizeSchema(tool.function.parameters, true),
     }));
   }
 
