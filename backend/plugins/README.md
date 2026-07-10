@@ -45,12 +45,12 @@ backend/plugins/
 
 ```bash
 cd desktop/backend/plugins
-node build-plugin.js <plugin-name>
+node cli/build-plugin.js <plugin-name>
 ```
 
 Example:
 ```bash
-node build-plugin.js discord-plugin
+node cli/build-plugin.js discord-plugin
 ```
 
 This will:
@@ -62,7 +62,7 @@ This will:
 
 ```bash
 cd desktop/backend/plugins
-node build-all-plugins.js
+node cli/build-all-plugins.js
 ```
 
 This builds all plugins in `dev/` folder at once.
@@ -181,7 +181,7 @@ export default new MyTool();
 
 ```bash
 cd desktop/backend/plugins
-node build-plugin.js my-plugin
+node cli/build-plugin.js my-plugin
 ```
 
 Output: `plugin-builds/my-plugin.agnt`
@@ -270,7 +270,7 @@ POST /api/plugins/reload
 ```
 1. Develop in dev/my-plugin/
        ↓
-2. node build-plugin.js my-plugin
+2. node cli/build-plugin.js my-plugin
        ↓
 3. plugin-builds/my-plugin.agnt (commit to git)
        ↓

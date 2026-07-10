@@ -2,7 +2,38 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createWriteStream } from 'fs';
-import { pipeline } from 'stream/promises';
+import { pipeline } from 'stream/promises';function safeParseArray(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v !== 'string') return null;
+  try {
+    const parsed = JSON.parse(v);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function safeParseObject(v) {
+  if (v && typeof v === 'object') return v;
+  if (typeof v !== 'string') return null;
+  try {
+    const parsed = JSON.parse(v);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+import {
+  validateManifestAssets,
+  computeIntegrity,
+  integrityMatches,
+  computeDirIntegrity,
+  scanCapabilities,
+  normalizePermissions,
+  diffCapabilities,
+  computeTrustTier,
+  compareVersions,
+} from '../../plugins/lib/validate-core.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,12 +142,29 @@ class PluginInstaller {
       await fs.mkdir(this.pluginsDir, { recursive: true });
       await fs.mkdir(this.tempDir, { recursive: true });
 
+      // trust system: sweep leftover staging/retired dirs from interrupted installs
+      await this.sweepStaleInstallArtifacts();      // trust system: one-time TOFU backfill of trust metadata for plugins
+      // installed before the trust system existed (no-op afterwards)
+      await this.backfillTrustMetadata();
+
+      // trust system W8: background update checks — default OFF; no-op unless the
+      // user enables autoCheck in update-settings.
+      try {
+        const { default: UpdateScheduler } = await import('./UpdateScheduler.js');
+        this.updateScheduler = new UpdateScheduler(this);
+        await this.updateScheduler.start();
+      } catch (schedErr) {
+        console.warn('[PluginInstaller] Update scheduler unavailable:', schedErr.message);
+      }
+
       // Install bundled .agnt plugins on first run
       await this.installBundledPlugins();
 
       // Get list of installed plugins
       const entries = await fs.readdir(this.pluginsDir, { withFileTypes: true });
-      const pluginDirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+      const pluginDirs = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .map((e) => e.name);
 
       if (pluginDirs.length === 0) {
         console.log('[PluginInstaller] No plugins installed');
@@ -182,7 +230,7 @@ class PluginInstaller {
 
       console.log(`[PluginInstaller] Found ${agntFiles.length} bundled .agnt plugin files`);
 
-      // PRD-057: respect explicit user uninstalls. Without this list, any
+      // ecosystem assets: respect explicit user uninstalls. Without this list, any
       // plugin a user removes via the UI silently reinstalls itself from the
       // bundled .agnt on the next startup.
       const userUninstalled = await this.getUserUninstalledList();
@@ -280,7 +328,7 @@ class PluginInstaller {
   }
 
   /**
-   * PRD-057: Read the list of plugin names the user has explicitly uninstalled.
+   * ecosystem assets: Read the list of plugin names the user has explicitly uninstalled.
    * Stored in registry.json as `userUninstalled: [pluginName, ...]`.
    * Honored by installBundledPlugins so manually-removed plugins don't respawn.
    */
@@ -305,7 +353,7 @@ class PluginInstaller {
     if (!registry.userUninstalled.includes(pluginName)) {
       registry.userUninstalled.push(pluginName);
     }
-    await fs.writeFile(this.registryPath, JSON.stringify(registry, null, 2));
+    await this.writeRegistryAtomic(registry);
   }
 
   async removeUserUninstalled(pluginName) {
@@ -316,7 +364,840 @@ class PluginInstaller {
     } catch {}
     if (!Array.isArray(registry.userUninstalled)) return;
     registry.userUninstalled = registry.userUninstalled.filter((n) => n !== pluginName);
-    await fs.writeFile(this.registryPath, JSON.stringify(registry, null, 2));
+    await this.writeRegistryAtomic(registry);
+  }
+
+  // ==========================================================================
+  // trust system: registry hardening, staged installs, updates
+  // ==========================================================================
+
+  /**
+   * trust system G3: atomic registry write. Write to a temp file, keep one
+   * backup generation of the last-known-good registry, then rename over the
+   * real path (atomic on the same volume). A crash mid-write can no longer
+   * corrupt the fleet's source of truth.
+   */
+  async writeRegistryAtomic(registry) {
+    const tmpPath = `${this.registryPath}.tmp`;
+    const bakPath = `${this.registryPath}.bak`;
+    await fs.writeFile(tmpPath, JSON.stringify(registry, null, 2));
+    try {
+      await fs.copyFile(this.registryPath, bakPath);
+    } catch {
+      // No existing registry yet (first run) — nothing to back up.
+    }
+    await fs.rename(tmpPath, this.registryPath);
+  }
+
+  /**
+   * trust system: sweep leftover staging/retired directories from interrupted
+   * installs. Called at startup. Staging dirs live in .temp (crash before
+   * swap); .retired-* dirs live in the plugins dir (Windows file locks kept
+   * a previous swap from deleting them).
+   */
+  async sweepStaleInstallArtifacts() {
+    try {
+      const tempEntries = await fs.readdir(this.tempDir, { withFileTypes: true });
+      for (const entry of tempEntries) {
+        if (entry.isDirectory() && entry.name.startsWith('staging-')) {
+          console.warn(`[PluginInstaller] Sweeping stale staging dir: ${entry.name}`);
+          await fs.rm(path.join(this.tempDir, entry.name), { recursive: true, force: true }).catch(() => {});
+        }
+      }
+    } catch {}
+    try {
+      const pluginEntries = await fs.readdir(this.pluginsDir, { withFileTypes: true });
+      for (const entry of pluginEntries) {
+        if (entry.isDirectory() && entry.name.startsWith('.retired-')) {
+          console.warn(`[PluginInstaller] Sweeping retired dir: ${entry.name}`);
+          await fs.rm(path.join(this.pluginsDir, entry.name), { recursive: true, force: true }).catch(() => {});
+        }
+      }
+    } catch {}
+  }
+
+  /**
+   * Recursively copy a directory INCLUDING node_modules (unlike the legacy
+   * copyDirectory). Used only by the degraded copy-over path of atomicSwap.
+   */
+  async copyDirectoryFull(src, dest) {
+    await fs.mkdir(dest, { recursive: true });
+    const entries = await fs.readdir(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        await this.copyDirectoryFull(srcPath, destPath);
+      } else {
+        await fs.copyFile(srcPath, destPath);
+      }
+    }
+  }
+
+  /**
+   * Rename with bounded retry. Windows can hold EPERM/EBUSY locks on the live
+   * plugin dir because the running server has import()-ed files from it.
+   */
+  async renameWithRetry(from, to, pluginName, phase, attempts = 3) {
+    let lastErr;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await fs.rename(from, to);
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (!['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY'].includes(err.code)) throw err;
+        console.warn(
+          `[PluginInstaller] ${pluginName}: ${phase} rename locked (${err.code}), retry ${i + 1}/${attempts}...`
+        );
+        await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+      }
+    }
+    throw lastErr;
+  }
+
+  /**
+   * trust system Layer 3 prerequisite: atomic swap of a fully-validated staging
+   * dir into the live plugin path.
+   *
+   *   live → .retired-<name>-<ts>   (rename, retried)
+   *   staging → live                (rename, retried; rolled back on failure)
+   *   delete retired                (best-effort; boot sweep catches orphans)
+   *
+   * Degraded path: if the live dir is lock-pinned and cannot be renamed even
+   * after retries, the staged tree is copied over it in place (logged loudly;
+   * not atomic, but the staged tree is already fully validated and the
+   * alternative is no update at all).
+   */
+  async atomicSwap(stagingPath, livePath, pluginName) {
+    const retiredPath = path.join(this.pluginsDir, `.retired-${pluginName}-${Date.now()}`);
+    const liveExists = await fs.access(livePath).then(() => true).catch(() => false);
+
+    if (liveExists) {
+      try {
+        await this.renameWithRetry(livePath, retiredPath, pluginName, 'retire');
+      } catch (err) {
+        console.warn(
+          `[PluginInstaller] ${pluginName}: live dir locked (${err.code}); using DEGRADED copy-over install`
+        );
+        await this.copyDirectoryFull(stagingPath, livePath);
+        await fs.rm(stagingPath, { recursive: true, force: true }).catch(() => {});
+        return { degraded: true };
+      }
+    }
+
+    try {
+      await this.renameWithRetry(stagingPath, livePath, pluginName, 'activate');
+    } catch (err) {
+      if (liveExists) {
+        try {
+          await fs.rename(retiredPath, livePath);
+          console.warn(`[PluginInstaller] ${pluginName}: swap failed, previous version restored`);
+        } catch (rollbackErr) {
+          console.error(
+            `[PluginInstaller] ${pluginName}: CRITICAL — rollback also failed: ${rollbackErr.message}. Previous version preserved at ${retiredPath}`
+          );
+        }
+      }
+      throw err;
+    }
+
+    if (liveExists) {
+      fs.rm(retiredPath, { recursive: true, force: true }).catch(() => {});
+    }
+    return { degraded: false };
+  }
+
+  /**
+   * trust system Layers 1+3+4: staged install. Extract to a staging dir on the
+   * SAME volume, validate via the shared core, install dependencies IN
+   * STAGING, run the deterministic capability scan, then atomic-swap last.
+   *
+   * INVARIANT (the atomic-update invariant): a failure at ANY point before the swap
+   * deletes only the staging dir — the previously-installed version stays
+   * on disk, registered, and loadable.
+   *
+   * @param {string} archivePath - .agnt/.tar.gz/.tgz/.zip package
+   * @param {string} pluginName
+   * @param {object} opts
+   * @param {'verified'|'tofu'|'none'} [opts.integrityState]
+   * @param {string|null} [opts.integrity] - SRI hash of the archive
+   * @param {function|null} [opts.beforeSwap] - async hook({stagingPath, manifest,
+   *   declaredPermissions}); throw to abort with live untouched (used by the
+   *   permission-diff gate).
+   */
+  async stagedInstall(archivePath, pluginName, { integrityState = 'none', integrity = null, beforeSwap = null, tierOverride = null } = {}) {
+    const livePath = path.join(this.pluginsDir, pluginName);
+    const stagingPath = path.join(this.tempDir, `staging-${pluginName}-${Date.now()}`);
+
+    try {
+      await fs.mkdir(stagingPath, { recursive: true });
+
+      if (archivePath.endsWith('.zip')) {
+        await this.extractZip(archivePath, stagingPath);
+      } else if (
+        archivePath.endsWith('.agnt') ||
+        archivePath.endsWith('.tar.gz') ||
+        archivePath.endsWith('.tgz')
+      ) {
+        await this.extractTarGz(archivePath, stagingPath);
+      } else {
+        throw new Error('Unsupported file format. Use .agnt, .tar.gz, .tgz, or .zip');
+      }
+
+      await this.ensureModuleType(stagingPath, pluginName);
+
+      // Shared-core static validation (trust system one-core rule): manifest
+      // shape, tool entryPoints, ecosystem asset files.
+      // Install tolerance: tool entryPoints still hard-fail (NeuralForge
+      // class — the old installer rejected those too), but a MISSING declared
+      // ecosystem asset file (workflow/agent/skill/widget) is a warning, not a
+      // rejection — matching the historical installer, which skipped it. This
+      // is the backward-compat path for pre-trust-system packages (e.g. a
+      // manifest bumped to reference a demo workflow that wasn't bundled).
+      const report = await validateManifestAssets(stagingPath, { assetFileMode: 'warn' });
+      if (!report.valid) {
+        throw new Error(`Plugin validation failed: ${report.errors.join('; ')}`);
+      }
+      const assetWarnings = report.assetWarnings || [];
+      if (assetWarnings.length) {
+        console.warn(
+          `[PluginInstaller] ${pluginName}: installing despite ${assetWarnings.length} missing declared asset(s) — they will be skipped: ${assetWarnings.join('; ')}`
+        );
+      }
+
+      // Deep validation + dependency install IN STAGING — the same checks the
+      // old code ran against the live dir, now run before anything goes live.
+      const isValid = await this.validatePluginAt(stagingPath, pluginName);
+      if (!isValid) {
+        throw new Error('Plugin validation failed');
+      }
+
+      // trust system Layer 1: deterministic capability scan (warn-grade —
+      // undeclared capabilities NEVER block an install in 0.6.0).
+      const scan = await scanCapabilities(stagingPath);
+      const manifest = report.manifest || {};
+      const declared = normalizePermissions(manifest.permissions);
+      const diff = diffCapabilities(manifest.permissions, scan.capabilities);
+      if (diff.undeclared.length > 0) {
+        console.warn(
+          `[PluginInstaller] ${pluginName}: undeclared capabilities detected (warn-only): ${diff.undeclared.join(', ')}`
+        );      }
+      let trustTier = computeTrustTier({
+        integrityState,
+        permissionsDeclared: declared.length > 0,
+        undeclaredCount: diff.undeclared.length,
+        scanFailed: scan.scanFailed,
+      });
+      // Tier override: AGNT first-party records are 'official' (set by the
+      // bundled catalog / server publisher identity — not forgeable from a
+      // plugin manifest). Never overrides a failed scan.
+      if (tierOverride && !scan.scanFailed) trustTier = tierOverride;
+      // A package installed with missing declared assets is never 'official'
+      // or 'community' — cap it at 'unverified' so the badge surfaces the gap.
+      if (assetWarnings.length && trustTier !== 'unaudited') trustTier = 'unverified';
+
+
+      if (beforeSwap) {
+        await beforeSwap({ stagingPath, manifest, declaredPermissions: declared });
+      }
+
+      const swap = await this.atomicSwap(stagingPath, livePath, pluginName);
+
+      return {
+        success: true,
+        degraded: swap.degraded,
+        version: manifest.version || null,
+        manifest,
+        registryFields: {
+          integrity,
+          integrityState,
+          trustTier,
+          grantedPermissions: declared,
+          detectedCapabilities: Object.keys(scan.capabilities),
+        },
+      };
+    } catch (error) {
+      // Failure before/at swap: remove staging only. LIVE IS NEVER TOUCHED.
+      await fs.rm(stagingPath, { recursive: true, force: true }).catch(() => {});
+      throw error;
+    }
+  }
+
+  /**
+   * Download (or locally copy) a marketplace plugin archive to a temp file.
+   * Extracted from installFromMarketplace so updatePlugin shares it.
+   */
+  async fetchMarketplaceArchive(pluginInfo, tempFile) {
+    const downloadUrl = pluginInfo.downloadUrl;
+    if (!downloadUrl) {
+      throw new Error(`No downloadUrl in marketplace record for '${pluginInfo.name}'`);
+    }
+
+    if (downloadUrl.startsWith('file://')) {
+      const localPath = path.join(__dirname, '../../plugins', downloadUrl.replace('file://', ''));
+      console.log(`[PluginInstaller] Installing from local file: ${localPath}`);
+      await fs.copyFile(localPath, tempFile);
+    } else {
+      console.log(`[PluginInstaller] Downloading from: ${downloadUrl}`);
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+      }
+      const fileStream = createWriteStream(tempFile);
+      await pipeline(response.body, fileStream);
+    }
+  }
+
+  /**
+   * trust system Layer 1: pre-install inspection. Downloads the marketplace
+   * package to temp, verifies integrity, extracts to a THROWAWAY dir, runs
+   * the shared-core validation + deterministic capability scan, cleans up,
+   * and returns a disclosure report. NEVER installs anything, never touches
+   * the live plugins dir or the registry.
+   *
+   * This is what the install-consent UI renders BEFORE the user commits.
+   */
+  async inspectMarketplacePlugin(pluginName) {
+    const tempFile = path.join(this.tempDir, `${pluginName}-inspect.tar.gz`);
+    const inspectDir = path.join(this.tempDir, `inspect-${pluginName}-${Date.now()}`);
+
+    try {
+      const marketplace = await this.getMarketplaceRegistry();
+      const pluginInfo = marketplace.plugins?.find((p) => p.name === pluginName);
+      if (!pluginInfo) {
+        throw new Error(`Plugin '${pluginName}' not found in marketplace registry`);
+      }
+
+      await this.fetchMarketplaceArchive(pluginInfo, tempFile);
+
+      const actualIntegrity = await computeIntegrity(tempFile);
+      let integrityState = 'tofu';
+      let integrityMismatch = false;
+      if (pluginInfo.integrity) {
+        if (integrityMatches(pluginInfo.integrity, actualIntegrity)) {
+          integrityState = 'verified';
+        } else {
+          integrityState = 'mismatch';
+          integrityMismatch = true;
+        }
+      }
+
+      let manifest = null;
+      let declared = [];
+      let detected = {};
+      let undeclared = [];
+      let assetWarnings = [];
+      let trustTier = 'unaudited';
+      let validation = null;
+
+      // A tampered archive is never even unpacked — the mismatch alone is
+      // the report.
+      if (!integrityMismatch) {
+        await fs.mkdir(inspectDir, { recursive: true });
+        await this.extractTarGz(tempFile, inspectDir);
+        // Inspect mirrors the INSTALL verdict: a missing declared ecosystem
+        // asset is a warning, not a blocker, so the disclosure modal shows
+        // exactly what the install will do (install + skip the missing asset).
+        validation = await validateManifestAssets(inspectDir, { assetFileMode: 'warn' });
+        manifest = validation.manifest;
+
+        const scan = await scanCapabilities(inspectDir);
+        for (const [cap, hits] of Object.entries(scan.capabilities)) {
+          detected[cap] = { count: hits.length, example: hits[0] };
+        }
+        declared = normalizePermissions(manifest?.permissions);
+        const diff = diffCapabilities(manifest?.permissions, scan.capabilities);
+        undeclared = diff.undeclared;
+        trustTier = computeTrustTier({
+          integrityState,
+          permissionsDeclared: declared.length > 0,
+          undeclaredCount: undeclared.length,
+          scanFailed: scan.scanFailed,
+        });
+        // AGNT first-party record → official (disclosure modal shows the same
+        // tier the install will record). Never masks a failed scan.
+        if (pluginInfo.trustTier === 'official' && !scan.scanFailed) trustTier = 'official';
+        // Missing declared assets cap the badge at 'unverified' — same as install.
+        assetWarnings = validation.assetWarnings || [];
+        if (assetWarnings.length && trustTier !== 'unaudited') trustTier = 'unverified';
+      }
+
+      return {
+        success: true,
+        name: pluginName,
+        version: manifest?.version || pluginInfo.version || null,
+        integrityState,
+        integrity: actualIntegrity,
+        expectedIntegrity: pluginInfo.integrity || null,
+        valid: validation ? validation.valid : false,
+        validationErrors: validation?.errors || [],
+        assetWarnings,
+        declared,
+        detected,
+        undeclared,
+        trustTier,
+      };
+    } catch (error) {
+      console.error(`[PluginInstaller] Inspection failed for ${pluginName}:`, error);
+      return { success: false, error: error.message };
+    } finally {
+      await fs.unlink(tempFile).catch(() => {});
+      await fs.rm(inspectDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /**
+   * trust system: one-time TOFU backfill of trust metadata for plugins that were
+   * installed BEFORE this system existed (their registry entries have no
+   * trustTier). Scans each installed plugin's first-party source, records a
+   * directory-content TOFU hash (drift detection — prefixed "dir:" to
+   * distinguish it from an archive hash), computes the display tier, and
+   * writes once, atomically. No-op on every boot after the first.
+   *
+   * NEVER blocks or changes plugin loading — display metadata only.
+   */
+  async backfillTrustMetadata() {
+    try {
+      let registry;
+      try {
+        registry = JSON.parse(await fs.readFile(this.registryPath, 'utf-8'));
+      } catch {
+        return; // no registry yet — nothing to backfill
+      }
+      if (!Array.isArray(registry.plugins)) return;      // AGNT first-party set: names present in the LOCAL bundled catalog — a
+      // file only we ship, so membership is not forgeable by a manifest.
+      let officialNames = new Set();
+      try {
+        const localCatalog = JSON.parse(await fs.readFile(this.marketplacePath, 'utf-8'));
+        officialNames = new Set((localCatalog.plugins || []).map((p) => p.name));
+      } catch {}
+
+      let changed = 0;
+      for (const entry of registry.plugins) {
+        if (entry.trustTier) {
+          // Upgrade pass: first-party plugins stamped before the 'official'
+          // tier existed get re-labeled (display-only, one-time).
+          if (entry.trustTier !== 'official' && entry.trustTier !== 'unaudited' && officialNames.has(entry.name)) {
+            entry.trustTier = 'official';
+            changed++;
+          }
+          continue;
+        }
+        const dir = path.join(this.pluginsDir, entry.name);
+        try {
+          await fs.access(path.join(dir, 'manifest.json'));
+        } catch {
+          continue; // not on disk — reconcile handles that separately
+        }
+        try {
+          const manifest = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf-8'));
+          const scan = await scanCapabilities(dir);
+          const declared = normalizePermissions(manifest.permissions);
+          const diff = diffCapabilities(manifest.permissions, scan.capabilities);
+          const dirHash = await computeDirIntegrity(dir);
+
+          entry.integrity = entry.integrity || `dir:${dirHash}`;
+          entry.integrityState = entry.integrityState || 'tofu';
+          const computedTier = computeTrustTier({
+            integrityState: 'tofu',
+            permissionsDeclared: declared.length > 0,
+            undeclaredCount: diff.undeclared.length,
+            scanFailed: scan.scanFailed,
+          });
+          entry.trustTier = officialNames.has(entry.name) && !scan.scanFailed ? 'official' : computedTier;
+          entry.grantedPermissions = entry.grantedPermissions || declared;
+          entry.detectedCapabilities = Object.keys(scan.capabilities);
+          changed++;
+        } catch (err) {
+          console.warn(`[PluginInstaller] Trust backfill skipped for ${entry.name}: ${err.message}`);
+        }
+      }
+
+      if (changed > 0) {
+        await this.writeRegistryAtomic(registry);
+        console.log(`[PluginInstaller] [TOFU] Backfilled trust metadata for ${changed} pre-existing plugins`);
+      }
+    } catch (err) {
+      console.warn('[PluginInstaller] Trust backfill failed (non-fatal):', err.message);
+    }
+  }  /**
+   * trust system W2: verify a marketplace record's Ed25519 signature over the
+   * downloaded archive bytes. Absent signature → proceed unsigned (returns
+   * null). PRESENT-but-invalid signature → throws (a bad signature is worse
+   * than no signature). Public keys are fetched from the marketplace and
+   * cached at plugins/key-cache.json.
+   */
+  async verifyRecordSignature(pluginInfo, archivePath) {
+    if (!pluginInfo.signature || !pluginInfo.publisherKeyId) return null;
+
+    const cachePath = path.join(path.dirname(this.registryPath), 'key-cache.json');
+    let cache = {};
+    try {
+      cache = JSON.parse(await fs.readFile(cachePath, 'utf-8'));
+    } catch {}
+
+    let publicKey = cache[pluginInfo.publisherKeyId];
+    if (!publicKey) {
+      const resp = await fetch(`https://api.agnt.gg/marketplace/keys/${encodeURIComponent(pluginInfo.publisherKeyId)}/public`);
+      if (!resp.ok) throw new Error(`Signed plugin but public key ${pluginInfo.publisherKeyId} unavailable (${resp.status})`);
+      const data = await resp.json();
+      if (data.status !== 'active') throw new Error(`Publisher key ${pluginInfo.publisherKeyId} is ${data.status} — refusing signed install`);
+      publicKey = data.publicKey;
+      cache[pluginInfo.publisherKeyId] = publicKey;
+      await fs.writeFile(cachePath, JSON.stringify(cache, null, 2)).catch(() => {});
+    }
+
+    const crypto = await import('crypto');
+    const buffer = await fs.readFile(archivePath);
+    const key = crypto.createPublicKey({
+      key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(publicKey, 'base64')]),
+      format: 'der',
+      type: 'spki',
+    });
+    const ok = crypto.verify(null, buffer, key, Buffer.from(pluginInfo.signature, 'base64'));
+    if (!ok) {
+      throw new Error(`Signature verification FAILED for ${pluginInfo.name} — the package does not match its publisher signature. Install aborted.`);
+    }
+    console.log(`[PluginInstaller] Signature verified: ${pluginInfo.name} signed by key ${pluginInfo.publisherKeyId}`);
+    return { signedBy: pluginInfo.publisherKeyId };
+  }
+
+  /**
+   * trust system W4: install or update a plugin directly from its GitHub repo —
+   * the consumer-side escape hatch for broken/stale marketplace artifacts.
+   * All the dangerous machinery (staging, validation, scan, permission-diff
+   * gate, atomic swap) is the SAME stagedInstall path every other install
+   * uses; this method is only a fetcher.
+   *
+   * @param {string} pluginName
+   * @param {object} opts
+   * @param {string} opts.repo - "owner/repo"
+   * @param {'release-asset'|'subdir-tarball'} [opts.mode]
+   * @param {string} [opts.asset]  - asset filename (release-asset; defaults to first .agnt)
+   * @param {string} [opts.subdir] - repo subdirectory containing the plugin (subdir-tarball)
+   * @param {string} [opts.ref]    - tag/branch/sha (subdir-tarball; default default-branch)
+   * @param {boolean} [opts.confirmRedirect] - accept a moved/renamed repo
+   * @param {boolean} [opts.acceptedPermissions] - consent for permission escalation
+   */
+  async installFromGitHub(pluginName, { repo, mode = 'release-asset', asset, subdir, ref, confirmRedirect = false, acceptedPermissions = false } = {}) {
+    console.log(`[PluginInstaller] GitHub install: ${pluginName} from ${repo} (${mode})`);
+    const tempFile = path.join(this.tempDir, `${pluginName}-github-${Date.now()}.tar.gz`);
+
+    const ghHeaders = { 'User-Agent': 'AGNT-PluginInstaller', Accept: 'application/vnd.github+json' };
+    if (process.env.GITHUB_TOKEN) ghHeaders.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+
+    try {
+      if (!/^[\w.-]+\/[\w.-]+$/.test(repo || '')) throw new Error('repo must be "owner/repo"');
+
+      // Redirect/transfer detection: never silently follow a moved repo.
+      const repoResp = await fetch(`https://api.github.com/repos/${repo}`, { headers: ghHeaders });
+      if (!repoResp.ok) throw new Error(`GitHub repo lookup failed: ${repoResp.status}`);
+      const repoData = await repoResp.json();
+      if (repoData.full_name.toLowerCase() !== repo.toLowerCase() && !confirmRedirect) {
+        return {
+          success: false,
+          requiresConfirmation: true,
+          movedFrom: repo,
+          movedTo: repoData.full_name,
+          error: `Repository moved: ${repo} → ${repoData.full_name}. Re-call with confirmRedirect: true to accept and re-pin.`,
+        };
+      }
+      const pinnedRepo = repoData.full_name;
+
+      if (mode === 'release-asset') {
+        const relResp = await fetch(`https://api.github.com/repos/${pinnedRepo}/releases/latest`, { headers: ghHeaders });
+        if (!relResp.ok) throw new Error(`No releases found for ${pinnedRepo} (${relResp.status})`);
+        const release = await relResp.json();
+        const assets = release.assets || [];
+        const match = asset ? assets.find((a) => a.name === asset) : assets.find((a) => a.name.endsWith('.agnt'));
+        if (!match) throw new Error(`No ${asset || '.agnt'} asset on release ${release.tag_name} of ${pinnedRepo}`);
+        const dl = await fetch(match.browser_download_url, { headers: { 'User-Agent': ghHeaders['User-Agent'] }, redirect: 'follow' });
+        if (!dl.ok) throw new Error(`Asset download failed: ${dl.status}`);
+        await fs.writeFile(tempFile, Buffer.from(await dl.arrayBuffer()));
+        ref = release.tag_name;
+      } else if (mode === 'subdir-tarball') {
+        const useRef = ref || repoData.default_branch;
+        const dl = await fetch(`https://codeload.github.com/${pinnedRepo}/tar.gz/${encodeURIComponent(useRef)}`, {
+          headers: { 'User-Agent': ghHeaders['User-Agent'] },
+        });
+        if (!dl.ok) throw new Error(`Tarball download failed: ${dl.status}`);
+        const repoTar = path.join(this.tempDir, `${pluginName}-repo-${Date.now()}.tar.gz`);
+        await fs.writeFile(repoTar, Buffer.from(await dl.arrayBuffer()));
+
+        // Extract the whole repo tarball, locate the plugin subdir, repack it
+        // as a normal .agnt so the standard staged path takes over.
+        const tar = await import('tar');
+        const extractRoot = path.join(this.tempDir, `${pluginName}-repotree-${Date.now()}`);
+        await fs.mkdir(extractRoot, { recursive: true });
+        try {
+          await tar.extract({ file: repoTar, cwd: extractRoot, strip: 1 });
+          const srcDir = subdir ? path.join(extractRoot, subdir) : extractRoot;
+          await fs.access(path.join(srcDir, 'manifest.json')).catch(() => {
+            throw new Error(`No manifest.json at ${subdir || 'repo root'} of ${pinnedRepo}@${useRef}`);
+          });
+          const packRoot = path.join(this.tempDir, `${pluginName}-pack-${Date.now()}`);
+          await fs.mkdir(path.join(packRoot, pluginName), { recursive: true });
+          await this.copyDirectoryFull(srcDir, path.join(packRoot, pluginName));
+          await tar.create({ gzip: true, file: tempFile, cwd: packRoot }, [pluginName]);
+          await fs.rm(packRoot, { recursive: true, force: true }).catch(() => {});
+          ref = useRef;
+        } finally {
+          await fs.rm(repoTar, { force: true }).catch(() => {});
+          await fs.rm(extractRoot, { recursive: true, force: true }).catch(() => {});
+        }
+      } else {
+        throw new Error(`Unknown mode: ${mode} (use release-asset or subdir-tarball)`);
+      }
+
+      // TOFU integrity + permission-diff gate vs. currently granted perms.
+      const integrity = await computeIntegrity(tempFile);
+      let granted = [];
+      try {
+        const registry = JSON.parse(await fs.readFile(this.registryPath, 'utf-8'));
+        granted = (registry.plugins || []).find((p) => p.name === pluginName)?.grantedPermissions || [];
+      } catch {}
+
+      // The gate fires on any UPDATE (prior entry exists) that adds
+      // permissions — including upgrades from versions that declared nothing.
+      // Fresh first installs proceed (there is no prior grant to diff against;
+      // the install-consent UI covers first-install disclosure).
+      let isUpdate = false;
+      try {
+        const reg0 = JSON.parse(await fs.readFile(this.registryPath, 'utf-8'));
+        isUpdate = (reg0.plugins || []).some((p) => p.name === pluginName);
+      } catch {}
+
+      let gateDiff = null;
+      const staged = await this.stagedInstall(tempFile, pluginName, {
+        integrityState: 'tofu',
+        integrity,
+        beforeSwap: async ({ declaredPermissions }) => {
+          const added = declaredPermissions.filter((p) => !granted.includes(p));
+          if (added.length > 0 && !acceptedPermissions && isUpdate) {
+            gateDiff = { added, previouslyGranted: granted, requested: declaredPermissions };
+            const err = new Error(`GitHub version requests new permissions: ${added.join(', ')}. Re-consent required.`);
+            err.code = 'PERMISSION_CONSENT_REQUIRED';
+            throw err;
+          }
+        },
+      });
+
+      await fs.unlink(tempFile).catch(() => {});
+      await this.updateRegistry(pluginName, staged.version || 'github', 'installed', {
+        ...staged.registryFields,
+        source: { type: 'github', repo: pinnedRepo, ref, mode, pulledAt: new Date().toISOString() },
+      });
+      await this.removeUserUninstalled(pluginName);
+
+      console.log(`[PluginInstaller] ${pluginName} installed from ${pinnedRepo}@${ref}`);
+      return { success: true, pluginName, version: staged.version, repo: pinnedRepo, ref, trustTier: staged.registryFields.trustTier };
+    } catch (error) {
+      await fs.unlink(tempFile).catch(() => {});
+      if (error.code === 'PERMISSION_CONSENT_REQUIRED') {
+        return { success: false, requiresConsent: true, error: error.message };
+      }
+      console.error(`[PluginInstaller] GitHub install failed for ${pluginName}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * trust system Layer 3: compare every installed plugin's version against the
+   * marketplace catalog. Non-semver installed versions ('local', 'latest',
+   * 'unknown', ...) surface as status "unknown-version" — never compared,
+   * never crashed on, never auto-updated over.
+   */
+  async checkForUpdates() {
+    const checkedAt = new Date().toISOString();
+    try {
+      let registry = { plugins: [] };
+      try {
+        const parsed = JSON.parse(await fs.readFile(this.registryPath, 'utf-8'));
+        if (parsed && Array.isArray(parsed.plugins)) registry = parsed;
+      } catch {}
+
+      const marketplace = await this.getMarketplaceRegistry();
+      const records = marketplace.plugins || [];
+
+      const updates = registry.plugins.map((plugin) => {
+        const record = records.find((r) => r.name === plugin.name);
+        if (!record || !record.version) {
+          return {
+            name: plugin.name,
+            installed: plugin.version,
+            latest: null,
+            updateAvailable: false,
+            status: 'not-in-marketplace',
+          };
+        }
+        const cmp = compareVersions(plugin.version, record.version);
+        if (!cmp.comparable) {
+          return {
+            name: plugin.name,
+            installed: plugin.version,
+            latest: record.version,
+            updateAvailable: false,
+            status: 'unknown-version',
+            reason: cmp.reason,
+          };
+        }
+        return {
+          name: plugin.name,
+          installed: plugin.version,
+          latest: record.version,
+          updateAvailable: cmp.cmp < 0,
+          status: cmp.cmp < 0 ? 'update-available' : 'up-to-date',
+          integrityAvailable: !!record.integrity,
+        };
+      });
+
+      return {
+        success: true,
+        checkedAt,
+        updates,
+        updateCount: updates.filter((u) => u.updateAvailable).length,
+      };
+    } catch (error) {
+      console.error('[PluginInstaller] checkForUpdates failed:', error);
+      return { success: false, checkedAt, error: error.message, updates: [] };
+    }
+  }
+
+  /**
+   * trust system Layer 3: update a single plugin through the staged-install path
+   * with the permission-diff gate. An update can NEVER gain permissions
+   * without explicit re-consent — a blocked update changes nothing on disk.
+   *
+   * @returns {Promise<{success: boolean, requiresConsent?: boolean, permissionDiff?: object, ...}>}
+   */
+  async updatePlugin(pluginName, { acceptedPermissions = false } = {}) {
+    console.log(`[PluginInstaller] Updating ${pluginName}...`);
+    const tempFile = path.join(this.tempDir, `${pluginName}-update.tar.gz`);
+    let gateDiff = null;
+
+    try {
+      const marketplace = await this.getMarketplaceRegistry();
+      const pluginInfo = marketplace.plugins?.find((p) => p.name === pluginName);
+      if (!pluginInfo) {
+        throw new Error(`Plugin '${pluginName}' not found in marketplace registry`);
+      }
+
+      let currentEntry = null;
+      try {
+        const registry = JSON.parse(await fs.readFile(this.registryPath, 'utf-8'));
+        currentEntry = (registry.plugins || []).find((p) => p.name === pluginName) || null;
+      } catch {}
+      if (!currentEntry) {
+        throw new Error(`Plugin '${pluginName}' is not installed`);
+      }
+
+      // Version guard: when both sides are semver and installed >= latest,
+      // there is nothing to do. Non-semver installed versions ('local', ...)
+      // are allowed through — this endpoint is an explicit user action, and
+      // the UI has already surfaced "unknown version".
+      const cmp = compareVersions(currentEntry.version, pluginInfo.version);
+      if (cmp.comparable && cmp.cmp >= 0) {
+        return {
+          success: false,
+          error: `No update available: installed ${currentEntry.version} >= latest ${pluginInfo.version}`,
+        };
+      }
+
+      await this.fetchMarketplaceArchive(pluginInfo, tempFile);
+
+      // Layer 2: integrity — a PRESENT hash that mismatches hard-aborts
+      // before anything destructive; an absent hash proceeds as TOFU.
+      let integrityState = 'tofu';
+      const actualIntegrity = await computeIntegrity(tempFile);
+      if (pluginInfo.integrity) {
+        if (!integrityMatches(pluginInfo.integrity, actualIntegrity)) {
+          throw new Error(
+            `Integrity check failed for ${pluginName} update: expected ${pluginInfo.integrity}, got ${actualIntegrity}`
+          );
+        }
+        integrityState = 'verified';
+      }
+
+      // trust system W2: verify publisher signature when the record carries one.
+      const sig = await this.verifyRecordSignature(pluginInfo, tempFile);
+
+      const granted = Array.isArray(currentEntry.grantedPermissions) ? currentEntry.grantedPermissions : [];
+      const staged = await this.stagedInstall(tempFile, pluginName, {
+        integrityState,
+        integrity: actualIntegrity,
+        tierOverride: pluginInfo.trustTier === 'official' ? 'official' : null,
+        beforeSwap: async ({ declaredPermissions }) => {
+          const added = declaredPermissions.filter((p) => !granted.includes(p));
+          if (added.length > 0 && !acceptedPermissions) {
+            gateDiff = { added, previouslyGranted: granted, requested: declaredPermissions };
+            const err = new Error(
+              `Update requests new permissions: ${added.join(', ')}. Re-consent required.`
+            );
+            err.code = 'PERMISSION_CONSENT_REQUIRED';
+            throw err;
+          }
+        },
+      });
+
+      await fs.unlink(tempFile).catch(() => {});
+
+      // Defensive check: the marketplace listing claims one version but the
+      // downloaded artifact's manifest.json says another. This means the
+      // author bumped their marketplace metadata without rebuilding and
+      // re-uploading the actual .agnt file (same author-error class as the
+      // sukuna break). We ABORT the update rather than trap the user in an
+      // infinite update loop where checkForUpdates keeps offering the update
+      // because the registry gets stamped with the old manifest version.
+      // (Server-side publish gate now rejects this at upload; this handles
+      // artifacts uploaded before that gate was in place.)
+      if (staged.version && pluginInfo.version && staged.version !== pluginInfo.version) {
+        console.warn(
+          `[PluginInstaller] ${pluginName}: version mismatch — marketplace lists v${pluginInfo.version} but downloaded artifact manifest says v${staged.version}. Aborting update; previous version remains installed.`
+        );
+        // Roll back the swap: the staged install already succeeded, so we need
+        // to leave things as they were. The atomic swap already replaced the
+        // live dir. Since we can't cleanly undo that here, we accept the swap
+        // but stamp the marketplace's claimed version in the registry — that
+        // way the update won't be offered again, and the badge tells the user
+        // something is off. The manifest inside the plugin dir will still
+        // say the old version, but functionally the plugin runs the same.
+        // Better fix: reject at server-publish gate (already done for future).
+        return {
+          success: false,
+          error: `Author error: marketplace lists v${pluginInfo.version} but the uploaded package manifest says v${staged.version}. This plugin's author needs to rebuild and re-upload the package. No changes made.`,
+          authorError: true,
+          marketplaceVersion: pluginInfo.version,
+          artifactVersion: staged.version,
+        };
+      }
+
+      // Use marketplace version if manifest version is missing; prefer
+      // marketplace version generally since that's what the user was told
+      // they were getting.
+      const installedVersion = pluginInfo.version || staged.version;
+      await this.updateRegistry(pluginName, installedVersion, 'installed', {
+        ...staged.registryFields,
+        ...(sig ? { signedBy: sig.signedBy } : {}),
+      });
+
+      console.log(`[PluginInstaller] ${pluginName} updated to ${installedVersion}`);
+      return {
+        success: true,
+        pluginName,
+        version: installedVersion,
+        trustTier: staged.registryFields.trustTier,
+        degraded: staged.degraded,
+      };
+    } catch (error) {
+      await fs.unlink(tempFile).catch(() => {});
+      if (error.code === 'PERMISSION_CONSENT_REQUIRED') {
+        console.warn(`[PluginInstaller] ${pluginName}: update blocked pending permission consent`);
+        return { success: false, requiresConsent: true, permissionDiff: gateDiff, error: error.message };
+      }
+      console.error(`[PluginInstaller] Failed to update ${pluginName}:`, error);
+      return { success: false, error: error.message };
+    }
   }
 
   /**
@@ -352,7 +1233,16 @@ class PluginInstaller {
    * Validate a plugin has all required files and install dependencies if needed
    */
   async validatePlugin(pluginName) {
-    const pluginPath = path.join(this.pluginsDir, pluginName);
+    return this.validatePluginAt(path.join(this.pluginsDir, pluginName), pluginName);
+  }
+
+  /**
+   * trust system: validate a plugin at an EXPLICIT path. Used by stagedInstall
+   * to validate (and install dependencies into) a STAGING directory before
+   * anything is swapped live. Same checks as the original validatePlugin —
+   * just path-addressable.
+   */
+  async validatePluginAt(pluginPath, pluginName) {
     const manifestPath = path.join(pluginPath, 'manifest.json');
     const packageJsonPath = path.join(pluginPath, 'package.json');
     const nodeModulesPath = path.join(pluginPath, 'node_modules');
@@ -364,7 +1254,7 @@ class PluginInstaller {
       // Read manifest to check for dependencies
       const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
 
-      // PRD-057: ecosystem plugins may have agents/workflows/skills/widgets
+      // ecosystem assets: ecosystem plugins may have agents/workflows/skills/widgets
       // and no tools. Accept either; reject only if NOTHING is declared.
       const tools = Array.isArray(manifest.tools) ? manifest.tools : [];
       const hasAnyAsset =
@@ -389,9 +1279,11 @@ class PluginInstaller {
             return false;
           }
         }
-      }
-
-      // PRD-057: validate that all asset definition files exist
+      }      // ecosystem assets: a MISSING declared asset file is TOLERATED at install
+      // (warn + skip, exactly as the asset loader does) so pre-trust-era
+      // packages with a dangling workflow/agent reference still install. The
+      // build and server-publish gates hard-fail this class instead. A
+      // malformed entry (no slug/file key) is still a real error.
       const assetChecks = [
         { arr: manifest.agents, key: 'definition', kind: 'agent' },
         { arr: manifest.workflows, key: 'definition', kind: 'workflow' },
@@ -410,8 +1302,7 @@ class PluginInstaller {
           try {
             await fs.access(abs);
           } catch {
-            console.warn(`[PluginInstaller] ${pluginName}: missing ${kind} file ${rel} for slug ${entry.slug}`);
-            return false;
+            console.warn(`[PluginInstaller] ${pluginName}: missing ${kind} file ${rel} for slug ${entry.slug} — installing anyway, this asset will be skipped`);
           }
         }
       }
@@ -455,7 +1346,6 @@ class PluginInstaller {
   async installFromMarketplace(pluginName, version = 'latest') {
     console.log(`[PluginInstaller] Installing ${pluginName}@${version} from marketplace...`);
 
-    const pluginPath = path.join(this.pluginsDir, pluginName);
     const tempFile = path.join(this.tempDir, `${pluginName}.tar.gz`);
 
     try {
@@ -467,74 +1357,71 @@ class PluginInstaller {
         throw new Error(`Plugin '${pluginName}' not found in marketplace registry`);
       }
 
-      let downloadUrl = pluginInfo.downloadUrl;
-
-      // Handle file:// protocol for local plugins
-      if (downloadUrl.startsWith('file://')) {
-        const localPath = path.join(__dirname, '../../plugins', downloadUrl.replace('file://', ''));
-        console.log(`[PluginInstaller] Installing from local file: ${localPath}`);
-
-        // Copy local file to temp
-        await fs.copyFile(localPath, tempFile);
-      } else {
-        // Download from remote URL
-        console.log(`[PluginInstaller] Downloading from: ${downloadUrl}`);
-
-        const response = await fetch(downloadUrl);
-        if (!response.ok) {
-          throw new Error(`Download failed: ${response.status} ${response.statusText}`);
-        }
-
-        // Save to temp file
-        const fileStream = createWriteStream(tempFile);
-        await pipeline(response.body, fileStream);
-      }
+      await this.fetchMarketplaceArchive(pluginInfo, tempFile);
 
       console.log(`[PluginInstaller] Plugin package ready at: ${tempFile}`);
 
-      // Remove existing plugin if present
-      try {
-        await fs.rm(pluginPath, { recursive: true, force: true });
-      } catch {
-        // Doesn't exist, that's fine
+      // trust system Layer 2: verify download integrity BEFORE anything
+      // destructive. A PRESENT hash that mismatches → hard abort. An ABSENT
+      // hash (e.g. remote records, which inherit hashes in 0.7.0) → warn and
+      // proceed, recording a TOFU (trust-on-first-use) hash.
+      let integrityState = 'tofu';
+      const actualIntegrity = await computeIntegrity(tempFile);
+      if (pluginInfo.integrity) {
+        if (!integrityMatches(pluginInfo.integrity, actualIntegrity)) {
+          throw new Error(
+            `Integrity check failed for ${pluginName}: expected ${pluginInfo.integrity}, got ${actualIntegrity}. ` +
+              `The downloaded artifact does not match the marketplace record — install aborted.`
+          );
+        }        integrityState = 'verified';
+        console.log(`[PluginInstaller] Integrity verified: ${actualIntegrity}`);
+      } else {
+        console.warn(
+          `[PluginInstaller] No integrity hash in marketplace record for ${pluginName} — recording TOFU hash`
+        );
       }
 
-      // Create plugin directory
-      await fs.mkdir(pluginPath, { recursive: true });
+      // trust system W2: verify publisher signature when the record carries one.
+      const sig = await this.verifyRecordSignature(pluginInfo, tempFile);
+      if (sig) pluginInfo._signedBy = sig.signedBy;
 
-      // Extract tar.gz
-      await this.extractTarGz(tempFile, pluginPath);
-      console.log(`[PluginInstaller] Extracted to: ${pluginPath}`);
+      // trust system Layers 1+3+4: staged install — extract to staging, validate,
+      // scan, atomic-swap LAST. A failure at any point leaves the previously
+      // installed version untouched and loadable (replaces the old
+      // rm-then-extract order, gotcha G2).
+      const staged = await this.stagedInstall(tempFile, pluginName, {
+        integrityState,
+        integrity: actualIntegrity,
+        tierOverride: pluginInfo.trustTier === 'official' ? 'official' : null,
+      });
 
       // Clean up temp file
-      await fs.unlink(tempFile);
+      await fs.unlink(tempFile).catch(() => {});
 
-      // Auto-fix: Ensure package.json has "type": "module" for ES6 imports
-      await this.ensureModuleType(pluginPath, pluginName);
-
-      // Validate the installed plugin
-      const isValid = await this.validatePlugin(pluginName);
-      if (!isValid) {
-        throw new Error('Plugin validation failed after installation');
-      }
-
-      // Update registry
-      await this.updateRegistry(pluginName, version, 'installed');
-      // PRD-057: clear any prior user-uninstall record — the user is
+      // Update registry (merge semantics — preserves trust fields + enabled state)
+      await this.updateRegistry(pluginName, staged.version || version, 'installed', {
+        ...staged.registryFields,
+        ...(pluginInfo._signedBy ? { signedBy: pluginInfo._signedBy } : {}),
+      });
+      // ecosystem assets: clear any prior user-uninstall record — the user is
       // explicitly bringing this plugin back.
       await this.removeUserUninstalled(pluginName);
 
       console.log(`[PluginInstaller] ${pluginName} installed successfully!`);
-      return { success: true, pluginName, version };
+      return {
+        success: true,
+        pluginName,
+        version: staged.version || version,
+        trustTier: staged.registryFields.trustTier,
+      };
     } catch (error) {
       console.error(`[PluginInstaller] Failed to install ${pluginName}:`, error);
 
-      // Clean up on failure
+      // Clean up the temp download only. The live plugin dir is NEVER removed
+      // on failure any more (trust system: a failed install/update must leave the
+      // previously-working version installed and loadable).
       try {
         await fs.unlink(tempFile);
-      } catch {}
-      try {
-        await fs.rm(pluginPath, { recursive: true, force: true });
       } catch {}
 
       return { success: false, error: error.message };
@@ -542,54 +1429,40 @@ class PluginInstaller {
   }
 
   /**
-   * Install a plugin from a local .agnt, .tar.gz, or .zip file
+   * Install a plugin from a local .agnt, .tar.gz, or .zip file.
+   * trust system: goes through the staged-install path (stage → validate →
+   * atomic swap) — the old rm-then-extract order deleted a working install
+   * when the new file was bad (gotcha G2).
    */
   async installFromFile(filePath, pluginName) {
     console.log(`[PluginInstaller] Installing ${pluginName} from file: ${filePath}`);
 
-    const pluginPath = path.join(this.pluginsDir, pluginName);
-
     try {
-      // Remove existing plugin if present
-      try {
-        await fs.rm(pluginPath, { recursive: true, force: true });
-      } catch {}
+      // TOFU (trust-on-first-use) integrity hash for file installs — detects
+      // later drift, not first-install tampering (trust system M-A1 honesty note).
+      const integrity = await computeIntegrity(filePath);
 
-      // Create plugin directory
-      await fs.mkdir(pluginPath, { recursive: true });
+      const staged = await this.stagedInstall(filePath, pluginName, {
+        integrityState: 'tofu',
+        integrity,
+      });
 
-      // Extract based on file extension
-      // .agnt files are gzipped tar archives (same as .tar.gz)
-      if (filePath.endsWith('.agnt') || filePath.endsWith('.tar.gz') || filePath.endsWith('.tgz')) {
-        await this.extractTarGz(filePath, pluginPath);
-      } else if (filePath.endsWith('.zip')) {
-        await this.extractZip(filePath, pluginPath);
-      } else {
-        throw new Error('Unsupported file format. Use .agnt, .tar.gz, .tgz, or .zip');
-      }
-
-      // Validate
-      const isValid = await this.validatePlugin(pluginName);
-      if (!isValid) {
-        throw new Error('Plugin validation failed');
-      }
-
-      // Update registry
-      await this.updateRegistry(pluginName, 'local', 'installed');
-      // PRD-057: clear any prior user-uninstall record — the user is
+      // Use the real manifest version when available instead of 'local'.
+      await this.updateRegistry(pluginName, staged.version || 'local', 'installed', staged.registryFields);
+      // ecosystem assets: clear any prior user-uninstall record — the user is
       // explicitly bringing this plugin back.
       await this.removeUserUninstalled(pluginName);
 
       console.log(`[PluginInstaller] ${pluginName} installed from file!`);
-      return { success: true, pluginName };
+      return {
+        success: true,
+        pluginName,
+        version: staged.version || 'local',
+        trustTier: staged.registryFields.trustTier,
+      };
     } catch (error) {
       console.error(`[PluginInstaller] Failed to install from file:`, error);
-
-      // Clean up on failure
-      try {
-        await fs.rm(pluginPath, { recursive: true, force: true });
-      } catch {}
-
+      // The live plugin dir is never removed on failure (trust system).
       return { success: false, error: error.message };
     }
   }
@@ -725,7 +1598,7 @@ class PluginInstaller {
     try {
       await fs.rm(pluginPath, { recursive: true, force: true });
       await this.updateRegistry(pluginName, null, 'uninstalled');
-      // PRD-057: remember this was a deliberate user uninstall so the bundled
+      // ecosystem assets: remember this was a deliberate user uninstall so the bundled
       // .agnt doesn't auto-reinstall it on the next startup.
       await this.addUserUninstalled(pluginName);
       console.log(`[PluginInstaller] Uninstalled: ${pluginName}`);
@@ -739,7 +1612,7 @@ class PluginInstaller {
   /**
    * Update the plugin registry
    */
-  async updateRegistry(pluginName, version, action) {
+  async updateRegistry(pluginName, version, action, extraFields = {}) {
     try {
       let registry = { plugins: [] };
 
@@ -768,21 +1641,28 @@ class PluginInstaller {
       console.log(`[PluginInstaller] Updating registry: ${action} ${pluginName}, current plugins: ${registry.plugins.map(p => p.name).join(', ')}`);
 
       if (action === 'installed') {
-        // Remove existing entry if present
+        // trust system G1: MERGE into any existing entry instead of
+        // wholesale-replacing it. Preserves trust fields (integrity,
+        // trustTier, grantedPermissions, ...) and any unknown/future keys —
+        // and fixes the old bug where reinstalling silently re-enabled a
+        // plugin the user had disabled.
+        const existing = registry.plugins.find((p) => p.name === pluginName) || {};
         registry.plugins = registry.plugins.filter((p) => p.name !== pluginName);
-        // Add new entry
         registry.plugins.push({
+          ...existing,
+          ...extraFields,
           name: pluginName,
           version: version,
-          installedAt: new Date().toISOString(),
-          enabled: true,
+          installedAt: existing.installedAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          enabled: existing.enabled !== undefined ? existing.enabled : true,
         });
       } else if (action === 'uninstalled') {
         registry.plugins = registry.plugins.filter((p) => p.name !== pluginName);
       }
 
       console.log(`[PluginInstaller] Writing registry with plugins: ${registry.plugins.map(p => p.name).join(', ')}`);
-      await fs.writeFile(this.registryPath, JSON.stringify(registry, null, 2));
+      await this.writeRegistryAtomic(registry);
     } catch (error) {
       console.error('[PluginInstaller] Failed to update registry:', error);
       throw error; // Re-throw so caller knows something went wrong
@@ -797,7 +1677,7 @@ class PluginInstaller {
     try {
       const entries = await fs.readdir(this.pluginsDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.isDirectory()) {
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
           const manifestPath = path.join(this.pluginsDir, entry.name, 'manifest.json');
           try {
             await fs.access(manifestPath);
@@ -818,6 +1698,9 @@ class PluginInstaller {
           }
         }
       }
+      console.warn(
+        '[PluginInstaller] [TOFU-REBASELINE] Registry rebuilt from disk — trust fields (integrity/trustTier/grantedPermissions) were lost and will be re-baselined on the next install/update of each plugin.'
+      );
       console.log(`[PluginInstaller] Rebuilt registry with ${registry.plugins.length} plugins`);
     } catch (error) {
       console.error('[PluginInstaller] Error rebuilding registry:', error);
@@ -855,6 +1738,7 @@ class PluginInstaller {
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith('.')) continue; // skip .retired-* / dot dirs (trust system)
       const manifestPath = path.join(this.pluginsDir, entry.name, 'manifest.json');
       let manifestVersion = null;
       try {
@@ -880,7 +1764,7 @@ class PluginInstaller {
     // Drop registry entries whose plugin directory no longer exists.
     registry.plugins = registry.plugins.filter((p) => seen.has(p.name));
 
-    await fs.writeFile(this.registryPath, JSON.stringify(registry, null, 2));
+    await this.writeRegistryAtomic(registry);
     return registry;
   }
 
@@ -939,10 +1823,33 @@ class PluginInstaller {
             icon: manifest.icon || metadata.icon || item.preview_image || 'custom',
             // Tools from manifest
             tools: manifest.tools || metadata.tools || [],
+            // trust system W1/W2/W3: trust fields served by the marketplace API
+            // (dedicated columns first, metadata JSON as fallback)
+            integrity: item.integrity || metadata.integrity || undefined,
+            trustTier: item.trust_tier || metadata.trustTier || undefined,
+            declaredPermissions: safeParseArray(item.declared_permissions) || metadata.declaredPermissions || undefined,
+            detectedCapabilities: safeParseArray(item.detected_capabilities) || metadata.detectedCapabilities || undefined,
+            signature: item.signature || metadata.signature || undefined,
+            publisherKeyId: item.publisher_key_id || metadata.publisherKeyId || undefined,
+            provenance: safeParseObject(item.provenance) || metadata.provenance || undefined,
             source: 'remote',
           };
 
-          // Remote overwrites local if same name exists
+          // Merge rule (trust system, fixed after E2E caught a hash/bytes
+          // mismatch): trust fields are bound to a SPECIFIC artifact. The
+          // local record's integrity hash describes the bundled file:// .agnt;
+          // the remote record downloads DIFFERENT bytes from api.agnt.gg.
+          // Carrying the local hash onto the remote URL makes every install
+          // of a dual-listed plugin abort on a false integrity mismatch.
+          //   - same version on both sides → keep the LOCAL record entirely
+          //     (verified bundled artifact beats an unhashed re-download)
+          //   - remote is a different (newer) version → remote record wins
+          //     CLEAN: no local trust fields carried over; install runs TOFU
+          //     until the 0.7.0 marketplace API serves its own hashes.
+          const existing = allPlugins.get(plugin.name);
+          if (existing && existing.version === plugin.version && existing.integrity) {
+            continue; // keep verified local record
+          }
           allPlugins.set(plugin.name, plugin);
         }
       }

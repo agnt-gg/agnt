@@ -762,5 +762,12 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "filesystem",
+      "network"
+    ],
+    "domains": []
+  }
 }

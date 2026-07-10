@@ -51,5 +51,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
 }

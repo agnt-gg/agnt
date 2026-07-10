@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Path to plugin development documentation (bundled with app - read-only is fine)
-const PLUGIN_DEV_DOCS_PATH = path.join(__dirname, '../../plugins/PLUGIN-DEVELOPMENT.md');
+const PLUGIN_DEV_DOCS_PATH = path.join(__dirname, '../../plugins/docs/PLUGIN-DEVELOPMENT.md');
 
 // Path to example plugins for context - use user data directory for ASAR compatibility
 // This allows the AI to learn from user-installed plugins

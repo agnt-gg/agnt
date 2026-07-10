@@ -18,7 +18,10 @@
           "service": {
             "type": "string",
             "inputType": "select",
-            "options": ["LLM", "Text-to-Speech"],
+            "options": [
+              "LLM",
+              "Text-to-Speech"
+            ],
             "description": "Choose which Unturf service to use",
             "default": "LLM"
           },
@@ -80,7 +83,14 @@
           "voice": {
             "type": "string",
             "inputType": "select",
-            "options": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+            "options": [
+              "alloy",
+              "echo",
+              "fable",
+              "onyx",
+              "nova",
+              "shimmer"
+            ],
             "default": "alloy",
             "description": "Voice to use for TTS",
             "inputSize": "half",
@@ -93,7 +103,7 @@
             "type": "number",
             "inputType": "number",
             "description": "Speech rate (0.25 to 4.0)",
-            "default": 1.0,
+            "default": 1,
             "inputSize": "half",
             "conditional": {
               "field": "service",
@@ -117,5 +127,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
 }

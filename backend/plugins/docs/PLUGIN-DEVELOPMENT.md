@@ -244,7 +244,7 @@ export default new MyCustomTool();
 
 ```bash
 # From the plugins directory (desktop/backend/plugins/)
-node build-plugin.js ./dev/my-plugin
+node cli/build-plugin.js ./dev/my-plugin
 
 # Or install manually via UI (Settings → Integrations → Plugins → Marketplace)
 ```
@@ -811,10 +811,10 @@ Dependencies are automatically installed when:
 cd desktop/backend/plugins
 
 # Build a plugin from the dev folder
-node build-plugin.js ./dev/my-plugin
+node cli/build-plugin.js ./dev/my-plugin
 
 # Or build from an absolute path
-node build-plugin.js /path/to/my-plugin
+node cli/build-plugin.js /path/to/my-plugin
 
 # Output: plugin-builds/my-plugin.agnt
 ```
@@ -823,10 +823,10 @@ node build-plugin.js /path/to/my-plugin
 
 ```bash
 # Specify output directory
-node build-plugin.js /path/to/my-plugin --output ./dist
+node cli/build-plugin.js /path/to/my-plugin --output ./dist
 
 # Include node_modules (not recommended)
-node build-plugin.js /path/to/my-plugin --include-modules
+node cli/build-plugin.js /path/to/my-plugin --include-modules
 ```
 
 ### Manual Packaging

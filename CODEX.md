@@ -183,7 +183,7 @@ npx playwright test tests/e2e/agents.spec.js  # Specific test
 # Create plugin in backend/plugins/dev/my-plugin/
 # Build it:
 cd backend/plugins
-node build-plugin.js my-plugin
+node cli/build-plugin.js my-plugin
 
 # Output: backend/plugins/plugin-builds/my-plugin.agnt
 ```
@@ -394,7 +394,7 @@ Users configure API keys in the AGNT UI (stored locally).
 AGNT uses a **VSCode-style plugin distribution** system:
 
 1. **Development**: Create plugin in `backend/plugins/dev/my-plugin/`
-2. **Build**: `node backend/plugins/build-plugin.js my-plugin`
+2. **Build**: `node backend/plugins/cli/build-plugin.js my-plugin`
 3. **Package**: Creates `my-plugin.agnt` (ZIP with manifest + code + deps)
 4. **Install**: Users install via UI or CLI
 5. **Hot Reload**: Plugins can be installed/uninstalled without restart
@@ -461,7 +461,7 @@ See `docs/_REBUILD-INSTRUCTIONS.md` for native module rebuilding.
 ### Plugin Not Loading
 
 1. Check plugin manifest: `backend/plugins/dev/my-plugin/manifest.json`
-2. Rebuild plugin: `node backend/plugins/build-plugin.js my-plugin`
+2. Rebuild plugin: `node backend/plugins/cli/build-plugin.js my-plugin`
 3. Check logs: Backend console shows plugin load errors
 
 ## Security Notes
@@ -531,7 +531,7 @@ npm run test:e2e                       # Run E2E tests
 
 # Plugin Development
 cd backend/plugins
-node build-plugin.js my-plugin         # Build plugin
+node cli/build-plugin.js my-plugin         # Build plugin
 
 # Git
 git status                             # Check changes

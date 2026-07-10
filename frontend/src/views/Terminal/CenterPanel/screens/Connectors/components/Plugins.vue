@@ -53,6 +53,9 @@
       <button class="tab" :class="{ active: activeTab === 'marketplace' }" @click="activeTab = 'marketplace'">
         <i class="fas fa-store"></i> Marketplace ({{ marketplacePlugins.length }})
       </button>
+      <button class="tab" :class="{ active: activeTab === 'updates' }" @click="((activeTab = 'updates'), loadUpdates())">
+        <i class="fas fa-arrow-circle-up"></i> Updates<span v-if="availableUpdateCount > 0" class="updates-count">{{ availableUpdateCount }}</span>
+      </button>
       <button class="tab" :class="{ active: activeTab === 'builder' }" @click="activeTab = 'builder'">
         <i class="fas fa-magic"></i> Build Plugin
       </button>
@@ -124,6 +127,18 @@
             <div class="plugin-info">
               <h3 class="plugin-name">{{ getDisplayName(plugin) }}</h3>
               <span class="plugin-version">v{{ plugin.version }}</span>
+              <!-- trust system Layer 6: display-only trust badge (0.6.0 ladder) -->
+              <Tooltip
+                v-if="plugin.trustTier"
+                :title="trustTierLabel(plugin.trustTier)"
+                :text="trustTooltipText(plugin)"
+                position="top"
+                width="300px"
+              >                <span class="trust-badge" :class="'trust-' + plugin.trustTier">
+                  <span class="trust-dot"></span>
+                  {{ plugin.trustTier }}
+                </span>
+              </Tooltip>
             </div>
             <div class="plugin-status">
               <span class="status-badge installed"><i class="fas fa-check"></i> Installed</span>
@@ -168,10 +183,22 @@
           <div class="plugin-header">
             <div class="plugin-icon">
               <SvgIcon :name="plugin.icon || 'puzzle-piece'" />
-            </div>
-            <div class="plugin-info">
+            </div>            <div class="plugin-info">
               <h3 class="plugin-name">{{ getDisplayName(plugin) }}</h3>
               <span class="plugin-version">v{{ plugin.version }}</span>
+              <!-- trust system Layer 6: pre-install trust badge (from stamped marketplace record) -->
+              <Tooltip
+                v-if="plugin.trustTier"
+                :title="trustTierLabel(plugin.trustTier)"
+                :text="trustTooltipText(plugin, true)"
+                position="top"
+                width="300px"
+              >
+                <span class="trust-badge" :class="'trust-' + plugin.trustTier">
+                  <span class="trust-dot"></span>
+                  {{ plugin.trustTier }}
+                </span>
+              </Tooltip>
             </div>
             <div class="plugin-status">
               <span v-if="isPluginInstalled(plugin.name)" class="status-badge installed"><i class="fas fa-check"></i> Installed</span>
@@ -200,6 +227,54 @@
     </div>
 
     <!-- Plugin Builder Tab -->
+    <!-- Updates Tab (trust system W8) -->
+    <div v-else-if="activeTab === 'updates'" class="plugins-list">
+      <div class="updates-toolbar">
+        <BaseButton variant="primary" @click="loadUpdates" :disabled="checkingUpdates">
+          <i class="fas fa-sync" :class="{ 'fa-spin': checkingUpdates }"></i> Check for Updates
+        </BaseButton>
+        <label class="auto-check-toggle">
+          <input type="checkbox" :checked="updateSettings.autoCheck" @change="toggleAutoCheck($event.target.checked)" />
+          Check automatically (daily)
+        </label>
+      </div>
+
+      <div v-if="updatesList.length === 0 && !checkingUpdates" class="empty-state">
+        <p>Everything is up to date.</p>
+      </div>
+
+      <div v-else class="plugins-grid">
+        <div v-for="u in updatesList" :key="u.name" class="plugin-card" :class="{ 'update-available': u.updateAvailable }">
+          <div class="plugin-header">
+            <div class="plugin-info">
+              <h3 class="plugin-name">{{ u.name }}</h3>
+              <span class="plugin-version">
+                v{{ u.installed }}
+                <template v-if="u.updateAvailable"> → <b class="latest-version">v{{ u.latest }}</b></template>
+              </span>
+            </div>
+            <div class="plugin-status">
+              <span v-if="u.updateAvailable" class="status-badge update">Update available</span>
+              <span v-else-if="u.status === 'unknown-version'" class="status-badge unknown" :title="u.reason">unknown version</span>
+              <span v-else class="status-badge installed"><i class="fas fa-check"></i> {{ u.status }}</span>
+            </div>
+          </div>
+          <div class="update-actions">
+            <BaseButton v-if="u.updateAvailable" variant="primary" :disabled="updatingName === u.name" @click="updateOne(u)">
+              <i class="fas fa-arrow-circle-up" :class="{ 'fa-spin': updatingName === u.name }"></i>
+              {{ updatingName === u.name ? 'Updating…' : 'Update' }}
+            </BaseButton>
+            <BaseSelect
+              class="policy-select"
+              :model-value="pluginPolicy(u.name)"
+              :options="policyOptions"
+              @update:model-value="(v) => setPolicy(u.name, v)"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div v-else-if="activeTab === 'builder'" class="plugins-list">
       <PluginBuilder @show-alert="(title, msg) => emit('show-alert', title, msg)" @plugin-installed="onPluginInstalled" />
     </div>
@@ -346,6 +421,7 @@ import BaseSelect from '@/views/Terminal/_components/BaseSelect.vue';
 import BaseButton from '@/views/Terminal/_components/BaseButton.vue';
 import SvgIcon from '@/views/_components/common/SvgIcon.vue';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import PluginBuilder from './PluginBuilder.vue';
 import PackStudio from './PackStudio.vue';
 import { API_CONFIG } from '@/tt.config.js';
@@ -359,6 +435,7 @@ export default {
     BaseButton,
     SvgIcon,
     SimpleModal,
+    Tooltip,
     PluginBuilder,
     PackStudio,
   },
@@ -466,6 +543,156 @@ export default {
         .split('-')
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
+    }
+
+    // ============ trust system W8: Updates tab state & actions ============
+    const updatesList = ref([]);
+    const checkingUpdates = ref(false);
+    const updatingName = ref(null);
+    const updateSettings = ref({ autoCheck: false, intervalHours: 24 });
+    const availableUpdateCount = computed(() => updatesList.value.filter((u) => u.updateAvailable).length);
+    // Auto-update policy choices: auto = install updates that add no new
+    // permissions; notify = list here only; pinned = never update.
+    const policyOptions = [
+      { value: 'notify', label: 'notify' },
+      { value: 'auto', label: 'auto' },
+      { value: 'pinned', label: 'pinned' },
+    ];
+
+    function pluginPolicy(name) {
+      return installedPlugins.value.find((p) => p.name === name)?.updatePolicy || 'notify';
+    }
+
+    async function loadUpdates() {
+      checkingUpdates.value = true;
+      try {
+        const [uResp, sResp] = await Promise.all([
+          fetch(`${API_CONFIG.BASE_URL}/plugins/updates`),
+          fetch(`${API_CONFIG.BASE_URL}/plugins/update-settings`),
+        ]);
+        const uData = await uResp.json();
+        if (uData.success) updatesList.value = uData.updates || [];
+        const sData = await sResp.json();
+        if (sData.success) updateSettings.value = sData.settings;
+      } catch (err) {
+        console.error('[Plugins] loadUpdates failed:', err);
+      } finally {
+        checkingUpdates.value = false;
+      }
+    }
+
+    async function toggleAutoCheck(enabled) {
+      try {
+        const resp = await fetch(`${API_CONFIG.BASE_URL}/plugins/update-settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autoCheck: enabled }),
+        });
+        const data = await resp.json();
+        if (data.success) updateSettings.value = data.settings;
+      } catch (err) {
+        console.error('[Plugins] toggleAutoCheck failed:', err);
+      }
+    }
+
+    async function setPolicy(name, policy) {
+      try {
+        await fetch(`${API_CONFIG.BASE_URL}/plugins/update-policy/${encodeURIComponent(name)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ policy }),
+        });
+        await fetchInstalledPlugins();
+      } catch (err) {
+        console.error('[Plugins] setPolicy failed:', err);
+      }
+    }
+
+    async function updateOne(u, acceptedPermissions = false) {
+      updatingName.value = u.name;
+      try {
+        const resp = await fetch(`${API_CONFIG.BASE_URL}/plugins/update/${encodeURIComponent(u.name)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ acceptedPermissions }),
+        });
+        const data = await resp.json();
+
+        if (data.requiresConsent) {
+          // The permission-diff gate fired — an update can never gain powers
+          // without explicit re-consent.
+          const added = data.permissionDiff?.added || [];
+          const confirmed = await modalRef.value.showModal({
+            title: `"${u.name}" update requests new permissions`,
+            message:
+              `This update adds capabilities the currently installed version does not have:<br><br>` +
+              `<b>${added.join('</b><br><b>')}</b><br><br>` +
+              `Nothing has been installed. Grant these permissions and update?`,
+            confirmText: 'Grant & Update',
+            cancelText: 'Cancel',
+            showCancel: true,
+            confirmClass: 'btn-danger',
+          });
+          if (confirmed) {
+            updatingName.value = null;
+            return updateOne(u, true);
+          }
+          return;
+        }
+
+        if (data.success) {
+          emit('show-alert', 'Success', `"${u.name}" updated to v${data.version}${data.trustTier ? ` · ${data.trustTier}` : ''}`);
+          await Promise.all([loadUpdates(), fetchInstalledPlugins()]);
+        } else {
+          emit('show-alert', 'Error', `Update failed: ${data.error}`);
+        }
+      } catch (err) {
+        emit('show-alert', 'Error', `Update failed: ${err.message}`);
+      } finally {
+        updatingName.value = null;
+      }
+    }
+
+    // trust system Layer 6: human-readable trust labels (no backend jargon
+    // like "tofu" ever reaches the UI).
+    function trustTierLabel(tier) {
+      if (tier === 'official') return 'Official — built & maintained by AGNT';
+      if (tier === 'community') return 'Community — verified & fully declared';
+      if (tier === 'unverified') return 'Unverified — undeclared capabilities';
+      return 'Unaudited — could not be scanned';
+    }
+
+    function integrityLabel(state) {
+      if (state === 'verified') return 'Package verified against the marketplace record.';
+      if (state === 'tofu') return 'Fingerprint recorded on first use — any future tampering will be detected.';
+      if (state === 'mismatch') return 'Package does NOT match its marketplace record!';
+      return 'No integrity record yet.';
+    }    function trustTooltipText(plugin, isMarketplace = false) {
+      const parts = [];
+      if (plugin.trustTier === 'official') {
+        parts.push('First-party AGNT plugin — built, scanned, and integrity-tracked by the AGNT team.');
+      } else if (plugin.trustTier === 'community') {
+        parts.push('This plugin is integrity-tracked and every capability it uses is declared by its author.');
+      } else if (plugin.trustTier === 'unverified') {
+        parts.push('This plugin uses capabilities its author has not declared yet.');
+      } else {
+        parts.push('This plugin could not be scanned.');
+      }
+      if (isMarketplace) {
+        // Pre-install: the record carries a verified hash; the package will be
+        // checked against it during installation.
+        parts.push('Package will be verified against its marketplace record during installation.');
+        const caps = (plugin.declaredPermissions && plugin.declaredPermissions.length && plugin.declaredPermissions) || plugin.detectedCapabilities || [];
+        if (caps.length) parts.push('Requests: ' + caps.join(', ') + '.');
+      } else {
+        parts.push(integrityLabel(plugin.integrityState));
+        if (plugin.grantedPermissions && plugin.grantedPermissions.length) {
+          parts.push('Granted: ' + plugin.grantedPermissions.join(', ') + '.');
+        } else if (plugin.detectedCapabilities && plugin.detectedCapabilities.length) {
+          parts.push('Detected: ' + plugin.detectedCapabilities.join(', ') + '.');
+        }
+      }
+      return parts.join(' ');
     }
 
     function formatSize(bytes) {
@@ -613,6 +840,106 @@ export default {
       refreshPlugins(true);
     }
 
+    // trust system Layer 1: human-readable capability labels for the
+    // pre-install disclosure modal.
+    const CAPABILITY_LABELS = {
+      network: ['🌐', 'Network access', 'makes requests to the internet'],
+      filesystem: ['📁', 'File system access', 'reads or writes files on your computer'],
+      'spawn-process': ['⚙️', 'Runs system processes', 'executes commands on your machine'],
+      'env-access': ['🔑', 'Environment variables', 'can read env vars, which may include API keys'],
+      'dynamic-eval': ['⚡', 'Dynamic code execution', 'runs dynamically generated code'],
+      'dynamic-import': ['📦', 'Dynamic module loading', 'loads additional code at runtime'],
+    };
+
+    /**
+     * trust system Layer 1: pre-install disclosure & consent. Inspects the
+     * package server-side (download + scan, NO install), then shows a
+     * blocking modal with capabilities, integrity state, and trust tier.
+     * Returns true only if the user explicitly confirms. An integrity
+     * mismatch blocks installation outright.
+     */
+    async function showInstallDisclosure(plugin) {
+      try {
+        const resp = await fetch(`${API_CONFIG.BASE_URL}/plugins/inspect/${encodeURIComponent(plugin.name)}`);
+        const report = await resp.json();
+        if (!report.success) throw new Error(report.error || 'inspection failed');
+
+        if (report.integrityState === 'mismatch') {
+          await modalRef.value.showModal({
+            title: '🚨 Integrity Check Failed — Install Blocked',
+            message:
+              `The downloaded package for "<b>${getDisplayName(plugin)}</b>" does <b>NOT</b> match the marketplace record.<br><br>` +
+              `<b>Expected:</b> <code>${report.expectedIntegrity}</code><br>` +
+              `<b>Got:</b> <code>${report.integrity}</code><br><br>` +
+              `The artifact may be corrupted or tampered with. Installation has been blocked — nothing was installed.`,
+            confirmText: 'Close',
+            showCancel: false,
+            confirmClass: 'btn-danger',
+          });
+          return false;
+        }
+
+        const caps = Object.keys(report.detected || {});
+        const capRows = caps.length
+          ? caps
+              .map((cap) => {
+                const [icon, label, desc] = CAPABILITY_LABELS[cap] || ['❔', cap, ''];
+                const undeclared = report.undeclared?.includes(cap) ? ' <span style="color:#ffd700;">(undeclared by author)</span>' : '';
+                const ex = report.detected[cap]?.example;
+                const evidence = ex ? ` <span style="opacity:0.55;">(${ex.file}:${ex.line})</span>` : '';
+                return `${icon} <b>${label}</b>${undeclared} — ${desc}${evidence}`;
+              })
+              .join('<br>')
+          : '✅ No sensitive capabilities detected in first-party source';
+
+        const integrityLine =
+          report.integrityState === 'verified'
+            ? '🔐 <b>Integrity verified</b> — package bytes match the marketplace record exactly'
+            : "📌 <b>No integrity record yet</b> — AGNT will record this package's fingerprint now and alert you if it ever changes";        // Theme-colored dot matching the badge colors (modal message is v-html)
+        const tierColor =
+          report.trustTier === 'official'
+            ? 'var(--color-green)'
+            : report.trustTier === 'community'
+              ? 'var(--color-green)'
+              : report.trustTier === 'unverified'
+                ? 'var(--color-yellow)'
+                : 'var(--color-red)';
+        const tierIcon = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${tierColor};margin-right:2px;"></span>`;
+
+        const validLine = report.valid
+          ? ''
+          : `<br><span style="color:#ff6b6b;">⚠️ Package validation problems: ${(report.validationErrors || []).join('; ')}</span>`;
+
+        const confirmed = await modalRef.value.showModal({
+          title: `Install "${getDisplayName(plugin)}" v${report.version || plugin.version || '?'}?`,
+          message:
+            `${tierIcon} Trust tier: <b>${report.trustTier}</b><br>` +
+            `${integrityLine}<br><br>` +
+            `<b>This plugin can:</b><br>${capRows}${validLine}<br><br>` +
+            `<span style="opacity:0.7;">Plugins run with full access to your machine. Only install plugins you trust.</span>`,
+          confirmText: 'Install',
+          cancelText: 'Cancel',
+          showCancel: true,
+          confirmClass: 'btn-primary',
+        });
+        return !!confirmed;
+      } catch (err) {
+        // Inspection unavailable — NEVER silently install; fall back to an
+        // explicit basic consent that says exactly what we don't know.
+        console.warn('[Plugins] Pre-install inspection unavailable:', err.message);
+        const confirmed = await modalRef.value.showModal({
+          title: `Install "${getDisplayName(plugin)}"?`,
+          message:
+            `⚠️ Pre-install inspection unavailable (${err.message}).<br><br>` +
+            `This package could not be scanned before install. Plugins run with full access to your machine.`,
+          confirmText: 'Install Anyway',
+          cancelText: 'Cancel',
+          showCancel: true,
+          confirmClass: 'btn-danger',
+        });
+        return !!confirmed;
+      }
+    }
     async function installPlugin(plugin) {
       installingPlugin.value = plugin.name;
       try {
@@ -655,6 +982,14 @@ export default {
         }
 
         // If free or already purchased, proceed with installation
+        // trust system Layer 1: BLOCKING pre-install disclosure & consent.
+        // The user sees exactly what this plugin can do before any bytes land.
+        const consented = await showInstallDisclosure(plugin);
+        if (!consented) {
+          installingPlugin.value = null;
+          return;
+        }
+
         const response = await fetch(`${API_CONFIG.BASE_URL}/plugins/install`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -662,7 +997,7 @@ export default {
         });
         const data = await response.json();
         if (data.success) {
-          emit('show-alert', 'Success', `Plugin "${plugin.name}" installed successfully!`);
+          emit('show-alert', 'Success', `Plugin "${plugin.name}" installed successfully!${data.trustTier ? ` Trust tier: ${data.trustTier}.` : ''}`);
           await refreshPlugins();
           await store.dispatch('tools/refreshAllTools');
         } else {
@@ -1069,7 +1404,19 @@ export default {
       isPublishing,
       publishForm,
       isPluginInstalled,
-      getDisplayName,
+      getDisplayName,      trustTierLabel,
+      trustTooltipText,
+      updatesList,
+      checkingUpdates,
+      updatingName,
+      updateSettings,
+      availableUpdateCount,
+      policyOptions,
+      pluginPolicy,
+      loadUpdates,
+      toggleAutoCheck,
+      setPolicy,
+      updateOne,
       formatSize,
       refreshPlugins,
       manualRefresh,
@@ -1356,6 +1703,103 @@ button.base-button.primary.refresh {
   background: rgba(127, 129, 147, 0.15);
   padding: 2px 8px;
   border-radius: 4px;
+}/* trust system W8: Updates tab */
+.updates-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.auto-check-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+.updates-count {
+  background: var(--color-green);
+  color: var(--color-bg, #111);
+  border-radius: 10px;
+  padding: 0 7px;
+  margin-left: 6px;
+  font-size: 0.75em;
+  font-weight: 700;
+}
+
+.plugin-card.update-available {
+  border-color: var(--color-green);
+}
+
+.latest-version {
+  color: var(--color-green);
+}
+
+.status-badge.update {
+  color: var(--color-green);
+  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.status-badge.unknown {
+  color: var(--color-yellow);
+  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+  cursor: help;
+}
+
+.update-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.policy-select {
+  min-width: 110px;
+  max-width: 140px;
+}
+
+/* trust system Layer 6: trust tier badge (display-only — never affects loading) */
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: 0;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.trust-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.trust-badge.trust-official {
+  color: var(--color-green);
+  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.trust-badge.trust-community {
+  color: var(--color-green);
+  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.trust-badge.trust-unverified {
+  color: var(--color-yellow);
+  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+}
+
+.trust-badge.trust-unaudited {
+  color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 12%, transparent);
 }
 
 .plugin-status {

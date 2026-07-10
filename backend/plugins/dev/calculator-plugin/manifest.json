@@ -25,7 +25,10 @@
             "type": "string",
             "inputType": "select",
             "description": "Calculation mode",
-            "options": ["basic", "scientific"],
+            "options": [
+              "basic",
+              "scientific"
+            ],
             "default": "basic"
           },
           "precision": {
@@ -65,5 +68,12 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "dynamic-eval",
+      "filesystem"
+    ],
+    "domains": []
+  }
 }

@@ -1,0 +1,63 @@
+# AGNT Plugin Provenance Publish — trust system Layer 5 (W3)
+#
+# Scaffolded by build-plugin.js (opt out with --no-scaffold).
+# On every version tag push (v1.2.3), this workflow builds the plugin,
+# hashes it, creates a GitHub Release with the .agnt asset, and publishes
+# to the AGNT marketplace with GitHub-OIDC provenance — earning the
+# 🟢 Verified trust tier.
+#
+# One-time setup:
+#   1. Publish the plugin manually once with metadata.repository set to
+#      "<owner>/<repo>" (the repo-claim handshake).
+#   2. Commit this file at .github/workflows/publish-plugin.yml
+#   3. git tag v1.0.1 && git push --tags
+
+name: Publish AGNT Plugin
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the release
+  id-token: write # mint the OIDC token (this IS the provenance)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build .agnt package
+        run: |
+          npm ci --omit=dev || npm install --omit=dev || true
+          # Plugin repos keep their source at the repo root with manifest.json.
+          # tar the tree the same way build-plugin.js does (gzipped tar, one
+          # top-level directory named after the plugin).
+          PLUGIN_NAME=$(node -p "require('./manifest.json').name")
+          mkdir -p /tmp/build/"$PLUGIN_NAME"
+          rsync -a --exclude '.git' --exclude '.github' ./ /tmp/build/"$PLUGIN_NAME"/
+          tar -czf "$PLUGIN_NAME.agnt" -C /tmp/build "$PLUGIN_NAME"
+          echo "PLUGIN_NAME=$PLUGIN_NAME" >> "$GITHUB_ENV"
+          echo "ASSET=$PLUGIN_NAME.agnt" >> "$GITHUB_ENV"
+
+      - name: Hash
+        run: echo "SHA256=$(sha256sum "$ASSET" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release with asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+
+      - name: Mint OIDC token & publish to AGNT marketplace
+        run: |
+          OIDC_TOKEN=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api.agnt.gg" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).value")
+          curl -sSf -X POST https://api.agnt.gg/marketplace/publish-provenance \
+            -H 'Content-Type: application/json' \
+            -d "{\"oidcToken\":\"$OIDC_TOKEN\",\"repository\":\"$GITHUB_REPOSITORY\",\"tag\":\"$GITHUB_REF_NAME\",\"sha256\":\"$SHA256\",\"assetName\":\"$ASSET\"}"
+          echo "✅ Published with provenance: $GITHUB_REPOSITORY@$GITHUB_SHA ($GITHUB_REF_NAME)"

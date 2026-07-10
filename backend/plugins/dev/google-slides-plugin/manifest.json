@@ -38,7 +38,15 @@
             "description": "The ID of the Google Slides presentation (not required for 'Create Presentation')",
             "conditional": {
               "field": "action",
-              "value": ["Read Presentation", "Update Presentation", "Delete Presentation", "Create Slide", "Read Slide", "Update Slide", "Delete Slide"]
+              "value": [
+                "Read Presentation",
+                "Update Presentation",
+                "Delete Presentation",
+                "Create Slide",
+                "Read Slide",
+                "Update Slide",
+                "Delete Slide"
+              ]
             }
           },
           "slideId": {
@@ -47,7 +55,11 @@
             "description": "The ID of the slide (required for slide-specific actions)",
             "conditional": {
               "field": "action",
-              "value": ["Read Slide", "Update Slide", "Delete Slide"]
+              "value": [
+                "Read Slide",
+                "Update Slide",
+                "Delete Slide"
+              ]
             }
           },
           "title": {
@@ -56,7 +68,10 @@
             "description": "The title for creating or updating a presentation",
             "conditional": {
               "field": "action",
-              "value": ["Create Presentation", "Update Presentation"]
+              "value": [
+                "Create Presentation",
+                "Update Presentation"
+              ]
             }
           },
           "slideContent": {
@@ -65,7 +80,10 @@
             "description": "JSON-formatted content for creating or updating a slide",
             "conditional": {
               "field": "action",
-              "value": ["Create Slide", "Update Slide"]
+              "value": [
+                "Create Slide",
+                "Update Slide"
+              ]
             }
           }
         },
@@ -97,5 +115,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
 }

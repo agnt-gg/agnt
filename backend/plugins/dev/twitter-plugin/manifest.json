@@ -341,5 +341,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
 }

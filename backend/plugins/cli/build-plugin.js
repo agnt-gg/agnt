@@ -12,14 +12,14 @@
  * 3. Creates a .agnt package with source code AND node_modules
  *
  * Usage:
- *   node build-plugin.js <plugin-name>      # a folder name inside ./dev (bundled-plugin / contributor path)
- *   node build-plugin.js <path-to-folder>   # any folder on disk (your own plugin — no repo changes needed)
+ *   node cli/build-plugin.js <plugin-name>      # a folder name inside ./dev (bundled-plugin / contributor path)
+ *   node cli/build-plugin.js <path-to-folder>   # any folder on disk (your own plugin — no repo changes needed)
  *
  * Examples:
- *   node build-plugin.js discord-plugin             # → ./dev/discord-plugin
- *   node build-plugin.js ./dev/discord-plugin       # explicit relative path
- *   node build-plugin.js ~/my-weather-plugin        # a folder anywhere on disk
- *   node build-plugin.js /abs/path/to/my-plugin     # absolute path
+ *   node cli/build-plugin.js discord-plugin             # → ./dev/discord-plugin
+ *   node cli/build-plugin.js ./dev/discord-plugin       # explicit relative path
+ *   node cli/build-plugin.js ~/my-weather-plugin        # a folder anywhere on disk
+ *   node cli/build-plugin.js /abs/path/to/my-plugin     # absolute path
  *
  * Output:
  *   plugin-builds/<name>.agnt   (<name> is taken from the manifest "name", falling back to the folder name)
@@ -35,12 +35,20 @@ import { fileURLToPath } from 'url';
 import { createGzip } from 'zlib';
 import { pipeline } from 'stream/promises';
 import tar from 'tar';
+import {
+  validateManifestAssets,
+  scanCapabilities,
+  diffCapabilities,
+  normalizePermissions,
+  computeIntegrity,
+  verifyArchive,
+} from '../lib/validate-core.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PLUGINS_DIR = path.join(__dirname, 'dev');
-const DIST_DIR = path.join(__dirname, 'plugin-builds');
+const PLUGINS_DIR = path.join(__dirname, '../dev');
+const DIST_DIR = path.join(__dirname, '../plugin-builds');
 
 /**
  * Resolve the build argument to an absolute plugin folder.
@@ -59,7 +67,7 @@ const DIST_DIR = path.join(__dirname, 'plugin-builds');
  *
  * As a final fallback, if ./dev/<arg> does not exist but <arg> resolved against
  * the current working directory does (and has a manifest.json), the cwd-relative
- * folder wins — so `node build-plugin.js my-plugin` also works when run from a
+ * folder wins — so `node cli/build-plugin.js my-plugin` also works when run from a
  * directory that directly contains my-plugin/.
  */
 function expandHome(p) {
@@ -133,64 +141,22 @@ async function buildPlugin(arg) {
   console.log(`📝 Description: ${manifest.description || 'No description'}`);
   console.log(`🔧 Tools: ${manifest.tools?.map((t) => t.type).join(', ') || 'None'}`);
 
-  // Validate tools array (different shape from ecosystem assets — uses
-  // `type` + `entryPoint` instead of `slug` + `definition`).
-  if (manifest.tools) {
-    if (!Array.isArray(manifest.tools)) {
-      console.error(`❌ manifest.tools must be an array`);
-      process.exit(1);
-    }
-    for (const tool of manifest.tools) {
-      if (!tool.type) {
-        console.error(`❌ tool entry missing required "type": ${JSON.stringify(tool)}`);
-        process.exit(1);
-      }
-      if (!tool.entryPoint) {
-        console.error(`❌ tool "${tool.type}" missing required "entryPoint"`);
-        process.exit(1);
-      }
-      const abs = path.join(pluginPath, tool.entryPoint.replace(/^\.\//, ''));
-      if (!fs.existsSync(abs)) {
-        console.error(`❌ tool "${tool.type}" references missing file: ${tool.entryPoint}`);
-        process.exit(1);
-      }
-      if (!tool.schema || typeof tool.schema !== 'object') {
-        console.warn(`⚠️  tool "${tool.type}" has no schema — install will still succeed but the orchestrator won't be able to surface it`);
-      }
-    }
+  // trust system: validation now lives in the shared core
+  // (validate-core.js) — the exact tool/asset checks previously inlined here.
+  // The installer's staged-install path and the future doctor/publish gate
+  // call the SAME code (the "one core, many callers" rule).
+  const report = await validateManifestAssets(pluginPath);
+  for (const w of report.warnings) console.warn(`⚠️  ${w}`);
+  if (!report.valid) {
+    for (const e of report.errors) console.error(`❌ ${e}`);
+    process.exit(1);
   }
-
-  // PRD-057: validate optional ecosystem-asset arrays
-  const validateAssetArray = (arr, kind, fileKey) => {
-    if (!arr) return;
-    if (!Array.isArray(arr)) {
-      console.error(`❌ manifest.${kind} must be an array`);
-      process.exit(1);
-    }
-    for (const entry of arr) {
-      if (!entry.slug) {
-        console.error(`❌ ${kind} entry missing required "slug": ${JSON.stringify(entry)}`);
-        process.exit(1);
-      }
-      const filePath = entry[fileKey];
-      if (!filePath) {
-        console.error(`❌ ${kind} entry "${entry.slug}" missing required "${fileKey}"`);
-        process.exit(1);
-      }
-      const abs = path.join(pluginPath, filePath.replace(/^\.\//, ''));
-      if (!fs.existsSync(abs)) {
-        console.error(`❌ ${kind} entry "${entry.slug}" references missing file: ${filePath}`);
-        process.exit(1);
-      }
-    }
-    if (arr.length > 0) {
+  for (const kind of ['agents', 'workflows', 'skills', 'widgets']) {
+    const arr = manifest[kind];
+    if (Array.isArray(arr) && arr.length > 0) {
       console.log(`📦 ${kind[0].toUpperCase() + kind.slice(1)}: ${arr.map((e) => e.slug).join(', ')}`);
     }
-  };
-  validateAssetArray(manifest.agents, 'agents', 'definition');
-  validateAssetArray(manifest.workflows, 'workflows', 'definition');
-  validateAssetArray(manifest.skills, 'skills', 'source');
-  validateAssetArray(manifest.widgets, 'widgets', 'definition');
+  }
 
   // Check if package.json exists (has dependencies)
   let hasDependencies = false;
@@ -231,6 +197,24 @@ async function buildPlugin(arg) {
       }
     } else {
       console.log(`\n📦 No dependencies declared`);
+    }
+  }
+
+  // trust system Layer 1: deterministic capability scan (warn-grade during the
+  // migration window — the build is NOT failed on undeclared capabilities;
+  // the flip to hard-fail belongs to the 0.7.0 CatalogAuditor).
+  console.log(`\n🔍 Scanning capabilities (first-party source only)...`);
+  const scan = await scanCapabilities(pluginPath);
+  const detected = Object.keys(scan.capabilities);
+  const declared = normalizePermissions(manifest.permissions);
+  const capDiff = diffCapabilities(manifest.permissions, scan.capabilities);
+  console.log(`   Detected: ${detected.length ? detected.join(', ') : '(none)'}`);
+  console.log(`   Declared: ${declared.length ? declared.join(', ') : '(none)'}`);
+  if (capDiff.undeclared.length > 0) {
+    console.warn(`⚠️  Undeclared capabilities (add a "permissions" block to manifest.json):`);
+    for (const cap of capDiff.undeclared) {
+      const first = scan.capabilities[cap][0];
+      console.warn(`     - ${cap}  (e.g. ${first.file}:${first.line})`);
     }
   }
 
@@ -303,14 +287,58 @@ async function buildPlugin(arg) {
     console.log(`📦 Output: ${outputFile}`);
     console.log(`📊 Size: ${sizeDisplay}`);
 
-    // Verify the package
+    // trust system: verify the produced archive is readable and self-consistent,
+    // then print its SRI integrity hash (what stamp-integrity.js records).
     console.log(`\n🔍 Verifying package contents...`);
-    const contents = [];
-    await tar.list({
-      file: outputFile,
-      onentry: (entry) => contents.push(entry.path),
-    });
-    console.log(`   ${contents.length} files/directories included`);
+    const archiveReport = await verifyArchive(outputFile);
+    if (!archiveReport.valid) {
+      console.error(`❌ Post-build archive verification failed: ${archiveReport.error}`);
+      process.exit(1);
+    }
+    console.log(`   ${archiveReport.entries.length} files/directories included`);
+    const integrity = await computeIntegrity(outputFile);
+    console.log(`🔐 Integrity (SRI): ${integrity}`);
+    console.log(`   (bundled catalog: copy the .agnt into marketplace-default/ then run cli/stamp-integrity.js)`);
+
+    // trust system W2: optional signing (node cli/sign-plugin.js --keygen first)
+    if (process.argv.includes('--sign')) {
+      try {
+        const { loadOrExplainKey, signBuffer } = await import('./sign-plugin.js');
+        const os = await import('os');
+        const keyPath =
+          process.env.USER_DATA_PATH
+            ? path.join(process.env.USER_DATA_PATH, 'publisher-key.json')
+            : path.join(process.env.APPDATA || os.homedir(), 'AGNT', 'publisher-key.json');
+        const key = loadOrExplainKey(keyPath);
+        if (!key) {
+          console.warn(`⚠️  --sign requested but no key at ${keyPath}. Run: node cli/sign-plugin.js --keygen`);
+        } else {
+          const signature = signBuffer(fs.readFileSync(outputFile), key.privateKey);
+          console.log(`✍️  Signature (Ed25519): ${signature}`);
+          console.log(`   Include in publish payload asset_data: { "signature": "...", "publisherKeyId": "<registered key id>" }`);
+        }
+      } catch (signErr) {
+        console.warn(`⚠️  Signing failed (build still OK): ${signErr.message}`);
+      }
+    }
+
+    // trust system W3: OPT-IN provenance workflow scaffold (--scaffold). Never
+    // writes into the author's source dir by default — the default build
+    // must not touch the user's files or change their process in any way.
+    if (process.argv.includes('--scaffold')) {
+      try {
+        const wfDir = path.join(pluginPath, '.github', 'workflows');
+        const wfFile = path.join(wfDir, 'publish-plugin.yml');
+        const template = path.join(__dirname, 'templates', 'publish-plugin.yml');
+        if (!fs.existsSync(wfFile) && fs.existsSync(template)) {
+          fs.mkdirSync(wfDir, { recursive: true });
+          fs.copyFileSync(template, wfFile);
+          console.log(`🤖 Scaffolded provenance workflow → .github/workflows/publish-plugin.yml`);
+        }
+      } catch (scErr) {
+        console.warn(`⚠️  Workflow scaffold failed (build still OK): ${scErr.message}`);
+      }
+    }
 
     console.log(`\n🚀 Ready for distribution!`);
     console.log(`   Upload to: https://agnt.gg/api/plugins/publish`);
@@ -328,14 +356,14 @@ if (args.length === 0) {
 AGNT Plugin Build Script
 
 Usage:
-  node build-plugin.js <plugin-name>      # a folder inside ./dev (bundled-plugin / contributor path)
-  node build-plugin.js <path-to-folder>   # any folder on disk (your own plugin — no repo changes needed)
+  node cli/build-plugin.js <plugin-name>      # a folder inside ./dev (bundled-plugin / contributor path)
+  node cli/build-plugin.js <path-to-folder>   # any folder on disk (your own plugin — no repo changes needed)
 
 Examples:
-  node build-plugin.js discord-plugin
-  node build-plugin.js ./dev/discord-plugin
-  node build-plugin.js ~/my-weather-plugin
-  node build-plugin.js /abs/path/to/my-plugin
+  node cli/build-plugin.js discord-plugin
+  node cli/build-plugin.js ./dev/discord-plugin
+  node cli/build-plugin.js ~/my-weather-plugin
+  node cli/build-plugin.js /abs/path/to/my-plugin
 
 Available plugins in ./dev:`);
 

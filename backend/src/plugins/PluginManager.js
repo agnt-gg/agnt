@@ -177,7 +177,7 @@ class PluginManager {
       const manifest = JSON.parse(manifestContent);
 
       // Validate manifest
-      // PRD-057: ecosystem plugins may have agents/workflows/skills/widgets
+      // ecosystem assets: ecosystem plugins may have agents/workflows/skills/widgets
       // instead of (or in addition to) tools. Require name + at least one
       // recognized asset array.
       if (!manifest.name) {
@@ -265,7 +265,7 @@ class PluginManager {
         }
       }
 
-      // PRD-057: install ecosystem assets (agents, workflows, skills, widgets, tools).
+      // ecosystem assets: install ecosystem assets (agents, workflows, skills, widgets, tools).
       // Idempotent — re-running honors is_user_modified flags so we don't clobber
       // user customizations between app restarts. Even tool-only plugins are
       // walked so their tools land in installed_plugin_assets for the /assets
@@ -409,10 +409,31 @@ class PluginManager {
       console.log(`[PluginManager] Loading tool ${toolType} from ${toolUrl}`);
       const toolModule = await import(toolUrl);
 
-      // Cache the loaded module
-      this.loadedTools.set(toolType, toolModule);
+      // trust system W7: best-effort domain interception — attribute this tool's
+      // execution to its plugin and check in-band fetches against declared
+      // domains. INTERCEPTION, NOT CONTAINMENT (see DomainInterceptor.js) —
+      // it keeps honest plugins honest and feeds the trust surface; real
+      // containment is the planned plugin sandbox. Non-execute exports pass through untouched.
+      let effectiveModule = toolModule;
+      try {
+        if (typeof toolModule.execute === 'function') {
+          const { default: DomainInterceptor } = await import('./DomainInterceptor.js');
+          DomainInterceptor.installGlobalFetchWrapper();
+          const declaredDomains = pluginData.manifest?.permissions?.domains || [];
+          effectiveModule = {
+            ...toolModule,
+            execute: (...args) => DomainInterceptor.runWithPluginContext(pluginName, declaredDomains, () => toolModule.execute(...args)),
+          };
+        }
+      } catch (wrapErr) {
+        console.warn(`[PluginManager] Domain interception unavailable for ${toolType}: ${wrapErr.message}`);
+        effectiveModule = toolModule;
+      }
 
-      return toolModule;
+      // Cache the loaded module
+      this.loadedTools.set(toolType, effectiveModule);
+
+      return effectiveModule;
     } catch (error) {
       console.error(`[PluginManager] Error loading tool ${toolType}:`, error);
       throw error;

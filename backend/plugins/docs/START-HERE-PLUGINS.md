@@ -16,7 +16,7 @@ my-plugin/                 ← lives ANYWHERE on disk (not inside the AGNT repo)
 ├── index.js               ← what the tool does
 └── package.json           ← "type": "module" + any deps
         │
-        ▼  node build-plugin.js ./my-plugin
+        ▼  node cli/build-plugin.js ./my-plugin
    my-plugin.agnt          ← the product. install it. publish it. done.
 ```
 
@@ -127,7 +127,7 @@ node /path/to/agnt/backend/plugins/build-plugin.js ~/my-weather-plugin
 ```
 
 The output `.agnt` is named from your manifest's `name` field. (A bare name with
-no path, e.g. `node build-plugin.js discord-plugin`, is reserved for plugins
+no path, e.g. `node cli/build-plugin.js discord-plugin`, is reserved for plugins
 that live in `backend/plugins/dev/` — the contributor path.)
 
 ✅ **Checkpoint:** a `my-weather-plugin.agnt` file now exists in
@@ -188,7 +188,7 @@ rule for spawned processes → [PLUGIN-REFERENCE.md § Authentication](PLUGIN-RE
 ## Definition of done ✅
 
 - [ ] Source lives in its own folder (not inside the AGNT repo)
-- [ ] `node build-plugin.js <your-folder>` produced a `.agnt`
+- [ ] `node cli/build-plugin.js <your-folder>` produced a `.agnt`
 - [ ] Installing the `.agnt` makes your tool appear in the node picker
 - [ ] (To share) the `.agnt` is uploaded to the marketplace
 

@@ -39,7 +39,10 @@
             "description": "Search query for photos",
             "conditional": {
               "field": "action",
-              "value": ["SEARCH_PHOTOS", "GET_RANDOM_PHOTO"]
+              "value": [
+                "SEARCH_PHOTOS",
+                "GET_RANDOM_PHOTO"
+              ]
             }
           },
           "photoId": {
@@ -48,7 +51,10 @@
             "description": "The ID of the photo",
             "conditional": {
               "field": "action",
-              "value": ["GET_PHOTO", "DOWNLOAD_PHOTO"]
+              "value": [
+                "GET_PHOTO",
+                "DOWNLOAD_PHOTO"
+              ]
             }
           },
           "collectionId": {
@@ -66,7 +72,11 @@
             "description": "Unsplash username",
             "conditional": {
               "field": "action",
-              "value": ["GET_USER_PROFILE", "GET_USER_PHOTOS", "GET_RANDOM_PHOTO"]
+              "value": [
+                "GET_USER_PROFILE",
+                "GET_USER_PHOTOS",
+                "GET_RANDOM_PHOTO"
+              ]
             }
           },
           "page": {
@@ -86,14 +96,32 @@
           "orientation": {
             "type": "string",
             "inputType": "select",
-            "options": ["", "landscape", "portrait", "squarish"],
+            "options": [
+              "",
+              "landscape",
+              "portrait",
+              "squarish"
+            ],
             "description": "Filter by photo orientation",
             "inputSize": "half"
           },
           "color": {
             "type": "string",
             "inputType": "select",
-            "options": ["", "black_and_white", "black", "white", "yellow", "orange", "red", "purple", "magenta", "green", "teal", "blue"],
+            "options": [
+              "",
+              "black_and_white",
+              "black",
+              "white",
+              "yellow",
+              "orange",
+              "red",
+              "purple",
+              "magenta",
+              "green",
+              "teal",
+              "blue"
+            ],
             "description": "Filter by color",
             "inputSize": "half",
             "conditional": {
@@ -104,7 +132,12 @@
           "orderBy": {
             "type": "string",
             "inputType": "select",
-            "options": ["relevant", "latest", "oldest", "popular"],
+            "options": [
+              "relevant",
+              "latest",
+              "oldest",
+              "popular"
+            ],
             "description": "Sort order for results",
             "default": "relevant",
             "inputSize": "half"
@@ -123,7 +156,11 @@
           "featured": {
             "type": "string",
             "inputType": "select",
-            "options": ["", "true", "false"],
+            "options": [
+              "",
+              "true",
+              "false"
+            ],
             "description": "Limit to featured photos only",
             "inputSize": "half",
             "conditional": {
@@ -148,5 +185,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
 }

@@ -59,7 +59,11 @@
             "required": false,
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE", "SEND_ATTACHMENT", "LIST_MESSAGES"]
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_ATTACHMENT",
+                "LIST_MESSAGES"
+              ]
             }
           },
           "recipient": {
@@ -69,7 +73,11 @@
             "required": false,
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE", "SEND_ATTACHMENT", "REGISTER_USER"]
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_ATTACHMENT",
+                "REGISTER_USER"
+              ]
             }
           },
           "message": {
@@ -79,7 +87,10 @@
             "required": false,
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE", "SEND_ATTACHMENT"]
+              "value": [
+                "SEND_MESSAGE",
+                "SEND_ATTACHMENT"
+              ]
             }
           },
           "filePath": {
@@ -110,7 +121,10 @@
             "default": 50,
             "conditional": {
               "field": "action",
-              "value": ["LIST_SPACES", "LIST_MESSAGES"]
+              "value": [
+                "LIST_SPACES",
+                "LIST_MESSAGES"
+              ]
             }
           },
           "method": {
@@ -137,7 +151,11 @@
           "httpMethod": {
             "type": "string",
             "inputType": "select",
-            "options": ["", "GET", "POST"],
+            "options": [
+              "",
+              "GET",
+              "POST"
+            ],
             "description": "For RAW_SPECTRUM_CALL: override the HTTP verb. Leave blank to auto-detect.",
             "required": false,
             "conditional": {
@@ -154,16 +172,46 @@
           }
         },
         "outputs": {
-          "success": { "type": "boolean", "description": "Whether the operation succeeded." },
-          "action": { "type": "string", "description": "The action that was executed." },
-          "messageId": { "type": "string", "description": "Photon message ID (for sends)." },
-          "spaceId": { "type": "string", "description": "Photon conversation/space ID." },
-          "assignedLine": { "type": "string", "description": "The assigned iMessage line/number." },
-          "spaces": { "type": "array", "description": "List of conversations (LIST_SPACES)." },
-          "messages": { "type": "array", "description": "List of messages (LIST_MESSAGES)." },
-          "result": { "type": "object", "description": "Normalized Photon result." },
-          "raw": { "type": "object", "description": "Raw Photon response when includeRaw is enabled." },
-          "error": { "type": "string", "description": "Error message if the operation failed." }
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation succeeded."
+          },
+          "action": {
+            "type": "string",
+            "description": "The action that was executed."
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Photon message ID (for sends)."
+          },
+          "spaceId": {
+            "type": "string",
+            "description": "Photon conversation/space ID."
+          },
+          "assignedLine": {
+            "type": "string",
+            "description": "The assigned iMessage line/number."
+          },
+          "spaces": {
+            "type": "array",
+            "description": "List of conversations (LIST_SPACES)."
+          },
+          "messages": {
+            "type": "array",
+            "description": "List of messages (LIST_MESSAGES)."
+          },
+          "result": {
+            "type": "object",
+            "description": "Normalized Photon result."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Raw Photon response when includeRaw is enabled."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the operation failed."
+          }
         }
       }
     },
@@ -271,22 +319,71 @@
           }
         },
         "outputs": {
-          "platform": { "type": "string", "description": "Always 'imessage'." },
-          "provider": { "type": "string", "description": "Always 'photon'." },
-          "messageId": { "type": "string", "description": "Photon message ID." },
-          "spaceId": { "type": "string", "description": "Photon conversation/space ID — pass this back to photon-imessage-api to reply." },
-          "sender": { "type": "string", "description": "Sender phone number." },
-          "senderName": { "type": "string", "description": "Sender display name, if known." },
-          "text": { "type": "string", "description": "Inbound message text." },
-          "isGroup": { "type": "boolean", "description": "Whether the message came from a group chat." },
-          "participants": { "type": "array", "description": "Group participants, if available." },
-          "attachments": { "type": "array", "description": "Attachment metadata (bytes are metadata-only on Photon's free tier)." },
-          "timestamp": { "type": "string", "description": "Message timestamp." },
-          "serviceLine": { "type": "string", "description": "The Photon iMessage line the message arrived on." },
-          "raw": { "type": "object", "description": "Raw Photon payload when includeRaw is enabled." },
-          "response": { "type": "object", "description": "Full normalized event object." }
+          "platform": {
+            "type": "string",
+            "description": "Always 'imessage'."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Always 'photon'."
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Photon message ID."
+          },
+          "spaceId": {
+            "type": "string",
+            "description": "Photon conversation/space ID — pass this back to photon-imessage-api to reply."
+          },
+          "sender": {
+            "type": "string",
+            "description": "Sender phone number."
+          },
+          "senderName": {
+            "type": "string",
+            "description": "Sender display name, if known."
+          },
+          "text": {
+            "type": "string",
+            "description": "Inbound message text."
+          },
+          "isGroup": {
+            "type": "boolean",
+            "description": "Whether the message came from a group chat."
+          },
+          "participants": {
+            "type": "array",
+            "description": "Group participants, if available."
+          },
+          "attachments": {
+            "type": "array",
+            "description": "Attachment metadata (bytes are metadata-only on Photon's free tier)."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Message timestamp."
+          },
+          "serviceLine": {
+            "type": "string",
+            "description": "The Photon iMessage line the message arrived on."
+          },
+          "raw": {
+            "type": "object",
+            "description": "Raw Photon payload when includeRaw is enabled."
+          },
+          "response": {
+            "type": "object",
+            "description": "Full normalized event object."
+          }
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "filesystem",
+      "network"
+    ],
+    "domains": []
+  }
 }

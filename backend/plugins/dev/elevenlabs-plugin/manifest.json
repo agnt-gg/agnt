@@ -23,7 +23,12 @@
           "action": {
             "type": "string",
             "inputType": "select",
-            "options": ["TEXT_TO_SPEECH", "SPEECH_TO_TEXT", "LIST_VOICES", "GET_VOICE"],
+            "options": [
+              "TEXT_TO_SPEECH",
+              "SPEECH_TO_TEXT",
+              "LIST_VOICES",
+              "GET_VOICE"
+            ],
             "default": "TEXT_TO_SPEECH",
             "description": "The ElevenLabs operation to perform"
           },
@@ -43,7 +48,10 @@
             "description": "Voice ID (default: 'Bella' - warm female). Browse available voices with LIST_VOICES.",
             "conditional": {
               "field": "action",
-              "value": ["TEXT_TO_SPEECH", "GET_VOICE"]
+              "value": [
+                "TEXT_TO_SPEECH",
+                "GET_VOICE"
+              ]
             }
           },
           "modelId": {
@@ -139,7 +147,10 @@
           "transcriptModel": {
             "type": "string",
             "inputType": "select",
-            "options": ["scribe_v1", "scribe_v1_experimental"],
+            "options": [
+              "scribe_v1",
+              "scribe_v1_experimental"
+            ],
             "default": "scribe_v1",
             "description": "Transcription model",
             "conditional": {
@@ -150,7 +161,10 @@
           "diarize": {
             "type": "string",
             "inputType": "select",
-            "options": ["No", "Yes"],
+            "options": [
+              "No",
+              "Yes"
+            ],
             "default": "No",
             "description": "Identify different speakers in the audio",
             "conditional": {
@@ -170,7 +184,13 @@
           "voiceCategory": {
             "type": "string",
             "inputType": "select",
-            "options": ["all", "premade", "cloned", "generated", "professional"],
+            "options": [
+              "all",
+              "premade",
+              "cloned",
+              "generated",
+              "professional"
+            ],
             "default": "all",
             "description": "Filter voices by category",
             "conditional": {
@@ -235,5 +255,13 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "env-access",
+      "filesystem",
+      "network"
+    ],
+    "domains": []
+  }
 }

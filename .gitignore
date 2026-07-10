@@ -1,3 +1,10 @@
+
+# Personal registry snapshots — must never be committed
+# (Nathan flagged 2026-07-09: registry-pre-*.json files contain real installed
+#  plugin state from his C:UsersStudioAppDataRoaming/AGNT/plugins/registry.json.)
+# The ONE sanitized synthetic fixture is exempted below.
+backend/plugins/tests/fixtures/registry-pre-*.json
+!backend/plugins/tests/fixtures/registry-pre-0.6.0.json
 # Dependencies
 node_modules/
 .npm-cache

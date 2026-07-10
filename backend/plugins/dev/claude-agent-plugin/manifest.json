@@ -24,14 +24,19 @@
           "permissionMode": {
             "type": "string",
             "inputType": "select",
-            "options": ["default", "acceptEdits", "bypassPermissions", "plan"],
+            "options": [
+              "default",
+              "acceptEdits",
+              "bypassPermissions",
+              "plan"
+            ],
             "default": "default",
             "description": "The permission mode for the agent"
           },
           "maxBudgetUsd": {
             "type": "number",
             "inputType": "number",
-            "default": 1.0,
+            "default": 1,
             "description": "Maximum budget in USD for this task"
           },
           "allowedTools": {
@@ -48,7 +53,9 @@
           "useSandbox": {
             "type": "boolean",
             "inputType": "checkbox",
-            "options": ["true"],
+            "options": [
+              "true"
+            ],
             "default": "false",
             "description": "Enable sandbox for the agent"
           }
@@ -77,5 +84,12 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "dynamic-import",
+      "env-access"
+    ],
+    "domains": []
+  }
 }

@@ -21,7 +21,7 @@ These paths are fixed on the user's machine. Use them verbatim.
 | Purpose | Path |
 |---|---|
 | Plugin dev folder (plugins MUST live here to build) | `C:\Users\Studio\Documents\DevelopmentProjects\AGNT\repos\agnt-pro\backend\plugins\dev\<plugin-name>\` |
-| Build script | `C:\Users\Studio\Documents\DevelopmentProjects\AGNT\repos\agnt-pro\backend\plugins\build-plugin.js` |
+| Build script | `C:\Users\Studio\Documents\DevelopmentProjects\AGNT\repos\agnt-pro\backend\plugins\cli\build-plugin.js` |
 | Built `.agnt` output | `C:\Users\Studio\Documents\DevelopmentProjects\AGNT\repos\agnt-pro\backend\plugins\plugin-builds\<plugin-name>.agnt` |
 | Installed runtime location | `C:\Users\Studio\AppData\Roaming\AGNT\plugins\installed\<plugin-name>\` |
 | AGNT API base | `http://localhost:3333/api` |
@@ -168,7 +168,7 @@ execSync('npm install --production', {
 Run the official build script, passing **only the plugin name** (not a path — the script joins it to its internal `PLUGINS_DIR = <plugins>/dev`):
 
 ```javascript
-execSync('node build-plugin.js <plugin-name>', {
+execSync('node cli/build-plugin.js <plugin-name>', {
   cwd: 'C:\\Users\\Studio\\...\\backend\\plugins',
   stdio: 'inherit'
 });

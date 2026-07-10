@@ -28,7 +28,10 @@
             "type": "string",
             "inputType": "select",
             "description": "Scan depth. 'standard' runs the core scanners; 'deep' adds git-history secret sweep and extended semgrep rulesets.",
-            "options": ["standard", "deep"],
+            "options": [
+              "standard",
+              "deep"
+            ],
             "default": "standard"
           },
           "webActiveProbe": {
@@ -39,14 +42,38 @@
           }
         },
         "outputs": {
-          "success": { "type": "boolean", "description": "Whether the scan completed." },
-          "summary": { "type": "object", "description": "Counts by severity, risk score, scanners run, target metadata." },
-          "totalFindings": { "type": "number", "description": "Total number of findings (full set is on disk at findingsPath)." },
-          "findings": { "type": "array", "description": "Context-safe slice: the top (highest-severity) findings only. Read findingsPath for the complete set." },
-          "truncated": { "type": "boolean", "description": "True when more findings exist than are returned inline." },
-          "findingsPath": { "type": "string", "description": "Absolute path to the JSON file holding the complete findings array + summary." },
-          "target": { "type": "object", "description": "Resolved target info: kind (git|local|url), path/url, languages detected." },
-          "error": { "type": "string", "description": "Error message if the scan failed." }
+          "success": {
+            "type": "boolean",
+            "description": "Whether the scan completed."
+          },
+          "summary": {
+            "type": "object",
+            "description": "Counts by severity, risk score, scanners run, target metadata."
+          },
+          "totalFindings": {
+            "type": "number",
+            "description": "Total number of findings (full set is on disk at findingsPath)."
+          },
+          "findings": {
+            "type": "array",
+            "description": "Context-safe slice: the top (highest-severity) findings only. Read findingsPath for the complete set."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when more findings exist than are returned inline."
+          },
+          "findingsPath": {
+            "type": "string",
+            "description": "Absolute path to the JSON file holding the complete findings array + summary."
+          },
+          "target": {
+            "type": "object",
+            "description": "Resolved target info: kind (git|local|url), path/url, languages detected."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the scan failed."
+          }
         }
       }
     },
@@ -82,18 +109,45 @@
             "type": "string",
             "inputType": "select",
             "description": "LLM backbone for the write-up. 'claude-code' uses your keyless Claude Code CLI. 'openrouter'/'openai'/'anthropic' use configured keys. 'none' emits a template report with no LLM prose.",
-            "options": ["claude-code", "openrouter", "openai", "anthropic", "none"],
+            "options": [
+              "claude-code",
+              "openrouter",
+              "openai",
+              "anthropic",
+              "none"
+            ],
             "default": "claude-code"
           }
         },
         "outputs": {
-          "success": { "type": "boolean", "description": "Whether the report was generated." },
-          "reportPath": { "type": "string", "description": "Absolute path to the saved standalone HTML report file." },
-          "markdownPath": { "type": "string", "description": "Absolute path to the saved Markdown report file." },
-          "narrativeExcerpt": { "type": "string", "description": "Short excerpt of the LLM executive summary (full prose is in the report files)." },
-          "narrativeProvider": { "type": "string", "description": "Which LLM backbone produced the prose." },
-          "totalFindings": { "type": "number", "description": "Number of findings the report covers." },
-          "error": { "type": "string", "description": "Error message if generation failed." }
+          "success": {
+            "type": "boolean",
+            "description": "Whether the report was generated."
+          },
+          "reportPath": {
+            "type": "string",
+            "description": "Absolute path to the saved standalone HTML report file."
+          },
+          "markdownPath": {
+            "type": "string",
+            "description": "Absolute path to the saved Markdown report file."
+          },
+          "narrativeExcerpt": {
+            "type": "string",
+            "description": "Short excerpt of the LLM executive summary (full prose is in the report files)."
+          },
+          "narrativeProvider": {
+            "type": "string",
+            "description": "Which LLM backbone produced the prose."
+          },
+          "totalFindings": {
+            "type": "number",
+            "description": "Number of findings the report covers."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if generation failed."
+          }
         }
       }
     },
@@ -117,30 +171,78 @@
             "type": "string",
             "inputType": "select",
             "description": "Scan depth.",
-            "options": ["standard", "deep"],
+            "options": [
+              "standard",
+              "deep"
+            ],
             "default": "standard"
           },
           "provider": {
             "type": "string",
             "inputType": "select",
             "description": "LLM backbone for the report write-up.",
-            "options": ["claude-code", "openrouter", "openai", "anthropic", "none"],
+            "options": [
+              "claude-code",
+              "openrouter",
+              "openai",
+              "anthropic",
+              "none"
+            ],
             "default": "claude-code"
           }
         },
         "outputs": {
-          "success": { "type": "boolean", "description": "Whether the audit completed." },
-          "summary": { "type": "object", "description": "Severity counts and risk score." },
-          "totalFindings": { "type": "number", "description": "Total number of findings (full set on disk at findingsPath)." },
-          "findings": { "type": "array", "description": "Context-safe slice of the top findings. Read findingsPath for the complete set." },
-          "truncated": { "type": "boolean", "description": "True when more findings exist than are returned inline." },
-          "findingsPath": { "type": "string", "description": "Absolute path to the complete findings JSON." },
-          "reportPath": { "type": "string", "description": "Absolute path to the saved HTML report." },
-          "markdownPath": { "type": "string", "description": "Absolute path to the saved Markdown report." },
-          "narrativeExcerpt": { "type": "string", "description": "Short excerpt of the LLM executive summary." },
-          "error": { "type": "string", "description": "Error message if it failed." }
+          "success": {
+            "type": "boolean",
+            "description": "Whether the audit completed."
+          },
+          "summary": {
+            "type": "object",
+            "description": "Severity counts and risk score."
+          },
+          "totalFindings": {
+            "type": "number",
+            "description": "Total number of findings (full set on disk at findingsPath)."
+          },
+          "findings": {
+            "type": "array",
+            "description": "Context-safe slice of the top findings. Read findingsPath for the complete set."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when more findings exist than are returned inline."
+          },
+          "findingsPath": {
+            "type": "string",
+            "description": "Absolute path to the complete findings JSON."
+          },
+          "reportPath": {
+            "type": "string",
+            "description": "Absolute path to the saved HTML report."
+          },
+          "markdownPath": {
+            "type": "string",
+            "description": "Absolute path to the saved Markdown report."
+          },
+          "narrativeExcerpt": {
+            "type": "string",
+            "description": "Short excerpt of the LLM executive summary."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if it failed."
+          }
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "env-access",
+      "filesystem",
+      "network",
+      "spawn-process"
+    ],
+    "domains": []
+  }
 }

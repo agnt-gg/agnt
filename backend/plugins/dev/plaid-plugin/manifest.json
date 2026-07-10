@@ -38,7 +38,10 @@
             "default": "auth,transactions",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_LINK_TOKEN", "SEARCH_INSTITUTIONS"]
+              "value": [
+                "CREATE_LINK_TOKEN",
+                "SEARCH_INSTITUTIONS"
+              ]
             }
           },
           "countryCodes": {
@@ -48,13 +51,22 @@
             "default": "US",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_LINK_TOKEN", "SEARCH_INSTITUTIONS"]
+              "value": [
+                "CREATE_LINK_TOKEN",
+                "SEARCH_INSTITUTIONS"
+              ]
             }
           },
           "language": {
             "type": "string",
             "inputType": "select",
-            "options": ["en", "es", "fr", "nl", "de"],
+            "options": [
+              "en",
+              "es",
+              "fr",
+              "nl",
+              "de"
+            ],
             "default": "en",
             "description": "Language for Plaid Link UI",
             "conditional": {
@@ -77,7 +89,11 @@
             "description": "The access_token for an existing connected bank item",
             "conditional": {
               "field": "action",
-              "value": ["GET_ITEM", "UPDATE_ITEM", "REMOVE_ITEM"]
+              "value": [
+                "GET_ITEM",
+                "UPDATE_ITEM",
+                "REMOVE_ITEM"
+              ]
             }
           },
           "query": {
@@ -190,7 +206,10 @@
             "description": "Start date in YYYY-MM-DD format",
             "conditional": {
               "field": "action",
-              "value": ["GET_TRANSACTIONS", "GET_INVESTMENT_TRANSACTIONS"]
+              "value": [
+                "GET_TRANSACTIONS",
+                "GET_INVESTMENT_TRANSACTIONS"
+              ]
             }
           },
           "endDate": {
@@ -199,7 +218,10 @@
             "description": "End date in YYYY-MM-DD format",
             "conditional": {
               "field": "action",
-              "value": ["GET_TRANSACTIONS", "GET_INVESTMENT_TRANSACTIONS"]
+              "value": [
+                "GET_TRANSACTIONS",
+                "GET_INVESTMENT_TRANSACTIONS"
+              ]
             }
           },
           "count": {
@@ -209,7 +231,10 @@
             "description": "Maximum number of transactions per page (max 500)",
             "conditional": {
               "field": "action",
-              "value": ["GET_TRANSACTIONS", "SYNC_TRANSACTIONS"]
+              "value": [
+                "GET_TRANSACTIONS",
+                "SYNC_TRANSACTIONS"
+              ]
             }
           },
           "offset": {
@@ -261,7 +286,10 @@
           "transferType": {
             "type": "string",
             "inputType": "select",
-            "options": ["debit", "credit"],
+            "options": [
+              "debit",
+              "credit"
+            ],
             "description": "Transfer type: 'debit' pulls money from user, 'credit' pushes money to user",
             "conditional": {
               "field": "action",
@@ -271,7 +299,11 @@
           "transferNetwork": {
             "type": "string",
             "inputType": "select",
-            "options": ["ach", "same-day-ach", "rtp"],
+            "options": [
+              "ach",
+              "same-day-ach",
+              "rtp"
+            ],
             "default": "ach",
             "description": "Transfer network to use",
             "conditional": {
@@ -376,5 +408,12 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "dynamic-import",
+      "env-access"
+    ],
+    "domains": []
+  }
 }

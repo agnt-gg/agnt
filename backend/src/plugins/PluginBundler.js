@@ -1,5 +1,5 @@
 /**
- * PRD-057: Bundle-as-Plugin authoring.
+ * ecosystem assets: Bundle-as-Plugin authoring.
  *
  * Takes a user's selection of agents/workflows/skills/widgets/tools and
  * produces a `.agnt` archive that can be installed on another instance.
@@ -114,7 +114,7 @@ export async function bundleSelection(args) {
 
       // Write source if we have it; otherwise write a stub so the receiving
       // instance gets a clear error rather than a silently missing file.
-      const code = tool.code || `// PRD-057: tool "${tool.type || slug}" had no source code at bundle time.\n// The receiving AGNT instance must already have this tool registered (built-in or plugin).\nexport default async function execute() { throw new Error('Tool ${tool.type || slug} has no bundled source'); }\n`;
+      const code = tool.code || `// ecosystem assets: tool "${tool.type || slug}" had no source code at bundle time.\n// The receiving AGNT instance must already have this tool registered (built-in or plugin).\nexport default async function execute() { throw new Error('Tool ${tool.type || slug} has no bundled source'); }\n`;
       await fs.writeFile(path.join(outDir, 'tools', fileName), code, 'utf-8');
 
       let parameters = {};

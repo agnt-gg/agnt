@@ -9,7 +9,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/discord-plugin.agnt",
-      "size": 3238038,
+      "size": 3238022,
       "tags": [
         "discord",
         "messaging",
@@ -32,6 +32,16 @@
             "description": "Listen for incoming Discord messages in a specified channel and trigger workflows."
           }
         }
+      ],
+      "integrity": "sha256-DfzYi9VZBMjtW8PXWKmMQCpvJcsk8luCKBp/uyVFocA=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "filesystem",
+        "network"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "network"
       ]
     },
     {
@@ -43,7 +53,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/firecrawl-plugin.agnt",
-      "size": 500000,
+      "size": 777997,
       "tags": [
         "firecrawl",
         "web-scraping",
@@ -60,6 +70,14 @@
             "description": "Scrape web content using Firecrawl API - extract clean markdown or HTML from any URL."
           }
         }
+      ],
+      "integrity": "sha256-5nfXrZXWrlE3Lw4RmK9m7ST3GAbD62JGCaP8oOLOVIQ=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -71,7 +89,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/slack-plugin.agnt",
-      "size": 2500000,
+      "size": 3412379,
       "tags": [
         "slack",
         "messaging",
@@ -95,6 +113,14 @@
             "description": "Listen for incoming Slack messages in a specified channel and trigger the workflow when a new message is received."
           }
         }
+      ],
+      "integrity": "sha256-Zo0HzwJtwYorhxGcs2I3NzSvtC9oWSdqbUvX5qca5Nk=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -106,7 +132,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/telegram-toolkit.agnt",
-      "size": 13979,
+      "size": 14052,
       "tags": [
         "telegram",
         "messaging",
@@ -131,6 +157,16 @@
             "description": "Listen for incoming Telegram bot messages, commands, channel posts, and inline keyboard callback button clicks using long polling."
           }
         }
+      ],
+      "integrity": "sha256-EaLkBrIE25ZafKuEd9XUO4PCbxXTw9TWkVYnggff88w=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "filesystem",
+        "network"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "network"
       ]
     },
     {
@@ -142,7 +178,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/notion-plugin.agnt",
-      "size": 1500000,
+      "size": 846734,
       "tags": [
         "notion",
         "productivity",
@@ -159,7 +195,11 @@
             "description": "Interact with Notion - search, query databases, get pages, and create pages."
           }
         }
-      ]
+      ],
+      "integrity": "sha256-2hG9lcyRVEWo59EXgCtbNlmqeHTJmY7XO9356RVWmS4=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     },
     {
       "name": "obsidian-plugin",
@@ -170,7 +210,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/coddingtonbear/obsidian-local-rest-api",
       "downloadUrl": "file://marketplace-default/obsidian-plugin.agnt",
-      "size": 6831,
+      "size": 6873,
       "tags": [
         "obsidian",
         "notes",
@@ -188,6 +228,14 @@
             "description": "Control Obsidian through the Local REST API. Supports vault files, active file, search, periodic notes, tags, commands, and opening notes."
           }
         }
+      ],
+      "integrity": "sha256-M8TZuUQeag3RztAJrthHcgVBdYYju9IpNLHFDksHr8c=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -199,7 +247,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-sheets-plugin.agnt",
-      "size": 1800000,
+      "size": 12961989,
       "tags": [
         "google",
         "sheets",
@@ -223,7 +271,11 @@
             "description": "Interact with Google Sheets to read, write, append, or clear data in a spreadsheet."
           }
         }
-      ]
+      ],
+      "integrity": "sha256-trVzFPSuzDnDRAKZa8jK77Cx/VDGrXyqnzVeAV17OXQ=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     },
     {
       "name": "claude-agent-plugin",
@@ -234,7 +286,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/claude-agent-plugin.agnt",
-      "size": 1500000,
+      "size": 35549905,
       "tags": [
         "ai",
         "claude",
@@ -251,6 +303,16 @@
             "description": "An autonomous agent that can use tools to accomplish complex tasks."
           }
         }
+      ],
+      "integrity": "sha256-g5pRDsTywuo8K6+mEi3PbqUiXF9KEX/Q9gsT7uBiUGQ=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "dynamic-import",
+        "env-access"
+      ],
+      "detectedCapabilities": [
+        "env-access",
+        "dynamic-import"
       ]
     },
     {
@@ -262,7 +324,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/zapier-plugin.agnt",
-      "size": 10000,
+      "size": 685028,
       "tags": [
         "zapier",
         "automation",
@@ -285,6 +347,18 @@
             "description": "Send data to 6,000+ apps via Zapier webhooks. Trigger actions like sending emails, creating tasks, posting to social media, and more by sending JSON data to your Zap's webhook URL."
           }
         }
+      ],
+      "integrity": "sha256-WMgnd6P0yuZ3cKyXnpZ5inZnKETPmfIauuFMVvgo494=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "dynamic-import",
+        "env-access",
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network",
+        "env-access",
+        "dynamic-import"
       ]
     },
     {
@@ -296,7 +370,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/bitcoin-price-checker.agnt",
-      "size": 100000,
+      "size": 1294,
       "tags": [
         "bitcoin",
         "crypto",
@@ -312,6 +386,14 @@
             "description": "Fetches the current price of Bitcoin (BTC) in USD from the CoinGecko API."
           }
         }
+      ],
+      "integrity": "sha256-8LIEcYdaHz7WDCmE9s7tZN3fCeyGF17NpMatgymbq6I=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -323,7 +405,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/chucknorris-joke-plugin.agnt",
-      "size": 100000,
+      "size": 1660889,
       "tags": [
         "jokes",
         "fun",
@@ -339,6 +421,14 @@
             "description": "Retrieves a random Chuck Norris joke, optionally filtered by category."
           }
         }
+      ],
+      "integrity": "sha256-MTYa169U0JljpahLveCdYOs8oDxzXQGAS7fGAbMJNIM=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -350,7 +440,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/dice-roller-plugin.agnt",
-      "size": 100000,
+      "size": 1803,
       "tags": [
         "dice",
         "games",
@@ -366,7 +456,11 @@
             "description": "Roll one or more dice (d1–d20) and optionally apply a numeric modifier. Returns total and individual roll values."
           }
         }
-      ]
+      ],
+      "integrity": "sha256-LikZxZnFz4wxrB1+ryHw8yWLnww2Fq85lKt8NFupclk=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     },
     {
       "name": "dropbox-plugin",
@@ -377,7 +471,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/dropbox-plugin.agnt",
-      "size": 500000,
+      "size": 779362,
       "tags": [
         "dropbox",
         "cloud",
@@ -393,6 +487,14 @@
             "description": "Interact with Dropbox to perform various operations on files and folders."
           }
         }
+      ],
+      "integrity": "sha256-FAi64ILF2J51jBffoISKM/t8ta5dscws78tEVQFgJC8=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -404,7 +506,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/ethereum-price-checker.agnt",
-      "size": 100000,
+      "size": 683714,
       "tags": [
         "ethereum",
         "crypto",
@@ -420,6 +522,14 @@
             "description": "Fetches the current market price of Ethereum (ETH)."
           }
         }
+      ],
+      "integrity": "sha256-iZZLLGV/1JsDPFtx4doq71KAZkkJAKZ4cKunbv+Jbx0=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -431,7 +541,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/github-plugin.agnt",
-      "size": 10299,
+      "size": 10446,
       "tags": [
         "github",
         "git",
@@ -451,6 +561,16 @@
             "description": "Interact with GitHub: repos, branches, files, issues, comments, pull requests, reviews, releases, Actions/CI, and search."
           }
         }
+      ],
+      "integrity": "sha256-F8FWjENEF1PQcgWIaKpBvYyfVX/UG6SKgyS95mJgRek=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "filesystem",
+        "network"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "network"
       ]
     },
     {
@@ -462,7 +582,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/gmail-plugin.agnt",
-      "size": 600000,
+      "size": 12527775,
       "tags": [
         "gmail",
         "email",
@@ -478,7 +598,11 @@
             "description": "A powerful tool to send, reply, read, organize, and manage attachments in Gmail."
           }
         }
-      ]
+      ],
+      "integrity": "sha256-oSmxOdJfhB3tgGiK4B6ZwHufJRDjyCY2UcgOynJ6rr4=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     },
     {
       "name": "google-drive-plugin",
@@ -489,7 +613,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-drive-plugin.agnt",
-      "size": 600000,
+      "size": 12528098,
       "tags": [
         "google",
         "drive",
@@ -506,7 +630,11 @@
             "description": "Interact with Google Drive to perform various operations on files and folders."
           }
         }
-      ]
+      ],
+      "integrity": "sha256-0F6JV5gCKFboL6cS45Qj1KzEiRjY+4Mbi7aD4NhZ19c=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     },
     {
       "name": "google-slides-plugin",
@@ -517,7 +645,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-slides-plugin.agnt",
-      "size": 600000,
+      "size": 12530367,
       "tags": [
         "google",
         "slides",
@@ -533,6 +661,14 @@
             "description": "Perform actions on Google Slides presentations and slides."
           }
         }
+      ],
+      "integrity": "sha256-4ci0ZDYCnmgLM8A5cnZkaoC3K02eUQSW6jkvZrK4dN0=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -544,7 +680,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/openweathermap-api-plugin.agnt",
-      "size": 300000,
+      "size": 4090,
       "tags": [
         "weather",
         "forecast",
@@ -581,6 +717,18 @@
             "description": "Fetch current air quality and pollutant concentrations by coordinates using OpenWeatherMap Air Pollution API."
           }
         }
+      ],
+      "integrity": "sha256-VQU79md9PsCXVuXUz7G031gBgSjH8yO6lhfWSc+Kzig=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "dynamic-import",
+        "env-access",
+        "network"
+      ],
+      "detectedCapabilities": [
+        "env-access",
+        "dynamic-import",
+        "network"
       ]
     },
     {
@@ -592,7 +740,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/stripe-plugin.agnt",
-      "size": 400000,
+      "size": 1310076,
       "tags": [
         "stripe",
         "payments",
@@ -608,7 +756,11 @@
             "description": "Create and send a Stripe invoice with support for single or multiple line items."
           }
         }
-      ]
+      ],
+      "integrity": "sha256-Xkxw3mQVqxd+9urez/eS+hX4G0GNkjpBtntkY3NJx1M=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     },
     {
       "name": "twitter-plugin",
@@ -619,7 +771,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/twitter-plugin.agnt",
-      "size": 225110,
+      "size": 225182,
       "tags": [
         "twitter",
         "x",
@@ -638,6 +790,14 @@
             "description": "Interact with X/Twitter to post, reply, quote tweet, retweet, like/unlike, retrieve tweets/profiles/conversations, search, manage follows, and monitor mentions."
           }
         }
+      ],
+      "integrity": "sha256-TT/e8n24WFsYkJkjeOM8Cp17+jm2J+iC4Bjq5PH6ZMs=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -649,7 +809,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/unsplash-plugin.agnt",
-      "size": 400000,
+      "size": 780608,
       "tags": [
         "unsplash",
         "photos",
@@ -666,6 +826,14 @@
             "description": "Search and download high-quality stock photos from Unsplash."
           }
         }
+      ],
+      "integrity": "sha256-cZ+JF8vkZe2raILWFmukhgOw1kPcBSUvmm9Fmp6Onmk=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -677,7 +845,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/unturf-ai-plugin.agnt",
-      "size": 300000,
+      "size": 684620,
       "tags": [
         "ai",
         "llm",
@@ -694,6 +862,14 @@
             "description": "Interact with Unturf.ai's free LLM (Hermes) and text-to-speech services without needing an API key."
           }
         }
+      ],
+      "integrity": "sha256-RZZNuwUqGRe8ksWEDtb9R8pSHHnF5+2D4HlNq357E7Q=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -705,7 +881,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/youtube-plugin.agnt",
-      "size": 12529192,
+      "size": 12529393,
       "tags": [
         "youtube",
         "video",
@@ -722,6 +898,18 @@
             "description": "Interact with the YouTube API to manage videos, comments, playlists, and more."
           }
         }
+      ],
+      "integrity": "sha256-R2MEA3pQLVZBxnJ5+JQws1F9UCbFOOTylUphKSCOaxE=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "dynamic-import",
+        "env-access",
+        "filesystem"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "env-access",
+        "dynamic-import"
       ]
     },
     {
@@ -733,7 +921,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/calculator-plugin.agnt",
-      "size": 100000,
+      "size": 1876,
       "tags": [
         "calculator",
         "math",
@@ -749,6 +937,16 @@
             "description": "Evaluates a mathematical expression and returns the result."
           }
         }
+      ],
+      "integrity": "sha256-GhTWXOZRTrYrprTCWDVGeMqiLzfbOpwtSjYyRxRXQaU=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "dynamic-eval",
+        "filesystem"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "dynamic-eval"
       ]
     },
     {
@@ -760,7 +958,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/facebook-api-plugin.agnt",
-      "size": 500000,
+      "size": 1662103,
       "tags": [
         "facebook",
         "social",
@@ -790,6 +988,12 @@
             "description": "Retrieves a list of Facebook pages managed by the authenticated user."
           }
         }
+      ],
+      "integrity": "sha256-j7ksIwxVFDUGoPXFuIQ+lCMwsgBIsFeYKR0xC2L2Smo=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -801,7 +1005,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/fetch-tool-plugin.agnt",
-      "size": 100000,
+      "size": 1661135,
       "tags": [
         "fetch",
         "http",
@@ -817,6 +1021,12 @@
             "description": "Fetches data from a provided URL using the specified HTTP method and optional headers or body."
           }
         }
+      ],
+      "integrity": "sha256-oyNc2KE4bm7rerbLdHpksmatooVZQ0hI5h/lgv3zxGE=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -828,7 +1038,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/fibonacci-sequence-plugin.agnt",
-      "size": 100000,
+      "size": 2513,
       "tags": [
         "fibonacci",
         "math",
@@ -851,7 +1061,11 @@
             "description": "Generates a list of Fibonacci numbers based on count or maximum value."
           }
         }
-      ]
+      ],
+      "integrity": "sha256-/XM0o7MghC+KSWjbxgTFoFdhCbKGSWdKxl32tgptbHI=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     },
     {
       "name": "list-files-plugin",
@@ -862,7 +1076,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/list-files-plugin.agnt",
-      "size": 100000,
+      "size": 1591,
       "tags": [
         "files",
         "directory",
@@ -878,6 +1092,12 @@
             "description": "Lists all files in the current directory with optional filtering and metadata."
           }
         }
+      ],
+      "integrity": "sha256-aNmj45qqJtprC5PwY4pKup5E+zpX3QgLcsBcrZKq1gI=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": [
+        "filesystem"
       ]
     },
     {
@@ -889,7 +1109,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/fs-watcher-plugin.agnt",
-      "size": 104638,
+      "size": 104726,
       "tags": [
         "filesystem",
         "watcher",
@@ -908,6 +1128,14 @@
             "description": "Watches a file or directory path for changes (create, modify, delete). Auto-detects whether the path is a file or a directory from a single input, with recursive watching, ignore globs, and debouncing."
           }
         }
+      ],
+      "integrity": "sha256-RG5V4qmqK3KLb8r17vS2ukmM0LJrIw5zzwLWfGpYcLw=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "filesystem"
+      ],
+      "detectedCapabilities": [
+        "filesystem"
       ]
     },
     {
@@ -919,7 +1147,7 @@
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/random-dice-roller.agnt",
-      "size": 100000,
+      "size": 1339,
       "tags": [
         "dice",
         "coin",
@@ -942,7 +1170,11 @@
             "description": "Flip a virtual coin to get Heads or Tails."
           }
         }
-      ]
+      ],
+      "integrity": "sha256-u610RmYi7jDpfb4QDcLBvgp3DlBqE8fGxLjBvSmkf18=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     },
     {
       "name": "seedance-plugin",
@@ -953,7 +1185,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/seedance-plugin.agnt",
-      "size": 810563,
+      "size": 810664,
       "tags": [
         "ai",
         "video",
@@ -977,6 +1209,18 @@
             "description": "Generate 5-20s cinematic AI video clips using ByteDance Seedance 2.0 via OpenRouter. v1.1 adds multimodal reference inputs: pass prior clips, reference audio, and style images for cross-scene continuity. Pair with Remotion for branded motion graphics, logos, and captions."
           }
         }
+      ],
+      "integrity": "sha256-UReobegg9kr6xSCjmTElPQtUkA4cMg1de0tKoooTZNQ=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "env-access",
+        "filesystem",
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network",
+        "filesystem",
+        "env-access"
       ]
     },
     {
@@ -988,7 +1232,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/elevenlabs-plugin.agnt",
-      "size": 804475,
+      "size": 804717,
       "tags": [
         "ai",
         "audio",
@@ -1009,6 +1253,18 @@
             "description": "Generate speech, transcribe audio with word-level timings and speaker diarization, and browse voices using ElevenLabs AI."
           }
         }
+      ],
+      "integrity": "sha256-Kq8f5TGuUX/tOiGruqQuzXlyiL3Ke3gMWN7xDZLdcls=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "env-access",
+        "filesystem",
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network",
+        "filesystem",
+        "env-access"
       ]
     },
     {
@@ -1020,7 +1276,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/remotion-plugin.agnt",
-      "size": 7290,
+      "size": 7418,
       "tags": [
         "video",
         "remotion",
@@ -1039,6 +1295,18 @@
             "description": "Render a branded video from a shot-list of AI video clips. Combines MP4 clips with typography overlays, color grading, and optional voiceover into a final production-ready MP4."
           }
         }
+      ],
+      "integrity": "sha256-Rxv9f6YRIw7TkjF40oawDjFsfSgpgb+rsfEWe3+NC1A=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "env-access",
+        "filesystem",
+        "spawn-process"
+      ],
+      "detectedCapabilities": [
+        "spawn-process",
+        "filesystem",
+        "env-access"
       ]
     },
     {
@@ -1050,7 +1318,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/atlas-cloud.agnt",
-      "size": 7526,
+      "size": 7593,
       "tags": [
         "ai",
         "image",
@@ -1090,6 +1358,20 @@
             "description": "OpenAI-compatible chat completions on Atlas Cloud."
           }
         }
+      ],
+      "integrity": "sha256-pLX5fzACewcHaI4a+qX7csZzmZ6yLemfVtLlxfE/NWQ=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "env-access",
+        "filesystem",
+        "network",
+        "spawn-process"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "spawn-process",
+        "env-access",
+        "network"
       ]
     },
     {
@@ -1101,7 +1383,7 @@
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/bankr-plugin.agnt",
-      "size": 10122,
+      "size": 10200,
       "tags": [
         "bankr",
         "crypto",
@@ -1127,6 +1409,14 @@
             "description": "Monitor your token's accumulated trading fees and trigger workflows when fees exceed a threshold. Use for auto-claiming, reinvesting, or alerting on fee revenue."
           }
         }
+      ],
+      "integrity": "sha256-+Si+Wr6DYtDY5BJNV3raAJ3hbU+rXp4Glee0EJxTELc=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "network"
+      ],
+      "detectedCapabilities": [
+        "network"
       ]
     },
     {
@@ -1138,7 +1428,7 @@
       "author": "AGNT",
       "homepage": "https://developer.calendly.com",
       "downloadUrl": "file://marketplace-default/calendly-plugin.agnt",
-      "size": 944715,
+      "size": 944827,
       "tags": [
         "calendly",
         "scheduling",
@@ -1164,6 +1454,20 @@
             "description": "Poll Calendly for newly-created upcoming scheduled events and trigger the workflow when a new booking is detected."
           }
         }
+      ],
+      "integrity": "sha256-BlG+hnrUkYBVqOWouZ2ehfV1qjSbzipIiG4weceMEgE=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "dynamic-import",
+        "env-access",
+        "filesystem",
+        "network"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "env-access",
+        "dynamic-import",
+        "network"
       ]
     },
     {
@@ -1175,7 +1479,7 @@
       "author": "Annie (AGNT)",
       "homepage": "https://github.com/trycua/cua",
       "downloadUrl": "file://marketplace-default/cua-toolkit.agnt",
-      "size": 13179,
+      "size": 13184,
       "tags": [
         "cua",
         "computer-use",
@@ -1222,6 +1526,18 @@
             "description": "High-level autonomous loop. Give a natural-language goal and a target window; tool observes and returns a structured plan for the agent to drive the observe/reason/act/verify loop. dryRun by default; requires confirm=true to execute."
           }
         }
+      ],
+      "integrity": "sha256-T96cCkPuKw+m+41Rk0ijRSwk/KzCT7gA+PDYfWiF7jk=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "env-access",
+        "filesystem",
+        "spawn-process"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "spawn-process",
+        "env-access"
       ]
     },
     {
@@ -1233,7 +1549,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/sentinel.agnt",
-      "size": 41951,
+      "size": 42002,
       "tags": [
         "security",
         "sast",
@@ -1269,6 +1585,20 @@
             "description": "One-shot: scan a target AND generate the full report. This is the node the simple frontend calls. Drop a URL/path/repo, get findings + an HTML report file back."
           }
         }
+      ],
+      "integrity": "sha256-u8yXkGjD/XU4+Ug6yTIVVo8Y8XWyFnnbiGUsgIGez0o=",
+      "trustTier": "official",
+      "declaredPermissions": [
+        "env-access",
+        "filesystem",
+        "network",
+        "spawn-process"
+      ],
+      "detectedCapabilities": [
+        "filesystem",
+        "env-access",
+        "network",
+        "spawn-process"
       ]
     }
   ]

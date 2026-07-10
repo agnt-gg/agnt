@@ -423,5 +423,14 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "env-access",
+      "filesystem",
+      "network",
+      "spawn-process"
+    ],
+    "domains": []
+  }
 }

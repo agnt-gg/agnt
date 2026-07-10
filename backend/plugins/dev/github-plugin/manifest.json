@@ -90,7 +90,12 @@
             "description": "The title of the issue or pull request",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_ISSUE", "UPDATE_ISSUE", "CREATE_PR", "UPDATE_PR"]
+              "value": [
+                "CREATE_ISSUE",
+                "UPDATE_ISSUE",
+                "CREATE_PR",
+                "UPDATE_PR"
+              ]
             }
           },
           "body": {
@@ -99,7 +104,14 @@
             "description": "The body text (issue/PR description, comment body, or review body)",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_ISSUE", "UPDATE_ISSUE", "CREATE_PR", "UPDATE_PR", "COMMENT_ON_ISSUE", "CREATE_PR_REVIEW"]
+              "value": [
+                "CREATE_ISSUE",
+                "UPDATE_ISSUE",
+                "CREATE_PR",
+                "UPDATE_PR",
+                "COMMENT_ON_ISSUE",
+                "CREATE_PR_REVIEW"
+              ]
             }
           },
           "issueNumber": {
@@ -109,7 +121,14 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["GET_ISSUE", "UPDATE_ISSUE", "COMMENT_ON_ISSUE", "LIST_COMMENTS", "ADD_LABELS", "REMOVE_LABELS"]
+              "value": [
+                "GET_ISSUE",
+                "UPDATE_ISSUE",
+                "COMMENT_ON_ISSUE",
+                "LIST_COMMENTS",
+                "ADD_LABELS",
+                "REMOVE_LABELS"
+              ]
             }
           },
           "pullNumber": {
@@ -119,7 +138,15 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["GET_PR", "UPDATE_PR", "MERGE_PR", "GET_PR_CHANGES", "CREATE_PR_REVIEW", "LIST_PR_REVIEWS", "REQUEST_REVIEWERS"]
+              "value": [
+                "GET_PR",
+                "UPDATE_PR",
+                "MERGE_PR",
+                "GET_PR_CHANGES",
+                "CREATE_PR_REVIEW",
+                "LIST_PR_REVIEWS",
+                "REQUEST_REVIEWERS"
+              ]
             }
           },
           "head": {
@@ -129,7 +156,10 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_PR", "COMPARE_COMMITS"]
+              "value": [
+                "CREATE_PR",
+                "COMPARE_COMMITS"
+              ]
             }
           },
           "base": {
@@ -139,7 +169,11 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_PR", "UPDATE_PR", "COMPARE_COMMITS"]
+              "value": [
+                "CREATE_PR",
+                "UPDATE_PR",
+                "COMPARE_COMMITS"
+              ]
             }
           },
           "draft": {
@@ -149,7 +183,10 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_PR", "CREATE_RELEASE"]
+              "value": [
+                "CREATE_PR",
+                "CREATE_RELEASE"
+              ]
             }
           },
           "baseBranch": {
@@ -179,13 +216,24 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["LIST_COMMITS", "CREATE_FILE", "UPDATE_FILE", "DELETE_FILE", "DELETE_BRANCH", "LIST_WORKFLOW_RUNS"]
+              "value": [
+                "LIST_COMMITS",
+                "CREATE_FILE",
+                "UPDATE_FILE",
+                "DELETE_FILE",
+                "DELETE_BRANCH",
+                "LIST_WORKFLOW_RUNS"
+              ]
             }
           },
           "mergeMethod": {
             "type": "string",
             "inputType": "select",
-            "options": ["merge", "squash", "rebase"],
+            "options": [
+              "merge",
+              "squash",
+              "rebase"
+            ],
             "description": "The method to use when merging the pull request",
             "inputSize": "half",
             "conditional": {
@@ -206,23 +254,36 @@
           "state": {
             "type": "string",
             "inputType": "select",
-            "options": ["open", "closed", "all"],
+            "options": [
+              "open",
+              "closed",
+              "all"
+            ],
             "description": "Filter by state",
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["LIST_PRS", "LIST_ISSUES"]
+              "value": [
+                "LIST_PRS",
+                "LIST_ISSUES"
+              ]
             }
           },
           "issueState": {
             "type": "string",
             "inputType": "select",
-            "options": ["open", "closed"],
+            "options": [
+              "open",
+              "closed"
+            ],
             "description": "Set the state (use \"closed\" to close, \"open\" to reopen)",
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["UPDATE_ISSUE", "UPDATE_PR"]
+              "value": [
+                "UPDATE_ISSUE",
+                "UPDATE_PR"
+              ]
             }
           },
           "labels": {
@@ -231,7 +292,13 @@
             "description": "Labels, comma-separated (e.g. \"bug, urgent\")",
             "conditional": {
               "field": "action",
-              "value": ["ADD_LABELS", "REMOVE_LABELS", "CREATE_ISSUE", "UPDATE_ISSUE", "LIST_ISSUES"]
+              "value": [
+                "ADD_LABELS",
+                "REMOVE_LABELS",
+                "CREATE_ISSUE",
+                "UPDATE_ISSUE",
+                "LIST_ISSUES"
+              ]
             }
           },
           "assignees": {
@@ -240,7 +307,10 @@
             "description": "Usernames to assign, comma-separated",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_ISSUE", "UPDATE_ISSUE"]
+              "value": [
+                "CREATE_ISSUE",
+                "UPDATE_ISSUE"
+              ]
             }
           },
           "reviewers": {
@@ -255,7 +325,11 @@
           "reviewEvent": {
             "type": "string",
             "inputType": "select",
-            "options": ["APPROVE", "REQUEST_CHANGES", "COMMENT"],
+            "options": [
+              "APPROVE",
+              "REQUEST_CHANGES",
+              "COMMENT"
+            ],
             "description": "The review action (body is required for REQUEST_CHANGES and COMMENT)",
             "conditional": {
               "field": "action",
@@ -268,7 +342,13 @@
             "description": "The path to the file (or directory, for GET_REPO_CONTENTS)",
             "conditional": {
               "field": "action",
-              "value": ["GET_FILE_CONTENT", "GET_REPO_CONTENTS", "CREATE_FILE", "UPDATE_FILE", "DELETE_FILE"]
+              "value": [
+                "GET_FILE_CONTENT",
+                "GET_REPO_CONTENTS",
+                "CREATE_FILE",
+                "UPDATE_FILE",
+                "DELETE_FILE"
+              ]
             }
           },
           "content": {
@@ -277,7 +357,10 @@
             "description": "The content of the file",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_FILE", "UPDATE_FILE"]
+              "value": [
+                "CREATE_FILE",
+                "UPDATE_FILE"
+              ]
             }
           },
           "commitMessage": {
@@ -286,7 +369,11 @@
             "description": "The commit message",
             "conditional": {
               "field": "action",
-              "value": ["CREATE_FILE", "UPDATE_FILE", "DELETE_FILE"]
+              "value": [
+                "CREATE_FILE",
+                "UPDATE_FILE",
+                "DELETE_FILE"
+              ]
             }
           },
           "ref": {
@@ -296,7 +383,13 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["GET_FILE_CONTENT", "GET_REPO_CONTENTS", "GET_COMMIT", "GET_CHECK_RUNS", "TRIGGER_WORKFLOW"]
+              "value": [
+                "GET_FILE_CONTENT",
+                "GET_REPO_CONTENTS",
+                "GET_COMMIT",
+                "GET_CHECK_RUNS",
+                "TRIGGER_WORKFLOW"
+              ]
             }
           },
           "recursive": {
@@ -384,7 +477,10 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["TRIGGER_WORKFLOW", "LIST_WORKFLOW_RUNS"]
+              "value": [
+                "TRIGGER_WORKFLOW",
+                "LIST_WORKFLOW_RUNS"
+              ]
             }
           },
           "runId": {
@@ -394,7 +490,10 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["GET_WORKFLOW_RUN", "RERUN_WORKFLOW"]
+              "value": [
+                "GET_WORKFLOW_RUN",
+                "RERUN_WORKFLOW"
+              ]
             }
           },
           "workflowInputs": {
@@ -409,7 +508,14 @@
           "runStatus": {
             "type": "string",
             "inputType": "select",
-            "options": ["", "queued", "in_progress", "completed", "success", "failure"],
+            "options": [
+              "",
+              "queued",
+              "in_progress",
+              "completed",
+              "success",
+              "failure"
+            ],
             "description": "Filter workflow runs by status",
             "inputSize": "half",
             "conditional": {
@@ -423,13 +529,21 @@
             "description": "Search query using GitHub search syntax (e.g. \"is:open label:bug repo:owner/name\")",
             "conditional": {
               "field": "action",
-              "value": ["SEARCH_ISSUES", "SEARCH_CODE", "SEARCH_REPOS"]
+              "value": [
+                "SEARCH_ISSUES",
+                "SEARCH_CODE",
+                "SEARCH_REPOS"
+              ]
             }
           },
           "visibility": {
             "type": "string",
             "inputType": "select",
-            "options": ["all", "public", "private"],
+            "options": [
+              "all",
+              "public",
+              "private"
+            ],
             "description": "Filter repositories by visibility",
             "inputSize": "half",
             "conditional": {
@@ -463,7 +577,22 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["LIST_ISSUES", "LIST_COMMENTS", "LIST_PRS", "GET_PR_CHANGES", "LIST_PR_REVIEWS", "LIST_REPOS", "LIST_BRANCHES", "LIST_COMMITS", "LIST_RELEASES", "LIST_WORKFLOWS", "LIST_WORKFLOW_RUNS", "SEARCH_ISSUES", "SEARCH_CODE", "SEARCH_REPOS"]
+              "value": [
+                "LIST_ISSUES",
+                "LIST_COMMENTS",
+                "LIST_PRS",
+                "GET_PR_CHANGES",
+                "LIST_PR_REVIEWS",
+                "LIST_REPOS",
+                "LIST_BRANCHES",
+                "LIST_COMMITS",
+                "LIST_RELEASES",
+                "LIST_WORKFLOWS",
+                "LIST_WORKFLOW_RUNS",
+                "SEARCH_ISSUES",
+                "SEARCH_CODE",
+                "SEARCH_REPOS"
+              ]
             }
           },
           "page": {
@@ -473,7 +602,22 @@
             "inputSize": "half",
             "conditional": {
               "field": "action",
-              "value": ["LIST_ISSUES", "LIST_COMMENTS", "LIST_PRS", "GET_PR_CHANGES", "LIST_PR_REVIEWS", "LIST_REPOS", "LIST_BRANCHES", "LIST_COMMITS", "LIST_RELEASES", "LIST_WORKFLOWS", "LIST_WORKFLOW_RUNS", "SEARCH_ISSUES", "SEARCH_CODE", "SEARCH_REPOS"]
+              "value": [
+                "LIST_ISSUES",
+                "LIST_COMMENTS",
+                "LIST_PRS",
+                "GET_PR_CHANGES",
+                "LIST_PR_REVIEWS",
+                "LIST_REPOS",
+                "LIST_BRANCHES",
+                "LIST_COMMITS",
+                "LIST_RELEASES",
+                "LIST_WORKFLOWS",
+                "LIST_WORKFLOW_RUNS",
+                "SEARCH_ISSUES",
+                "SEARCH_CODE",
+                "SEARCH_REPOS"
+              ]
             }
           }
         },
@@ -493,5 +637,12 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "filesystem",
+      "network"
+    ],
+    "domains": []
+  }
 }

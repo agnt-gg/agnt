@@ -1,5 +1,5 @@
 /**
- * PRD-057: PluginAssetLoader
+ * ecosystem assets: PluginAssetLoader
  *
  * Tracks every plugin-installed asset (agents, workflows, skills, widgets,
  * AND tools) in `installed_plugin_assets` so uninstall and update flows can

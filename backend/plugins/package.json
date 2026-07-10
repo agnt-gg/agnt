@@ -4,9 +4,9 @@
   "description": "AGNT Plugin Build Tools",
   "type": "module",
   "scripts": {
-    "build": "node build-plugin.js",
-    "build:discord": "node build-plugin.js discord-plugin",
-    "list": "node build-plugin.js"
+    "build": "node cli/build-plugin.js",
+    "build:discord": "node cli/build-plugin.js discord-plugin",
+    "list": "node cli/build-plugin.js"
   },
   "dependencies": {
     "tar": "^6.2.0"

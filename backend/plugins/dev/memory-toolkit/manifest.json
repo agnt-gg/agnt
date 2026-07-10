@@ -340,5 +340,12 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "dynamic-import",
+      "env-access"
+    ],
+    "domains": []
+  }
 }

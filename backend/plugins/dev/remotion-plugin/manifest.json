@@ -89,7 +89,10 @@
           "skipInstall": {
             "type": "string",
             "inputType": "select",
-            "options": ["No", "Yes"],
+            "options": [
+              "No",
+              "Yes"
+            ],
             "default": "No",
             "description": "Skip `npm install` step (use if project already installed)"
           }
@@ -130,5 +133,13 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "env-access",
+      "filesystem",
+      "spawn-process"
+    ],
+    "domains": []
+  }
 }

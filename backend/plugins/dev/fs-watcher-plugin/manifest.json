@@ -29,7 +29,10 @@
             "inputType": "select",
             "required": false,
             "default": "Yes",
-            "options": ["Yes", "No"],
+            "options": [
+              "Yes",
+              "No"
+            ],
             "inputSize": "half",
             "description": "Watch subdirectories recursively (only applies to directories)."
           },
@@ -38,7 +41,10 @@
             "inputType": "select",
             "required": false,
             "default": "No",
-            "options": ["Yes", "No"],
+            "options": [
+              "Yes",
+              "No"
+            ],
             "inputSize": "half",
             "description": "Fire once immediately when the workflow starts."
           },
@@ -107,5 +113,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "filesystem"
+    ],
+    "domains": []
+  }
 }

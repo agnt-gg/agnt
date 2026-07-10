@@ -25,7 +25,10 @@
           "format": {
             "type": "string",
             "inputType": "select",
-            "options": ["Markdown", "HTML"],
+            "options": [
+              "Markdown",
+              "HTML"
+            ],
             "default": "Markdown",
             "description": "The desired output format"
           }
@@ -46,5 +49,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
 }

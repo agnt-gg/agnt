@@ -20,7 +20,17 @@
           "action": {
             "type": "string",
             "inputType": "select",
-            "options": ["PROMPT", "GET_JOB", "CANCEL_JOB", "GET_ACCOUNT", "LAUNCH_TOKEN", "CHECK_FEES", "CLAIM_FEES", "SIGN", "SUBMIT_TRANSACTION"],
+            "options": [
+              "PROMPT",
+              "GET_JOB",
+              "CANCEL_JOB",
+              "GET_ACCOUNT",
+              "LAUNCH_TOKEN",
+              "CHECK_FEES",
+              "CLAIM_FEES",
+              "SIGN",
+              "SUBMIT_TRANSACTION"
+            ],
             "default": "PROMPT",
             "description": "The action to perform on Bankr"
           },
@@ -61,7 +71,10 @@
             "description": "Max wait time for job completion in ms (default: 120000 = 2 min)",
             "conditional": {
               "field": "action",
-              "value": ["PROMPT", "LAUNCH_TOKEN"]
+              "value": [
+                "PROMPT",
+                "LAUNCH_TOKEN"
+              ]
             }
           },
           "jobId": {
@@ -70,7 +83,10 @@
             "description": "Job ID to check status or cancel",
             "conditional": {
               "field": "action",
-              "value": ["GET_JOB", "CANCEL_JOB"]
+              "value": [
+                "GET_JOB",
+                "CANCEL_JOB"
+              ]
             }
           },
           "name": {
@@ -94,12 +110,22 @@
           "chain": {
             "type": "string",
             "inputType": "select",
-            "options": ["base", "ethereum", "polygon", "unichain", "solana"],
+            "options": [
+              "base",
+              "ethereum",
+              "polygon",
+              "unichain",
+              "solana"
+            ],
             "default": "base",
             "description": "Blockchain network. Token launch supports base/solana. Sign supports base/ethereum/polygon/unichain. Submit supports all 5.",
             "conditional": {
               "field": "action",
-              "value": ["LAUNCH_TOKEN", "SIGN", "SUBMIT_TRANSACTION"]
+              "value": [
+                "LAUNCH_TOKEN",
+                "SIGN",
+                "SUBMIT_TRANSACTION"
+              ]
             }
           },
           "vaultPercent": {
@@ -151,13 +177,20 @@
             "description": "Token name to check or claim fees for",
             "conditional": {
               "field": "action",
-              "value": ["CHECK_FEES", "CLAIM_FEES"]
+              "value": [
+                "CHECK_FEES",
+                "CLAIM_FEES"
+              ]
             }
           },
           "signType": {
             "type": "string",
             "inputType": "select",
-            "options": ["message", "typedData", "transaction"],
+            "options": [
+              "message",
+              "typedData",
+              "transaction"
+            ],
             "default": "message",
             "description": "Type of data to sign",
             "conditional": {
@@ -310,5 +343,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
 }

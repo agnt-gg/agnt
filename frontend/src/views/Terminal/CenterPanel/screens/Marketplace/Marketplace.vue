@@ -260,9 +260,21 @@
                         </div>
                       </div>
 
-                      <div class="workflow-info">
-                        <div class="workflow-title-row">
+                      <div class="workflow-info">                        <div class="workflow-title-row">
                           <h3 class="workflow-name">{{ workflow.title }}</h3>
+                          <!-- trust system: pre-install trust badge for plugin items -->
+                          <Tooltip
+                            v-if="pluginTrust(workflow)"
+                            :title="trustTierLabel(pluginTrust(workflow).trustTier)"
+                            :text="trustTooltipText(pluginTrust(workflow))"
+                            position="top"
+                            width="300px"
+                          >
+                            <span class="trust-badge" :class="'trust-' + pluginTrust(workflow).trustTier">
+                              <span class="trust-dot"></span>
+                              {{ pluginTrust(workflow).trustTier }}
+                            </span>
+                          </Tooltip>
                           <span v-if="workflow.price > 0" class="workflow-price">${{ workflow.price.toFixed(2) }}</span>
                           <span v-else class="workflow-price free">FREE</span>
                         </div>
@@ -367,9 +379,21 @@
                               </div>
                             </div>
 
-                            <div class="workflow-info">
-                              <div class="workflow-title-row">
+                            <div class="workflow-info">                              <div class="workflow-title-row">
                                 <h3 class="workflow-name">{{ workflow.title }}</h3>
+                                <!-- trust system: pre-install trust badge for plugin items -->
+                                <Tooltip
+                                  v-if="pluginTrust(workflow)"
+                                  :title="trustTierLabel(pluginTrust(workflow).trustTier)"
+                                  :text="trustTooltipText(pluginTrust(workflow))"
+                                  position="top"
+                                  width="300px"
+                                >
+                                  <span class="trust-badge" :class="'trust-' + pluginTrust(workflow).trustTier">
+                                    <span class="trust-dot"></span>
+                                    {{ pluginTrust(workflow).trustTier }}
+                                  </span>
+                                </Tooltip>
                                 <span v-if="workflow.price > 0" class="workflow-price">${{ workflow.price.toFixed(2) }}</span>
                                 <span v-else class="workflow-price free">FREE</span>
                               </div>
@@ -436,14 +460,15 @@ import { ref, computed, nextTick, inject, watch, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import BaseScreen from '../../BaseScreen.vue';
 import BaseTabControls from '../../../_components/BaseTabControls.vue';
-import BaseTable from '../../../_components/BaseTable.vue';
-import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import BaseTable from '../../../_components/BaseTable.vue';import SimpleModal from '@/views/_components/common/SimpleModal.vue';
 import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
+import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
+import { API_CONFIG } from '@/tt.config.js';
 import { useMarketplaceTutorial } from './useMarketplaceTutorial.js';
 
 export default {
   name: 'MarketplaceScreen',
-  components: { BaseScreen, BaseTabControls, BaseTable, SimpleModal, PopupTutorial },
+  components: { BaseScreen, BaseTabControls, BaseTable, SimpleModal, PopupTutorial, Tooltip },
   emits: ['screen-change'],
   setup(props, { emit }) {
     // Initialize tutorial
@@ -456,9 +481,63 @@ export default {
     const selectedWorkflow = ref(null);
     const activeTab = ref('all');
     const currentLayout = ref('grid');
-    const hideEmptyCategories = ref(true);
-    const collapsedCategories = ref(new Set());
+    const hideEmptyCategories = ref(true);    const collapsedCategories = ref(new Set());
     const selectedCategory = ref('all');
+
+    // trust system Layer 6: trust metadata for plugin cards, keyed by plugin
+    // name. Sourced from the local bundled marketplace records (stamped at
+    // build time); remote-only plugins have no trust data until the 0.7.0
+    // marketplace API carries hashes — their cards simply show no badge.
+    const pluginTrustMap = ref({});
+
+    async function loadPluginTrust() {
+      try {
+        const resp = await fetch(`${API_CONFIG.BASE_URL}/plugins/marketplace`);
+        const data = await resp.json();
+        const map = {};
+        for (const p of data.plugins || []) {
+          if (p.trustTier) {
+            map[p.name] = {
+              trustTier: p.trustTier,
+              declaredPermissions: p.declaredPermissions || [],
+              detectedCapabilities: p.detectedCapabilities || [],
+            };
+          }
+        }
+        pluginTrustMap.value = map;
+      } catch (err) {
+        console.warn('[Marketplace] Plugin trust metadata unavailable:', err.message);
+      }
+    }
+
+    function pluginTrust(item) {
+      if ((item.asset_type || 'workflow') !== 'plugin') return null;
+      return pluginTrustMap.value[item.asset_id] || pluginTrustMap.value[item.name] || null;
+    }
+
+    function trustTierLabel(tier) {
+      if (tier === 'official') return 'Official — built & maintained by AGNT';
+      if (tier === 'community') return 'Community — verified & fully declared';
+      if (tier === 'unverified') return 'Unverified — undeclared capabilities';
+      return 'Unaudited — could not be scanned';
+    }
+
+    function trustTooltipText(trust) {
+      const parts = [];
+      if (trust.trustTier === 'official') {
+        parts.push('First-party AGNT plugin — built, scanned, and integrity-tracked by the AGNT team.');
+      } else if (trust.trustTier === 'community') {
+        parts.push('This plugin is integrity-tracked and every capability it uses is declared by its author.');
+      } else if (trust.trustTier === 'unverified') {
+        parts.push('This plugin uses capabilities its author has not declared yet.');
+      } else {
+        parts.push('This plugin could not be scanned.');
+      }
+      parts.push('Package will be verified against its marketplace record during installation.');
+      const caps = (trust.declaredPermissions.length && trust.declaredPermissions) || trust.detectedCapabilities;
+      if (caps.length) parts.push('Requests: ' + caps.join(', ') + '.');
+      return parts.join(' ');
+    }
 
     // Define table columns
     const tableColumns = [
@@ -1311,22 +1390,24 @@ export default {
       setTimeout(() => {
         initializeMarketplaceTutorial();
       }, 2000);
-    };
-
-    onMounted(() => {
+    };    onMounted(() => {
       // Load confetti library if not already loaded
       if (!window.confetti) {
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js';
         document.head.appendChild(script);
       }
-    });
 
-    return {
+      // trust system: trust metadata for plugin card badges (non-blocking)
+      loadPluginTrust();
+    });    return {
       baseScreenRef,
       simpleModal,
       terminalLines,
       selectedWorkflow,
+      pluginTrust,
+      trustTierLabel,
+      trustTooltipText,
       activeTab,
       currentLayout,
       tabs,
@@ -1376,6 +1457,46 @@ export default {
 </script>
 
 <style scoped>
+/* trust system Layer 6: trust tier badge (display-only) */
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.trust-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.trust-badge.trust-official {
+  color: var(--color-green);
+  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.trust-badge.trust-community {
+  color: var(--color-green);
+  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.trust-badge.trust-unverified {
+  color: var(--color-yellow);
+  background: color-mix(in srgb, var(--color-yellow) 12%, transparent);
+}
+
+.trust-badge.trust-unaudited {
+  color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+}
+
 .marketplace-panel {
   position: relative;
   top: 0;

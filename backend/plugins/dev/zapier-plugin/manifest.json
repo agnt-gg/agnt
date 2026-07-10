@@ -25,7 +25,11 @@
           "authType": {
             "type": "string",
             "inputType": "select",
-            "options": ["None", "Basic", "Bearer"],
+            "options": [
+              "None",
+              "Basic",
+              "Bearer"
+            ],
             "default": "Bearer",
             "description": "Authentication method (recommended: Bearer for security)"
           },
@@ -35,7 +39,9 @@
             "description": "Secret token to verify requests from Zapier. Generate a random string and add it to your Zap's headers as 'Authorization: Bearer YOUR_TOKEN'",
             "conditional": {
               "field": "authType",
-              "value": ["Bearer"]
+              "value": [
+                "Bearer"
+              ]
             }
           },
           "username": {
@@ -122,5 +128,13 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "dynamic-import",
+      "env-access",
+      "network"
+    ],
+    "domains": []
+  }
 }

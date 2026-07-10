@@ -29,35 +29,56 @@
           "duration": {
             "type": "number",
             "inputType": "select",
-            "options": [5, 10, 15, 20],
+            "options": [
+              5,
+              10,
+              15,
+              20
+            ],
             "default": 5,
             "description": "Clip length in seconds"
           },
           "resolution": {
             "type": "string",
             "inputType": "select",
-            "options": ["480p", "720p", "1080p"],
+            "options": [
+              "480p",
+              "720p",
+              "1080p"
+            ],
             "default": "1080p",
             "description": "Output resolution. Cost per second: 480p=$0.067, 720p=$0.151, 1080p=$0.340"
           },
           "aspectRatio": {
             "type": "string",
             "inputType": "select",
-            "options": ["9:16", "16:9", "1:1", "4:3", "3:4"],
+            "options": [
+              "9:16",
+              "16:9",
+              "1:1",
+              "4:3",
+              "3:4"
+            ],
             "default": "9:16",
             "description": "9:16 for Reels/Shorts, 16:9 for YouTube, 1:1 for feed posts"
           },
           "useFastTier": {
             "type": "string",
             "inputType": "select",
-            "options": ["No", "Yes"],
+            "options": [
+              "No",
+              "Yes"
+            ],
             "default": "No",
             "description": "Use Seedance 2.0 Fast model (cheaper, lower fidelity)"
           },
           "generateAudio": {
             "type": "string",
             "inputType": "select",
-            "options": ["No", "Yes"],
+            "options": [
+              "No",
+              "Yes"
+            ],
             "default": "No",
             "description": "Enable Seedance 2.0 native audio-video joint generation (ambient sound and effects)"
           },
@@ -93,7 +114,13 @@
           "referencePayloadMode": {
             "type": "string",
             "inputType": "select",
-            "options": ["auto", "openrouter-normalized", "provider-lists", "content-array", "raw-only"],
+            "options": [
+              "auto",
+              "openrouter-normalized",
+              "provider-lists",
+              "content-array",
+              "raw-only"
+            ],
             "default": "auto",
             "description": "Advanced: payload shape used to submit references. 'auto' tries openrouter-normalized first, then provider-lists if the provider rejects unknown reference fields (only retries on pre-job validation errors). 'raw-only' sends only core params plus rawPassthroughJson."
           },
@@ -110,7 +137,10 @@
           "includeDebugRequest": {
             "type": "string",
             "inputType": "select",
-            "options": ["No", "Yes"],
+            "options": [
+              "No",
+              "Yes"
+            ],
             "default": "No",
             "description": "Advanced: return a redacted summary of the actual request body (auth removed, signed URLs shortened) for debugging unknown-field errors."
           },
@@ -192,5 +222,13 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "env-access",
+      "filesystem",
+      "network"
+    ],
+    "domains": []
+  }
 }

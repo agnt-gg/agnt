@@ -20,7 +20,14 @@
           "action": {
             "type": "string",
             "inputType": "select",
-            "options": ["SEND_MESSAGE", "REPLY_TO_THREAD", "GET_CHANNELS", "GET_USERS", "UPLOAD_FILE", "ADD_REACTION"],
+            "options": [
+              "SEND_MESSAGE",
+              "REPLY_TO_THREAD",
+              "GET_CHANNELS",
+              "GET_USERS",
+              "UPLOAD_FILE",
+              "ADD_REACTION"
+            ],
             "description": "The action to perform on Slack"
           },
           "channelId": {
@@ -29,7 +36,12 @@
             "description": "The ID of the Slack channel",
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE", "REPLY_TO_THREAD", "UPLOAD_FILE", "ADD_REACTION"]
+              "value": [
+                "SEND_MESSAGE",
+                "REPLY_TO_THREAD",
+                "UPLOAD_FILE",
+                "ADD_REACTION"
+              ]
             }
           },
           "message": {
@@ -38,7 +50,11 @@
             "description": "The message to send",
             "conditional": {
               "field": "action",
-              "value": ["SEND_MESSAGE", "REPLY_TO_THREAD", "UPLOAD_FILE"]
+              "value": [
+                "SEND_MESSAGE",
+                "REPLY_TO_THREAD",
+                "UPLOAD_FILE"
+              ]
             }
           },
           "threadTs": {
@@ -47,7 +63,10 @@
             "description": "The timestamp of the parent message to reply to (for REPLY_TO_THREAD) or react to (for ADD_REACTION)",
             "conditional": {
               "field": "action",
-              "value": ["REPLY_TO_THREAD", "ADD_REACTION"]
+              "value": [
+                "REPLY_TO_THREAD",
+                "ADD_REACTION"
+              ]
             }
           },
           "emoji": {
@@ -83,7 +102,10 @@
             "description": "Maximum number of results to return (for GET_CHANNELS and GET_USERS)",
             "conditional": {
               "field": "action",
-              "value": ["GET_CHANNELS", "GET_USERS"]
+              "value": [
+                "GET_CHANNELS",
+                "GET_USERS"
+              ]
             }
           }
         },
@@ -167,5 +189,11 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
 }

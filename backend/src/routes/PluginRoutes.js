@@ -185,7 +185,7 @@ router.get('/installed/:name/source', authenticateToken, async (req, res) => {
       }
     }
 
-    // PRD-057: also read ecosystem-asset subdirectories so the Plugin Builder
+    // ecosystem assets: also read ecosystem-asset subdirectories so the Plugin Builder
     // can browse/edit bundled agents/workflows/skills/widgets/tools. Without
     // this, ecosystem plugins look empty in the editor.
     const assetDirs = ['agents', 'workflows', 'skills', 'widgets', 'tools'];
@@ -414,7 +414,7 @@ router.post('/install-file', async (req, res) => {
 
 /**
  * DELETE /api/plugins/:name?mode=clean|purge|detach
- * PRD-057: Uninstall a plugin in one of three asset-handling modes.
+ * ecosystem assets: Uninstall a plugin in one of three asset-handling modes.
  *   - clean (default): preserve user-modified assets as orphans
  *   - purge: delete all plugin-installed assets regardless of modification
  *   - detach: keep all assets, just unregister the plugin
@@ -456,7 +456,7 @@ router.delete('/:name', async (req, res) => {
 
 /**
  * GET /api/plugins/:name/assets
- * PRD-057: Inspect what ecosystem assets a plugin currently owns. Useful for
+ * ecosystem assets: Inspect what ecosystem assets a plugin currently owns. Useful for
  * the uninstall confirmation modal so the user can see what will be deleted
  * vs preserved.
  */
@@ -772,7 +772,7 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
       // Write manifest.json
       await fs.writeFile(path.join(tempPluginDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-      // PRD-057: source endpoint can return ecosystem-asset paths like
+      // ecosystem assets: source endpoint can return ecosystem-asset paths like
       // "agents/koder-kai.json", so ensure the parent dir exists before writing
       // each file. Without this, a flat fs.writeFile fails with ENOENT.
       for (const [fileName, code] of Object.entries(toolCode)) {
@@ -820,7 +820,7 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
         }
       }
 
-      // PRD-057: include ecosystem-asset directories so packs with agents,
+      // ecosystem assets: include ecosystem-asset directories so packs with agents,
       // workflows, skills, widgets, or tools round-trip correctly through the
       // regenerate → build flow.
       for (const dir of ['agents', 'workflows', 'skills', 'widgets', 'tools']) {
@@ -894,7 +894,7 @@ router.post('/build-generated', authenticateToken, async (req, res) => {
 });
 
 // ============================================================================
-// PRD-057: BUNDLE-AS-PLUGIN AUTHORING
+// ecosystem assets: BUNDLE-AS-PLUGIN AUTHORING
 // ============================================================================
 
 /**
@@ -999,7 +999,7 @@ router.post('/bundle-from-assets', authenticateToken, async (req, res) => {
 
 /**
  * POST /api/plugins/install-file/check-auth
- * PRD-057: Inspect an .agnt archive's manifest and return the list of
+ * ecosystem assets: Inspect an .agnt archive's manifest and return the list of
  * authProvider declarations across its tools so the install UI can prompt
  * the user to configure missing providers before completing extraction.
  *
@@ -1052,6 +1052,169 @@ router.post('/install-file/check-auth', authenticateToken, async (req, res) => {
 // ============================================================================
 // PLUGIN RELOAD
 // ============================================================================
+
+// ============================================================================
+// PRE-INSTALL INSPECTION (trust system Layer 1)
+// ============================================================================
+
+/**
+ * GET /api/plugins/inspect/:name
+ * Download + scan a marketplace package WITHOUT installing it. Returns the
+ * disclosure report the install-consent modal renders: integrity state,
+ * detected capabilities (with file:line evidence), declared permissions,
+ * undeclared diff, and the trust tier the plugin would receive.
+ */
+router.get('/inspect/:name', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const report = await PluginInstaller.inspectMarketplacePlugin(name);
+    res.json(report);
+  } catch (error) {
+    console.error('[PluginRoutes] Error inspecting plugin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});// ============================================================================
+// GITHUB ESCAPE HATCH (trust system W4)
+// ============================================================================
+
+/**
+ * POST /api/plugins/install-github
+ * Body: { name, repo: "owner/repo", mode?, asset?, subdir?, ref?,
+ *         confirmRedirect?, acceptedPermissions? }
+ * Pull a plugin directly from GitHub through the same staged/validated/
+ * permission-gated install path. Returns { requiresConfirmation } on a
+ * moved repo and { requiresConsent } on permission escalation.
+ */
+router.post('/install-github', async (req, res) => {
+  try {
+    const { name, repo, mode, asset, subdir, ref, confirmRedirect, acceptedPermissions } = req.body || {};
+    if (!name || !repo) {
+      return res.status(400).json({ success: false, error: 'name and repo are required' });
+    }
+    const result = await PluginInstaller.installFromGitHub(name, { repo, mode, asset, subdir, ref, confirmRedirect, acceptedPermissions });
+    if (result.success) {
+      const reloadResults = await reloadAllPlugins();
+      result.reloadStatus = reloadResults;
+      broadcast(RealtimeEvents.PLUGIN_INSTALLED, { name, version: result.version, source: 'github', timestamp: new Date().toISOString() });
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('[PluginRoutes] GitHub install error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// UPDATE SETTINGS & POLICY (trust system W8)
+// ============================================================================
+
+/** GET /api/plugins/update-settings */
+router.get('/update-settings', async (req, res) => {
+  try {
+    if (!PluginInstaller.updateScheduler) {
+      const { default: UpdateScheduler } = await import('../plugins/UpdateScheduler.js');
+      PluginInstaller.updateScheduler = new UpdateScheduler(PluginInstaller);
+    }
+    res.json({ success: true, settings: await PluginInstaller.updateScheduler.getSettings() });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /api/plugins/update-settings  { autoCheck?, intervalHours? } */
+router.post('/update-settings', async (req, res) => {
+  try {
+    if (!PluginInstaller.updateScheduler) {
+      const { default: UpdateScheduler } = await import('../plugins/UpdateScheduler.js');
+      PluginInstaller.updateScheduler = new UpdateScheduler(PluginInstaller);
+    }
+    const settings = await PluginInstaller.updateScheduler.setSettings(req.body || {});
+    res.json({ success: true, settings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/plugins/update-policy/:name  { policy: 'auto'|'notify'|'pinned' }
+ * Per-plugin auto-update policy, stored on the registry entry (merge
+ * semantics preserve it across installs/updates).
+ */
+router.post('/update-policy/:name', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const { policy } = req.body || {};
+    if (!['auto', 'notify', 'pinned'].includes(policy)) {
+      return res.status(400).json({ success: false, error: "policy must be 'auto', 'notify', or 'pinned'" });
+    }
+    const fsp = await import('fs/promises');
+    const registry = JSON.parse(await fsp.readFile(PluginInstaller.registryPath, 'utf-8'));
+    const entry = (registry.plugins || []).find((p) => p.name === name);
+    if (!entry) return res.status(404).json({ success: false, error: `Plugin '${name}' is not installed` });
+    entry.updatePolicy = policy;
+    await PluginInstaller.writeRegistryAtomic(registry);
+    res.json({ success: true, name, policy });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// UPDATES (trust system Layer 3)
+// ============================================================================
+
+/**
+ * GET /api/plugins/updates
+ * Compare every installed plugin's version against the marketplace catalog.
+ * Non-semver installed versions ('local', 'latest', 'unknown') surface as
+ * status "unknown-version" — never compared, never auto-updated over.
+ */
+router.get('/updates', async (req, res) => {
+  try {
+    const result = await PluginInstaller.checkForUpdates();
+    res.json(result);
+  } catch (error) {
+    console.error('[PluginRoutes] Error checking for updates:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/plugins/update/:name
+ * Update a single plugin via the staged-install path (stage → validate →
+ * permission-diff gate → atomic swap). An update that requests NEW
+ * permissions returns { requiresConsent: true, permissionDiff } and changes
+ * nothing on disk until re-called with { acceptedPermissions: true }.
+ *
+ * Body: { acceptedPermissions?: boolean }
+ */
+router.post('/update/:name', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const { acceptedPermissions = false } = req.body || {};
+
+    console.log(`[PluginRoutes] Updating plugin: ${name}`);
+    const result = await PluginInstaller.updatePlugin(name, { acceptedPermissions });
+
+    if (result.success) {
+      // Reload all plugin processes and wait for completion
+      const reloadResults = await reloadAllPlugins();
+      result.reloadStatus = reloadResults;
+
+      broadcast(RealtimeEvents.PLUGIN_INSTALLED, {
+        name,
+        version: result.version,
+        updated: true,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('[PluginRoutes] Error updating plugin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 /**
  * POST /api/plugins/reload

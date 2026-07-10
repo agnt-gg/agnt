@@ -186,7 +186,7 @@ The `dev/crabbox-plugin/` source is a worked example of all of the above.
 ## 8. Building & the .agnt artifact
 
 ```bash
-node build-plugin.js <path-to-your-plugin-folder>   # → plugin-builds/<name>.agnt
+node cli/build-plugin.js <path-to-your-plugin-folder>   # → plugin-builds/<name>.agnt
 ```
 
 `build-plugin.js` accepts either a **folder name inside `./dev`** (the

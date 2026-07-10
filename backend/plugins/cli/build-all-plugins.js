@@ -7,7 +7,7 @@
  * Each plugin gets its dependencies installed and packaged with node_modules.
  *
  * Usage:
- *   node build-all-plugins.js
+ *   node cli/build-all-plugins.js
  *
  * Output:
  *   plugin-builds/<plugin-name>.agnt for each plugin
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PLUGINS_DIR = path.join(__dirname, 'dev');
+const PLUGINS_DIR = path.join(__dirname, '../dev');
 const BUILD_SCRIPT = path.join(__dirname, 'build-plugin.js');
 
 async function buildAllPlugins() {
