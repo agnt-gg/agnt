@@ -29,6 +29,16 @@ import crypto from 'crypto';
 // Manifest / directory validation (the NeuralForge-class checks)
 // ---------------------------------------------------------------------------
 
+function resolveContainedManifestPath(rootDir, manifestPath) {
+  const raw = String(manifestPath || '').trim();
+  if (!raw || path.isAbsolute(raw) || path.win32.isAbsolute(raw)) return null;
+
+  const root = path.resolve(rootDir);
+  const target = path.resolve(root, raw.replace(/^\.([/\\])/, ''));
+  if (target === root || !target.startsWith(`${root}${path.sep}`)) return null;
+  return target;
+}
+
 /**
  * Validate an extracted plugin directory: manifest shape, declared tools'
  * entryPoint files, and ecosystem asset files.
@@ -99,8 +109,10 @@ export async function validateManifestAssets(dir, opts = {}) {
       errors.push(`tool "${tool.type}" missing required "entryPoint"`);
       continue;
     }
-    const abs = path.join(dir, String(tool.entryPoint).replace(/^\.\//, ''));
-    if (!fs.existsSync(abs)) {
+    const abs = resolveContainedManifestPath(dir, tool.entryPoint);
+    if (!abs) {
+      errors.push(`tool "${tool.type}" references unsafe path: ${tool.entryPoint}`);
+    } else if (!fs.existsSync(abs)) {
       errors.push(`tool "${tool.type}" references missing file: ${tool.entryPoint}`);
     }
     if (!tool.schema || typeof tool.schema !== 'object') {
@@ -133,8 +145,10 @@ export async function validateManifestAssets(dir, opts = {}) {
         errors.push(`${kind} entry "${entry.slug}" missing required "${fileKey}"`);
         continue;
       }
-      const abs = path.join(dir, String(rel).replace(/^\.\//, ''));
-      if (!fs.existsSync(abs)) {
+      const abs = resolveContainedManifestPath(dir, rel);
+      if (!abs) {
+        errors.push(`${kind} entry "${entry.slug}" references unsafe path: ${rel}`);
+      } else if (!fs.existsSync(abs)) {
         // A MISSING ecosystem-asset file: hard error at build/publish, but a
         // tolerated warning at install (the old installer skipped it).
         const msg = `${kind} entry "${entry.slug}" references missing file: ${rel}`;
