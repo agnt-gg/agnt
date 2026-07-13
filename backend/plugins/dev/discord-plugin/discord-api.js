@@ -819,6 +819,33 @@ class DiscordAPI {
    * You can also pass an explicit conversationId to override.
    */
   async orchestratorChat(params, workflowEngine) {
+    // Default strict tool surface for Discord DM turns. The backend adds its
+    // universal tools on top. Override with the enabledTools param
+    // (comma-separated tool names), or pass 'all' to disable filtering and
+    // send the full tool surface (old behavior).
+    const DEFAULT_DM_TOOLS = [
+      'discord_api',
+      'generate_image',
+      'analyze_image',
+      'web_search',
+      'web_scrape',
+      'file_operations',
+      'execute_javascript_code',
+      'execute_shell_command',
+      'atlas_image',
+      'atlas_video',
+      'atlas_upload',
+      'text_to_speech',
+    ];
+    function resolveDmEnabledTools(raw) {
+      if (raw === 'all' || raw === '*') return undefined; // no filtering
+      if (Array.isArray(raw) && raw.length) return raw.map((s) => String(s).trim()).filter(Boolean);
+      if (typeof raw === 'string' && raw.trim()) {
+        return raw.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+      return DEFAULT_DM_TOOLS;
+    }
+
     const message = params.message || params.orchestratorMessage;
     if (!message || !String(message).trim()) {
       throw new Error('ORCHESTRATOR_CHAT requires a message.');
@@ -848,6 +875,14 @@ class DiscordAPI {
       provider: params.provider || undefined,
       model: params.orchestratorModel || undefined,
       timeoutMs: params.timeoutMs ? Number(params.timeoutMs) : 180000,
+      // LIVE history: hand the bridge the bot token + channel so it fetches
+      // the ACTUAL messages in the DM from Discord itself. Deleted messages
+      // vanish from context; no local transcript files.
+      botToken: (params.__auth && params.__auth.token) || undefined,
+      channelId: (params.channelId && String(params.channelId).trim()) || undefined,
+      // STRICT tool whitelist for DM turns (token cost + small-context models).
+      // Configurable via the enabledTools param; 'all' disables filtering.
+      enabledTools: resolveDmEnabledTools(params.enabledTools),
     });
 
     return {
@@ -894,7 +929,21 @@ class DiscordAPI {
     // ---- single ----
     if (mode === 'single') {
       const messageId = String(params.messageId || '').trim();
-      if (!messageId) throw new Error("DELETE_MESSAGE mode='single' requires messageId.");
+      if (!messageId) {
+        // No messageId supplied — there is nothing to delete. Return a
+        // successful, TERMINAL no-op rather than throwing: a thrown error
+        // reads to an LLM caller as "retry", which can cause a delete-attempt
+        // loop. A clean skip result gives it nothing to retry against.
+        return {
+          success: true,
+          result: {
+            deleted: false,
+            skipped: true,
+            reason: "DELETE_MESSAGE mode='single' called without a messageId; nothing to delete.",
+          },
+          error: null,
+        };
+      }
 
       let msg;
       try {

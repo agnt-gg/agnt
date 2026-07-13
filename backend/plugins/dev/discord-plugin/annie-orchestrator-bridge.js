@@ -51,7 +51,23 @@ const ORCH_PATH = '/api/orchestrator/agent-chat';
 const HISTORY_DIR = path.join(os.tmpdir(), 'agnt-discord-bridge-history');
 // Cap replayed history so we never blow the context window. Older turns drop off
 // the front; the orchestrator's own context manager handles the rest.
-const MAX_HISTORY_MESSAGES = 40;
+const MAX_HISTORY_MESSAGES = 100;
+// Chunked eviction: when the transcript exceeds MAX_HISTORY_MESSAGES, cut it
+// down to (MAX - EVICTION_CHUNK) in ONE go instead of sliding the window by one
+// pair every turn. A per-turn sliding window shifts history[0] on every message
+// once the cap is hit, which permanently busts the LLM prompt-cache prefix
+// (every turn becomes a cache miss on the history block). Chunked eviction
+// keeps the prefix byte-stable for ~EVICTION_CHUNK/2 turns between cuts, so
+// cache hits keep landing the vast majority of the time.
+const EVICTION_CHUNK = 20;
+
+function trimHistory(messages) {
+  if (messages.length <= MAX_HISTORY_MESSAGES) return messages;
+  let trimmed = messages.slice(-(MAX_HISTORY_MESSAGES - EVICTION_CHUNK));
+  // Keep role alternation sane: replayed history should start on a user turn.
+  while (trimmed.length && trimmed[0].role !== 'user') trimmed = trimmed.slice(1);
+  return trimmed;
+}
 
 function historyFilePath(conversationId) {
   const safe = String(conversationId).replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -71,8 +87,8 @@ function loadHistory(conversationId) {
 function saveHistory(conversationId, messages) {
   try {
     fs.mkdirSync(HISTORY_DIR, { recursive: true });
-    // Keep only the last MAX_HISTORY_MESSAGES to bound file + context size.
-    const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
+    // Chunked-evict to bound file + context size while keeping a cache-stable prefix.
+    const trimmed = trimHistory(messages);
     fs.writeFileSync(historyFilePath(conversationId), JSON.stringify(trimmed), 'utf8');
   } catch (err) {
     // Non-fatal — memory just won't persist this turn.
@@ -91,6 +107,45 @@ export function clearHistory(conversationId) {
   } catch {
     return false;
   }
+}
+
+/**
+ * LIVE HISTORY — fetch the ACTUAL messages currently in a Discord channel/DM
+ * via REST and shape them into orchestrator history. Discord itself is the
+ * single source of truth: if a message is deleted in the DM, it no longer
+ * exists in context. Nothing is persisted locally in this mode.
+ */
+const LIVE_HISTORY_LIMIT = 30;
+const LIVE_MSG_CHAR_CAP = 4000;
+
+export async function fetchDiscordHistory(botToken, channelId, { limit = LIVE_HISTORY_LIMIT } = {}) {
+  const capped = Math.min(Math.max(Number(limit) || LIVE_HISTORY_LIMIT, 1), 100);
+  const res = await fetch(
+    `https://discord.com/api/v10/channels/${channelId}/messages?limit=${capped}`,
+    { headers: { Authorization: `Bot ${botToken}` } }
+  );
+  if (!res.ok) {
+    const errText = await res.text().then((t) => t.slice(0, 200)).catch(() => '');
+    throw new Error(`Discord history fetch failed: ${res.status} ${errText}`);
+  }
+  const raw = await res.json(); // Discord returns newest -> oldest
+  const msgs = [];
+  for (const m of raw.reverse()) {
+    let text = (m.content || '').trim();
+    if (Array.isArray(m.attachments) && m.attachments.length) {
+      const names = m.attachments.map((a) => a.filename).join(', ');
+      text = text ? `${text}\n[attachments: ${names}]` : `[attachments: ${names}]`;
+    }
+    if (!text) continue;
+    if (text.length > LIVE_MSG_CHAR_CAP) text = text.slice(0, LIVE_MSG_CHAR_CAP) + ' …[truncated]';
+    const role = m.author && m.author.bot ? 'assistant' : 'user';
+    const prev = msgs[msgs.length - 1];
+    if (prev && prev.role === role) prev.content += '\n' + text; // merge consecutive same-role
+    else msgs.push({ role, content: text });
+  }
+  // Replayed history must start on a user turn for strict providers.
+  while (msgs.length && msgs[0].role !== 'user') msgs.shift();
+  return msgs;
 }
 
 /**
@@ -213,10 +268,46 @@ function parseSSEFrame(frame) {
     throw new Error('askOrchestrator: no auth token available (pass authToken or userId so one can be minted).');
   }  const url = `http://localhost:${port}${ORCH_PATH}`;
 
-  // Load prior transcript so the orchestrator sees full multi-turn context.
-  const priorHistory = loadHistory(conversationId);
+  // History source:
+  //   LIVE (preferred) — botToken + resolvable channelId: fetch the ACTUAL
+  //   messages currently in the Discord channel. Discord is the single source
+  //   of truth — deleted messages disappear from context, nothing persisted.
+  //   LEGACY fallback — non-Discord callers with no channel: temp-file transcript.
+  const liveChannelId =
+    opts.channelId ||
+    (/^discord-dm-(\d+)$/.exec(String(conversationId)) || [])[1] ||
+    null;
+
+  let priorHistory = [];
+  let liveMode = false;
+  if (opts.botToken && liveChannelId) {
+    liveMode = true; // live mode even on fetch failure — NEVER fall back to stale local files
+    try {
+      priorHistory = await fetchDiscordHistory(opts.botToken, liveChannelId, { limit: opts.historyLimit });
+      // The newest channel message is (usually) the one that triggered this
+      // call — the wrapped prompt already contains it verbatim, so drop it
+      // from history to avoid sending it twice.
+      const last = priorHistory[priorHistory.length - 1];
+      if (last && last.role === 'user' && message.includes(last.content.slice(0, 200))) {
+        priorHistory.pop();
+      }
+    } catch (err) {
+      console.warn('[AnnieBridge] Live Discord history fetch failed, using EMPTY history:', err.message);
+      priorHistory = [];
+    }
+  } else {
+    priorHistory = loadHistory(conversationId);
+  }
 
   const body = { message, conversationId, history: priorHistory };
+
+  // STRICT TOOL WHITELIST: when provided, the backend hard-filters the tool
+  // surface to exactly this list (+ a few universal tools). This is what keeps
+  // DM turns lean (~tool schemas are the single biggest token payload) and
+  // keeps smaller-context models (e.g. Grok 128k) under their window.
+  if (Array.isArray(opts.enabledTools) && opts.enabledTools.length > 0) {
+    body.enabledTools = opts.enabledTools;
+  }
   if (provider) body.provider = provider;
   if (model) body.model = model;
 
@@ -320,8 +411,9 @@ function parseSSEFrame(frame) {
     throw new Error(`Orchestrator stream error: ${streamError}`);
   }  const reply = (finalText || accumulated || '').trim();
 
-  // Persist this turn (user + assistant) so the next call has memory.
-  if (reply) {
+  // LEGACY mode only: persist this turn to the temp transcript. In live mode
+  // Discord itself is the transcript — nothing is ever written to disk.
+  if (reply && !liveMode) {
     const updated = [
       ...priorHistory,
       { role: 'user', content: message },

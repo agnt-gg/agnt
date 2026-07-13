@@ -11,6 +11,11 @@ class DiscordReceiver extends EventEmitter {
   constructor() {
     super();
     this.name = 'receive-discord-message';
+    // All live clients across all workflows using this trigger type. Needed so
+    // plugin-level teardown (uninstall/shutdown) can destroy everything, while
+    // each workflow's own stop destroys only its own client.
+    this.clients = new Set();
+    // Most recent client - kept only for the legacy banUser/unbanUser helpers.
     this.client = null;
   }
 
@@ -31,8 +36,14 @@ class DiscordReceiver extends EventEmitter {
         throw new Error('Not connected to Discord. Connect in Settings → Connections.');
       }
 
-      // Create Discord client
-      this.client = new Client({
+      // Create an ISOLATED Discord client for THIS workflow's trigger node.
+      // The previous shared this.client design meant tearing down any ONE
+      // discord workflow destroyed the MOST RECENTLY ARMED workflow's client
+      // (cross-kill): stopping workflow A silently deafened workflow B while
+      // it stayed "listening" in the DB. One client per workflow ends that
+      // entire bug class - stop/start/reload of one workflow can no longer
+      // affect any other workflow's live gateway connection.
+      const client = new Client({
         intents: [
           GatewayIntentBits.Guilds,
           GatewayIntentBits.GuildMessages,
@@ -45,14 +56,30 @@ class DiscordReceiver extends EventEmitter {
         partials: [Partials.Channel],
       });
 
-      await this.client.login(accessToken);
-      console.log(`[DiscordPlugin] Discord bot connected for user ${engine.userId}`);
+      await client.login(accessToken);
+      console.log(`[DiscordPlugin] Discord bot connected for user ${engine.userId} (workflow ${engine.workflowId}, isolated client)`);
 
-      // Store in engine receivers for cleanup
-      engine.receivers.discord = this;
+      // Track for plugin-level teardown; expose latest for legacy ban helpers.
+      this.clients.add(client);
+      this.client = client;
+
+      // Per-workflow cleanup handle: engine.stopWorkflowListeners() destroys
+      // ONLY this workflow's client. Never store the shared receiver instance
+      // here - its teardown() destroys every workflow's client.
+      engine.receivers[`discord:${node.id}`] = {
+        teardown: async () => {
+          this.clients.delete(client);
+          if (this.client === client) this.client = null;
+          try {
+            client.destroy();
+          } catch {
+            /* client already destroyed */
+          }
+        },
+      };
 
       // Listen for messages
-      this.client.on('messageCreate', (message) => {
+      client.on('messageCreate', (message) => {
         // Ignore bot messages
         if (message.author.bot) return;
 
@@ -165,13 +192,20 @@ class DiscordReceiver extends EventEmitter {
 
   /**
    * Teardown - called when workflow stops
-   */
-  async teardown() {
-    console.log('[DiscordPlugin] Tearing down Discord receiver');
-    if (this.client) {
-      this.client.destroy();
-      this.client = null;
+   */  async teardown() {
+    // Plugin-level teardown (uninstall / full plugin shutdown): destroy ALL
+    // workflow clients. Individual workflow stops use their per-workflow
+    // handle stored in engine.receivers and never reach this method.
+    console.log(`[DiscordPlugin] Tearing down Discord receiver (${this.clients.size} client(s))`);
+    for (const client of this.clients) {
+      try {
+        client.destroy();
+      } catch {
+        /* already destroyed */
+      }
     }
+    this.clients.clear();
+    this.client = null;
   }
 }
 

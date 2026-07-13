@@ -1,6 +1,6 @@
 {
   "name": "discord-plugin",
-  "version": "1.9.2",
+  "version": "1.14.1",
   "description": "Discord integration for AGNT - Send messages and upload files to guild channels OR user DMs (recipientType='user' + userId), delete the bot's own messages (single / purge-all / purge-recent, DM-safe and rate-limit-paced), auto-chunk >2000 char messages, Discord-safe attachment optimization (PNG->JPEG, GIF->MP4, video re-encode), role management, inbound message receiving (guilds + DMs), user lookup by username or ID (RESOLVE_USER), and DM setup diagnostics (TEST_DM). Bot->user DMs require the bot to share at least one guild with the user. Requires ffmpeg on PATH for attachment optimization.",
   "author": "AGNT",
   "icon": "discord",
@@ -31,7 +31,7 @@
               "ORCHESTRATOR_CHAT",
               "DELETE_MESSAGE"
             ],
-            "description": "The action to perform on Discord. RESOLVE_USER = look up a user by username or ID. TEST_DM = 5-stage diagnostic that verifies the bot can DM a user. ORCHESTRATOR_CHAT = bridge a message into AGNT's full orchestrator (the same engine that powers the main Annie chat) and return the reply + any generated image refs; conversationId (or channelId) keys persistent memory. DELETE_MESSAGE = delete the bot's OWN message(s) — one by messageId, or purge all/recent bot messages from a DM or channel. In a DM the bot can only delete its own messages (Discord platform rule)."
+            "description": "The action to perform on Discord. RESOLVE_USER = look up a user by username or ID. TEST_DM = 5-stage diagnostic that verifies the bot can DM a user. ORCHESTRATOR_CHAT = bridge a message into AGNT's full orchestrator (the same engine that powers the main Annie chat) and return the reply + any generated image refs; conversationId (or channelId) keys persistent memory. DELETE_MESSAGE = delete the bot's OWN message(s) — one by messageId, or purge all/recent bot messages from a DM or channel (deleteMode='purgeMine'/'purgeRecent'). In a DM the bot can only delete its own messages (Discord platform rule). Only use this when you actually intend to delete something: mode='single' with no messageId is a safe no-op (deletes nothing)."
           },
           "conversationId": {
             "type": "string",
@@ -46,6 +46,15 @@
             "type": "string",
             "inputType": "text",
             "description": "Optional model override for ORCHESTRATOR_CHAT (e.g. 'claude-sonnet-4-5'). If omitted, uses the user's default provider/model.",
+            "conditional": {
+              "field": "action",
+              "value": "ORCHESTRATOR_CHAT"
+            }
+          },
+          "enabledTools": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Strict tool whitelist for ORCHESTRATOR_CHAT turns (comma-separated tool names). Default: a lean DM set (discord_api, generate_image, analyze_image, web_search, web_scrape, file_operations, execute_javascript_code, execute_shell_command, atlas_image, atlas_video, atlas_upload, text_to_speech). Pass 'all' to disable filtering and send the full tool surface. Fewer tools = far fewer tokens per turn and fits small-context models like Grok (128k).",
             "conditional": {
               "field": "action",
               "value": "ORCHESTRATOR_CHAT"
@@ -77,10 +86,14 @@
           "guildId": {
             "type": "string",
             "inputType": "text",
-            "description": "The Discord server (guild) ID to search within (RESOLVE_USER with resolveMode='byQuery'). Discord blocks global user search for anti-harassment, so searches happen per-guild. Enable Developer Mode -> right-click server icon -> Copy Server ID.",
+            "description": "The ID of the Discord guild (server) (for ASSIGN_ROLE and GET_MEMBERS actions)",
             "conditional": {
-              "field": "resolveMode",
-              "value": "byQuery"
+              "field": "action",
+              "value": [
+                "ASSIGN_ROLE",
+                "GET_MEMBERS",
+                "BAN_MEMBER"
+              ]
             }
           },
           "exactMatch": {
@@ -254,19 +267,6 @@
               "field": "action",
               "value": [
                 "SEND_MESSAGE"
-              ]
-            }
-          },
-          "guildId": {
-            "type": "string",
-            "inputType": "text",
-            "description": "The ID of the Discord guild (server) (for ASSIGN_ROLE and GET_MEMBERS actions)",
-            "conditional": {
-              "field": "action",
-              "value": [
-                "ASSIGN_ROLE",
-                "GET_MEMBERS",
-                "BAN_MEMBER"
               ]
             }
           },

@@ -70,6 +70,11 @@ class PluginManager {
     // URL on reload.
     this.reloadGeneration = 0;
 
+    // During a hot plugin reload, preserve trigger registrations that already
+    // own live workflow connections. Reloading manifests/actions must not tear
+    // down Discord, Slack, webhook, timer, or other active trigger instances.
+    this.preserveActiveTriggersDuringReload = false;
+
     // Use USER_DATA_PATH from environment (set by Electron main.js)
     // This ensures plugins are loaded from outside the ASAR archive
     const userDataPath = process.env.USER_DATA_PATH || getDefaultUserDataPath();
@@ -460,6 +465,17 @@ class PluginManager {
    */
   async registerPluginTrigger(toolType, pluginPath, entryPoint) {
     try {
+      const previous = ToolConfig.triggers[toolType];
+
+      // Active workflow engines retain references to this registration and its
+      // live receiver. Preserve it during hot reload so existing workflows do
+      // not lose their gateway/socket/poller. Updated trigger code takes effect
+      // when that workflow is explicitly restarted or AGNT next starts.
+      if (this.preserveActiveTriggersDuringReload && previous?._pluginInstance) {
+        console.log(`[PluginManager] Preserving live trigger during reload: ${toolType}`);
+        return;
+      }
+
       // Trigger files share the same reload-shim machinery as tools so their
       // transitive intra-plugin imports also get fresh URLs on reload.
       const triggerUrl = await this._resolveModuleUrl({ path: pluginPath }, entryPoint);
@@ -471,7 +487,6 @@ class PluginManager {
       // may still hold a live connection (e.g. a logged-in discord.js gateway
       // Client). Without this teardown the old socket is orphaned and message
       // delivery silently dies until the workflow is manually reloaded.
-      const previous = ToolConfig.triggers[toolType];
       if (previous && previous._pluginInstance) {
         try {
           if (typeof previous.teardown === 'function') {
@@ -554,29 +569,34 @@ class PluginManager {
    * Reload all plugins (useful after installing new plugins)
    */
   async reload() {
-    // Tear down any live plugin-trigger instances before we wipe the registry.
-    // These may hold live connections (e.g. a logged-in discord.js gateway
-    // Client). registerPluginTrigger also tears down the previous instance on
-    // re-register, but doing it here first guarantees a clean slate even for
-    // triggers that no longer exist after the reload.
-    for (const [toolType, trigger] of Object.entries(ToolConfig.triggers)) {
-      if (trigger && trigger._pluginInstance && typeof trigger.teardown === 'function') {
-        try {
-          await trigger.teardown();
-          console.log(`[PluginManager] Reload: tore down live trigger instance: ${toolType}`);
-        } catch (teardownErr) {
-          console.warn(`[PluginManager] Reload: error tearing down trigger ${toolType}:`, teardownErr.message);
-        }
-      }
-    }
-
-    // Bump first so loadPlugin/registerPluginTrigger see the new generation.
+    // Hot reload refreshes manifests and action-tool modules while preserving
+    // trigger registrations that own live workflow connections. Destroying
+    // those instances here leaves workflows marked "listening" but deaf.
     this.reloadGeneration += 1;
     this.plugins.clear();
     this.toolToPlugin.clear();
     this.loadedTools.clear();
     this.initialized = false;
-    await this.initialize();
+    this.preserveActiveTriggersDuringReload = true;
+
+    try {
+      await this.initialize();
+
+      // If a plugin was uninstalled, its preserved trigger no longer has a
+      // registry owner. Tear down only those removed trigger types; triggers
+      // from still-installed plugins remain live and uninterrupted.
+      for (const [toolType, trigger] of Object.entries(ToolConfig.triggers)) {
+        if (trigger?._pluginInstance && !this.toolToPlugin.has(toolType)) {
+          try {
+            await trigger.teardown?.();
+          } finally {
+            delete ToolConfig.triggers[toolType];
+          }
+        }
+      }
+    } finally {
+      this.preserveActiveTriggersDuringReload = false;
+    }
   }
 
   /**
