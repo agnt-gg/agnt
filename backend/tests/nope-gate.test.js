@@ -299,7 +299,7 @@ describe('PRD-051 — sink-aware workflow security arguments', () => {
       surface: 'workflow',
     });
     expect(gate.allowed).toBe(false);
-    expect(gate.blockedRules).toContain('fs-rm-root');
+    expect(gate.blockedRules).toContain('fs-rm-rf');
   });
 
   it('keeps resolved URL and path fields while dropping message bodies', () => {
