@@ -14,14 +14,20 @@ class LocalWebhookReceiver extends EventEmitter {
     // Only the Workflow Process should poll for triggers
     // Main process has IS_WORKFLOW_PROCESS undefined, child process has it set to 'true'
     // This prevents duplicate polling and race conditions
-    this.pollingEnabled = process.env.IS_WORKFLOW_PROCESS === 'true';
+    this.externalPollingDisabled = process.env.AGNT_DISABLE_EXTERNAL_POLLING === 'true';
+    this.pollingEnabled =
+      process.env.IS_WORKFLOW_PROCESS === 'true' &&
+      !this.externalPollingDisabled;
 
     if (!this.pollingEnabled) {
-      console.log('LocalWebhookReceiver: Polling disabled (main process). Workflow Process will handle polling.');
+      console.log('LocalWebhookReceiver: Polling disabled (main process or explicit external-polling kill switch).');
     }
 
-    // Load webhooks and auto-start polling if there are active webhook workflows
-    this.initializeWebhooks();
+    // Preserve normal main-process initialization. Only the explicit kill
+    // switch suppresses database loading and remote re-registration.
+    if (!this.externalPollingDisabled) {
+      this.initializeWebhooks();
+    }
     console.log('LocalWebhookReceiver instantiated.');
   }
 
@@ -29,6 +35,7 @@ class LocalWebhookReceiver extends EventEmitter {
    * Initialize webhooks on startup - loads from DB and auto-starts polling if needed
    */
   async initializeWebhooks() {
+    if (this.externalPollingDisabled) return;
     try {
       // First load webhooks from local database into memory
       await this.loadWebhooksFromDatabase();
@@ -223,6 +230,7 @@ class LocalWebhookReceiver extends EventEmitter {
   //   }
   // }
   async pollForTriggers() {
+    if (!this.pollingEnabled) return;
     let claimedTriggerIds = []; // Track claimed triggers for release on error
 
     try {

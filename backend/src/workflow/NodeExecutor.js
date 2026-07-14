@@ -160,6 +160,34 @@ class NodeExecutor {
           }
         }
 
+        // ── PRD-051 Phase 1: NOPE gate — BLOCKS critical violations, audits the rest. ──
+        // Covers human-authored AND LLM-authored workflows running autonomously.
+        // __auth (real OAuth token, injected above) and token-shaped keys are
+        // stripped before checking so authed plugin nodes don't false-positive
+        // the credentials rules. Dynamic import keeps this worker-process-safe.
+        // Internal gate errors fail open (a gate bug must never break every
+        // workflow) — but a detected critical violation throws, which engages
+        // the node's existing error handling.
+        let policyBlock = null;
+        try {
+          const { checkAction, stripSensitiveParams } = await import('../services/security/nopeService.js');
+          const gate = checkAction({
+            toolName: node.type,
+            args: stripSensitiveParams(resolvedParams),
+            userId: this.workflowEngine.userId,
+            role: 'workflow',
+            surface: 'workflow',
+          });
+          if (gate && gate.allowed === false) policyBlock = gate;
+        } catch {
+          /* internal gate errors must never break workflow execution */
+        }
+        if (policyBlock) {
+          throw new Error(
+            `Blocked by security policy: ${policyBlock.blockedRules.join(', ')} — critically destructive action not executed`
+          );
+        }
+
         // Runtime parameter validation happens in BaseAction.execute()
         output = await action.execute(resolvedParams, inputData, this.workflowEngine);
       }

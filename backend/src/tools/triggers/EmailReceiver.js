@@ -8,11 +8,18 @@ class EmailReceiver extends EventEmitter {
     this.remoteUrl = process.env.REMOTE_URL;
     this.pollInterval = null;
     this.activeTriggers = new Set(); // Track active triggers
+    this.pollingEnabled = process.env.AGNT_DISABLE_EXTERNAL_POLLING !== 'true';
 
-    this.startPolling();
-    console.log('Local EmailReceiver instantiated and polling started.');
+    if (this.pollingEnabled) {
+      this.startPolling();
+      console.log('Local EmailReceiver instantiated and polling started.');
+    } else {
+      console.log('Local EmailReceiver instantiated with external polling disabled.');
+    }
   }
+
   startPolling() {
+    if (!this.pollingEnabled) return;
     console.log('Local EmailReceiver: Starting polling...');
     this.pollInterval = setInterval(() => {
       this.pollForTriggers();

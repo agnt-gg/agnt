@@ -184,6 +184,8 @@ class LlmExecutionService {
       userId,
       provider,
       model,
+      // PRD-051 identity mapping — goal/autonomous loops run as 'agent'
+      role: context?.role || 'agent',
     };
 
     // Track accumulated token usage across all LLM calls
@@ -372,6 +374,8 @@ class LlmExecutionService {
       userId,
       provider,
       model,
+      // PRD-051 identity mapping — goal/autonomous loops run as 'agent'
+      role: context?.role || 'agent',
     };
 
     // Initial LLM call with streaming

@@ -1268,6 +1268,8 @@ async function universalChatHandler(req, res, context = {}) {
     codeContext,
     userId,
     conversationId,
+    // PRD-051 identity mapping — coarse Phase 1 roles; refined in Phase 3
+    role: agentId ? 'agent' : goalId ? 'goal' : 'user',
     // Latest user message text (for dynamic tool selection)
     latestUserMessage,
     // User-selected enabled tools from frontend tool selector.

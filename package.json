@@ -37,6 +37,7 @@
     "release:major": "npm version major && git push --follow-tags"
   },
   "dependencies": {
+    "@agnt-gg/nope": "^0.1.1",
     "@anthropic-ai/sdk": "^0.16.1",
     "@cerebras/cerebras_cloud_sdk": "^1.59.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

@@ -86,6 +86,10 @@ export const RealtimeEvents = {
   TOOL_UPDATED: 'tool:updated',
   TOOL_DELETED: 'tool:deleted',
 
+  // Security (PRD-051 NOPE guardrail)
+  SECURITY_BLOCKED: 'security:blocked', // Phase 2+ (strict mode)
+  SECURITY_WARNED: 'security:warned', // audit-mode "would block" events
+
   // Chat Messages (real-time sync across tabs)
   CHAT_MESSAGE_START: 'chat:message_start',
   CHAT_CONTENT_DELTA: 'chat:content_delta',

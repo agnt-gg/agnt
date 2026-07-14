@@ -25,6 +25,7 @@ import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { augmentEnvPath } from '../../utils/envPath.js';
+import { checkAction, scanOutput } from '../security/nopeService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4426,10 +4427,10 @@ function validateToolArguments(toolName, args, schema) {
   }
 }
 
-export async function executeTool(toolName, args, authToken, context) {
+async function executeToolInner(toolName, args, authToken, context) {
   try {
-    // CRITICAL: Resolve data references in arguments before execution
-    const resolvedArgs = resolveDataReferences(args, context);
+    // Args arrive already resolved by the executeTool wrapper below (PRD-051).
+    const resolvedArgs = args;
 
     // MCP tools are namespaced as mcp__<server>__<tool> and dispatched via
     // MCPToolService — earliest in the chain so they can never collide with
@@ -4628,4 +4629,43 @@ export async function executeTool(toolName, args, authToken, context) {
       details: error.toString(),
     });
   }
+}
+
+/**
+ * PRD-051 Phase 1 — the tool-execution chokepoint, gated.
+ *
+ * Every LLM-issued tool call (all chat surfaces, AsyncToolQueue, goal and
+ * autonomous loops via LlmExecutionService) flows through here. The NOPE gate
+ * BLOCKS critical-severity violations (rm -rf, DROP TABLE, disk format,
+ * reverse shells, curl|bash, cloud-metadata SSRF, ...) and AUDITS everything
+ * below critical. All 20 exit paths of executeToolInner (including its
+ * catch-all error return) pass through scanOutput on the single return below.
+ *
+ * Data-reference resolution happens exactly once, here, before the gate —
+ * so the gate checks the REAL resolved arguments, and executeToolInner
+ * receives them pre-resolved.
+ */
+export async function executeTool(toolName, args, authToken, context) {
+  // CRITICAL: Resolve data references in arguments before gate + execution
+  const resolvedArgs = resolveDataReferences(args, context);
+
+  const gate = checkAction({
+    toolName,
+    args: resolvedArgs,
+    userId: context?.userId,
+    role: context?.role,
+    surface: 'orchestrator',
+  });
+  if (!gate.allowed) {
+    return JSON.stringify({
+      success: false,
+      tool: toolName,
+      policy_blocked: true,
+      error: `Blocked by security policy: ${gate.blockedRules.join(', ')} — this action is critically destructive and was NOT executed. Explain to the user exactly what was attempted and why it was blocked. Do not retry with trivial rewording.`,
+      violations: gate.violations,
+    });
+  }
+
+  const result = await executeToolInner(toolName, resolvedArgs, authToken, context);
+  return scanOutput(result, toolName); // report-only in Phase 1 — never mutates
 }
