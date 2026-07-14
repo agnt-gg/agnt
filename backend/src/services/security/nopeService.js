@@ -127,6 +127,48 @@ export function stripSensitiveParams(params) {
  * @param {string} [opts.surface] 'orchestrator' | 'workflow'
  * @returns {{ allowed: boolean, audited: boolean, violations: Array, blockedRules: string[] }}
  */
+const WORKFLOW_SECURITY_FIELDS = new Set([
+  'command',
+  'code',
+  'query',
+  'sql',
+  'operation',
+  'path',
+  'filePath',
+  'rootDirectory',
+  'url',
+  'method',
+  'executable',
+  'args',
+  'host',
+  'image',
+  'volumes',
+]);
+
+/**
+ * Select only fields that can influence an execution sink.
+ *
+ * Workflow parameter resolution can inline megabytes of user data into a code
+ * template. Scanning that entire resolved blob as shell syntax creates false
+ * positives and conflates data with executable intent. Code nodes therefore
+ * scan the authored source template. Other nodes scan only resolved fields
+ * that can select an operation, destination, executable, query, or path.
+ */
+export function selectWorkflowSecurityArgs(nodeType, authoredParams = {}, resolvedParams = {}) {
+  const authored = stripSensitiveParams(authoredParams) || {};
+  const resolved = stripSensitiveParams(resolvedParams) || {};
+
+  if (nodeType === 'execute-javascript' || nodeType === 'execute-python') {
+    return { code: typeof authored.code === 'string' ? authored.code : '' };
+  }
+
+  const selected = {};
+  for (const [key, value] of Object.entries(resolved)) {
+    if (WORKFLOW_SECURITY_FIELDS.has(key)) selected[key] = value;
+  }
+  return selected;
+}
+
 export function checkAction({ toolName, args, userId, role, surface }) {
   try {
     const result = nope.check(

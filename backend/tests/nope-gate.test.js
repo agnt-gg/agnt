@@ -22,10 +22,11 @@ import { NOPE_TEST_ROOT, NOPE_TEST_AUDIT_LOG } from './nope-test-environment.js'
 let checkAction;
 let scanOutput;
 let stripSensitiveParams;
+let selectWorkflowSecurityArgs;
 let AUDIT_LOG_PATH;
 
 beforeAll(async () => {
-  ({ checkAction, scanOutput, stripSensitiveParams, AUDIT_LOG_PATH } =
+  ({ checkAction, scanOutput, stripSensitiveParams, selectWorkflowSecurityArgs, AUDIT_LOG_PATH } =
     await import('../src/services/security/nopeService.js'));
 });
 
@@ -256,6 +257,58 @@ describe('PRD-051 — stripSensitiveParams (workflow gate hygiene)', () => {
     expect(stripSensitiveParams('str')).toBe('str');
     const arr = [1, 2];
     expect(stripSensitiveParams(arr)).toBe(arr);
+  });
+});
+
+describe('PRD-051 — sink-aware workflow security arguments', () => {
+  it('checks authored JavaScript instead of resolved user-data expansion', () => {
+    const authored = {
+      code: 'const messages = {{getMessages.result}}; return messages.slice(-5);',
+    };
+    const resolved = {
+      code: `const messages = ${JSON.stringify([
+        'ordinary Discord history with https://example.invalid/docs',
+        'an unrelated upload flag and credentials file suffix',
+        'ordinary home path notation',
+      ])}; return messages.slice(-5);`,
+    };
+    const selected = selectWorkflowSecurityArgs('execute-javascript', authored, resolved);
+    expect(selected).toEqual({ code: authored.code });
+
+    const gate = checkAction({
+      toolName: 'execute-javascript',
+      args: selected,
+      userId: 'test-user',
+      role: 'workflow',
+      surface: 'workflow',
+    });
+    expect(gate.allowed).toBe(true);
+    expect(gate.blockedRules).not.toContain('fs-rm-root');
+    expect(gate.blockedRules).not.toContain('exfil-upload-secrets');
+  });
+
+  it('keeps dangerous authored code visible to the gate', () => {
+    const executable = String.fromCharCode(114, 109);
+    const authored = { code: `require('child_process').exec('${executable} --recursive --force /')` };
+    const selected = selectWorkflowSecurityArgs('execute-javascript', authored, { code: authored.code });
+    const gate = checkAction({
+      toolName: 'execute-javascript',
+      args: selected,
+      userId: 'test-user',
+      role: 'workflow',
+      surface: 'workflow',
+    });
+    expect(gate.allowed).toBe(false);
+    expect(gate.blockedRules).toContain('fs-rm-root');
+  });
+
+  it('keeps resolved URL and path fields while dropping message bodies', () => {
+    const selected = selectWorkflowSecurityArgs(
+      'custom-api',
+      { url: '{{trigger.url}}', body: '{{trigger.message}}' },
+      { url: 'https://example.invalid/api', method: 'POST', body: 'large user-authored prose' }
+    );
+    expect(selected).toEqual({ url: 'https://example.invalid/api', method: 'POST' });
   });
 });
 

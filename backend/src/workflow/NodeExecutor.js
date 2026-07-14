@@ -170,10 +170,10 @@ class NodeExecutor {
         // the node's existing error handling.
         let policyBlock = null;
         try {
-          const { checkAction, stripSensitiveParams } = await import('../services/security/nopeService.js');
+          const { checkAction, selectWorkflowSecurityArgs } = await import('../services/security/nopeService.js');
           const gate = checkAction({
             toolName: node.type,
-            args: stripSensitiveParams(resolvedParams),
+            args: selectWorkflowSecurityArgs(node.type, node.parameters, resolvedParams),
             userId: this.workflowEngine.userId,
             role: 'workflow',
             surface: 'workflow',
