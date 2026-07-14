@@ -64,6 +64,8 @@ import { broadcastToUser, broadcast, RealtimeEvents } from './src/utils/realtime
 import { sessionMiddleware } from './src/routes/Middleware.js';
 import CodexCliSessionManager from './src/services/ai/CodexCliSessionManager.js';
 import { stashSteer, clearSteer } from './src/services/OrchestratorService.js';
+import SystemRoutes from './src/routes/SystemRoutes.js';
+import RestartManager from './src/services/RestartManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -133,6 +135,11 @@ app.use(compression({
 app.use(bodyParser.json({ limit: config.bodyParserLimit }));
 app.use(bodyParser.urlencoded({ limit: config.bodyParserLimit, extended: true }));
 app.use(sessionMiddleware);
+
+// Drain guard: while a supervisor-sanctioned restart is in progress, new API
+// calls get a clean 503 { restarting: true } instead of dying mid-flight on a
+// closing socket. /api/health and /api/system stay reachable for the poller.
+app.use(RestartManager.drainGuard);
 
 // Conditionally serve built frontend static files if they exist
 // Assumes the frontend build output is in ../frontend/dist relative to this file.
@@ -206,6 +213,7 @@ app.use('/api/wallets', WalletRoutes);
 app.use('/api/contracts', ContractRoutes);
 app.use('/api/mutations', MutationHistoryRoutes);
 app.use('/api/evolution', EvolutionCoreRoutes);
+app.use('/api/system', SystemRoutes);
 
 // PRD-091: Closed Loop — boot the durable scheduler once the DB is ready.
 dbReady.then(() => {
@@ -445,6 +453,12 @@ async function deferredInit() {
     console.error('Failed to spawn workflow process:', error);
     console.error('Server will continue running but workflows will not be available');
   }
+
+  // If this boot is the back half of a supervisor-sanctioned restart,
+  // consume its one-shot receipt and log measured recovery diagnostics.
+  RestartManager.consumeRestartManifest().catch((err) =>
+    console.warn('[Server] Restart manifest consumption failed (non-fatal):', err.message)
+  );
 }
 
 function startServer() {
@@ -560,6 +574,9 @@ function startServer() {
         });
       });
     });
+
+    // Give RestartManager the live handles it needs to drain and exit(42).
+    RestartManager.attach({ server, workflowBridge: WorkflowProcessBridge });
 
     server.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {

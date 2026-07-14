@@ -102,6 +102,101 @@ let mainWindow;
 let backendProcess;
 
 // ============================================================================
+// BACKEND SUPERVISOR - sanctioned self-restart support
+// ============================================================================
+// Exit code 42 from the backend means "respawn me" (see
+// backend/src/services/RestartManager.js). Any other nonzero exit keeps the
+// pre-existing crash semantics (log + quit in 5s).
+const RESTART_EXIT_CODE = 42;
+const supervisor = {
+  state: 'starting', // 'starting' | 'running' | 'restarting' | 'quitting'
+  restartTimestamps: [],
+  FLAP_WINDOW_MS: 60_000,
+  FLAP_MAX: 3, // >3 restarts inside 60s = something is broken, stop the loop
+};
+
+function notifyRenderer(channel, payload = {}) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, payload);
+    }
+  } catch (err) {
+    console.warn('notifyRenderer failed:', err.message);
+  }
+}
+
+/**
+ * Single exit handler for BOTH spawn paths (dev fork + packaged
+ * utilityProcess). Replaces the two previous inline 'exit' listeners.
+ */
+function handleBackendExit(code, signal, lastStderr, lastStdout) {
+  console.log(`Backend process exited with code ${code}, signal ${signal ?? 'n/a'}`);
+
+  // Terminal state wins: if the app is quitting, never respawn. Prevents
+  // the zombie-backend-into-dying-Electron race.
+  if (supervisor.state === 'quitting') {
+    console.log('App is quitting - not respawning backend.');
+    return;
+  }
+
+  if (code === RESTART_EXIT_CODE) {
+    // Sanctioned restart. Flap guard first.
+    const now = Date.now();
+    supervisor.restartTimestamps = supervisor.restartTimestamps.filter(
+      (t) => now - t < supervisor.FLAP_WINDOW_MS
+    );
+    if (supervisor.restartTimestamps.length >= supervisor.FLAP_MAX) {
+      console.error(
+        `Backend restart flapping (${supervisor.FLAP_MAX}+ in ${supervisor.FLAP_WINDOW_MS / 1000}s). ` +
+          'Refusing to respawn. Quitting in 5 seconds...'
+      );
+      setTimeout(() => app.quit(), 5000);
+      return;
+    }
+    supervisor.restartTimestamps.push(now);
+    supervisor.state = 'restarting';
+    notifyRenderer('backend:restarting');
+    console.log('Sanctioned backend restart - respawning...');
+
+    // Brief pause for OS-level socket/handle cleanup, then respawn with a
+    // FRESH env snapshot (startBackend rebuilds .env layering from disk, so
+    // "restart yourself" doubles as credential hot-reload).
+    setTimeout(() => {
+      startBackend();
+      waitForBackend(() => {
+        supervisor.state = 'running';
+        console.log('Backend respawned and healthy.');
+        notifyRenderer('backend:restarted');
+        // Reload the renderer so the UI reconnects to the fresh backend
+        // instead of sitting on dead sockets/requests looking frozen.
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            console.log('Reloading renderer against fresh backend...');
+            mainWindow.webContents.reload();
+          }
+        } catch (err) {
+          console.warn('Renderer reload after restart failed:', err.message);
+        }
+      });
+    }, 500);
+    return;
+  }
+
+  // Unsanctioned nonzero exit: pre-existing crash behavior, unchanged.
+  if (code !== 0 && code !== null) {
+    console.error('Backend process crashed!');
+    console.error('Exit code:', code);
+    if (signal) console.error('Signal:', signal);
+    console.error('Last stderr output:', (lastStderr || '').slice(-500));
+    console.error('Last stdout output:', (lastStdout || '').slice(-500));
+    console.error('App will quit in 5 seconds...');
+    setTimeout(() => {
+      app.quit();
+    }, 5000);
+  }
+}
+
+// ============================================================================
 // AUTO-UPDATE SYSTEM
 // ============================================================================
 // Read version dynamically from package.json - NEVER hardcode!
@@ -442,19 +537,7 @@ function startBackend() {
     });
 
     backendProcess.on('exit', (code) => {
-      console.log(`Backend process exited with code ${code}`);
-
-      if (code !== 0 && code !== null) {
-        console.error('Backend process crashed!');
-        console.error('Exit code:', code);
-        console.error('Last stderr output:', backendStderr.slice(-500));
-        console.error('Last stdout output:', backendStdout.slice(-500));
-
-        console.error('App will quit in 5 seconds...');
-        setTimeout(() => {
-          app.quit();
-        }, 5000);
-      }
+      handleBackendExit(code, null, backendStderr, backendStdout);
     });
   } else {
     // In development, use the system Node that npm resolved — not Electron's
@@ -503,20 +586,7 @@ function startBackend() {
     });
 
     backendProcess.on('exit', (code, signal) => {
-      console.log(`Backend process exited with code ${code}, signal ${signal}`);
-
-      if (code !== 0 && code !== null) {
-        console.error('Backend process crashed!');
-        console.error('Exit code:', code);
-        console.error('Signal:', signal);
-        console.error('Last stderr output:', backendStderr.slice(-500));
-        console.error('Last stdout output:', backendStdout.slice(-500));
-
-        console.error('App will quit in 5 seconds...');
-        setTimeout(() => {
-          app.quit();
-        }, 5000);
-      }
+      handleBackendExit(code, signal, backendStderr, backendStdout);
     });
   }
 }
@@ -891,6 +961,7 @@ app.on('ready', () => {
 
   // Instead of a fixed delay, poll until the backend is ready.
   waitForBackend(() => {
+    supervisor.state = 'running';
     console.log('Backend is ready. Creating main window...');
     createWindow();
 
@@ -931,6 +1002,7 @@ app.on('activate', () => {
 });
 
 app.on('will-quit', () => {
+  supervisor.state = 'quitting'; // terminal: beats 'restarting', prevents zombie respawn
   if (backendProcess) {
     console.log('Shutting down backend process...');
     backendProcess.kill();
