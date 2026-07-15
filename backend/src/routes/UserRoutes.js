@@ -30,6 +30,10 @@ UserRoutes.get('/user-stats', authenticateToken, UserService.getUserStats);
 // User settings routes
 UserRoutes.get('/settings', authenticateToken, UserService.getUserSettings);
 UserRoutes.put('/settings', authenticateToken, UserService.updateUserSettings);
+UserRoutes.get('/security-policy', authenticateToken, UserService.getSecurityPolicy);
+UserRoutes.put('/security-policy', authenticateToken, UserService.updateSecurityPolicy);
+UserRoutes.delete('/security-policy', authenticateToken, UserService.resetSecurityPolicy);
+UserRoutes.get('/security-audit', authenticateToken, UserService.getSecurityAudit);
 
 // Token management routes
 UserRoutes.post('/sync-token', authenticateToken, UserService.syncToken);

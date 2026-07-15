@@ -49,6 +49,10 @@
             <i class="fas fa-palette"></i>
             <span>Theme</span>
           </button>
+          <button class="nav-item" :class="{ active: activeSection === 'security' }" @click="handleNavClick('security')" data-nav="security">
+            <i class="fas fa-shield-alt"></i>
+            <span>Security</span>
+          </button>
           <button class="nav-item" :class="{ active: activeSection === 'sounds' }" @click="handleNavClick('sounds')" data-nav="sounds">
             <i class="fas fa-volume-up"></i>
             <span>Sounds</span>

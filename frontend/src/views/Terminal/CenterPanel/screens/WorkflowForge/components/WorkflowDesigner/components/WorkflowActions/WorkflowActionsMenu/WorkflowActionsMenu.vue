@@ -47,6 +47,11 @@
           <span>{{ isShareable ? 'Disable Cloud Sync' : 'Enable Cloud Sync' }}</span>
         </button>
 
+        <button class="menu-item" @click="handleSecurity">
+          <i class="fas fa-shield-alt"></i>
+          <span>Security Policy</span>
+        </button>
+
         <!-- Delete Workflow -->
         <button class="menu-item danger" @click="handleDelete">
           <i class="fas fa-trash"></i>
@@ -65,6 +70,7 @@ export default {
   components: {
     Tooltip,
   },
+  emits: ['toggle-shareable', 'copy-url', 'import-workflow-id', 'import-workflow-json', 'export-workflow-json', 'cloud-sync', 'delete-workflow', 'security-policy'],
   props: {
     isShareable: {
       type: Boolean,
@@ -135,6 +141,10 @@ export default {
     },
     handleExportJson() {
       this.$emit('export-workflow-json');
+      this.closeMenu();
+    },
+    handleSecurity() {
+      this.$emit('security-policy');
       this.closeMenu();
     },
     handleDelete() {

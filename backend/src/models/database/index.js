@@ -764,6 +764,16 @@ function createTables() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_skill_id ON skill_evaluations(skill_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_skill_evaluations_user_id ON skill_evaluations(user_id)`);
 
+      // Security policy — versioned per-user NOPE enforcement settings
+      db.run(`CREATE TABLE IF NOT EXISTS security_policies (
+        user_id TEXT PRIMARY KEY,
+        policy_json TEXT NOT NULL DEFAULT '{}',
+        revision INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`);
+
       // SkillForge settings — persisted per-user configuration
       db.run(`CREATE TABLE IF NOT EXISTS skillforge_settings (
         user_id TEXT PRIMARY KEY,

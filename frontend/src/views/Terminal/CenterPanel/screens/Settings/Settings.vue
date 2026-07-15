@@ -1,7 +1,7 @@
 <template>
   <BaseScreen
     ref="baseScreenRef"
-    :activeRightPanel="isLoggedIn ? 'NewsPanel' : null"
+    :activeRightPanel="activeRightPanel"
     screenId="SettingsScreen"
     :showInput="false"
     :hidePanels="!isLoggedIn"
@@ -117,20 +117,6 @@
           </div>
         </div>
 
-        <!-- Security Section -->
-        <div v-else-if="activeSection === 'security'" class="settings-content" data-section="security">
-          <div class="content-header">
-            <h2 class="content-title">Security Settings</h2>
-            <p class="content-subtitle">Manage your account security</p>
-          </div>
-          <div class="settings-grid">
-            <div class="settings-section">
-              <h3>Security Options</h3>
-              <p>Security settings will be implemented here.</p>
-            </div>
-          </div>
-        </div>
-
         <!-- Notifications Section -->
         <div v-else-if="activeSection === 'notifications'" class="settings-content" data-section="notifications">
           <div class="content-header">
@@ -142,6 +128,17 @@
               <h3>Notification Preferences</h3>
               <p>Notification settings will be implemented here.</p>
             </div>
+          </div>
+        </div>
+
+        <!-- Security Section -->
+        <div v-else-if="activeSection === 'security'" class="settings-content" data-section="security">
+          <div class="content-header">
+            <h2 class="content-title">Security Policy</h2>
+            <p class="content-subtitle">Control how NOPE handles risky actions across agents and workflows</p>
+          </div>
+          <div class="settings-grid">
+            <div class="settings-section full-width"><SecuritySettings /></div>
           </div>
         </div>
 
@@ -246,6 +243,7 @@ import CreditPurchase from '../../../../_components/common/CreditPurchase.vue';
 import ResourcesSection from '../../../../_components/common/ResourcesSection.vue';
 import TourSettings from './components/TourSettings/TourSettings.vue';
 import SoundsSettings from './components/SoundsSettings/SoundsSettings.vue';
+import SecuritySettings from './components/SecuritySettings/SecuritySettings.vue';
 import AgntScoreBreakdown from './components/AgntScoreBreakdown/AgntScoreBreakdown.vue';
 import ProfileSection from './components/ProfileSection/ProfileSection.vue';
 import ReferralsSection from './components/ReferralsSection/ReferralsSection.vue';
@@ -267,6 +265,7 @@ export default {
     ResourcesSection,
     TourSettings,
     SoundsSettings,
+    SecuritySettings,
     AgntScoreBreakdown,
     ProfileSection,
     ReferralsSection,
@@ -281,6 +280,10 @@ export default {
     const componentKey = ref(0);
 
     const isLoggedIn = computed(() => store.getters['userAuth/isAuthenticated']);
+    const activeRightPanel = computed(() => {
+      if (!isLoggedIn.value) return null;
+      return activeSection.value === 'security' ? 'SecurityActivityPanel' : 'NewsPanel';
+    });
 
     // Tutorial setup
     const { tutorialConfig, startTutorial, currentStep, onTutorialClose, nextStep, initializeSettingsTutorial } = useSettingsTutorial();
@@ -352,8 +355,8 @@ export default {
     return {
       baseScreenRef,
       emit,
-      initializeScreen,
-      isLoggedIn,
+      initializeScreen,      isLoggedIn,
+      activeRightPanel,
       activeSection,
       handlePanelAction,
       handleStartTour,

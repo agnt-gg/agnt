@@ -25,7 +25,7 @@ import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
 import { broadcast, RealtimeEvents } from '../../utils/realtimeSync.js';
 import { augmentEnvPath } from '../../utils/envPath.js';
-import { checkAction, scanOutput } from '../security/nopeService.js';
+import { checkAction, sanitizeArguments, scanOutput } from '../security/nopeService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4649,7 +4649,7 @@ export async function executeTool(toolName, args, authToken, context) {
   // CRITICAL: Resolve data references in arguments before gate + execution
   const resolvedArgs = resolveDataReferences(args, context);
 
-  const gate = checkAction({
+  const gate = await checkAction({
     toolName,
     args: resolvedArgs,
     userId: context?.userId,
@@ -4661,11 +4661,13 @@ export async function executeTool(toolName, args, authToken, context) {
       success: false,
       tool: toolName,
       policy_blocked: true,
-      error: `Blocked by security policy: ${gate.blockedRules.join(', ')} — this action is critically destructive and was NOT executed. Explain to the user exactly what was attempted and why it was blocked. Do not retry with trivial rewording.`,
+      error: `Blocked by security policy: ${gate.blockedRules.join(', ')} — this action was not executed. Explain what was attempted and which policy rule blocked it. Do not retry with trivial rewording.`,
       violations: gate.violations,
+      security: gate.policy,
     });
-  }
-
-  const result = await executeToolInner(toolName, resolvedArgs, authToken, context);
-  return scanOutput(result, toolName); // report-only in Phase 1 — never mutates
+  }  const outputScanning = gate.policy?.outputScanning || 'report';
+  const credentialDecision = gate.policy?.credentials || 'audit';
+  const executionArgs = sanitizeArguments(resolvedArgs, toolName, outputScanning, credentialDecision);
+  const result = await executeToolInner(toolName, executionArgs, authToken, context);
+  return scanOutput(result, toolName, outputScanning, credentialDecision);
 }

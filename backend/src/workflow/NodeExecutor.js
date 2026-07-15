@@ -22,6 +22,27 @@ class NodeExecutor {
       ExecutionModel.createNodeExecution(this.workflowEngine.currentExecutionId, node.id, inputData)
     );
     let output;
+    let outputScanning = 'report';
+    let credentialDecision = 'audit';
+    let scanNodeOutput = (value) => value;
+    let sanitizeNodeArguments = (value) => value;
+
+    // Load the effective output policy once for every workflow node. Action
+    // nodes additionally run the pre-execution gate below.
+    try {
+      const security = await import('../services/security/nopeService.js');
+      const policyService = (await import('../services/security/SecurityPolicyService.js')).default;
+      const effective = await policyService.getEffectivePolicy({
+        userId: this.workflowEngine.userId,
+        workflowPolicy: this.workflowEngine.workflow?.securityPolicy,
+      });
+      outputScanning = effective.policy.outputScanning;
+      credentialDecision = security.resolvePolicyCredentialDecision(effective.policy);
+      scanNodeOutput = security.scanOutput;
+      sanitizeNodeArguments = security.sanitizeArguments;
+    } catch {
+      // Security subsystem failures remain fail-open for workflow availability.
+    }
 
     try {
       // IF TRIGGER - TRY FILE-BASED FIRST, THEN FALL BACK TO TOOL CONFIG
@@ -80,7 +101,32 @@ class NodeExecutor {
 
         console.log('Enriched node with base:', enrichedNode.base, 'and code:', enrichedNode.code ? 'present' : 'missing');
 
-        output = await this.customToolExecutor.execute(enrichedNode, inputData);
+        let policyBlock = null;
+        try {
+          const security = await import('../services/security/nopeService.js');
+          const gate = await security.checkAction({
+            toolName: node.type,
+            args: security.stripSensitiveParams(enrichedNode.parameters || enrichedNode),
+            userId: this.workflowEngine.userId,
+            role: 'workflow',
+            surface: 'workflow',
+            workflowPolicy: this.workflowEngine.workflow?.securityPolicy,
+          });
+          outputScanning = gate?.policy?.outputScanning || outputScanning;
+          credentialDecision = gate?.policy?.credentials || credentialDecision;
+          if (gate?.allowed === false) policyBlock = gate;
+        } catch {
+          // Internal gate errors must not break workflow execution.
+        }
+        if (policyBlock) {
+          throw new Error(`Blocked by security policy: ${policyBlock.blockedRules.join(', ')} — action not executed`);
+        }
+
+        const executableNode = {
+          ...enrichedNode,
+          parameters: sanitizeNodeArguments(enrichedNode.parameters, node.type, outputScanning, credentialDecision),
+        };
+        output = await this.customToolExecutor.execute(executableNode, inputData);
       }
       // IF STOP WORKFLOW NODE
       else if (node.type === 'stop-workflow') {
@@ -170,29 +216,35 @@ class NodeExecutor {
         // the node's existing error handling.
         let policyBlock = null;
         try {
-          const { checkAction, selectWorkflowSecurityArgs } = await import('../services/security/nopeService.js');
-          const gate = checkAction({
+          const security = await import('../services/security/nopeService.js');          scanNodeOutput = security.scanOutput;
+          sanitizeNodeArguments = security.sanitizeArguments;
+           const gate = await security.checkAction({
             toolName: node.type,
-            args: selectWorkflowSecurityArgs(node.type, node.parameters, resolvedParams),
+            args: security.selectWorkflowSecurityArgs(node.type, node.parameters, resolvedParams),
             userId: this.workflowEngine.userId,
             role: 'workflow',
             surface: 'workflow',
-          });
-          if (gate && gate.allowed === false) policyBlock = gate;
+            workflowPolicy: this.workflowEngine.workflow?.securityPolicy,
+          });           outputScanning = gate?.policy?.outputScanning || 'report';
+           credentialDecision = gate?.policy?.credentials || credentialDecision;
+           if (gate && gate.allowed === false) policyBlock = gate;
         } catch {
           /* internal gate errors must never break workflow execution */
         }
         if (policyBlock) {
           throw new Error(
-            `Blocked by security policy: ${policyBlock.blockedRules.join(', ')} — critically destructive action not executed`
+            `Blocked by security policy: ${policyBlock.blockedRules.join(', ')} — action not executed`
           );
         }
 
-        // Runtime parameter validation happens in BaseAction.execute()
-        output = await action.execute(resolvedParams, inputData, this.workflowEngine);
+        // Runtime parameter validation happens in BaseAction.execute().
+        const executionParams = sanitizeNodeArguments(resolvedParams, node.type, outputScanning, credentialDecision);
+        output = await action.execute(executionParams, inputData, this.workflowEngine);
       }
 
-      if (output.error) {
+      output = scanNodeOutput(output, node.type, outputScanning, credentialDecision);
+
+      if (output?.error) {
         throw new Error(output.error);
       }
 
@@ -206,8 +258,8 @@ class NodeExecutor {
       const shouldCharge = !this.nonChargingNodes.includes(node.type);
 
       // Extract token usage from LLM tool outputs (e.g., generate-with-ai-llm)
-      const tokenUsage = (output.inputTokens || output.outputTokens)
-        ? { inputTokens: output.inputTokens || 0, outputTokens: output.outputTokens || 0 }
+      const tokenUsage = (output?.inputTokens || output?.outputTokens)
+        ? { inputTokens: output?.inputTokens || 0, outputTokens: output?.outputTokens || 0 }
         : null;
 
       await dbRunWithRetry(() =>

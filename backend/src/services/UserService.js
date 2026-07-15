@@ -2,6 +2,7 @@ import UserModel from '../models/UserModel.js';
 import { getUserTokenFromSession } from '../routes/Middleware.js';
 import AuthManager from '../services/auth/AuthManager.js';
 import { getCliProviderIds, getAuthEntry } from './auth/AuthDispatcher.js';
+import SecurityPolicyService from './security/SecurityPolicyService.js';
 
 async function _getLocalCliHealthProviders() {
   const ids = getCliProviderIds();
@@ -47,6 +48,50 @@ class UserService {
       res.status(500).json({ error: 'Error fetching user settings' });
     }
   }
+  async getSecurityPolicy(req, res) {
+    try {
+      const userId = req.user.userId || req.user.id;
+      const value = await SecurityPolicyService.getUserPolicy(userId);
+      res.json({ ...value, rules: SecurityPolicyService.getRuleCatalog() });
+    } catch (error) {
+      console.error('Error fetching security policy:', error);
+      res.status(500).json({ error: 'Error fetching security policy' });
+    }
+  }
+
+  async updateSecurityPolicy(req, res) {
+    try {
+      const userId = req.user.userId || req.user.id;
+      const value = await SecurityPolicyService.updateUserPolicy(userId, req.body);
+      res.json(value);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async resetSecurityPolicy(req, res) {
+    try {
+      const userId = req.user.userId || req.user.id;
+      res.json(await SecurityPolicyService.resetUserPolicy(userId));
+    } catch (error) {
+      res.status(500).json({ error: 'Error resetting security policy' });
+    }
+  }
+
+  async getSecurityAudit(req, res) {
+    try {
+      const userId = req.user.userId || req.user.id;
+      const events = await SecurityPolicyService.getAuditEvents({
+        userId,
+        limit: Number(req.query.limit) || 100,
+        decision: req.query.decision,
+      });
+      res.json({ events });
+    } catch (error) {
+      res.status(500).json({ error: 'Error fetching security audit events' });
+    }
+  }
+
   async updateUserSettings(req, res) {
     try {
       const { selectedProvider, selectedModel, customInstructions, asyncToolsEnabled, toolOutputCap, maxToolRounds } = req.body;

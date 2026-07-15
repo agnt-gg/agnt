@@ -36,8 +36,8 @@
         @import-workflow-id="importWorkflow"
         @import-workflow-json="loadCanvasState"
         @export-workflow-json="exportWorkflow"
-        @delete-workflow="deleteWorkflow"
-        @cloud-sync="handleCloudSync"
+        @delete-workflow="deleteWorkflow"        @cloud-sync="handleCloudSync"
+        @security-policy="configureWorkflowSecurity"
       />
     </div>
 
@@ -79,6 +79,48 @@
     </div>
   </div>
   <PopupTutorial :config="tutorialConfig" :startTutorial="startTutorial" tutorialId="workflowDesigner" @close="onTutorialClose" />
+  <Teleport to="body">
+    <div v-if="isSecurityPolicyModalOpen" class="workflow-security-overlay" @click.self="closeWorkflowSecurityModal">
+      <div class="workflow-security-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-security-title">
+        <div class="workflow-security-titlebar">
+          <div>
+            <div class="workflow-security-eyebrow">WORKFLOW SECURITY</div>
+            <h3 id="workflow-security-title">Configure security policy</h3>
+            <p>Choose how NOPE evaluates actions performed by this workflow.</p>
+          </div>
+          <button type="button" class="workflow-security-close" aria-label="Close" @click="closeWorkflowSecurityModal">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="workflow-security-explainer">
+          <i class="fas fa-info-circle"></i>
+          <p><strong>Inherit</strong> follows your account Security Settings. Any other selection gives this workflow its own action policy.</p>
+        </div>
+
+        <div class="workflow-security-slider-wrap">
+          <div class="workflow-security-scale"><span>Account policy</span><span>Least restrictive</span><span>Most restrictive</span></div>
+          <SecurityLevelSlider v-model="workflowSecurityDraft" :options="workflowSecurityOptions" />
+        </div>
+
+        <div class="workflow-security-selection">
+          <i :class="selectedWorkflowSecurityOption.icon"></i>
+          <div>
+            <small>SELECTED POLICY</small>
+            <strong>{{ selectedWorkflowSecurityOption.label }}</strong>
+            <p>{{ selectedWorkflowSecurityOption.description }}</p>
+          </div>
+        </div>
+
+        <div class="workflow-security-actions">
+          <button type="button" class="workflow-security-cancel" @click="closeWorkflowSecurityModal">Cancel</button>
+          <button type="button" class="workflow-security-apply" :disabled="isApplyingWorkflowSecurity" @click="applyWorkflowSecurity">
+            <i class="fas fa-shield-alt"></i>{{ isApplyingWorkflowSecurity ? 'Applying…' : 'Apply policy' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
   <SimpleModal ref="modal" />
 </template>
 
@@ -102,6 +144,7 @@ import PopupTutorial from '@/views/_components/utility/PopupTutorial.vue';
 import useWorkflowDesigner from './useWorkflowDesigner';
 import { API_CONFIG } from '@/tt.config.js';
 import SimpleModal from '@/views/_components/common/SimpleModal.vue';
+import SecurityLevelSlider from '@/views/Terminal/CenterPanel/screens/Settings/components/SecuritySettings/SecurityLevelSlider.vue';
 import AgentChat from './components/AgentChat/AgentChat.vue';
 
 export default {
@@ -114,8 +157,8 @@ export default {
     WorkflowActionsMenu,
     CanvasViewControls,
     PopupTutorial,
-    LoadingOverlay,
-    SimpleModal,
+    LoadingOverlay,    SimpleModal,
+    SecurityLevelSlider,
     AgentChat,
     Tooltip,
   },
@@ -140,6 +183,17 @@ export default {
       workflowError: null,
       activeWorkflowId: null,
       workflowStatus: null,
+      workflowSecurityPolicy: { inherit: true },
+      isSecurityPolicyModalOpen: false,
+      isApplyingWorkflowSecurity: false,
+      workflowSecurityDraft: 'inherit',
+      workflowSecurityOptions: [
+        { value: 'inherit', label: 'Inherit', icon: 'fas fa-link', description: 'Use the account policy configured in Settings → Security.' },
+        { value: 'off', label: 'Off', icon: 'fas fa-power-off', description: 'Allow this workflow’s actions without policy enforcement.' },
+        { value: 'observe', label: 'Observe', icon: 'fas fa-eye', description: 'Allow actions and record matching security rules for review.' },
+        { value: 'balanced', label: 'Balanced', icon: 'fas fa-shield-alt', description: 'Block critical risks and audit lower-severity findings.' },
+        { value: 'strict', label: 'Strict', icon: 'fas fa-lock', description: 'Block critical and high-severity risks and audit the rest.' },
+      ],
       nodeOutputs: {},
       nodeErrors: {},
       workflowName: 'My Workflow',
@@ -153,8 +207,10 @@ export default {
       // context — we skip the rebuild entirely while a drag is in progress.
       isDragging: false,
     };
-  },
-  computed: {
+  },  computed: {
+    selectedWorkflowSecurityOption() {
+      return this.workflowSecurityOptions.find((option) => option.value === this.workflowSecurityDraft) || this.workflowSecurityOptions[0];
+    },
     backendTools() {
       return this.$store.getters['tools/workflowTools'];
     },
@@ -797,6 +853,29 @@ export default {
         });
       }
     },
+    configureWorkflowSecurity() {
+      this.workflowSecurityDraft = this.workflowSecurityPolicy?.inherit === false
+        ? this.workflowSecurityPolicy.mode
+        : 'inherit';
+      this.isSecurityPolicyModalOpen = true;
+    },
+    closeWorkflowSecurityModal() {
+      if (this.isApplyingWorkflowSecurity) return;
+      this.isSecurityPolicyModalOpen = false;
+    },
+    async applyWorkflowSecurity() {
+      const selected = this.workflowSecurityDraft;
+      this.workflowSecurityPolicy = selected === 'inherit'
+        ? { inherit: true }
+        : { inherit: false, mode: selected };
+      this.isApplyingWorkflowSecurity = true;
+      try {
+        await this.saveCanvasState(true, false);
+        this.isSecurityPolicyModalOpen = false;
+      } finally {
+        this.isApplyingWorkflowSecurity = false;
+      }
+    },
     async saveCanvasState(silent = false, isSharing = false) {
       this.deselectAllNodes();
       this.deselectAllEdges();
@@ -856,8 +935,8 @@ export default {
         zoomLevel: this.zoomLevel,
         canvasOffsetX: this.$refs.canvas.canvasOffsetX,
         canvasOffsetY: this.$refs.canvas.canvasOffsetY,
-        isTinyNodeMode: this.isTinyNodeMode,
-        isShareable: this.isShareable,
+        isTinyNodeMode: this.isTinyNodeMode,        isShareable: this.isShareable,
+        securityPolicy: this.workflowSecurityPolicy,
         customTools: isSharing ? this.getCustomToolsUsedInWorkflow() : [],
       };
 
@@ -1041,8 +1120,8 @@ export default {
           zoomLevel: this.zoomLevel,
           canvasOffsetX: this.$refs.canvas.canvasOffsetX,
           canvasOffsetY: this.$refs.canvas.canvasOffsetY,
-          isTinyNodeMode: this.isTinyNodeMode,
-          isShareable: this.isShareable,
+          isTinyNodeMode: this.isTinyNodeMode,          isShareable: this.isShareable,
+          securityPolicy: this.workflowSecurityPolicy,
           customTools: this.getCustomToolsUsedInWorkflow(),
         };
         envelope = {
@@ -1094,10 +1173,9 @@ export default {
         }
 
         // Update the workflowName from the loaded state
-        this.updateWorkflowName(state.name || 'My Workflow');
-
-        // Update shareable status
+        this.updateWorkflowName(state.name || 'My Workflow');        // Update shareable and security policy status
         this.isShareable = state.isShareable || false;
+        this.workflowSecurityPolicy = state.securityPolicy || { inherit: true };
 
         // Update isTinyNodeMode and nodeWidth based on the saved state
         this.isTinyNodeMode = state.isTinyNodeMode || false; // Ensure default if undefined
@@ -2670,6 +2748,8 @@ export default {
 
 <style scoped>
 /* GLOBAL SHARED STYLES FOR THIS PAGE HERE */
+.workflow-security-overlay{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.68);backdrop-filter:blur(6px)}.workflow-security-dialog{width:min(680px,calc(100vw - 32px));border:1px solid var(--terminal-border-color-light);border-radius:12px;background:var(--terminal-section-bg);color:var(--color-text);box-shadow:0 24px 80px rgba(0,0,0,.45);padding:24px}.workflow-security-titlebar{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}.workflow-security-eyebrow{font:700 10px var(--font-family-monospace);letter-spacing:.14em;color:var(--color-primary)}.workflow-security-titlebar h3{margin:6px 0 4px;font-size:20px}.workflow-security-titlebar p{margin:0;color:var(--color-text-muted);font-size:12px}.workflow-security-close{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--terminal-border-color-light);border-radius:8px;background:transparent;color:var(--color-text-muted);cursor:pointer}.workflow-security-close:hover{border-color:var(--color-primary);color:var(--color-primary)}.workflow-security-explainer{display:flex;align-items:flex-start;gap:10px;margin:24px 0;padding:12px 14px;border:1px solid color-mix(in srgb,var(--color-primary) 28%,var(--terminal-border-color-light));border-radius:12px;background:color-mix(in srgb,var(--color-primary) 5%,var(--terminal-bg))}.workflow-security-explainer i{margin-top:2px;color:var(--color-text-muted)}.workflow-security-explainer p{margin:0;color:var(--color-text-muted);font-size:11px;line-height:1.55}.workflow-security-explainer strong{color:var(--color-text)}.workflow-security-slider-wrap{padding:20px 16px;border:1px solid var(--terminal-border-color-light);border-radius:12px;background:color-mix(in srgb,var(--terminal-bg) 45%,transparent)}.workflow-security-scale{display:flex;justify-content:space-between;margin-bottom:12px;color:var(--color-text-muted);font:700 8px var(--font-family-monospace);letter-spacing:.06em;text-transform:uppercase}.workflow-security-selection{display:flex;align-items:flex-start;gap:12px;margin-top:16px;padding:14px;border:1px solid var(--terminal-border-color-light);border-radius:12px}.workflow-security-selection>i{display:grid;place-items:center;width:34px;height:34px;color:var(--color-primary);background:color-mix(in srgb,var(--color-primary) 9%,transparent)}.workflow-security-selection>div{display:flex;flex-direction:column;gap:3px}.workflow-security-selection small{font:700 8px var(--font-family-monospace);letter-spacing:.1em;color:var(--color-text-muted)}.workflow-security-selection strong{font-size:13px}.workflow-security-selection p{margin:2px 0 0;color:var(--color-text-muted);font-size:11px}.workflow-security-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:24px}.workflow-security-cancel,.workflow-security-apply{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer}.workflow-security-cancel{border:1px solid var(--terminal-border-color-light);background:transparent;color:var(--color-text)}.workflow-security-apply{border:1px solid var(--color-primary);background:var(--color-primary);color:var(--terminal-bg)}.workflow-security-apply:disabled{opacity:.5;cursor:not-allowed}@media(max-width:700px){.workflow-security-overlay{padding:16px}.workflow-security-dialog{padding:16px}.workflow-security-scale{font-size:7px}.workflow-security-actions{flex-direction:column-reverse}.workflow-security-cancel,.workflow-security-apply{width:100%}}
+
 body {
   font-family: var(--font-family-primary);
   margin: 0;
