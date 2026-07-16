@@ -529,6 +529,10 @@ export default {
       'deepseek-reasoner': 128000,
       // Cerebras
       'llama3.1-8b': 131072,
+      // Kimi Code (highspeed listed before its prefix 'kimi-for-coding')
+      'kimi-for-coding-highspeed': 256000,
+      'kimi-for-coding': 256000,
+      k3: 1048576,
     };
 
     const getContextWindowForModel = (model) => {
@@ -555,7 +559,9 @@ export default {
       ms.contextStatus = {
         ...ms.contextStatus,
         model,
-        tokenLimit: contextWindow || ms.contextStatus.tokenLimit,
+        // Unknown model => 0 (renders as unknown). Never inherit the previous
+        // model's limit — that left K3 displaying a stale 64K.
+        tokenLimit: contextWindow || 0,
       };
     };
 

@@ -639,6 +639,27 @@ const PROVIDER_CONFIGS = [
         supportsTools: true,
         reasoning: true,
       },
+      // Kimi K3 flagship: up to 1M context (Allegretto+ plans; Moderato caps
+      // K3 at 256K server-side). Kimi docs instruct third-party tools to set
+      // 1048576. https://www.kimi.com/code/docs/en/kimi-code/models.html
+      k3: {
+        contextWindow: 1048576,
+        maxOutputTokens: 16384,
+        inputCostPer1M: null, // subscription-based, not per-token
+        outputCostPer1M: null,
+        supportsVision: false,
+        supportsTools: true,
+        reasoning: true,
+      },
+      'kimi-for-coding-highspeed': {
+        contextWindow: 256000,
+        maxOutputTokens: 16384,
+        inputCostPer1M: null, // subscription-based, not per-token
+        outputCostPer1M: null,
+        supportsVision: false,
+        supportsTools: true,
+        reasoning: true,
+      },
     },
     compat: { mapDeveloperRole: true },
     sdkOptions: {
