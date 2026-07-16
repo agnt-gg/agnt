@@ -3281,7 +3281,11 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
   margin-top: 0;
 }
 
-.message-card video {
+.message-card :deep(video) {
+  max-width: 100%;
+}
+
+.message-content :deep(video) {
   max-width: 100%;
 }
 
