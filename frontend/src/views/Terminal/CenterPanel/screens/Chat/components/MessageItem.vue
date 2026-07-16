@@ -1115,7 +1115,8 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     const openVizFullscreen = (container, type) => {
       const html = buildVizHTML(container, type);
       if (!html) return;
-      vizModalTitle.value = type === 'chartjs' ? 'Chart.js' : type === 'd3' ? 'D3 Visualization' : type === 'mermaid' ? 'Mermaid Diagram' : '3D Scene';
+      vizModalTitle.value =
+        type === 'chartjs' ? 'Chart.js' : type === 'd3' ? 'D3 Visualization' : type === 'mermaid' ? 'Mermaid Diagram' : '3D Scene';
       vizModalHTML.value = injectTheme(html);
       showVizModal.value = true;
       document.body.style.overflow = 'hidden';
@@ -3278,6 +3279,10 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
 
 .message-text *:first-child {
   margin-top: 0;
+}
+
+.message-card video {
+  max-width: 100%;
 }
 
 .message-metadata {
