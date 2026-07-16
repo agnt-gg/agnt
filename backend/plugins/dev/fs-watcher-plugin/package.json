@@ -1,6 +1,6 @@
 {
   "name": "fs-watcher-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AGNT plugin: watch a file or directory for changes and trigger workflows.",
   "type": "module",
   "dependencies": {

@@ -131,11 +131,10 @@ async function buildPlugin(arg) {
   }
 
   // Read manifest
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-
-  // Output name comes from the manifest "name" (preferred) or the folder name —
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));  // Output name comes from the manifest "name" (preferred) or the folder name —
   // NOT the raw CLI argument, which may be an absolute path.
   const pluginName = (manifest.name && String(manifest.name).trim()) || path.basename(pluginPath);
+  const isOfficialSource = path.dirname(pluginPath) === path.resolve(PLUGINS_DIR);
 
   console.log(`📦 Plugin: ${manifest.name} v${manifest.version}`);
   console.log(`📝 Description: ${manifest.description || 'No description'}`);
@@ -198,24 +197,37 @@ async function buildPlugin(arg) {
     } else {
       console.log(`\n📦 No dependencies declared`);
     }
-  }
-
-  // trust system Layer 1: deterministic capability scan (warn-grade during the
-  // migration window — the build is NOT failed on undeclared capabilities;
-  // the flip to hard-fail belongs to the 0.7.0 CatalogAuditor).
+  }  // trust system Layer 1: deterministic capability scan. Official bundled
+  // sources fail closed; external/community sources remain warn-grade during
+  // the compatibility window.
   console.log(`\n🔍 Scanning capabilities (first-party source only)...`);
   const scan = await scanCapabilities(pluginPath);
   const detected = Object.keys(scan.capabilities);
   const declared = normalizePermissions(manifest.permissions);
   const capDiff = diffCapabilities(manifest.permissions, scan.capabilities);
+  const hasStructuredPermissions =
+    manifest.permissions &&
+    !Array.isArray(manifest.permissions) &&
+    Array.isArray(manifest.permissions.capabilities) &&
+    Array.isArray(manifest.permissions.domains);
   console.log(`   Detected: ${detected.length ? detected.join(', ') : '(none)'}`);
   console.log(`   Declared: ${declared.length ? declared.join(', ') : '(none)'}`);
+  if (!hasStructuredPermissions) {
+    const message = 'manifest.json must contain structured permissions.capabilities and permissions.domains arrays';
+    if (isOfficialSource) {
+      console.error(`❌ Official plugin disclosure gate: ${message}`);
+      process.exit(1);
+    }
+    console.warn(`⚠️  ${message}`);
+  }
   if (capDiff.undeclared.length > 0) {
-    console.warn(`⚠️  Undeclared capabilities (add a "permissions" block to manifest.json):`);
+    const log = isOfficialSource ? console.error : console.warn;
+    log(`${isOfficialSource ? '❌ Official plugin disclosure gate' : '⚠️  Undeclared capabilities'}:`);
     for (const cap of capDiff.undeclared) {
       const first = scan.capabilities[cap][0];
-      console.warn(`     - ${cap}  (e.g. ${first.file}:${first.line})`);
+      log(`     - ${cap}  (e.g. ${first.file}:${first.line})`);
     }
+    if (isOfficialSource) process.exit(1);
   }
 
   // Create dist directory

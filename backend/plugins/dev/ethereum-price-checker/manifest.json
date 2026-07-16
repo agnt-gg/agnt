@@ -1,6 +1,6 @@
 {
   "name": "ethereum-price-checker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Retrieves the current price of Ethereum using the CoinGecko API.",
   "author": "AGNT User",
   "icon": "ethereum",
@@ -56,6 +56,8 @@
     "capabilities": [
       "network"
     ],
-    "domains": []
+    "domains": [
+      "api.coingecko.com"
+    ]
   }
 }

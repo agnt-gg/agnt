@@ -1,0 +1,87 @@
+{
+  "name": "random-dice-roller",
+  "version": "1.0.1",
+  "description": "A utility plugin to simulate rolling dice (d6, d20, custom sides) for games and randomization tasks.",
+  "author": "AGNT User",
+  "icon": "dice",
+  "tools": [
+    {
+      "type": "roll-dice",
+      "entryPoint": "./index.js",
+      "schema": {
+        "title": "Roll Dice",
+        "category": "utility",
+        "type": "roll-dice",
+        "icon": "box",
+        "description": "Roll a specified number of dice with a custom number of sides and optional modifier.",
+        "parameters": {
+          "quantity": {
+            "type": "number",
+            "inputType": "number",
+            "description": "The number of dice to roll (e.g., 1, 2, 5)",
+            "default": 1,
+            "required": true
+          },
+          "sides": {
+            "type": "number",
+            "inputType": "number",
+            "description": "The number of sides per die (e.g., 6 for a standard cube, 20 for a d20)",
+            "default": 6,
+            "required": true
+          },
+          "modifier": {
+            "type": "number",
+            "inputType": "number",
+            "description": "A flat number to add (positive) or subtract (negative) from the final total",
+            "default": 0,
+            "required": false
+          }
+        },
+        "outputs": {
+          "total": {
+            "type": "number",
+            "description": "The final sum of all dice rolls plus the modifier"
+          },
+          "individual_rolls": {
+            "type": "array",
+            "description": "An array containing the result of each individual die roll"
+          },
+          "summary": {
+            "type": "string",
+            "description": "A human-readable string summary of the result (e.g., 'Rolled 2d6+0: [3, 5] = 8')"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "True if the calculation was successful"
+          }
+        }
+      }
+    },
+    {
+      "type": "flip-coin",
+      "entryPoint": "./index.js",
+      "schema": {
+        "title": "Flip Coin",
+        "category": "utility",
+        "type": "flip-coin",
+        "icon": "magic",
+        "description": "Flip a virtual coin to get Heads or Tails.",
+        "parameters": {},
+        "outputs": {
+          "result": {
+            "type": "string",
+            "description": "Either 'Heads' or 'Tails'"
+          },
+          "is_heads": {
+            "type": "boolean",
+            "description": "True if Heads, False if Tails"
+          }
+        }
+      }
+    }
+  ],
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  }
+}

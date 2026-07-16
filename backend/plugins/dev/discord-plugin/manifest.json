@@ -1,6 +1,6 @@
 {
   "name": "discord-plugin",
-  "version": "1.14.1",
+  "version": "1.14.2",
   "description": "Discord integration for AGNT - Send messages and upload files to guild channels OR user DMs (recipientType='user' + userId), delete the bot's own messages (single / purge-all / purge-recent, DM-safe and rate-limit-paced), auto-chunk >2000 char messages, Discord-safe attachment optimization (PNG->JPEG, GIF->MP4, video re-encode), role management, inbound message receiving (guilds + DMs), user lookup by username or ID (RESOLVE_USER), and DM setup diagnostics (TEST_DM). Bot->user DMs require the bot to share at least one guild with the user. Requires ffmpeg on PATH for attachment optimization.",
   "author": "AGNT",
   "icon": "discord",
@@ -508,11 +508,16 @@
   ],
   "permissions": {
     "capabilities": [
+      "env-access",
       "filesystem",
       "network",
-      "spawn-process",
-      "env-access"
+      "spawn-process"
     ],
-    "domains": []
+    "domains": [
+      "cdn.discordapp.com",
+      "discord.com",
+      "gateway.discord.gg",
+      "media.discordapp.net"
+    ]
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "google-drive-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Google Drive integration plugin for AGNT - Manage files and folders in Google Drive",
   "author": "AGNT",
   "icon": "google-drive",
@@ -38,7 +38,11 @@
             "description": "The ID of the folder (for LIST_FILES, UPLOAD_FILE, CREATE_FOLDER)",
             "conditional": {
               "field": "action",
-              "value": ["LIST_FILES", "UPLOAD_FILE", "CREATE_FOLDER"]
+              "value": [
+                "LIST_FILES",
+                "UPLOAD_FILE",
+                "CREATE_FOLDER"
+              ]
             }
           },
           "fileName": {
@@ -47,7 +51,14 @@
             "description": "The name or ID of the file",
             "conditional": {
               "field": "action",
-              "value": ["UPLOAD_FILE", "DOWNLOAD_FILE", "DELETE_FILE", "MOVE_FILE", "GET_FILE_INFO", "SHARE_FILE"]
+              "value": [
+                "UPLOAD_FILE",
+                "DOWNLOAD_FILE",
+                "DELETE_FILE",
+                "MOVE_FILE",
+                "GET_FILE_INFO",
+                "SHARE_FILE"
+              ]
             }
           },
           "fileContent": {
@@ -89,7 +100,11 @@
           "shareRole": {
             "type": "string",
             "inputType": "select",
-            "options": ["reader", "writer", "commenter"],
+            "options": [
+              "reader",
+              "writer",
+              "commenter"
+            ],
             "description": "The role to grant to the shared user",
             "conditional": {
               "field": "action",
@@ -113,5 +128,9 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  }
 }

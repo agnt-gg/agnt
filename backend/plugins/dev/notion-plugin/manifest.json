@@ -1,6 +1,6 @@
 {
   "name": "notion-plugin",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Notion integration plugin for AGNT - Search, query databases, create pages, and manage your Notion workspace.",
   "author": "AGNT",
   "icon": "notion",
@@ -21,7 +21,13 @@
             "type": "string",
             "inputType": "select",
             "description": "Operation to perform",
-            "options": ["search", "getDatabases", "queryDatabase", "getPage", "createPage"],
+            "options": [
+              "search",
+              "getDatabases",
+              "queryDatabase",
+              "getPage",
+              "createPage"
+            ],
             "default": "search"
           },
           "query": {
@@ -37,7 +43,11 @@
             "type": "string",
             "inputType": "select",
             "inputSize": "half",
-            "options": ["all", "page", "database"],
+            "options": [
+              "all",
+              "page",
+              "database"
+            ],
             "default": "all",
             "description": "Filter results by type",
             "conditional": {
@@ -58,7 +68,10 @@
             "type": "string",
             "inputType": "select",
             "inputSize": "half",
-            "options": ["No", "Yes"],
+            "options": [
+              "No",
+              "Yes"
+            ],
             "default": "No",
             "description": "Enable filtering",
             "conditional": {
@@ -70,7 +83,10 @@
             "type": "string",
             "inputType": "select",
             "inputSize": "half",
-            "options": ["No", "Yes"],
+            "options": [
+              "No",
+              "Yes"
+            ],
             "default": "No",
             "description": "Enable sorting",
             "conditional": {
@@ -92,7 +108,16 @@
             "type": "string",
             "inputType": "select",
             "inputSize": "half",
-            "options": ["equals", "does_not_equal", "contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty"],
+            "options": [
+              "equals",
+              "does_not_equal",
+              "contains",
+              "does_not_contain",
+              "starts_with",
+              "ends_with",
+              "is_empty",
+              "is_not_empty"
+            ],
             "default": "contains",
             "description": "Filter condition",
             "conditional": {
@@ -123,7 +148,10 @@
             "type": "string",
             "inputType": "select",
             "inputSize": "half",
-            "options": ["ascending", "descending"],
+            "options": [
+              "ascending",
+              "descending"
+            ],
             "default": "descending",
             "description": "Sort direction",
             "conditional": {
@@ -143,7 +171,10 @@
           "includeContent": {
             "type": "string",
             "inputType": "select",
-            "options": ["Yes", "No"],
+            "options": [
+              "Yes",
+              "No"
+            ],
             "default": "Yes",
             "description": "Include page content blocks",
             "conditional": {
@@ -155,7 +186,10 @@
             "type": "string",
             "inputType": "select",
             "inputSize": "half",
-            "options": ["database", "page"],
+            "options": [
+              "database",
+              "page"
+            ],
             "default": "database",
             "description": "Type of parent",
             "conditional": {
@@ -257,5 +291,9 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  }
 }

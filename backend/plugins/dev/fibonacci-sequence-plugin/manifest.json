@@ -1,0 +1,123 @@
+{
+  "name": "fibonacci-sequence-plugin",
+  "version": "1.0.1",
+  "description": "Provides utilities to calculate Fibonacci numbers and generate Fibonacci sequences.",
+  "author": "AGNT User",
+  "icon": "magic",
+  "tools": [
+    {
+      "type": "fib-calc-term",
+      "entryPoint": "./fib-calc-term.js",
+      "schema": {
+        "title": "Calculate Fibonacci Term",
+        "category": "action",
+        "type": "fib-calc-term",
+        "icon": "code",
+        "description": "Calculates the nth Fibonacci number using the selected algorithm.",
+        "parameters": {
+          "n": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Position in the Fibonacci sequence (starting at 0).",
+            "required": true
+          },
+          "method": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Algorithm to use for calculation.",
+            "options": [
+              "iterative",
+              "matrix",
+              "recursive"
+            ],
+            "default": "iterative",
+            "required": false
+          }
+        },
+        "outputs": {
+          "result": {
+            "type": "number",
+            "description": "The Fibonacci number at the specified position."
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the calculation succeeded."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the calculation fails."
+          }
+        }
+      }
+    },
+    {
+      "type": "fib-generate-list",
+      "entryPoint": "./fib-generate-list.js",
+      "schema": {
+        "title": "Generate Fibonacci Sequence",
+        "category": "action",
+        "type": "fib-generate-list",
+        "icon": "code",
+        "description": "Generates a list of Fibonacci numbers based on count or maximum value.",
+        "parameters": {
+          "count": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Number of terms to generate.",
+            "required": false,
+            "conditional": {
+              "field": "maxValue",
+              "value": null
+            }
+          },
+          "maxValue": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Maximum value (inclusive) to generate up to.",
+            "required": false,
+            "conditional": {
+              "field": "count",
+              "value": null
+            }
+          },
+          "includeZero": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Include zero as the first term of the sequence.",
+            "default": true,
+            "required": false
+          },
+          "method": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Algorithm to use for generating the sequence.",
+            "options": [
+              "iterative",
+              "recursive"
+            ],
+            "default": "iterative",
+            "required": false
+          }
+        },
+        "outputs": {
+          "sequence": {
+            "type": "array",
+            "description": "Array containing the generated Fibonacci numbers."
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the sequence generation succeeded."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the generation fails."
+          }
+        }
+      }
+    }
+  ],
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  }
+}

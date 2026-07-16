@@ -75,10 +75,24 @@ async function main() {
         let manifest = {};
         try {
           manifest = JSON.parse(await fsp.readFile(path.join(tmpDir, 'manifest.json'), 'utf-8'));
-        } catch {}
+        } catch (error) {
+          throw new Error(`manifest.json could not be parsed: ${error.message}`);
+        }
         const scan = await scanCapabilities(tmpDir);
         const declared = normalizePermissions(manifest.permissions);
         const diff = diffCapabilities(manifest.permissions, scan.capabilities);
+        const hasStructuredPermissions =
+          manifest.permissions &&
+          !Array.isArray(manifest.permissions) &&
+          Array.isArray(manifest.permissions.capabilities) &&
+          Array.isArray(manifest.permissions.domains);
+        if (!hasStructuredPermissions) {
+          throw new Error('official artifact lacks structured permissions.capabilities/domains arrays');
+        }
+        if (scan.scanFailed) throw new Error(`official artifact capability scan failed: ${scan.error || 'unknown error'}`);
+        if (diff.undeclared.length) {
+          throw new Error(`official artifact has undeclared capabilities: ${diff.undeclared.join(', ')}`);
+        }
         const computedTier = computeTrustTier({
           integrityState: 'verified',
           permissionsDeclared: declared.length > 0,
@@ -86,11 +100,12 @@ async function main() {
           scanFailed: scan.scanFailed,
         });
         trust = {
+          version: manifest.version,
           // The bundled marketplace-default catalog is AGNT FIRST-PARTY —
           // these are 'official'. The community/unverified ladder applies to
           // third-party publishes (server-side, keyed on publisher identity).
-          // Honesty guard: a failed scan still falls back to the computed tier.
-          trustTier: scan.scanFailed ? computedTier : 'official',
+          // Official artifacts have already passed the fail-closed scan above.
+          trustTier: computedTier === 'unverified' ? computedTier : 'official',
           declaredPermissions: declared,
           detectedCapabilities: Object.keys(scan.capabilities),
         };
@@ -98,7 +113,9 @@ async function main() {
         await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
       }
     } catch (err) {
-      console.warn(`⚠️  ${record.name}: trust scan failed (${err.message}) — stamping hash only`);
+      console.error(`❌ ${record.name}: trust scan failed (${err.message})`);
+      mismatched++;
+      continue;
     }
 
     if (checkOnly) {
@@ -113,7 +130,8 @@ async function main() {
 
     const trustChanged =
       trust &&
-      (record.trustTier !== trust.trustTier ||
+      (record.version !== trust.version ||
+        record.trustTier !== trust.trustTier ||
         JSON.stringify(record.declaredPermissions || []) !== JSON.stringify(trust.declaredPermissions) ||
         JSON.stringify(record.detectedCapabilities || []) !== JSON.stringify(trust.detectedCapabilities));
     if (record.integrity === integrity && record.size === size && !trustChanged) {
@@ -121,8 +139,8 @@ async function main() {
       continue;
     }
     record.integrity = integrity;
-    record.size = size;
-    if (trust) {
+    record.size = size;    if (trust) {
+      record.version = trust.version;
       record.trustTier = trust.trustTier;
       record.declaredPermissions = trust.declaredPermissions;
       record.detectedCapabilities = trust.detectedCapabilities;

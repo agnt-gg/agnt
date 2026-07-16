@@ -1,6 +1,6 @@
 {
   "name": "gmail-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gmail integration plugin for AGNT - Send, reply, read, organize, and manage attachments",
   "author": "AGNT",
   "icon": "gmail",
@@ -75,7 +75,10 @@
             "description": "Email body. Can be plain text or HTML.",
             "conditional": {
               "field": "operation",
-              "value": ["Send Email", "Reply to Email"]
+              "value": [
+                "Send Email",
+                "Reply to Email"
+              ]
             }
           },
           "attachments": {
@@ -84,7 +87,10 @@
             "description": "Optional. JSON array of attachment objects: [{ filename: 'file.txt', mimetype: 'text/plain', content: 'base64_string' }]",
             "conditional": {
               "field": "operation",
-              "value": ["Send Email", "Reply to Email"]
+              "value": [
+                "Send Email",
+                "Reply to Email"
+              ]
             }
           },
           "messageId": {
@@ -93,7 +99,12 @@
             "description": "The ID of the email message to act on.",
             "conditional": {
               "field": "operation",
-              "value": ["Reply to Email", "Read Email", "Modify Email", "Get Attachments"]
+              "value": [
+                "Reply to Email",
+                "Read Email",
+                "Modify Email",
+                "Get Attachments"
+              ]
             }
           },
           "addLabelIds": {
@@ -131,5 +142,9 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  }
 }

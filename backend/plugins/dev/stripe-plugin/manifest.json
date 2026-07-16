@@ -1,6 +1,6 @@
 {
   "name": "stripe-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Stripe integration plugin for AGNT - Create and send invoices with line items",
   "author": "AGNT",
   "icon": "stripe",
@@ -32,7 +32,12 @@
           "currency": {
             "type": "string",
             "inputType": "select",
-            "options": ["USD", "EUR", "GBP", "JPY"],
+            "options": [
+              "USD",
+              "EUR",
+              "GBP",
+              "JPY"
+            ],
             "default": "USD",
             "required": true,
             "description": "Currency for the invoice"
@@ -89,5 +94,9 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  }
 }

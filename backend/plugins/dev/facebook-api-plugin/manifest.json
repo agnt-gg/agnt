@@ -1,0 +1,164 @@
+{
+  "name": "facebook-api-plugin",
+  "version": "1.0.1",
+  "description": "Interact with the Facebook Graph API to post updates, fetch user/profile/page data, and manage Facebook content.",
+  "author": "AGNT User",
+  "icon": "api",
+  "tools": [
+    {
+      "type": "facebook-post-status",
+      "entryPoint": "./facebook-post-status.js",
+      "schema": {
+        "title": "Facebook Post Status",
+        "category": "action",
+        "type": "facebook-post-status",
+        "icon": "code",
+        "description": "Posts a status update to a user's Facebook timeline or page.",
+        "authRequired": "oauth",
+        "authProvider": "facebook",
+        "parameters": {
+          "recipientType": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Choose whether to post on user timeline or a page.",
+            "options": [
+              "user",
+              "page"
+            ],
+            "default": "user",
+            "required": true
+          },
+          "pageId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Facebook Page ID (required if posting to a page).",
+            "required": false,
+            "conditional": {
+              "field": "recipientType",
+              "value": "page"
+            }
+          },
+          "message": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The status message to post.",
+            "required": true
+          },
+          "link": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional link to attach to the post.",
+            "required": false
+          }
+        },
+        "outputs": {
+          "postId": {
+            "type": "string",
+            "description": "ID of the created Facebook post."
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the post was successfully created."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the request failed."
+          }
+        }
+      }
+    },
+    {
+      "type": "facebook-get-profile",
+      "entryPoint": "./facebook-get-profile.js",
+      "schema": {
+        "title": "Facebook Get Profile",
+        "category": "action",
+        "type": "facebook-get-profile",
+        "icon": "cloud",
+        "description": "Fetches the profile data of the authenticated user or a Facebook page.",
+        "authRequired": "oauth",
+        "authProvider": "facebook",
+        "parameters": {
+          "profileType": {
+            "type": "string",
+            "inputType": "select",
+            "description": "Specify whether the profile is a user or a page.",
+            "options": [
+              "user",
+              "page"
+            ],
+            "default": "user",
+            "required": true
+          },
+          "pageId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Facebook Page ID (required if profileType is 'page').",
+            "required": false,
+            "conditional": {
+              "field": "profileType",
+              "value": "page"
+            }
+          },
+          "fields": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated list of fields to retrieve (e.g., 'id,name,picture').",
+            "default": "id,name,picture",
+            "required": false
+          }
+        },
+        "outputs": {
+          "profileData": {
+            "type": "object",
+            "description": "The retrieved Facebook profile data."
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the profile data was successfully retrieved."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the request failed."
+          }
+        }
+      }
+    },
+    {
+      "type": "facebook-list-pages",
+      "entryPoint": "./facebook-list-pages.js",
+      "schema": {
+        "title": "Facebook List Managed Pages",
+        "category": "action",
+        "type": "facebook-list-pages",
+        "icon": "database",
+        "description": "Retrieves a list of Facebook pages managed by the authenticated user.",
+        "authRequired": "oauth",
+        "authProvider": "facebook",
+        "parameters": {},
+        "outputs": {
+          "pages": {
+            "type": "array",
+            "description": "Array of page objects managed by the user."
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the pages were successfully retrieved."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the request failed."
+          }
+        }
+      }
+    }
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": [
+      "graph.facebook.com"
+    ]
+  }
+}

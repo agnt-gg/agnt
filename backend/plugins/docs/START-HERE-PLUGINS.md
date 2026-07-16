@@ -12,7 +12,7 @@ on your machine, compile it to a `.agnt` file, and install or publish that file.
 
 ```
 my-plugin/                 ← lives ANYWHERE on disk (not inside the AGNT repo)
-├── manifest.json          ← what the tool is + its inputs
+├── manifest.json          ← tool contract + REQUIRED capability disclosure
 ├── index.js               ← what the tool does
 └── package.json           ← "type": "module" + any deps
         │
@@ -47,9 +47,12 @@ node appears in the UI and what inputs it takes).
 ```json
 {
   "name": "my-weather-plugin",
-  "version": "1.0.0",
-  "description": "Get the current temperature for a city",
+  "version": "1.0.0",  "description": "Get the current temperature for a city",
   "author": "Your Name",
+  "permissions": {
+    "capabilities": ["network"],
+    "domains": ["wttr.in"]
+  },
   "tools": [
     {
       "type": "weather-get-current",
@@ -74,10 +77,38 @@ node appears in the UI and what inputs it takes).
           "error":   { "type": "string" }
         }
       }
-    }
-  ]
+    }  ]
 }
 ```
+
+> ## ⚠️ Required for every plugin: declare capabilities
+>
+> Every `manifest.json` **must** include a `permissions` block. This is not
+> optional metadata: it is the plugin's security disclosure. The weather example
+> declares `network` because its code calls `fetch()`, and names `wttr.in` because
+> that is the service it contacts.
+>
+> Use only the capabilities your first-party source actually needs:
+> `network`, `filesystem`, `spawn-process`, `env-access`, `dynamic-eval`, and
+> `dynamic-import`. If the plugin needs none of them, declare that explicitly:
+>
+> ```json
+> "permissions": {
+>   "capabilities": [],
+>   "domains": []
+> }
+> ```
+>
+> Before building, run the doctor and fix every undeclared capability:
+>
+> ```bash
+> node /path/to/agnt/backend/plugins/cli/doctor.js ./my-weather-plugin
+> ```
+>
+> A structurally valid plugin with undeclared behavior is classified **yellow**
+> by the marketplace audit; a malformed, incomplete, unsafe, or integrity-mismatched
+> package is **red**. The canonical schema, detector rules, and limitations are in
+> [PLUGIN-REFERENCE.md § Required capability declarations](PLUGIN-REFERENCE.md#2-required-capability-declarations).
 
 ### 3. `index.js` — implement the tool
 
@@ -128,10 +159,9 @@ node /path/to/agnt/backend/plugins/build-plugin.js ~/my-weather-plugin
 
 The output `.agnt` is named from your manifest's `name` field. (A bare name with
 no path, e.g. `node cli/build-plugin.js discord-plugin`, is reserved for plugins
-that live in `backend/plugins/dev/` — the contributor path.)
-
-✅ **Checkpoint:** a `my-weather-plugin.agnt` file now exists in
-`plugin-builds/`. If it does, your plugin compiled.
+that live in `backend/plugins/dev/` — the contributor path.)✅ **Checkpoint:** a `my-weather-plugin.agnt` file now exists in
+`plugin-builds/`, and the build output reports no undeclared capabilities. If
+both are true, your plugin compiled with a complete security disclosure.
 
 ### 6. Install it
 
@@ -146,7 +176,9 @@ picker. **You're done.** Use it like any built-in node.
 
 The same `.agnt` file is what you publish. From Settings → Plugins →
 **Publish to Marketplace**, upload your `.agnt`. No PR, no repo changes — other
-users install it the same way you did in step 6.
+users install it the same way you did in step 6. Publication does not excuse
+missing declarations: review the build/doctor capability output and ensure the
+manifest's required `permissions` block matches the code before uploading.
 
 > The marketplace is the distribution channel for community and third-party
 > plugins. If your plugin wraps a third-party or commercial service, this is the
@@ -167,7 +199,7 @@ AuthManager supply a per-user token at run time:
 
 The resolved credential is delivered to your `execute()` scoped to the
 workflow's user. Full pattern, including OAuth providers and the minimal-env
-rule for spawned processes → [PLUGIN-REFERENCE.md § Authentication](PLUGIN-REFERENCE.md#6-authentication).
+rule for spawned processes → [PLUGIN-REFERENCE.md § Authentication](PLUGIN-REFERENCE.md#7-authentication).
 
 ---
 
@@ -176,7 +208,7 @@ rule for spawned processes → [PLUGIN-REFERENCE.md § Authentication](PLUGIN-RE
 - 📖 **All parameter types, conditional fields, output shapes, icons** →
   [PLUGIN-REFERENCE.md](PLUGIN-REFERENCE.md)
 - 🔐 **Auth, AuthManager, spawning processes safely** →
-  [PLUGIN-REFERENCE.md § Authentication](PLUGIN-REFERENCE.md#6-authentication)
+  [PLUGIN-REFERENCE.md § Authentication](PLUGIN-REFERENCE.md#7-authentication)
 - 🧪 **A real, hardened example** — the Crabbox plugin shows credentials via
   AuthManager, a minimal-env spawn allowlist, input sanitization, and remote
   resource cleanup → [`dev/crabbox-plugin/`](dev/crabbox-plugin/)
@@ -185,12 +217,13 @@ rule for spawned processes → [PLUGIN-REFERENCE.md § Authentication](PLUGIN-RE
 
 ---
 
-## Definition of done ✅
-
-- [ ] Source lives in its own folder (not inside the AGNT repo)
+## Definition of done ✅- [ ] Source lives in its own folder (not inside the AGNT repo)
+- [ ] `manifest.json` contains the required structured `permissions` block
+- [ ] `node cli/doctor.js <your-folder>` reports zero undeclared capabilities
+- [ ] Intended network domains were reviewed and declared manually
 - [ ] `node cli/build-plugin.js <your-folder>` produced a `.agnt`
 - [ ] Installing the `.agnt` makes your tool appear in the node picker
 - [ ] (To share) the `.agnt` is uploaded to the marketplace
 
-If all four are checked, you've successfully built and shipped an AGNT plugin.
+If every item is checked, you've successfully built and shipped an AGNT plugin.
 You never needed to touch this repository.

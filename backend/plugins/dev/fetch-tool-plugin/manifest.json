@@ -1,0 +1,105 @@
+{
+  "name": "fetch-tool-plugin",
+  "version": "1.0.1",
+  "description": "A generic fetch tool for making HTTP requests to external APIs or websites.",
+  "author": "AGNT User",
+  "icon": "api",
+  "tools": [
+    {
+      "type": "fetch-request",
+      "entryPoint": "./fetch-request.js",
+      "schema": {
+        "title": "HTTP Fetch Request",
+        "category": "action",
+        "type": "fetch-request",
+        "icon": "api",
+        "description": "Fetches data from a provided URL using the specified HTTP method and optional headers or body.",
+        "parameters": {
+          "url": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The target URL to fetch data from.",
+            "required": true
+          },
+          "method": {
+            "type": "string",
+            "inputType": "select",
+            "description": "The HTTP method to use for the request.",
+            "required": true,
+            "options": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ],
+            "default": "GET"
+          },
+          "headers": {
+            "type": "object",
+            "inputType": "codearea",
+            "description": "Optional HTTP headers as a JSON object.",
+            "required": false
+          },
+          "body": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Request body payload, used for POST, PUT, or PATCH methods.",
+            "required": false,
+            "conditional": {
+              "field": "method",
+              "value": "POST"
+            }
+          },
+          "timeout": {
+            "type": "number",
+            "inputType": "number",
+            "description": "Timeout for the request in milliseconds.",
+            "required": false,
+            "default": 10000
+          },
+          "responseType": {
+            "type": "string",
+            "inputType": "select",
+            "description": "The desired response type.",
+            "required": false,
+            "options": [
+              "json",
+              "text",
+              "blob"
+            ],
+            "default": "json"
+          }
+        },
+        "outputs": {
+          "status": {
+            "type": "number",
+            "description": "HTTP status code from the response."
+          },
+          "headers": {
+            "type": "object",
+            "description": "Response headers as a JSON object."
+          },
+          "data": {
+            "type": "object",
+            "description": "The parsed response data (type depends on responseType)."
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the fetch was successful."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message if the request failed."
+          }
+        }
+      }
+    }
+  ],
+  "permissions": {
+    "capabilities": [
+      "network"
+    ],
+    "domains": []
+  }
+}

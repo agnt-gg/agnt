@@ -1,7 +1,7 @@
 {
   "name": "fs-watcher-plugin",
   "displayName": "File System Watcher",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Watch a file or directory for changes and trigger workflows on create, modify, and delete events.",
   "author": "AGNT",
   "icon": "folder",

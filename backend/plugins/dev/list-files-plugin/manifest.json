@@ -1,0 +1,77 @@
+{
+  "name": "list-files-plugin",
+  "version": "1.0.1",
+  "description": "Lists files in the current directory and provides their metadata.",
+  "author": "AGNT User",
+  "icon": "code",
+  "tools": [
+    {
+      "type": "list-files",
+      "entryPoint": "./list-files.js",
+      "schema": {
+        "title": "List Files in Directory",
+        "category": "action",
+        "type": "list-files",
+        "icon": "folder",
+        "description": "Lists all files in the current directory with optional filtering and metadata.",
+        "parameters": {
+          "extensionFilter": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Only include files with a specific extension (e.g. 'txt' or 'js'). Leave empty for all files.",
+            "required": false
+          },
+          "includeHidden": {
+            "type": "boolean",
+            "inputType": "checkbox",
+            "description": "Include hidden files (those starting with a dot).",
+            "default": false,
+            "required": false
+          }
+        },
+        "outputs": {
+          "files": {
+            "type": "array",
+            "description": "List of file objects.",
+            "items": {
+              "type": "object",
+              "description": "File metadata.",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "File name."
+                },
+                "size": {
+                  "type": "number",
+                  "description": "File size in bytes."
+                },
+                "isDirectory": {
+                  "type": "boolean",
+                  "description": "True if entry is a directory."
+                },
+                "lastModified": {
+                  "type": "string",
+                  "description": "Last modified date/time (ISO 8601)."
+                }
+              }
+            }
+          },
+          "success": {
+            "type": "boolean",
+            "description": "True if the operation was successful."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message, if the operation failed."
+          }
+        }
+      }
+    }
+  ],
+  "permissions": {
+    "capabilities": [
+      "filesystem"
+    ],
+    "domains": []
+  }
+}

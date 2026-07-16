@@ -1,6 +1,6 @@
 {
   "name": "google-sheets-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Google Sheets integration plugin for AGNT - Monitor new rows, read, write, append, and clear data in Google Sheets.",
   "author": "AGNT Team",
   "icon": "table",
@@ -51,7 +51,12 @@
           "operation": {
             "type": "string",
             "inputType": "select",
-            "options": ["Read", "Write", "Append", "Clear"],
+            "options": [
+              "Read",
+              "Write",
+              "Append",
+              "Clear"
+            ],
             "description": "The operation to perform on the Google Sheet"
           },
           "spreadsheetId": {
@@ -76,7 +81,10 @@
             "description": "Comma separated array of values to write or append (for write and append operations).",
             "conditional": {
               "field": "operation",
-              "value": ["Write", "Append"]
+              "value": [
+                "Write",
+                "Append"
+              ]
             }
           }
         },
@@ -96,5 +104,9 @@
         }
       }
     }
-  ]
+  ],
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  }
 }

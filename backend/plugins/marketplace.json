@@ -4,12 +4,12 @@
       "name": "discord-plugin",
       "displayName": "Discord",
       "icon": "discord",
-      "version": "1.5.0",
+      "version": "1.14.2",
       "description": "Discord integration plugin for AGNT - Send messages (with automatic message chunking for content over Discord's 2000-char limit), manage roles, receive messages, upload files with inline video/image previews, and interact with Discord servers.",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/discord-plugin.agnt",
-      "size": 3238022,
+      "size": 3260507,
       "tags": [
         "discord",
         "messaging",
@@ -33,15 +33,23 @@
           }
         }
       ],
-      "integrity": "sha256-DfzYi9VZBMjtW8PXWKmMQCpvJcsk8luCKBp/uyVFocA=",
+      "integrity": "sha256-HFdesPoLhJhPBIHJjmK3xzmu11wqU6B62umg5XHQsro=",
       "trustTier": "official",
       "declaredPermissions": [
+        "domain:cdn.discordapp.com",
+        "domain:discord.com",
+        "domain:gateway.discord.gg",
+        "domain:media.discordapp.net",
+        "env-access",
         "filesystem",
-        "network"
+        "network",
+        "spawn-process"
       ],
       "detectedCapabilities": [
         "filesystem",
-        "network"
+        "env-access",
+        "network",
+        "spawn-process"
       ]
     },
     {
@@ -173,12 +181,12 @@
       "name": "notion-plugin",
       "displayName": "Notion",
       "icon": "notion",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "description": "Notion integration plugin for AGNT - Search, query databases, create pages, and manage your Notion workspace.",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/notion-plugin.agnt",
-      "size": 846734,
+      "size": 847143,
       "tags": [
         "notion",
         "productivity",
@@ -196,7 +204,7 @@
           }
         }
       ],
-      "integrity": "sha256-2hG9lcyRVEWo59EXgCtbNlmqeHTJmY7XO9356RVWmS4=",
+      "integrity": "sha256-rrETUAfdzac8bnCPqZ3P8mfdW/by6eKkjLe4qMlcazU=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
@@ -242,12 +250,12 @@
       "name": "google-sheets-plugin",
       "displayName": "Google Sheets",
       "icon": "table",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Google Sheets integration plugin for AGNT - Monitor new rows, read, write, append, and clear data in Google Sheets.",
       "author": "AGNT Team",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-sheets-plugin.agnt",
-      "size": 12961989,
+      "size": 12965751,
       "tags": [
         "google",
         "sheets",
@@ -272,7 +280,7 @@
           }
         }
       ],
-      "integrity": "sha256-trVzFPSuzDnDRAKZa8jK77Cx/VDGrXyqnzVeAV17OXQ=",
+      "integrity": "sha256-UyEquJqTPvvJMGkJuh7+sLb8zIowJCY1oKJJ2LETxQs=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
@@ -435,12 +443,12 @@
       "name": "dice-roller-plugin",
       "displayName": "Dice Roller",
       "icon": "dice",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Rolls dice ranging from d1 to d20 with optional count and modifier.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/dice-roller-plugin.agnt",
-      "size": 1803,
+      "size": 1844,
       "tags": [
         "dice",
         "games",
@@ -457,7 +465,7 @@
           }
         }
       ],
-      "integrity": "sha256-LikZxZnFz4wxrB1+ryHw8yWLnww2Fq85lKt8NFupclk=",
+      "integrity": "sha256-9s2JrG3eUtvfORLMgV3uZ1opP20W0+yRwaYLbgz9i58=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
@@ -501,12 +509,12 @@
       "name": "ethereum-price-checker",
       "displayName": "Ethereum Price",
       "icon": "ethereum",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Retrieves the current price of Ethereum using the CoinGecko API.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/ethereum-price-checker.agnt",
-      "size": 683714,
+      "size": 684026,
       "tags": [
         "ethereum",
         "crypto",
@@ -523,9 +531,10 @@
           }
         }
       ],
-      "integrity": "sha256-iZZLLGV/1JsDPFtx4doq71KAZkkJAKZ4cKunbv+Jbx0=",
+      "integrity": "sha256-RfX5cnrYicQR5Npcb/paUwikUgY5TBUM++1MWyj2Baw=",
       "trustTier": "official",
       "declaredPermissions": [
+        "domain:api.coingecko.com",
         "network"
       ],
       "detectedCapabilities": [
@@ -577,12 +586,12 @@
       "name": "gmail-plugin",
       "displayName": "Gmail",
       "icon": "gmail",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Gmail integration plugin for AGNT - Send, reply, read, organize, and manage attachments.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/gmail-plugin.agnt",
-      "size": 12527775,
+      "size": 12532601,
       "tags": [
         "gmail",
         "email",
@@ -599,7 +608,7 @@
           }
         }
       ],
-      "integrity": "sha256-oSmxOdJfhB3tgGiK4B6ZwHufJRDjyCY2UcgOynJ6rr4=",
+      "integrity": "sha256-/Zzflfsh77anZtHYMWefwOBpA5Hj6jGd+Cb3XSzOHsU=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
@@ -608,12 +617,12 @@
       "name": "google-drive-plugin",
       "displayName": "Google Drive",
       "icon": "google-drive",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Google Drive integration plugin for AGNT - Manage files and folders in Google Drive.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-drive-plugin.agnt",
-      "size": 12528098,
+      "size": 12533002,
       "tags": [
         "google",
         "drive",
@@ -631,7 +640,7 @@
           }
         }
       ],
-      "integrity": "sha256-0F6JV5gCKFboL6cS45Qj1KzEiRjY+4Mbi7aD4NhZ19c=",
+      "integrity": "sha256-qfWLSsJRsxHLDMZaENnp0G9BExrpmZ7uzwAo/8veElA=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
@@ -735,12 +744,12 @@
       "name": "stripe-plugin",
       "displayName": "Stripe",
       "icon": "stripe",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Stripe integration plugin for AGNT - Create and send invoices with line items.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/stripe-plugin.agnt",
-      "size": 1310076,
+      "size": 1310772,
       "tags": [
         "stripe",
         "payments",
@@ -757,7 +766,7 @@
           }
         }
       ],
-      "integrity": "sha256-Xkxw3mQVqxd+9urez/eS+hX4G0GNkjpBtntkY3NJx1M=",
+      "integrity": "sha256-CHxbykgCmd+FfvXZec8RKWJHY9SAU7MNPttQN+K50Ss=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
@@ -953,12 +962,12 @@
       "name": "facebook-api-plugin",
       "displayName": "Facebook",
       "icon": "facebook",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Interact with the Facebook Graph API to post updates, fetch user/profile/page data, and manage Facebook content.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/facebook-api-plugin.agnt",
-      "size": 1662103,
+      "size": 1662268,
       "tags": [
         "facebook",
         "social",
@@ -989,9 +998,12 @@
           }
         }
       ],
-      "integrity": "sha256-j7ksIwxVFDUGoPXFuIQ+lCMwsgBIsFeYKR0xC2L2Smo=",
+      "integrity": "sha256-2H2Hk4/0siFBTiGuZye/hEs+lphN3sXNjgYIaE1Irso=",
       "trustTier": "official",
-      "declaredPermissions": [],
+      "declaredPermissions": [
+        "domain:graph.facebook.com",
+        "network"
+      ],
       "detectedCapabilities": [
         "network"
       ]
@@ -1000,12 +1012,12 @@
       "name": "fetch-tool-plugin",
       "displayName": "HTTP Fetch",
       "icon": "api",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "A generic fetch tool for making HTTP requests to external APIs or websites.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/fetch-tool-plugin.agnt",
-      "size": 1661135,
+      "size": 1661203,
       "tags": [
         "fetch",
         "http",
@@ -1022,9 +1034,11 @@
           }
         }
       ],
-      "integrity": "sha256-oyNc2KE4bm7rerbLdHpksmatooVZQ0hI5h/lgv3zxGE=",
+      "integrity": "sha256-ifYZShBhSW+697CIOz2MOi1OqPkukVonQ5vxduXwiEA=",
       "trustTier": "official",
-      "declaredPermissions": [],
+      "declaredPermissions": [
+        "network"
+      ],
       "detectedCapabilities": [
         "network"
       ]
@@ -1033,12 +1047,12 @@
       "name": "fibonacci-sequence-plugin",
       "displayName": "Fibonacci",
       "icon": "code",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Provides utilities to calculate Fibonacci numbers and generate Fibonacci sequences.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/fibonacci-sequence-plugin.agnt",
-      "size": 2513,
+      "size": 2565,
       "tags": [
         "fibonacci",
         "math",
@@ -1062,7 +1076,7 @@
           }
         }
       ],
-      "integrity": "sha256-/XM0o7MghC+KSWjbxgTFoFdhCbKGSWdKxl32tgptbHI=",
+      "integrity": "sha256-WC3inRumM8b9K3kHpuxQsveCkDelC3/+D68YGlvSPO4=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
@@ -1071,12 +1085,12 @@
       "name": "list-files-plugin",
       "displayName": "List Files",
       "icon": "folder",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Lists files in the current directory and provides their metadata.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/list-files-plugin.agnt",
-      "size": 1591,
+      "size": 1659,
       "tags": [
         "files",
         "directory",
@@ -1093,9 +1107,11 @@
           }
         }
       ],
-      "integrity": "sha256-aNmj45qqJtprC5PwY4pKup5E+zpX3QgLcsBcrZKq1gI=",
+      "integrity": "sha256-SQk3mYikaXBrxufWaeBXpq7336OEbsmhao8/PojKB3I=",
       "trustTier": "official",
-      "declaredPermissions": [],
+      "declaredPermissions": [
+        "filesystem"
+      ],
       "detectedCapabilities": [
         "filesystem"
       ]
@@ -1104,12 +1120,12 @@
       "name": "fs-watcher-plugin",
       "displayName": "File System Watcher",
       "icon": "folder",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Watch a file or directory for changes and trigger workflows on create, modify, and delete events. A single path input auto-detects whether it is a file or a directory, supports recursive subfolder watching, glob ignore patterns, and write-stability debouncing.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/fs-watcher-plugin.agnt",
-      "size": 104726,
+      "size": 104832,
       "tags": [
         "filesystem",
         "watcher",
@@ -1129,7 +1145,7 @@
           }
         }
       ],
-      "integrity": "sha256-RG5V4qmqK3KLb8r17vS2ukmM0LJrIw5zzwLWfGpYcLw=",
+      "integrity": "sha256-1Ez7UE5RyaRMnjsRtubkOm4lMZbrVFJuaWT9ureNfRU=",
       "trustTier": "official",
       "declaredPermissions": [
         "filesystem"
@@ -1142,12 +1158,12 @@
       "name": "random-dice-roller",
       "displayName": "Random Dice & Coin",
       "icon": "dice",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "A utility plugin to simulate rolling dice and flipping coins for games and randomization tasks.",
       "author": "AGNT User",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/random-dice-roller.agnt",
-      "size": 1339,
+      "size": 1396,
       "tags": [
         "dice",
         "coin",
@@ -1171,7 +1187,7 @@
           }
         }
       ],
-      "integrity": "sha256-u610RmYi7jDpfb4QDcLBvgp3DlBqE8fGxLjBvSmkf18=",
+      "integrity": "sha256-xyWPMbTXe7Vm+oOqnjNyffAK1h7z6rICBtDU4moA+eU=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []

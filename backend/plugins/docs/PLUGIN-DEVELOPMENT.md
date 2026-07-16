@@ -174,9 +174,12 @@ cd my-plugin
 {
   "name": "my-plugin",
   "version": "1.0.0",
-  "description": "My awesome AGNT plugin",
-  "author": "Your Name",
+  "description": "My awesome AGNT plugin",  "author": "Your Name",
   "icon": "magic",
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  },
   "tools": [
     {
       "type": "my-custom-tool",
@@ -292,9 +295,12 @@ The `manifest.json` is the heart of your plugin. It defines metadata, tools, and
 {
   "name": "plugin-name",
   "version": "1.0.0",
-  "description": "What your plugin does",
-  "author": "Your Name",
+  "description": "What your plugin does",  "author": "Your Name",
   "icon": "plugin-icon",
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  },
   "tools": [
     {
       "type": "tool-type-identifier",
@@ -316,8 +322,11 @@ The `manifest.json` is the heart of your plugin. It defines metadata, tools, and
   "description": "What your plugin does",
   "author": "Your Name",
   "icon": "plugin-icon",
-  "homepage": "https://github.com/you/plugin",
-  "license": "MIT",
+  "homepage": "https://github.com/you/plugin",  "license": "MIT",
+  "permissions": {
+    "capabilities": ["network"],
+    "domains": ["api.example.com"]
+  },
   "tools": [
     {
       "type": "tool-type-identifier",
@@ -339,9 +348,66 @@ The `manifest.json` is the heart of your plugin. It defines metadata, tools, and
 | `description` | string | ✅       | Brief description of the plugin                               |
 | `author`      | string | ✅       | Plugin author name                                            |
 | `icon`        | string | ✅       | Icon name for the plugin (FontAwesome or custom)              |
+| `permissions` | object | ✅       | Required capability/domain disclosure; see the mandatory section below |
 | `tools`       | array  | ✅       | Array of tool definitions                                     |
 | `homepage`    | string | ❌       | URL to plugin homepage/repo                                   |
 | `license`     | string | ❌       | License identifier                                            |
+
+### Required Permissions and Capability Disclosure
+
+> ## ⚠️ Every plugin must declare this
+>
+> `permissions` is a required top-level manifest contract for community,
+> private, and AGNT-bundled plugins. Do not omit it. A plugin that needs no
+> recognized capability must still declare empty arrays.
+
+```json
+"permissions": {
+  "capabilities": [
+    "network",
+    "filesystem"
+  ],
+  "domains": [
+    "api.example.com"
+  ]
+}
+```
+
+Supported capability names are:
+
+- `network` — remote API/socket access such as `fetch`, Axios, HTTP/HTTPS,
+  Undici, WebSocket, or `net` connections.
+- `filesystem` — Node filesystem module access and file/directory mutation.
+- `spawn-process` — `child_process`, `exec`, `execFile`, `spawn`, or `fork`.
+- `env-access` — reading `process.env`.
+- `dynamic-eval` — `eval()` or `new Function()`.
+- `dynamic-import` — a nonliteral runtime `import(...)` path.
+
+`domains` lists the hostnames the plugin intentionally contacts. The scanner
+can detect broad network behavior but cannot reliably infer domains, so authors
+must review source and add them manually. Use an explicit empty declaration
+when none apply:
+
+```json
+"permissions": {
+  "capabilities": [],
+  "domains": []
+}
+```
+
+Run this before every build and publication:
+
+```bash
+node cli/doctor.js /path/to/my-plugin
+```
+
+The result must show no undeclared capability. Build tooling may emit a warning
+rather than fail during the compatibility window, but an omission remains a
+noncompliant manifest and produces a yellow marketplace audit. Official bundled
+plugins require zero undeclared capabilities.
+
+For the complete schema, detection evidence, scanner limits, domains, and audit
+status definitions, see [PLUGIN-REFERENCE.md § Required capability declarations](PLUGIN-REFERENCE.md#2-required-capability-declarations).
 
 ### Tool Definition Fields
 
@@ -814,10 +880,17 @@ cd desktop/backend/plugins
 node cli/build-plugin.js ./dev/my-plugin
 
 # Or build from an absolute path
-node cli/build-plugin.js /path/to/my-plugin
-
-# Output: plugin-builds/my-plugin.agnt
+node cli/build-plugin.js /path/to/my-plugin# Output: plugin-builds/my-plugin.agnt
 ```
+
+Before accepting the artifact, verify the required disclosure:
+
+```bash
+node cli/doctor.js ./dev/my-plugin
+```
+
+Do not publish or bundle an artifact while the doctor/build output lists an
+undeclared capability.
 
 ### Build Script Options
 
@@ -1014,10 +1087,11 @@ async execute(params, inputData, workflowEngine) {
 
 - Follow semantic versioning (MAJOR.MINOR.PATCH)
 - Document breaking changes
-- Test upgrades thoroughly
+- Test upgrades thoroughly### 6. Security
 
-### 6. Security
-
+- Include the required top-level `permissions` block in every manifest.
+- Declare every detected capability and manually review intended network domains.
+- Run `node cli/doctor.js <plugin-dir>` and resolve every undeclared capability before publishing.
 - Never hardcode API keys or secrets
 - Use the AuthManager for credentials
 - Validate and sanitize all inputs
@@ -1551,10 +1625,11 @@ export default new GoogleSheetsNewRow();
 
 ---
 
-## Publishing to Marketplace
+## Publishing to Marketplace### 1. Prepare Your Plugin
 
-### 1. Prepare Your Plugin
-
+- Ensure `manifest.json` contains the required structured `permissions` block.
+- Run `node cli/doctor.js <plugin-dir>` and resolve every undeclared capability.
+- Review and list intended network domains manually; the scanner does not infer them reliably.
 - Ensure all tests pass
 - Update version number
 - Write comprehensive documentation

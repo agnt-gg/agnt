@@ -582,7 +582,8 @@ class PluginInstaller {
       if (diff.undeclared.length > 0) {
         console.warn(
           `[PluginInstaller] ${pluginName}: undeclared capabilities detected (warn-only): ${diff.undeclared.join(', ')}`
-        );      }
+        );
+      }
       let trustTier = computeTrustTier({
         integrityState,
         permissionsDeclared: declared.length > 0,
@@ -1835,20 +1836,17 @@ class PluginInstaller {
             source: 'remote',
           };
 
-          // Merge rule (trust system, fixed after E2E caught a hash/bytes
-          // mismatch): trust fields are bound to a SPECIFIC artifact. The
-          // local record's integrity hash describes the bundled file:// .agnt;
-          // the remote record downloads DIFFERENT bytes from api.agnt.gg.
-          // Carrying the local hash onto the remote URL makes every install
-          // of a dual-listed plugin abort on a false integrity mismatch.
-          //   - same version on both sides → keep the LOCAL record entirely
-          //     (verified bundled artifact beats an unhashed re-download)
-          //   - remote is a different (newer) version → remote record wins
-          //     CLEAN: no local trust fields carried over; install runs TOFU
-          //     until the 0.7.0 marketplace API serves its own hashes.
+          // Trust fields are bound to a SPECIFIC artifact. Never copy a local
+          // artifact hash onto remote bytes. For overlapping records, preserve
+          // the verified bundled artifact while its semantic version is equal
+          // to or newer than the remote listing. A truly newer remote version
+          // wins cleanly and must provide/establish trust for its own bytes.
           const existing = allPlugins.get(plugin.name);
-          if (existing && existing.version === plugin.version && existing.integrity) {
-            continue; // keep verified local record
+          if (existing?.integrity) {
+            const versionComparison = compareVersions(existing.version, plugin.version);
+            if (versionComparison.comparable && versionComparison.cmp >= 0) {
+              continue;
+            }
           }
           allPlugins.set(plugin.name, plugin);
         }
