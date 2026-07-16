@@ -23,7 +23,8 @@ class InsightAutonomyRouter {
     switch (insight.target_type) {
       case 'agent': return (await import('./applicators/AgentApplicator.js')).default;
       case 'skill': return (await import('./applicators/SkillApplicator.js')).default;
-      case 'workflow': return (await import('./applicators/WorkflowApplicator.js')).default;      case 'tool': return (await import('./applicators/ToolApplicator.js')).default;
+      case 'workflow': return (await import('./applicators/WorkflowApplicator.js')).default;
+      case 'tool': return (await import('./applicators/ToolApplicator.js')).default;
       case 'evolution_settings': return (await import('./applicators/EvolutionSettingsApplicator.js')).default;
       case 'memory': return null; // memory category insights are recorded directly
       default: return null;
