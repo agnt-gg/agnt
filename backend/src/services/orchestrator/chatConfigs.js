@@ -319,7 +319,7 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
 
 async function getUnifiedToolSchemas(context) {
   const asyncEnabled = await loadAsyncToolsEnabled(context);
-  const allSchemas = await getAvailableToolSchemas({ asyncEnabled });
+  const allSchemas = await getAvailableToolSchemas({ asyncEnabled, userId: context.userId || null });
 
   if (context.agentId && context.agentId !== 'agent-chat') {
     return getSavedAgentToolSchemas(context, allSchemas);

@@ -45,10 +45,10 @@ export function invalidateToolLibraryCache() {
   toolLibraryCacheTime = 0;
 }
 
-// Get all orchestrator tools (both native, registry, and plugin tools)
-router.get('/orchestrator-tools', async (req, res) => {
+// Get all orchestrator tools (native, registry, plugin, and user-scoped custom tools)
+router.get('/orchestrator-tools', authenticateToken, async (req, res) => {
   try {
-    const toolSchemas = await getAvailableToolSchemas();
+    const toolSchemas = await getAvailableToolSchemas({ userId: req.user.userId });
 
     // Get plugin tool names for identification
     await toolRegistry.ensureInitialized();

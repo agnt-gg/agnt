@@ -18,8 +18,9 @@ import AuthManager from '../auth/AuthManager.js';
 import CodexAuthManager from '../auth/CodexAuthManager.js';
 import CodexCliService from '../ai/CodexCliService.js';
 import CodexCliSessionManager from '../ai/CodexCliSessionManager.js';
-import jwt from 'jsonwebtoken';
-import ParameterResolver from '../../workflow/ParameterResolver.js';
+import jwt from 'jsonwebtoken';import ParameterResolver from '../../workflow/ParameterResolver.js';
+import CustomToolModel from '../../models/CustomToolModel.js';
+import { runCustomTool, isCustomToolSuccess, toToolSchema } from './customToolRunner.js';
 import { saveBase64Image } from '../ImageStorage.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from './llmAdapters.js';
@@ -1798,11 +1799,19 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             if (!workflow_id) {
               return JSON.stringify({ success: false, error: "workflow_id is required for 'trigger_workflow'." });
             }
-            if (trigger_data === undefined) {
-              // trigger_data can be an empty object {}
-              return JSON.stringify({ success: false, error: "trigger_data (even if empty object) is required for 'trigger_workflow'." });
+            // There is no REST route to inject trigger_data into a trigger node.
+            // "Triggering" a workflow == activating it: fire-on-start trigger nodes
+            // run immediately; listening triggers begin waiting for real events.
+            // (The old agnt.workflows.trigger() posted to /workflows/:id/trigger,
+            // a route that does not exist and always 404'd.)
+            {
+              const activation = await agnt.workflows.activate(workflow_id);
+              result = {
+                ...activation,
+                note:
+                  'Workflow activated (started). trigger_data is NOT delivered to trigger nodes — no REST route supports manual trigger-data injection. This is equivalent to activate_workflow.',
+              };
             }
-            result = await agnt.workflows.trigger(workflow_id, trigger_data || {});
             break;
 
           case 'delete_workflow':
@@ -1817,7 +1826,13 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             if (!workflow_id) {
               return JSON.stringify({ success: false, error: "workflow_id is required for 'get_workflow_executions'." });
             }
-            result = await agnt.executions.listForWorkflow(workflow_id);
+            // agnt.executions.listForWorkflow() hit /executions/workflow/:id, a
+            // route that does not exist. List all executions and filter locally.
+            {
+              const allExecutions = await agnt.executions.list();
+              const rows = Array.isArray(allExecutions) ? allExecutions : (allExecutions?.executions || []);
+              result = rows.filter((e) => e.workflowId === workflow_id || e.workflow_id === workflow_id);
+            }
             break;
 
           case 'get_execution_logs':
@@ -1831,7 +1846,21 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             if (!workflow_id) {
               return JSON.stringify({ success: false, error: "workflow_id is required for 'get_latest_workflow_output'." });
             }
-            result = await agnt.contentOutputs.getLatestForWorkflow(workflow_id);
+            // agnt.contentOutputs.getLatestForWorkflow() hit
+            // /content-outputs/workflow/:id/latest, a route that does not exist.
+            // Use the working list route and pick the most recent output.
+            {
+              const outputs = await agnt.contentOutputs.listForWorkflow(workflow_id);
+              const rows = Array.isArray(outputs)
+                ? outputs
+                : (outputs?.contentOutputs || outputs?.outputs || []);
+              const sorted = [...rows].sort((a, b) => {
+                const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+                const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+                return tb - ta;
+              });
+              result = sorted[0] || null;
+            }
             break;
 
           default:
@@ -4271,8 +4300,7 @@ function injectAsyncParams(schema) {
  *   Used by the per-user "Async tool execution" toggle in chat surfaces.
  *   Defaults to true so unrelated callers (saved agents, goal flows,
  *   /api/tools listings, internal lookups) keep their current behaviour.
- */
-export async function getAvailableToolSchemas({ asyncEnabled = true } = {}) {
+ */export async function getAvailableToolSchemas({ asyncEnabled = true, userId = null } = {}) {
   await toolRegistry.ensureInitialized();
 
   const nativeToolSchemas = Object.values(TOOLS).map((tool) => tool.schema);
@@ -4285,6 +4313,19 @@ export async function getAvailableToolSchemas({ asyncEnabled = true } = {}) {
   const tutorialToolSchemas = getTutorialToolSchemas();
   const registryToolSchemas = toolRegistry.getOpenApiSchemas();
   const pluginToolSchemas = toolRegistry.getPluginOpenApiSchemas();
+
+  // User-authored Tool Forge tools, discoverable so the LLM can see and the
+  // validator can check their args. Scoped to the requesting user; off when no
+  // userId is supplied so global callers keep the exact previous behavior.
+  let customToolSchemas = [];
+  if (userId) {
+    try {
+      const customTools = await CustomToolModel.findAllByUserId(userId);
+      customToolSchemas = (customTools || []).filter((t) => t && t.type).map((t) => toToolSchema(t));
+    } catch (err) {
+      console.warn('[Orchestrator] Failed to load custom tool schemas:', err.message);
+    }
+  }
 
   // MCP tools are first-class entries — one schema per tool from each
   // configured MCP server. Lazy-imported so a slow/failed MCP discovery
@@ -4311,6 +4352,7 @@ export async function getAvailableToolSchemas({ asyncEnabled = true } = {}) {
     ...tutorialToolSchemas,
     ...registryToolSchemas,
     ...pluginToolSchemas,
+    ...customToolSchemas,
     ...mcpToolSchemas,
   ];
   const uniqueSchemas = [];
@@ -4335,7 +4377,7 @@ export async function getAvailableToolSchemas({ asyncEnabled = true } = {}) {
   }
 
   console.log(
-    `[Orchestrator] Available tools: ${uniqueSchemas.length} (${nativeToolSchemas.length} native, ${agentToolSchemas.length} agent, ${workflowToolSchemas.length} workflow, ${goalToolSchemas.length} goal, ${codeToolSchemas.length} code, ${toolForgeToolSchemas.length} tool-forge, ${widgetToolSchemas.length} widget, ${tutorialToolSchemas.length} tutorial, ${registryToolSchemas.length} registry, ${pluginToolSchemas.length} plugins, ${mcpToolSchemas.length} mcp)`
+    `[Orchestrator] Available tools: ${uniqueSchemas.length} (${nativeToolSchemas.length} native, ${agentToolSchemas.length} agent, ${workflowToolSchemas.length} workflow, ${goalToolSchemas.length} goal, ${codeToolSchemas.length} code, ${toolForgeToolSchemas.length} tool-forge, ${widgetToolSchemas.length} widget, ${tutorialToolSchemas.length} tutorial, ${registryToolSchemas.length} registry, ${pluginToolSchemas.length} plugins, ${customToolSchemas.length} custom, ${mcpToolSchemas.length} mcp)`
   );
 
   return uniqueSchemas;
@@ -4612,6 +4654,36 @@ async function executeToolInner(toolName, args, authToken, context) {
           details: toolError.toString(),
         });
       }
+    }
+
+    // User-authored Tool Forge tools (rows in the `tools` table). Checked LAST
+    // so a saved custom tool can never shadow a native / agent / workflow /
+    // goal / code / tool-forge / widget / registry / plugin tool with the same
+    // name. Resolves by tool id first, then by unique `type` slug scoped to the
+    // requesting user. Only the owner (or a shareable tool) can execute.
+    try {
+      let customTool = null;
+      const byId = await CustomToolModel.findOne(toolName);
+      if (byId && (byId.is_shareable || byId.created_by === context?.userId)) {
+        customTool = byId;
+      }
+      if (!customTool && context?.userId) {
+        const owned = await CustomToolModel.findAllByUserId(context.userId);
+        customTool = owned.find((t) => t.type === toolName || t.type === registryToolName) || null;
+      }
+      if (customTool) {
+        console.log(`[Orchestrator] Executing custom Tool Forge tool: ${customTool.id} (${customTool.type})`);
+        const output = await runCustomTool(customTool, args, context?.userId);
+        return JSON.stringify({ success: isCustomToolSuccess(output), tool: toolName, result: output });
+      }
+    } catch (customErr) {
+      console.error(`Custom tool execution error for ${toolName}:`, customErr);
+      return JSON.stringify({
+        success: false,
+        tool: toolName,
+        error: `Custom tool '${toolName}' execution failed: ${customErr.message}`,
+        details: customErr.toString(),
+      });
     }
 
     console.error(`Tool '${toolName}' not found in native tools or registry.`);

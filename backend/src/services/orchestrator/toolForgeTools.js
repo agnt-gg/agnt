@@ -269,19 +269,42 @@ export async function executeToolForgeTool(functionName, args, authToken, contex
         }
         break;
 
-      case 'run_tool':
-        if (args.toolData) {
-          result = {
-            success: true,
-            toolData: args.toolData,
-            parameters: args.parameters || {},
-            message: 'Tool execution initiated successfully',
-            executionId: `exec-${Date.now()}`,
-          };
-        } else {
+      case 'run_tool': {
+        if (!args.toolData) {
           result = { success: false, message: 'Tool data is required for execution' };
+          break;
+        }
+        const hasCode = Boolean(args.toolData.code || args.toolData.config?.code);
+        if (!hasCode) {
+          // AI-only tools need a provider/model + StreamEngine and are executed
+          // through a workflow node, not this inline preview path. Be honest
+          // rather than returning a fake success id.
+          result = {
+            success: false,
+            message:
+              'This tool has no executable code. AI-only tools must be run through a workflow with a configured provider/model.',
+          };
+          break;
+        }
+        try {
+          const { runCustomTool, isCustomToolSuccess } = await import('./customToolRunner.js');
+          const output = await runCustomTool(args.toolData, args.parameters || {}, userId);
+          const ok = isCustomToolSuccess(output);
+          result = {
+            success: ok,
+            result: output,
+            toolId: args.toolData.id || null,
+            parameters: args.parameters || {},
+            message: ok
+              ? 'Tool executed successfully'
+              : `Tool execution failed: ${output?.error || 'unknown error'}`,
+          };
+        } catch (runError) {
+          console.error('Error running Tool Forge tool:', runError);
+          result = { success: false, error: runError.message, message: 'Tool execution failed' };
         }
         break;
+      }
 
       default:
         result = { success: false, message: `Unknown function: ${functionName}` };

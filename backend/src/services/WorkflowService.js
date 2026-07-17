@@ -28,10 +28,17 @@ class WorkflowService {
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     res.status(200).json({ status: 'OK' });
   }
+
   async saveWorkflow(req, res) {
     try {
-      const { workflow } = req.body;
+      const { workflow } = req.body || {};
       const userId = req.user.userId;
+
+      if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
+        return res.status(400).json({
+          error: 'Request body must be { workflow: { ... } } with a workflow object.',
+        });
+      }
 
       // Generate a new ID if missing
       if (!workflow.id) {

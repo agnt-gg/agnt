@@ -8,10 +8,17 @@ class CustomToolService {
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     res.status(200).json({ status: 'OK' });
   }
+
   async saveOrUpdateCustomTool(req, res) {
     try {
-      const { tool } = req.body;
+      const { tool } = req.body || {};
       const userId = req.user.userId;
+
+      if (!tool || typeof tool !== 'object' || Array.isArray(tool)) {
+        return res.status(400).json({
+          error: 'Request body must be { tool: { ... } } with a tool object.',
+        });
+      }
 
       console.log('Received tool data:', tool);
 
