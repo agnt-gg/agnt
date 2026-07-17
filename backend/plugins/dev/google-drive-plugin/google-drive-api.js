@@ -12,7 +12,8 @@ class GoogleDriveAPI {
   }
 
   async execute(params, inputData, workflowEngine) {
-    console.log('[GoogleDrivePlugin] Executing with params:', JSON.stringify(params, null, 2));
+    const { __auth, ...loggableParams } = params;
+    console.log('[GoogleDrivePlugin] Executing with params:', JSON.stringify(loggableParams, null, 2));
     this.validateParams(params);
 
     try {

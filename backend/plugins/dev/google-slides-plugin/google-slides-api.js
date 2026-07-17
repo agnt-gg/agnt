@@ -217,6 +217,15 @@ class GoogleSlidesAPI {
       return requests;
     }
 
+    // Raw passthrough mode (full Slides API surface): if the caller provides
+    // a `requests` array, treat it as native batchUpdate requests. The Slides
+    // API validates the whole batch atomically — if any request is invalid,
+    // nothing is applied. This unlocks backgrounds, typography, custom layout,
+    // and every other capability the simplified format can't express.
+    if (content && Array.isArray(content.requests)) {
+      return content.requests;
+    }
+
     if (content && content.slides && Array.isArray(content.slides)) {
       content.slides.forEach((slide, index) => {
         const slideId = `slide_${index}`;

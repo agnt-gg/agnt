@@ -77,7 +77,7 @@
           "slideContent": {
             "type": "string",
             "inputType": "textarea",
-            "description": "JSON-formatted content for creating or updating a slide",
+            "description": "JSON content for the slide. Simple mode: {\"slides\":[{\"title\",\"points\",\"image\"}]}. Advanced mode: {\"requests\":[...]} — raw Slides API batchUpdate requests passed through verbatim (backgrounds, typography, shapes, full API surface; the batch is validated atomically by Google).",
             "conditional": {
               "field": "action",
               "value": [

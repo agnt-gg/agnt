@@ -1,0 +1,177 @@
+{
+  "name": "google-docs-plugin",
+  "version": "1.0.0",
+  "description": "Google Docs integration plugin for AGNT - Create documents (including from Markdown), read, append, template with placeholder replacement, and export to PDF/HTML/Markdown.",
+  "author": "AGNT Team",
+  "icon": "file-lines",
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  },
+  "tools": [
+    {
+      "type": "google-docs-api",
+      "entryPoint": "./google-docs-api.js",
+      "schema": {
+        "title": "Google Docs API",
+        "category": "action",
+        "type": "google-docs-api",
+        "icon": "file-lines",
+        "description": "Create, read, edit, template, and export Google Docs.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "CREATE_DOC",
+              "CREATE_DOC_FROM_MARKDOWN",
+              "GET_DOC_TEXT",
+              "APPEND_TEXT",
+              "REPLACE_TEXT",
+              "CREATE_FROM_TEMPLATE",
+              "EXPORT_DOC",
+              "INSERT_IMAGE"
+            ],
+            "description": "The action to perform on Google Docs"
+          },
+          "documentId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the document",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_DOC_TEXT", "APPEND_TEXT", "REPLACE_TEXT", "EXPORT_DOC", "INSERT_IMAGE"]
+            }
+          },
+          "title": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Title for the new document",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_DOC", "CREATE_DOC_FROM_MARKDOWN", "CREATE_FROM_TEMPLATE"]
+            }
+          },
+          "content": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Text content (plain text for CREATE_DOC/APPEND_TEXT, Markdown for CREATE_DOC_FROM_MARKDOWN)",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_DOC", "CREATE_DOC_FROM_MARKDOWN", "APPEND_TEXT"]
+            }
+          },
+          "folderId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional Drive folder ID to place the new document in",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_DOC", "CREATE_DOC_FROM_MARKDOWN", "CREATE_FROM_TEMPLATE"]
+            }
+          },
+          "findText": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The text to find",
+            "conditional": {
+              "field": "action",
+              "value": ["REPLACE_TEXT"]
+            }
+          },
+          "replaceWith": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "The replacement text",
+            "conditional": {
+              "field": "action",
+              "value": ["REPLACE_TEXT"]
+            }
+          },
+          "matchCase": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["true", "false"],
+            "description": "Case-sensitive match (default false)",
+            "conditional": {
+              "field": "action",
+              "value": ["REPLACE_TEXT"]
+            }
+          },
+          "templateId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Document ID of the template to copy",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_FROM_TEMPLATE"]
+            }
+          },
+          "replacements": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "JSON object of placeholder → value, e.g. {\"{{name}}\": \"Ada\", \"{{date}}\": \"2026-07-16\"}",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_FROM_TEMPLATE"]
+            }
+          },
+          "imageUrl": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Public http(s) URL of the image (PNG/JPEG/GIF, < 50 MB — Google fetches it server-side)",
+            "conditional": {
+              "field": "action",
+              "value": ["INSERT_IMAGE"]
+            }
+          },
+          "insertAfterText": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional. Insert the image in a new paragraph right after the first paragraph containing this text. Omit to append at the end of the document.",
+            "conditional": {
+              "field": "action",
+              "value": ["INSERT_IMAGE"]
+            }
+          },
+          "insertIndex": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional (advanced). Explicit body index to insert at. Ignored when insertAfterText is set.",
+            "conditional": {
+              "field": "action",
+              "value": ["INSERT_IMAGE"]
+            }
+          },
+          "imageWidth": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional image width in points (e.g. 440 ≈ full page width). Height scales automatically. Omit for natural size.",
+            "conditional": {
+              "field": "action",
+              "value": ["INSERT_IMAGE"]
+            }
+          },
+          "exportFormat": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["pdf", "html", "markdown", "txt", "docx"],
+            "description": "Export format",
+            "conditional": {
+              "field": "action",
+              "value": ["EXPORT_DOC"]
+            }
+          }
+        },
+        "outputs": {
+          "result": {
+            "type": "object",
+            "description": "The result of the docs operation"
+          }
+        }
+      }
+    }
+  ]
+}

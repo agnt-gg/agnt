@@ -1,0 +1,271 @@
+{
+  "name": "google-calendar-plugin",
+  "version": "1.0.0",
+  "description": "Google Calendar integration plugin for AGNT - Manage events, check availability, create Google Meet meetings, and trigger workflows on new or upcoming events.",
+  "author": "AGNT Team",
+  "icon": "calendar",
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  },
+  "tools": [
+    {
+      "type": "google-calendar-api",
+      "entryPoint": "./google-calendar-api.js",
+      "schema": {
+        "title": "Google Calendar API",
+        "category": "action",
+        "type": "google-calendar-api",
+        "icon": "calendar",
+        "description": "Interact with Google Calendar to manage events, check availability, and create Google Meet meetings.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "LIST_EVENTS",
+              "GET_EVENT",
+              "CREATE_EVENT",
+              "CREATE_MEET_EVENT",
+              "UPDATE_EVENT",
+              "DELETE_EVENT",
+              "QUICK_ADD",
+              "GET_FREE_BUSY",
+              "LIST_CALENDARS",
+              "RESPOND_TO_EVENT"
+            ],
+            "description": "The action to perform on Google Calendar"
+          },
+          "calendarId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Calendar ID (defaults to 'primary')",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_EVENTS", "GET_EVENT", "CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT", "DELETE_EVENT", "QUICK_ADD", "RESPOND_TO_EVENT"]
+            }
+          },
+          "eventId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "The ID of the event",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_EVENT", "UPDATE_EVENT", "DELETE_EVENT", "RESPOND_TO_EVENT"]
+            }
+          },
+          "summary": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Event title",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT"]
+            }
+          },
+          "description": {
+            "type": "string",
+            "inputType": "textarea",
+            "description": "Event description",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT"]
+            }
+          },
+          "location": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Event location",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT"]
+            }
+          },
+          "startTime": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Start time (ISO 8601, e.g. 2026-07-20T14:00:00-07:00) or YYYY-MM-DD for all-day",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT", "GET_FREE_BUSY"]
+            }
+          },
+          "endTime": {
+            "type": "string",
+            "inputType": "text",
+            "description": "End time (ISO 8601) or YYYY-MM-DD for all-day",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT", "GET_FREE_BUSY"]
+            }
+          },
+          "timeZone": {
+            "type": "string",
+            "inputType": "text",
+            "description": "IANA time zone (e.g. America/Los_Angeles). Defaults to calendar's zone.",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT"]
+            }
+          },
+          "attendees": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated attendee emails",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT"]
+            }
+          },
+          "sendUpdates": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["none", "all", "externalOnly"],
+            "description": "Whether to email attendees about the change (default: none)",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_EVENT", "CREATE_MEET_EVENT", "UPDATE_EVENT", "DELETE_EVENT", "RESPOND_TO_EVENT"]
+            }
+          },
+          "quickAddText": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Natural language event text, e.g. 'Lunch with Sam Friday 1pm'",
+            "conditional": {
+              "field": "action",
+              "value": ["QUICK_ADD"]
+            }
+          },
+          "timeMin": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Lower bound (ISO 8601). Defaults to now.",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_EVENTS"]
+            }
+          },
+          "timeMax": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Upper bound (ISO 8601). Defaults to 7 days from now.",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_EVENTS"]
+            }
+          },
+          "searchQuery": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Free-text search across event fields",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_EVENTS"]
+            }
+          },
+          "maxResults": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Max events to return (default 25)",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_EVENTS"]
+            }
+          },
+          "freeBusyCalendars": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Comma-separated calendar IDs to check (default: primary)",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_FREE_BUSY"]
+            }
+          },
+          "responseStatus": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["accepted", "declined", "tentative"],
+            "description": "Your RSVP response",
+            "conditional": {
+              "field": "action",
+              "value": ["RESPOND_TO_EVENT"]
+            }
+          }
+        },
+        "outputs": {
+          "result": {
+            "type": "object",
+            "description": "The result of the calendar operation"
+          }
+        }
+      }
+    },
+    {
+      "type": "google-calendar-new-event",
+      "entryPoint": "./google-calendar-new-event.js",
+      "schema": {
+        "title": "Google Calendar New Event",
+        "category": "trigger",
+        "type": "google-calendar-new-event",
+        "icon": "calendar",
+        "description": "Listen for events created or updated on a Google Calendar and trigger the workflow.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "calendarId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Calendar ID to monitor (defaults to 'primary')"
+          }
+        },
+        "outputs": {
+          "event": {
+            "type": "object",
+            "description": "The created or updated calendar event"
+          },
+          "isNew": {
+            "type": "boolean",
+            "description": "True if the event was newly created, false if updated"
+          }
+        }
+      }
+    },
+    {
+      "type": "google-calendar-event-starting",
+      "entryPoint": "./google-calendar-event-starting.js",
+      "schema": {
+        "title": "Google Calendar Event Starting",
+        "category": "trigger",
+        "type": "google-calendar-event-starting",
+        "icon": "calendar",
+        "description": "Trigger the workflow N minutes before an event on a Google Calendar starts.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "calendarId": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Calendar ID to monitor (defaults to 'primary')"
+          },
+          "minutesBefore": {
+            "type": "string",
+            "inputType": "text",
+            "description": "How many minutes before the event start to fire (default 10)"
+          }
+        },
+        "outputs": {
+          "event": {
+            "type": "object",
+            "description": "The upcoming calendar event"
+          },
+          "minutesUntilStart": {
+            "type": "number",
+            "description": "Minutes remaining until the event starts"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "google-meet-plugin",
+  "version": "1.0.0",
+  "description": "Google Meet integration plugin for AGNT",
+  "type": "module",
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  }
+}

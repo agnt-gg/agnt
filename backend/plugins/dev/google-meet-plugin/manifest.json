@@ -1,0 +1,94 @@
+{
+  "name": "google-meet-plugin",
+  "version": "1.0.0",
+  "description": "Google Meet integration plugin for AGNT - Create instant meeting spaces, manage conferences, and retrieve recordings and transcripts.",
+  "author": "AGNT Team",
+  "icon": "video",
+  "permissions": {
+    "capabilities": [],
+    "domains": []
+  },
+  "tools": [
+    {
+      "type": "google-meet-api",
+      "entryPoint": "./google-meet-api.js",
+      "schema": {
+        "title": "Google Meet API",
+        "category": "action",
+        "type": "google-meet-api",
+        "icon": "video",
+        "description": "Create and manage Google Meet spaces, and retrieve conference records, recordings, and transcripts. Note: recordings/transcripts require a Google Workspace plan with recording enabled. For scheduled meetings with a Meet link, use the Google Calendar API tool's CREATE_MEET_EVENT action.",
+        "authRequired": "oauth",
+        "authProvider": "google",
+        "parameters": {
+          "action": {
+            "type": "string",
+            "inputType": "select",
+            "options": [
+              "CREATE_SPACE",
+              "GET_SPACE",
+              "END_CONFERENCE",
+              "LIST_CONFERENCE_RECORDS",
+              "LIST_RECORDINGS",
+              "LIST_TRANSCRIPTS",
+              "GET_TRANSCRIPT_ENTRIES"
+            ],
+            "description": "The action to perform on Google Meet"
+          },
+          "spaceName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Space resource name (e.g. spaces/abc-defg-hij) or meeting code",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_SPACE", "END_CONFERENCE"]
+            }
+          },
+          "accessType": {
+            "type": "string",
+            "inputType": "select",
+            "options": ["OPEN", "TRUSTED", "RESTRICTED"],
+            "description": "Who can join without knocking (default TRUSTED)",
+            "conditional": {
+              "field": "action",
+              "value": ["CREATE_SPACE"]
+            }
+          },
+          "conferenceRecordName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Conference record resource name (e.g. conferenceRecords/xxx)",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_RECORDINGS", "LIST_TRANSCRIPTS"]
+            }
+          },
+          "transcriptName": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Transcript resource name (e.g. conferenceRecords/xxx/transcripts/yyy)",
+            "conditional": {
+              "field": "action",
+              "value": ["GET_TRANSCRIPT_ENTRIES"]
+            }
+          },
+          "filter": {
+            "type": "string",
+            "inputType": "text",
+            "description": "Optional filter, e.g. space.name = \"spaces/xxx\" or start_time>=\"2026-07-01T00:00:00Z\"",
+            "conditional": {
+              "field": "action",
+              "value": ["LIST_CONFERENCE_RECORDS"]
+            }
+          }
+        },
+        "outputs": {
+          "result": {
+            "type": "object",
+            "description": "The result of the Meet operation"
+          }
+        }
+      }
+    }
+  ]
+}

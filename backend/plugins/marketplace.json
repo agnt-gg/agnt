@@ -617,12 +617,12 @@
       "name": "google-drive-plugin",
       "displayName": "Google Drive",
       "icon": "google-drive",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Google Drive integration plugin for AGNT - Manage files and folders in Google Drive.",
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-drive-plugin.agnt",
-      "size": 12533002,
+      "size": 12532152,
       "tags": [
         "google",
         "drive",
@@ -640,7 +640,7 @@
           }
         }
       ],
-      "integrity": "sha256-qfWLSsJRsxHLDMZaENnp0G9BExrpmZ7uzwAo/8veElA=",
+      "integrity": "sha256-KMWqeXSUpwkpEBHabnvI3e2oWuri2wRZgowXBjqMdsQ=",
       "trustTier": "official",
       "declaredPermissions": [],
       "detectedCapabilities": []
@@ -654,7 +654,7 @@
       "author": "AGNT",
       "homepage": "https://github.com/agnt-gg/agnt",
       "downloadUrl": "file://marketplace-default/google-slides-plugin.agnt",
-      "size": 12530367,
+      "size": 12534607,
       "tags": [
         "google",
         "slides",
@@ -671,7 +671,7 @@
           }
         }
       ],
-      "integrity": "sha256-4ci0ZDYCnmgLM8A5cnZkaoC3K02eUQSW6jkvZrK4dN0=",
+      "integrity": "sha256-BWIWhUr7dCddp3yoRrY/9xkfjT8CVNFzAAg5kd3gU2Y=",
       "trustTier": "official",
       "declaredPermissions": [
         "network"
@@ -1616,6 +1616,119 @@
         "network",
         "spawn-process"
       ]
+    },
+    {
+      "name": "google-calendar-plugin",
+      "displayName": "Google Calendar",
+      "icon": "calendar",
+      "version": "1.0.0",
+      "description": "Google Calendar integration plugin for AGNT - Manage events, check availability, create Google Meet meetings, and trigger workflows on new or upcoming events.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/google-calendar-plugin.agnt",
+      "size": 12967759,
+      "tags": [
+        "google",
+        "calendar",
+        "events",
+        "meetings",
+        "scheduling",
+        "automation"
+      ],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "google-calendar-api",
+          "schema": {
+            "title": "Google Calendar API",
+            "description": "Interact with Google Calendar to manage events, check availability, and create Google Meet meetings."
+          }
+        },
+        {
+          "type": "google-calendar-new-event",
+          "schema": {
+            "title": "Google Calendar New Event",
+            "description": "Listen for events created or updated on a Google Calendar and trigger the workflow."
+          }
+        },
+        {
+          "type": "google-calendar-event-starting",
+          "schema": {
+            "title": "Google Calendar Event Starting",
+            "description": "Trigger the workflow N minutes before an event on a Google Calendar starts."
+          }
+        }
+      ],
+      "integrity": "sha256-E+JDwrT/Mu7gfaHLiGln5dPXYsGqqgl2tvA1K5djSB8=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
+    },
+    {
+      "name": "google-docs-plugin",
+      "displayName": "Google Docs",
+      "icon": "file-lines",
+      "version": "1.0.0",
+      "description": "Google Docs integration plugin for AGNT - Create documents (including from Markdown), read, append, template with placeholder replacement, and export to PDF/HTML/Markdown.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/google-docs-plugin.agnt",
+      "size": 12967110,
+      "tags": [
+        "google",
+        "docs",
+        "documents",
+        "markdown",
+        "templates",
+        "automation"
+      ],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "google-docs-api",
+          "schema": {
+            "title": "Google Docs API",
+            "description": "Create, read, edit, template, and export Google Docs."
+          }
+        }
+      ],
+      "integrity": "sha256-jHr4YcdUT8pn60jSql+wVJ9QbRYjKp5LKEzuYmJhKTc=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
+    },
+    {
+      "name": "google-meet-plugin",
+      "displayName": "Google Meet",
+      "icon": "video",
+      "version": "1.0.0",
+      "description": "Google Meet integration plugin for AGNT - Create instant meeting spaces, manage conferences, and retrieve recordings and transcripts.",
+      "author": "AGNT Team",
+      "homepage": "https://github.com/agnt-gg/agnt",
+      "downloadUrl": "file://marketplace-default/google-meet-plugin.agnt",
+      "size": 12963499,
+      "tags": [
+        "google",
+        "meet",
+        "video",
+        "meetings",
+        "transcripts",
+        "automation"
+      ],
+      "category": "productivity",
+      "tools": [
+        {
+          "type": "google-meet-api",
+          "schema": {
+            "title": "Google Meet API",
+            "description": "Create and manage Google Meet spaces, and retrieve conference records, recordings, and transcripts."
+          }
+        }
+      ],
+      "integrity": "sha256-xtrXvcIu11FfombsOku6+l6Mwo1Hcd+lBtraMuJre/o=",
+      "trustTier": "official",
+      "declaredPermissions": [],
+      "detectedCapabilities": []
     }
   ]
 }
