@@ -11,6 +11,14 @@ export const AGENT_DEFAULT_TOOLS = new Set([
   'recall',
   'list_recent',
   'get_trace',
+  // Skills + memory write-side. The unified prompt instructs every agent to
+  // call activate_skill for catalog skills and save_agent_memory to persist
+  // learnings — these MUST be in the schema list or the model improvises
+  // (wrong skills, recreated content, no persistence). See PRD discussion:
+  // agents were being told about tools they could not call.
+  'activate_skill',
+  'save_agent_memory',
+  'get_agent_memories',
 ]);
 
 const CHAT_OVERRIDES = {
@@ -27,11 +35,26 @@ async function loadMemorySection(userId, query, agentId = null) {
   try {
     if (!userId) return '';
     const AgentMemoryModel = (await import('../../models/AgentMemoryModel.js')).default;
-    const memories = query
-      ? await AgentMemoryModel.findRelevant(agentId, userId, query, 15)
-      : agentId
-        ? await AgentMemoryModel.findByAgentId(agentId, { limit: 15 })
-        : await AgentMemoryModel.findByUserId(userId, { limit: 15 });
+    let memories;
+    if (query) {
+      memories = await AgentMemoryModel.findRelevant(agentId, userId, query, 15);
+    } else if (agentId) {
+      // Agent's own memories first; backfill from the user-wide pool so a
+      // freshly created agent isn't born amnesiac (it inherits the global
+      // context the orchestrator has accumulated).
+      const own = await AgentMemoryModel.findByAgentId(agentId, { limit: 15 });
+      memories = own;
+      if (own.length < 15) {
+        const seen = new Set(own.map((m) => m.id));
+        const global = await AgentMemoryModel.findByUserId(userId, { limit: 15 });
+        for (const m of global) {
+          if (memories.length >= 15) break;
+          if (!seen.has(m.id)) memories.push(m);
+        }
+      }
+    } else {
+      memories = await AgentMemoryModel.findByUserId(userId, { limit: 15 });
+    }
     if (!memories.length) return '';
     const lines = memories.map(m => {
       const source = m.agent_id && m.agent_id !== 'orchestrator' ? ' (from agent)' : '';
@@ -152,35 +175,92 @@ async function loadAsyncToolsEnabled(context) {
   return asyncToolsEnabled;
 }
 
+// Resolve the agent's assignedSkills (ids, names, or slugs) to catalog
+// entries so the prompt can highlight them as the agent's specialty. Returns
+// '' when the agent has no assigned skills or resolution fails.
+async function buildSpecialtySkillsSection(assignedSkills) {
+  if (!Array.isArray(assignedSkills) || assignedSkills.length === 0) return '';
+  try {
+    const entries = [];
+    const seenNames = new Set();
+    const assignedSet = new Set(assignedSkills);
+
+    try {
+      const SkillDiscoveryService = (await import('../SkillDiscoveryService.js')).default;
+      if (SkillDiscoveryService.initialized) {
+        for (const ds of SkillDiscoveryService.getSkillCatalog()) {
+          if (assignedSet.has(ds.name) || assignedSet.has(ds.slug)) {
+            entries.push({ name: ds.name, description: ds.description });
+            seenNames.add(ds.name);
+          }
+        }
+      }
+    } catch {
+      // Discovery service may not be initialized.
+    }
+
+    const SkillModel = (await import('../../models/SkillModel.js')).default;
+    const records = await SkillModel.findByIds(assignedSkills);
+    for (const s of records) {
+      const key = s.slug || s.name;
+      if (!seenNames.has(key)) {
+        entries.push({ name: key, description: s.description });
+        seenNames.add(key);
+      }
+    }
+
+    if (entries.length === 0) return '';
+    const lines = entries.map((e) => `- ${e.name}: ${e.description || ''}`).join('\n');
+    return `## Your Specialty Skills\nThese skills are your assigned domain expertise. Activate them proactively with the activate_skill tool whenever a request touches their domain — do not recreate their contents from memory:\n${lines}`;
+  } catch (e) {
+    console.warn('[chatConfigs] Failed to build specialty skills section:', e.message);
+    return '';
+  }
+}
+
 async function loadAgentOverride(context) {
   const isSavedAgent = context.agentId && context.agentId !== 'agent-chat';
   if (!isSavedAgent) return null;
 
-  if (context.agentContext?.systemPrompt) {
-    return {
-      name: context.agentContext.name,
-      systemPrompt: context.agentContext.systemPrompt,
-    };
-  }
-
+  // DB-first: the saved agent record is the single source of truth for the
+  // persona. Entry points (AgentService, agnt_chat tool, external bridges)
+  // historically passed a pre-built mega-prompt in agentContext.systemPrompt
+  // that duplicated platform blocks the unified builder already supplies —
+  // preferring the DB row keeps the persona clean regardless of caller.
   try {
     const AgentModel = (await import('../../models/AgentModel.js')).default;
     const agent = await AgentModel.findOne(context.agentId);
-    if (!agent) return null;
-    context.agentContext = {
-      ...context.agentContext,
-      name: agent.name,
-      description: agent.description,
-      systemPrompt: agent.systemPrompt || '',
-    };
-    return {
-      name: agent.name,
-      systemPrompt: agent.systemPrompt || '',
-    };
+    if (agent) {
+      context.agentContext = {
+        ...context.agentContext,
+        name: agent.name,
+        description: agent.description,
+        systemPrompt: agent.systemPrompt || '',
+      };
+      const assignedTools = Array.isArray(agent.assignedTools) ? agent.assignedTools : [];
+      return {
+        name: agent.name,
+        description: agent.description || '',
+        systemPrompt: agent.systemPrompt || '',
+        specialtySkillsSection: await buildSpecialtySkillsSection(agent.assignedSkills),
+        pinnedToolsSection: assignedTools.length > 0
+          ? `## Your Core Tools\nThese tools are pinned to you and always available: ${assignedTools.join(', ')}.\nYou also have the full platform tool surface — use discover_tools to browse and load more when a task needs them.`
+          : '',
+      };
+    }
   } catch (e) {
     console.warn(`[chatConfigs] Failed to load agent ${context.agentId} from DB:`, e.message);
-    return null;
   }
+
+  // Fallback for transient DB failures: use whatever the caller supplied.
+  if (context.agentContext?.systemPrompt || context.agentContext?.name) {
+    return {
+      name: context.agentContext.name,
+      description: context.agentContext.description || '',
+      systemPrompt: context.agentContext.systemPrompt || '',
+    };
+  }
+  return null;
 }
 
 function getForcedToolGroups(context) {
@@ -285,24 +365,67 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   const AgentModel = (await import('../../models/AgentModel.js')).default;
   const agent = await AgentModel.findOne(context.agentId);
   const assignedToolNames = Array.isArray(agent?.assignedTools) ? agent.assignedTools : [];
-  // UNIVERSAL_TOOLS ride along even on saved agents — system primitives like
-  // mcp_client should be available regardless of which tools the agent was
-  // explicitly assigned at save time.
-  const allowedToolNames = new Set([...AGENT_DEFAULT_TOOLS, ...assignedToolNames, ...UNIVERSAL_TOOLS]);
 
-  let filteredSchemas = allSchemas.filter((tool) => {
-    const name = tool.function?.name;
-    return name && (allowedToolNames.has(name) || isUniversalToolName(name));
+  // RESTRICTED mode (opt-in per agent): legacy ceiling semantics — the agent
+  // sees only its assigned tools + agent defaults + universal primitives.
+  // For compliance/sandbox agents that genuinely must not touch anything
+  // else. Not yet surfaced in the UI; honored here so a future
+  // `toolAccessMode` field on the agent record just works.
+  if (agent?.toolAccessMode === 'restricted') {
+    const allowedToolNames = new Set([...AGENT_DEFAULT_TOOLS, ...assignedToolNames, ...UNIVERSAL_TOOLS]);
+    let restrictedSchemas = allSchemas.filter((tool) => {
+      const name = tool.function?.name;
+      return name && (allowedToolNames.has(name) || isUniversalToolName(name));
+    });
+    if (context.enabledTools) {
+      const runtimeAllowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
+      restrictedSchemas = restrictedSchemas.filter((s) => {
+        const name = s.function?.name;
+        return name && runtimeAllowed.has(name);
+      });
+    }
+    console.log(
+      `[UnifiedChat] Saved-agent (restricted) tool surface for ${context.agentId}: ${restrictedSchemas.length} tools`
+    );
+    return restrictedSchemas;
+  }
+
+  // OPEN mode (default): a saved agent gets the SAME dynamic tool system as
+  // the main orchestrator chat — DEFAULT_TOOLS always on, keyword-triggered
+  // groups per message, discover_tools loads persisted across turns via
+  // _loadedToolGroups — PLUS its assignedTools as pins that are guaranteed
+  // present every turn regardless of keyword matching. assignedTools is no
+  // longer a ceiling; it is the agent's always-on core kit.
+  const latestUserMessage = context.latestUserMessage || '';
+  const { matchedGroups } = selectTools(allSchemas, latestUserMessage);
+  const forcedGroups = getForcedToolGroups(context);
+  const previousGroups = context._loadedToolGroups || new Set();
+  const allGroups = new Set([...previousGroups, ...matchedGroups, ...forcedGroups]);
+
+  const groupToolNames = new Set();
+  for (const group of allGroups) {
+    const tools = getToolsForCategories(allSchemas, [group]);
+    for (const t of tools) {
+      if (t.function?.name) groupToolNames.add(t.function.name);
+    }
+  }
+
+  const pinned = new Set(assignedToolNames);
+  let filteredSchemas = allSchemas.filter((schema) => {
+    const name = schema.function?.name;
+    if (!name) return false;
+    if (pinned.has(name)) return true;
+    if (DEFAULT_TOOLS.has(name)) return true;
+    if (AGENT_DEFAULT_TOOLS.has(name)) return true;
+    if (isUniversalToolName(name)) return true;
+    return groupToolNames.has(name);
   });
 
-  // The agent's assignedTools is a hard ceiling — runtime enabledTools can
-  // narrow it further but never widen it beyond what the agent was given.
-  // When the frontend sends an explicit enabledTools list it is the single
-  // source of truth: we honour the user's checkbox exactly. `mcp_client`
-  // (the meta-discovery tool) still rides along as a universal capability,
-  // but specific `mcp__server__tool` entries must be in enabledTools to
-  // appear — otherwise turning off the MCP category in the sidebar selector
-  // had no effect (the LLM still saw every MCP tool via the prefix bypass).
+  context._loadedToolGroups = allGroups;
+
+  // Runtime enabledTools (per-channel tool selector) still narrows — the
+  // user's checkboxes are the single source of truth when present. Universal
+  // primitives ride along as always.
   if (context.enabledTools) {
     const runtimeAllowed = new Set([...context.enabledTools, ...UNIVERSAL_TOOLS]);
     filteredSchemas = filteredSchemas.filter((s) => {
@@ -312,7 +435,7 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   }
 
   console.log(
-    `[UnifiedChat] Saved-agent tool surface for ${context.agentId}: ${filteredSchemas.length} tools (${assignedToolNames.length} assigned + defaults: ${[...AGENT_DEFAULT_TOOLS].join(', ')})`
+    `[UnifiedChat] Saved-agent tool surface for ${context.agentId}: ${filteredSchemas.length} tools (${assignedToolNames.length} pinned, groups: [${[...allGroups].join(', ')}])`
   );
   return filteredSchemas;
 }

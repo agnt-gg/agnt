@@ -67,9 +67,16 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
 
   const parts = [];
 
-  if (agentOverride?.systemPrompt) {
-    parts.push(agentOverride.systemPrompt);
-    parts.push(`You are responding as ${agentOverride.name || 'the selected agent'}. Respect the agent's assigned tool constraints. The platform-provided capability and tool-use rules below still apply.`);
+  if (agentOverride?.systemPrompt || agentOverride?.name) {
+    // Identity first — models weight the opening of the prompt heavily, so
+    // the agent's persona frames everything that follows. The platform
+    // mechanics below are the same full surface main-chat Annie gets.
+    const agentName = agentOverride.name || 'the selected agent';
+    const identity = [];
+    identity.push(`You are ${agentName}${agentOverride.description ? ` — ${agentOverride.description}` : ''}.`);
+    if (agentOverride.systemPrompt) identity.push(agentOverride.systemPrompt);
+    identity.push(`Stay in character as ${agentName} at all times. You have the FULL AGNT platform capability surface described below — the same unified tool registry, skills system, and persistent memory as the main assistant. Use it freely in service of your role.`);
+    parts.push(identity.join('\n\n'));
   } else {
     parts.push(`You are Annie, a helpful assistant with access to AGNT's unified tool registry. Use tools to accomplish the user's request unless it is a trivial conversational task.
 
@@ -124,6 +131,10 @@ Tools are provided through the API tools parameter. Use exact tool names. Only u
   if (contextBlock) parts.push(contextBlock);
 
   if (skillsCatalogSection) parts.push(skillsCatalogSection);
+  // Saved-agent specialty highlights — rendered right after the full catalog
+  // so the agent's assigned skills/tools stand out from the general surface.
+  if (agentOverride?.specialtySkillsSection) parts.push(agentOverride.specialtySkillsSection);
+  if (agentOverride?.pinnedToolsSection) parts.push(agentOverride.pinnedToolsSection);
   if (memorySection) parts.push(memorySection);
 
   // "Remember anything" recall layer — recall/list_recent/get_trace are in
@@ -202,7 +213,13 @@ async function buildWorkflowContextBlock({ workflowId, workflowContext, workflow
 }
 
 async function buildAgentContextBlock({ agentId, agentContext, agentState }) {
-  if (!agentId && !agentContext && !agentState) return '';
+  // The AgentForge BUILDER prompt ("you create and manage agents", with
+  // generate_agent/modify_agent function docs) must only appear on the
+  // builder surface, which uses the 'agent-chat' sentinel id. Saved-agent
+  // runtime chats carry a real agentId — injecting the builder prompt there
+  // buried the agent's persona and told it to "create" things, which is
+  // exactly the recreate-instead-of-use failure users reported.
+  if (agentId !== 'agent-chat') return '';
   return getAgentSystemContent(agentId, agentContext, agentState);
 }
 

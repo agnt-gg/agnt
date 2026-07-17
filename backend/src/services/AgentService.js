@@ -1,27 +1,10 @@
 import AgentModel from '../models/AgentModel.js';
-import SkillModel from '../models/SkillModel.js';
-import SkillService, { buildSkillsContext, buildSkillCatalog, buildSkillActivationInstructions } from './SkillService.js';
-import SkillDiscoveryService from './SkillDiscoveryService.js';
 import UserModel from '../models/UserModel.js';
 import db from '../models/database/index.js';
 import generateUUID from '../utils/generateUUID.js';
 
 import universalChatHandler from './OrchestratorService.js';
 import { broadcast, broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
-import {
-  CRITICAL_IMAGE_HANDLING,
-  CRITICAL_IMAGE_GENERATION,
-  CRITICAL_TOOL_CALL_REQUIREMENTS,
-  IMAGE_ANALYSIS_CAPABILITIES,
-  IMAGE_GENERATION_CAPABILITIES,
-  RESPONSE_FORMATTING,
-  CRITICAL_IMAGE_REFERENCE_FORMATTING,
-  IMPORTANT_GUIDELINES,
-  CHART_CHEATSHEET,
-  MCP_TOOL_USE_RULES,
-  CRITICAL_TOOL_RESPONSE_RULES,
-  ASYNC_EXECUTION_GUIDANCE,
-} from './orchestrator/system-prompts/orchestrator-chat.js';
 
 /**
  * Fill missing agent.provider / agent.model from the user's selected settings.
@@ -273,105 +256,18 @@ class AgentService {
       }
     }
 
-    // Create dynamic system prompt with current date/time and rich tool information
-    const currentDate = new Date().toString();
-
-    // Build detailed tool descriptions like the orchestrator
-    const availableToolsList =
-      availableTools.length > 0
-        ? availableTools
-            .map((tool) => {
-              const schema = tool.function;
-              return `- ${schema.name}: ${schema.description}`;
-            })
-            .join('\n')
-        : '- No tools assigned to this agent';
-
-    // Build system prompt block from agent's custom system prompt
-    const primaryDirectives = agent.systemPrompt
-      ? `\nPRIMARY DIRECTIVES:\n${agent.systemPrompt}\n`
-      : '';
-
-    // Build skills context using progressive disclosure (Agent Skills standard)
-    // Tier 1: Compact catalog of the agent's explicitly assigned skills only
-    // Tier 2: Full instructions loaded on demand via activate_skill tool
-    let skillsContext = '';
-    try {
-      const assignedSkills = Array.isArray(agent.assignedSkills) ? agent.assignedSkills : [];
-      if (assignedSkills.length > 0) {
-        const assignedSet = new Set(assignedSkills);
-        const catalogEntries = [];
-        const seenNames = new Set();
-
-        // Include filesystem-discovered skills only if explicitly assigned (match by name/slug)
-        if (SkillDiscoveryService.initialized) {
-          const discoveredCatalog = SkillDiscoveryService.getSkillCatalog();
-          for (const ds of discoveredCatalog) {
-            if (assignedSet.has(ds.name) || assignedSet.has(ds.slug)) {
-              catalogEntries.push(ds);
-              seenNames.add(ds.name);
-            }
-          }
-        }
-
-        // Resolve DB skills by id (findByIds also tolerates slugs where supported)
-        const skillRecords = await SkillModel.findByIds(assignedSkills);
-        for (const s of skillRecords) {
-          const key = s.slug || s.name;
-          if (!seenNames.has(key)) {
-            catalogEntries.push({ name: s.slug || s.name, description: s.description, source: 'database' });
-            seenNames.add(key);
-          }
-        }
-
-        if (catalogEntries.length > 0) {
-          const catalog = buildSkillCatalog(catalogEntries);
-          const instructions = buildSkillActivationInstructions();
-          skillsContext = '\n' + catalog + '\n\n' + instructions + '\n';
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to build skills catalog for agent:', err.message);
-    }
-
-    const systemPrompt = `Current date and time: ${currentDate}
-
-You are an AI assistant named '${agent.name}'.
-Your primary function and persona are defined as follows: ${agent.description}.
-You must strictly adhere to this persona and fulfill your designated role while leveraging the operational capabilities described below.
-${primaryDirectives}${skillsContext}
-${CRITICAL_IMAGE_HANDLING}
-
-${CRITICAL_IMAGE_GENERATION}
-
-${CRITICAL_TOOL_CALL_REQUIREMENTS}
-
-AVAILABLE TOOLS:
-${availableToolsList}
-
-${ASYNC_EXECUTION_GUIDANCE}
-
-${IMAGE_ANALYSIS_CAPABILITIES}
-
-${IMAGE_GENERATION_CAPABILITIES}
-
-${RESPONSE_FORMATTING}
-
-${CRITICAL_IMAGE_REFERENCE_FORMATTING}
-
-${IMPORTANT_GUIDELINES}
-
-${CHART_CHEATSHEET}
-
-${MCP_TOOL_USE_RULES}
-
-${CRITICAL_TOOL_RESPONSE_RULES}
-
-Remember: You are ${agent.name} with specialized expertise. Use your assigned tools strategically to provide exceptional assistance while maintaining your unique personality and focus area.`;
-
+    // Persona-only context. The unified prompt builder (chatConfigs.js
+    // loadAgentOverride + buildUnifiedSystemPrompt) owns ALL platform
+    // guidance, the skills catalog, memory, and tool instructions — it loads
+    // the agent record from the DB itself. Duplicating those blocks here
+    // produced a Franken-prompt (every rule 2-3x, persona buried) that made
+    // agents recreate skills and forget capabilities. availableTools is kept
+    // because the suggestions prompt renders the assigned-tool list.
     return {
       agentContext: {
-        systemPrompt,
+        name: agent.name,
+        description: agent.description || '',
+        systemPrompt: agent.systemPrompt || '',
         availableTools,
         toolExecutorMap,
       },
