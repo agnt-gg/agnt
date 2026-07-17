@@ -429,15 +429,42 @@ class GoalService {
       }
 
       if (action === 'approve') {
-        // Proposal goals may have been created without tasks (e.g. inserted
-        // directly into the goals table by an agent, bypassing GoalProcessor).
-        // Approval must produce something executable, so plan tasks now if
-        // none exist — otherwise the autonomous loop evaluates an empty task
-        // list, scores 0%, and flips the goal right back to needs_review.
         const userId = req.user?.userId || goal.user_id;
         const { provider, model } = req.body || {};
-        let tasksCreated = 0;
         const existingTasks = await TaskModel.findByGoalId(id);
+
+        // Two distinct reasons a goal sits in needs_review, and approval means
+        // different things for each:
+        //
+        // 1. The goal EXECUTED and the evaluator scored it below threshold
+        //    (or it hit max_iterations / got stuck). The human reviewed the
+        //    work and is signing off on it. Approval = acceptance → mark
+        //    'validated' (terminal). Re-executing here would wipe completed
+        //    work, re-run the loop, and the evaluator would flip the goal
+        //    right back to needs_review — an infinite approve/review cycle.
+        //    (Retry / Send Feedback are the explicit "run it again" paths.)
+        //
+        // 2. The goal is a PROPOSAL that never ran (e.g. inserted directly
+        //    into the goals table by an agent, bypassing GoalProcessor).
+        //    Approval = green light → plan tasks if needed and start the
+        //    autonomous loop.
+        const hasExecuted =
+          (goal.current_iteration || 0) > 0 ||
+          goal.loop_status != null ||
+          existingTasks.some((t) => t.status !== 'pending');
+
+        if (hasExecuted) {
+          await GoalModel.updateLoopStatus(id, null);
+          await GoalModel.updateStatus(id, 'validated');
+          console.log(`[GoalService] Approve: human sign-off on executed goal ${id} — marked validated`);
+          return res.json({ message: 'Goal approved — work accepted and marked validated', status: 'validated' });
+        }
+
+        // Never-executed proposal goal: approval must produce something
+        // executable, so plan tasks now if none exist — otherwise the
+        // autonomous loop evaluates an empty task list, scores 0%, and flips
+        // the goal right back to needs_review.
+        let tasksCreated = 0;
         if (existingTasks.length === 0) {
           try {
             const planned = await GoalProcessor.planTasksForExistingGoal(id, userId, provider || null, model || null);
