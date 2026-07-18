@@ -251,8 +251,7 @@ Base path: `/api/agents`
 **GET** `/`
 
 - **Authentication**: Required
-- **Description**: Retrieve all agents for the authenticated user
-- **Note**: Include trailing slash (`/api/agents/`) for best compatibility
+- **Description**: Retrieve all agents for the authenticated user- **Note**: Include trailing slash (`/api/agents/`) for best compatibility
 - **Response**:
 
 ```json
@@ -263,34 +262,69 @@ Base path: `/api/agents`
       "name": "Content Manager",
       "description": "Main content manager",
       "status": "active",
-      "icon": "agent",
-      "class": "worker",      "category": "Content & Media",
-      "assignedTools": [],
+      "icon": "data:image/png;base64,...",
+      "category": "Content & Media",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "assignedTools": ["web_search"],
+      "assignedWorkflows": [],
+      "systemPrompt": "Persona / directives text",
+      "assignedSkills": [],
       "toolAccessMode": "restricted",
-      "capabilities": [],
-      "tasksCompleted": 0,
-      "uptime": 0,
-      "creditLimit": 0,
+      "resourceId": 1,
       "creditsUsed": 0,
+      "creditLimit": 1000,
       "workflows": 0,
       "lastActive": null,
-      "successRate": null,
-      "provider": "openai",
-      "model": "gpt-4"
+      "successRate": null
     }
   ]
 }
 ```
 
-**Important**: The response wraps agents in an `agents` array property, not a direct array.
+**Important**: The response wraps agents in an `agents` array property, not a direct array. `icon` can be a large base64 data URL — use `GET /summary` for lightweight lists.
+
+### Get All Agents (Summary)
+
+**GET** `/summary`
+
+- **Authentication**: Required
+- **Description**: Lightweight agent list. Drops the three biggest per-row payload contributors (base64 `icon`, `systemPrompt`, and the tools/workflows/skills arrays) and returns counts instead. Use for rendering agent cards; hit `GET /:id` when you need the full record.
+- **Response**:
+
+```json
+{
+  "agents": [
+    {
+      "id": "67b9bf15-a5c7-4153-936b-5959dc83b03c",
+      "name": "Content Manager",
+      "description": "Main content manager",
+      "status": "active",
+      "category": "Content & Media",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "toolCount": 3,
+      "skillCount": 1,
+      "workflows": 0,
+      "creditsUsed": 0,
+      "creditLimit": 1000,
+      "lastActive": null,
+      "successRate": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+```
 
 ### Save/Update Agent
 
 **POST** `/save`
 
-- **Authentication**: Required
-- **Description**: Create a new agent or update an existing one
-- **Body**:```json
+- **Authentication**: Required- **Description**: Create a new agent or update an existing one
+- **Body**:
+
+```json
 {
   "id": "optional-agent-id",
   "name": "Agent Name",
@@ -310,23 +344,16 @@ Base path: `/api/agents`
 | `restricted` (default) | `assignedTools` are the ceiling. The agent sees only its assigned tools plus a baseline (web_search, skill activation via `activate_skill`, memory read/write via `recall`/`save_agent_memory`/`get_agent_memories`, `discover_tools`) and universal primitives. |
 | `open` | Full main-chat dynamic tool surface (default tools + keyword-triggered groups + persistent `discover_tools` loads), with `assignedTools` pinned always-on regardless of keyword matching. |
 
-Any value other than `"open"` is sanitized to `"restricted"` on save. In both modes the agent's system prompt is built by the unified prompt builder: persona-first, full skills catalog with the agent's `assignedSkills` highlighted as specialty skills, and persistent agent-scoped memory.
-
-- **Response**:
+Any value other than `"open"` is sanitized to `"restricted"` on save. In both modes the agent's system prompt is built by the unified prompt builder: persona-first, full skills catalog with the agent's `assignedSkills` highlighted as specialty skills, and persistent agent-scoped memory.- **Response** (`200`):
 
 ```json
 {
-  "success": true,
-  "agent": {
-    "id": "agent-id",
-    "name": "Agent Name",
-    "description": "Agent description",
-    "config": {},
-    "createdAt": "2024-01-01T00:00:00Z",
-    "updatedAt": "2024-01-01T00:00:00Z"
-  }
+  "message": "New agent created",
+  "agentId": "agent-id"
 }
 ```
+
+`message` is `"New agent created"` or `"Agent updated"`. If `id` is omitted (or belongs to another user's agent), a new agent is created with a fresh UUID. New agents inherit the user's selected provider/model when `provider`/`model` are not supplied; if neither the body nor user settings yield a provider+model the request fails with `400`.
 
 ### Get Agent by ID
 
@@ -334,8 +361,7 @@ Any value other than `"open"` is sanitized to `"restricted"` on save. In both mo
 
 - **Authentication**: Required
 - **Parameters**:
-  - `id` (path): Agent ID
-- **Description**: Retrieve a specific agent by ID
+  - `id` (path): Agent ID- **Description**: Retrieve a specific agent by ID (full record, owner only — `403` otherwise, `404` if not found)
 - **Response**:
 
 ```json
@@ -343,11 +369,23 @@ Any value other than `"open"` is sanitized to `"restricted"` on save. In both mo
   "id": "agent-id",
   "name": "Agent Name",
   "description": "Agent description",
-  "config": {},
-  "createdAt": "2024-01-01T00:00:00Z",
-  "updatedAt": "2024-01-01T00:00:00Z"
+  "status": "active",
+  "icon": "data:image/png;base64,...",
+  "category": "Content & Media",
+  "provider": "openai",
+  "model": "gpt-4o",
+  "systemPrompt": "Persona / directives text",
+  "assignedTools": ["web_search"],
+  "assignedWorkflows": [],
+  "assignedSkills": [],
+  "toolAccessMode": "restricted",
+  "created_by": "user-id",
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
 }
 ```
+
+Note: this endpoint returns the raw DB row plus parsed arrays — timestamps are snake_case (`created_at`), unlike the camelCase list endpoints.
 
 ### Update Agent
 
@@ -356,29 +394,12 @@ Any value other than `"open"` is sanitized to `"restricted"` on save. In both mo
 - **Authentication**: Required
 - **Parameters**:
   - `id` (path): Agent ID
-- **Body**:
+- **Description**: Same handler as `POST /save` — identical body fields (name, description, systemPrompt, assignedTools, assignedSkills, assignedWorkflows, toolAccessMode, provider, model, icon, category, status, creditLimit) and identical response:
 
 ```json
 {
-  "name": "Updated Agent Name",
-  "description": "Updated description",
-  "config": {}
-}
-```
-
-- **Response**:
-
-```json
-{
-  "success": true,
-  "agent": {
-    "id": "agent-id",
-    "name": "Updated Agent Name",
-    "description": "Updated description",
-    "config": {},
-    "createdAt": "2024-01-01T00:00:00Z",
-    "updatedAt": "2024-01-01T00:00:00Z"
-  }
+  "message": "Agent updated",
+  "agentId": "agent-id"
 }
 ```
 
@@ -388,40 +409,38 @@ Any value other than `"open"` is sanitized to `"restricted"` on save. In both mo
 
 - **Authentication**: Required
 - **Parameters**:
-  - `id` (path): Agent ID
-- **Description**: Delete an agent by ID
+  - `id` (path): Agent ID- **Description**: Delete an agent by ID. Also deletes the agent's memories and broadcasts `AGENT_DELETED` to the user's connected clients.
 - **Response**:
 
 ```json
 {
-  "success": true,
-  "message": "Agent deleted successfully"
+  "message": "Agent <id> deleted successfully."
 }
-```### Chat with Agent
+```
+
+### Chat with Agent
 
 **POST** `/:id/chat`
 
 - **Authentication**: Required
 - **Parameters**:
-  - `id` (path): Agent ID
-- **Note**: Agent chats run through the same unified orchestrator as the main chat — persona-first system prompt, full skills catalog (assigned skills highlighted), persistent agent-scoped memory, and the tool surface determined by the agent's `toolAccessMode` (see Save/Update Agent). External bridges (Discord, Mattermost, etc.) get identical behavior through this endpoint.
+  - `id` (path): Agent ID- **Note**: Agent chats run through the same unified orchestrator as the main chat — persona-first system prompt, full skills catalog (assigned skills highlighted), persistent agent-scoped memory, and the tool surface determined by the agent's `toolAccessMode` (see Save/Update Agent). External bridges (Discord, Mattermost, etc.) get identical behavior through this endpoint.
 - **Body**:
 
 ```json
 {
   "message": "Your message here",
-  "context": {}
+  "history": [{ "role": "user", "content": "earlier turn" }],
+  "conversationId": "optional-stable-conversation-key",
+  "provider": "optional-override",
+  "model": "optional-override",
+  "enabledTools": ["web_search"]
 }
 ```
 
-- **Response**:
+All fields except `message` are optional. `provider`/`model` default to the agent's saved provider/model, then the user's selected settings. `conversationId` keys persistent conversation history. `enabledTools` narrows (never widens) the agent's tool surface.
 
-```json
-{
-  "response": "Agent response",
-  "metadata": {}
-}
-```
+- **Response**: Server-sent events stream (same event vocabulary as [Universal Chat](#universal-chat) — `conversation_started`, `content_delta`, `tool_start`/`tool_end`, `final_content`, `done`, …). There is no JSON response mode.
 
 ### Stream Chat with Agent
 
@@ -430,15 +449,7 @@ Any value other than `"open"` is sanitized to `"restricted"` on save. In both mo
 - **Authentication**: Required
 - **Parameters**:
   - `id` (path): Agent ID
-- **Body**:
-
-```json
-{
-  "message": "Your message here",
-  "context": {}
-}
-```
-
+- **Description**: Identical to `POST /:id/chat` (both routes call the same universal handler and both stream). Kept for backward compatibility.
 - **Response**: Server-sent events stream
 
 ### Get Agent Suggestions
@@ -452,17 +463,77 @@ Any value other than `"open"` is sanitized to `"restricted"` on save. In both mo
 
 ```json
 {
-  "context": "Current context or partial message"
+  "lastUserMessage": "the user's last message",
+  "lastAssistantMessage": "the agent's last reply",
+  "history": []
 }
 ```
 
+`provider`/`model` are auto-filled from the agent's saved config; the agent's persona and assigned-tool list are injected into the suggestion prompt.
+
+- **Response** (JSON, not a stream):
+
+```json
+{
+  "suggestions": [
+    { "id": "suggestion_1", "text": "Draft the outline", "icon": "\ud83d\udcdd" },
+    { "id": "suggestion_2", "text": "Search for sources", "icon": "\ud83d\udd0d" },
+    { "id": "suggestion_3", "text": "Summarize so far", "icon": "\ud83d\udccb" }
+  ]
+}
+```
+
+On LLM failure the endpoint still returns `200` with three generic fallback suggestions plus an `error` field.
+
+### Export Agent
+
+**GET** `/:id/export`
+
+- **Authentication**: Required (owner only — `403` otherwise)
+- **Parameters**:
+  - `id` (path): Agent ID
+- **Description**: Export a portable agent envelope (persona, provider/model, assigned tools/skills/workflows by name/id — no memories, no credentials).
 - **Response**:
 
 ```json
 {
-  "suggestions": ["Suggestion 1", "Suggestion 2"]
+  "_format": "agnt-agent",
+  "_version": 1,
+  "payload": {
+    "name": "Agent Name",
+    "description": "...",
+    "icon": null,
+    "provider": "openai",
+    "model": "gpt-4o",
+    "systemPrompt": "...",
+    "category": "",
+    "status": "ACTIVE",
+    "creditLimit": 1000,
+    "assignedTools": ["web_search"],
+    "assignedSkills": [],
+    "assignedWorkflows": []
+  },
+  "exported_at": "2026-01-01T00:00:00Z"
 }
 ```
+
+### Import Agent
+
+**POST** `/import`
+
+- **Authentication**: Required
+- **Body**: An export envelope (either the envelope itself or wrapped as `{ "envelope": { ... } }`)
+- **Response** (`201`):
+
+```json
+{
+  "success": true,
+  "agentId": "new-agent-id",
+  "missingRefs": { "tools": [], "skills": [], "workflows": [] }
+}
+```
+
+`missingRefs` lists referenced tools/skills/workflows that don't exist in this installation (the agent is still created). Malformed envelopes return `400`.
 
 ---
 
@@ -4388,8 +4459,7 @@ Base path: `/api/orchestrator`
     {
       "name": "tool_name",
       "description": "What the tool does",
-      "parameters": { "type": "object", "properties": {} },
-      "category": "native|plugin|registry"
+      "parameters": { "type": "object", "properties": {} },      "category": "native|plugin|registry"
     }
   ]
 }
@@ -4400,12 +4470,36 @@ Base path: `/api/orchestrator`
 **POST** `/chat`
 
 - **Authentication**: Required
-- **Content-Type**: `multipart/form-data`
-- **Body**:
+- **Content-Type**: `multipart/form-data` (or JSON when no files are attached)
+- **Body** (common parameters, all optional except `message`):
   - `message` (string): Chat message
+  - `messages` (array): Full message array (alternative to `message` + `history`)
+  - `history` (array): Prior turns as `{ role, content }` objects
+  - `conversationId` (string): Stable key for persistent conversation state (context, loaded tool groups, activated skills)
+  - `provider` / `model` (string): LLM override. Resolution order: body → agent record (saved-agent chats) → user's selected settings → first provider with valid credentials
+  - `enabledTools` (array): Explicit tool whitelist from the tool selector. Narrows the surface; an empty array means zero tools
+  - `reasoningEnabled` (boolean) / `reasoningValue` (string): Extended-thinking controls for reasoning-capable models
   - `files` (file[]): Optional file attachments (max 20MB each)
-- **Description**: Universal chat endpoint that handles agent, workflow, tool, and goal interactions
-- **Response**: Server-sent events stream
+  - Surface-context parameters (any one of these routes the chat to that surface): `agentId`/`agentContext`/`agentState`, `workflowId`/`workflowContext`/`workflowState`, `toolId`/`toolContext`/`toolState`, `widgetId`/`widgetContext`/`widgetState`, `goalId`/`goalContext`, `codeId`/`codeContext`, `skillId`/`skillInstructions`/`skillName`/`skillDescription`/`skillAllowedTools`
+- **Description**: Universal chat handler. The chat type is detected from the route path and/or which context parameters are present; all typed routes below share this handler and differ only in the injected page context.
+- **Response**: Server-sent events stream. Key named events:
+
+| Event | Payload highlights |
+|---|---|
+| `conversation_started` | `conversationId` |
+| `files_processed` | attached-file summaries |
+| `assistant_message` | `assistantMessageId` for the turn |
+| `content_delta` / `reasoning_delta` | `delta`, `accumulated` text |
+| `tool_pending` / `tool_start` / `tool_end` | tool call id, name, args / result / error |
+| `tool_executions` | per-round tool execution details |
+| `image_generated` | image refs for generated images |
+| `data_content` / `data_offloaded` | large tool results moved to the offload store |
+| `context_status` / `context_managed` | context-window usage / trimming info |
+| `steering_applied` | mid-run user steering acknowledged |
+| `frontend_event` | UI-targeted tool side effects (highlights, tours) |
+| `error` | error message for the turn |
+| `final_content` | complete assistant response text |
+| `done` | stream end |
 
 ### Agent Chat
 
@@ -4413,11 +4507,9 @@ Base path: `/api/orchestrator`
 
 - **Authentication**: Required
 - **Content-Type**: `multipart/form-data`
-- **Body**:
-  - `agentId` (string): Agent ID
-  - `message` (string): Chat message
-  - `files` (file[]): Optional file attachments
-- **Description**: Chat with a specific agent
+- **Body**: Universal Chat parameters plus:
+  - `agentId` (string): A saved agent ID for a persona chat, or the sentinel `"agent-chat"` for the AgentForge builder surface (Annie persona + agent-management functions)
+- **Description**: Saved-agent chats get the unified prompt (agent persona first, full skills catalog with specialty highlights, agent-scoped memory) and the tool surface defined by the agent's `toolAccessMode`. Equivalent to `POST /api/agents/:id/chat`, which resolves the agent server-side.
 - **Response**: Server-sent events stream
 
 ### Workflow Chat
@@ -4482,9 +4574,7 @@ Base path: `/api/orchestrator`
   - `message` (string): Chat message
   - `files` (file[]): Optional file attachments (max 20MB each)
 - **Description**: Widget-specific chat with streaming. Used for creating and editing custom dashboard widgets.
-- **Response**: Server-sent events stream
-
-### Get Suggestions
+- **Response**: Server-sent events stream### Get Suggestions
 
 **POST** `/suggestions`
 
@@ -4493,18 +4583,30 @@ Base path: `/api/orchestrator`
 
 ```json
 {
-  "context": "Current context or partial message",
-  "type": "agent|workflow|tool|goal"
+  "lastUserMessage": "the user's last message",
+  "lastAssistantMessage": "the assistant's last reply",
+  "history": [],
+  "provider": "openai",
+  "model": "gpt-4o",
+  "agentContext": {}
 }
 ```
 
-- **Response**:
+`provider` and `model` are **required** (`400` without them). `agentContext` is optional and shapes suggestions to an agent's persona/tools.
+
+- **Response** (JSON, not a stream):
 
 ```json
 {
-  "suggestions": ["Suggestion 1", "Suggestion 2"]
+  "suggestions": [
+    { "id": "suggestion_1", "text": "Draft the outline", "icon": "\ud83d\udcdd" },
+    { "id": "suggestion_2", "text": "Search for sources", "icon": "\ud83d\udd0d" },
+    { "id": "suggestion_3", "text": "Summarize so far", "icon": "\ud83d\udccb" }
+  ]
 }
 ```
+
+On LLM failure the endpoint returns `200` with three generic fallback suggestions plus an `error` field.
 
 ---
 
