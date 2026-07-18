@@ -264,9 +264,9 @@ Base path: `/api/agents`
       "description": "Main content manager",
       "status": "active",
       "icon": "agent",
-      "class": "worker",
-      "category": "Content & Media",
+      "class": "worker",      "category": "Content & Media",
       "assignedTools": [],
+      "toolAccessMode": "restricted",
       "capabilities": [],
       "tasksCompleted": 0,
       "uptime": 0,
@@ -290,16 +290,27 @@ Base path: `/api/agents`
 
 - **Authentication**: Required
 - **Description**: Create a new agent or update an existing one
-- **Body**:
-
-```json
+- **Body**:```json
 {
   "id": "optional-agent-id",
   "name": "Agent Name",
   "description": "Agent description",
+  "systemPrompt": "Optional persona / directives",
+  "assignedTools": ["web_search", "web_scrape"],
+  "assignedSkills": ["skill-id-or-slug"],
+  "toolAccessMode": "restricted",
   "config": {}
 }
 ```
+
+**`toolAccessMode`** (string, `"restricted"` | `"open"`, default `"restricted"`) controls the agent's runtime tool surface in chat:
+
+| Mode | Tool surface |
+|---|---|
+| `restricted` (default) | `assignedTools` are the ceiling. The agent sees only its assigned tools plus a baseline (web_search, skill activation via `activate_skill`, memory read/write via `recall`/`save_agent_memory`/`get_agent_memories`, `discover_tools`) and universal primitives. |
+| `open` | Full main-chat dynamic tool surface (default tools + keyword-triggered groups + persistent `discover_tools` loads), with `assignedTools` pinned always-on regardless of keyword matching. |
+
+Any value other than `"open"` is sanitized to `"restricted"` on save. In both modes the agent's system prompt is built by the unified prompt builder: persona-first, full skills catalog with the agent's `assignedSkills` highlighted as specialty skills, and persistent agent-scoped memory.
 
 - **Response**:
 
@@ -386,15 +397,14 @@ Base path: `/api/agents`
   "success": true,
   "message": "Agent deleted successfully"
 }
-```
-
-### Chat with Agent
+```### Chat with Agent
 
 **POST** `/:id/chat`
 
 - **Authentication**: Required
 - **Parameters**:
   - `id` (path): Agent ID
+- **Note**: Agent chats run through the same unified orchestrator as the main chat — persona-first system prompt, full skills catalog (assigned skills highlighted), persistent agent-scoped memory, and the tool surface determined by the agent's `toolAccessMode` (see Save/Update Agent). External bridges (Discord, Mattermost, etc.) get identical behavior through this endpoint.
 - **Body**:
 
 ```json
