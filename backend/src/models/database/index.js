@@ -1235,6 +1235,18 @@ function runMigrations() {
         }
       });
 
+      // Migration: Add tool_access_mode to agents table (2026-07-18).
+      // 'restricted' (default) = assignedTools are the ceiling (plus agent
+      // defaults + universal primitives). 'open' = full main-chat dynamic
+      // tool surface with assignedTools as always-on pins.
+      db.run(`ALTER TABLE agents ADD COLUMN tool_access_mode TEXT DEFAULT 'restricted'`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.error('Error adding tool_access_mode column to agents:', err);
+        } else if (!err) {
+          console.log('✓ Added tool_access_mode column to agents table');
+        }
+      });
+
       // Migration: Add AGI loop columns to goals table (2026-03-04)
       const agiLoopColumns = [
         { name: 'world_state', type: "JSON DEFAULT '{}'" },

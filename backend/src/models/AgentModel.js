@@ -20,14 +20,18 @@ class AgentModel {
         model,
         systemPrompt = '',
         assignedSkills = [],
+        toolAccessMode,
       } = agent;
       const toolsJson = JSON.stringify(assignedTools);
       const workflowsJson = JSON.stringify(assignedWorkflows);
       const skillsJson = JSON.stringify(assignedSkills);
+      // Only 'open' and 'restricted' are valid; anything else falls back to
+      // the safe default so a malformed payload can't widen tool access.
+      const accessMode = toolAccessMode === 'open' ? 'open' : 'restricted';
       db.run(
-        `INSERT OR REPLACE INTO agents (id, name, description, status, icon, category, tools, workflows, provider, model, created_by, last_active, success_rate, system_prompt, skills, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        [id, name, description, status, icon, category, toolsJson, workflowsJson, provider, model, userId, lastActive, successRate, systemPrompt, skillsJson],
+        `INSERT OR REPLACE INTO agents (id, name, description, status, icon, category, tools, workflows, provider, model, created_by, last_active, success_rate, system_prompt, skills, tool_access_mode, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [id, name, description, status, icon, category, toolsJson, workflowsJson, provider, model, userId, lastActive, successRate, systemPrompt, skillsJson, accessMode],
         function (err) {
           if (err) {
             reject(err);
@@ -64,6 +68,7 @@ class AgentModel {
             agent.assignedWorkflows = agent.workflows ? JSON.parse(agent.workflows) : [];
             agent.systemPrompt = agent.system_prompt || '';
             agent.assignedSkills = agent.skills ? JSON.parse(agent.skills) : [];
+            agent.toolAccessMode = agent.tool_access_mode === 'open' ? 'open' : 'restricted';
             resolve(agent);
           } else resolve(null);
         }
@@ -90,6 +95,7 @@ class AgentModel {
               agent.assignedWorkflows = agent.workflows ? JSON.parse(agent.workflows) : [];
               agent.systemPrompt = agent.system_prompt || '';
               agent.assignedSkills = agent.skills ? JSON.parse(agent.skills) : [];
+              agent.toolAccessMode = agent.tool_access_mode === 'open' ? 'open' : 'restricted';
             });
             resolve(agents);
           }

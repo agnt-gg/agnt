@@ -861,6 +861,7 @@ export default {
           model: configPayload.model,
           status: selectedAgent.value.status,
           systemPrompt: configPayload.systemPrompt || '',
+          toolAccessMode: configPayload.toolAccessMode || 'restricted',
           assignedTools: configPayload.assignedTools || [],
           assignedWorkflows: configPayload.assignedWorkflows || [],
           assignedSkills: configPayload.assignedSkills || [],

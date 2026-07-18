@@ -238,14 +238,26 @@ async function loadAgentOverride(context) {
         systemPrompt: agent.systemPrompt || '',
       };
       const assignedTools = Array.isArray(agent.assignedTools) ? agent.assignedTools : [];
+      // Wording must match the actual tool surface: in restricted mode the
+      // assigned list (plus baseline primitives) IS the complete toolset —
+      // claiming a "full platform surface" would instruct the model to call
+      // tools it cannot see.
+      const isOpen = agent.toolAccessMode === 'open';
+      let pinnedToolsSection = '';
+      if (assignedTools.length > 0) {
+        pinnedToolsSection = isOpen
+          ? `## Your Core Tools\nThese tools are pinned to you and always available: ${assignedTools.join(', ')}.\nYou also have the full platform tool surface — use discover_tools to browse and load more when a task needs them.`
+          : `## Your Core Tools\nYour assigned toolset: ${assignedTools.join(', ')} — plus the baseline tools in your schema list (web_search, memory, skills). This is your complete tool surface; if a request needs a capability outside it, say so plainly instead of improvising.`;
+      } else if (!isOpen) {
+        pinnedToolsSection = `## Your Tool Surface\nYou have a focused baseline toolset (web_search, memory recall/save, skill activation). If a request needs a capability outside it, say so plainly instead of improvising.`;
+      }
       return {
         name: agent.name,
         description: agent.description || '',
         systemPrompt: agent.systemPrompt || '',
+        toolAccessMode: isOpen ? 'open' : 'restricted',
         specialtySkillsSection: await buildSpecialtySkillsSection(agent.assignedSkills),
-        pinnedToolsSection: assignedTools.length > 0
-          ? `## Your Core Tools\nThese tools are pinned to you and always available: ${assignedTools.join(', ')}.\nYou also have the full platform tool surface — use discover_tools to browse and load more when a task needs them.`
-          : '',
+        pinnedToolsSection,
       };
     }
   } catch (e) {
@@ -366,12 +378,12 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
   const agent = await AgentModel.findOne(context.agentId);
   const assignedToolNames = Array.isArray(agent?.assignedTools) ? agent.assignedTools : [];
 
-  // RESTRICTED mode (opt-in per agent): legacy ceiling semantics — the agent
+  // RESTRICTED mode (the DEFAULT): assignedTools are the ceiling — the agent
   // sees only its assigned tools + agent defaults + universal primitives.
-  // For compliance/sandbox agents that genuinely must not touch anything
-  // else. Not yet surfaced in the UI; honored here so a future
-  // `toolAccessMode` field on the agent record just works.
-  if (agent?.toolAccessMode === 'restricted') {
+  // The assigned checklist in the editor reads as a boundary, so it behaves
+  // as one unless the user explicitly opts the agent into 'open' via the
+  // Tool Access toggle in the agent editor.
+  if (agent?.toolAccessMode !== 'open') {
     const allowedToolNames = new Set([...AGENT_DEFAULT_TOOLS, ...assignedToolNames, ...UNIVERSAL_TOOLS]);
     let restrictedSchemas = allSchemas.filter((tool) => {
       const name = tool.function?.name;
@@ -390,12 +402,13 @@ async function getSavedAgentToolSchemas(context, allSchemas) {
     return restrictedSchemas;
   }
 
-  // OPEN mode (default): a saved agent gets the SAME dynamic tool system as
-  // the main orchestrator chat — DEFAULT_TOOLS always on, keyword-triggered
-  // groups per message, discover_tools loads persisted across turns via
-  // _loadedToolGroups — PLUS its assignedTools as pins that are guaranteed
-  // present every turn regardless of keyword matching. assignedTools is no
-  // longer a ceiling; it is the agent's always-on core kit.
+  // OPEN mode (opt-in via toolAccessMode='open'): a saved agent gets the
+  // SAME dynamic tool system as the main orchestrator chat — DEFAULT_TOOLS
+  // always on, keyword-triggered groups per message, discover_tools loads
+  // persisted across turns via _loadedToolGroups — PLUS its assignedTools as
+  // pins that are guaranteed present every turn regardless of keyword
+  // matching. In this mode assignedTools is not a ceiling; it is the agent's
+  // always-on core kit.
   const latestUserMessage = context.latestUserMessage || '';
   const { matchedGroups } = selectTools(allSchemas, latestUserMessage);
   const forcedGroups = getForcedToolGroups(context);

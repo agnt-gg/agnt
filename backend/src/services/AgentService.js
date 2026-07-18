@@ -118,6 +118,7 @@ class AgentService {
           assignedWorkflows: agent.assignedWorkflows || [],
           systemPrompt: agent.systemPrompt || '',
           assignedSkills: agent.assignedSkills || [],
+          toolAccessMode: agent.toolAccessMode || 'restricted',
           resourceId: resource.id,
           creditsUsed: resource.credits_used || 0,
           creditLimit: resource.credit_limit || 0,

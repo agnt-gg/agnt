@@ -143,6 +143,7 @@ export default {
         assignedWorkflows: agentData.assignedWorkflows || [],
         systemPrompt: agentData.systemPrompt || '',
         assignedSkills: agentData.assignedSkills || [],
+        toolAccessMode: agentData.toolAccessMode === 'open' ? 'open' : 'restricted',
       });
       commit('SET_LOADING', true);
       try {
@@ -166,6 +167,7 @@ export default {
           model: agentData.model || '',
           systemPrompt: agentData.systemPrompt || '',
           assignedSkills: agentData.assignedSkills || [],
+          toolAccessMode: agentData.toolAccessMode === 'open' ? 'open' : 'restricted',
         };
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/${agent.id}`, {
           method: 'PUT',
@@ -219,6 +221,7 @@ export default {
           model: agentData.model || '',
           systemPrompt: agentData.systemPrompt || '',
           assignedSkills: agentData.assignedSkills || [],
+          toolAccessMode: agentData.toolAccessMode === 'open' ? 'open' : 'restricted',
         };
         const response = await fetch(`${API_CONFIG.BASE_URL}/agents/save`, {
           method: 'POST',

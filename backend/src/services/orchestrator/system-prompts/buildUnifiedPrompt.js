@@ -75,7 +75,11 @@ export async function buildUnifiedSystemPrompt(context = {}, options = {}) {
     const identity = [];
     identity.push(`You are ${agentName}${agentOverride.description ? ` — ${agentOverride.description}` : ''}.`);
     if (agentOverride.systemPrompt) identity.push(agentOverride.systemPrompt);
-    identity.push(`Stay in character as ${agentName} at all times. You have the FULL AGNT platform capability surface described below — the same unified tool registry, skills system, and persistent memory as the main assistant. Use it freely in service of your role.`);
+    identity.push(
+      agentOverride.toolAccessMode === 'open'
+        ? `Stay in character as ${agentName} at all times. You have the FULL AGNT platform capability surface described below — the same unified tool registry, skills system, and persistent memory as the main assistant. Use it freely in service of your role.`
+        : `Stay in character as ${agentName} at all times. You have the AGNT platform capabilities described below (skills, persistent memory, and your assigned toolset). Use them in service of your role, and be plain about anything outside your toolset.`
+    );
     parts.push(identity.join('\n\n'));
   } else {
     parts.push(`You are Annie, a helpful assistant with access to AGNT's unified tool registry. Use tools to accomplish the user's request unless it is a trivial conversational task.

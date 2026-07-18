@@ -97,6 +97,28 @@
           <i class="fas fa-tools"></i>
           Assign Tools
         </h4>
+        <div class="config-item">
+          <label>Tool Access</label>
+          <div class="tool-access-toggle">
+            <label class="radio-label" :class="{ active: agentConfig.toolAccessMode !== 'open' }">
+              <input type="radio" value="restricted" v-model="agentConfig.toolAccessMode" />
+              <i class="fas fa-lock"></i>
+              <span>Assigned only</span>
+            </label>
+            <label class="radio-label" :class="{ active: agentConfig.toolAccessMode === 'open' }">
+              <input type="radio" value="open" v-model="agentConfig.toolAccessMode" />
+              <i class="fas fa-globe"></i>
+              <span>Full platform</span>
+            </label>
+          </div>
+          <span class="input-description">
+            {{
+              agentConfig.toolAccessMode === 'open'
+                ? 'Full platform: the agent can use every AGNT tool (same surface as main chat). Assigned tools are pinned always-on.'
+                : 'Assigned only: the agent is limited to the tools checked below, plus baseline primitives (web search, memory, skills).'
+            }}
+          </span>
+        </div>
         <ListWithSearch :items="availableTools" v-model="agentConfig.tools" label-key="title" id-key="id" placeholder="Search tools..." />
       </div>
       <!-- Assign Skills -->
@@ -262,6 +284,7 @@ function initializeAgentConfig(agent) {
     provider: agent.provider || '',
     model: agent.model || '',
     systemPrompt: agent.systemPrompt || '',
+    toolAccessMode: agent.toolAccessMode === 'open' ? 'open' : 'restricted',
     tools: agent.assignedTools ? [...agent.assignedTools] : [],
     workflows: agent.assignedWorkflows ? [...agent.assignedWorkflows] : [],
     skills: agent.assignedSkills ? [...agent.assignedSkills] : [],
@@ -396,6 +419,7 @@ const saveConfiguration = async () => {
       model: agentConfig.value.model,
       avatar: agentConfig.value.avatar !== null ? agentConfig.value.avatar : props.selectedAgent.avatar,
       systemPrompt: agentConfig.value.systemPrompt,
+      toolAccessMode: agentConfig.value.toolAccessMode,
       assignedTools: agentConfig.value.tools,
       assignedWorkflows: agentConfig.value.workflows,
       assignedSkills: agentConfig.value.skills,
@@ -709,5 +733,36 @@ textarea.input {
 .system-prompt-input {
   min-height: 80px;
   resize: vertical;
+}
+
+.tool-access-toggle {
+  display: flex;
+  gap: 8px;
+}
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid rgba(var(--green-rgb), 0.3);
+  border-radius: 4px;
+  color: var(--color-grey);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9em;
+}
+.radio-label input[type='radio'] {
+  display: none;
+}
+.radio-label.active {
+  background: rgba(var(--green-rgb), 0.15);
+  border-color: var(--color-green);
+  color: var(--color-text);
+}
+.radio-label.active i {
+  color: var(--color-green);
+}
+.radio-label:hover {
+  background: rgba(var(--green-rgb), 0.1);
 }
 </style>
