@@ -1,6 +1,36 @@
 {
   "releases": [
     {
+      "version": "0.6.5",
+      "date": "July 20, 2026",
+      "title": "Core Evolution, Plugin Trust & Security Gate — AGNT v0.6.5",
+      "type": "patch",
+      "features": [
+        { "name": "AGNT now tunes itself in the background and keeps only changes that beat the last run", "status": "new" },
+        { "name": "Every tool call runs through a security gate that catches prompt injection, secret leaks, and dangerous commands", "status": "new" },
+        { "name": "Plugins now show trust badges and warn you about new permissions before you accept an update", "status": "new" },
+        { "name": "New Google Calendar plugin makes events, checks free/busy, and triggers on new meetings", "status": "new" },
+        { "name": "New Google Docs plugin makes docs from markdown, copies templates, and exports to PDF, HTML, or Word", "status": "new" },
+        { "name": "New Google Meet plugin pulls meeting spaces, recordings, and transcripts", "status": "new" },
+        { "name": "The backend can restart itself now — no app relaunch needed", "status": "new" },
+        { "name": "Agents get a Tool Access toggle: Assigned-only or Full-platform", "status": "new" },
+        { "name": "Saved agents now run Annie's full chat brain with their own persona on top", "status": "updated" },
+        { "name": "Discord plugin sends DMs, bridges Annie into Discord, deletes messages, and shrinks big attachments", "status": "updated" },
+        { "name": "New provider models now show up in the dropdown automatically", "status": "updated" },
+        { "name": "Emojis look the same on every OS thanks to a bundled emoji font", "status": "updated" },
+        { "name": "Custom tools now work identically in chat, agents, and workflows", "status": "updated" },
+        { "name": "Kimi K3 now shows its full 1M-token context", "status": "updated" },
+        { "name": "Approving a reviewed Goal marks it done instead of restarting the loop", "status": "bug" },
+        { "name": "Web scrape and widgets no longer flash a browser window on Windows", "status": "bug" },
+        { "name": "Codex CLI works on ChatGPT accounts, finds Homebrew tools on macOS, and shells no longer hang", "status": "bug" },
+        { "name": "Live triggers (Discord, Slack, watchers) survive plugin reloads", "status": "bug" },
+        { "name": "Emojis no longer break when messages get truncated", "status": "bug" },
+        { "name": "Images sent to non-vision models show a warning instead of crashing the chat", "status": "bug" },
+        { "name": "Repeat chat turns use about half the cached tokens", "status": "bug" }
+      ],
+      "tags": ["Backwards Compatible"]
+    },
+    {
       "version": "0.6.4",
       "date": "July 6, 2026",
       "title": "Sentinel Security Scanner, Mermaid Diagrams & GitHub Plugin v2.0.0 — AGNT v0.6.4",
