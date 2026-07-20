@@ -38,8 +38,13 @@ const PROVIDER_CONFIGS = [
     },
     recommendedModels: ['gpt-5.6', 'gpt-5.5', 'o4-mini', 'gpt-4.1'],
     fallbackModels: ['gpt-5.6', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'o3', 'o3-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini'],
-    fallbackVisionModels: ['gpt-5.2', 'gpt-4.1'],
-    modelMetadata: {
+    fallbackVisionModels: ['gpt-5.2', 'gpt-4.1'],    modelMetadata: {
+      // gpt-5.6-sol: capped at 272k (not the true 400k window) because OpenAI
+      // bills 2x input / 1.5x output on the ENTIRE request once tokenized input
+      // exceeds 272,000. Keeping contextWindow at the cliff makes compression
+      // trigger well below it ((272k - 32k reasoning buffer) * 0.93 ≈ 223k),
+      // so requests never enter the long-context pricing tier.
+      'gpt-5.6-sol': { contextWindow: 272000, maxOutputTokens: 128000, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: true },
       'gpt-5.2': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.75, outputCostPer1M: 14.0, supportsVision: true, supportsTools: true, reasoning: true },
       'gpt-5.1': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: false },
       'gpt-5': { contextWindow: 400000, maxOutputTokens: 128000, inputCostPer1M: 1.25, outputCostPer1M: 10.0, supportsVision: true, supportsTools: true, reasoning: false },
