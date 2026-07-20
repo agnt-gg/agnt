@@ -2924,9 +2924,12 @@ IMPORTANT: The image data is already available in the system context. You don't 
       errors: streamErrorForLogging ? JSON.stringify(streamErrorForLogging) : null,
     };
 
-    const logPromise = isNewConversation ? ConversationLogModel.create(logData) : ConversationLogModel.update(logData);
-    await logPromise.catch((logError) => console.error('Failed to write stream log to DB:', logError));
-
+    // Finalize the agent execution record BEFORE persisting the
+    // conversation log. The log write rewrites the full multi-MB history blob
+    // and re-tokenizes it into conversation_logs_fts; under I/O contention it
+    // can stall long enough that the status update (previously awaited after
+    // it) was never reached, leaving the execution stuck at status=running
+    // forever. The status update is a tiny single-row write — it lands first.
     // Finalize agent execution tracking
     if (agentExecutionId) {
       try {
@@ -3003,6 +3006,38 @@ IMPORTANT: The image data is already available in the system context. You don't 
       } catch (execError) {
         console.error('[Agent Execution] Failed to finalize execution record:', execError);
       }
+    }
+
+    // Conversation-log persistence now runs AFTER execution-status
+    // finalization, raced against a timeout so a stalled write (plus its FTS5
+    // re-index) can never wedge the tail of the run. A rejection handler is
+    // attached immediately, so a late failure can never surface as an
+    // unhandledRejection.
+    const LOG_WRITE_TIMEOUT_MS = 30000;
+    const logPromise = (isNewConversation
+      ? ConversationLogModel.create(logData)
+      : ConversationLogModel.update(logData).then((updateResult) => {
+          // A conversation whose original create failed/timed out would make
+          // every subsequent update a 0-row no-op — fall back to create so the
+          // conversation is never permanently unpersistable.
+          if (updateResult && updateResult.updated === false) {
+            console.warn(`Conversation log update matched 0 rows for ${conversationId} — falling back to create`);
+            return ConversationLogModel.create(logData);
+          }
+          return updateResult;
+        })
+    ).catch((logError) => {
+      console.error('Failed to write stream log to DB:', logError);
+      return null;
+    });
+    let logWriteTimer;
+    const logTimeout = new Promise((resolve) => {
+      logWriteTimer = setTimeout(() => resolve('__log_write_timeout__'), LOG_WRITE_TIMEOUT_MS);
+    });
+    const logRaceResult = await Promise.race([logPromise, logTimeout]);
+    clearTimeout(logWriteTimer);
+    if (logRaceResult === '__log_write_timeout__') {
+      console.warn(`Conversation-log write for ${conversationId} exceeded ${LOG_WRITE_TIMEOUT_MS}ms — run already finalized; leaving the write to land in the background.`);
     }
 
     // Store conversation context for autonomous messages

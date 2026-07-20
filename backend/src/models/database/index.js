@@ -1625,6 +1625,36 @@ const dbReady = skipSchemaInit
     }
   })
   .then(async () => {
+    // Startup stale-run sweep. The orchestrator's finally block can
+    // never fire across a process restart, so any agent_executions row still
+    // marked 'running' at boot belongs to a process that no longer exists and
+    // would otherwise stay 'running' forever. Mark them interrupted so the UI
+    // and stats reflect reality. Main process only (the workflow child skips
+    // schema init via AGNT_SKIP_DB_INIT=1 and never reaches this chain).
+    // NOTE: if AGNT is ever deployed multi-worker against a shared DB, this
+    // sweep must be scoped to the booting worker's own runs.
+    try {
+      const sweptCount = await new Promise((resolve, reject) => {
+        db.run(
+          `UPDATE agent_executions
+             SET status = 'interrupted',
+                 end_time = CURRENT_TIMESTAMP,
+                 error = 'Run interrupted by app restart'
+           WHERE status = 'running'`,
+          function (err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+          }
+        );
+      });
+      if (sweptCount > 0) {
+        console.log(`Startup sweep: marked ${sweptCount} stale 'running' execution(s) as 'interrupted'`);
+      }
+    } catch (error) {
+      console.error('Startup stale-run sweep failed (non-fatal):', error);
+    }
+  })
+  .then(async () => {
     console.log('Database initialization complete');
 
     // Sync webhooks from existing workflows
