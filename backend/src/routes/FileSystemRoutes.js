@@ -172,6 +172,83 @@ router.get('/tree', authenticateToken, async (req, res) => {
   }
 });
 
+// Dirs we never descend into during recursive search. These are cheap wins:
+// they're large, rarely what the user is looking for, and skipping them keeps
+// a search across a big workspace responsive.
+const SEARCH_SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.cache', '.turbo', '.venv', 'venv', '__pycache__', '.pytest_cache']);
+const SEARCH_MAX_RESULTS = 200;
+const SEARCH_MAX_ENTRIES = 20000;
+
+// GET /api/filesystem/search?q=<query>&dir=<relPath>
+// Recursively searches file/directory names under `dir` (default: workspace
+// root). Case-insensitive substring match on the name. Returns up to
+// SEARCH_MAX_RESULTS matches with a truncated flag when we hit either the
+// result cap or the entry-scan cap (safety valve for pathological workspaces).
+router.get('/search', authenticateToken, async (req, res) => {
+  try {
+    const root = await ensureWorkspaceRoot();
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ items: [], truncated: false });
+
+    const relDir = req.query.dir || '';
+    const absDir = validatePath(relDir, root);
+
+    const needle = q.toLowerCase();
+    const items = [];
+    let entriesScanned = 0;
+    let truncated = false;
+
+    const walk = async (currentAbs, currentRel) => {
+      if (items.length >= SEARCH_MAX_RESULTS || entriesScanned >= SEARCH_MAX_ENTRIES) {
+        truncated = true;
+        return;
+      }
+      let entries;
+      try {
+        entries = await fs.readdir(currentAbs, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const e of entries) {
+        if (items.length >= SEARCH_MAX_RESULTS || entriesScanned >= SEARCH_MAX_ENTRIES) {
+          truncated = true;
+          return;
+        }
+        if (e.name.startsWith('.')) continue;
+        if (e.isDirectory() && SEARCH_SKIP_DIRS.has(e.name)) continue;
+
+        entriesScanned++;
+        const relPath = (currentRel ? `${currentRel}/${e.name}` : e.name).replace(/\\/g, '/');
+
+        if (e.name.toLowerCase().includes(needle)) {
+          items.push({
+            name: e.name,
+            type: e.isDirectory() ? 'directory' : 'file',
+            path: relPath,
+          });
+        }
+
+        if (e.isDirectory()) {
+          await walk(path.join(currentAbs, e.name), relPath);
+        }
+      }
+    };
+
+    await walk(absDir, relDir);
+
+    // Directories first, then alpha — matches how /tree sorts.
+    items.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    res.json({ items, truncated, scope: relDir || '/' });
+  } catch (error) {
+    console.error('FileSystem search error:', error);
+    res.status(error.message === 'Path traversal not allowed' ? 403 : 500).json({ error: error.message });
+  }
+});
+
 // GET /api/filesystem/file?path=<relPath>
 // Returns file content. Guards against opening huge or binary files: if the
 // file is over MAX_PREVIEW_BYTES or contains NUL bytes in its first chunk,

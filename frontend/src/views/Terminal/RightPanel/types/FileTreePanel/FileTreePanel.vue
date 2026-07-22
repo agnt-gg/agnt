@@ -31,6 +31,23 @@
       </div>
     </div>
 
+    <!-- Search bar -->
+    <div class="search-bar">
+      <i class="fas fa-search search-icon"></i>
+      <input
+        ref="searchInputRef"
+        v-model="searchQuery"
+        type="text"
+        :placeholder="searchPlaceholder"
+        class="search-input"
+        @input="onSearchInput"
+        @keyup.escape="clearSearch"
+      />
+      <button v-if="searchQuery" class="search-clear-btn" @click="clearSearch" title="Clear search">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
     <!-- New item input -->
     <div v-if="newItemInput.show" class="new-item-input">
       <span v-if="newItemInput.parentDir" class="new-item-prefix">{{ newItemInput.parentDir }}/</span>
@@ -46,7 +63,43 @@
       <button class="item-cancel-btn" @click="cancelNewItem"><i class="fas fa-times"></i></button>
     </div>
 
-    <div class="tree-content" v-if="!loading">
+    <!-- Search results (replaces the tree while a query is active) -->
+    <div v-if="isSearching" class="search-results">
+      <div v-if="searchLoading" class="loading-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Searching...</span>
+      </div>
+      <div v-else-if="searchError" class="empty-state">
+        <i class="fas fa-exclamation-triangle"></i>
+        <p>{{ searchError }}</p>
+      </div>
+      <div v-else-if="searchResults.length === 0" class="empty-state">
+        <i class="fas fa-search"></i>
+        <p>No matches for "{{ searchQuery }}"</p>
+      </div>
+      <template v-else>
+        <div
+          v-for="item in searchResults"
+          :key="item.path"
+          class="search-result"
+          :class="{ 'is-dir': item.type === 'directory' }"
+          @click="handleResultClick(item)"
+          @contextmenu.prevent.stop="openContextMenu({ item, x: $event.clientX, y: $event.clientY })"
+        >
+          <i :class="resultIconClass(item)" class="item-icon"></i>
+          <div class="result-text">
+            <span class="result-name" v-html="highlightMatch(item.name)"></span>
+            <span v-if="resultParentPath(item)" class="result-path">{{ resultParentPath(item) }}</span>
+          </div>
+        </div>
+        <div v-if="searchTruncated" class="search-truncated">
+          <i class="fas fa-info-circle"></i>
+          Showing first {{ searchResults.length }} matches — refine your search.
+        </div>
+      </template>
+    </div>
+
+    <div class="tree-content" v-else-if="!loading">
       <div v-if="treeItems.length === 0" class="empty-state">
         <i class="fas fa-folder-open"></i>
         <p>No files yet. Create a file or ask Annie to generate code!</p>
@@ -156,10 +209,41 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue';
-import { getTree, saveFile, createDirectory, deleteFile, renameFile, getSettings, updateSettings } from '@/services/fileSystemService.js';
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { getTree, saveFile, createDirectory, deleteFile, renameFile, getSettings, updateSettings, searchTree } from '@/services/fileSystemService.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import TreeNode from './TreeNode.vue';
+
+// Extension → Font Awesome class, mirroring TreeNode.vue's mapping so search
+// results feel like they came from the tree. Kept in sync manually — if you
+// add an icon in TreeNode, add it here too.
+const RESULT_EXTENSION_ICONS = {
+  js: 'fab fa-js-square',
+  jsx: 'fab fa-react',
+  ts: 'fab fa-js-square',
+  tsx: 'fab fa-react',
+  py: 'fab fa-python',
+  html: 'fab fa-html5',
+  css: 'fab fa-css3-alt',
+  json: 'fas fa-brackets-curly',
+  md: 'fas fa-file-alt',
+  vue: 'fab fa-vuejs',
+  svg: 'fas fa-image',
+  png: 'fas fa-image',
+  jpg: 'fas fa-image',
+  gif: 'fas fa-image',
+  sh: 'fas fa-terminal',
+  yml: 'fas fa-file-code',
+  yaml: 'fas fa-file-code',
+  env: 'fas fa-lock',
+  txt: 'fas fa-file-alt',
+};
+
+// Escape user input for use inside a RegExp constructor.
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Escape text before embedding via v-html.
+const escapeHtml = (s) =>
+  String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export default {
   name: 'FileTreePanel',
@@ -172,7 +256,25 @@ export default {
     const childrenMap = reactive({});
     const newItemInputRef = ref(null);
     const settingsInputRef = ref(null);
+    const searchInputRef = ref(null);
     const activeDir = ref('');
+
+    // ── Search state ──
+    // Query is bound to the input; results/loading/error/truncated all reflect
+    // the most recent request. `searchQuery` empty → tree view; non-empty →
+    // results view (see `isSearching`).
+    const searchQuery = ref('');
+    const searchResults = ref([]);
+    const searchLoading = ref(false);
+    const searchError = ref('');
+    const searchTruncated = ref(false);
+    let searchDebounceId = null;
+    // Bumped on every dispatched search so late responses can be discarded
+    // (prevents an old, slow request from clobbering fresher results).
+    let searchRequestSeq = 0;
+
+    const isSearching = computed(() => searchQuery.value.trim().length > 0);
+    const searchPlaceholder = computed(() => (activeDir.value ? `Search in ${activeDir.value}...` : 'Search files & folders...'));
     // Absolute path of the user's configured workspace — passed to TreeNode so
     // "Copy Path" surfaces the full path (root + relative) instead of just the
     // workspace-relative path the API works with internally.
@@ -454,6 +556,134 @@ export default {
       newItemInput.parentDir = '';
     };
 
+    // ── Search ──
+    const runSearch = async () => {
+      const q = searchQuery.value.trim();
+      if (!q) {
+        searchResults.value = [];
+        searchTruncated.value = false;
+        searchError.value = '';
+        searchLoading.value = false;
+        return;
+      }
+      const seq = ++searchRequestSeq;
+      searchLoading.value = true;
+      searchError.value = '';
+      try {
+        const data = await searchTree(q, activeDir.value || '');
+        // Discard stale response — user has typed more since we dispatched.
+        if (seq !== searchRequestSeq) return;
+        searchResults.value = data.items || [];
+        searchTruncated.value = !!data.truncated;
+      } catch (err) {
+        if (seq !== searchRequestSeq) return;
+        console.error('[FileTreePanel] Search failed:', err);
+        searchError.value = err.message || 'Search failed';
+        searchResults.value = [];
+        searchTruncated.value = false;
+      } finally {
+        if (seq === searchRequestSeq) searchLoading.value = false;
+      }
+    };
+
+    const onSearchInput = () => {
+      if (searchDebounceId) clearTimeout(searchDebounceId);
+      // Show the spinner immediately for non-empty queries so the UI doesn't
+      // look frozen during the debounce window.
+      if (searchQuery.value.trim()) {
+        searchLoading.value = true;
+        searchError.value = '';
+      }
+      searchDebounceId = setTimeout(runSearch, 200);
+    };
+
+    const clearSearch = () => {
+      if (searchDebounceId) {
+        clearTimeout(searchDebounceId);
+        searchDebounceId = null;
+      }
+      searchRequestSeq++;
+      searchQuery.value = '';
+      searchResults.value = [];
+      searchTruncated.value = false;
+      searchError.value = '';
+      searchLoading.value = false;
+    };
+
+    // Re-run when the scope (activeDir) changes while a query is active — the
+    // user drilled into a folder and expects results to narrow.
+    watch(activeDir, () => {
+      if (isSearching.value) runSearch();
+    });
+
+    const handleResultClick = async (item) => {
+      if (item.type === 'directory') {
+        // Ensure ancestors are expanded, then focus and expand the target.
+        const parts = item.path.split('/');
+        let acc = '';
+        for (let i = 0; i < parts.length - 1; i++) {
+          acc = acc ? `${acc}/${parts[i]}` : parts[i];
+          if (!expandedDirs[acc]) {
+            expandedDirs[acc] = true;
+            if (!childrenMap[acc]) {
+              try {
+                const data = await getTree(acc);
+                childrenMap[acc] = data.items;
+              } catch {
+                /* ignore — dir may have gone away */
+              }
+            }
+          }
+        }
+        activeDir.value = item.path;
+        if (!expandedDirs[item.path]) {
+          expandedDirs[item.path] = true;
+          if (!childrenMap[item.path]) {
+            try {
+              const data = await getTree(item.path);
+              childrenMap[item.path] = data.items;
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        clearSearch();
+      } else {
+        handleFileClick(item.path);
+        clearSearch();
+      }
+    };
+
+    const resultIconClass = (item) => {
+      if (item.type === 'directory') return 'fas fa-folder dir-icon';
+      const ext = item.name.split('.').pop()?.toLowerCase();
+      return `${RESULT_EXTENSION_ICONS[ext] || 'fas fa-file'} file-icon`;
+    };
+
+    const resultParentPath = (item) => {
+      const idx = item.path.lastIndexOf('/');
+      return idx === -1 ? '' : item.path.substring(0, idx);
+    };
+
+    const highlightMatch = (name) => {
+      const q = searchQuery.value.trim();
+      if (!q) return escapeHtml(name);
+      // Split on the raw match, THEN escape each piece — otherwise a query
+      // like `<` won't match against an HTML-escaped `&lt;`.
+      const re = new RegExp(escapeRegex(q), 'ig');
+      let result = '';
+      let lastIndex = 0;
+      let m;
+      while ((m = re.exec(name)) !== null) {
+        result += escapeHtml(name.slice(lastIndex, m.index));
+        result += `<mark>${escapeHtml(m[0])}</mark>`;
+        lastIndex = m.index + m[0].length;
+        if (m[0].length === 0) re.lastIndex++; // safety against zero-width match
+      }
+      result += escapeHtml(name.slice(lastIndex));
+      return result;
+    };
+
     // ── Rename ──
     const renameItem = async ({ oldPath, newPath }) => {
       try {
@@ -684,6 +914,21 @@ export default {
       newItemInput,
       newItemInputRef,
       settingsInputRef,
+      searchInputRef,
+      // Search
+      searchQuery,
+      searchResults,
+      searchLoading,
+      searchError,
+      searchTruncated,
+      isSearching,
+      searchPlaceholder,
+      onSearchInput,
+      clearSearch,
+      handleResultClick,
+      resultIconClass,
+      resultParentPath,
+      highlightMatch,
       deleteConfirm,
       settingsDialog,
       toggleDir,
@@ -850,6 +1095,144 @@ export default {
 
 .item-cancel-btn:hover {
   color: var(--color-red);
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--color-darker-1);
+  border: 1px solid var(--terminal-border-color);
+  border-radius: 4px;
+  margin: 0 0 4px 0;
+}
+
+.search-bar:focus-within {
+  border-color: rgba(var(--primary-rgb), 0.4);
+}
+
+.search-icon {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  padding: 2px 0;
+}
+
+.search-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+.search-clear-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  padding: 2px 4px;
+  opacity: 0.7;
+  transition: opacity 0.12s, color 0.12s;
+}
+
+.search-clear-btn:hover {
+  opacity: 1;
+  color: var(--color-primary);
+}
+
+.search-results {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.search-results::-webkit-scrollbar {
+  display: none;
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  transition: all 0.12s;
+}
+
+.search-result:hover {
+  background: rgba(var(--primary-rgb), 0.06);
+  color: var(--color-text);
+}
+
+.search-result .item-icon {
+  width: 14px;
+  text-align: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.search-result .dir-icon {
+  color: var(--color-primary);
+}
+
+.search-result .file-icon {
+  opacity: 0.6;
+}
+
+.result-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.result-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-name :deep(mark) {
+  background: rgba(var(--primary-rgb), 0.25);
+  color: var(--color-primary);
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+.result-path {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  opacity: 0.55;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-truncated {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+  font-style: italic;
 }
 
 .tree-content {

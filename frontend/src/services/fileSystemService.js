@@ -14,6 +14,14 @@ export async function getTree(dir = '') {
   return res.json();
 }
 
+export async function searchTree(query, dir = '') {
+  const params = new URLSearchParams({ q: query });
+  if (dir) params.set('dir', dir);
+  const res = await fetch(`${API_CONFIG.BASE_URL}/filesystem/search?${params.toString()}`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(`Failed to search tree: ${res.statusText}`);
+  return res.json();
+}
+
 export async function getFile(path) {
   const res = await fetch(`${API_CONFIG.BASE_URL}/filesystem/file?path=${encodeURIComponent(path)}`, { headers: getHeaders() });
   if (!res.ok) throw new Error(`Failed to read file: ${res.statusText}`);
