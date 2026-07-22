@@ -318,7 +318,10 @@ const PROVIDER_CONFIGS = [
   {
     key: 'antigravity',
     name: 'Antigravity',
-    baseURL: 'https://cloudcode-pa.googleapis.com/v1internal',
+    // Informational/default model-plane URL. Antigravity OAuth transport uses
+    // its dedicated proxy and can be overridden with ANTIGRAVITY_MODEL_GATEWAY.
+    baseURL: process.env.ANTIGRAVITY_MODEL_GATEWAY
+      || 'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal',
     sdkType: 'gemini',
     authScheme: 'antigravity',
     capabilities: {
@@ -330,8 +333,15 @@ const PROVIDER_CONFIGS = [
     // gateway 404s unknown models. Display names differ from ids (e.g.
     // 'gemini-pro-agent' renders as "Gemini 3.1 Pro (High)"). Dynamic listing
     // in ModelRoutes refreshes this live; this static list is the fallback.
-    recommendedModels: ['gemini-pro-agent', 'claude-sonnet-4-6', 'gemini-3.5-flash-low'],
+    recommendedModels: [
+      'gemini-3.6-flash-high',
+      'gemini-3.6-flash-medium',
+      'gemini-3.6-flash-low',
+    ],
     fallbackModels: [
+      'gemini-3.6-flash-high',
+      'gemini-3.6-flash-medium',
+      'gemini-3.6-flash-low',
       'gemini-3.5-flash-low',
       'gemini-3-flash-agent',
       'gemini-3.5-flash-extra-low',
@@ -341,10 +351,19 @@ const PROVIDER_CONFIGS = [
       'claude-opus-4-6-thinking',
       'gpt-oss-120b-medium',
     ],
-    fallbackVisionModels: ['gemini-pro-agent', 'gemini-3.5-flash-low'],
+    fallbackVisionModels: [
+      'gemini-3.6-flash-high',
+      'gemini-3.6-flash-medium',
+      'gemini-3.6-flash-low',
+      'gemini-pro-agent',
+      'gemini-3.5-flash-low',
+    ],
     // Antigravity is subscription-included — no per-token cost to the user.
     // contextWindow/maxOutputTokens mirror the live endpoint's maxTokens/maxOutputTokens.
     modelMetadata: {
+      'gemini-3.6-flash-high': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3.6-flash-medium': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
+      'gemini-3.6-flash-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-3.5-flash-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-3-flash-agent': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },
       'gemini-3.5-flash-extra-low': { contextWindow: 1048576, maxOutputTokens: 65536, inputCostPer1M: 0, outputCostPer1M: 0, supportsVision: true, supportsTools: true, reasoning: true },

@@ -20,6 +20,8 @@ import ChutesE2EEFetchTransport from './chutes/ChutesE2EEFetchTransport.js';
 // with the Code Assist endpoint, not the consumer generativelanguage API.
 
 const GEMINI_OAUTH_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
+const ANTIGRAVITY_OAUTH_BASE = process.env.ANTIGRAVITY_MODEL_GATEWAY
+  || 'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal';
 
 class GeminiOAuthProxy {
   constructor(oauth2Client, projectId) {
@@ -147,7 +149,8 @@ class GeminiOAuthProxy {
 }
 
 // ── Antigravity OAuth Proxy ─────────────────────────────────────────
-// Same cloudcode-pa gateway as GeminiOAuthProxy, but adds the Antigravity
+// Uses Antigravity's model gateway while preserving Gemini CLI on its stable
+// production gateway. The proxy also adds the Antigravity
 // client identity: `antigravity` User-Agent + X-Goog-Api-Client headers, and
 // the top-level `requestType: 'agent'` / `userAgent: 'antigravity'` fields the
 // gateway keys off to route to the Antigravity quota pool and multi-vendor
@@ -221,7 +224,7 @@ async function getAntigravityClientHeaders() {
   }
 
   async _generateContent(params) {
-    const url = `${GEMINI_OAUTH_BASE}:generateContent`;
+    const url = `${ANTIGRAVITY_OAUTH_BASE}:generateContent`;
     const body = this._buildRequest(params);
     const headers = await getAntigravityClientHeaders();
     try {
@@ -239,7 +242,7 @@ async function getAntigravityClientHeaders() {
   }
 
   async _generateContentStream(params) {
-    const url = `${GEMINI_OAUTH_BASE}:streamGenerateContent?alt=sse`;
+    const url = `${ANTIGRAVITY_OAUTH_BASE}:streamGenerateContent?alt=sse`;
     const body = this._buildRequest(params);
     const headers = await getAntigravityClientHeaders();
     try {

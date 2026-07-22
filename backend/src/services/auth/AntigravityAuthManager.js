@@ -61,8 +61,12 @@ const OAUTH_CONFIG = {
   FAILURE_URL: 'https://developers.google.com/gemini-code-assist/auth/auth_failure_gemini',
 };
 
-// Antigravity gateway host + client identity headers
-const ANTIGRAVITY_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
+// Keep account discovery/onboarding on the stable production control plane.
+// The current Antigravity model catalog and inference plane ships through the
+// daily gateway. Keep these separate so a catalog rollout cannot break login.
+const ANTIGRAVITY_CONTROL_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
+const ANTIGRAVITY_MODEL_BASE = process.env.ANTIGRAVITY_MODEL_GATEWAY
+  || 'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal';
 // TWO different platform encodings (Google validates them differently):
 //  • HEADER Client-Metadata JSON  → short form: WINDOWS / MACOS
 //  • BODY  metadata.platform enum → full form:  WINDOWS_AMD64 / DARWIN_ARM64 ...
@@ -512,7 +516,7 @@ class AntigravityAuthManager {
       const gcpProject = this._readGcpProject();
       if (gcpProject) loadData.project = gcpProject;
       const response = await axios.post(
-        `${ANTIGRAVITY_BASE}:loadCodeAssist`,
+        `${ANTIGRAVITY_CONTROL_BASE}:loadCodeAssist`,
         loadData,
         { headers, timeout: 10000 },
       );
@@ -600,7 +604,7 @@ class AntigravityAuthManager {
       const loadData = { metadata: META };
       if (gcpProject) loadData.project = gcpProject;
       const loadRes = await authClient.request({
-        url: `${ANTIGRAVITY_BASE}:loadCodeAssist`,
+        url: `${ANTIGRAVITY_CONTROL_BASE}:loadCodeAssist`,
         method: 'POST',
         data: loadData,
         headers: ANTIGRAVITY_HEADERS,
@@ -632,7 +636,7 @@ class AntigravityAuthManager {
 
       const tierId = selectedTier.id;
       console.log(`[AntigravityAuth] Onboarding user to ${tierId}...`);
-      await this._onboardToTier(authClient, ANTIGRAVITY_BASE, META, tierId);
+      await this._onboardToTier(authClient, ANTIGRAVITY_CONTROL_BASE, META, tierId);
 
       return this._codeAssistProject;
     } catch (error) {
@@ -683,7 +687,7 @@ class AntigravityAuthManager {
       if (projectId) body.project = projectId;
       const browserHeaders = await getAntigravityBrowserHeaders();
       const res = await authClient.request({
-        url: `${ANTIGRAVITY_BASE}:fetchAvailableModels`,
+        url: `${ANTIGRAVITY_MODEL_BASE}:fetchAvailableModels`,
         method: 'POST',
         data: body,
         headers: browserHeaders,
