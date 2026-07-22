@@ -209,7 +209,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { getTree, saveFile, createDirectory, deleteFile, renameFile, getSettings, updateSettings, searchTree } from '@/services/fileSystemService.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import TreeNode from './TreeNode.vue';
@@ -274,7 +274,7 @@ export default {
     let searchRequestSeq = 0;
 
     const isSearching = computed(() => searchQuery.value.trim().length > 0);
-    const searchPlaceholder = computed(() => (activeDir.value ? `Search in ${activeDir.value}...` : 'Search files & folders...'));
+    const searchPlaceholder = 'Search files & folders...';
     // Absolute path of the user's configured workspace — passed to TreeNode so
     // "Copy Path" surfaces the full path (root + relative) instead of just the
     // workspace-relative path the API works with internally.
@@ -570,7 +570,10 @@ export default {
       searchLoading.value = true;
       searchError.value = '';
       try {
-        const data = await searchTree(q, activeDir.value || '');
+        // Always search from workspace root — scoping by activeDir was
+        // invisible and led users to think search was broken when it just
+        // wasn't finding anything outside their current folder.
+        const data = await searchTree(q, '');
         // Discard stale response — user has typed more since we dispatched.
         if (seq !== searchRequestSeq) return;
         searchResults.value = data.items || [];
@@ -609,12 +612,6 @@ export default {
       searchError.value = '';
       searchLoading.value = false;
     };
-
-    // Re-run when the scope (activeDir) changes while a query is active — the
-    // user drilled into a folder and expects results to narrow.
-    watch(activeDir, () => {
-      if (isSearching.value) runSearch();
-    });
 
     const handleResultClick = async (item) => {
       if (item.type === 'directory') {
@@ -1106,10 +1103,6 @@ export default {
   border: 1px solid var(--terminal-border-color);
   border-radius: 4px;
   margin: 0 0 4px 0;
-}
-
-.search-bar:focus-within {
-  border-color: rgba(var(--primary-rgb), 0.4);
 }
 
 .search-icon {
