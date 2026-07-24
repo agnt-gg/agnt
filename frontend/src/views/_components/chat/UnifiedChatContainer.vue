@@ -360,9 +360,9 @@ export default {
       chatInput.value = '';
       selectedFiles.value = [];
 
-      // Forward attached files to the panel so it can decide what to do with them
-      // (e.g. paste image into widget editor). Sidebar chats don't yet support
-      // multipart upload to the backend; this is the extension point.
+      // Notify the panel that files were attached — some panels still hook
+      // this to react locally (e.g. paste image into widget editor). The
+      // multipart upload itself now rides on the sendMessage dispatch below.
       if (filesToSend.length > 0) {
         emit('frontend-event', { eventType: 'submit-files', eventData: { files: filesToSend } });
       }
@@ -373,6 +373,7 @@ export default {
         content,
         pageContext: props.pageContext || {},
         pageState: props.pageState || {},
+        files: filesToSend.length > 0 ? filesToSend : undefined,
         onFrontendEvent: handleFrontendEvent,
       });
 

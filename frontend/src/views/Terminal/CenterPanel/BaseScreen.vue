@@ -1,10 +1,18 @@
 <template>
   <div
     class="terminal-content"
-    :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen }"
+    :class="{ 'is-resizing': isResizing, 'panel-active': isMobile && isPanelOpen, 'is-drag-over': isDragOver }"
     ref="terminalContentRef"
     tabindex="-1"
+    @dragenter.prevent="onDragEnter"
+    @dragover.prevent="onDragOver"
+    @dragleave="onDragLeave"
+    @drop.prevent="onDrop"
   >
+    <div v-if="isDragOver" class="drop-overlay">
+      <i class="fas fa-cloud-upload-alt"></i>
+      <span>Drop files to attach</span>
+    </div>
     <!-- Global Banners - Rate Limit Banner first (more urgent) -->
     <RateLimitBanner />
     <!-- <PromoBanner /> -->
@@ -342,6 +350,34 @@ export default {
     const showPrompt = ref(true);
     const selectedFiles = ref([]);
     const isTextareaExpanded = ref(false);
+
+    // --- OS drag-and-drop for file attach ---
+    // Mirrors UnifiedChatContainer.vue. Gate on `types.includes('Files')` so
+    // in-page drags (e.g. @mention picker, message reorder) don't paint the
+    // overlay over the whole chat.
+    const isDragOver = ref(false);
+    let dragLeaveTimer = null;
+    const onDragEnter = (e) => {
+      if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+      if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
+      isDragOver.value = true;
+    };
+    const onDragOver = (e) => {
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      onDragEnter(e);
+    };
+    const onDragLeave = () => {
+      // dragleave fires on every child; debounce so we only clear when the
+      // cursor actually leaves the container.
+      if (dragLeaveTimer) clearTimeout(dragLeaveTimer);
+      dragLeaveTimer = setTimeout(() => { isDragOver.value = false; dragLeaveTimer = null; }, 50);
+    };
+    const onDrop = (e) => {
+      if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
+      isDragOver.value = false;
+      const files = Array.from(e.dataTransfer?.files || []);
+      if (files.length > 0) selectedFiles.value = [...selectedFiles.value, ...files];
+    };
 
     // --- Provider Selector State ---
     const isProviderSelectorOpen = ref(false);
@@ -1258,6 +1294,12 @@ export default {
       handleFileSelect,
       removeFile,
       handlePaste,
+      // Drag-and-drop file attach
+      isDragOver,
+      onDragEnter,
+      onDragOver,
+      onDragLeave,
+      onDrop,
       // Provider selector
       isProviderSelectorOpen,
       providerSelectorButtonRef,
@@ -1313,6 +1355,28 @@ export default {
   outline: none !important;
   border: none !important;
 }
+
+.terminal-content.is-drag-over {
+  outline: 2px dashed var(--color-green) !important;
+  outline-offset: -8px;
+  border-radius: 8px;
+}
+
+.terminal-content > .drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(var(--green-rgb, 18, 224, 255), 0.08);
+  color: var(--color-green);
+  font-size: 0.95em;
+  pointer-events: none;
+}
+.terminal-content > .drop-overlay i { font-size: 2.2em; opacity: 0.85; }
 
 .custom-bg .terminal-content {
   width: calc(100% - 8px);

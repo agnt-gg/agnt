@@ -30,6 +30,10 @@ const ENDPOINTS = {
  * @param {Set<string>|Array<string>} [opts.enabledTools]
  * @param {string} [opts.reasoningValue]
  * @param {boolean} [opts.reasoningEnabled]
+ * @param {File[]} [opts.files]           OS-file attachments. When present, the
+ *                                        request switches to multipart/form-data
+ *                                        and the backend receives them via
+ *                                        `upload.array('files')`.
  * @param {AbortSignal} [opts.signal]
  * @param {(eventName: string, data: any) => void} opts.onEvent
  *
@@ -46,6 +50,7 @@ export async function streamChat({
   enabledTools,
   reasoningValue,
   reasoningEnabled,
+  files,
   signal,
   onEvent,
 }) {
@@ -59,10 +64,10 @@ export async function streamChat({
   }
 
   const token = localStorage.getItem('token');
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const body = {
+  const bodyFields = {
     messages,
     provider,
     model,
@@ -71,16 +76,35 @@ export async function streamChat({
     ...pageState,
   };
   if (enabledTools !== undefined) {
-    body.enabledTools = Array.isArray(enabledTools) ? enabledTools : [...enabledTools];
+    bodyFields.enabledTools = Array.isArray(enabledTools) ? enabledTools : [...enabledTools];
   }
-  if (reasoningValue !== undefined) body.reasoningValue = reasoningValue;
-  if (reasoningEnabled !== undefined) body.reasoningEnabled = reasoningEnabled;
+  if (reasoningValue !== undefined) bodyFields.reasoningValue = reasoningValue;
+  if (reasoningEnabled !== undefined) bodyFields.reasoningEnabled = reasoningEnabled;
+
+  let requestBody;
+  const hasFiles = Array.isArray(files) && files.length > 0;
+  if (hasFiles) {
+    // Multipart: strings pass through raw, everything else is JSON-encoded.
+    // The backend's universalChatHandler auto-parses JSON-shaped strings back
+    // into objects/arrays before the destructure runs.
+    const form = new FormData();
+    for (const [k, v] of Object.entries(bodyFields)) {
+      if (v === undefined || v === null) continue;
+      form.append(k, typeof v === 'string' ? v : JSON.stringify(v));
+    }
+    for (const file of files) form.append('files', file, file.name);
+    requestBody = form;
+    // Do NOT set Content-Type — the browser sets the multipart boundary.
+  } else {
+    headers['Content-Type'] = 'application/json';
+    requestBody = JSON.stringify(bodyFields);
+  }
 
   const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
     method: 'POST',
     headers,
     signal,
-    body: JSON.stringify(body),
+    body: requestBody,
   });
 
   if (!response.ok) {

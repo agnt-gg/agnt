@@ -432,6 +432,7 @@ export default {
         provider,
         model,
         onFrontendEvent,
+        files,
       } = payload;
 
       if (!channelKey || !chatType || !content || !content.trim()) return;
@@ -475,6 +476,7 @@ export default {
           enabledTools: resolvedEnabledTools,
           reasoningValue: resolvedReasoningValue,
           reasoningEnabled: resolvedReasoningEnabled,
+          files,
           signal: controller.signal,
           onEvent: (eventName, data) => handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEvent }),
         });

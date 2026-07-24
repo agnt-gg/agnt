@@ -615,6 +615,21 @@ async function universalChatHandler(req, res, context = {}) {
   const authToken = req.headers.authorization;
   const files = req.files || []; // Multer files
 
+  // Multipart bodies (used when files are attached) arrive with every field as
+  // a string. The downstream destructure expects `messages`, `pageContext`,
+  // `pageState`, `agentContext`, etc. as objects/arrays, so decode any field
+  // whose string value looks like JSON. Non-JSON strings are left untouched.
+  if (files.length > 0 && req.body && typeof req.body === 'object') {
+    for (const [k, v] of Object.entries(req.body)) {
+      if (typeof v !== 'string') continue;
+      const trimmed = v.trim();
+      if (!trimmed) continue;
+      const first = trimmed[0];
+      if (first !== '{' && first !== '[') continue;
+      try { req.body[k] = JSON.parse(trimmed); } catch { /* leave as string */ }
+    }
+  }
+
   // Per-user tunable runtime caps (Settings → AI Provider). One DB fetch
   // covers both knobs — toolOutputCap (hard cap on tool result size returned
   // to the LLM) and maxToolRounds (cap on tool-loop rounds per turn).
