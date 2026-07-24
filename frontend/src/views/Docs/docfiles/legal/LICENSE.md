@@ -32,7 +32,7 @@ By using AGNT.gg Community Core, you agree to abide by these terms. If you have 
 
 1. **Definitions**  
    "Software" refers to AGNT.gg Community Core and its associated documentation.  
-   "Licensor" refers to AGNT.gg, the copyright holder of the Software.  
+   "Licensor" refers to AGNT GG, Inc. (operating as "AGNT.gg"), the copyright holder of the Software.  
    "You" refers to the individual or entity exercising the rights granted by this License.  
 
 ---
@@ -93,6 +93,11 @@ By using AGNT.gg Community Core, you agree to abide by these terms. If you have 
     10.1 This License represents the complete agreement concerning the subject matter hereof.  
     10.2 If any provision of this License is held to be unenforceable, such provision shall be reformed only to the extent necessary to make it enforceable.  
     10.3 Any exception or modification to this License requires written approval from AGNT.gg.  
+
+---
+
+11. **Trademarks**  
+    "AGNT", "AGNT Labs", "AGNT.gg", and "Annie" (our AI companion and mascot), together with the AGNT and Annie logos and related names and marks, are trademarks of AGNT GG, Inc. All rights reserved. You may not use these marks without prior written permission from AGNT GG, Inc.  
 
 ---
 
