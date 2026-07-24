@@ -14,6 +14,11 @@ import { broadcastToUser, RealtimeEvents } from '../utils/realtimeSync.js';
 import log from '../utils/logger.js';
 import ConversationLogModel from '../models/ConversationLogModel.js';
 import AgentExecutionModel from '../models/AgentExecutionModel.js';
+import {
+  sanitizeOrphanToolCalls,
+  sanitizeUnexpectedToolResults,
+  sanitizeEmptyAssistantMessages,
+} from './orchestrator/messageSanitizers.js';
 
 const MAX_AUTONOMOUS_TOOL_ROUNDS = 3;
 
@@ -240,6 +245,12 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
       let needsFinalResponse = false;
 
       for (let round = 0; round < MAX_AUTONOMOUS_TOOL_ROUNDS; round++) {
+        // Guard every outbound history: strip orphan tool_use, unexpected
+        // tool_result, and empty assistant turns before the provider sees it.
+        loopMessages = sanitizeOrphanToolCalls(loopMessages);
+        loopMessages = sanitizeUnexpectedToolResults(loopMessages);
+        loopMessages = sanitizeEmptyAssistantMessages(loopMessages);
+
         const { responseMessage: roundResponse, toolCalls: rawToolCalls } = await adapter.callStream(
           loopMessages,
           tools,
@@ -313,6 +324,12 @@ Be empathetic and suggest potential solutions or next steps if appropriate.`,
 
       if (needsFinalResponse) {
         log('[AutonomousMessage] Tool follow-up reached cap; forcing final text response');
+        // Guard every outbound history: strip orphan tool_use, unexpected
+        // tool_result, and empty assistant turns before the provider sees it.
+        loopMessages = sanitizeOrphanToolCalls(loopMessages);
+        loopMessages = sanitizeUnexpectedToolResults(loopMessages);
+        loopMessages = sanitizeEmptyAssistantMessages(loopMessages);
+
         const { responseMessage: finalResponse } = await adapter.callStream(
           loopMessages,
           [],

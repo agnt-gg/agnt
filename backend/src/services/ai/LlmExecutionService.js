@@ -5,6 +5,11 @@ import { loadWorkspaceContextSection } from '../orchestrator/workspaceContext.js
 import { getPlatformContextSection } from '../orchestrator/system-prompts/platform-context.js';
 import { manageContext } from '../../utils/contextManager.js';
 import { raceWithAbort } from '../../utils/abortUtils.js';
+import {
+  sanitizeOrphanToolCalls,
+  sanitizeUnexpectedToolResults,
+  sanitizeEmptyAssistantMessages,
+} from '../orchestrator/messageSanitizers.js';
 import crypto from 'crypto';
 
 /**
@@ -176,6 +181,11 @@ class LlmExecutionService {
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas, provider);
     messages = contextResult.messages;
+    // Guard every outbound history: strip orphan tool_use, unexpected
+    // tool_result, and empty assistant turns before the provider sees it.
+    messages = sanitizeOrphanToolCalls(messages);
+    messages = sanitizeUnexpectedToolResults(messages);
+    messages = sanitizeEmptyAssistantMessages(messages);
 
     // Store client in context for tool execution
     const executionContext = {
@@ -275,6 +285,11 @@ class LlmExecutionService {
       // Apply context management before next LLM call
       const loopContextResult = manageContext(messages, model, finalToolSchemas, provider);
       messages = loopContextResult.messages;
+      // Guard every outbound history: strip orphan tool_use, unexpected
+      // tool_result, and empty assistant turns before the provider sees it.
+      messages = sanitizeOrphanToolCalls(messages);
+      messages = sanitizeUnexpectedToolResults(messages);
+      messages = sanitizeEmptyAssistantMessages(messages);
 
       // Get next response (factory form: never fires if already aborted)
       const nextResponse = await raceWithAbort(() => adapter.call(messages, finalToolSchemas), signal);
@@ -366,6 +381,11 @@ class LlmExecutionService {
     // Apply context management
     const contextResult = manageContext(messages, model, finalToolSchemas, provider);
     messages = contextResult.messages;
+    // Guard every outbound history: strip orphan tool_use, unexpected
+    // tool_result, and empty assistant turns before the provider sees it.
+    messages = sanitizeOrphanToolCalls(messages);
+    messages = sanitizeUnexpectedToolResults(messages);
+    messages = sanitizeEmptyAssistantMessages(messages);
 
     // Store client in context for tool execution
     const executionContext = {
@@ -457,6 +477,11 @@ class LlmExecutionService {
       // Apply context management before next LLM call
       const loopContextResult = manageContext(messages, model, finalToolSchemas, provider);
       messages = loopContextResult.messages;
+      // Guard every outbound history: strip orphan tool_use, unexpected
+      // tool_result, and empty assistant turns before the provider sees it.
+      messages = sanitizeOrphanToolCalls(messages);
+      messages = sanitizeUnexpectedToolResults(messages);
+      messages = sanitizeEmptyAssistantMessages(messages);
 
       // Get next response with streaming
       const nextResponse = await adapter.callStream(messages, finalToolSchemas, onChunk);
