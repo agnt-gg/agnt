@@ -127,23 +127,41 @@ function inferContextWindowFromFamily(modelId) {
  * within 8k, but reasoning models (gpt-5.x, o3/o4, Codex Responses) consume
  * far more on hidden chain-of-thought; we reserve more so compression
  * triggers before reasoning tokens push us past the hard limit.
+ *
+ * The reserve also SCALES with the context window. A flat 8k is 6.25% of a
+ * 128k window but only 0.8% of a 1M window — at that scale the estimator's
+ * structural undercount of dense JSON/code (see getProviderSafetyMargin)
+ * easily exceeds the fixed margin, so the request sails past the budget and
+ * the provider rejects it (e.g. Anthropic "1004527 tokens > 1000000"). We
+ * reserve at least CONTEXT_RESERVE_FRACTION of the window so headroom grows
+ * with the window instead of vanishing.
  */
-function getResponseBuffer(model, provider) {
-  if (provider === 'openai-codex') return REASONING_RESPONSE_BUFFER;
-  if (!model) return RESPONSE_BUFFER;
-  if (/^gpt-5/i.test(model) || /^o[34]/i.test(model)) return REASONING_RESPONSE_BUFFER;
-  return RESPONSE_BUFFER;
+const CONTEXT_RESERVE_FRACTION = 0.06;
+function getResponseBuffer(model, provider, contextWindow = DEFAULT_TOKEN_LIMIT) {
+  let base = RESPONSE_BUFFER;
+  if (provider === 'openai-codex') {
+    base = REASONING_RESPONSE_BUFFER;
+  } else if (model && (/^gpt-5/i.test(model) || /^o[34]/i.test(model))) {
+    base = REASONING_RESPONSE_BUFFER;
+  }
+  const scaled = Math.ceil((contextWindow || DEFAULT_TOKEN_LIMIT) * CONTEXT_RESERVE_FRACTION);
+  return Math.max(base, scaled);
 }
 
 /**
  * Multiplier on the available-input budget. The chars/3.5 * 1.12 estimator
- * undercounts what the Codex Responses API actually charges for tool
- * schemas, instruction framing, and reasoning content — reserving an extra
- * ~7% of budget keeps compression ahead of the provider's hard limit.
+ * assumes a fixed 3.125 chars/token, but real BPE tokenization of the
+ * content that dominates an agentic conversation — code, JSON tool outputs,
+ * URLs, tool schemas — runs closer to 2.6-3.0 chars/token, so the estimator
+ * structurally UNDERcounts. Left uncorrected, the preflight sees ~964k while
+ * the provider counts ~1.0M and rejects the request. A sub-1.0 margin pulls
+ * the compression trigger below the real ceiling for every provider; Codex
+ * stays slightly tighter because its Responses API also replays encrypted
+ * reasoning items the estimator can't fully see.
  */
 function getProviderSafetyMargin(model, provider) {
   if (provider === 'openai-codex') return 0.93;
-  return 1.0;
+  return 0.94;
 }
 
 /**
@@ -176,7 +194,7 @@ function getContextBudget(model, provider) {
       }
     }
   }
-  const outputBuffer = getResponseBuffer(model, provider);
+  const outputBuffer = getResponseBuffer(model, provider, contextWindow);
   const margin = getProviderSafetyMargin(model, provider);
   const availableTokens = Math.floor((contextWindow - outputBuffer) * margin);
   return { contextWindow, outputBuffer, availableTokens };
@@ -505,29 +523,86 @@ function manageContext(messages, model, tools = [], provider = null) {
       currentTokens = estimateMessagesTokens(managedMessages);
     }
 
-    // Strategy 4: Emergency truncation if still over limit
+    // Strategy 4: Emergency shrink if still over limit.
+    //
+    // CRITICAL invariant: if the last user message carries Anthropic
+    // tool_result blocks, the immediately preceding assistant message
+    // (which owns the matching tool_use blocks) MUST travel with it.
+    // Dropping the assistant partner produces an orphaned tool_use_id and
+    // Anthropic rejects the request with:
+    //   "unexpected tool_use_id found in tool_result blocks: toolu_..."
+    // The OpenAI/Gemini equivalent (assistant.tool_calls + role:'tool') is
+    // handled the same way for completeness.
     if (currentTokens > availableTokens) {
-      console.warn('Emergency context truncation required');
+      console.warn('Emergency context recovery required');
       const systemMessage = managedMessages.find((m) => m.role === 'system');
-      let lastUserMessage = managedMessages.filter((m) => m.role === 'user').slice(-1)[0];
 
-      // Truncate the system message if it alone exceeds the limit
+      // Shrink the system message if it alone exceeds the limit
       if (systemMessage) {
         const sysTokens = estimateMessagesTokens([systemMessage]);
         if (sysTokens > availableTokens * 0.7) {
-          console.warn('System message too large, truncating for emergency recovery');
+          console.warn('System message too large, shrinking for emergency recovery');
           if (typeof systemMessage.content === 'string') {
             systemMessage.content = truncateContent(systemMessage.content, Math.floor(availableTokens * 0.5));
           }
         }
       }
 
-      // Ensure we always have at least one user message for API compatibility
-      if (!lastUserMessage) {
-        lastUserMessage = { role: 'user', content: 'Please continue.' };
+      // Walk the non-system tail from the end to find the smallest safe
+      // suffix that preserves tool-call pairing.
+      const nonSystem = managedMessages.filter((m) => m.role !== 'system');
+      let tail = [];
+
+      // Prefer the last user message that is NOT a tool_result carrier -
+      // it's the cleanest recovery point (a plain user turn).
+      let plainUserIdx = -1;
+      for (let i = nonSystem.length - 1; i >= 0; i--) {
+        const m = nonSystem[i];
+        if (m.role === 'user' && !userHasToolResultBlock(m)) {
+          plainUserIdx = i;
+          break;
+        }
       }
 
-      managedMessages = [systemMessage, lastUserMessage].filter(Boolean);
+      if (plainUserIdx !== -1) {
+        tail = [nonSystem[plainUserIdx]];
+      } else {
+        // No plain user turn survived. The only user message is a
+        // tool_result carrier - ship it WITH its paired assistant
+        // tool_use message so Anthropic's invariant holds.
+        for (let i = nonSystem.length - 1; i >= 0; i--) {
+          const m = nonSystem[i];
+          if (userHasToolResultBlock(m)) {
+            const prev = i > 0 ? nonSystem[i - 1] : null;
+            if (prev && assistantHasToolUseBlock(prev)) {
+              tail = [prev, m];
+            } else {
+              // Orphaned tool_result with no companion - replace with a
+              // plain-text stub so we don't ship a structurally invalid
+              // request to the provider.
+              tail = [{ role: 'user', content: '[Previous tool results dropped during emergency context recovery. Please continue.]' }];
+            }
+            break;
+          }
+          // OpenAI/Gemini shape: assistant.tool_calls followed by role:'tool'
+          if (m.role === 'tool') {
+            const prev = i > 0 ? nonSystem[i - 1] : null;
+            if (prev && prev.role === 'assistant' && Array.isArray(prev.tool_calls) && prev.tool_calls.length > 0) {
+              tail = [prev, m];
+            } else {
+              tail = [{ role: 'user', content: '[Previous tool results dropped during emergency context recovery. Please continue.]' }];
+            }
+            break;
+          }
+        }
+      }
+
+      // Fallback: nothing usable in the tail at all.
+      if (tail.length === 0) {
+        tail = [{ role: 'user', content: 'Please continue.' }];
+      }
+
+      managedMessages = [systemMessage, ...tail].filter(Boolean);
       currentTokens = estimateMessagesTokens(managedMessages);
     }
 

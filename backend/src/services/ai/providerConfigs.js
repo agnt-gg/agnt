@@ -116,6 +116,8 @@ const PROVIDER_CONFIGS = [
       vision: { supportsStreaming: true },
     },
     recommendedModels: [
+      'claude-opus-5',
+      'claude-sonnet-5',
       'claude-fable-5',
       'claude-opus-4-8',
       'claude-opus-4-7',
@@ -126,6 +128,8 @@ const PROVIDER_CONFIGS = [
       'claude-sonnet-4-5-20250929',
     ],
     fallbackModels: [
+      'claude-opus-5',
+      'claude-sonnet-5',
       'claude-fable-5',
       'claude-opus-4-8',
       'claude-opus-4-7',
@@ -137,11 +141,18 @@ const PROVIDER_CONFIGS = [
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
+    fallbackVisionModels: ['claude-opus-5', 'claude-sonnet-5', 'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelMetadata: {
       'claude-fable-5': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-mythos-5': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-mythos-preview': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 10.0, outputCostPer1M: 50.0, supportsVision: true, supportsTools: true, reasoning: true },
+      // Claude 5 flagship pair (GA 2026-06-09 per platform.claude.com/docs).
+      // Both 1M context, 128k output, adaptive thinking always on.
+      'claude-opus-5': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
+      // claude-sonnet-5 introductory pricing is $2/$10 through 2026-08-31,
+      // reverting to the standard $3/$15 after. We record the standard rate
+      // so cost estimates aren't understated once the promo ends.
+      'claude-sonnet-5': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 3.0, outputCostPer1M: 15.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-8': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-7': { contextWindow: 1000000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
       'claude-opus-4-6': { contextWindow: 200000, maxOutputTokens: 128000, inputCostPer1M: 5.0, outputCostPer1M: 25.0, supportsVision: true, supportsTools: true, reasoning: true },
@@ -156,7 +167,11 @@ const PROVIDER_CONFIGS = [
       id: raw.id,
       name: raw.display_name || raw.id,
       description: raw.description || '',
-      contextLength: raw.max_tokens || 0,
+      // Anthropic's /v1/models returns max_input_tokens (true context window)
+      // and max_tokens (max output). Prefer max_input_tokens; keep the
+      // legacy max_tokens fallback for older API responses.
+      contextLength: raw.max_input_tokens || raw.max_tokens || 0,
+      maxOutputTokens: raw.max_tokens || 0,
       createdAt: raw.created_at,
     }),
     modelFilter: (m) => m.id && m.display_name,
@@ -203,6 +218,8 @@ const PROVIDER_CONFIGS = [
       vision: { supportsStreaming: true },
     },
     recommendedModels: [
+      'claude-opus-5',
+      'claude-sonnet-5',
       'claude-fable-5',
       'claude-opus-4-8',
       'claude-opus-4-7',
@@ -213,6 +230,8 @@ const PROVIDER_CONFIGS = [
       'claude-sonnet-4-5-20250929',
     ],
     fallbackModels: [
+      'claude-opus-5',
+      'claude-sonnet-5',
       'claude-fable-5',
       'claude-opus-4-8',
       'claude-opus-4-7',
@@ -224,12 +243,15 @@ const PROVIDER_CONFIGS = [
       'claude-sonnet-4-20250514',
       'claude-opus-4-20250514',
     ],
-    fallbackVisionModels: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
+    fallbackVisionModels: ['claude-opus-5', 'claude-sonnet-5', 'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'],
     modelTransform: (raw) => ({
       id: raw.id,
       name: raw.display_name || raw.id,
       description: raw.description || '',
-      contextLength: raw.max_tokens || 0,
+      // Prefer max_input_tokens (true context window). max_tokens is max
+      // output; kept as legacy fallback for older API responses.
+      contextLength: raw.max_input_tokens || raw.max_tokens || 0,
+      maxOutputTokens: raw.max_tokens || 0,
       createdAt: raw.created_at,
     }),
     compat: {},
