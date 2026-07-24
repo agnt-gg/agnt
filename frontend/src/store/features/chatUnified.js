@@ -144,6 +144,15 @@ const migrateLegacyChannel = (state, channelKey) => {
   }
 };
 
+// LRU limit for the per-channel image cache, mirroring the main chat store.
+// These Maps hold base64 data URLs, so they deliberately live OUTSIDE
+// `conversations` — that object is JSON.stringified into localStorage on every
+// persist, and inlining image payloads there would blow the storage quota and
+// re-serialize multi-MB strings on every tool event (see PRD-058 note above).
+const MAX_IMAGE_CACHE = 50;
+
+const EMPTY_IMAGE_CACHE = new Map();
+
 const ensureChannel = (state, channelKey) => {
   if (!state.conversations[channelKey]) {
     state.conversations[channelKey] = blankConversation();
@@ -166,6 +175,7 @@ export default {
     messageStates: {},              // channelKey → { messageId: status }
     abortControllers: {},           // channelKey → AbortController
     pendingSteers: {},              // channelKey → string (mid-run steer awaiting drain)
+    imageCaches: {},                // channelKey → Map(imageId → { data, ... })  [never persisted]
     _migrated: {},                  // channelKey → boolean
   },
 
@@ -312,7 +322,7 @@ export default {
         state.conversations[toChannelKey] = state.conversations[fromChannelKey];
         delete state.conversations[fromChannelKey];
       }
-      for (const map of [state.expandedToolCalls, state.runningToolCalls, state.messageStates]) {
+      for (const map of [state.expandedToolCalls, state.runningToolCalls, state.messageStates, state.imageCaches]) {
         if (map[fromChannelKey]) {
           map[toChannelKey] = map[fromChannelKey];
           delete map[fromChannelKey];
@@ -334,6 +344,16 @@ export default {
     },
     CLEAR_PENDING_STEER(state, { channelKey }) {
       delete state.pendingSteers[channelKey];
+    },
+    ADD_IMAGE_TO_CACHE(state, { channelKey, imageId, imageData, toolCallId, messageId, index }) {
+      if (!imageId || !imageData) return;
+      if (!state.imageCaches[channelKey]) state.imageCaches[channelKey] = new Map();
+      const cache = state.imageCaches[channelKey];
+      // LRU eviction — Map preserves insertion order, so the first key is oldest.
+      if (cache.size >= MAX_IMAGE_CACHE) {
+        cache.delete(cache.keys().next().value);
+      }
+      cache.set(imageId, { data: imageData, toolCallId, messageId, index });
     },
     PERSIST_CONVERSATIONS(state) {
       // Explicit persistence request — write through immediately (PRD-058).
@@ -369,6 +389,10 @@ export default {
     isLoadingSuggestions: (state) => (channelKey) =>
       !!state.loadingSuggestionsChannels[channelKey],
     pendingSteer: (state) => (channelKey) => state.pendingSteers[channelKey] || '',
+    // Returns a shared empty Map when a channel has no images yet, so the
+    // identity stays stable across renders instead of invalidating watchers.
+    getImageCache: (state) => (channelKey) =>
+      state.imageCaches[channelKey] || EMPTY_IMAGE_CACHE,
     getMessageStatus: (state) => (channelKey, messageId) =>
       state.messageStates[channelKey]?.[messageId] || null,
     getRunningToolsForMessage: (state) => (channelKey, messageId) => {
@@ -802,6 +826,22 @@ function handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEven
       break;
 
     case 'image_generated':
+      // Generated images stream in as base64 out-of-band and the message body
+      // only carries a {{IMAGE_REF:id}} placeholder. MessageItem resolves that
+      // placeholder against this cache; without it the reference falls through
+      // to /api/images/:id, which is authenticated and so cannot be fetched by
+      // a plain <img src>. Dropping this event was why images rendered in the
+      // main chat but not in sidebar channels.
+      commit('ADD_IMAGE_TO_CACHE', {
+        channelKey,
+        imageId: data.imageId,
+        imageData: data.imageData,
+        toolCallId: data.toolCallId,
+        messageId: data.assistantMessageId,
+        index: data.index,
+      });
+      break;
+
     case 'data_content':
     case 'data_offloaded':
     case 'context_status':

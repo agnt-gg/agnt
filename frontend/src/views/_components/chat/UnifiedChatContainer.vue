@@ -29,6 +29,7 @@
             :runningTools="getRunningToolsFor(message)"
             :show-avatar="false"
             :compact="messageItemMode === 'compact'"
+            :image-cache="imageCache"
             @toggle-tool="onToggleTool"
             @edit-message="onEditMessage"
           />
@@ -252,6 +253,10 @@ export default {
     const isLoadingSuggestions = computed(() => store.getters['chatUnified/isLoadingSuggestions'](props.channelKey));
     const storedSuggestions = computed(() => store.getters['chatUnified/getSuggestions'](props.channelKey));
     const pendingSteer = computed(() => store.getters['chatUnified/pendingSteer'](props.channelKey));
+    // Without this, MessageItem falls back to its default empty Map and every
+    // {{IMAGE_REF:id}} resolves to the authenticated /api/images/:id URL, which
+    // an <img> tag cannot load. The main chat passes the equivalent cache.
+    const imageCache = computed(() => store.getters['chatUnified/getImageCache'](props.channelKey));
 
     const suggestions = computed(() => {
       const stored = storedSuggestions.value;
@@ -505,6 +510,7 @@ export default {
       chatInput,
       selectedFiles,
       formattedMessages,
+      imageCache,
       isProcessing,
       isLoadingSuggestions,
       suggestions,
