@@ -2617,9 +2617,14 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
               const dataId = dataRefMatch[1];
               // Try to resolve from cache
               const cached = props.dataCache.get(dataId);
-              if (cached && cached.data !== undefined) {
+              // The store writes this entry as { content, toolCallId, messageId,
+              // size, path } — see ADD_DATA_TO_CACHE. Reading `.data` here (the
+              // key the IMAGE cache uses) always yielded undefined, so every
+              // DATA_REF fell through to the placeholder below even when the
+              // payload was cached and available.
+              if (cached && cached.content !== undefined) {
                 console.log(`[MessageItem] Resolved DATA_REF: ${dataId}`);
-                return cached.data; // Return the actual data
+                return cached.content; // Return the actual data
               }
               // Fallback: show placeholder if not in cache
               console.warn(`[MessageItem] DATA_REF not found in cache: ${dataId}`);
