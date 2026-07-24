@@ -3,6 +3,7 @@ import {
   CRITICAL_IMAGE_GENERATION,
   OFFLOADED_DATA_GUIDANCE,
   CRITICAL_TOOL_CALL_REQUIREMENTS,
+  AGNT_NATIVE_EXECUTION,
   IMAGE_ANALYSIS_CAPABILITIES,
   IMAGE_GENERATION_CAPABILITIES,
   LOCAL_FILE_RENDERING,
@@ -108,6 +109,7 @@ Every Annie chat surface is functionally the same assistant. The current page co
   }
   parts.push(OFFLOADED_DATA_GUIDANCE);
   parts.push(CRITICAL_TOOL_CALL_REQUIREMENTS);
+  parts.push(AGNT_NATIVE_EXECUTION);
 
   if (has('create_and_run_goal')) {
     parts.push(`TASK DELEGATION:

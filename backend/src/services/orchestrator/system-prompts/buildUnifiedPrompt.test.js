@@ -95,6 +95,25 @@ describe('buildUnifiedSystemPrompt — frozen prefix stability', () => {
     expect(promptOverride).not.toMatch(/^You are Annie/);
   });
 
+  it('includes AGNT-native execution policy in orchestrator and saved-agent prompts', async () => {
+    const ctx = { userId: 'u1', latestUserMessage: 'implement this', normalizedProvider: 'anthropic' };
+    const orchestratorPrompt = await buildUnifiedSystemPrompt(ctx, baseFrozen);
+    const agentPrompt = await buildUnifiedSystemPrompt(
+      { ...ctx, agentId: 'agent-7' },
+      {
+        ...baseFrozen,
+        agentOverride: { name: 'FooBot', systemPrompt: 'You are FooBot.' },
+      },
+    );
+
+    for (const prompt of [orchestratorPrompt, agentPrompt]) {      expect(prompt).toContain('## AGNT-Native Execution');
+      expect(prompt).toContain('shell executes computation; keep cognition here unless the user asks otherwise.');
+      // The policy must stay a preference: an explicit user request for a
+      // named external system has to remain honorable, not blocked.
+      expect(prompt).toContain('Honor explicit requests.');
+    }
+  });
+
   it('places customInstructions at the very end so prefix invalidation is bounded', async () => {
     const ctx = { userId: 'u1', latestUserMessage: 'hi', normalizedProvider: 'anthropic' };
     const prompt = await buildUnifiedSystemPrompt(ctx, baseFrozen);
