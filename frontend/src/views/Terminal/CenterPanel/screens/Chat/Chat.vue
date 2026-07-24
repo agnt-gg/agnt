@@ -500,8 +500,15 @@ export default {
       'gpt-4.1-mini': 1000000,
       'gpt-4.1-nano': 1000000,
       'gpt-4o': 128000,
-      'gpt-4o-mini': 128000,
-      // Anthropic
+      'gpt-4o-mini': 128000,      // Anthropic — Claude 5 generation and Opus 4.7+ are 1M-context.
+      // Keep in sync with backend modelMetadata (providerConfigs.js); this map
+      // is only the pre-first-event seed, but a missing entry falls through to
+      // 0 and the meter renders with no ceiling.
+      'claude-opus-5': 1000000,
+      'claude-sonnet-5': 1000000,
+      'claude-fable-5': 1000000,
+      'claude-opus-4-8': 1000000,
+      'claude-opus-4-7': 1000000,
       'claude-opus-4-6': 200000,
       'claude-sonnet-4-6': 200000,
       'claude-opus-4-5-20251101': 200000,
