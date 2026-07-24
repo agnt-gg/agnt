@@ -153,6 +153,12 @@ const MAX_IMAGE_CACHE = 50;
 
 const EMPTY_IMAGE_CACHE = new Map();
 
+// Same rationale as the image cache: offloaded tool payloads are large and must
+// never reach the persisted `conversations` object.
+const MAX_DATA_CACHE = 50;
+
+const EMPTY_DATA_CACHE = new Map();
+
 const ensureChannel = (state, channelKey) => {
   if (!state.conversations[channelKey]) {
     state.conversations[channelKey] = blankConversation();
@@ -176,6 +182,7 @@ export default {
     abortControllers: {},           // channelKey → AbortController
     pendingSteers: {},              // channelKey → string (mid-run steer awaiting drain)
     imageCaches: {},                // channelKey → Map(imageId → { data, ... })  [never persisted]
+    dataCaches: {},                 // channelKey → Map(dataId → { content, ... }) [never persisted]
     _migrated: {},                  // channelKey → boolean
   },
 
@@ -322,7 +329,7 @@ export default {
         state.conversations[toChannelKey] = state.conversations[fromChannelKey];
         delete state.conversations[fromChannelKey];
       }
-      for (const map of [state.expandedToolCalls, state.runningToolCalls, state.messageStates, state.imageCaches]) {
+      for (const map of [state.expandedToolCalls, state.runningToolCalls, state.messageStates, state.imageCaches, state.dataCaches]) {
         if (map[fromChannelKey]) {
           map[toChannelKey] = map[fromChannelKey];
           delete map[fromChannelKey];
@@ -354,6 +361,16 @@ export default {
         cache.delete(cache.keys().next().value);
       }
       cache.set(imageId, { data: imageData, toolCallId, messageId, index });
+    },
+    ADD_DATA_TO_CACHE(state, { channelKey, dataId, fullContent, toolCallId, messageId, size, path }) {
+      if (!dataId || fullContent === undefined || fullContent === null) return;
+      if (!state.dataCaches[channelKey]) state.dataCaches[channelKey] = new Map();
+      const cache = state.dataCaches[channelKey];
+      if (cache.size >= MAX_DATA_CACHE) {
+        cache.delete(cache.keys().next().value);
+      }
+      // Key name must stay `content` — MessageItem reads cached.content.
+      cache.set(dataId, { content: fullContent, toolCallId, messageId, size, path });
     },
     PERSIST_CONVERSATIONS(state) {
       // Explicit persistence request — write through immediately (PRD-058).
@@ -393,6 +410,8 @@ export default {
     // identity stays stable across renders instead of invalidating watchers.
     getImageCache: (state) => (channelKey) =>
       state.imageCaches[channelKey] || EMPTY_IMAGE_CACHE,
+    getDataCache: (state) => (channelKey) =>
+      state.dataCaches[channelKey] || EMPTY_DATA_CACHE,
     getMessageStatus: (state) => (channelKey, messageId) =>
       state.messageStates[channelKey]?.[messageId] || null,
     getRunningToolsForMessage: (state) => (channelKey, messageId) => {
@@ -843,6 +862,20 @@ function handleStreamEvent({ commit, channelKey, eventName, data, onFrontendEven
       break;
 
     case 'data_content':
+      // Large tool results are offloaded and the tool card only carries a
+      // {{DATA_REF:id}} placeholder. MessageItem resolves it against this
+      // cache; without it the card renders "[Large data - <id>]" forever.
+      commit('ADD_DATA_TO_CACHE', {
+        channelKey,
+        dataId: data.dataId,
+        fullContent: data.fullContent,
+        toolCallId: data.toolCallId,
+        messageId: data.assistantMessageId,
+        size: data.size,
+        path: data.path,
+      });
+      break;
+
     case 'data_offloaded':
     case 'context_status':
       // Backend-only / observability events; nothing to do in the unified store.

@@ -30,6 +30,7 @@
             :show-avatar="false"
             :compact="messageItemMode === 'compact'"
             :image-cache="imageCache"
+            :data-cache="dataCache"
             @toggle-tool="onToggleTool"
             @edit-message="onEditMessage"
           />
@@ -257,6 +258,7 @@ export default {
     // {{IMAGE_REF:id}} resolves to the authenticated /api/images/:id URL, which
     // an <img> tag cannot load. The main chat passes the equivalent cache.
     const imageCache = computed(() => store.getters['chatUnified/getImageCache'](props.channelKey));
+    const dataCache = computed(() => store.getters['chatUnified/getDataCache'](props.channelKey));
 
     const suggestions = computed(() => {
       const stored = storedSuggestions.value;
@@ -511,6 +513,7 @@ export default {
       selectedFiles,
       formattedMessages,
       imageCache,
+      dataCache,
       isProcessing,
       isLoadingSuggestions,
       suggestions,
