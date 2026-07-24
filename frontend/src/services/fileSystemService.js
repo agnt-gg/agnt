@@ -73,6 +73,22 @@ export async function getSettings() {
   return res.json();
 }
 
+export async function uploadFiles(dir, files) {
+  const form = new FormData();
+  form.append('dir', dir || '');
+  for (const f of files) form.append('files', f, f.name);
+  const token = localStorage.getItem('token');
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${API_CONFIG.BASE_URL}/filesystem/upload`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Failed to upload files: ${res.statusText}`);
+  return res.json();
+}
+
 export async function updateSettings(workspaceRoot) {
   const res = await fetch(`${API_CONFIG.BASE_URL}/filesystem/settings`, {
     method: 'PUT',

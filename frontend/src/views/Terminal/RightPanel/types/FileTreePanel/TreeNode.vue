@@ -52,6 +52,8 @@
         @rename-item="$emit('rename-item', $event)"
         @move-item="$emit('move-item', $event)"
         @open-context-menu="$emit('open-context-menu', $event)"
+        @os-file-drag-over="$emit('os-file-drag-over', $event)"
+        @os-file-drag-clear="$emit('os-file-drag-clear', $event)"
       />
     </div>
   </div>
@@ -95,7 +97,7 @@ export default {
     // mode. The `ts` field ensures the same path can be retriggered.
     renameRequest: { type: Object, default: null },
   },
-  emits: ['toggle-dir', 'select-file', 'rename-item', 'move-item', 'open-context-menu'],
+  emits: ['toggle-dir', 'select-file', 'rename-item', 'move-item', 'open-context-menu', 'os-file-drag-over', 'os-file-drag-clear'],
   setup(props, { emit }) {
     const isExpanded = computed(() => !!props.expandedDirs[props.item.path]);
     const children = computed(() => props.childrenMap[props.item.path] || []);
@@ -160,8 +162,21 @@ export default {
     };
 
     // ── Drag & Drop ──
+    // Two drag sources coexist on the same node:
+    //   - Internal tree-node moves (text/plain, effect=move) — handled here,
+    //     `stopPropagation` keeps the parent panel out of it.
+    //   - OS file drops from Explorer/Finder (types includes 'Files',
+    //     effect=copy) — we highlight the folder and emit the target dir up
+    //     to the panel, but let the event bubble so the panel container
+    //     performs the actual upload in one place.
     const isDragOver = ref(false);
     let dragEnterCount = 0;
+
+    const isOsFileDrag = (e) => {
+      const types = e.dataTransfer && e.dataTransfer.types;
+      if (!types) return false;
+      return Array.from(types).includes('Files');
+    };
 
     const onDragStart = (e) => {
       e.stopPropagation();
@@ -171,6 +186,12 @@ export default {
 
     const onDragOver = (e) => {
       if (props.item.type !== 'directory') return;
+      if (isOsFileDrag(e)) {
+        // Let the panel-level handler own the drop; just hint the effect and
+        // keep the highlight on this folder.
+        e.dataTransfer.dropEffect = 'copy';
+        return;
+      }
       e.stopPropagation();
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -178,6 +199,12 @@ export default {
 
     const onDragEnter = (e) => {
       if (props.item.type !== 'directory') return;
+      if (isOsFileDrag(e)) {
+        dragEnterCount++;
+        isDragOver.value = true;
+        emit('os-file-drag-over', props.item.path);
+        return;
+      }
       e.stopPropagation();
       e.preventDefault();
       dragEnterCount++;
@@ -186,6 +213,15 @@ export default {
 
     const onDragLeave = (e) => {
       if (props.item.type !== 'directory') return;
+      if (isOsFileDrag(e)) {
+        dragEnterCount--;
+        if (dragEnterCount <= 0) {
+          dragEnterCount = 0;
+          isDragOver.value = false;
+          emit('os-file-drag-clear', props.item.path);
+        }
+        return;
+      }
       e.stopPropagation();
       dragEnterCount--;
       if (dragEnterCount <= 0) {
@@ -198,6 +234,9 @@ export default {
       dragEnterCount = 0;
       isDragOver.value = false;
       if (props.item.type !== 'directory') return;
+      // OS file drop: don't intercept — the panel container handles the
+      // upload so we don't duplicate the logic per node.
+      if (isOsFileDrag(e)) return;
       e.stopPropagation();
       e.preventDefault();
       const sourcePath = e.dataTransfer.getData('text/plain');

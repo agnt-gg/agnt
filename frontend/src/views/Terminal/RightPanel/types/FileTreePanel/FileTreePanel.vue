@@ -1,5 +1,17 @@
 <template>
-  <div class="file-tree-panel">
+  <div
+    class="file-tree-panel"
+    :class="{ 'is-drag-over': isOsDragOver }"
+    @dragenter.prevent="onPanelDragEnter"
+    @dragover.prevent="onPanelDragOver"
+    @dragleave="onPanelDragLeave"
+    @drop.prevent="onPanelDrop"
+  >
+    <div v-if="isOsDragOver" class="drop-overlay">
+      <i class="fas fa-cloud-upload-alt"></i>
+      <span>{{ dropTargetDir ? `Drop to upload into /${dropTargetDir}` : 'Drop to upload to workspace' }}</span>
+      <span v-if="isUploading" class="drop-uploading"><i class="fas fa-spinner fa-spin"></i> Uploading…</span>
+    </div>
     <div class="panel-header">
       <h2 class="title" @click="setActiveDir('')" :class="{ clickable: activeDir }">
         <span v-if="activeDir" class="title-back"><i class="fas fa-chevron-left"></i></span>
@@ -119,6 +131,8 @@
         @rename-item="renameItem"
         @move-item="moveItem"
         @open-context-menu="openContextMenu"
+        @os-file-drag-over="setDropTargetDir"
+        @os-file-drag-clear="clearDropTargetDir"
       />
     </div>
     <div v-else class="loading-state">
@@ -210,7 +224,7 @@
 
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
-import { getTree, saveFile, createDirectory, deleteFile, renameFile, getSettings, updateSettings, searchTree } from '@/services/fileSystemService.js';
+import { getTree, saveFile, createDirectory, deleteFile, renameFile, getSettings, updateSettings, searchTree, uploadFiles } from '@/services/fileSystemService.js';
 import Tooltip from '@/views/Terminal/_components/Tooltip.vue';
 import TreeNode from './TreeNode.vue';
 
@@ -864,6 +878,72 @@ export default {
       settingsDialog.error = '';
     };
 
+    // ── OS drag-and-drop upload ──
+    // Panel-level handler. TreeNode surfaces a folder-target hint via the
+    // `os-file-drag-over` / `os-file-drag-clear` emits above; if no folder is
+    // hovered, we fall back to `activeDir` (the folder shown in the header)
+    // and finally the workspace root.
+    const isOsDragOver = ref(false);
+    const isUploading = ref(false);
+    const dropTargetDir = ref('');
+    let panelDragLeaveTimer = null;
+
+    const isOsFileDrag = (e) => {
+      const types = e.dataTransfer && e.dataTransfer.types;
+      if (!types) return false;
+      return Array.from(types).includes('Files');
+    };
+
+    const setDropTargetDir = (dirPath) => {
+      dropTargetDir.value = dirPath || '';
+    };
+    const clearDropTargetDir = (dirPath) => {
+      // Only clear if the leaving folder is the current target — otherwise a
+      // fast pointer moving between siblings would blank the target between
+      // them.
+      if (dropTargetDir.value === dirPath) dropTargetDir.value = '';
+    };
+
+    const onPanelDragEnter = (e) => {
+      if (!isOsFileDrag(e)) return;
+      if (panelDragLeaveTimer) { clearTimeout(panelDragLeaveTimer); panelDragLeaveTimer = null; }
+      isOsDragOver.value = true;
+    };
+    const onPanelDragOver = (e) => {
+      if (!isOsFileDrag(e)) return;
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      if (panelDragLeaveTimer) { clearTimeout(panelDragLeaveTimer); panelDragLeaveTimer = null; }
+      isOsDragOver.value = true;
+    };
+    const onPanelDragLeave = () => {
+      if (panelDragLeaveTimer) clearTimeout(panelDragLeaveTimer);
+      panelDragLeaveTimer = setTimeout(() => {
+        isOsDragOver.value = false;
+        dropTargetDir.value = '';
+        panelDragLeaveTimer = null;
+      }, 50);
+    };
+    const onPanelDrop = async (e) => {
+      if (panelDragLeaveTimer) { clearTimeout(panelDragLeaveTimer); panelDragLeaveTimer = null; }
+      const files = Array.from(e.dataTransfer?.files || []);
+      const target = dropTargetDir.value || activeDir.value || '';
+      isOsDragOver.value = false;
+      dropTargetDir.value = '';
+      if (files.length === 0) return;
+
+      isUploading.value = true;
+      try {
+        await uploadFiles(target, files);
+        // Ensure the target dir is expanded so the user sees the arrivals.
+        if (target) expandedDirs[target] = true;
+        await refreshTree();
+      } catch (err) {
+        console.error('OS file upload failed:', err);
+      } finally {
+        isUploading.value = false;
+      }
+    };
+
     const refreshTree = async () => {
       const expanded = Object.keys(expandedDirs);
       Object.keys(childrenMap).forEach((key) => delete childrenMap[key]);
@@ -947,6 +1027,16 @@ export default {
       resetToDefault,
       cancelSettings,
       refreshTree,
+      // OS drag-and-drop upload
+      isOsDragOver,
+      isUploading,
+      dropTargetDir,
+      setDropTargetDir,
+      clearDropTargetDir,
+      onPanelDragEnter,
+      onPanelDragOver,
+      onPanelDragLeave,
+      onPanelDrop,
       // Context menu
       contextMenu,
       renameRequest,
@@ -974,7 +1064,33 @@ export default {
   padding: 0;
   gap: 12px;
   overflow: hidden;
+  position: relative;
 }
+
+.file-tree-panel.is-drag-over {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -6px;
+  border-radius: 6px;
+}
+
+.file-tree-panel > .drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(var(--primary-rgb), 0.10);
+  color: var(--color-primary);
+  font-size: 0.95em;
+  pointer-events: none;
+  text-align: center;
+  padding: 12px;
+}
+.file-tree-panel > .drop-overlay i { font-size: 2em; opacity: 0.85; }
+.file-tree-panel > .drop-overlay .drop-uploading { opacity: 0.8; font-size: 0.85em; }
 
 .panel-header {
   display: flex;

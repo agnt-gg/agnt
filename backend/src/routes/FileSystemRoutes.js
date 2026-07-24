@@ -2,10 +2,18 @@ import express from 'express';
 import fs from 'fs/promises';
 import { open as fsOpen } from 'fs/promises';
 import path from 'path';
+import multer from 'multer';
 import { authenticateToken } from './Middleware.js';
 import PathManager from '../utils/PathManager.js';
 
 const router = express.Router();
+
+// Multer for OS drag-and-drop uploads into the workspace. Memory storage so we
+// control the filename/dest ourselves (path traversal + collision handling).
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
 // Default workspace root and settings file live alongside other app data
 const DEFAULT_WORKSPACE_ROOT = PathManager.getPath('projects');
@@ -313,6 +321,61 @@ router.post('/file', authenticateToken, async (req, res) => {
     res.json({ success: true, path: relPath });
   } catch (error) {
     console.error('FileSystem write error:', error);
+    res.status(error.message === 'Path traversal not allowed' ? 403 : 500).json({ error: error.message });
+  }
+});
+
+// POST /api/filesystem/upload  (multipart)  fields: dir, files[]
+// OS drag-and-drop uploads. Files land inside `dir` (relative to workspace
+// root; empty string = root). Collisions get " (n)" suffixed before the ext.
+router.post('/upload', authenticateToken, upload.array('files'), async (req, res) => {
+  try {
+    const root = await getWorkspaceRoot();
+    const dir = typeof req.body.dir === 'string' ? req.body.dir : '';
+    const files = req.files || [];
+    if (files.length === 0) return res.status(400).json({ error: 'no files uploaded' });
+
+    const absDir = validatePath(dir, root);
+    // If a file already exists at the target path, refuse — the caller meant a directory.
+    try {
+      const stat = await fs.stat(absDir);
+      if (!stat.isDirectory()) return res.status(400).json({ error: 'target is not a directory' });
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+    await fs.mkdir(absDir, { recursive: true });
+
+    const uploaded = [];
+    for (const file of files) {
+      // Sanitize: strip any directory components and leading dots so
+      // "..\evil.txt" or ".htaccess" can't escape or hide.
+      const rawName = file.originalname || 'file';
+      let safeName = path.basename(rawName).replace(/^\.+/, '') || 'file';
+      const ext = path.extname(safeName);
+      const stem = ext ? safeName.slice(0, -ext.length) : safeName;
+
+      let finalName = safeName;
+      let n = 1;
+      // Loop until we find a free name. Bounded by n<10000 as a sanity guard.
+      // eslint-disable-next-line no-constant-condition
+      while (n < 10000) {
+        try {
+          await fs.access(path.join(absDir, finalName));
+          finalName = `${stem} (${n})${ext}`;
+          n += 1;
+        } catch {
+          break;
+        }
+      }
+
+      await fs.writeFile(path.join(absDir, finalName), file.buffer);
+      const rel = path.relative(root, path.join(absDir, finalName)).split(path.sep).join('/');
+      uploaded.push({ path: rel, size: file.size });
+    }
+
+    res.json({ success: true, uploaded });
+  } catch (error) {
+    console.error('FileSystem upload error:', error);
     res.status(error.message === 'Path traversal not allowed' ? 403 : 500).json({ error: error.message });
   }
 });
