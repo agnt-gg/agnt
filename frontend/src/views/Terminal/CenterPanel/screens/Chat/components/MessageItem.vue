@@ -2679,8 +2679,33 @@ ${sourceCode.replace(/^\s*import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '').replac
     const _parseToolResult = (toolCall) => {
       if (!toolCall.result) return null;
       try {
-        const result = typeof toolCall.result === 'string' ? JSON.parse(toolCall.result) : toolCall.result;
-        // Handle agnt_goals meta-tool: result is nested under .data
+        let result = typeof toolCall.result === 'string' ? JSON.parse(toolCall.result) : toolCall.result;
+
+        // Unwrap async-completion envelope. When a tool was queued with
+        // _executeAsync (very common for create_and_run_goal), the outer
+        // shape after chat:async_tool_completed patches the card is:
+        //   { success, status: 'completed', executionId, result: <real payload>, duration }
+        // The real backend payload lives at .result and is typically another
+        // JSON string produced by executeTool → JSON.stringify(...). Without
+        // this unwrap, isAutonomousGoalTool never sees `autonomous` / `goal.id`
+        // and the inline GoalProgressWidget never mounts.
+        if (
+          result &&
+          typeof result === 'object' &&
+          result.executionId &&
+          result.status === 'completed' &&
+          result.result !== undefined &&
+          result.result !== null
+        ) {
+          try {
+            const inner = typeof result.result === 'string' ? JSON.parse(result.result) : result.result;
+            if (inner && typeof inner === 'object') result = inner;
+          } catch {
+            // Inner payload wasn't JSON — leave the outer envelope in place.
+          }
+        }
+
+        // Handle agnt_goals meta-tool: some legacy paths nest under .data
         if (toolCall.name === 'agnt_goals' && result.data) {
           return typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
         }
