@@ -199,28 +199,88 @@ export async function executeCodeFunction(name, args) {
       const applied = [];
       const failed = [];
 
-      // Normalize whitespace for fuzzy matching
+      // ---- Line-ending & whitespace tolerant matching --------------------
+      //
+      // Two bugs lived here, and together they silently corrupted files while
+      // the tool reported success.
+      //
+      // 1. CRLF FILES ALWAYS FELL THROUGH TO FUZZY MATCHING.
+      //    Callers write search strings with "\n". On a CRLF file
+      //    source.indexOf(search) can never match, so EVERY multi-line edit
+      //    took the fuzzy path — which was never meant to be the common case.
+      //
+      // 2. THE FUZZY MATCHER SWALLOWED THE PRECEDING NEWLINE.
+      //    normalizeWS() trims, so a window starting on whitespace normalizes
+      //    identically to one starting at the next non-whitespace character.
+      //    The scan slid forward from offset 0, so the FIRST position that
+      //    matched was the one sitting on the whitespace run BEFORE the target
+      //    — including the "\r\n" that ended the previous line. Splicing at
+      //    that offset deleted the line break and welded the replacement onto
+      //    the previous line. In practice that meant welding a statement onto
+      //    the end of a comment: still-valid JS, invisible in review, and it
+      //    only surfaced later as a ReferenceError or a SyntaxError.
+      //
+      // Reproduced 2026-07-25 with a 2x2 fixture matrix: CRLF + multi-line
+      // search corrupted 100% of the time; LF, or CRLF with a CRLF search
+      // string, or a single-line search, were all clean. Multi-byte UTF-8
+      // upstream of the edit point was ruled out as a factor.
+
       const normalizeWS = (s) => s.replace(/\s+/g, ' ').trim();
 
-      function fuzzyFind(source, search) {
-        // Try exact match first
-        const exactIdx = source.indexOf(search);
-        if (exactIdx !== -1) return { start: exactIdx, end: exactIdx + search.length };
+      // The file's dominant line ending. Replacement text is coerced to it so
+      // an edit never injects "\n" into a CRLF file — which is what produced
+      // mixed-ending files and spurious whole-file diffs.
+      const crlfCount = (currentContent.match(/\r\n/g) || []).length;
+      const lfCount = (currentContent.match(/(?<!\r)\n/g) || []).length;
+      const dominantEol = crlfCount > lfCount ? '\r\n' : '\n';
+      const coerceEol = (s) =>
+        typeof s === 'string' ? s.replace(/\r\n/g, '\n').replace(/\n/g, dominantEol) : s;
 
-        // Fuzzy: normalize whitespace and slide through source
+      function countOccurrences(source, needle) {
+        if (!needle) return 0;
+        let n = 0;
+        for (let k = source.indexOf(needle); k !== -1; k = source.indexOf(needle, k + needle.length)) n++;
+        return n;
+      }
+
+      function fuzzyFind(source, search) {
+        // Exact match, attempted against BOTH line-ending conventions. This is
+        // the path that should serve essentially every real edit; getting CRLF
+        // right here is what stops the fuzzy fallback from ever running.
+        const asLf = search.replace(/\r\n/g, '\n');
+        const asCrlf = asLf.replace(/\n/g, '\r\n');
+        const variants = [search];
+        if (asLf !== search) variants.push(asLf);
+        if (asCrlf !== search && asCrlf !== asLf) variants.push(asCrlf);
+
+        for (const v of variants) {
+          const idx = source.indexOf(v);
+          if (idx !== -1) {
+            return { start: idx, end: idx + v.length, fuzzy: false, occurrences: countOccurrences(source, v) };
+          }
+        }
+
+        // Fuzzy fallback — only for genuine indentation / whitespace drift.
         const normSearch = normalizeWS(search);
         if (!normSearch) return null;
-
-        let srcPos = 0;
+        const searchIndented = /^[ \t]/.test(search);
         const srcLen = source.length;
-        while (srcPos < srcLen) {
+
+        for (let srcPos = 0; srcPos < srcLen; srcPos++) {
+          // NEVER begin a window on whitespace. Because normalizeWS() trims,
+          // such a window matches exactly the same text as one beginning at the
+          // next non-whitespace character — but it reports a start offset that
+          // sits before the preceding newline, and splicing there deletes it.
+          // This one guard is the line-merge fix.
+          if (/\s/.test(source[srcPos])) continue;
+
           let normWindow = '';
           let windowEnd = srcPos;
 
           while (windowEnd < srcLen) {
             const ch = source[windowEnd];
             if (/\s/.test(ch)) {
-              if (!normWindow.endsWith(' ') && normWindow.length > 0) {
+              if (normWindow.length > 0 && !normWindow.endsWith(' ')) {
                 normWindow += ' ';
               }
               windowEnd++;
@@ -231,11 +291,18 @@ export async function executeCodeFunction(name, args) {
 
             const trimmedWindow = normWindow.trim();
             if (trimmedWindow === normSearch) {
-              return { start: srcPos, end: windowEnd };
+              let start = srcPos;
+              // If the search string carried its own indentation, absorb the
+              // file's indentation as well so the replacement lands flush
+              // rather than double-indented. Horizontal whitespace ONLY —
+              // crossing a newline here is precisely the bug described above.
+              if (searchIndented) {
+                while (start > 0 && (source[start - 1] === ' ' || source[start - 1] === '\t')) start--;
+              }
+              return { start, end: windowEnd, fuzzy: true, occurrences: 1 };
             }
             if (trimmedWindow.length > normSearch.length + 10) break;
           }
-          srcPos++;
         }
         return null;
       }
@@ -244,8 +311,19 @@ export async function executeCodeFunction(name, args) {
         const edit = args.edits[i];
         const match = fuzzyFind(updatedContent, edit.search);
         if (match) {
-          updatedContent = updatedContent.substring(0, match.start) + edit.replace + updatedContent.substring(match.end);
-          applied.push({ index: i, search: edit.search.substring(0, 80) });
+          const replacement = coerceEol(edit.replace ?? '');
+          updatedContent =
+            updatedContent.substring(0, match.start) + replacement + updatedContent.substring(match.end);
+          const entry = { index: i, search: edit.search.substring(0, 80) };
+          // Surface a fuzzy hit so the caller knows the match was approximate
+          // and is worth eyeballing.
+          if (match.fuzzy) entry.fuzzy = true;
+          // Surface ambiguity rather than silently editing the first hit.
+          if (match.occurrences > 1) {
+            entry.occurrences = match.occurrences;
+            entry.note = 'search string is not unique — edited the FIRST occurrence';
+          }
+          applied.push(entry);
         } else {
           failed.push({ index: i, search: edit.search.substring(0, 80), reason: 'Search string not found' });
         }
