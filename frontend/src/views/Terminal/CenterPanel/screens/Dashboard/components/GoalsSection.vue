@@ -857,7 +857,7 @@ export default {
 
 .task-card-meta .goal-priority.medium {
   background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 
 .task-card-meta .goal-priority.high {

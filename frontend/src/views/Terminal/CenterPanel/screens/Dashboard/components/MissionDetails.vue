@@ -537,7 +537,7 @@ export default {
 
 .priority-low {
   background: rgba(107, 114, 128, 0.15);
-  color: #9ca3af;
+  color: var(--color-text-muted);
 }
 
 .objective-actions {
@@ -716,7 +716,7 @@ export default {
 
 .status-badge.status-pending, .status-badge.status-new, .status-badge.status-unknown {
   background: rgba(107, 114, 128, 0.15);
-  color: #9ca3af;
+  color: var(--color-text-muted);
   border: 1px solid rgba(107, 114, 128, 0.3);
 }
 

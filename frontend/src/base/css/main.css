@@ -752,7 +752,7 @@ ol li:last-child {
 }
 
 .modal-close-btn {
-  color: #aaa;
+  color: var(--color-text-muted);
   float: right;
   font-size: 28px;
   font-weight: bold;
@@ -930,7 +930,7 @@ span.hljs-built_in {
 }
 
 span.hljs-number {
-  color: #19ef83;
+  color: var(--color-green);
 }
 
 mjx-container {

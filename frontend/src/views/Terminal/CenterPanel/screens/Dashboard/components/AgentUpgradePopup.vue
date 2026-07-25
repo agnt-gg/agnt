@@ -361,7 +361,7 @@ export default {
 .skill-icon-dashboard {
   font-size: 24px; /* Adjusted size */
   margin-bottom: 10px; /* Adjusted margin */
-  color: var(--color-duller-navy, #3e405a); /* Default icon color */
+  color: var(--color-text-muted); /* Default icon color */
 }
 .skill-node-dashboard.available-dashboard .skill-icon-dashboard {
   color: var(--color-blue, #12e0ff); /* Blue for available */

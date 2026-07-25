@@ -201,11 +201,11 @@ defineEmits(['click', 'delete', 'run']);
 }
 .status-badge.planned {
   background: rgba(150, 150, 150, 0.15);
-  color: #999;
+  color: var(--color-text-muted);
 }
 .status-badge.running {
   background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  color: var(--status-blue-text);
 }
 .status-badge.completed {
   background: rgba(var(--green-rgb), 0.15);
@@ -213,7 +213,7 @@ defineEmits(['click', 'delete', 'run']);
 }
 .status-badge.failed {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--color-red);
 }
 .delta-badge {
   padding: 2px 8px;
@@ -227,7 +227,7 @@ defineEmits(['click', 'delete', 'run']);
 }
 .delta-badge.negative {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--color-red);
 }
 .decision-badge {
   padding: 2px 8px;
@@ -242,10 +242,10 @@ defineEmits(['click', 'delete', 'run']);
 }
 .decision-badge.discard {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--color-red);
 }
 .decision-badge.iterate {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 </style>

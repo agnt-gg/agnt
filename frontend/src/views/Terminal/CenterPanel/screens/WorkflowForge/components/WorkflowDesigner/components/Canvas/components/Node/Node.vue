@@ -884,7 +884,7 @@ body.dark .node.has-output {
 
 .node.has-error {
   border: 2px solid var(--color-red);
-  /* color: #FE4E4E; */
+  /* color: var(--color-red); */
   animation: breathe-shadow 1.25s ease-in-out infinite;
   border-color: var(--color-red);
 }
@@ -962,7 +962,7 @@ body.dark .node.has-error.has-output {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #6c757d;
+  color: var(--color-text-muted);
   gap: 8px;
   font-size: 14px;
   text-align: center;

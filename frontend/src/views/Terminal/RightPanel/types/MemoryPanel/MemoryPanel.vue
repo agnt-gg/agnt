@@ -182,14 +182,14 @@ export default {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.type-badge.fact { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-.type-badge.preference { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
-.type-badge.correction { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-.type-badge.context { background: rgba(107, 114, 128, 0.15); color: #9ca3af; }
-.type-badge.pattern { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-.type-badge.tool_insight { background: rgba(236, 72, 153, 0.15); color: #ec4899; }
-.type-badge.workflow_insight { background: rgba(14, 165, 233, 0.15); color: #0ea5e9; }
-.type-badge.prompt_guidance { background: rgba(250, 204, 21, 0.15); color: #facc15; }
+.type-badge.fact { background: rgba(59, 130, 246, 0.15); color: var(--status-blue-text); }
+.type-badge.preference { background: rgba(168, 85, 247, 0.15); color: var(--status-purple-text); }
+.type-badge.correction { background: rgba(245, 158, 11, 0.15); color: var(--status-amber-text); }
+.type-badge.context { background: rgba(107, 114, 128, 0.15); color: var(--color-text-muted); }
+.type-badge.pattern { background: rgba(34, 197, 94, 0.15); color: var(--status-green-text); }
+.type-badge.tool_insight { background: rgba(236, 72, 153, 0.15); color: var(--color-pink); }
+.type-badge.workflow_insight { background: rgba(14, 165, 233, 0.15); color: var(--status-blue-text); }
+.type-badge.prompt_guidance { background: rgba(250, 204, 21, 0.15); color: var(--status-yellow-text); }
 
 /* Detail grid */
 .detail-grid {
@@ -221,13 +221,13 @@ export default {
 .detail-value i { font-size: 0.9em; color: var(--color-grey); }
 
 /* Type colors in detail */
-.type-val.fact { color: #3b82f6; }
-.type-val.preference { color: #a855f7; }
-.type-val.correction { color: #f59e0b; }
-.type-val.pattern { color: #22c55e; }
-.type-val.tool_insight { color: #ec4899; }
-.type-val.workflow_insight { color: #0ea5e9; }
-.type-val.prompt_guidance { color: #facc15; }
+.type-val.fact { color: var(--status-blue-text); }
+.type-val.preference { color: var(--status-purple-text); }
+.type-val.correction { color: var(--status-amber-text); }
+.type-val.pattern { color: var(--status-green-text); }
+.type-val.tool_insight { color: var(--color-pink); }
+.type-val.workflow_insight { color: var(--status-blue-text); }
+.type-val.prompt_guidance { color: var(--status-yellow-text); }
 
 /* Confidence inline */
 .conf-inline {

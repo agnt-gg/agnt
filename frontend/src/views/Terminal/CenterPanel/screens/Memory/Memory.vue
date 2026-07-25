@@ -513,7 +513,7 @@ onMounted(() => initializeScreen());
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 4px;
-  color: #ef4444;
+  color: var(--color-red);
   cursor: pointer;
   font-size: 0.8em;
   white-space: nowrap;
@@ -571,35 +571,35 @@ onMounted(() => initializeScreen());
 }
 .memory-type-badge.fact {
   background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  color: var(--status-blue-text);
 }
 .memory-type-badge.preference {
   background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
+  color: var(--status-purple-text);
 }
 .memory-type-badge.correction {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 .memory-type-badge.context {
   background: rgba(107, 114, 128, 0.15);
-  color: #9ca3af;
+  color: var(--color-text-muted);
 }
 .memory-type-badge.pattern {
   background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  color: var(--status-green-text);
 }
 .memory-type-badge.tool_insight {
   background: rgba(236, 72, 153, 0.15);
-  color: #ec4899;
+  color: var(--color-pink);
 }
 .memory-type-badge.workflow_insight {
   background: rgba(14, 165, 233, 0.15);
-  color: #0ea5e9;
+  color: var(--status-blue-text);
 }
 .memory-type-badge.prompt_guidance {
   background: rgba(250, 204, 21, 0.15);
-  color: #facc15;
+  color: var(--status-yellow-text);
 }
 
 .memory-agent {
@@ -664,7 +664,7 @@ onMounted(() => initializeScreen());
   border-color: rgba(var(--green-rgb), 0.3);
 }
 .mem-btn.delete:hover {
-  color: #ef4444;
+  color: var(--color-red);
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.3);
 }

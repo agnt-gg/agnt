@@ -323,7 +323,7 @@ body[data-page='terminal-agent-forge'] .field-group.model-selector {
 }
 
 .custom-select .option.disabled {
-  color: #999;
+  color: var(--color-text-muted);
   font-style: italic;
 }
 </style>

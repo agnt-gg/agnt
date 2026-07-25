@@ -1012,7 +1012,7 @@ onMounted(() => initializeScreen());
 }
 .tab-count.has-pending {
   background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 
 /* Insights stats bar */
@@ -1039,9 +1039,9 @@ onMounted(() => initializeScreen());
   font-weight: 600;
   color: var(--color-text);
 }
-.stat-num.pending-num { color: #f59e0b; }
+.stat-num.pending-num { color: var(--status-amber-text); }
 .stat-num.applied-num { color: var(--color-green); }
-.stat-num.rejected-num { color: #ef4444; }
+.stat-num.rejected-num { color: var(--color-red); }
 .stat-txt {
   color: var(--color-grey);
   font-size: 0.9em;
@@ -1110,10 +1110,10 @@ onMounted(() => initializeScreen());
   font-weight: 500;
 }
 .ins-value.delta-positive { color: var(--color-green); }
-.ins-value.delta-negative { color: #ef4444; }
+.ins-value.delta-negative { color: var(--color-red); }
 .ins-value.decision.keep { color: var(--color-green); }
-.ins-value.decision.discard { color: #ef4444; }
-.ins-value.decision.iterate { color: #f59e0b; }
+.ins-value.decision.discard { color: var(--color-red); }
+.ins-value.decision.iterate { color: var(--status-amber-text); }
 .ins-hypothesis {
   flex: 1;
   min-width: 0;
@@ -1192,11 +1192,11 @@ onMounted(() => initializeScreen());
   text-transform: capitalize;
 }
 .type-badge.pattern { background: rgba(var(--green-rgb), 0.1); color: var(--color-green); }
-.type-badge.antipattern { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-.type-badge.prompt_refinement { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
-.type-badge.skill_recommendation { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.type-badge.memory { background: rgba(236, 72, 153, 0.1); color: #ec4899; }
-.type-badge.bottleneck { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.type-badge.antipattern { background: rgba(239, 68, 68, 0.1); color: var(--color-red); }
+.type-badge.prompt_refinement { background: rgba(168, 85, 247, 0.1); color: var(--status-purple-text); }
+.type-badge.skill_recommendation { background: rgba(59, 130, 246, 0.1); color: var(--status-blue-text); }
+.type-badge.memory { background: rgba(236, 72, 153, 0.1); color: var(--color-pink); }
+.type-badge.bottleneck { background: rgba(245, 158, 11, 0.1); color: var(--status-amber-text); }
 .type-badge.parameter_tune { background: rgba(20, 184, 166, 0.1); color: #14b8a6; }
 .type-badge.tool_preference { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
 .target-chip-sm {
@@ -1245,7 +1245,7 @@ onMounted(() => initializeScreen());
   transition: all 0.15s;
 }
 .row-btn.apply:hover { color: var(--color-green); background: rgba(var(--green-rgb), 0.1); border-color: rgba(var(--green-rgb), 0.3); }
-.row-btn.reject:hover { color: #f59e0b; background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.3); }
+.row-btn.reject:hover { color: var(--status-amber-text); background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.3); }
 
 .status-badge {
   padding: 2px 8px;
@@ -1253,16 +1253,16 @@ onMounted(() => initializeScreen());
   font-size: 0.8em;
   font-weight: 500;
 }
-.status-badge.planned { background: rgba(150,150,150,0.15); color: #999; }
-.status-badge.running { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.status-badge.planned { background: rgba(150,150,150,0.15); color: var(--color-text-muted); }
+.status-badge.running { background: rgba(59,130,246,0.15); color: var(--status-blue-text); }
 .status-badge.completed { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
-.status-badge.failed { background: rgba(239,68,68,0.15); color: #ef4444; }
-.status-badge.pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.status-badge.failed { background: rgba(239,68,68,0.15); color: var(--color-red); }
+.status-badge.pending { background: rgba(245, 158, 11, 0.15); color: var(--status-amber-text); }
 .status-badge.applied { background: rgba(var(--green-rgb), 0.15); color: var(--color-green); }
-.status-badge.rejected { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-.status-badge.superseded { background: rgba(150, 150, 150, 0.15); color: #999; }
+.status-badge.rejected { background: rgba(239, 68, 68, 0.15); color: var(--color-red); }
+.status-badge.superseded { background: rgba(150, 150, 150, 0.15); color: var(--color-text-muted); }
 .delta-positive { color: var(--color-green); font-weight: 500; }
-.delta-negative { color: #ef4444; font-weight: 500; }
+.delta-negative { color: var(--color-red); font-weight: 500; }
 
 /* Empty State */
 .empty-state-container {

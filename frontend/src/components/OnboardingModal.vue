@@ -876,7 +876,12 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--color-popup);
+  /* --color-popup is a SURFACE token for dropdowns/popovers; in light mode it
+     is rgba(255,255,255,0.98), so using it as a backdrop produced a white
+     wash over a white app — no scrim, and the modal read as a card that had
+     landed in the wrong place rather than a layer above. */
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;

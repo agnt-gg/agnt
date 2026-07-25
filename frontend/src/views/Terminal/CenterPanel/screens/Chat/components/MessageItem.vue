@@ -3341,7 +3341,7 @@ span.nodeLabel p {
 
 .message-time {
   font-size: 0.7em;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
   margin-top: 8px;
   display: block;
   padding: 0 4px;
@@ -3443,7 +3443,7 @@ span.nodeLabel p {
 .error-label {
   font-size: 0.75em;
   font-weight: 500;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;
@@ -4634,7 +4634,7 @@ span.nodeLabel p {
 }
 
 .share-form-field input::placeholder {
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
 }
 
 .share-form-actions {

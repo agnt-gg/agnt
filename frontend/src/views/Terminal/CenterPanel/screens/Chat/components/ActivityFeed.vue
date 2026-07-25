@@ -221,7 +221,7 @@ export default {
 
 .activity-timestamp {
   font-size: 0.65em;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
   font-family: var(--font-family-mono);
   flex-shrink: 0;
   min-width: 60px;
@@ -262,7 +262,7 @@ export default {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
 }
 
 .empty-icon {

@@ -113,7 +113,7 @@ button.copy-button {
 }
 
 .modal-close-btn {
-  color: #aaa;
+  color: var(--color-text-muted);
   float: right;
   font-size: 28px;
   font-weight: bold;

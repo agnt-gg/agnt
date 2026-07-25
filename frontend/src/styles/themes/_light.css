@@ -13,7 +13,10 @@ body:not(.dark):not(.rose) {
      In light mode they must map to light backgrounds / dark text. */
   --color-black-navy: #f1f0f5; /* was #070710 - now matches background */
   --color-ultra-dark-navy: #ffffff; /* was #0b0b17 - now white surfaces */
-  --color-dark-navy: #eeedf3; /* was #10101f - now subtle off-white */
+  --color-dark-navy: #ffffff; /* was #10101f. RAISED SURFACE: cards/panels sit
+     above the tinted canvas. Previously #eeedf3, which is 2.4 L* from the
+     #f1f0f5 background — an invisible step, and inverted (panels darker than
+     the page) because that is how dark themes express elevation. */
   --color-navy: #ffffff; /* was #131322 - now white */
   --color-dull-navy: #d0d0dd; /* was #1f1f2f - now border-like */
   --color-duller-navy: #b0b0c0; /* was #3e405a - now medium gray */
@@ -27,23 +30,32 @@ body:not(.dark):not(.rose) {
 
   /* Text hierarchy - dark text on light backgrounds */
   --color-text: #2a2a3a;
-  --color-text-muted: #6b6b80;
-  --color-text-secondary: #6b6b80;
-  --color-text-dull: #9b9bab;
-
-  /* Accent colors - slightly deeper for light backgrounds */
-  --color-green: #15c870;
-  --color-blue: #0ea5c8;
-  --color-red: #dc3c3c;
-  --color-orange: #d47800;
-  --color-yellow: #c8a800;
-  --color-indigo: #6d35c8;
-  --color-violet: #b035c8;
-  --color-pink: #d03580;
-  --color-primary: #d03580;
-  --color-secondary: #0ea5c8;
-  --svg-gradient-start: #d03580;
-  --svg-gradient-end: #0ea5c8;
+  --color-text-muted: #5c5c72; /* a11y: 4.58:1 -> 5.74:1 for 12px secondary text */  --color-text-secondary: #6b6b80; /* a11y: 4.58:1 */
+  /* a11y: was #9b9bab = 2.41:1, the single largest source of contrast failures
+     (used for metadata, badges and timestamps app-wide). On a #f1f0f5 canvas
+     the lightest possible AA-passing text is L*=15.6, so a genuinely lighter
+     4th tier cannot exist — this is now the FLOOR, and "quieter" must be
+     expressed with size/weight/whitespace rather than less contrast. */
+  --color-text-dull: #6d6d78; /* 2.41:1 -> 4.51:1 */  /* Accent colors — re-derived for a light substrate rather than nudged.
+     Each is the original hue darkened until it clears 4.5:1 on the canvas,
+     so status text is legible without changing the palette's identity.
+     Ratios are vs --color-background #f1f0f5. */
+  --color-green: #0d7e47; /* was #15c870  1.94:1 -> 4.53:1 */
+  --color-blue: #0a7892; /* was #0ea5c8  2.56:1 -> 4.50:1 */
+  --color-red: #ca3737; /* was #dc3c3c  3.90:1 -> 4.50:1 */
+  --color-orange: #a35c00; /* was #d47800  2.86:1 -> 4.53:1 */
+  --color-yellow: #806c00; /* was #c8a800  2.05:1 -> 4.56:1 */
+  --color-indigo: #6d35c8; /* 6.19:1 — already passing */
+  --color-violet: #ae34c6; /* was #b035c8  4.42:1 -> 4.51:1 */
+  /* Brand pink is used BOTH as a fill (white label on it) and as text/links.
+     #d03580 was 4.11:1 as text — i.e. every pink label failed AA by
+     construction. #c43278 is an imperceptible darkening that passes both
+     directions: 4.55:1 as text, 5.15:1 for a white label on it. */
+  --color-pink: #c43278;
+  --color-primary: #c43278; /* was #d03580 */
+  --color-secondary: #0a7892; /* was #0ea5c8 */
+  --svg-gradient-start: #c43278;
+  --svg-gradient-end: #0a7892;
   --color-light-green: #2a2a3a;
 
   /* Popup/dropdown backgrounds - MUST be light for light mode */
@@ -75,16 +87,17 @@ body:not(.dark):not(.rose) {
   --terminal-border-color-light: #e2e2ec;
   --terminal-screen-lines: 0.125;
   --terminal-box-shadow: none;
-  --terminal-muted-color: #9b9bab;
-
-  /* RGB components */
-  --green-rgb: 25, 200, 100;
-  --blue-rgb: 18, 180, 220;
-  --pink-rgb: 229, 61, 143;
-  --red-rgb: 220, 60, 60;
-  --yellow-rgb: 200, 170, 0;
-  --indigo-rgb: 125, 61, 229;
-  --primary-rgb: 229, 61, 143;
+  --terminal-muted-color: #6d6d78; /* a11y: 2.41:1 -> 4.51:1 */  /* RGB components — these were still carrying DARK-theme values (e.g.
+     --primary-rgb was #e53d8f while --color-primary was #d03580), so every
+     rgba() tint derived from them was mixed from the wrong hue. Now matched
+     to the light values above. */
+  --green-rgb: 13, 126, 71; /* #0d7e47 */
+  --blue-rgb: 10, 120, 146; /* #0a7892 */
+  --pink-rgb: 196, 50, 120; /* #c43278 */
+  --red-rgb: 202, 55, 55; /* #ca3737 */
+  --yellow-rgb: 128, 108, 0; /* #806c00 */
+  --indigo-rgb: 109, 53, 200; /* #6d35c8 */
+  --primary-rgb: 196, 50, 120; /* #c43278 */
 
   /* Soft blue tint for user-authored chat messages in light mode */
   --user-message-bg: rgba(var(--blue-rgb), 0.05);
@@ -201,8 +214,10 @@ body:not(.dark) input[type='color'],
 body:not(.dark) textarea,
 body:not(.dark) select {
   color: var(--color-text);
-  background-color: transparent;
-  border-color: var(--terminal-border-color);
+  /* Was `transparent`, which let the grey panel show through so every field
+     read as DISABLED. A light-mode input needs a white fill + a real border. */
+  background-color: var(--surface-raised);
+  border-color: var(--border-strong);
 }
 
 body:not(.dark) input[type='text']:focus,
@@ -211,12 +226,15 @@ body:not(.dark) textarea:focus,
 body:not(.dark) select:focus {
   outline: none;
   border: 1px solid var(--color-primary);
+  box-shadow: var(--focus-ring);
 }
 
 body:not(.dark) input::placeholder,
 body:not(.dark) textarea::placeholder {
-  color: var(--color-text-muted);
-  opacity: 0.6;
+  /* opacity:0.6 on a 5.74:1 token landed around 2.6:1. The token is already
+     the muted step — dimming it again is what broke it. */
+  color: var(--color-text-dull);
+  opacity: 1;
 }
 
 /* ═══════════════════ TABLES ═══════════════════ */
@@ -226,14 +244,16 @@ body:not(.dark) table {
 }
 
 body:not(.dark) th {
-  color: var(--color-darker-1);
+  /* Was --color-darker-1 = rgba(100,100,140,0.05): a 5%-alpha OVERLAY token
+     used as a text colour, so table headers rendered at roughly 1.05:1. */
+  color: var(--color-text);
   background: rgba(100, 100, 140, 0.06);
   border-bottom: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }
 
 body:not(.dark) td {
-  background: var(--color-darker-0);
+  background: var(--surface-raised);
   border-bottom: 1px solid var(--terminal-border-color);
   border-right: 1px solid var(--terminal-border-color);
 }
@@ -245,7 +265,7 @@ body:not(.dark) tr:last-child {
 /* ═══════════════════ PANELS & CONTAINERS ═══════════════════ */
 
 body:not(.dark) .panel-body {
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--terminal-border-color);
 }
 
@@ -288,7 +308,7 @@ body:not(.dark) #editor-panel {
 /* ═══════════════════ MODALS ═══════════════════ */
 
 body:not(.dark) .modal-content {
-  background-color: #ffffff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--terminal-border-color);
 }
 

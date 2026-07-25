@@ -142,14 +142,14 @@ const truncate = (text, max) => safeTruncate(text, max, '...');
   flex-shrink: 0;
 }
 .card-icon.pattern { background: rgba(var(--green-rgb), 0.15); color: var(--color-green); }
-.card-icon.antipattern { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-.card-icon.prompt_refinement { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
-.card-icon.skill_recommendation { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-.card-icon.memory { background: rgba(236, 72, 153, 0.15); color: #ec4899; }
-.card-icon.bottleneck { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.card-icon.antipattern { background: rgba(239, 68, 68, 0.15); color: var(--color-red); }
+.card-icon.prompt_refinement { background: rgba(168, 85, 247, 0.15); color: var(--status-purple-text); }
+.card-icon.skill_recommendation { background: rgba(59, 130, 246, 0.15); color: var(--status-blue-text); }
+.card-icon.memory { background: rgba(236, 72, 153, 0.15); color: var(--color-pink); }
+.card-icon.bottleneck { background: rgba(245, 158, 11, 0.15); color: var(--status-amber-text); }
 .card-icon.parameter_tune { background: rgba(20, 184, 166, 0.15); color: #14b8a6; }
 .card-icon.tool_preference { background: rgba(99, 102, 241, 0.15); color: #6366f1; }
-.card-icon.default { background: rgba(150, 150, 150, 0.15); color: #999; }
+.card-icon.default { background: rgba(150, 150, 150, 0.15); color: var(--color-text-muted); }
 
 .card-title-block {
   flex: 1;
@@ -196,7 +196,7 @@ const truncate = (text, max) => safeTruncate(text, max, '...');
 }
 .card-btn:hover { color: var(--color-text); background: rgba(var(--green-rgb), 0.2); }
 .card-btn.apply:hover { color: var(--color-green); border-color: rgba(var(--green-rgb), 0.4); background: rgba(var(--green-rgb), 0.15); }
-.card-btn.reject:hover { color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.1); }
+.card-btn.reject:hover { color: var(--status-amber-text); border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.1); }
 .card-btn.delete:hover { color: var(--color-red); border-color: rgba(255, 77, 79, 0.3); background: rgba(255, 77, 79, 0.1); }
 
 /* Description */
@@ -270,10 +270,10 @@ const truncate = (text, max) => safeTruncate(text, max, '...');
   font-size: 0.75em;
   font-weight: 500;
 }
-.status-badge.pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.status-badge.pending { background: rgba(245, 158, 11, 0.15); color: var(--status-amber-text); }
 .status-badge.applied { background: rgba(var(--green-rgb), 0.15); color: var(--color-green); }
-.status-badge.rejected { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-.status-badge.superseded { background: rgba(150, 150, 150, 0.15); color: #999; }
+.status-badge.rejected { background: rgba(239, 68, 68, 0.15); color: var(--color-red); }
+.status-badge.superseded { background: rgba(150, 150, 150, 0.15); color: var(--color-text-muted); }
 
 .source-badge, .target-badge {
   padding: 2px 8px;
@@ -288,10 +288,10 @@ const truncate = (text, max) => safeTruncate(text, max, '...');
   background: rgba(var(--primary-rgb), 0.1);
   color: var(--color-primary);
 }
-.source-badge.agent_chat { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.source-badge.agent_chat { background: rgba(59, 130, 246, 0.1); color: var(--status-blue-text); }
 .source-badge.goal { background: rgba(var(--green-rgb), 0.1); color: var(--color-green); }
-.source-badge.workflow { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
-.source-badge.tool_call { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.source-badge.workflow { background: rgba(168, 85, 247, 0.1); color: var(--status-purple-text); }
+.source-badge.tool_call { background: rgba(245, 158, 11, 0.1); color: var(--status-amber-text); }
 .target-badge {
   background: rgba(150, 150, 150, 0.1);
   color: var(--color-grey);

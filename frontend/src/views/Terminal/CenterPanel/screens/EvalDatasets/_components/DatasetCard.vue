@@ -188,19 +188,19 @@ const formatDate = (d) => {
 }
 .source-badge.synthetic {
   background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
+  color: var(--status-purple-text);
 }
 .source-badge.historical {
   background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  color: var(--status-blue-text);
 }
 .source-badge.golden {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 .source-badge.manual {
   background: rgba(150, 150, 150, 0.15);
-  color: #999;
+  color: var(--color-text-muted);
 }
 .card-date {
   font-size: 0.75em;

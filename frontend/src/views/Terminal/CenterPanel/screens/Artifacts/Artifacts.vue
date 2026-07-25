@@ -3580,7 +3580,7 @@ export default {
   border-color: var(--color-green);
 }
 .share-form-field input::placeholder {
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
 }
 .share-form-actions {
   display: flex;

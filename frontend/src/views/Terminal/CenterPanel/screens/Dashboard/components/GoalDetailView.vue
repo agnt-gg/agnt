@@ -381,7 +381,7 @@ export default {
 }
 
 .status-value.priority.medium {
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 
 .status-value.priority.high {

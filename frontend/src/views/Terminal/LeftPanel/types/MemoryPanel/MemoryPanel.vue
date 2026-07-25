@@ -345,10 +345,10 @@ export default {
 }
 
 .action-button.danger {
-  color: #ef4444;
+  color: var(--color-red);
 }
 .action-button.danger i {
-  color: #ef4444;
+  color: var(--color-red);
 }
 .action-button.danger:hover {
   background: rgba(239, 68, 68, 0.1);

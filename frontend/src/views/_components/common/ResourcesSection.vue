@@ -539,7 +539,7 @@ export default {
 .section-title {
   font-size: 0.75em;
   font-weight: 500;
-  color: var(--color-duller-navy);
+  color: var(--color-text-muted);
   letter-spacing: 0.2em;
   margin-bottom: 16px;
   font-family: var(--font-family-primary);
@@ -857,19 +857,19 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 }
 
 .status-planned {
-  color: #12e0ff;
+  color: var(--color-blue);
   border-color: rgba(18, 224, 255, 0.4);
   background: rgba(18, 224, 255, 0.08);
 }
 
 .status-in_progress {
-  color: #ffd700;
+  color: var(--color-yellow);
   border-color: rgba(255, 215, 0, 0.4);
   background: rgba(255, 215, 0, 0.08);
 }
 
 .status-completed {
-  color: #19ef83;
+  color: var(--color-green);
   border-color: rgba(25, 239, 131, 0.4);
   background: rgba(25, 239, 131, 0.08);
 }
@@ -934,7 +934,7 @@ body:not(.dark):not(.rose) button.resource-link.resource-button:hover {
 .admin-response-header {
   font-size: 0.75em;
   font-weight: 700;
-  color: #12e0ff;
+  color: var(--color-blue);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;

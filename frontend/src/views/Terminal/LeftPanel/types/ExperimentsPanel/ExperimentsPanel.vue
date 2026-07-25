@@ -164,7 +164,7 @@ export default {
 }
 
 .stat-item.pending-badge {
-  color: #f59e0b;
+  color: var(--status-amber-text);
   opacity: 1;
   font-weight: 600;
 }
@@ -211,7 +211,7 @@ export default {
   margin-bottom: 4px;
 }
 
-.stat-value.pending-val { color: #f59e0b; }
+.stat-value.pending-val { color: var(--status-amber-text); }
 .stat-value.applied-val { color: var(--color-green); }
 
 .stat-label {

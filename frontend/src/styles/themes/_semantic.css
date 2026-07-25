@@ -1,0 +1,154 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SEMANTIC TOKEN LAYER
+   ───────────────────────────────────────────────────────────────────────────
+   WHY THIS FILE EXISTS
+
+   The base scale in _variables.css is named for DARK surfaces
+   (--color-navy, --color-dull-white, --color-black-navy). Each light theme
+   then reassigns those same variables to opposite values, so in light mode
+   --color-dull-white resolves to #2a2a3a (near-black) and --color-navy to
+   #ffffff. 11 of 14 base surface variables have names that contradict their
+   light-mode values.
+
+   Any component that used one of those as a `background` silently inverts.
+   That is exactly how the /docs page ended up painting #2a2a3a text on a
+   #2a2a3a panel (1.00:1 — invisible body copy).
+
+   These tokens are named for their ROLE, not their colour, so they mean the
+   same thing in every theme and cannot invert. New components should consume
+   these; the legacy scale stays in place so nothing breaks.
+
+   Loaded AFTER every theme file so equal-specificity ties resolve here.
+
+   Selector convention (matches the rest of the codebase):
+     body:not(.dark)  → light + rose   (rose gets .rose only)
+     body.dark        → dark, cyberpunk, midnight, ember, nord, hacker
+                        (theme.js adds .dark alongside the theme name)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Defaults: dark-appropriate, so an unstyled/unknown theme degrades to the
+      values the app already shipped with. ─────────────────────────────────── */
+:root {
+  --surface-canvas: var(--color-black-navy);
+  --surface-raised: var(--color-navy);
+  --surface-sunken: var(--color-ultra-dark-navy);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-active: rgba(255, 255, 255, 0.09);
+
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-muted);
+  --text-quaternary: var(--color-text-dull);
+  --text-on-fill: #ffffff;
+
+  --border-subtle: var(--terminal-border-color);
+  --border-strong: var(--color-duller-navy);
+
+  --shadow-xs: none;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 24px 48px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  --focus-ring: 0 0 0 2px var(--surface-canvas), 0 0 0 4px var(--color-primary);
+
+  /* Status hues used by badges/charts across ~22 screens. The defaults are the
+     original Tailwind-500 values, so dark mode renders exactly as before. */
+  --status-blue-text: #3b82f6;
+  --status-purple-text: #a855f7;
+  --status-amber-text: #f59e0b;
+  --status-green-text: #22c55e;
+  --status-yellow-text: #facc15;
+}
+
+/* ── LIGHT + ROSE ─────────────────────────────────────────────────────────── */
+body:not(.dark) {
+  /* A real 3-tier elevation ladder. Light UI expresses depth with shadow plus
+     a tinted canvas; dark UI expresses it by LIGHTENING the surface, which is
+     why the inverted theme leaned entirely on borders. That habit does not
+     transfer — hence 10,407 borders currently painted the same colour as the
+     page background, doing no work at all. */
+  --surface-canvas: var(--color-background); /* tinted page background   */
+  --surface-raised: #ffffff; /* cards, panels, popovers  */
+  --surface-sunken: var(--color-ultra-light-navy); /* wells, tracks, code      */
+  --surface-hover: rgba(16, 24, 40, 0.04);
+  --surface-active: rgba(16, 24, 40, 0.07);
+
+  --text-primary: var(--color-text); /* #2a2a3a  12.43:1 */
+  --text-secondary: var(--color-text-muted); /* #5c5c72   5.74:1 */
+  --text-tertiary: var(--color-text-secondary); /* #6b6b80   4.58:1 */
+  --text-quaternary: var(--color-text-dull); /* #6d6d78   4.51:1 — AA floor */
+  --text-on-fill: #ffffff;
+
+  --border-subtle: var(--terminal-border-color);
+  --border-strong: #87898e; /* 3.50:1 on white — meets WCAG 1.4.11 */
+
+  /* Replaces the 194 coloured `0 0 8px` glow shadows, which are a dark-mode
+     neon idiom that reads as a smudge on white rather than as lift. */
+  /* Two-layer: a tight contact shadow plus a wider ambient one. A single
+     large-blur shadow reads as fog on white rather than as lift. */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.07), 0 2px 6px -1px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 2px 4px -2px rgba(16, 24, 40, 0.06), 0 4px 8px -2px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 4px 6px -2px rgba(16, 24, 40, 0.05), 0 12px 16px -4px rgba(16, 24, 40, 0.1);
+  --shadow-overlay: 0 8px 8px -4px rgba(16, 24, 40, 0.04), 0 20px 24px -4px rgba(16, 24, 40, 0.14);
+  --scrim: rgba(16, 24, 40, 0.45);
+
+  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px var(--color-primary);
+
+  /* Re-derived for a light substrate. The Tailwind-500 defaults above measured
+     1.30:1 – 3.13:1 against their own tinted badge backgrounds; these clear
+     4.5:1 on the badge tint, the canvas and white alike. */
+  --status-blue-text: #2d64bd; /* was #3b82f6  2.92:1 → 4.54:1 */
+  --status-purple-text: #8644c6; /* was #a855f7  3.13:1 → 4.54:1 */
+  --status-amber-text: #915d06; /* was #f59e0b  1.77:1 → 4.60:1 */
+  --status-green-text: #157839; /* was #22c55e  1.86:1 → 4.55:1 */
+  --status-yellow-text: #80680b; /* was #facc15  1.30:1 → 4.57:1 */
+}
+
+/* ── DARK FAMILY ──────────────────────────────────────────────────────────── */
+body.dark {
+  --surface-canvas: var(--color-black-navy);
+  --surface-raised: var(--color-navy);
+  --surface-sunken: var(--color-ultra-dark-navy);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-active: rgba(255, 255, 255, 0.09);
+
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-muted);
+  --text-quaternary: var(--color-text-dull);
+
+  --border-subtle: var(--terminal-border-color);
+  --border-strong: var(--color-duller-navy);
+}
+
+/* ═══════════════════ ELEVATION (light only) ═══════════════════
+   Applied to the container primitives that already opt into a white surface
+   in _light.css, so cards read as raised instead of coplanar. Scoped tightly —
+   no new global class names are introduced. */
+
+body:not(.dark) .panel-body,
+body:not(.dark) inner-editor-area,
+body:not(.dark) div#saved-templates,
+body:not(.dark) div#saved-outputs {
+  box-shadow: var(--shadow-xs);
+}
+
+body:not(.dark) .modal-content {
+  box-shadow: var(--shadow-overlay);
+}
+
+/* Modals need a real backdrop. Without one they read as a card that landed in
+   the wrong place rather than a layer above the app. */
+body:not(.dark) .modal-overlay {
+  background: var(--scrim);
+}
+
+/* The app has ~16 distinct overlay class names. These are the backdrop ones
+   that were resolving to a light surface token instead of a scrim. */
+body:not(.dark) .modal-backdrop,
+body:not(.dark) .dialog-overlay {
+  background: var(--scrim);
+}

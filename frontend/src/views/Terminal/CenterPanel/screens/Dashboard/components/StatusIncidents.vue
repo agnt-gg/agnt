@@ -178,7 +178,7 @@ export default {
 }
 
 .status-monitoring {
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 
 .status-error {

@@ -2442,7 +2442,7 @@ body.dark .right-side .node-icon svg rect[fill] {
 }
 
 .ͼv {
-  /* color: #19EF83; */
+  /* color: var(--color-green); */
   color: var(--color-dull-white);
 }
 

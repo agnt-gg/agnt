@@ -65,7 +65,7 @@ body.rose {
 
   /* Text */
   --color-text: #3a2828;
-  --color-text-muted: #887070;
+  --color-text-muted: #75605f; /* a11y: lift small muted text above the AA floor */
   --color-text-secondary: #887070;
   --color-text-dull: #e8d8d8;
 

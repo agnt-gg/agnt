@@ -159,7 +159,7 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #6c757d;
+  color: var(--color-text-muted);
   gap: 8px;
   font-size: 14px;
   text-align: center;

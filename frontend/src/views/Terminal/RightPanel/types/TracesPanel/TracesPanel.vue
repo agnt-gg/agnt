@@ -2418,12 +2418,12 @@ ${execution.log}
   gap: 6px;
 }
 .insights-section h4 i {
-  color: #f59e0b;
+  color: var(--status-amber-text);
   font-size: 0.9em;
 }
 .insight-count {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: var(--status-amber-text);
   font-size: 0.75em;
   padding: 1px 6px;
   border-radius: 8px;
@@ -2479,10 +2479,10 @@ ${execution.log}
   text-transform: capitalize;
   font-weight: 500;
 }
-.insight-status-badge.pending { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.insight-status-badge.pending { background: rgba(245,158,11,0.15); color: var(--status-amber-text); }
 .insight-status-badge.applied { background: rgba(var(--green-rgb),0.15); color: var(--color-green); }
-.insight-status-badge.rejected { background: rgba(239,68,68,0.15); color: #ef4444; }
-.insight-status-badge.superseded { background: rgba(150,150,150,0.15); color: #999; }
+.insight-status-badge.rejected { background: rgba(239,68,68,0.15); color: var(--color-red); }
+.insight-status-badge.superseded { background: rgba(150,150,150,0.15); color: var(--color-text-muted); }
 .insight-confidence {
   font-size: 0.7em;
   color: var(--color-grey);

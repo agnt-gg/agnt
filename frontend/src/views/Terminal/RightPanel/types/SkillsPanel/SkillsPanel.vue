@@ -196,7 +196,7 @@ export default {
   gap: 6px;
 }
 .readonly-note i {
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 
 .panel-section {

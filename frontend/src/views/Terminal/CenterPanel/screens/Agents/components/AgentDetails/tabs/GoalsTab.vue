@@ -408,7 +408,7 @@ h4.section-title {
 
 .goal-status.planning {
   background: rgba(108, 117, 125, 0.2);
-  color: #6c757d;
+  color: var(--color-text-muted);
 }
 
 .goal-status.executing {
@@ -448,7 +448,7 @@ h4.section-title {
 
 .goal-priority.low {
   background: rgba(108, 117, 125, 0.2);
-  color: #6c757d;
+  color: var(--color-text-muted);
 }
 
 .goal-priority.medium {

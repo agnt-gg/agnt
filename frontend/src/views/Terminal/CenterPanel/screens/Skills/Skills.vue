@@ -193,7 +193,7 @@
             <div class="detail-meta">
               <span><strong>Source:</strong> {{ selectedDiscoveredSkill.scope }} / {{ selectedDiscoveredSkill.client }}</span>
               <span v-if="selectedDiscoveredSkill.trusted"><i class="fas fa-check-circle" style="color: var(--color-green)"></i> Trusted</span>
-              <span v-else><i class="fas fa-exclamation-triangle" style="color: #f59e0b"></i> Untrusted (project-level)</span>
+              <span v-else><i class="fas fa-exclamation-triangle" style="color: var(--status-amber-text)"></i> Untrusted (project-level)</span>
             </div>
           </div>
         </template>
@@ -1164,7 +1164,7 @@ onMounted(() => {
 }
 .source-badge.filesystem {
   background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  color: var(--status-amber-text);
   margin-left: 6px;
 }
 .card-btn.readonly {
@@ -1185,7 +1185,7 @@ onMounted(() => {
 }
 .trust-badge.untrusted {
   background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 .card-btn.import:hover {
   color: var(--color-green);
@@ -1356,7 +1356,7 @@ onMounted(() => {
   color: var(--color-green);
 }
 .lb-metric.negative {
-  color: #ef4444;
+  color: var(--color-red);
 }
 .lb-metric.neutral {
   color: var(--color-grey);
@@ -1402,7 +1402,7 @@ onMounted(() => {
   color: var(--color-green);
 }
 .eval-decision.discarded {
-  color: #ef4444;
+  color: var(--color-red);
 }
 .eval-date {
   font-size: 0.75em;
@@ -1431,7 +1431,7 @@ onMounted(() => {
   color: var(--color-green);
 }
 .metric-value.negative {
-  color: #ef4444;
+  color: var(--color-red);
 }
 .eval-reasoning {
   font-size: 0.8em;

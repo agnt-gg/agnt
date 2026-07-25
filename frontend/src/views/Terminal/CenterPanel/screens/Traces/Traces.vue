@@ -2449,19 +2449,21 @@ ${execution.log}
   font-size: 1em;
 }
 
+/* Tailwind-400 literals measured 2.24:1 – 2.40:1 on the light canvas. The
+   tokens keep the same hue and are theme-aware. */
 .execution-type-badge.agent-badge {
   background: rgba(147, 51, 234, 0.15);
-  color: rgb(167, 139, 250);
+  color: var(--status-purple-text);
 }
 
 .execution-type-badge.goal-badge {
   background: rgba(234, 179, 8, 0.15);
-  color: rgb(250, 204, 21);
+  color: var(--status-yellow-text);
 }
 
 .execution-type-badge.workflow-badge {
   background: rgba(59, 130, 246, 0.15);
-  color: rgb(96, 165, 250);
+  color: var(--status-blue-text);
 }
 
 .status-badges {

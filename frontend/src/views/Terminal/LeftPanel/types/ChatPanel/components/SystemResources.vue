@@ -41,7 +41,7 @@
   .section-title {
     font-size: 0.75em;
     font-weight: 500;
-    color: var(--color-duller-navy);
+    color: var(--color-text-muted);
     letter-spacing: 0.2em;
     margin-bottom: 16px;
     font-family: var(--font-family-primary);

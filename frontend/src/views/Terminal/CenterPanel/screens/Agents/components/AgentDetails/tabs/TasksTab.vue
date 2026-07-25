@@ -427,7 +427,7 @@ select option {
 }
 .task-status-badge.pending {
   background: rgba(108, 117, 125, 0.2);
-  color: #6c757d;
+  color: var(--color-text-muted);
 }
 .task-status-badge.assigned {
   background: rgba(255, 193, 7, 0.2);

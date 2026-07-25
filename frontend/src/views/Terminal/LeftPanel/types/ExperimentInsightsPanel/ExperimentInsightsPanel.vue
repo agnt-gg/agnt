@@ -188,6 +188,6 @@ export default {
 }
 
 .neg {
-  color: #ef4444 !important;
+  color: var(--color-red) !important;
 }
 </style>

@@ -191,11 +191,11 @@ onMounted(() => initializeScreen());
 }
 
 .stat-value.status.planned {
-  color: #999;
+  color: var(--color-text-muted);
 }
 
 .stat-value.status.running {
-  color: #3b82f6;
+  color: var(--status-blue-text);
 }
 
 .stat-value.status.completed {
@@ -223,7 +223,7 @@ onMounted(() => initializeScreen());
 }
 
 .stat-value.decision.iterate {
-  color: #f59e0b;
+  color: var(--status-amber-text);
 }
 
 /* Section Cards */
@@ -295,7 +295,7 @@ onMounted(() => initializeScreen());
 
 .variant-badge.baseline {
   background: rgba(150, 150, 150, 0.15);
-  color: #999;
+  color: var(--color-text-muted);
 }
 
 .variant-badge.mutated {
@@ -305,7 +305,7 @@ onMounted(() => initializeScreen());
 
 .variant-badge.control {
   background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  color: var(--status-blue-text);
 }
 
 .variant-badge.treatment {

@@ -349,12 +349,12 @@ export default {
 
 .gpw-status-badge.completed {
   background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  color: var(--status-green-text);
 }
 
 .gpw-status-badge.error {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .gpw-status-badge.pending {
@@ -439,7 +439,7 @@ export default {
 }
 
 .gpw-task-item.failed {
-  color: #ef4444;
+  color: var(--color-red);
 }
 
 .gpw-task-indicator {
@@ -451,13 +451,13 @@ export default {
 }
 
 .gpw-check {
-  color: #22c55e;
+  color: var(--status-green-text);
   font-size: 12px;
   font-weight: 700;
 }
 
 .gpw-x {
-  color: #ef4444;
+  color: var(--color-red);
   font-size: 12px;
   font-weight: 700;
 }
@@ -522,13 +522,13 @@ export default {
 }
 
 .gpw-score-good {
-  color: #22c55e;
+  color: var(--status-green-text);
 }
 .gpw-score-mid {
   color: #eab308;
 }
 .gpw-score-low {
-  color: #ef4444;
+  color: var(--color-red);
 }
 .gpw-best {
   color: var(--color-accent, #00ff88);
@@ -558,13 +558,13 @@ export default {
 }
 
 .gpw-completed {
-  color: #22c55e;
+  color: var(--status-green-text);
   font-weight: 600;
   font-size: 11px;
 }
 
 .gpw-error {
-  color: #ef4444;
+  color: var(--color-red);
   font-size: 11px;
 }
 </style>

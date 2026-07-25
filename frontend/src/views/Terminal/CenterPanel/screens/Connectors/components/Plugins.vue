@@ -884,7 +884,7 @@ export default {
           ? caps
               .map((cap) => {
                 const [icon, label, desc] = CAPABILITY_LABELS[cap] || ['❔', cap, ''];
-                const undeclared = report.undeclared?.includes(cap) ? ' <span style="color:#ffd700;">(undeclared by author)</span>' : '';
+                const undeclared = report.undeclared?.includes(cap) ? ' <span style="color:var(--color-yellow);">(undeclared by author)</span>' : '';
                 const ex = report.detected[cap]?.example;
                 const evidence = ex ? ` <span style="opacity:0.55;">(${ex.file}:${ex.line})</span>` : '';
                 return `${icon} <b>${label}</b>${undeclared} — ${desc}${evidence}`;

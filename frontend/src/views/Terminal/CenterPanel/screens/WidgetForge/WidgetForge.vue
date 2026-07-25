@@ -675,7 +675,7 @@ export default {
       } else if (tmpl.type === 'html') {
         form.source_code =
           form.source_code ||
-          `<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#19ef83;font-size:20px;font-family:monospace;">
+          `<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:var(--color-green);font-size:20px;font-family:monospace;">
   Hello Widget!
 </div>`;
       } else if (tmpl.type === 'iframe') {

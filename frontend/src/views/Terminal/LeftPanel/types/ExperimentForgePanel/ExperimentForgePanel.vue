@@ -167,7 +167,7 @@ export default {
 }
 
 .status.running {
-  color: #3b82f6;
+  color: var(--status-blue-text);
   background: rgba(59, 130, 246, 0.1);
 }
 

@@ -23,6 +23,9 @@
 @import './themes/_nord.css';
 @import './themes/_rose.css';
 @import './themes/_hacker.css';
+/* Semantic role-named tokens. MUST load last: resolves equal-specificity ties
+   against the per-theme blocks above. */
+@import './themes/_semantic.css';
 
 /* Utility styles */
 @import './utilities/_utilities.css';

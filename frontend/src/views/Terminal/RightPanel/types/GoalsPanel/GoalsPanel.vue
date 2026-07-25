@@ -1439,7 +1439,7 @@ h3 {
 }
 .phase-badge.evaluating {
   background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
+  color: var(--status-purple-text);
 }
 .phase-badge.replanning {
   background: rgba(255, 193, 7, 0.2);

@@ -328,7 +328,10 @@ body[data-page='docs'] .sidebar {
   min-width: 160px;
   height: 100%;
   padding: 16px;
-  background: var(--color-dull-white);
+  /* --color-dull-white resolves to #2a2a3a (near-black) in light mode — the
+     name describes the DARK-theme value. Using it as a background painted a
+     near-black panel under near-black text: 1.00:1, body copy invisible. */
+  background: var(--surface-sunken);
   border-right: 1px solid var(--color-light-navy);
   overflow: scroll;
 }
@@ -406,7 +409,8 @@ body[data-page='docs'] .content.markdown-body {
   word-wrap: break-word;
   max-width: 800px;
   min-height: 100%;
-  background: var(--color-dull-white);
+  /* Same inversion as .sidebar above — see note there. */
+  background: var(--surface-raised);
   border-left: 1px solid var(--color-light-navy);
   border-right: 1px solid var(--color-light-navy);
 }
