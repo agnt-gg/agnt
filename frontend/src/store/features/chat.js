@@ -1888,7 +1888,12 @@ export default {
           }
         }
 
-        // Dispatch event to notify OutputList to refresh
+        // Patch the outputs list in place so the sidebar shows the new
+        // title without a full contentOutputs/refreshOutputs refetch.
+        commit('contentOutputs/PATCH_OUTPUT', { id: outputId, updates: { title } }, { root: true });
+
+        // Dispatch event for any other listeners (kept for compatibility;
+        // OutputList no longer needs to refetch on this event).
         window.dispatchEvent(new CustomEvent('conversation-renamed', { detail: { id: outputId, title } }));
 
         return result;

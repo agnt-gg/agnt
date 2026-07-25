@@ -1151,42 +1151,34 @@ export default {
         return;
       }
 
-      try {
-        // Call Vuex action to rename
-        await store.dispatch('chat/updateConversationTitle', {
-          outputId: output.id,
-          title: newTitle.trim(),
-        });
+      const trimmedTitle = newTitle.trim();
+      // Optimistic: flip the title locally so the sidebar updates the
+      // moment the modal closes. Fire the PATCH in the background; revert
+      // and surface an error modal only if the server rejects it. No
+      // "Success" modal — the visible title change is the confirmation,
+      // and no refreshOutputs — updateConversationTitle patches the
+      // outputs list in place.
+      const originalTitle = output.title;
+      store.commit('contentOutputs/PATCH_OUTPUT', { id: output.id, updates: { title: trimmedTitle } });
 
-        // Refresh the outputs list
-        await store.dispatch('contentOutputs/refreshOutputs');
-
-        await simpleModal.value.showModal({
-          title: 'Success',
-          message: 'Conversation renamed successfully',
-          confirmText: 'OK',
-          showCancel: false,
-        });
-      } catch (error) {
+      store.dispatch('chat/updateConversationTitle', {
+        outputId: output.id,
+        title: trimmedTitle,
+      }).catch(async (error) => {
         console.error('Error renaming conversation:', error);
+        store.commit('contentOutputs/PATCH_OUTPUT', { id: output.id, updates: { title: originalTitle } });
         await simpleModal.value.showModal({
           title: 'Error',
           message: 'Failed to rename conversation',
           confirmText: 'OK',
           showCancel: false,
         });
-      }
+      });
     }
 
     // Handle conversation saved event
     function handleConversationSaved() {
       // Refresh the outputs list when a conversation is saved
-      store.dispatch('contentOutputs/refreshOutputs');
-    }
-
-    // Handle conversation renamed event
-    function handleConversationRenamed() {
-      // Refresh the outputs list when a conversation is renamed
       store.dispatch('contentOutputs/refreshOutputs');
     }
 
@@ -1204,7 +1196,6 @@ export default {
       document.addEventListener('click', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
       window.addEventListener('conversation-saved', handleConversationSaved);
-      window.addEventListener('conversation-renamed', handleConversationRenamed);
       window.addEventListener('chat-cleared', handleChatCleared);
     });
 
@@ -1212,7 +1203,6 @@ export default {
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('conversation-saved', handleConversationSaved);
-      window.removeEventListener('conversation-renamed', handleConversationRenamed);
       window.removeEventListener('chat-cleared', handleChatCleared);
     });
 
