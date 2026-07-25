@@ -158,6 +158,20 @@ db.serialize(() => {
   db.run('PRAGMA cache_size = -64000');
   db.run('PRAGMA temp_store = MEMORY');
   db.run('PRAGMA mmap_size = 268435456');
+
+  // auto_vacuum can ONLY be set while the database is still empty (zero pages).
+  // On an existing database this statement is silently ignored, and the only
+  // way to enable it afterwards is a full VACUUM — which needs free disk space
+  // equal to the whole file. Once a database has grown past the free space on
+  // its volume, VACUUM is no longer possible at all — so auto_vacuum can never
+  // be retrofitted, and that is exactly the state a long-lived install reaches.
+  //
+  // Setting it here means every NEW database (fresh install, Docker image,
+  // per-tenant cloud instance) is born able to return freed pages to the OS via
+  // `PRAGMA incremental_vacuum`, instead of growing monotonically forever.
+  // Existing installs are unaffected: they keep reusing the freelist, which is
+  // sufficient once payload externalization cuts the write rate.
+  db.run('PRAGMA auto_vacuum = INCREMENTAL');
 });
 
 function createTables() {

@@ -1,5 +1,6 @@
 import db, { dbRunWithRetry } from './database/index.js';
 import generateUUID from '../utils/generateUUID.js';
+import PayloadStore from '../services/storage/PayloadStore.js';
 
 // --- Promisified db helpers (module-local) ---------------------------------
 const dbAll = (query, params) =>
@@ -27,6 +28,23 @@ const eachDay = (fromYmd, toYmd) => {
   const days = [];
   for (let d = fromYmd; d <= toYmd; d = addDays(d, 1)) days.push(d);
   return days;
+};
+
+// Bounded-concurrency map. Hydrating a node list can open one file per
+// externalized payload; an unbounded Promise.all over a 1,000-node execution
+// would try to open them all at once and can hit EMFILE. 16 is well under any
+// platform's descriptor budget and still saturates NVMe queue depth.
+const mapLimited = async (items, limit, fn) => {
+  const out = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
 };
 
 class ExecutionModel {
@@ -57,14 +75,17 @@ class ExecutionModel {
         }
       );
     });
-  }
-  static createNodeExecution(executionId, nodeId, input) {
+  }  static async createNodeExecution(executionId, nodeId, input) {
     const id = generateUUID();
     const startTime = new Date().toISOString();
+    // PayloadStore.pack is a drop-in for JSON.stringify: identical bytes below
+    // the 4 KiB threshold, an envelope + durable blob above it. Awaited BEFORE
+    // the INSERT so the row can never reference a blob that isn't on disk.
+    const packedInput = await PayloadStore.pack(input);
     return new Promise((resolve, reject) => {
       db.run(
         'INSERT INTO node_executions (id, execution_id, node_id, status, input, start_time) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, executionId, nodeId, 'started', JSON.stringify(input), startTime],
+        [id, executionId, nodeId, 'started', packedInput, startTime],
         function (err) {
           if (err) reject(err);
           else resolve(id);
@@ -83,10 +104,15 @@ class ExecutionModel {
       const inputTokens = tokenUsage?.inputTokens || 0;
       const outputTokens = tokenUsage?.outputTokens || 0;
 
+      // Blob durably written before the UPDATE commits. This is the write that
+      // used to push 5 MB base64 payloads straight into the table (and, under
+      // Litestream, straight into object storage).
+      const packedOutput = await PayloadStore.pack(output);
+
       return new Promise((resolve, reject) => {
         db.run(
           'UPDATE node_executions SET status = ?, output = ?, error = ?, end_time = ?, credits_used = ?, input_tokens = ?, output_tokens = ? WHERE execution_id = ? AND node_id = ?',
-          [status, JSON.stringify(output), error, endTime, creditsUsed, inputTokens, outputTokens, executionId, nodeId],
+          [status, packedOutput, error, endTime, creditsUsed, inputTokens, outputTokens, executionId, nodeId],
           function (err) {
             if (err) reject(err);
             else resolve(this.changes);
@@ -171,10 +197,17 @@ class ExecutionModel {
     });
 
     const [execution, nodeExecutions] = await Promise.all([execQuery, nodesQuery]);
-    if (!execution) return null;
+    if (!execution) return null;    const totalCreditsUsed = nodeExecutions.reduce((sum, ne) => sum + (ne.credits_used || 0), 0);
 
-    const safeParse = (str) => { try { return JSON.parse(str); } catch { return str; } };
-    const totalCreditsUsed = nodeExecutions.reduce((sum, ne) => sum + (ne.credits_used || 0), 0);
+    // Rehydrate payloads. Inline rows (86% in practice) resolve without any
+    // I/O; externalized rows read one compressed blob each. unpack() falls
+    // through to plain JSON.parse for every pre-existing row, which is what
+    // makes this change zero-migration.
+    const hydrated = await mapLimited(nodeExecutions, 16, async (ne) => ({
+      ...ne,
+      input: await PayloadStore.unpack(ne.input),
+      output: await PayloadStore.unpack(ne.output),
+    }));
 
     return {
       id: execution.id,
@@ -183,13 +216,8 @@ class ExecutionModel {
       startTime: execution.start_time,
       endTime: execution.end_time,
       status: execution.status,
-      log: execution.log,
-      creditsUsed: totalCreditsUsed,
-      nodeExecutions: nodeExecutions.map((ne) => ({
-        ...ne,
-        input: safeParse(ne.input),
-        output: safeParse(ne.output),
-      })),
+      log: execution.log,      creditsUsed: totalCreditsUsed,
+      nodeExecutions: hydrated,
     };
   }  // Public entry point for POST /executions/activity.
   //

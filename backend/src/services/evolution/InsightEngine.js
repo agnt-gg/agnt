@@ -3,6 +3,7 @@ import AgentMemoryModel from '../../models/AgentMemoryModel.js';
 import { createLlmClient } from '../ai/LlmService.js';
 import { createLlmAdapter } from '../orchestrator/llmAdapters.js';
 import { getProviderConfig } from '../ai/providerConfigs.js';
+import PayloadStore from '../storage/PayloadStore.js';
 
 /**
  * InsightEngine — Core extraction engine for the Unified Evolution system.
@@ -430,9 +431,18 @@ Status: ${execution.status}
 Duration: ${execution.end_time && execution.start_time ? Math.round((new Date(execution.end_time) - new Date(execution.start_time)) / 1000) + 's' : 'unknown'}
 
 === NODE EXECUTIONS ===
-`;
-    for (const ne of nodeExecutions.slice(0, 20)) {
-      const output = ne.output ? String(typeof ne.output === 'string' ? ne.output : JSON.stringify(ne.output)).substring(0, 300) : '';
+`;    for (const ne of nodeExecutions.slice(0, 20)) {
+      // This trace only ever used the first 300 characters, but it used to get
+      // them by pulling the ENTIRE payload out of SQLite first — including 5 MB
+      // base64 audio blobs — and discarding 99.99% of it. PayloadStore.preview
+      // returns exactly those 300 characters with zero disk I/O, reading the
+      // envelope's preview field for externalized rows and slicing the string
+      // for inline ones. Strictly less work, identical trace content.
+      const output = ne.output
+        ? (typeof ne.output === 'string'
+            ? PayloadStore.preview(ne.output)
+            : String(JSON.stringify(ne.output)).substring(0, 300))
+        : '';
       trace += `Node: ${ne.node_id} [${ne.status}]
   Duration: ${ne.end_time && ne.start_time ? Math.round((new Date(ne.end_time) - new Date(ne.start_time)) / 1000) + 's' : 'unknown'}
   Error: ${ne.error || 'None'}
