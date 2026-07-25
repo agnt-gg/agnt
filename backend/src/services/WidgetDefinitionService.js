@@ -77,6 +77,26 @@ function closeThumbnailBrowser() {
   }
 }
 
+/**
+ * Stamp a unique token into a widget document so a screenshot can be *proven*
+ * to be of that document.
+ *
+ * The marker is injected as the first thing inside <head> (falling back to just
+ * after <html>, then to the very start) so it runs before any widget script
+ * that might throw and abort the rest of the document.
+ */
+function stampCaptureToken(html, token) {
+  const marker = `<script>document.documentElement.dataset.agntCapture=${JSON.stringify(token)}</script>`;
+  for (const tag of [/<head[^>]*>/i, /<html[^>]*>/i]) {
+    const m = tag.exec(html);
+    if (m) {
+      const at = m.index + m[0].length;
+      return html.slice(0, at) + marker + html.slice(at);
+    }
+  }
+  return marker + html;
+}
+
 class WidgetDefinitionService {
   /**
    * List widget definitions for the user (+ shared ones).
@@ -494,6 +514,7 @@ class WidgetDefinitionService {
     }
 
     let page = null;
+    let captureToken = null;
 
     try {
       const browser = await getThumbnailBrowser();
@@ -539,30 +560,75 @@ class WidgetDefinitionService {
         }
       }
 
-      // Load the widget HTML. Race with a fallback timer so complex widgets
-      // with blocking scripts (Three.js, canvas, etc.) don't hang forever.
-      await Promise.race([
-        page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 }),
-        new Promise((r) => setTimeout(r, 8000)),
-      ]);
+      // Load the widget HTML. The race with a fallback timer keeps complex
+      // widgets (Three.js, canvas, blocking scripts) from hanging forever, but
+      // it can also resolve while setContent is STILL in flight - typically
+      // when the /api/health goto above silently timed out and its navigation
+      // is only now completing. In that window the page still shows the health
+      // endpoint, so the screenshot came back as Chrome's JSON view of
+      // {"status":"OK"} (a deterministic ~12KB JPEG) and got persisted as the
+      // widget's thumbnail. Stamp the document and refuse to shoot until the
+      // stamp is verifiably on screen.
+      captureToken = `agnt-cap-${uuidv4()}`;
+      const stampedHtml = stampCaptureToken(html, captureToken);
 
-      // Give canvas/WebGL/Three.js/API-fetching apps time to render
-      await new Promise((r) => setTimeout(r, 3000));
+      const captureVerifiedFrame = async () => {
+        await Promise.race([
+          page.setContent(stampedHtml, { waitUntil: 'domcontentloaded', timeout: 15000 }),
+          new Promise((r) => setTimeout(r, 8000)),
+        ]);
 
-      const screenshotBuffer = await page.screenshot({
-        type: 'jpeg',
-        quality: 85,
-      });
+        // The content is in the document...
+        await page.waitForFunction(
+          (token) => document.documentElement?.dataset?.agntCapture === token,
+          { timeout: 5000, polling: 100 },
+          captureToken,
+        );
+
+        // Give canvas/WebGL/Three.js/API-fetching apps time to render
+        await new Promise((r) => setTimeout(r, 3000));
+
+        // ...and it is STILL the document now, at the moment we shoot. The
+        // in-flight /api/health navigation can commit during that settle and
+        // replace the widget wholesale; shooting then persists a picture of the
+        // health endpoint as this widget's thumbnail.
+        const intact = await page.evaluate(
+          (token) => document.documentElement?.dataset?.agntCapture === token,
+          captureToken,
+        );
+        if (!intact) throw new Error('widget document was replaced before capture');
+
+        return page.screenshot({ type: 'jpeg', quality: 85 });
+      };
+
+      let screenshotBuffer;
+      try {
+        screenshotBuffer = await captureVerifiedFrame();
+      } catch {
+        // The stale navigation has committed by the second attempt, so the
+        // retry runs against a page with nothing left in flight.
+        screenshotBuffer = await captureVerifiedFrame();
+      }
 
       const base64 = 'data:image/jpeg;base64,' + screenshotBuffer.toString('base64');
       res.json({ thumbnail: base64 });
     } catch (error) {
       console.error('Error capturing widget thumbnail:', error);
-      if (page) {
+      // Only fall back to a raw screenshot when the widget document is
+      // verifiably on screen. A blind fallback here is the same defect one
+      // level down: it is how an image of an unrelated page ends up saved as
+      // a widget thumbnail. Returning an error is better than returning a lie.
+      if (page && captureToken) {
         try {
-          const fallback = await page.screenshot({ type: 'jpeg', quality: 85 });
-          const base64 = 'data:image/jpeg;base64,' + fallback.toString('base64');
-          return res.json({ thumbnail: base64 });
+          const onScreen = await page.evaluate(
+            (token) => document.documentElement?.dataset?.agntCapture === token,
+            captureToken,
+          );
+          if (onScreen) {
+            const fallback = await page.screenshot({ type: 'jpeg', quality: 85 });
+            const base64 = 'data:image/jpeg;base64,' + fallback.toString('base64');
+            return res.json({ thumbnail: base64 });
+          }
         } catch {}
       }
       res.status(500).json({ error: 'Failed to capture thumbnail' });
