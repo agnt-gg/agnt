@@ -192,6 +192,18 @@ function createConversationState(conversationId) {
 }
 
 /**
+ * Persist the unread-output-id map to localStorage as a small ID array. Keeps
+ * the sidebar's "static green dot" state across reloads. Fires on every
+ * mark/clear — the payload is a handful of UUIDs, well under any noisy write
+ * threshold.
+ */
+function persistUnread(unreadMap) {
+  try {
+    localStorage.setItem('chatUnreadOutputs', JSON.stringify(Object.keys(unreadMap)));
+  } catch { /* quota errors — non-fatal */ }
+}
+
+/**
  * Sync a conversation's state to the flat "mirror" properties on root state.
  * Existing components read state.messages, state.isStreaming, etc. directly,
  * so we keep those in sync with the active conversation.
@@ -271,6 +283,19 @@ export default {
     // /goal create flow flag: when true, the next submitted message creates a
     // new goal (POST /api/goals) and auto-attaches it instead of being chatted.
     goalCreateMode: false,
+    // Sidebar unread badge — savedOutputIds that have had a change
+    // (stream finished, or assistant message arrived) while the user was
+    // viewing a different conversation. Persisted so the dot survives a
+    // reload. Cleared when the user opens that conversation.
+    unreadOutputIds: (() => {
+      try {
+        const raw = localStorage.getItem('chatUnreadOutputs');
+        if (!raw) return {};
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return {};
+        return Object.fromEntries(arr.map((id) => [id, true]));
+      } catch { return {}; }
+    })(),
   },
   mutations: {
     SET_PAGE(state, page) {
@@ -683,6 +708,14 @@ export default {
       const conv = state.conversations[conversationId];
       if (conv) {
         syncMirror(state, conv);
+        // Opening a conversation clears its unread badge. Uses the same
+        // savedOutputId key the sidebar renders against.
+        if (conv.savedOutputId && state.unreadOutputIds[conv.savedOutputId]) {
+          const next = { ...state.unreadOutputIds };
+          delete next[conv.savedOutputId];
+          state.unreadOutputIds = next;
+          persistUnread(state.unreadOutputIds);
+        }
       }
     },
 
@@ -700,12 +733,37 @@ export default {
       }
     },
 
+    MARK_OUTPUT_UNREAD(state, outputId) {
+      if (!outputId) return;
+      if (state.unreadOutputIds[outputId]) return;
+      state.unreadOutputIds = { ...state.unreadOutputIds, [outputId]: true };
+      persistUnread(state.unreadOutputIds);
+    },
+    CLEAR_OUTPUT_UNREAD(state, outputId) {
+      if (!outputId || !state.unreadOutputIds[outputId]) return;
+      const next = { ...state.unreadOutputIds };
+      delete next[outputId];
+      state.unreadOutputIds = next;
+      persistUnread(state.unreadOutputIds);
+    },
+
     SCOPED_SET_STREAMING(state, { conversationId, value }) {
       const conv = state.conversations[conversationId];
       if (conv) {
+        const wasStreaming = conv.isStreaming;
         conv.isStreaming = value;
         if (state.activeConversationId === conversationId) {
           state.isStreaming = value;
+        }
+        // Stream just ended for a conversation the user isn't currently
+        // viewing — flag its saved output as unread so the sidebar shows
+        // a static green dot until they open it.
+        if (wasStreaming && !value
+            && state.activeConversationId !== conversationId
+            && conv.savedOutputId
+            && !state.unreadOutputIds[conv.savedOutputId]) {
+          state.unreadOutputIds = { ...state.unreadOutputIds, [conv.savedOutputId]: true };
+          persistUnread(state.unreadOutputIds);
         }
       }
     },
@@ -725,6 +783,16 @@ export default {
       if (!conv) return;
       if (message && message.role && message.content !== undefined) {
         conv.messages.push(message);
+        // Assistant reply landed on a conversation the user isn't currently
+        // viewing (e.g. another tab is streaming, or a background agent
+        // turn completed) → flag it unread so the sidebar shows the dot.
+        if (message.role === 'assistant'
+            && state.activeConversationId !== conversationId
+            && conv.savedOutputId
+            && !state.unreadOutputIds[conv.savedOutputId]) {
+          state.unreadOutputIds = { ...state.unreadOutputIds, [conv.savedOutputId]: true };
+          persistUnread(state.unreadOutputIds);
+        }
       }
       // Mirror is by reference, so no extra sync needed for messages array
     },
@@ -1074,6 +1142,10 @@ export default {
       }
       return ids;
     },
+    // Sidebar "unread" dot — set when a conversation changes (stream ends or
+    // an assistant message arrives) while the user is looking at a different
+    // one. Cleared when they open that conversation.
+    unreadOutputIds: (state) => new Set(Object.keys(state.unreadOutputIds)),
     activeSkillForConversation: (state) => (conversationId) =>
       conversationId ? state.activeSkillByConv[conversationId] || null : null,
     activeGoalForConversation: (state) => (conversationId) =>

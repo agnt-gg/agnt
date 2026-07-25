@@ -137,6 +137,7 @@
                   <div class="output-content" @click="handleOutputClick(output.id, $event)">
                     <div class="output-preview">
                       <i v-if="isOutputStreaming(output.id)" class="fas fa-circle streaming-indicator"></i>
+                      <span v-else-if="isOutputUnread(output.id)" class="unread-dot" title="Unread changes"></span>
                       {{ getPreviewText(output.content, output) }}
                     </div>
                     <div class="output-date">{{ formatDate(output.updated_at || output.created_at) }}</div>
@@ -308,6 +309,12 @@ export default {
 
     // Streaming output IDs from the chat store
     const streamingOutputIds = computed(() => store.getters['chat/streamingOutputIds'] || new Set());
+
+    // Unread output IDs — savedOutputIds that changed (stream ended or
+    // an assistant message arrived) while the user was viewing something
+    // else. Rendered as a static green dot on the item; cleared when the
+    // user opens that conversation.
+    const unreadOutputIds = computed(() => store.getters['chat/unreadOutputIds'] || new Set());
 
     // Get outputs from store
     const outputs = computed(() => store.getters['contentOutputs/outputs']);
@@ -902,6 +909,16 @@ export default {
       return streamingOutputIds.value.has(outputId);
     }
 
+    // Check if output has an unread change. Suppressed while active (the
+    // user is looking at it — they'd see it clear as they arrive) and
+    // while streaming (the pulsing indicator already tells them).
+    function isOutputUnread(outputId) {
+      if (!unreadOutputIds.value.has(outputId)) return false;
+      if (isActive(outputId)) return false;
+      if (isOutputStreaming(outputId)) return false;
+      return true;
+    }
+
     // Batch delete selected outputs
     async function deleteSelectedOutputs() {
       playSound('buttonClick');
@@ -1228,6 +1245,8 @@ export default {
       isActive,
       // Streaming
       isOutputStreaming,
+      // Unread
+      isOutputUnread,
       // Groups
       groups,
       groupTree,
@@ -1781,6 +1800,17 @@ body.dark .create-output-btn {
   animation: pulse-streaming 1.5s ease-in-out infinite;
   margin-right: 4px;
   vertical-align: middle;
+}
+
+.unread-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-green);
+  margin-right: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 @keyframes pulse-streaming {
