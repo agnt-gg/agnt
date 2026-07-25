@@ -613,19 +613,37 @@ const PROVIDER_CONFIGS = [
     authScheme: 'bearer',
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true },
-      // Llama-4 Scout on Cerebras inherits Llama-4's native multimodality.
-      // https://www.cerebras.ai/press-release/llama4PR
+      // Cerebras vision is available on the shared tier ONLY with gemma-4-31b
+      // (plus image-capable models on Dedicated Endpoints). The previous
+      // fallbackVisionModels entry for llama-4-scout-17b-16e-instruct was stale:
+      // that model is not served on the shared Cerebras Inference API and a
+      // live /v1/models probe against the shared tier returns only
+      // gemma-4-31b, zai-glm-4.7 and gpt-oss-120b.
+      // https://inference-docs.cerebras.ai/capabilities/image-inputs
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507'],
-    fallbackModels: ['llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507', 'gpt-oss-120b', 'zai-glm-4.7', 'llama-4-scout-17b-16e-instruct'],
-    fallbackVisionModels: ['llama-4-scout-17b-16e-instruct'],
+    // Verified live against GET https://api.cerebras.ai/v1/models: the shared
+    // tier serves exactly these three. llama3.1-8b and qwen-3-235b-a22b-instruct-2507
+    // were listed here but both return HTTP 404 ("Model does not exist or you do
+    // not have access to it") - llama3.1-8b was the FIRST recommended model, so it
+    // was the default AGNT offered for Cerebras. Their metadata is retained below
+    // for anyone on a Dedicated Endpoint that still serves them, but they are no
+    // longer advertised. These lists are only a FALLBACK: ModelRoutes fetches
+    // /v1/models live and prefers that result.
+    recommendedModels: ['gemma-4-31b', 'gpt-oss-120b', 'zai-glm-4.7'],
+    fallbackModels: ['gemma-4-31b', 'gpt-oss-120b', 'zai-glm-4.7'],
+    fallbackVisionModels: ['gemma-4-31b'],
     modelMetadata: {
       'gpt-oss-120b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.35, outputCostPer1M: 0.75, supportsVision: false, supportsTools: true, reasoning: false },
+      // NOT served on the shared tier (404 as of 2026-07-25); kept for Dedicated Endpoints.
       'llama3.1-8b': { contextWindow: 131072, maxOutputTokens: 131072, inputCostPer1M: 0.1, outputCostPer1M: 0.1, supportsVision: false, supportsTools: true, reasoning: false },
+      // NOT served on the shared tier (404 as of 2026-07-25); kept for Dedicated Endpoints.
       'qwen-3-235b-a22b-instruct-2507': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.6, outputCostPer1M: 1.2, supportsVision: false, supportsTools: true, reasoning: false },
       'zai-glm-4.7': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 2.25, outputCostPer1M: 2.75, supportsVision: false, supportsTools: true, reasoning: false },
-      'llama-4-scout-17b-16e-instruct': { contextWindow: 262144, maxOutputTokens: 32768, inputCostPer1M: 0.65, outputCostPer1M: 0.85, supportsVision: true, supportsTools: true, reasoning: false },
+      // Gemma 4 31B is the only Cerebras shared-tier model that accepts image
+      // input. Pricing and context window verified from Cerebras docs:
+      // https://inference-docs.cerebras.ai/models/gemma-4-31b
+      'gemma-4-31b': { contextWindow: 131072, maxOutputTokens: 65536, inputCostPer1M: 0.99, outputCostPer1M: 1.49, supportsVision: true, supportsTools: true, reasoning: true },
     },
     compat: {},
     sdkOptions: { warmTCPConnection: false },
@@ -642,10 +660,26 @@ const PROVIDER_CONFIGS = [
       text: { supportsStreaming: true, supportsTools: true },
       vision: { supportsStreaming: true },
     },
-    recommendedModels: ['kimi-k2.6', 'kimi-k2.5', 'kimi-k2-thinking'],
-    fallbackModels: ['kimi-k2.6', 'kimi-k2.5', 'kimi-k2-thinking', 'kimi-k2', 'moonshot-v1-128k', 'moonshot-v1-32k'],
-    fallbackVisionModels: ['kimi-k2.6', 'kimi-k2.5'],
+    // kimi-k3 leads: it is the current flagship and the only model still
+    // offered to newly-registered Moonshot accounts. kimi-k2.5 and the whole
+    // moonshot-v1 series are closed to new users and fully sunset 2026-08-31;
+    // the kimi-k2 series was discontinued 2026-05-25. They stay in
+    // modelMetadata so existing sessions keep correct context/pricing, but
+    // they are no longer recommended. https://platform.kimi.ai/docs/models
+    recommendedModels: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.6', 'kimi-k2.5'],
+    fallbackModels: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed', 'kimi-k2.6', 'kimi-k2.5'],
+    // Every current Kimi multimodal model takes image input. k3 / k2.6 /
+    // k2.7-code / k2.7-code-highspeed also take video.
+    // https://platform.kimi.ai/docs/guide/use-kimi-vision-model
+    fallbackVisionModels: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed', 'kimi-k2.6', 'kimi-k2.5'],
     modelMetadata: {
+      // Kimi K3: 2.8T params, native visual understanding, 1M context.
+      // Pricing per https://platform.kimi.ai/docs/pricing/chat-k3
+      'kimi-k3': { contextWindow: 1048576, maxOutputTokens: 16384, inputCostPer1M: 3.0, outputCostPer1M: 15.0, inputCacheReadCostPer1M: 0.30, supportsVision: true, supportsTools: true, reasoning: true },
+      // K2.7 Code pair: text + image + video input.
+      // Pricing per https://platform.kimi.ai/docs/pricing/chat-k27-code
+      'kimi-k2.7-code': { contextWindow: 262144, maxOutputTokens: 16384, inputCostPer1M: 0.95, outputCostPer1M: 4.0, inputCacheReadCostPer1M: 0.19, supportsVision: true, supportsTools: true, reasoning: true },
+      'kimi-k2.7-code-highspeed': { contextWindow: 262144, maxOutputTokens: 16384, inputCostPer1M: 1.90, outputCostPer1M: 8.0, inputCacheReadCostPer1M: 0.38, supportsVision: true, supportsTools: true, reasoning: true },
       'kimi-k2.6': { contextWindow: 256000, maxOutputTokens: 16384, inputCostPer1M: 0.6, outputCostPer1M: 2.5, supportsVision: true, supportsTools: true, reasoning: true },
       'kimi-k2.5': { contextWindow: 256000, maxOutputTokens: 16384, inputCostPer1M: 0.6, outputCostPer1M: 2.5, supportsVision: true, supportsTools: true, reasoning: true },
       'kimi-k2-thinking': { contextWindow: 128000, maxOutputTokens: 16384, inputCostPer1M: 0.6, outputCostPer1M: 2.5, supportsVision: false, supportsTools: true, reasoning: true },
@@ -672,16 +706,29 @@ const PROVIDER_CONFIGS = [
     fetchHeaders: { 'User-Agent': 'KimiCLI/1.38.0' },
     capabilities: {
       text: { supportsStreaming: true, supportsTools: true, supportsReasoning: true },
+      // Every Kimi Code model accepts image input (k3 / kimi-for-coding /
+      // kimi-for-coding-highspeed also accept video; k3-256k is image-only).
+      // Verified live against api.kimi.com/coding/v1 on 2026-07-24: all four
+      // IDs returned HTTP 200 and correctly described a synthetic two-band
+      // test image, while the same prompt without an image hallucinated a
+      // different answer. Source of truth:
+      // https://www.kimi.com/code/docs/en/kimi-code/models.html ("Multimodal
+      // input" row) and https://platform.kimi.ai/docs/guide/use-kimi-vision-model
+      // Without this block getProviderCapabilities().vision is null, so
+      // ProviderRegistry.supportsVision() returns false for EVERY model and
+      // the orchestrator silently drops uploaded images.
+      vision: { supportsStreaming: true },
     },
-    recommendedModels: ['kimi-for-coding'],
-    fallbackModels: ['kimi-for-coding'],
+    recommendedModels: ['kimi-for-coding', 'k3', 'k3-256k', 'kimi-for-coding-highspeed'],
+    fallbackModels: ['kimi-for-coding', 'k3', 'k3-256k', 'kimi-for-coding-highspeed'],
+    fallbackVisionModels: ['kimi-for-coding', 'k3', 'k3-256k', 'kimi-for-coding-highspeed'],
     modelMetadata: {
       'kimi-for-coding': {
         contextWindow: 256000,
         maxOutputTokens: 16384,
         inputCostPer1M: null, // subscription-based, not per-token
         outputCostPer1M: null,
-        supportsVision: false,
+        supportsVision: true, // K2.7 Code: image + video input
         supportsTools: true,
         reasoning: true,
       },
@@ -693,7 +740,18 @@ const PROVIDER_CONFIGS = [
         maxOutputTokens: 16384,
         inputCostPer1M: null, // subscription-based, not per-token
         outputCostPer1M: null,
-        supportsVision: false,
+        supportsVision: true, // K3: native image + video input
+        supportsTools: true,
+        reasoning: true,
+      },
+      // K3 pinned to a 256K window - same model, lower quota burn. Accepts
+      // images but NOT video (per the Kimi Code model table).
+      'k3-256k': {
+        contextWindow: 256000,
+        maxOutputTokens: 16384,
+        inputCostPer1M: null, // subscription-based, not per-token
+        outputCostPer1M: null,
+        supportsVision: true, // image only (no video on this variant)
         supportsTools: true,
         reasoning: true,
       },
@@ -702,7 +760,7 @@ const PROVIDER_CONFIGS = [
         maxOutputTokens: 16384,
         inputCostPer1M: null, // subscription-based, not per-token
         outputCostPer1M: null,
-        supportsVision: false,
+        supportsVision: true, // K2.7 Code HighSpeed: image + video input
         supportsTools: true,
         reasoning: true,
       },
