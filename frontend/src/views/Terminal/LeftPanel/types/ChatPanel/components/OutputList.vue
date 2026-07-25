@@ -199,6 +199,22 @@
                 <i class="fas fa-edit"></i>
                 <span>Rename</span>
               </button>
+              <button
+                v-if="unreadOutputIds.has(activeMenu)"
+                @click="toggleUnread(activeMenu)"
+                class="menu-item"
+              >
+                <i class="fas fa-envelope-open"></i>
+                <span>Mark as Read</span>
+              </button>
+              <button
+                v-else
+                @click="toggleUnread(activeMenu)"
+                class="menu-item"
+              >
+                <i class="fas fa-envelope"></i>
+                <span>Mark as Unread</span>
+              </button>
               <!-- Move to group submenu -->
               <button class="menu-item" @click.stop="showMoveSubmenu = !showMoveSubmenu">
                 <i class="fas fa-folder"></i>
@@ -933,6 +949,21 @@ export default {
       return true;
     }
 
+    // Manual toggle from the 3-dot menu. Marking an item unread while
+    // it's the currently-active conversation is intentionally allowed —
+    // the dot is hidden by isOutputUnread's isActive guard until the
+    // user navigates away, then reappears; SET_ACTIVE_CONVERSATION
+    // clears it again the next time they open the item.
+    function toggleUnread(outputId) {
+      if (!outputId) return;
+      activeMenu.value = null;
+      if (unreadOutputIds.value.has(outputId)) {
+        store.commit('chat/CLEAR_OUTPUT_UNREAD', outputId);
+      } else {
+        store.commit('chat/MARK_OUTPUT_UNREAD', outputId);
+      }
+    }
+
     // Batch delete selected outputs
     async function deleteSelectedOutputs() {
       playSound('buttonClick');
@@ -1251,6 +1282,8 @@ export default {
       isOutputStreaming,
       // Unread
       isOutputUnread,
+      unreadOutputIds,
+      toggleUnread,
       // Groups
       groups,
       groupTree,
