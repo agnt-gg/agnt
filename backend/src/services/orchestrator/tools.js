@@ -81,6 +81,134 @@ function resolveDataReferences(args, conversationContext) {
   return scanAndResolve(args);
 }
 
+const IMAGE_MIME_TYPES = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+};
+
+/**
+ * Decide WHICH image `analyze_image` should analyze.
+ *
+ * Precedence is deliberate: an explicit, *resolvable* `image` argument (a data
+ * URI or a real filesystem path) beats an image the user uploaded in chat. An
+ * agent working with files on disk must be able to analyze them during a turn
+ * that also happens to carry an upload.
+ *
+ * Anything NOT resolvable as an image reference - a placeholder like "the
+ * uploaded image", an empty string - falls through to the upload. That preserves
+ * the common case where the user attaches a photo and the model has no genuine
+ * path to pass.
+ *
+ * Regression this guards against: uploads used to be checked FIRST and
+ * unconditionally, so a valid file path was silently discarded whenever an
+ * upload existed. The caller got a confident analysis of the wrong picture with
+ * nothing in the response indicating a substitution had happened. That is why
+ * every success path also returns `source`.
+ *
+ * Pure apart from the injected `readFile`, so the precedence rules can be unit
+ * tested without touching the LLM path.
+ *
+ * @param {object}   opts
+ * @param {string}  [opts.image]       Caller-supplied path, data URI, or placeholder.
+ * @param {number}  [opts.imageIndex]  Which upload to use when falling through.
+ * @param {Array}   [opts.uploads]     context.imageData entries.
+ * @param {Function}[opts.readFile]    Injected for tests.
+ * @returns {Promise<{ok: true, imageData: string, source: string}
+ *                 | {ok: false, error: string, path?: string, hint?: string}>}
+ */
+export async function resolveAnalyzeImageSource({
+  image,
+  imageIndex,
+  uploads = [],
+  readFile = fs.readFile,
+} = {}) {
+  const available = Array.isArray(uploads) ? uploads : [];
+
+  const pickUpload = (requested) => {
+    const idx = Number.isInteger(requested)
+      ? Math.min(Math.max(requested, 0), available.length - 1)
+      : 0;
+    const upload = available[idx];
+    return {
+      imageData: `data:${upload.type};base64,${upload.data}`,
+      index: idx,
+      filename: upload.filename,
+    };
+  };
+
+  const requested = typeof image === 'string' ? image.trim() : '';
+  const isDataUri = requested.startsWith('data:image/');
+  // A path needs a directory separator or a known image extension. A sentence
+  // like "the uploaded image" satisfies neither and correctly falls through.
+  const looksLikePath = !isDataUri
+    && requested.length > 0
+    && (/[\\/]/.test(requested) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(requested));
+
+  if (isDataUri) {
+    console.log('[analyze_image] Using base64 image from parameter');
+    return { ok: true, imageData: requested, source: 'parameter:base64' };
+  }
+
+  if (looksLikePath) {
+    try {
+      const fileBuffer = await readFile(requested);
+      const mimeType = IMAGE_MIME_TYPES[path.extname(requested).toLowerCase()] || 'image/jpeg';
+      console.log(`[analyze_image] Read image from file: ${requested} (${mimeType})`);
+      return {
+        ok: true,
+        imageData: `data:${mimeType};base64,${fileBuffer.toString('base64')}`,
+        source: `parameter:file:${requested}`,
+      };
+    } catch (fileError) {
+      if (available.length === 0) {
+        return {
+          ok: false,
+          error: `Failed to read image file: ${fileError.message}`,
+          path: requested,
+          hint: 'Check that the path exists and is readable, pass a data:image/...;base64,... URI instead, or upload the image in chat.',
+        };
+      }
+      // The model most likely fabricated a path. Don't burn a round trip - use
+      // the upload, but say so loudly and record it in `source`.
+      const picked = pickUpload(imageIndex);
+      console.warn(`[analyze_image] Path "${requested}" unreadable (${fileError.message}); falling back to uploaded image ${picked.filename}`);
+      return {
+        ok: true,
+        imageData: picked.imageData,
+        source: `upload[${picked.index}]:${picked.filename} (fallback: "${requested}" unreadable)`,
+      };
+    }
+  }
+
+  if (available.length > 0) {
+    if (Number.isInteger(imageIndex) && (imageIndex < 0 || imageIndex >= available.length)) {
+      return {
+        ok: false,
+        error: `imageIndex ${imageIndex} is out of range: ${available.length} image(s) uploaded (valid indices 0-${available.length - 1}).`,
+      };
+    }
+    const picked = pickUpload(imageIndex);
+    console.log(`[analyze_image] Using uploaded image ${picked.filename} (index ${picked.index} of ${available.length})`);
+    return {
+      ok: true,
+      imageData: picked.imageData,
+      source: `upload[${picked.index}]:${picked.filename}`,
+    };
+  }
+
+  return {
+    ok: false,
+    error: requested
+      ? `Could not resolve an image: ${JSON.stringify(requested.slice(0, 80))} is neither a data URI nor a file path, and no images were uploaded in this conversation.`
+      : 'No image data available. Pass a file path or data URI in "image", or upload an image in chat.',
+    hint: 'Pass an absolute file path, a data:image/...;base64,... URI, or upload the image in the chat.',
+  };
+}
+
 export const TOOLS = {
   execute_javascript_code: {
     schema: {
@@ -3376,11 +3504,16 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
           'Analyze images using the user\'s currently selected vision-capable AI model. Supports detailed image analysis, object detection, text extraction (OCR), and answering questions about images. The provider and model are determined by the user\'s chat selection — DO NOT pass provider or model parameters; they will be ignored.',
         parameters: {
           type: 'object',
-          properties: {
-            image: {
+          properties: {            image: {
               type: 'string',
               description:
-                'Image data in base64 format (data:image/[type];base64,[data]) OR a file path to read the image from. For uploaded images in chat, they are automatically available - you can reference them or ask the user to provide the path.',
+                'OPTIONAL. A file path (e.g. C:\\path\\to\\image.png or /path/to/image.png) or base64 data URI (data:image/[type];base64,[data]) of the image to analyze. An explicit path or data URI ALWAYS takes precedence over an image the user uploaded in chat — pass one whenever you want to analyze a file on disk. If the user uploaded an image and you simply want to analyze that, OMIT this parameter entirely; do NOT invent a placeholder path.',
+            },
+            imageIndex: {
+              type: 'number',
+              description:
+                'Which uploaded image to analyze when the user attached more than one and no explicit "image" was supplied. Zero-based. Defaults to 0 (the first upload).',
+              default: 0,
             },
             prompt: {
               type: 'string',
@@ -3398,11 +3531,14 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
               default: 0,
             },
           },
-          required: ['image', 'prompt'],
+          // `image` is intentionally NOT required: when the user has uploaded an
+          // image, forcing this field is what pressures the model into inventing a
+          // plausible-but-fake path. Omitting it selects the upload cleanly.
+          required: ['prompt'],
         },
       },
     },
-    execute: async ({ image, prompt, maxTokens = 4096, temperature = 0, ...rest }, authToken, context) => {
+    execute: async ({ image, imageIndex, prompt, maxTokens = 4096, temperature = 0, ...rest }, authToken, context) => {
       // ALWAYS use the session's provider/model. The LLM is not allowed to
       // override — earlier versions exposed `provider`/`model` in the schema
       // and the model would hallucinate (e.g. provider:"openai" model:"gpt-4o-mini")
@@ -3464,53 +3600,20 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             success: false,
             error: 'User authentication is required for image analysis.',
           });
+        }        // Precedence, upload fallback and `source` reporting all live in
+        // resolveAnalyzeImageSource() so they can be unit tested directly.
+        const resolved = await resolveAnalyzeImageSource({
+          image,
+          imageIndex,
+          uploads: context?.imageData,
+        });
+
+        if (!resolved.ok) {
+          const { ok, ...failure } = resolved;
+          return JSON.stringify({ success: false, ...failure });
         }
 
-        // CRITICAL: Check if images are available in context first (uploaded images)
-        let imageData = null;
-
-        if (context?.imageData && context.imageData.length > 0) {
-          // Use the first uploaded image from context
-          const uploadedImage = context.imageData[0];
-          imageData = `data:${uploadedImage.type};base64,${uploadedImage.data}`;
-          console.log(`[analyze_image] Using uploaded image from context: ${uploadedImage.filename} (${uploadedImage.type})`);
-        } else if (image) {
-          // Fallback to image parameter if provided
-          if (image.startsWith('data:image/')) {
-            imageData = image;
-            console.log(`[analyze_image] Using base64 image from parameter`);
-          } else {
-            // Assume it's a file path - read and convert to base64
-            try {
-              const fileBuffer = await fs.readFile(image);
-              // Determine MIME type from file extension
-              const ext = path.extname(image).toLowerCase();
-              const mimeTypes = {
-                '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg',
-                '.png': 'image/png',
-                '.gif': 'image/gif',
-                '.webp': 'image/webp',
-                '.bmp': 'image/bmp',
-              };
-              const mimeType = mimeTypes[ext] || 'image/jpeg';
-              imageData = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
-              console.log(`[analyze_image] Read image from file: ${image} (${mimeType})`);
-            } catch (fileError) {
-              return JSON.stringify({
-                success: false,
-                error: `Failed to read image file: ${fileError.message}`,
-                hint: 'The image should be automatically available from your upload. If you see this error, the image may not have been uploaded correctly.',
-              });
-            }
-          }
-        } else {
-          return JSON.stringify({
-            success: false,
-            error: 'No image data available. Images should be automatically detected from your upload.',
-            hint: 'Make sure you have uploaded an image in the chat before asking for analysis.',
-          });
-        }
+        const { imageData, source: imageSource } = resolved;
 
         // Validate image data format
         if (!imageData.match(/^data:image\/(jpeg|jpg|png|gif|webp|bmp);base64,/)) {
@@ -3556,17 +3659,20 @@ The command runs in the OS-native shell — cmd.exe on Windows, /bin/sh on macOS
             error: result.error,
             provider: normalizedProvider,
             model: selectedModel,
+            source: imageSource,
           });
         }
 
-        // Return successful result
+        // `source` tells the caller exactly which image was analyzed. Without it,
+        // an overridden argument is undetectable from the response alone.
         return JSON.stringify({
           success: true,
           provider: normalizedProvider,
           model: selectedModel,
+          source: imageSource,
           analysis: result.generatedText,
           tokenCount: result.tokenCount,
-          message: `Successfully analyzed image using ${normalizedProvider} ${selectedModel}`,
+          message: `Successfully analyzed image using ${normalizedProvider} ${selectedModel} (source: ${imageSource})`,
         });
       } catch (error) {
         console.error('Error in analyze_image tool:', error);

@@ -9,7 +9,7 @@ import GeminiCliAuthManager from '../../../services/auth/GeminiCliAuthManager.js
 import AntigravityAuthManager from '../../../services/auth/AntigravityAuthManager.js';
 import { createLlmClient } from '../../../services/ai/LlmService.js';
 import { createLlmAdapter } from '../../../services/orchestrator/llmAdapters.js';
-import { getProviderConfig, resolveMaxOutputTokens } from '../../../services/ai/providerConfigs.js';
+import { getProviderConfig, resolveMaxOutputTokens, getRecommendedModels } from '../../../services/ai/providerConfigs.js';
 
 const PROVIDER_CONFIG = {
   deepseek: {
@@ -513,6 +513,9 @@ class GenerateWithAiLlm extends BaseAction {
       case 'kimi-code':
         response = await this.generateWithKimiCode({ ...params, prompt: fullPrompt });
         break;
+      case 'chutes':
+        response = await this.generateWithChutes({ ...params, prompt: fullPrompt });
+        break;
       case 'gemini-cli':
       case 'antigravity':
         response = await this.generateWithGoogleGateway({ ...params, prompt: fullPrompt });
@@ -573,6 +576,10 @@ class GenerateWithAiLlm extends BaseAction {
       case 'antigravity':
         response = await this.generateWithGoogleGateway({ ...params, prompt, image });
         break;
+      case 'chutes':
+        response = await this.generateWithChutes({ ...params, prompt, image });
+        break;
+      case 'cerebras':
       case 'deepseek':
       case 'gemini':
       case 'grokai':
@@ -770,8 +777,70 @@ class GenerateWithAiLlm extends BaseAction {
     const client = await createLlmClient(provider, params.userId);
     const adapter = await createLlmAdapter(provider, client, params.model);
 
+    // Vision: the Responses API needs input_image blocks, which the adapter
+    // builds from context.imageData. Previously this method accepted an image
+    // argument and never used it, so analyze_image asked Codex to describe a
+    // picture it was never sent.
+    const imageData = this.processImageData(params);
+    const context = imageData
+      ? { imageData: [{ type: imageData.mimeType, data: imageData.base64Data }] }
+      : {};
+
     const { responseMessage, usage } = await adapter.call(
       [{ role: 'user', content: params.prompt }],
+      [],
+      context,
+    );
+
+    let generatedText = '';
+    if (typeof responseMessage?.content === 'string') {
+      generatedText = responseMessage.content;
+    } else if (Array.isArray(responseMessage?.content)) {
+      generatedText = responseMessage.content
+        .filter((b) => b && (b.type === 'text' || b.type === 'output_text' || typeof b.text === 'string'))
+        .map((b) => b.text || '')
+        .join('');
+    }
+
+    const inputTokens = usage?.input_tokens || usage?.prompt_tokens || 0;
+    const outputTokens = usage?.output_tokens || usage?.completion_tokens || 0;
+    return {
+      generatedText,
+      tokenCount: inputTokens + outputTokens,
+      inputTokens,
+      outputTokens,
+    };
+  }
+
+  /**
+   * Shared path for providers whose client MUST come from createLlmClient:
+   * custom baseURL, a spoofed CLI User-Agent, OAuth, or an encrypting
+   * transport (Chutes' E2EE fetch). Building a raw OpenAI SDK client for
+   * these silently targets api.openai.com and/or bypasses encryption.
+   *
+   * Images are sent as an OpenAI-style multimodal content array with the
+   * image part FIRST, which is the shape Kimi documents; a serialised-string
+   * array is explicitly unsupported.
+   * https://platform.kimi.ai/docs/guide/use-kimi-vision-model
+   */
+  async generateWithManagedOpenAiLike(params, { provider, defaultModel }) {
+    const client = await createLlmClient(provider, params.userId);
+    const model = params.model || defaultModel || getRecommendedModels(provider)?.[0];
+    if (!model) {
+      throw new Error(`${provider} requires an explicit model in the node configuration.`);
+    }
+    const adapter = await createLlmAdapter(provider, client, model);
+
+    const imageData = this.processImageData(params);
+    const userContent = imageData
+      ? [
+        { type: 'image_url', image_url: { url: imageData.dataUrl } },
+        { type: 'text', text: params.prompt },
+      ]
+      : params.prompt;
+
+    const { responseMessage, usage } = await adapter.call(
+      [{ role: 'user', content: userContent }],
       [],
     );
 
@@ -796,41 +865,20 @@ class GenerateWithAiLlm extends BaseAction {
   }
 
   async generateWithKimiCode(params) {
-    // Kimi Code uses a custom baseURL (api.kimi.com/coding/v1) plus a User-Agent
-    // header that spoofs kimi-cli, and requires developer→user role mapping.
-    // Constructing a raw OpenAI SDK client here would silently default to
-    // api.openai.com and surface a misleading "Incorrect API key" 401. Delegate
-    // to createLlmClient + createLlmAdapter so the canonical providerConfigs
-    // entry (baseURL, dynamic UA, mapDeveloperRole, Moonshot schema fixes) is
-    // applied — same pattern as the claude-code and openai-codex paths.
-    const provider = 'kimi-code';
-    const client = await createLlmClient(provider, params.userId);
-    const model = params.model || 'kimi-for-coding';
-    const adapter = await createLlmAdapter(provider, client, model);
+    // Kimi Code: custom baseURL (api.kimi.com/coding/v1) + a User-Agent that
+    // spoofs kimi-cli + developer->user role mapping. All four Kimi Code
+    // models accept image input (verified live against the API).
+    return this.generateWithManagedOpenAiLike(params, {
+      provider: 'kimi-code',
+      defaultModel: 'kimi-for-coding',
+    });
+  }
 
-    const { responseMessage, usage } = await adapter.call(
-      [{ role: 'user', content: params.prompt }],
-      [],
-    );
-
-    let generatedText = '';
-    if (typeof responseMessage?.content === 'string') {
-      generatedText = responseMessage.content;
-    } else if (Array.isArray(responseMessage?.content)) {
-      generatedText = responseMessage.content
-        .filter((b) => b && (b.type === 'text' || b.type === 'output_text' || typeof b.text === 'string'))
-        .map((b) => b.text || '')
-        .join('');
-    }
-
-    const inputTokens = usage?.input_tokens || usage?.prompt_tokens || 0;
-    const outputTokens = usage?.output_tokens || usage?.completion_tokens || 0;
-    return {
-      generatedText,
-      tokenCount: inputTokens + outputTokens,
-      inputTokens,
-      outputTokens,
-    };
+  async generateWithChutes(params) {
+    // Chutes is E2EE: createLlmClient installs ChutesE2EEFetchTransport, which
+    // encrypts the payload. It is also absent from the local PROVIDER_CONFIG
+    // map, so the raw-SDK path would resolve baseURL undefined -> api.openai.com.
+    return this.generateWithManagedOpenAiLike(params, { provider: 'chutes' });
   }
 
   async generateWithOpenAiLike(params) {
