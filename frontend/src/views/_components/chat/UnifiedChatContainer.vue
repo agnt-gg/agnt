@@ -225,16 +225,23 @@ export default {
     // Drag & drop file attach. We accept anything the file input would accept
     // (extension filtering happens later when uploading); the overlay just
     // gives the user feedback that a drop will land here.
+    //
+    // Every handler gates on `types.includes('Files')`. Non-file drags
+    // (@mention picker, internal reorder, etc.) must pass through
+    // completely — in particular, we must NOT touch dropEffect for them,
+    // because overriding a child's 'move' with our 'copy' causes the
+    // browser to cancel the drop when effectAllowed='move'.
+    const isFileDrag = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
     const onDragEnter = (e) => {
-      // Only react to file drags — text/HTML drags from inside the page would
-      // otherwise paint the overlay over our own UI.
-      if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+      if (!isFileDrag(e)) return;
       if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
       isDragOver.value = true;
     };
     const onDragOver = (e) => {
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-      onDragEnter(e);
+      if (!isFileDrag(e)) return;
+      e.dataTransfer.dropEffect = 'copy';
+      if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
+      isDragOver.value = true;
     };
     const onDragLeave = (e) => {
       // Browsers fire dragleave on every child. Debounce so we only clear
@@ -243,6 +250,7 @@ export default {
       dragLeaveTimer = setTimeout(() => { isDragOver.value = false; dragLeaveTimer = null; }, 50);
     };
     const onDrop = (e) => {
+      if (!isFileDrag(e)) return;
       if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
       isDragOver.value = false;
       const files = Array.from(e.dataTransfer?.files || []);

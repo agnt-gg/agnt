@@ -478,13 +478,27 @@ export default {
         files,
       } = payload;
 
-      if (!channelKey || !chatType || !content || !content.trim()) return;
+      // A send needs *something* — text OR attached files. Files alone with no
+      // text are valid: processUploadedFiles injects the file body into the
+      // LLM prompt on the backend, so the assistant still has context to
+      // respond to. Rejecting empty text unconditionally silently dropped
+      // drag-and-drop uploads in sidebar chats.
+      const trimmedContent = (content || '').trim();
+      const hasFiles = Array.isArray(files) && files.length > 0;
+      if (!channelKey || !chatType) return;
+      if (!trimmedContent && !hasFiles) return;
       if (state.streamingChannels[channelKey]) return;
+
+      // When the user drops files without typing, put a short placeholder in
+      // the visible user message so the transcript reads coherently. The
+      // backend still receives the actual files via multipart.
+      const displayContent = trimmedContent
+        || `Attached ${files.length} file${files.length === 1 ? '' : 's'}: ${files.map((f) => f.name).join(', ')}`;
 
       const userMessage = {
         id: generateMessageId(channelKey),
         role: 'user',
-        content: content.trim(),
+        content: displayContent,
         timestamp: Date.now(),
       };
       commit('ADD_MESSAGE', { channelKey, message: userMessage });

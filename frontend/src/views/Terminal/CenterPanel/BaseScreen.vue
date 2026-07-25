@@ -352,19 +352,25 @@ export default {
     const isTextareaExpanded = ref(false);
 
     // --- OS drag-and-drop for file attach ---
-    // Mirrors UnifiedChatContainer.vue. Gate on `types.includes('Files')` so
-    // in-page drags (e.g. @mention picker, message reorder) don't paint the
-    // overlay over the whole chat.
+    // Mirrors UnifiedChatContainer.vue. Gate every handler on
+    // `types.includes('Files')` so in-page drags (sidebar conversation-to-
+    // group moves, @mention picker, message reorder) sail through untouched.
+    // Overriding dropEffect on a non-file drag would clobber the child's
+    // 'move' with our 'copy'; browsers then cancel the drop because it no
+    // longer matches effectAllowed.
     const isDragOver = ref(false);
     let dragLeaveTimer = null;
+    const isFileDrag = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
     const onDragEnter = (e) => {
-      if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+      if (!isFileDrag(e)) return;
       if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
       isDragOver.value = true;
     };
     const onDragOver = (e) => {
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-      onDragEnter(e);
+      if (!isFileDrag(e)) return;
+      e.dataTransfer.dropEffect = 'copy';
+      if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
+      isDragOver.value = true;
     };
     const onDragLeave = () => {
       // dragleave fires on every child; debounce so we only clear when the
@@ -373,6 +379,7 @@ export default {
       dragLeaveTimer = setTimeout(() => { isDragOver.value = false; dragLeaveTimer = null; }, 50);
     };
     const onDrop = (e) => {
+      if (!isFileDrag(e)) return;
       if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
       isDragOver.value = false;
       const files = Array.from(e.dataTransfer?.files || []);
