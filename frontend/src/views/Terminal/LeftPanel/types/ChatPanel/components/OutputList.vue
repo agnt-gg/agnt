@@ -577,18 +577,22 @@ export default {
         // Prevent circular: can't drop a parent into its own descendant
         if (groupId && isDescendant(group.id, groupId)) return;
 
-        try {
-          await store.dispatch('groups/updateGroup', { id: group.id, parent_id: groupId || null });
-          // Expand the target so the moved group is visible
-          if (groupId) {
-            const next = new Set(expandedGroups.value);
-            next.add(groupId);
-            expandedGroups.value = next;
-          }
-          store.dispatch('groups/fetchGroups', { force: true });
-        } catch (error) {
-          console.error('Error reparenting group:', error);
+        // Optimistic reparent: mutate local state immediately so the drop
+        // feels instant, then fire the PATCH. Revert on failure. Skipping
+        // the follow-up fetchGroups() — updateGroup already commits the
+        // server response into the store, so a refetch is redundant.
+        const originalParentId = group.parent_id || null;
+        store.commit('groups/UPDATE_GROUP', { id: group.id, parent_id: groupId || null });
+        if (groupId) {
+          const next = new Set(expandedGroups.value);
+          next.add(groupId);
+          expandedGroups.value = next;
         }
+        store.dispatch('groups/updateGroup', { id: group.id, parent_id: groupId || null })
+          .catch((error) => {
+            console.error('Error reparenting group:', error);
+            store.commit('groups/UPDATE_GROUP', { id: group.id, parent_id: originalParentId });
+          });
         return;
       }
 
@@ -610,23 +614,33 @@ export default {
 
       if (filteredIds.length === 0) return;
 
-      try {
-        if (filteredIds.length === 1) {
-          await store.dispatch('groups/moveToGroup', { outputId: filteredIds[0], groupId });
-          const o = getOutputById(filteredIds[0]);
-          if (o) o.group_id = groupId;
-        } else {
-          await store.dispatch('groups/bulkMoveToGroup', { outputIds: filteredIds, groupId });
-          filteredIds.forEach((id) => {
-            const o = getOutputById(id);
-            if (o) o.group_id = groupId;
-          });
+      // Optimistic move: flip group_id on the local outputs first so the
+      // item visually jumps to the new group without waiting for the round-
+      // trip. Fire the PATCH in the background; revert on failure. The
+      // group tree's per-node counts are computed from `outputs` (see
+      // getTotalConversationCount), so no refetch is needed — the counts
+      // update from this same mutation.
+      const originalGroupIds = new Map();
+      filteredIds.forEach((id) => {
+        const o = getOutputById(id);
+        if (o) {
+          originalGroupIds.set(id, o.group_id || null);
+          o.group_id = groupId;
         }
-        clearSelection();
-        store.dispatch('groups/fetchGroups', { force: true });
-      } catch (error) {
+      });
+      clearSelection();
+
+      const request = filteredIds.length === 1
+        ? store.dispatch('groups/moveToGroup', { outputId: filteredIds[0], groupId })
+        : store.dispatch('groups/bulkMoveToGroup', { outputIds: filteredIds, groupId });
+
+      request.catch((error) => {
         console.error('Error moving output(s):', error);
-      }
+        originalGroupIds.forEach((origGroupId, id) => {
+          const o = getOutputById(id);
+          if (o) o.group_id = origGroupId;
+        });
+      });
     }
 
     // Move output to group (from context menu)
