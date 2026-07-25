@@ -8,6 +8,7 @@ import CustomOpenAIProviderService from '../ai/CustomOpenAIProviderService.js';
 import { getModelMetadata, getProviderConfig, getReasoningControl, supportsZaiReasoningEffort } from '../ai/providerConfigs.js';
 import { isAnthropicReasoningModel, anthropicSupportsXHigh } from '../ai/reasoningModels.js';
 import { buildBillingHeaderBlock, extractFirstUserMessage } from '../ai/claudeBillingHeader.js';
+import { sanitizeOrphanToolCalls, sanitizeUnexpectedToolResults } from './messageSanitizers.js';
 
 /**
  * Return the upstream provider error verbatim.
@@ -286,6 +287,43 @@ class BaseAdapter {
   }
 
   /**
+   * Last-line-of-defense guard for outbound provider payloads.
+   *
+   * The orchestrator sanitizes its message LEDGER (`messages`), but the array
+   * that actually goes on the wire is a DERIVED copy produced by
+   * compactMessageHistory() + manageContext(). Those transforms run AFTER the
+   * sanitize, and the adapter is handed the derived array directly
+   * (`contextResult.messages`), so a dangling tool_use left by an aborted,
+   * capped, or errored tool round could still reach the provider and 400 with:
+   *   "tool_use ids were found without tool_result blocks immediately after"
+   *   "unexpected tool_use_id found in tool_result blocks"
+   *
+   * Sanitizing HERE - at the single choke point where a message array becomes
+   * an HTTP request - closes that gap for every caller (orchestrator,
+   * LlmExecutionService, AutonomousMessageService, workflow nodes, agent chat)
+   * and for any call site added later. The sanitizers are idempotent, so
+   * double-application on nested paths costs nothing.
+   *
+   * @param {Array<Object>} messages Outbound conversation history.
+   * @param {string} label Provider label, used for diagnostics only.
+   * @returns {Array<Object>} A structurally valid history.
+   */
+  static _sanitizeOutbound(messages, label = 'provider') {
+    if (!Array.isArray(messages) || messages.length === 0) return messages;
+    const before = messages.length;
+    let out = sanitizeOrphanToolCalls(messages);
+    out = sanitizeUnexpectedToolResults(out);
+    if (out.length !== before) {
+      console.warn(
+        `[Adapter Guard] ${label}: outbound history repaired at the wire ` +
+        `(${before} -> ${out.length} messages). An upstream transform emitted ` +
+        `an unpaired tool_use/tool_result.`
+      );
+    }
+    return out;
+  }
+
+  /**
    * Makes a call to the LLM.
    * @param {Array<Object>} messages The conversation history.
    * @param {Array<Object>} tools The available tools in OpenAI format.
@@ -509,7 +547,7 @@ class OpenAiLikeAdapter extends BaseAdapter {
 
   async call(messages, tools) {
     let lastError;
-    let currentMessages = messages;
+    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'openai-like');
     const preparedTools = this._prepareTools(tools);
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
@@ -662,7 +700,7 @@ Please carefully check the tool schema and ensure all parameters match the expec
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
-    let currentMessages = messages;
+    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'openai-like');
 
     if (this.client?.__agntCompat?.mapDeveloperRole) {
       currentMessages = currentMessages.map((msg) => (msg?.role === 'developer' ? { ...msg, role: 'system' } : msg));
@@ -1488,6 +1526,15 @@ class AnthropicAdapter extends BaseAdapter {
    * - Merge consecutive same-role messages (Anthropic requires alternating)
    */
   _normalizeHistoryMessages(messages) {
+    // Both AnthropicAdapter entry points (call + callStream) funnel through
+    // here immediately before the request body is built, so this single hook
+    // guards every outbound Anthropic payload. Running BEFORE the conversion
+    // below is deliberate: the sanitizer emits whichever shape matches the
+    // input (role:'tool' for OpenAI-style tool_calls, user/tool_result for
+    // Anthropic blocks), and the conversion + consecutive-role merge that
+    // follow normalize any injected message into the correct final form.
+    messages = BaseAdapter._sanitizeOutbound(messages, 'anthropic');
+
     const converted = [];
 
     for (const msg of messages) {
@@ -2868,7 +2915,7 @@ class CerebrasAdapter extends OpenAiLikeAdapter {
 
   async call(messages, tools, skipTools = false) {
     let lastError;
-    let currentMessages = messages;
+    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'cerebras');
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -3727,7 +3774,7 @@ class GeminiAdapter extends BaseAdapter {
 
   async call(messages, tools) {
     let lastError;
-    let currentMessages = messages;
+    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'gemini');
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -3887,7 +3934,7 @@ class GeminiAdapter extends BaseAdapter {
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
-    let currentMessages = messages;
+    let currentMessages = BaseAdapter._sanitizeOutbound(messages, 'gemini');
 
     // Handle vision images - inject into the last user message if model supports vision
     if (context.imageData && context.imageData.length > 0) {
@@ -4619,12 +4666,16 @@ class OpenAIResponsesAdapter extends BaseAdapter {
     return textContent;
   }
 
-  async call(messages, tools) {
+  async call(messages, tools, context = {}) {
     let lastError;
+    messages = BaseAdapter._sanitizeOutbound(messages, 'openai-responses');
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const { instructions, input } = this._transformMessagesToInput(messages);
+        // context.imageData -> input_image blocks. Non-streaming call() previously
+        // dropped images while callStream() injected them, so the analyze_image
+        // tool (which uses call()) silently sent a prompt with no picture attached.
+        const { instructions, input } = this._transformMessagesToInput(messages, context.imageData);
         const responsesTools = this._transformToolsToResponses(tools);
 
         const requestParams = {
@@ -4732,6 +4783,7 @@ class OpenAIResponsesAdapter extends BaseAdapter {
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
+    messages = BaseAdapter._sanitizeOutbound(messages, 'openai-responses');
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let accumulatedContent = '';
@@ -5294,15 +5346,17 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
   /**
    * Non-streaming call — uses streaming internally since the Codex endpoint requires it,
    * then returns the assembled response.
-   */
-  async call(messages, tools) {
+   */  async call(messages, tools, context = {}) {
     let lastError;
-    let workingMessages = messages;
+    let workingMessages = BaseAdapter._sanitizeOutbound(messages, 'codex-responses');
     let shrinkAttempts = 0;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, null, 'Codex Responses');
+        // Forward context.imageData exactly as callStream() does. This argument
+        // was hardcoded to null, so the streaming path could see uploaded images
+        // but the non-streaming path (used by the analyze_image tool) could not.
+        const preflight = this._buildCodexParamsWithinBudget(workingMessages, tools, context.imageData || null, 'Codex Responses');
         const params = preflight.params;
         workingMessages = preflight.workingMessages;
 
@@ -5404,7 +5458,7 @@ class CodexResponsesAdapter extends OpenAIResponsesAdapter {
    */
   async callStream(messages, tools, onChunk, context = {}) {
     let lastError;
-    let workingMessages = messages;
+    let workingMessages = BaseAdapter._sanitizeOutbound(messages, 'codex-responses');
     let shrinkAttempts = 0;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
